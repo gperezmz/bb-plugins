@@ -57,6 +57,12 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: "@testing-library/react"
         update-types: [version-update:semver-major]
+      # A plugin runs on the Node that runs bb, and bb 0.43.4 supports Node
+      # 22.19, 24 and 26 (bb-app `engines`). Types for a newer major than the
+      # oldest of those would type-check APIs that Node 22 lacks. Raise this
+      # with the oldest Node the bb release the plugins target supports.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
 
   - package-ecosystem: github-actions
     directories:
