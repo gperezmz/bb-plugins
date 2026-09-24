@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   failedUnread,
   finishedUnread,
@@ -338,6 +339,89 @@ describe("folding inside a family", () => {
   it("an expanded older fold shows all", () => {
     const view = viewOf({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } });
     expect(rowIds(view, "project:proj_a")).toHaveLength(10);
+  });
+});
+
+describe("folding a family by the attention rule", () => {
+  // A manager whose 12 workers all finished after you last looked at them (done-unseen).
+  const workers = Array.from({ length: 12 }, (_, n) =>
+    makeThread({ id: `w${n}`, parentThreadId: "m", createdAt: T0 + n }),
+  );
+  const finishedAt = Object.fromEntries(workers.map((worker) => [worker.id, T0 + 100]));
+  const threads = [makeThread({ id: "m" }), ...workers];
+  const rows = (scenario: Scenario, attention: "blocked" | "everything" = "blocked") =>
+    rowIds(
+      viewOf({
+        finishedAt,
+        ...scenario,
+        prefs: { expandedChildren: ["m"], childAttention: attention, ...scenario.prefs },
+      }),
+      "project:proj_a",
+    );
+  const withState = (overrides: Record<string, Partial<PluginSidebarThread>>) =>
+    threads.map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t));
+
+  it("folds finished-unread children like quiet ones, keeping the 3 most recent", () => {
+    expect(rows({ threads })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+  });
+  it("keeps their unread dot when the fold is opened", () => {
+    const view = viewOf({ threads, finishedAt, prefs: { expandedChildren: ["m"], expandedOlder: ["m"] } });
+    const shown = group(view, "project:proj_a").rows.filter((row): row is ThreadRow => row.type === "thread").slice(1);
+    expect(shown).toHaveLength(12);
+    for (const row of shown) expect(row.info.state.kind).toBe("unread");
+  });
+  it("with Everything, a finished-unread child stays visible, as a root would", () => {
+    expect(rows({ threads }, "everything")).toEqual(["m", ...workers.map((worker) => worker.id)]);
+  });
+  it("keeps children that work, wait on you, are offline or failed under an idle manager", () => {
+    const mixed = withState({
+      w0: working,
+      w1: { status: "idle", runtimeStatus: "provisioning" },
+      w2: { activity: { workflows: 0, backgroundAgents: 1, backgroundCommands: 0, planMode: 0, goals: 0 } },
+      w3: { hasPendingInteraction: true },
+      w4: { runtimeStatus: "waiting-for-host" },
+      w5: failedUnread,
+    });
+    expect(rows({ threads: mixed })).toEqual(["m", "w0", "w1", "w2", "w3", "w4", "w5", "w9", "w10", "w11", "older:3"]);
+  });
+  it("folds a failed child while its manager is busy, and shows it once the manager is idle and has not run since", () => {
+    const busy = withState({ m: working, w0: failedUnread });
+    expect(rows({ threads: busy })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+    expect(rows({ threads: withState({ w0: failedUnread }) })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+  });
+  it("keeps a child whose own child is stuck, even with its own chip closed", () => {
+    const stuck = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50, hasPendingInteraction: true })];
+    expect(rows({ threads: stuck })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+    const settled = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50 })];
+    expect(rows({ threads: settled, finishedAt: { ...finishedAt, g: T0 + 100 } })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+  });
+  it("folds a child holding a queued or scheduled message", () => {
+    const waiting = withState({ w0: { queuedWork: "waiting" }, w1: { queuedWork: "waiting" } });
+    expect(rows({ threads: waiting, scheduled: { w1: T0 + 10 * 60_000 } })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+    expect(rows({ threads: waiting }, "everything")).toEqual(["m", ...workers.map((worker) => worker.id)]);
+  });
+  it("folds an archived child, whatever it carries", () => {
+    const archived = withState({ w0: { isArchived: true, runtimeStatus: "waiting-for-host" } });
+    const prefs = { threadLifecycles: ["active", "archived"] as ("active" | "archived")[] };
+    expect(rows({ threads: archived, prefs })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+  });
+  it("counts a hidden grandchild only when it needs attention", () => {
+    const hidden = (overrides: Partial<PluginSidebarThread>) => [
+      ...threads,
+      makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50, isHidden: true, ...overrides }),
+    ];
+    expect(rows({ threads: hidden(working) })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+    expect(rows({ threads: hidden({ hasPendingInteraction: true }) })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+  });
+  it("adds the open child behind the fold, and moving between children keeps the rest in place", () => {
+    expect(rows({ threads, activeThreadId: "w2" })).toEqual(["m", "w2", "w9", "w10", "w11", "older:8"]);
+    for (const active of ["w9", "w10", "w11"]) {
+      expect(rows({ threads, activeThreadId: active })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
+    }
+  });
+  it("keeps the child on the path to an open grandchild", () => {
+    const deep = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50 })];
+    expect(rows({ threads: deep, activeThreadId: "g" })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
   });
 });
 

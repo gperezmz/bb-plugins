@@ -31,9 +31,9 @@ flowchart TD
 
 Here a child's [manager](how-the-plugins-fit-bb.md#threads-and-families) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle manager that has not run since is an **orphaned failure**: nobody is going to pick it up.
 
-A child that only finished unread never counts. It keeps its own unread dot and bold title, and you see it when you open the [family](how-the-plugins-fit-bb.md#threads-and-families).
+A child that only finished unread never counts. It keeps its own unread dot and bold title, and you see it when you open the [family](how-the-plugins-fit-bb.md#threads-and-families) and its fold.
 
-Filter settings → **Child threads in Needs attention** → **Everything** makes a child count exactly as a root does.
+Filter settings → **Child threads in Needs attention** → **Everything** makes a child count exactly as a root does. The same setting decides which children a family's fold keeps out, below.
 
 ## Families and folding
 
@@ -41,12 +41,20 @@ A thread's family is listed as one unit: only the root gets a row in its group, 
 
 Opening a chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two folds keep quiet threads out of the way. A thread is **quiet** when it is idle, a draft or a read failure, is read, is not open, and has nothing under it that is not quiet.
+Two folds keep threads with nothing to show out of the way, one for roots and one for children, and each has its own test.
 
-- In each group, all roots that are not quiet show, then the 5 most recent quiet ones, then an `N older` row for the rest.
-- Inside an open family, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row.
+In each group, all roots that are not quiet show, then the 5 most recent quiet ones, then an `N older` row for the rest. A root is **quiet** when it is idle, a draft or a read failure, is read, is not open, and has nothing under it that is not quiet.
 
-The children shown stay the same while you move between them. Opening a child that sits behind the fold adds that one row, and nothing else moves out to make room.
+Inside an open family, all children that are not settled show, then the 3 most recent settled ones, then an `N more child threads` row. A child is **settled** unless it or anything under it:
+
+- works, sets up or runs background work;
+- counts toward attention, [as above](#what-a-child-thread-adds): waits on you, lost its machine, or failed with an idle manager.
+
+A hidden thread under it counts only for the second, and an archived child is always settled.
+
+So a manager whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. A worker whose own child waits on you stays out of the fold. With **Everything**, a child is settled only when it would be quiet as a root, so a finished, unread child stays out of the fold too.
+
+The children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
 
 ## What opens by itself
 

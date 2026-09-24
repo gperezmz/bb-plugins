@@ -9,6 +9,7 @@ import {
   threadFlags,
   type Flag,
   type ThreadContext,
+  type StateKind,
   type ThreadState,
 } from "./state";
 import { attentionFlagsOf, isOrphanedFailure } from "./attention";
@@ -16,6 +17,9 @@ import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ChildAttention } from "@/shared/preferences";
+
+/** States that keep a child out of its family's fold with `childAttention` `blocked`: working, setting up, background work. */
+const RUNNING: ReadonlySet<StateKind> = new Set<StateKind>(["working", "background"]);
 
 /** Everything the list knows about one thread. */
 export interface ThreadInfo {
@@ -32,7 +36,11 @@ export interface ThreadInfo {
   /** Quiet test for the thread alone. */
   quiet: boolean;
   /**
-   * The quiet test without the open thread's exemption. A family's fold
+   * Nothing to see behind a family's fold. A root, or any child when
+   * `childAttention` is `everything`: the quiet test without the open
+   * thread's exemption. Otherwise a child is settled unless it runs or
+   * counts towards Needs attention, so finishing unread folds it; an
+   * archived child is always settled. The fold
    * reads this, so opening a thread never changes which children stay shown.
    */
   settled: boolean;
@@ -148,7 +156,7 @@ export function buildForest(inputs: ForestInputs): Forest {
       flags: thread.isHidden ? hiddenThreadFlags(flags) : flags,
       attention: new Set<Flag>(),
       quiet: isQuietThread(state, unread, isActive),
-      settled: isQuietThread(state, unread, false),
+      settled: false,
       isActive,
       parentId: attachParent(thread, byId),
       note: rowNote(thread, inputs.notes?.[thread.id]),
@@ -165,6 +173,10 @@ export function buildForest(inputs: ForestInputs): Forest {
         manager !== undefined &&
         isOrphanedFailure(info.thread, info.flags, { ...manager, finishedAt: inputs.finishedAt[manager.thread.id] }),
     });
+    info.settled =
+      manager === undefined || mode === "everything"
+        ? isQuietThread(info.state, info.unread, false)
+        : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.attention.size === 0);
   }
 
   const children = new Map<string, string[]>();
