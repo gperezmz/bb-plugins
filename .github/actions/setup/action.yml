@@ -1,0 +1,26 @@
+name: Set up a plugin job
+description: Node with the plugin's npm cache, and the bb CLI that `bb plugin build` needs.
+inputs:
+  plugin:
+    description: Folder name under plugins/.
+    required: true
+  bb-version:
+    description: >-
+      Version of the npm package bb-app, which ships the bb CLI. Keep it on the
+      bb release whose SDK the plugins pin (@get-bb/plugin-sdk).
+    default: 0.43.4
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: plugins/${{ inputs.plugin }}/package-lock.json
+    # The build needs no bb server; install scripts only build native modules
+    # the build never loads.
+    - name: Install the bb CLI
+      shell: bash
+      env:
+        BB_VERSION: ${{ inputs.bb-version }}
+      run: npm install --global --ignore-scripts --no-audit --no-fund "bb-app@$BB_VERSION"

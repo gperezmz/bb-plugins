@@ -1,0 +1,12 @@
+#!/bin/sh
+# Rejects a first line that is not a Conventional Commit:
+#   type(scope)!: description
+subject=$(sed -n '/^[^#]/{p;q;}' "$1")
+case $subject in
+  "Merge "* | "Revert "* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+types='feat|fix|build|chore|ci|docs|perf|refactor|style|test|revert'
+if ! printf '%s\n' "$subject" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?!?: .+"; then
+  echo "commit-msg: '$subject' is not 'type(scope)!: description' (https://www.conventionalcommits.org/en/v1.0.0/)" >&2
+  exit 1
+fi

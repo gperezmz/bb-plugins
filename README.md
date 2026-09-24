@@ -48,6 +48,10 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin t
 
 [Install, update or remove a plugin](docs/how-to/install-plugins.md) covers pinning a release, updating and removing; [develop a plugin](docs/how-to/develop-plugins.md) covers running one from a checkout.
 
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers pull requests, commit messages and releasing a plugin.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE). Each plugin lists the third-party code it bundles in its `THIRD_PARTY_NOTICES.md`.
