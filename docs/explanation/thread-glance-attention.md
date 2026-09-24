@@ -43,7 +43,7 @@ Opening a chip shows one level: the root's direct children. A child with childre
 
 Two folds keep threads with nothing to show out of the way, one for roots and one for children, and each has its own test.
 
-In each group, all roots that are not quiet show, then the 5 most recent quiet ones, then an `N older` row for the rest. A root is **quiet** when it is idle, a draft or a read failure, is read, is not open, and has nothing under it that is not quiet.
+In each group, all roots that are not quiet show, then the 5 most recent quiet ones, then an `N older` row for the rest. A root is **quiet** when it is idle, a draft or a read failure, is read, and has nothing under it that is not quiet.
 
 Inside an open family, all children that are not settled show, then the 3 most recent settled ones, then an `N more child threads` row. A child is **settled** unless it or anything under it:
 
@@ -54,7 +54,7 @@ A hidden thread under it counts only for the second, and an archived child is al
 
 So a manager whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. A worker whose own child waits on you stays out of the fold. With **Everything**, a child is settled only when it would be quiet as a root, so a finished, unread child stays out of the fold too.
 
-The children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
+Both folds are worked out as if no thread were open, so the roots and children shown stay the same while you move between them. Opening a thread that sits behind a fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
 
 ## What opens by itself
 

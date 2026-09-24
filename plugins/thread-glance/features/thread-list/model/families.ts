@@ -79,6 +79,11 @@ export interface Family {
   attention: number;
   /** Every thread quiet and the active thread not in it. */
   quiet: boolean;
+  /**
+   * The quiet test without the open thread's exemption. A group's fold reads
+   * this, so opening a thread never changes which roots stay shown.
+   */
+  settled: boolean;
   containsActive: boolean;
 }
 
@@ -233,6 +238,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     const { descendants, flags: descendantFlags, visibleCount: visibleDescendantCount } = subtrees.get(root.thread.id)!;
     let attention = root.thread.latestAttentionAt;
     let quiet = root.quiet;
+    let settled = isQuietThread(root.state, root.unread, false);
     let containsActive = root.isActive;
     const attentionFlags = new Set<Flag>();
     for (const info of descendants) {
@@ -240,8 +246,11 @@ export function buildForest(inputs: ForestInputs): Forest {
       attention = Math.max(attention, info.thread.latestAttentionAt);
       if (info.isActive) containsActive = true;
       if (info.thread.isHidden) {
-        if (info.attention.size > 0) quiet = false;
-      } else if (!info.quiet) quiet = false;
+        if (info.attention.size > 0) quiet = settled = false;
+      } else {
+        if (!info.quiet) quiet = false;
+        if (!isQuietThread(info.state, info.unread, false)) settled = false;
+      }
     }
     const flags = new Set<Flag>(descendantFlags);
     if (!root.thread.isArchived) {
@@ -260,6 +269,7 @@ export function buildForest(inputs: ForestInputs): Forest {
       visibleDescendantCount,
       attention,
       quiet: quiet && !containsActive,
+      settled,
       containsActive,
     };
     families.push(family);

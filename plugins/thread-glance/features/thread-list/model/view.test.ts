@@ -342,6 +342,38 @@ describe("folding inside a family", () => {
   });
 });
 
+describe("a group's fold while a thread is open", () => {
+  // 13 quiet roots, newest first r12..r0; r11 has a quiet child.
+  const roots = Array.from({ length: 13 }, (_, n) =>
+    makeThread({ id: `r${n}`, createdAt: T0 + n * 10, updatedAt: T0 + n * 10, latestAttentionAt: T0 + n * 10, lastReadAt: T0 + 200 }),
+  );
+  const threads = [...roots, makeThread({ id: "k", parentThreadId: "r11", createdAt: T0 + 111, lastReadAt: T0 + 200 })];
+  const rows = (activeThreadId: string | null) => rowIds(viewOf({ threads, activeThreadId }), "project:proj_a");
+  const idle = ["r12", "r11", "r10", "r9", "r8", "older:8"];
+
+  it("keeps the shown roots and the older count when a shown root or its child is opened", () => {
+    expect(rows(null)).toEqual(idle);
+    for (const active of ["r12", "r11", "r10", "r9", "r8", "k"]) expect(rows(active)).toEqual(idle);
+  });
+  it("adds a root behind the fold when it is opened, in its place, and counts one fewer", () => {
+    expect(rows("r3")).toEqual(["r12", "r11", "r10", "r9", "r8", "r3", "older:7"]);
+  });
+  it("adds a root behind the fold with the open child and its reveal, and keeps the fold shut", () => {
+    const withChild = [...threads, makeThread({ id: "j", parentThreadId: "r2", createdAt: T0 + 21, lastReadAt: T0 + 200 })];
+    const first = render({ threads: withChild }, null, new Map());
+    const opened = render({ threads: withChild, activeThreadId: "j" }, first.snapshot, first.targets);
+    expect(rowIds(opened.view, "project:proj_a")).toEqual(["r12", "r11", "r10", "r9", "r8", "r2", "j", "older:7"]);
+  });
+  it("keeps the rows as they were across the render that opens a thread", () => {
+    const first = render({ threads }, null, new Map());
+    const opened = render({ threads, activeThreadId: "r12" }, first.snapshot, first.targets);
+    expect(rowIds(opened.view, "project:proj_a")).toEqual(idle);
+    // Opening one behind the fold reveals it alone, not the whole fold.
+    const behind = render({ threads, activeThreadId: "r3" }, first.snapshot, first.targets);
+    expect(rowIds(behind.view, "project:proj_a")).toEqual(["r12", "r11", "r10", "r9", "r8", "r3", "older:7"]);
+  });
+});
+
 describe("folding a family by the attention rule", () => {
   // A manager whose 12 workers all finished after you last looked at them (done-unseen).
   const workers = Array.from({ length: 12 }, (_, n) =>
