@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Changed plugins
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      plugins: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A plugin's jobs run when its folder or anything every plugin job uses
+      # changes.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            thread-glance:
+              - plugins/thread-glance/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
+            thread-usage:
+              - plugins/thread-usage/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
+            team-onboarding:
+              - plugins/team-onboarding/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
+
+  plugin:
+    name: ${{ matrix.plugin }} (${{ matrix.mode }})
+    needs: changes
+    if: needs.changes.outputs.plugins != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
+        # check: types, tests, build, generated files. git-install: what bb
+        # runs after cloning the repository, which a devDependency the build
+        # needs can break.
+        mode: [check, git-install]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          plugin: ${{ matrix.plugin }}
+      - run: scripts/ci/check-plugin.sh "$PLUGIN" "$MODE"
+        env:
+          PLUGIN: ${{ matrix.plugin }}
+          MODE: ${{ matrix.mode }}
+
+  secrets:
+    name: Secrets (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The gitleaks binary (MIT) rather than gitleaks-action, whose licence
+      # is not MIT and which needs write access to comment on pull requests.
+      - name: Install gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan the full history
+        run: '"$RUNNER_TEMP/gitleaks" git --redact --no-banner --verbose .'
+
+  docs:
+    name: Docs (links, Mermaid)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Offline: relative links and their #anchors must resolve; external
+      # URLs are skipped, so a flaky site never fails the build.
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          lycheeVersion: v0.24.2
+          args: --offline --include-fragments --no-progress '*.md' 'docs/**/*.md' 'plugins/*/*.md'
+          jobSummary: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: scripts/ci/package-lock.json
+      - run: npm ci --prefix scripts/ci --ignore-scripts --no-audit --no-fund
+      - run: node scripts/ci/check-mermaid.mjs
+
+  # The one check to require in branch protection: plugin jobs a pull request
+  # does not touch are skipped, and their names vary with the matrix.
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs: [changes, plugin, secrets, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

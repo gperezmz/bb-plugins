@@ -1,0 +1,74 @@
+# Weekly, one pull request per plugin for its minor and patch updates, one per
+# major. A week's cooldown keeps a just-published (or just-hijacked) release
+# out until it has been around a while.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directories:
+      - /plugins/*
+      - /scripts/ci
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # bb provides these to a plugin's frontend at runtime, and each plugin
+      # pins the versions of the bb it targets; `bb plugin types` repins them
+      # together with the SDK when bb is upgraded. A version Dependabot picks
+      # would type-check and test against something bb does not ship.
+      - dependency-name: "@get-bb/plugin-sdk"
+      - dependency-name: react
+      - dependency-name: react-dom
+      - dependency-name: "@types/react"
+      - dependency-name: "@types/react-dom"
+      - dependency-name: "@pierre/diffs"
+      - dependency-name: "@radix-ui/react-alert-dialog"
+      - dependency-name: "@radix-ui/react-context-menu"
+      - dependency-name: "@radix-ui/react-dialog"
+      - dependency-name: "@radix-ui/react-dropdown-menu"
+      - dependency-name: "@radix-ui/react-hover-card"
+      - dependency-name: "@radix-ui/react-menubar"
+      - dependency-name: "@radix-ui/react-navigation-menu"
+      - dependency-name: "@radix-ui/react-popover"
+      - dependency-name: "@radix-ui/react-select"
+      - dependency-name: "@radix-ui/react-tooltip"
+      - dependency-name: sonner
+      - dependency-name: vaul
+      - dependency-name: clsx
+      - dependency-name: tailwind-merge
+      - dependency-name: class-variance-authority
+      # Peer dependencies of the SDK, for types only; bb's server provides
+      # them. Stay within the major the SDK declares.
+      - dependency-name: hono
+        update-types: [version-update:semver-major]
+      - dependency-name: better-sqlite3
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/better-sqlite3"
+        update-types: [version-update:semver-major]
+      - dependency-name: cron-parser
+        update-types: [version-update:semver-major]
+      - dependency-name: "@testing-library/react"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]
