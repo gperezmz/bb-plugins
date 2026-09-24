@@ -1,0 +1,85 @@
+name: Release
+
+# One tag per plugin release: <plugin>/v<version>, e.g. thread-glance/v0.2.0.
+on:
+  push:
+    tags: ['*/v*']
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  verify:
+    name: Verify the tag
+    runs-on: ubuntu-latest
+    outputs:
+      plugin: ${{ steps.tag.outputs.plugin }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Match the tag to a plugin and its package.json version
+        id: tag
+        run: |
+          plugin=${TAG%%/v*}
+          version=${TAG#*/v}
+          manifest="plugins/$plugin/package.json"
+          if [[ ! -f $manifest ]]; then
+            echo "::error::$TAG: no plugin at plugins/$plugin"
+            exit 1
+          fi
+          declared=$(jq -r .version "$manifest")
+          if [[ $declared != "$version" ]]; then
+            echo "::error::$TAG: $manifest says version $declared"
+            exit 1
+          fi
+          echo "plugin=$plugin" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  check:
+    name: ${{ needs.verify.outputs.plugin }} (${{ matrix.mode }})
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        mode: [check, git-install]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          plugin: ${{ needs.verify.outputs.plugin }}
+      - run: scripts/ci/check-plugin.sh "$PLUGIN" "$MODE"
+        env:
+          PLUGIN: ${{ needs.verify.outputs.plugin }}
+          MODE: ${{ matrix.mode }}
+
+  release:
+    name: GitHub Release
+    needs: [verify, check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLUGIN: ${{ needs.verify.outputs.plugin }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          scripts/ci/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
+          prerelease=()
+          if [[ $VERSION == *-* ]]; then prerelease=(--prerelease); fi
+          name=$(jq -r .bb.name "plugins/$PLUGIN/package.json")
+          gh release create "$TAG" --verify-tag --latest=false "${prerelease[@]}" \
+            --title "$name $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
