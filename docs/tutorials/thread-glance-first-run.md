@@ -1,0 +1,52 @@
+# Thread Glance: first run
+
+In this tutorial you install Thread Glance, switch the sidebar to it, and watch a parent thread and its child thread in the list. You need a bb server you can install plugins on and one project with an agent that can run.
+
+## 1. Install it and switch the sidebar
+
+```sh
+bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
+```
+
+In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**.
+
+The list looks much like bb's: Thread Glance copied your grouping, sort, group order, and hidden and collapsed groups from it. Every window you have open switches too.
+
+## 2. Read a row
+
+Look at any thread you have run before. From left to right, its row holds:
+
+- a state glyph, or nothing when the thread is idle and read;
+- the title, bold if you have not read the thread since it finished;
+- a small logo of the harness that runs it;
+- how long ago it last finished.
+
+Hover the row for half a second. The card names the state, the harness, the model the next turn will use, the branch and the machine.
+
+## 3. Start a parent with a child
+
+In a thread of your project, send:
+
+```text
+Spawn one child thread that lists the files in this repository, then wait for it and summarise what it found.
+```
+
+While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a chip: `1` with a spinner, because its one child is working. The child has no row of its own at the top of the group. It sits behind that chip.
+
+Click the chip. The child's row opens under the parent, slightly indented, on a thin line that joins it to its parent.
+
+## 4. Let it finish
+
+When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's chip does not turn urgent, because the parent is the one waiting for that result.
+
+When the parent finishes, its row shows the dot and a bold title, and it moves to the top of its group. Open it, and the dot goes.
+
+## 5. Filter to what needs you
+
+Click **Needs attention** above the list. Only threads that wait on you, failed, lost their machine or finished unread stay. Your finished child is not among them: [what "needs attention" means](../explanation/thread-glance-attention.md) explains why. Click **All** to go back.
+
+## 6. Change a setting
+
+Click the gear at the top of the list, open **Display**, and set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
+
+You have installed Thread Glance, read its rows and chips, and used its filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
