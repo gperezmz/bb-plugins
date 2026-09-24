@@ -1,0 +1,16 @@
+# Local agent tooling (APM manifest, its dependencies and what it deploys)
+apm.yml
+apm.lock.yaml
+apm_modules/
+.agents/
+.claude/skills/
+.claude/hooks/
+.claude/apm-hooks.json
+.claude/settings.json
+
+# Local research scratch
+.research/
+
+# Build output
+node_modules/
+dist/

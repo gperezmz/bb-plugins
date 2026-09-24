@@ -1,0 +1,19 @@
+{
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
+  "schemaVersion": 1,
+  "name": "gperezmz-bb-plugins",
+  "plugins": [
+    {
+      "name": "thread-glance",
+      "source": "./plugins/thread-glance"
+    },
+    {
+      "name": "thread-usage",
+      "source": "./plugins/thread-usage"
+    },
+    {
+      "name": "team-onboarding",
+      "source": "./plugins/team-onboarding"
+    }
+  ]
+}
