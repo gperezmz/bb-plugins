@@ -1,0 +1,672 @@
+{
+  "$id": "https://raw.githubusercontent.com/gperezmz/bb-plugins/main/plugins/team-onboarding/schema/onboarding.schema.json",
+  "title": "Team Onboarding manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "number",
+      "const": 1
+    },
+    "team": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "docsUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "machines": {
+      "default": "all",
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "server"
+        },
+        {
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
+    },
+    "github": {
+      "default": {
+        "host": "github.com",
+        "mode": "builtin",
+        "scopes": [],
+        "access": []
+      },
+      "type": "object",
+      "properties": {
+        "host": {
+          "default": "github.com",
+          "type": "string",
+          "pattern": "^[a-z0-9.-]+$"
+        },
+        "mode": {
+          "default": "builtin",
+          "type": "string",
+          "enum": [
+            "builtin",
+            "per-machine"
+          ]
+        },
+        "scopes": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z:_]+$"
+          }
+        },
+        "signing": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "access": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "repo": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "machines": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "server"
+                  },
+                  {
+                    "type": "string",
+                    "const": "all"
+                  },
+                  {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "repo"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "machines": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "server"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "machines": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "server"
+            },
+            {
+              "type": "string",
+              "const": "all"
+            },
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "providers": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "machines": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "server"
+              },
+              {
+                "type": "string",
+                "const": "all"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "skills": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string",
+                "const": "git"
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ref": {
+                "default": "main",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "paths": {
+                "default": [
+                  "skills/*"
+                ],
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "exclude": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string",
+                "const": "apm"
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "path": {
+                "default": "apm.yml",
+                "type": "string",
+                "minLength": 1
+              },
+              "package": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string",
+                "const": "registry"
+              },
+              "registrySkillId": {
+                "type": "string",
+                "pattern": "^[^/\\s]+\\/[^/\\s]+(\\/[^/\\s]+)*$"
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "registrySkillId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "title": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string",
+                "const": "plugin"
+              },
+              "install": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "install"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "plugins": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "install": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "settings": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          }
+        },
+        "required": [
+          "id",
+          "install"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "marketplaces": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "tools": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "check": {
+            "type": "object",
+            "properties": {
+              "bin": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9._+-]+$"
+              },
+              "args": {
+                "default": [
+                  "--version"
+                ],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "pattern": {
+                "default": "(\\d+\\.\\d+(?:\\.\\d+)?)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "bin"
+            ],
+            "additionalProperties": false
+          },
+          "min": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+){0,2}$"
+          },
+          "hint": {
+            "type": "string",
+            "format": "uri"
+          },
+          "install": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "machines": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "server"
+              },
+              {
+                "type": "string",
+                "const": "all"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "check"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "env": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$"
+          },
+          "note": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "checks": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "run": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "fix": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "run"
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "kind",
+                  "command"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "terminal"
+                  },
+                  "command": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  }
+                },
+                "required": [
+                  "kind",
+                  "command"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "machines": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "server"
+              },
+              {
+                "type": "string",
+                "const": "all"
+              },
+              {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "run"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "team"
+  ],
+  "additionalProperties": false
+}

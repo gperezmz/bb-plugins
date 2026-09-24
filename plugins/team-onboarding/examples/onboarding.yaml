@@ -1,0 +1,101 @@
+# yaml-language-server: $schema=../schema/onboarding.schema.json
+#
+# An example team manifest. Copy it, edit it, and install it on the bb server
+# as the user bb runs as, with `bb team-onboarding manifest install onboarding.yaml`.
+# The plugin reads the installed file from <bb data dir>/team-onboarding/.
+# The full reference is docs/reference/team-onboarding-manifest.md.
+schema: 1
+
+team:
+  name: Example Platform
+  docsUrl: https://example.com/handbook/onboarding
+
+# Where items run unless a section or item says otherwise:
+# server | all (every persistent machine) | [machine names]
+machines: all
+
+github:
+  host: github.com
+  # builtin: log in once on the server; bb shares that login with every machine.
+  # per-machine: every machine gets its own login and SSH key.
+  mode: builtin
+  scopes: [repo, read:org, write:public_key, read:public_key]
+  signing:
+    required: false
+  # Ids are what the plugin stores and logs; repository names stay in here.
+  access:
+    - id: platform
+      repo: example-org/platform
+      title: The platform repo
+    - id: infra
+      repo: example-org/infrastructure
+      required: false
+
+# Present means the SSH group is on (on the server machine in builtin mode).
+ssh:
+  enabled: true
+
+providers:
+  - id: claude-code
+  - id: codex
+    required: false
+
+skills:
+  # Folders with a SKILL.md, from a branch that the plugin tracks.
+  - id: team-skills
+    source: git
+    url: https://github.com/example-org/agent-skills.git
+    ref: main
+    paths: ["skills/*"]
+    exclude: ["skills/experimental-*"]
+  # The same list your team already uses with `apm install`.
+  - id: apm-skills
+    source: apm
+    url: https://github.com/example-org/agent-skills.git
+    path: apm.yml
+    required: false
+  # One skill from skills.sh.
+  - id: tdd
+    source: registry
+    registrySkillId: example-org/tdd
+    required: false
+
+marketplaces:
+  - id: example-marketplace
+    source: git:https://github.com/example-org/bb-marketplace.git
+    required: false
+
+plugins:
+  - id: floating-terminal
+    install: floating-terminal@bb-community
+    required: false
+
+tools:
+  - id: gh
+    check: { bin: gh, args: ["--version"], pattern: "(\\d+\\.\\d+\\.\\d+)" }
+    min: "2.60"
+    hint: https://cli.github.com
+  - id: node
+    check: { bin: node, args: ["--version"] }
+    min: "22"
+    hint: https://nodejs.org/en/download
+    install: "curl -fsSL https://fnm.vercel.app/install | bash && fnm install 22"
+    required: false
+
+# Names only. The value is typed into a masked form in the Onboarding page.
+env:
+  - name: TRACKER_API_KEY
+    note: Your personal key from the issue tracker's API settings
+    required: false
+
+# Anything else, as a command. Shown verbatim and run only after approval.
+checks:
+  - id: vpn
+    title: Company VPN reachable
+    description: Agents reach internal services through the VPN.
+    run: "curl -sfm5 https://internal.example.com/health"
+    machines: server
+    required: false
+    fix:
+      kind: terminal
+      command: "sudo systemctl start example-vpn"
