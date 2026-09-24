@@ -39,7 +39,7 @@ The **All** / **Needs attention** toggle above the list is a device preference t
 | `harnessIcon` | `"muted"` | `muted`, `colour`, `hidden` |
 | `showPullRequests` | `true` | Whether rows show a pull request badge |
 | `threadLifecycles` | `["active"]` | Any of `active`, `archived`; at least one |
-| `childAttention` | `"blocked"` | `blocked` or `everything`; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) |
+| `childAttention` | `"blocked"` | `blocked` or `everything`: which children count toward Needs attention and stay out of a family's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#families-and-folding) |
 | `sectionOrder` | `["pinned","projects","threads"]` | Group order when grouped by project |
 | `manualSectionOrder` | `["pinned","sections","threads"]` | Group order in Custom mode |
 | `machineSectionOrder` | `["pinned","machines","threads"]` | Group order when grouped by machine |

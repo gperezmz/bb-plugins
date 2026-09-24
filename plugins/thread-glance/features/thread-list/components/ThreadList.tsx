@@ -49,6 +49,7 @@ import { moveTargets } from "../model/move";
 import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
+import { cancelPendingCards } from "./row-card";
 import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
@@ -189,6 +190,7 @@ function ThreadListBody({
       (id): id is string => id !== null && byId.get(id)?.parentThreadId != null,
     );
     previousActive.current = activeThreadId;
+    cancelPendingCards();
     if (ids.length > 0) markSeen([...new Set(ids)]);
     // Only the active thread's changes matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps

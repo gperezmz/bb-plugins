@@ -525,9 +525,11 @@ function buildGroup(
   let older: OlderRow | null = null;
   const foldable = !isPinned && context.filter === "all" && context.prefs.foldOlder;
   if (foldable) {
-    const quietActive = sorted.filter((family) => family.quiet && !family.root.thread.isArchived);
+    // The fold reads `settled`, as if no thread were open. The open family
+    // joins afterwards when it sits behind the fold, and takes no other row's place.
+    const quietActive = sorted.filter((family) => family.settled && !family.root.thread.isArchived);
     const keepQuiet = new Set(quietActive.slice(0, KEEP_QUIET));
-    const foldedFamilies = quietActive.filter((family) => !keepQuiet.has(family));
+    const foldedFamilies = quietActive.filter((family) => !keepQuiet.has(family) && !family.containsActive);
     if (foldedFamilies.length > 0) {
       const opened =
         context.expandedOlder.has(descriptor.id) ||

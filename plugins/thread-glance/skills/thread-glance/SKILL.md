@@ -59,7 +59,7 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `expandedChildren` | Parent thread ids whose children are shown (`folded` nesting) | `[]` |
 | `collapsedChildren` | Parent thread ids whose children are hidden (`tree` nesting) | `[]` |
 | `showPullRequests` | `true` shows a pull request badge on rows | `true` |
-| `childAttention` | Which child threads count as needing attention (filter, badge, counters, ordering, auto-reveal): `blocked` counts a child that waits on you, is offline, or failed with its manager idle; `everything` also counts every failed or unread child | `blocked` |
+| `childAttention` | Which child threads count as needing attention (filter, badge, counters, ordering, auto-reveal) and stay out of a family's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or failed with its manager idle; `everything` also counts every failed or unread child | `blocked` |
 | `harnessIcon` | How rows draw the harness logo: `muted` (monochrome), `colour` (the provider's tint) or `hidden` | `muted` |
 
 The filter (all or needs attention) and the row density are kept per
