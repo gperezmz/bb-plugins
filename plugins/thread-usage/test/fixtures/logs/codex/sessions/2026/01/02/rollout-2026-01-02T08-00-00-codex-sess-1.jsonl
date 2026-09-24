@@ -1,0 +1,7 @@
+{"timestamp":"2026-01-02T08:00:00.000Z","type":"session_meta","payload":{"id":"codex-sess-1","model_provider":"demo"}}
+{"timestamp":"2026-01-02T08:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{}}}
+{"timestamp":"2026-01-02T08:00:02.000Z","type":"turn_context","payload":{"model":"model-x","cwd":"/tmp/demo"}}
+{"timestamp":"2026-01-02T08:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":1100},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":100,"reasoning_output_tokens":40,"total_tokens":1100},"model_context_window":200000},"rate_limits":null}}
+{"timestamp":"2026-01-02T08:00:03.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":1100},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":600,"output_tokens":100,"reasoning_output_tokens":40,"total_tokens":1100},"model_context_window":200000},"rate_limits":null}}
+{"timestamp":"2026-01-02T08:00:04.000Z","type":"turn_context","payload":{"model":"model-y"}}
+{"timestamp":"2026-01-02T08:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":3150},"last_token_usage":{"input_tokens":2000,"cached_input_tokens":1500,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":2050,"cache_write_input_tokens":300},"model_context_window":200000},"rate_limits":null}}
