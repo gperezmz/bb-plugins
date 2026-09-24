@@ -58,7 +58,7 @@
     "tailwind-merge": "^3.4.0",
     "typescript": "^5.7.0",
     "vaul": "^1.1.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.1"
   },
   "description": "Sidebar thread list that shows each thread's state, harness and child threads at a glance.",
   "license": "MIT",
