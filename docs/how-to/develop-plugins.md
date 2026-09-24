@@ -28,6 +28,37 @@ npm run build
 
 `bb plugin types --check` reports whether the plugin's SDK dependency matches the running bb; `bb plugin types` repins it.
 
+## Run CI's checks
+
+CI runs one script per plugin, and the same script runs from a checkout. It needs `bb` on your `PATH`. From the repository root:
+
+```sh
+scripts/ci/check-plugin.sh thread-glance
+scripts/ci/check-plugin.sh thread-glance git-install
+```
+
+The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in.
+
+The repository-wide checks:
+
+```sh
+gitleaks git --redact .
+lychee --offline --include-fragments '*.md' 'docs/**/*.md' 'plugins/*/*.md'
+npm ci --prefix scripts/ci && node scripts/ci/check-mermaid.mjs
+```
+
+`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses.
+
+## Turn on the commit hooks
+
+Two hooks in `.githooks/` are off until you point git at them:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+`pre-commit` scans the staged changes with [gitleaks](https://github.com/gitleaks/gitleaks) and blocks the commit when it finds a secret; without `gitleaks` on your `PATH` it warns and lets the commit through. `commit-msg` rejects a first line that is not a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/). `git config --unset core.hooksPath` turns both off.
+
 ## Scripts only one plugin has
 
 ### Thread Glance
@@ -52,7 +83,7 @@ npm run build
 
 ## Third-party notices
 
-Each plugin lists the code it bundles in its `THIRD_PARTY_NOTICES.md`. After a dependency change, build, then regenerate it:
+Each plugin lists the code it bundles in its `THIRD_PARTY_NOTICES.md`, and CI fails when the committed file differs from what the script writes. After a dependency change, build, then regenerate it:
 
 ```sh
 npm run build
