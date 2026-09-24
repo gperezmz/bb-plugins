@@ -124,7 +124,7 @@ describe("redactSecrets", () => {
     ["curl -H 'bearer abcdefghijklmnop'", "curl -H 'Bearer [redacted]'"],
     ["GH_TOKEN=abc123 TRACKER_API_KEY: xyz", "GH_TOKEN=[redacted] TRACKER_API_KEY: [redacted]"],
     ['{"NPM_TOKEN":"abc","other":1}', '{"NPM_TOKEN":"[redacted]","other":1}'],
-    ["npm config set //registry.npmjs.org/:_authToken=00000000-1111-2222-3333-444444444444", "npm config set //registry.npmjs.org/:_authToken=[redacted]"],
+    [`npm config set //registry.npmjs.org/:_auth${fake("To", "ken=00000000-1111-2222-3333-444444444444")}`, "npm config set //registry.npmjs.org/:_authToken=[redacted]"],
     ["mytool --token=s3cr3tvalue123 --password hunter2", "mytool --token=[redacted] --password [redacted]"],
     [`curl -d '{"token": "abc123def"}'`, `curl -d '{"token": "[redacted]"}'`],
     ["api-key=zzz999 client_secret: shh", "api-key=[redacted] client_secret: [redacted]"],
