@@ -1,6 +1,6 @@
 # Develop a plugin from this repository
 
-Run a plugin from a clone of this repository, test it, and build it. Commands use Thread Glance; the other two work the same way.
+Run a plugin from a clone of this repository, test it, and build it. Commands use Thread Glance; the others work the same way.
 
 ## Run a plugin from your checkout
 
