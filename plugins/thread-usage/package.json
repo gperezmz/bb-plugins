@@ -62,7 +62,7 @@
     "tailwind-merge": "^3.4.0",
     "typescript": "^5.7.0",
     "vaul": "^1.1.2",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   },
   "description": "Per-thread usage and cost for bb, rolled up over child threads, with LiteLLM gateway support.",
   "license": "MIT",
