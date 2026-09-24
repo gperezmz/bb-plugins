@@ -14,6 +14,10 @@
     {
       "name": "team-onboarding",
       "source": "./plugins/team-onboarding"
+    },
+    {
+      "name": "openai-inference",
+      "source": "./plugins/openai-inference"
     }
   ]
 }
