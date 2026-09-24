@@ -81,6 +81,7 @@ function render(
     sdk: {
       threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
       projects: { branches: async () => ({ defaultBranch: "main" }) } as never,
+      providers: { models: async () => ({ models: [] }) } as never,
     },
     ...options.extra,
   });
@@ -320,5 +321,168 @@ describe("context menu keyboard choice", () => {
     await waitFor(() =>
       expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", read: true })),
     );
+  });
+});
+
+describe("row hover card", () => {
+  const threads = [
+    makeThread({ id: "a", title: "Alpha row", updatedAt: T0 + 2, latestAttentionAt: T0 + 2 }),
+    makeThread({ id: "b", title: "Beta row", updatedAt: T0 + 1, latestAttentionAt: T0 + 1 }),
+  ];
+  const rowOf = async (title: string) => (await screen.findByRole("link", { name: new RegExp(`Open ${title}`) })).parentElement!;
+  const card = () => screen.queryByText("Harness");
+  const wait = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+  const withTimers = async (test: () => Promise<void>) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await test();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+  const enter = (row: HTMLElement, x = 10, y = 10) => fireEvent.pointerEnter(row, { pointerType: "mouse", clientX: x, clientY: y });
+  const move = (row: HTMLElement, x = 14, y = 10) => fireEvent.pointerMove(row, { pointerType: "mouse", clientX: x, clientY: y });
+
+  it("opens once the pointer moves over a row", () =>
+    withTimers(async () => {
+      render(threads);
+      const beta = await rowOf("Beta row");
+      enter(beta);
+      move(beta);
+      await wait(600);
+      expect(card()).not.toBeNull();
+    }));
+
+  it("does not open for a row that slides under a still pointer", () =>
+    withTimers(async () => {
+      render(threads);
+      const beta = await rowOf("Beta row");
+      enter(beta);
+      await wait(600);
+      expect(card()).toBeNull();
+      // A move event that doesn't leave the entry point is not a move.
+      move(beta, 10, 10);
+      await wait(600);
+      expect(card()).toBeNull();
+    }));
+
+  it("opens on focus a key brought, not on focus a press or the page put there", () =>
+    withTimers(async () => {
+      render(threads);
+      const link = await screen.findByRole("link", { name: /Open Beta row/ });
+      act(() => link.focus());
+      await wait(600);
+      expect(card()).toBeNull();
+      act(() => link.blur());
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      act(() => link.focus());
+      await wait(600);
+      expect(card()).not.toBeNull();
+    }));
+
+  it("stays open while the pointer is on the card, and closes once it leaves", () =>
+    withTimers(async () => {
+      render(threads);
+      const beta = await rowOf("Beta row");
+      enter(beta);
+      move(beta);
+      await wait(600);
+      const content = card()!.closest<HTMLElement>("[data-side]")!;
+      fireEvent.pointerLeave(beta, { pointerType: "mouse" });
+      fireEvent.pointerEnter(content, { pointerType: "mouse" });
+      await wait(300);
+      expect(card()).not.toBeNull();
+      fireEvent.pointerLeave(content, { pointerType: "mouse" });
+      await wait(300);
+      expect(card()).toBeNull();
+    }));
+
+  it("opens nothing for a touch", () =>
+    withTimers(async () => {
+      render(threads);
+      const beta = await rowOf("Beta row");
+      fireEvent.pointerEnter(beta, { pointerType: "touch", clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(beta, { pointerType: "touch", clientX: 14, clientY: 10 });
+      await wait(600);
+      expect(card()).toBeNull();
+    }));
+
+  it("closes a card that focus opened when focus leaves, and one focus spends the key", () =>
+    withTimers(async () => {
+      render(threads);
+      const link = await screen.findByRole("link", { name: /Open Beta row/ });
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      act(() => link.focus());
+      await wait(600);
+      expect(card()).not.toBeNull();
+      act(() => link.blur());
+      await wait(300);
+      expect(card()).toBeNull();
+      act(() => link.focus());
+      await wait(600);
+      expect(card()).toBeNull();
+    }));
+
+  it("does not come back after the row's menu closes", () =>
+    withTimers(async () => {
+      render(threads);
+      const link = await screen.findByRole("link", { name: /Open Beta row/ });
+      fireEvent.keyDown(document.body, { key: "Tab" });
+      act(() => link.focus());
+      await wait(600);
+      expect(card()).not.toBeNull();
+      const actions = within(link.parentElement!).getByRole("button", { name: "Thread actions" });
+      fireEvent.keyDown(actions, { key: "Enter" });
+      await wait(50);
+      expect(screen.getByRole("menu")).toBeTruthy();
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      await wait(600);
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(card()).toBeNull();
+    }));
+
+  it("drops a pending open on a press anywhere", () =>
+    withTimers(async () => {
+      render(threads);
+      const beta = await rowOf("Beta row");
+      enter(beta);
+      move(beta);
+      await wait(200);
+      fireEvent.pointerDown(document.body);
+      await wait(600);
+      expect(card()).toBeNull();
+    }));
+
+  it("drops a pending open on navigation", () =>
+    withTimers(async () => {
+      const slot = render(threads);
+      const beta = await rowOf("Beta row");
+      enter(beta);
+      move(beta);
+      await wait(200);
+      const List = app.threadLists[0]!.component;
+      slot.lifecycle.rerender(<List {...props} activeThreadId="a" />);
+      await wait(600);
+      expect(card()).toBeNull();
+    }));
+
+  it("does not open for the previous active row after navigating away from it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const slot = render(threads, { props: { activeThreadId: "a" } });
+      const alpha = await rowOf("Alpha row");
+      fireEvent.pointerEnter(alpha, { pointerType: "mouse" });
+      fireEvent.pointerMove(alpha, { pointerType: "mouse" });
+      await wait(700);
+      fireEvent.pointerLeave(alpha, { pointerType: "mouse" });
+      await wait(300);
+      const List = app.threadLists[0]!.component;
+      slot.lifecycle.rerender(<List {...props} activeThreadId="b" />);
+      await wait(700);
+      expect(card()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

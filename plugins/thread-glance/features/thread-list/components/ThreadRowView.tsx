@@ -31,6 +31,7 @@ import { RowRails } from "./Rails";
 import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } from "./RowMenu";
 import { SplitMiniMap, type MiniMapPane } from "./SplitMiniMap";
 import { ThreadDetails } from "./ThreadDetails";
+import { useRowCard } from "./row-card";
 
 /** Two clicks on one row within this window start a rename, as in bb. */
 const RENAME_CLICK_MS = 400;
@@ -118,11 +119,8 @@ export const ThreadRowView = memo(function ThreadRowView({
   const split = useThreadSplit(thread.id);
   const miniMap = useMiniMap(thread.id);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [cardOpen, setCardOpen] = useState(false);
-  // A press closes the hover card until the pointer leaves the row, so it
-  // never covers the thread being opened.
-  const cardSuppressed = useRef(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const card = useRowCard(isActive, !compact && !editing && !menuOpen && !contextOpen);
   const contextInput = useRef<ContextMenuInput>({ pressed: false, keyed: false });
   const anchor = useRef<HTMLAnchorElement>(null);
   const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -321,14 +319,15 @@ export const ThreadRowView = memo(function ThreadRowView({
       role={undefined}
       tabIndex={undefined}
       aria-roledescription={undefined}
+      onPointerEnter={card.rowProps.onPointerEnter}
+      onPointerMove={card.rowProps.onPointerMove}
       onPointerDown={(event) => {
-        cardSuppressed.current = true;
-        setCardOpen(false);
+        card.rowProps.onPointerDown();
         if (!editing) split.splitProps.onPointerDown?.(event);
       }}
-      onPointerLeave={() => {
-        cardSuppressed.current = false;
-      }}
+      onPointerLeave={card.rowProps.onPointerLeave}
+      onFocus={card.rowProps.onFocus}
+      onBlur={card.rowProps.onBlur}
       {...longPress}
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
@@ -570,10 +569,9 @@ export const ThreadRowView = memo(function ThreadRowView({
       }}
     >
       <HoverCard
-        openDelay={500}
         closeDelay={100}
-        open={cardOpen && !isActive}
-        onOpenChange={(open) => setCardOpen(open && !cardSuppressed.current)}
+        open={card.open}
+        onOpenChange={card.onOpenChange}
       >
         <ContextMenuTrigger asChild disabled={editing}>
           <HoverCardTrigger asChild>{body}</HoverCardTrigger>
