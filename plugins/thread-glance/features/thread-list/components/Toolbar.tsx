@@ -3,9 +3,10 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
-import { lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "../model/settings";
+import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "../model/settings";
 import { effectiveSortField } from "../model/sort";
 import { ICONS } from "../icons";
+import { TOOLBAR_HEIGHT } from "./GroupSection";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 // bb's own segmented controls (the Reasoning picker, the diff view toggle)
@@ -200,8 +201,8 @@ export function SettingsPanel({
       <Toggle
         label="Needs you counts every child"
         description="Every unread or failed child thread; otherwise only those blocked on you."
-        checked={prefs.childAttention === "everything"}
-        onChange={(value) => onPrefs({ childAttention: value ? "everything" : "blocked" })}
+        checked={countsEveryChild(prefs.childAttention)}
+        onChange={(value) => onPrefs({ childAttention: childAttentionFor(value) })}
       />
     </div>
   );
@@ -221,7 +222,7 @@ export function Toolbar({
 }) {
   return (
     // Sticky with the group headers, so the settings stay in reach.
-    <div className="sticky top-0 z-30 flex h-7 items-center justify-end bg-sidebar">
+    <div style={{ height: TOOLBAR_HEIGHT }} className="sticky top-0 z-30 flex items-center justify-end bg-sidebar">
       <Popover>
         <PopoverTrigger asChild>
           <button type="button" aria-label="Thread Glance settings" title="List settings" className={ROW_ICON_BUTTON}>

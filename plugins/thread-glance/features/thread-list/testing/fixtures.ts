@@ -152,7 +152,7 @@ function idsOf(rows: readonly Row[]): string[] {
       ? row.info.thread.id
       : row.type === "older"
         ? `older:${row.count}`
-        : row.type === "more"
+        : row.type === "left-out"
           ? `+${row.count}`
           : `env:${row.environmentId}`,
   );

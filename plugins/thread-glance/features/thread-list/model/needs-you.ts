@@ -3,6 +3,7 @@
 // builds. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { ChildAttention } from "@/shared/preferences";
+import type { Family } from "./families";
 import { type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
@@ -88,14 +89,14 @@ export function revealsOn(needsYou: ReadonlySet<Flag>, isRoot: boolean): boolean
   return !isRoot && needsYou.has("queue-failed");
 }
 
+/** What the section reads of a family. */
+type SectionFamily = Pick<Family, "root" | "needsYouFlags">;
+
 /**
  * Whether a family is in the Needs you section: one of its threads needs
  * you, or it is the family the section holds while one of its threads is open.
  */
-export function inNeedsYou(
-  family: { root: { thread: { id: string } }; needsYouFlags: ReadonlySet<Flag> },
-  heldRootId: string | null,
-): boolean {
+export function inNeedsYou(family: SectionFamily, heldRootId: string | null): boolean {
   return family.needsYouFlags.size > 0 || family.root.thread.id === heldRootId;
 }
 
@@ -105,11 +106,7 @@ export function inNeedsYou(
  * in the section after nothing in it needs you, until a thread outside it is
  * opened; a family that never needed you is not pulled in by opening it.
  */
-export function holdNeedsYou(
-  previous: string | null,
-  openFamily: { root: { thread: { id: string } }; needsYouFlags: ReadonlySet<Flag> } | undefined,
-): string | null {
+export function holdNeedsYou(previous: string | null, openFamily: SectionFamily | undefined): string | null {
   if (openFamily === undefined) return null;
-  const rootId = openFamily.root.thread.id;
-  return openFamily.needsYouFlags.size > 0 || previous === rootId ? rootId : null;
+  return inNeedsYou(openFamily, previous) ? openFamily.root.thread.id : null;
 }

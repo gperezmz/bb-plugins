@@ -523,20 +523,19 @@ function ThreadListBody({
   }, []);
 
   const dropContext = useMemo(() => {
+    // A row in Needs you drops as it would in its home group.
+    const groupOfThread = new Map<string, string>(Object.entries(view?.needsYou?.homeGroupIds ?? {}));
+    for (const group of [...(view?.groups ?? []), ...(view?.more ?? [])]) {
+      for (const row of group.rows) if (row.type === "thread") groupOfThread.set(row.info.thread.id, group.descriptor.id);
+    }
     const pinned = view?.groups.find((group) => group.descriptor.id === "pinned");
     return {
       mode: prefs.organizationMode,
       parentOf: (id: string) => byId.get(id)?.parentThreadId ?? null,
       pinnedOrder: (pinned?.rows ?? []).flatMap((row) => (row.type === "thread" && row.depth === 0 ? [row.info.thread.id] : [])),
-      // A row in Needs you drops as it would in its family's own group.
-      groupOfThread: (id: string) => {
-        const family = forest?.familyOf.get(id);
-        return family === undefined
-          ? "threads"
-          : groupIdForRoot(family.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
-      },
+      groupOfThread: (id: string) => groupOfThread.get(id) ?? "threads",
     };
-  }, [view, forest, prefs.organizationMode, sidebar.projects, byId]);
+  }, [view, prefs.organizationMode, byId]);
 
   const onDragMove = useCallback(
     (event: DragMoveEvent) => {

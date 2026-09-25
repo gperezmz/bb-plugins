@@ -46,7 +46,7 @@ export function addCounters(a: Counters, b: Counters): Counters {
 }
 
 /**
- * Which counters a header draws. needs-you, failed and offline
+ * Which counters a header draws. waits-on-you, failed and offline
  * always; working only while collapsed, since the rows show it otherwise;
  * unread only on the More trigger, where the rows are out of sight.
  */

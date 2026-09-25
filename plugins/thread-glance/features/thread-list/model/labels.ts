@@ -12,7 +12,7 @@ export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   return base;
 }
 
-/** "Open Fix login — Working; Claude Code; child of Manager; unread". */
+/** "Open Fix login — Working; Claude Code; child of Release; unread". */
 export function rowAriaLabel(
   row: ThreadRow,
   options: { providerName: string; pluginLabel: string | null; hasDraft: boolean },

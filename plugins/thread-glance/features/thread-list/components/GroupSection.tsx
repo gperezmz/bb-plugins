@@ -17,7 +17,7 @@ import { ICONS } from "../icons";
 import { NEEDS_YOU_GROUP_ID, type GroupView, type NeedsYouView, type Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
-import { EnvironmentRowView, MoreRowView, OlderRowView } from "./FoldRows";
+import { EnvironmentRowView, LeftOutRowView, OlderRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
@@ -332,8 +332,8 @@ function Rows({
               />
             ) : row.type === "older" ? (
               <OlderRowView key={row.key} row={row} controller={rowController} />
-            ) : row.type === "more" ? (
-              <MoreRowView key={row.key} row={row} />
+            ) : row.type === "left-out" ? (
+              <LeftOutRowView key={row.key} row={row} />
             ) : (
               <EnvironmentRowView
                 key={row.key}

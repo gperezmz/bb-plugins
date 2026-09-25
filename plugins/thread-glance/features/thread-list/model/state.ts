@@ -236,7 +236,7 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
 
 /**
  * A plugin row status replaces the glyph for every state except
- * needs-you, failed, and working with its plain spinner (the rule bb's list uses).
+ * waits-on-you, failed, and working with its plain spinner (the rule bb's list uses).
  */
 export function pluginStatusWins(
   state: ThreadState,
@@ -260,7 +260,7 @@ export function threadFlags(thread: PluginSidebarThread, unread: boolean): Set<F
   return flags;
 }
 
-/** Flags hidden threads contribute: needs-you and unread-failed only. */
+/** Flags hidden threads contribute: waits-on-you and unread-failed only. */
 export function hiddenThreadFlags(flags: ReadonlySet<Flag>): Set<Flag> {
   const kept = new Set<Flag>();
   if (flags.has("waits-on-you")) kept.add("waits-on-you");

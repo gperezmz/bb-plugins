@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "./settings";
+import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "./settings";
 
 describe("Threads: Active, Archived, Both", () => {
   it("reads every saved lifecycle list as one choice", () => {
@@ -31,5 +31,14 @@ describe("the ↓/↑ button", () => {
   it("starts a newly chosen field in its own direction", () => {
     expect(sortFieldPatch("alpha")).toEqual({ chronologicalSort: "alpha", sortDirection: "ascending" });
     expect(sortFieldPatch("created")).toEqual({ chronologicalSort: "created", sortDirection: "descending" });
+  });
+});
+
+describe("Needs you counts every child", () => {
+  it("is on exactly when children count as everything", () => {
+    expect(countsEveryChild("everything")).toBe(true);
+    expect(countsEveryChild("blocked")).toBe(false);
+    expect(childAttentionFor(true)).toBe("everything");
+    expect(childAttentionFor(false)).toBe("blocked");
   });
 });

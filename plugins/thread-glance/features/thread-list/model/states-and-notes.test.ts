@@ -19,7 +19,7 @@ describe("working is visible, background stays faint", () => {
   });
 });
 
-describe("needs-you kinds", () => {
+describe("what a thread waits on you for", () => {
   const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
   it.each([
     ["question", "CircleQuestion", "Asks a question"],
@@ -37,7 +37,7 @@ describe("needs-you kinds", () => {
 });
 
 describe("row notes", () => {
-  it("say why a thread needs you or failed, and nothing otherwise", () => {
+  it("say why a thread waits on you or failed, and nothing otherwise", () => {
     expect(rowNote(makeThread({ id: "a", hasPendingInteraction: true }), { pending: note("question", "Tabs or spaces?") })).toEqual({
       prefix: "Asks",
       text: "Tabs or spaces?",

@@ -142,6 +142,8 @@ describe("Needs you over a family", () => {
     expect(home(viewOf({ threads: blocked({ projectId: "proj_b" }) }))).toBe("Beta");
     expect(home(viewOf({ threads: blocked({ projectId: "proj_personal" }) }))).toBe("Threads");
     expect(home(viewOf({ threads: blocked({ pinnedAt: T0, isPinned: true }) }))).toBe("Pinned");
+    // A drop on a section row acts in its home group, the child's included.
+    expect(viewOf({ threads: blocked({ projectId: "proj_b" }) }).needsYou?.homeGroupIds).toEqual({ m: "project:proj_b", c: "project:proj_b" });
     const sections = [{ id: "s1", name: "Later", createdAt: T0, updatedAt: T0 }];
     expect(home(viewOf({ threads: blocked({ sectionId: "s1" }), sections, prefs: { organizationMode: "chronological" } }))).toBe("Later");
     expect(home(viewOf({ threads: blocked({ host: { id: "h2", name: "Server" } }), prefs: { organizationMode: "machine" } }))).toBe("Server");

@@ -14,7 +14,7 @@ import { ICONS } from "../icons";
 import { RowRails } from "./Rails";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import type { EnvironmentRow, MoreRow, OlderRow } from "../model/view";
+import type { EnvironmentRow, LeftOutRow, OlderRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
@@ -51,7 +51,7 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
 });
 
 /** The "+N more" line under a family in Needs you: a count, not a control. */
-export const MoreRowView = memo(function MoreRowView({ row }: { row: MoreRow }) {
+export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftOutRow }) {
   const noun = row.count === 1 ? "child thread" : "child threads";
   return (
     <div

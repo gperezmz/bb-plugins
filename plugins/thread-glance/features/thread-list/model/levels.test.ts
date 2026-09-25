@@ -12,7 +12,7 @@ const depths = (view: ListView) =>
   rowsOf(view).map((row) =>
     row.type === "thread" ? `${row.info.thread.id}@${row.depth}` : row.type === "older"
         ? `older:${row.count}@${row.depth}`
-        : row.type === "more"
+        : row.type === "left-out"
           ? `more:${row.count}@${row.depth}`
           : `env@${row.depth}`,
   );

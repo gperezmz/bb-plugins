@@ -18,7 +18,7 @@ const PENDING_PREFIX: Record<NeedsKind, string> = {
   input: "Needs",
 };
 
-/** The needs-you kind a pending note names, or null when there is none. */
+/** What a pending note says the thread waits on you for, or null when there is none. */
 export function needsKindOf(notes: ThreadNotes | undefined): NeedsKind | null {
   const kind = notes?.pending?.kind;
   return kind === "question" || kind === "approval" || kind === "plan" || kind === "input" ? kind : null;

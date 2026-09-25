@@ -90,8 +90,8 @@ export interface EnvironmentRow {
 }
 
 /** Under a family in Needs you: how many of its child threads it leaves out ("+N more"). Not a control. */
-export interface MoreRow {
-  type: "more";
+export interface LeftOutRow {
+  type: "left-out";
   key: string;
   /** The family's root. */
   scopeId: string;
@@ -100,7 +100,7 @@ export interface MoreRow {
   rails: (Rail | null)[];
 }
 
-export type Row = ThreadRow | OlderRow | EnvironmentRow | MoreRow;
+export type Row = ThreadRow | OlderRow | EnvironmentRow | LeftOutRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
@@ -123,6 +123,8 @@ export interface NeedsYouView {
   /** How many families the section holds, for its header. */
   familyCount: number;
   rows: Row[];
+  /** The home group of each thread drawn here, by thread id: a drop on its row acts there. */
+  homeGroupIds: Record<string, string>;
 }
 
 export interface ListView {
@@ -162,7 +164,6 @@ interface Context extends ViewInputs {
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
-  subtreeAttention: Map<string, number>;
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -276,18 +277,6 @@ function foldedChildren(
   const folded = kids.filter((kid) => !kept(kid)).length;
   const shown = olderExpanded ? kids : kids.filter(kept);
   return { shown, older: olderRow("family", folded, olderExpanded) };
-}
-
-function subtreeAttention(context: Context, id: string): number {
-  const cached = context.subtreeAttention.get(id);
-  if (cached !== undefined) return cached;
-  context.subtreeAttention.set(id, context.forest.infos.get(id)?.thread.latestAttentionAt ?? 0);
-  let max = context.forest.infos.get(id)?.thread.latestAttentionAt ?? 0;
-  for (const child of context.forest.children.get(id) ?? []) {
-    max = Math.max(max, subtreeAttention(context, child));
-  }
-  context.subtreeAttention.set(id, max);
-  return max;
 }
 
 function environmentLabel(thread: PluginSidebarThread): string {
@@ -451,14 +440,14 @@ function needsYouFamilyRows(context: Context, family: Family, homeGroupLabel: st
   };
   walk(root.thread.id, 1);
   const left = family.descendants.filter((info) => !info.thread.isHidden && !onPath.has(info.thread.id)).length;
-  if (left > 0) rows.push({ type: "more", key: `more:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1, rails: [] });
+  if (left > 0) rows.push({ type: "left-out", key: `left-out:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1, rails: [] });
   return rows;
 }
 
 function buildNeedsYou(
   context: Context,
   families: readonly Family[],
-  homeGroupLabel: (family: Family) => string,
+  homeGroupOf: (family: Family) => GroupDescriptor,
 ): NeedsYouView | null {
   if (families.length === 0) return null;
   // Most urgent first, then the chosen field in its natural direction: the
@@ -476,9 +465,19 @@ function buildNeedsYou(
         { thread: b.root.thread, familyAttention: b.latestAttentionAt },
       ),
   );
-  const rows = sorted.flatMap((family) => needsYouFamilyRows(context, family, homeGroupLabel(family)));
+  const homeGroupIds: Record<string, string> = {};
+  const rows = sorted.flatMap((family) => {
+    const home = homeGroupOf(family);
+    const familyRows = needsYouFamilyRows(context, family, home.label);
+    for (const row of familyRows) if (row.type === "thread") homeGroupIds[row.info.thread.id] = home.id;
+    return familyRows;
+  });
   const rails = railsFor(rows.map((row) => row.depth));
-  return { familyCount: sorted.length, rows: rows.map((row, index) => ({ ...row, rails: rails[index]! })) };
+  return {
+    familyCount: sorted.length,
+    rows: rows.map((row, index) => ({ ...row, rails: rails[index]! })),
+    homeGroupIds,
+  };
 }
 
 /**
@@ -595,7 +594,6 @@ export function buildListView(inputs: ViewInputs): ListView {
     activePath,
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
-    subtreeAttention: new Map(),
   };
 
   const byGroup = new Map<string, Family[]>();
@@ -655,7 +653,8 @@ export function buildListView(inputs: ViewInputs): ListView {
 
   const hosts = new Set<string>();
   for (const thread of inputs.threads) if (thread.host !== null) hosts.add(thread.host.id);
-  const needsYou = buildNeedsYou(context, section, (family) => descriptors.get(homeOf.get(family)!)?.label ?? "Threads");
+  // Every root's group id has a descriptor: entity groups include unknown sections and every host.
+  const needsYou = buildNeedsYou(context, section, (family) => descriptors.get(homeOf.get(family)!)!);
   return { needsYou, groups, more, moreCounters, order, multiHost: hosts.size > 1 };
 }
 

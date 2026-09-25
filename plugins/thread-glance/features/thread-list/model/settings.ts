@@ -1,5 +1,5 @@
 // What the settings popover's controls show and write. Pure.
-import type { Lifecycle, Preferences, SortField } from "@/shared/preferences";
+import type { ChildAttention, Lifecycle, Preferences, SortField } from "@/shared/preferences";
 import { effectiveDirection, effectiveSortField, naturalDirection } from "./sort";
 
 export type ThreadsShown = "active" | "archived" | "both";
@@ -16,6 +16,15 @@ export function threadsShown(lifecycles: readonly Lifecycle[]): ThreadsShown {
 export function lifecyclesFor(shown: ThreadsShown): Lifecycle[] {
   if (shown === "both") return ["active", "archived"];
   return [shown];
+}
+
+/** "Needs you counts every child" is on when children count as `everything`. */
+export function countsEveryChild(childAttention: ChildAttention): boolean {
+  return childAttention === "everything";
+}
+
+export function childAttentionFor(everyChild: boolean): ChildAttention {
+  return everyChild ? "everything" : "blocked";
 }
 
 /** Choosing a field starts it in its own direction, as a saved `default` did. */
