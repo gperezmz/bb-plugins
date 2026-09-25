@@ -108,9 +108,13 @@ export async function readEndpoints(dataDir: string): Promise<Endpoint[]> {
 
 /** Replaces the stored endpoints; the file holds keys, so only its owner may read it. */
 export async function writeEndpoints(dataDir: string, endpoints: Endpoint[]): Promise<void> {
-  const file = join(dataDir, ENDPOINTS_FILE);
+  await writePrivateFile(join(dataDir, ENDPOINTS_FILE), JSON.stringify(endpoints));
+}
+
+/** Replaces `file` in one step, with a file only its owner may read. */
+export async function writePrivateFile(file: string, text: string): Promise<void> {
   const temp = `${file}.${process.pid}.tmp`;
-  await writeFile(temp, JSON.stringify(endpoints), { mode: 0o600 });
+  await writeFile(temp, text, { mode: 0o600 });
   await chmod(temp, 0o600);
   await rename(temp, file);
 }

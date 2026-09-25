@@ -78,4 +78,11 @@ A 400 or 422 is first taken as the server refusing an optional field, and the re
 
 ## What stays after uninstalling
 
-`bb plugin uninstall openai-inference` deletes the settings. It leaves `plugins/openai-inference/host-data/endpoints.json` in the data directory of bb on the server machine (`~/.bb` by default): a copy of the endpoints that holds the keys, readable only by bb's user. Delete that folder after uninstalling.
+`bb plugin uninstall openai-inference` deletes the settings. It leaves the host entry's files in `plugins/openai-inference/host-data/`, in the data directory of bb on the server machine (`~/.bb` by default). Both are readable only by bb's user:
+
+| File | Holds |
+|---|---|
+| `endpoints.json` | A copy of the endpoints, keys included |
+| `learned-fields.json` | The [fields each endpoint URL and model refused](../explanation/openai-inference-requests.md#why-what-was-dropped-is-kept-in-a-file). No keys: URLs as the settings write them, model names and field names |
+
+Delete that folder after uninstalling.

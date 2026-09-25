@@ -13,9 +13,17 @@ import type { Endpoint } from "./endpoints.js";
 type JsonObject = { [key: string]: unknown };
 type Failure = Extract<ExperimentalAiInferenceCompleteOutput, { ok: false }>;
 
+/** What the endpoint's URL refused before for the request's model. */
+export interface Learned {
+  /** The optional fields left out of the first request. */
+  fields: readonly string[];
+  /** Records the fields to leave out from now on; none forgets the entry. */
+  save(fields: readonly string[]): void;
+}
+
 export interface CompleteOptions {
-  /** The optional fields each URL and model refused before, so they are not sent again. */
-  learned?: Map<string, string[]>;
+  /** The optional fields this URL and model refused before, so they are not sent again. */
+  learned?: Learned;
   /** Aborted when bb cancels the request. */
   signal?: AbortSignal;
   fetch?: typeof fetch;
@@ -55,9 +63,11 @@ const isObject = (value: unknown): value is JsonObject =>
  * model not to think, and caps the answer's length. A server that refuses a
  * field answers HTTP 400 or 422: the request is sent again without the fields
  * the error names, or without all optional fields when it names none. When a
- * request then succeeds, `options.learned` records what was dropped. Every
- * request carries the schema in the prompt too, so a server that ignores
- * `response_format` still answers in JSON.
+ * request then succeeds, `options.learned` records what was dropped. When the
+ * first request left out learned fields and its error names one of them, the
+ * server has changed: the learned fields are forgotten and the request starts
+ * again with every field. Every request carries the schema in the prompt too,
+ * so a server that ignores `response_format` still answers in JSON.
  *
  * Args:
  *   input: bb's `ai.inference.complete` request.
@@ -86,23 +96,32 @@ export async function complete(
       body: JSON.stringify(body),
       signal,
     });
-  const learnedKey = `${endpoint.url} ${input.model}`;
-  const learned = options.learned?.get(learnedKey) ?? [];
+  const learned = options.learned?.fields ?? [];
   let dropped = learned;
   try {
     let response = await post(requestBody(input, dropped));
+    let error: string | undefined;
     while (response.status === 400 || response.status === 422) {
-      const left = Object.keys(OPTIONAL_FIELDS).filter((field) => !dropped.includes(field));
-      if (left.length === 0) break;
-      const error = await response.text();
-      const named = left.filter((field) => OPTIONAL_FIELDS[field].test(error));
-      dropped = [...dropped, ...(named.length > 0 ? named : left)];
+      const text = await response.text();
+      const named = (fields: readonly string[]) => fields.filter((field) => OPTIONAL_FIELDS[field].test(text));
+      if (dropped === learned && named(learned).length > 0) {
+        // It names a field it was not sent, so what was learned no longer holds.
+        options.learned?.save([]);
+        dropped = [];
+      } else {
+        const left = Object.keys(OPTIONAL_FIELDS).filter((field) => !dropped.includes(field));
+        if (left.length === 0) {
+          error = text;
+          break;
+        }
+        dropped = [...dropped, ...(named(left).length > 0 ? named(left) : left)];
+      }
       response = await post(requestBody(input, dropped));
     }
     // Learned only from a success: a 400 or 422 can mean something else,
     // such as an unknown model or, from LiteLLM, a spent budget.
-    if (response.ok && dropped !== learned) options.learned?.set(learnedKey, dropped);
-    if (!response.ok) return httpFailure(response.status, await response.text());
+    if (response.ok && dropped !== learned) options.learned?.save(dropped);
+    if (!response.ok) return httpFailure(response.status, error ?? (await response.text()));
     return parseCompletion(await response.text(), input);
   } catch (error) {
     if (deadline.signal.aborted) return fail("timeout", `No answer from endpoint "${endpoint.id}" within ${input.timeoutMs} ms.`);

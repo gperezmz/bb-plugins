@@ -42,6 +42,16 @@ function fakeFetch(...answers: Array<Response | ((init: RequestInit) => Promise<
   return { fetch: impl as typeof fetch, requests };
 }
 
+/** Learned fields per URL and model, the way the host entry keeps them. */
+function memory() {
+  const saved = new Map<string, readonly string[]>();
+  const of = (model: string) => ({
+    fields: saved.get(`${endpoint.url} ${model}`) ?? [],
+    save: (fields: readonly string[]) => void saved.set(`${endpoint.url} ${model}`, fields),
+  });
+  return { saved, of };
+}
+
 describe("request shape", () => {
   it("posts the prompt as the user message and asks for json_schema output", async () => {
     const f = fakeFetch(chat('{"title":"Fix login bug"}'));
@@ -103,7 +113,7 @@ describe("structured output paths", () => {
   });
 
   it("drops only the fields the error names, and remembers that per URL and model", async () => {
-    const learned = new Map<string, string[]>();
+    const learned = memory();
     const f = fakeFetch(
       liteLlmError(400, "litellm.UnsupportedParamsError: azure does not support parameters: ['reasoning_effort'], for model=gpt-6-luna"),
       liteLlmError(400, "Unrecognized request arguments supplied: chat_template_kwargs, enable_thinking"),
@@ -111,9 +121,9 @@ describe("structured output paths", () => {
       chat('{"title":"Again"}'),
       chat('{"title":"Other model"}'),
     );
-    await complete(input(), endpoint, { fetch: f.fetch, learned });
-    await complete(input(), endpoint, { fetch: f.fetch, learned });
-    await complete(input({ model: "gpt-6-sol" }), endpoint, { fetch: f.fetch, learned });
+    await complete(input(), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-luna") });
+    await complete(input(), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-luna") });
+    await complete(input({ model: "gpt-6-sol" }), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-sol") });
 
     const sent = f.requests.map((r) => Object.keys(r.body).filter((k) => !["model", "messages", "stream"].includes(k)));
     expect(sent).toEqual([
@@ -125,16 +135,41 @@ describe("structured output paths", () => {
     ]);
   });
 
+  it("forgets the learned fields and sends every field when the server names one it was not sent", async () => {
+    const learned = memory();
+    learned.saved.set(`${endpoint.url} gpt-6-luna`, ["reasoning_effort", "max_tokens"]);
+    const f = fakeFetch(
+      liteLlmError(400, "max_tokens is required for this model"),
+      chat('{"title":"Fix login bug"}'),
+    );
+    const out = await complete(input(), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-luna") });
+
+    expect(out).toMatchObject({ ok: true, value: { title: "Fix login bug" } });
+    expect(f.requests[0].body).not.toHaveProperty("max_tokens");
+    expect(f.requests[1].body).toMatchObject({ reasoning_effort: "none", max_tokens: 256 });
+    expect(learned.saved.get(`${endpoint.url} gpt-6-luna`)).toEqual([]);
+  });
+
+  it("keeps the learned fields when an error names none of them", async () => {
+    const learned = memory();
+    learned.saved.set(`${endpoint.url} gpt-6-luna`, ["reasoning_effort"]);
+    const f = fakeFetch(liteLlmError(400, "Unknown parameter: 'enable_thinking'"), chat('{"title":"x"}'));
+    await complete(input(), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-luna") });
+
+    expect(f.requests[1].body).not.toHaveProperty("reasoning_effort");
+    expect(learned.saved.get(`${endpoint.url} gpt-6-luna`)).toEqual(["reasoning_effort", "enable_thinking"]);
+  });
+
   it("learns nothing when the fallback fails too", async () => {
-    const learned = new Map<string, string[]>();
+    const learned = memory();
     const f = fakeFetch(
       liteLlmError(422, "Budget has been exceeded!", "budget_exceeded"),
       liteLlmError(422, "Budget has been exceeded!", "budget_exceeded"),
     );
-    const out = await complete(input(), endpoint, { fetch: f.fetch, learned });
+    const out = await complete(input(), endpoint, { fetch: f.fetch, learned: learned.of("gpt-6-luna") });
 
     expect(out).toEqual({ ok: false, code: "request_failed", message: "HTTP 422: Budget has been exceeded!" });
-    expect(learned.size).toBe(0);
+    expect(learned.saved.size).toBe(0);
   });
 
   it("reads the answer after a thinking model's </think>", async () => {
