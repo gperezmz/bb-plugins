@@ -1,4 +1,4 @@
-// Per-client preferences: filter and density, localStorage only.
+// Per-client preferences: density, localStorage only.
 import { useCallback, useState } from "react";
 import {
   CLIENT_PREFERENCES_STORAGE_KEY,

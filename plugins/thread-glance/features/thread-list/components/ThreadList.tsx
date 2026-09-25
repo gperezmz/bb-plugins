@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAutoExpand } from "../data/useAutoExpand";
 import { useClientPreferences } from "../data/useClientPreferences";
+import { useNeedsYouHold } from "../data/useNeedsYouHold";
 import { useNow } from "../data/useNow";
 import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
@@ -50,7 +51,7 @@ import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
 import { cancelPendingCards } from "./row-card";
-import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
+import { GroupSection, NeedsYouSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
 import { Toolbar } from "./Toolbar";
@@ -159,6 +160,7 @@ function ThreadListBody({
     [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
+  const heldRootId = useNeedsYouHold(forest, activeThreadId);
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
@@ -172,11 +174,11 @@ function ThreadListBody({
             projects: sidebar.projects,
             sections: sidebar.sections,
             prefs,
-            filter: client.filter,
             activeThreadId,
+            heldRootId,
             targets,
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, client.filter, activeThreadId, targets],
+    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, heldRootId, targets],
   );
   useLayoutEffect(() => {
     previousView.current = view;
@@ -521,18 +523,20 @@ function ThreadListBody({
   }, []);
 
   const dropContext = useMemo(() => {
-    const groupOfThread = new Map<string, string>();
-    for (const group of [...(view?.groups ?? []), ...(view?.more ?? [])]) {
-      for (const row of group.rows) if (row.type === "thread") groupOfThread.set(row.info.thread.id, group.descriptor.id);
-    }
     const pinned = view?.groups.find((group) => group.descriptor.id === "pinned");
     return {
       mode: prefs.organizationMode,
       parentOf: (id: string) => byId.get(id)?.parentThreadId ?? null,
       pinnedOrder: (pinned?.rows ?? []).flatMap((row) => (row.type === "thread" && row.depth === 0 ? [row.info.thread.id] : [])),
-      groupOfThread: (id: string) => groupOfThread.get(id) ?? "threads",
+      // A row in Needs you drops as it would in its family's own group.
+      groupOfThread: (id: string) => {
+        const family = forest?.familyOf.get(id);
+        return family === undefined
+          ? "threads"
+          : groupIdForRoot(family.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
+      },
     };
-  }, [view, prefs.organizationMode, byId]);
+  }, [view, forest, prefs.organizationMode, sidebar.projects, byId]);
 
   const onDragMove = useCallback(
     (event: DragMoveEvent) => {
@@ -675,7 +679,7 @@ function ThreadListBody({
   return (
     <ListLiveContext.Provider value={live}>
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
-        <Toolbar prefs={prefs} client={client} attentionCount={view.attentionCount} compact={isCompactViewport} onPrefs={update} onClient={updateClient} />
+        <Toolbar prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
         {threads.length === 0 ? (
           <div className="flex flex-col items-start gap-2 px-3 py-4 text-sm text-muted-foreground">
             <p>No threads yet.</p>
@@ -686,8 +690,17 @@ function ThreadListBody({
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-            {view.groups.length === 0 && client.filter === "attention" ? (
-              <p className="px-3 py-3 text-sm text-muted-foreground">Nothing needs your attention.</p>
+            {view.needsYou !== null ? (
+              <NeedsYouSection
+                view={view.needsYou}
+                rowController={rowController}
+                environmentProviders={environmentProviders}
+                dropStates={dropStates}
+                activeThreadId={activeThreadId}
+                editingId={editingId}
+                now={now}
+                stamps={stamps}
+              />
             ) : null}
             {view.groups.map((group) => (
               <GroupSection

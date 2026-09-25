@@ -20,6 +20,7 @@ import {
 } from "./groups";
 import { addCounters, countFamilies, EMPTY_COUNTERS, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
+import { inNeedsYou } from "./needs-you";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import { railsFor, type Rail } from "./layout";
@@ -28,8 +29,6 @@ import { railsFor, type Rail } from "./layout";
 export const KEEP_QUIET = 5;
 /** How many quiet children stay in an expanded family. */
 export const KEEP_QUIET_CHILDREN = 3;
-
-export type ListFilter = "all" | "attention";
 
 export interface Chip {
   count: number;
@@ -57,6 +56,8 @@ export interface ThreadRow {
   hiddenBadge: boolean;
   /** "In project X" when the thread is outside its family's group. */
   crossGroupLabel: string | null;
+  /** A root in Needs you: its home group's name, drawn where the age goes. */
+  homeGroupLabel: string | null;
   projectId: string;
 }
 
@@ -88,19 +89,18 @@ export interface EnvironmentRow {
   rails: (Rail | null)[];
 }
 
-/** Under an opened chip that Needs attention leaves with nothing to show. */
-export interface EmptyRow {
-  type: "empty";
+/** Under a family in Needs you: how many of its child threads it leaves out ("+N more"). Not a control. */
+export interface MoreRow {
+  type: "more";
   key: string;
-  /** The parent whose chip is open. */
+  /** The family's root. */
   scopeId: string;
+  count: number;
   depth: number;
   rails: (Rail | null)[];
 }
 
-export const EMPTY_LEVEL_TEXT = "No child threads need attention";
-
-export type Row = ThreadRow | OlderRow | EnvironmentRow | EmptyRow;
+export type Row = ThreadRow | OlderRow | EnvironmentRow | MoreRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
@@ -111,11 +111,23 @@ export interface GroupView {
   collapsed: boolean;
   hidden: boolean;
   rows: Row[];
-  /** Every family root bucketed in the group, before filtering and folding. */
+  /** Every family root bucketed in the group, those in Needs you and behind folds included. */
   rootIds: string[];
 }
 
+/** The id Needs you's rows are drawn under; no group has it. */
+export const NEEDS_YOU_GROUP_ID = "needs-you";
+
+/** The Needs you section: every family with a thread that needs you, or held there while one of its threads is open. */
+export interface NeedsYouView {
+  /** How many families the section holds, for its header. */
+  familyCount: number;
+  rows: Row[];
+}
+
 export interface ListView {
+  /** Null when no family is in the section. */
+  needsYou: NeedsYouView | null;
   groups: GroupView[];
   /** Hidden groups, shown in the More popover. */
   more: GroupView[];
@@ -124,8 +136,6 @@ export interface ListView {
   order: string[];
   /** Threads span more than one host (the row's second line). */
   multiHost: boolean;
-  /** Threads Needs attention would show for their own flags (the filter's badge). */
-  attentionCount: number;
 }
 
 export interface ViewInputs {
@@ -134,8 +144,9 @@ export interface ViewInputs {
   projects: readonly PluginSidebarProject[];
   sections: readonly PluginSidebarSection[];
   prefs: Preferences;
-  filter: ListFilter;
   activeThreadId: string | null;
+  /** The root of the family Needs you keeps while one of its threads is open. */
+  heldRootId: string | null;
   targets: Targets;
 }
 
@@ -195,12 +206,9 @@ function threadRow(
     rails: [],
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
+    homeGroupLabel: null,
     projectId: info.thread.projectId,
   };
-}
-
-function needsYouNow(info: ThreadInfo): boolean {
-  return info.needsYou.size > 0;
 }
 
 /** The children of `parent` that get a row: hidden ones only when they need you or failed. */
@@ -227,13 +235,6 @@ function foldedChildren(
 ): { shown: ThreadInfo[]; older: OlderRow | null } {
   const parentId = parent.thread.id;
   const kids = eligibleChildren(context, parentId);
-  const holds = (kid: ThreadInfo, test: (info: ThreadInfo) => boolean) =>
-    test(kid) || subtreeOf(context, kid.thread.id).descendants.some(test);
-
-  if (context.filter === "attention") {
-    const shown = kids.filter((kid) => holds(kid, (info) => needsYouNow(info) || info.isActive));
-    return { shown, older: null };
-  }
 
   const reveals = (kid: ThreadInfo) => context.revealIds.has(kid.thread.id) || context.revealPath.has(kid.thread.id);
   const olderRow = (scope: "family" | "reveal", count: number, expanded: boolean): OlderRow | null =>
@@ -403,10 +404,6 @@ function foldedLevel(context: Context, family: Family, parent: ThreadInfo, depth
   }));
   const rows = clusterEnvironments(context, units, depth);
   if (older !== null) rows.push(older);
-  // An opened chip that the filter empties says so, instead of showing an open chevron over nothing.
-  if (context.filter === "attention" && shown.length === 0 && context.expandedChildren.has(parent.thread.id)) {
-    rows.push({ type: "empty", key: `empty:${parent.thread.id}`, scopeId: parent.thread.id, depth, rails: [] });
-  }
   return rows;
 }
 
@@ -420,7 +417,7 @@ function familyUnit(context: Context, family: Family): Unit {
   return { info: family.root, rows: foldedFamilyRows(context, family), flags: family.flags };
 }
 
-/** needs-you, then failed, then offline, then unread, then the rest. */
+/** Waiting on you, then failed, then offline, then unread, then the rest. */
 export function urgency(family: Family): number {
   const flags = family.needsYouFlags;
   if (flags.has("waits-on-you")) return 0;
@@ -430,15 +427,74 @@ export function urgency(family: Family): number {
   return 4;
 }
 
+/**
+ * One family's rows in Needs you: the path from the root down to each thread
+ * that needs you or is open, then one "+N more" line for the child threads
+ * left out. No row draws a chip, since the section never opens one.
+ */
+function needsYouFamilyRows(context: Context, family: Family, homeGroupLabel: string): Row[] {
+  const root = family.root;
+  const onPath = new Set<string>([root.thread.id]);
+  for (const info of family.descendants) {
+    const needsYou = !info.thread.isArchived && info.needsYou.size > 0;
+    if (!needsYou && !info.isActive) continue;
+    onPath.add(info.thread.id);
+    for (const ancestor of ancestorsOf(info.thread.id, context.forest.infos, root.thread.id)) onPath.add(ancestor);
+  }
+  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip: null }), homeGroupLabel }];
+  const walk = (parentId: string, depth: number) => {
+    for (const id of context.forest.children.get(parentId) ?? []) {
+      if (!onPath.has(id)) continue;
+      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null }));
+      walk(id, depth + 1);
+    }
+  };
+  walk(root.thread.id, 1);
+  const left = family.descendants.filter((info) => !info.thread.isHidden && !onPath.has(info.thread.id)).length;
+  if (left > 0) rows.push({ type: "more", key: `more:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1, rails: [] });
+  return rows;
+}
+
+function buildNeedsYou(
+  context: Context,
+  families: readonly Family[],
+  homeGroupLabel: (family: Family) => string,
+): NeedsYouView | null {
+  if (families.length === 0) return null;
+  // Most urgent first, then the chosen field in its natural direction: the
+  // sort direction orders the groups only.
+  const compare = makeComparator({
+    field: context.prefs.chronologicalSort,
+    direction: "default",
+    workingFirst: context.prefs.workingFirst,
+  });
+  const sorted = [...families].sort(
+    (a, b) =>
+      urgency(a) - urgency(b) ||
+      compare(
+        { thread: a.root.thread, familyAttention: a.latestAttentionAt },
+        { thread: b.root.thread, familyAttention: b.latestAttentionAt },
+      ),
+  );
+  const rows = sorted.flatMap((family) => needsYouFamilyRows(context, family, homeGroupLabel(family)));
+  const rails = railsFor(rows.map((row) => row.depth));
+  return { familyCount: sorted.length, rows: rows.map((row, index) => ({ ...row, rails: rails[index]! })) };
+}
+
+/**
+ * One group. `families` is every family bucketed in it, for its counters and
+ * `rootIds`; `drawn` leaves out those in Needs you.
+ */
 function buildGroup(
   context: Context,
   descriptor: GroupDescriptor,
   families: Family[],
+  drawn: Family[],
   hidden: boolean,
-): GroupView | null {
+): GroupView {
   const counters = countFamilies(families);
   const userCollapsed = isGroupCollapsed(descriptor, context.prefs);
-  const hasTarget = families.some(
+  const hasTarget = drawn.some(
     (family) =>
       context.targets.has(family.root.thread.id) ||
       family.descendants.some((info) => context.targets.has(info.thread.id)),
@@ -446,24 +502,8 @@ function buildGroup(
   const collapsed = userCollapsed && !hasTarget;
   const isPinned = descriptor.id === PINNED_GROUP_ID;
 
-  let kept = families;
-  if (context.filter === "attention") {
-    kept = families.filter((family) => family.needsYouFlags.size > 0 || family.containsActive);
-    if (kept.length === 0) return null;
-  }
-
-  const sorted = [...kept];
-  if (context.filter === "attention") {
-    // Needs attention reads most urgent first.
-    sorted.sort(
-      (a, b) =>
-        urgency(a) - urgency(b) ||
-        context.compare(
-          { thread: a.root.thread, familyAttention: a.latestAttentionAt },
-          { thread: b.root.thread, familyAttention: b.latestAttentionAt },
-        ),
-    );
-  } else if (isPinned) {
+  const sorted = [...drawn];
+  if (isPinned) {
     sorted.sort((a, b) => comparePinned(a.root.thread, b.root.thread));
   } else {
     sorted.sort((a, b) =>
@@ -476,7 +516,7 @@ function buildGroup(
 
   let visible = sorted;
   let older: OlderRow | null = null;
-  const foldable = !isPinned && context.filter === "all" && context.prefs.foldOlder;
+  const foldable = !isPinned && context.prefs.foldOlder;
   if (foldable) {
     // The fold reads `quietIgnoringOpen`, as if no thread were open. The open family
     // joins afterwards when it sits behind the fold, and takes no other row's place.
@@ -555,6 +595,8 @@ export function buildListView(inputs: ViewInputs): ListView {
   };
 
   const byGroup = new Map<string, Family[]>();
+  const homeOf = new Map<Family, string>();
+  const section: Family[] = [];
   for (const family of forest.families) {
     const id = groupIdForRoot(family.root.thread, {
       mode: prefs.organizationMode,
@@ -563,7 +605,10 @@ export function buildListView(inputs: ViewInputs): ListView {
     const list = byGroup.get(id) ?? [];
     list.push(family);
     byGroup.set(id, list);
+    homeOf.set(family, id);
+    if (inNeedsYou(family, inputs.heldRootId)) section.push(family);
   }
+  const inSection = new Set(section);
 
   const alphabetical = effectiveSortField(prefs.chronologicalSort) === "alpha";
   const entities = entityGroups(
@@ -587,15 +632,15 @@ export function buildListView(inputs: ViewInputs): ListView {
     const descriptor = descriptors.get(id);
     if (descriptor === undefined) continue;
     const families = byGroup.get(id) ?? [];
-    // Pinned and the loose bucket appear only when they hold threads,
-    // except the loose bucket in custom-section mode, as in bb.
-    if (families.length === 0) {
+    const drawn = families.filter((family) => !inSection.has(family));
+    // Pinned and the loose bucket appear only when they hold threads outside
+    // Needs you, except the loose bucket in custom-section mode, as in bb.
+    if (drawn.length === 0) {
       if (id === PINNED_GROUP_ID) continue;
       if (id === THREADS_GROUP_ID && prefs.organizationMode !== "chronological") continue;
     }
     const hidden = id !== PINNED_GROUP_ID && hiddenIds.has(id);
-    const view = buildGroup(context, descriptor, families, hidden);
-    if (view === null) continue;
+    const view = buildGroup(context, descriptor, families, drawn, hidden);
     if (hidden) {
       more.push(view);
       moreCounters = addCounters(moreCounters, view.counters);
@@ -606,13 +651,8 @@ export function buildListView(inputs: ViewInputs): ListView {
 
   const hosts = new Set<string>();
   for (const thread of inputs.threads) if (thread.host !== null) hosts.add(thread.host.id);
-  let attentionCount = 0;
-  for (const family of forest.families) {
-    for (const info of [family.root, ...family.descendants]) {
-      if (!info.thread.isArchived && needsYouNow(info)) attentionCount += 1;
-    }
-  }
-  return { groups, more, moreCounters, order, multiHost: hosts.size > 1, attentionCount };
+  const needsYou = buildNeedsYou(context, section, (family) => descriptors.get(homeOf.get(family)!)?.label ?? "Threads");
+  return { needsYou, groups, more, moreCounters, order, multiHost: hosts.size > 1 };
 }
 
 /** Every thread row in visual order, for keyboard and windowing. */

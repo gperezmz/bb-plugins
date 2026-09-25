@@ -12,8 +12,8 @@ const depths = (view: ListView) =>
   rowsOf(view).map((row) =>
     row.type === "thread" ? `${row.info.thread.id}@${row.depth}` : row.type === "older"
         ? `older:${row.count}@${row.depth}`
-        : row.type === "empty"
-          ? `empty@${row.depth}`
+        : row.type === "more"
+          ? `more:${row.count}@${row.depth}`
           : `env@${row.depth}`,
   );
 
@@ -64,11 +64,11 @@ describe("per-level folding", () => {
     expect(fold.rails).toEqual(["full", "end", null]);
   });
 
-  it("opens the level on the way to a question, keeping every ancestor and saying what it left out", () => {
+  it("opens the level on the way to a revealed thread, keeping every ancestor and saying what it left out", () => {
     const withQuestion = [
       makeThread({ id: "m" }),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
-      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2, hasPendingInteraction: true }),
+      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2 }),
       makeThread({ id: "h", parentThreadId: "c", createdAt: T0 + 3 }),
     ];
     const view = viewOf({
@@ -91,23 +91,6 @@ describe("per-level folding", () => {
       targets: new Map([["g", "reveal" as const]]),
     });
     expect(rowIds(view, "project:proj_a")).toEqual(["m", "c", "g"]);
-  });
-});
-
-describe("an opened chip that Needs attention empties", () => {
-  const threads = [
-    makeThread({ id: "m", hasPendingInteraction: true }),
-    makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
-  ];
-  it("says so under the chip, at child indent, when the family opened it", () => {
-    const view = viewOf({ threads, filter: "attention", prefs: { expandedChildren: ["m"] } });
-    expect(depths(view)).toEqual(["m@0", "empty@1"]);
-    expect(rowsOf(view).at(-1)?.rails).toEqual(["end", null]);
-  });
-  it("leaves a chip nobody opened alone, and shows the children once one needs attention", () => {
-    expect(depths(viewOf({ threads, filter: "attention" }))).toEqual(["m@0"]);
-    const blocked = threads.map((t) => (t.id === "c" ? { ...t, hasPendingInteraction: true } : t));
-    expect(depths(viewOf({ threads: blocked, filter: "attention", prefs: { expandedChildren: ["m"] } }))).toEqual(["m@0", "c@1"]);
   });
 });
 
@@ -149,7 +132,7 @@ describe("a grandchild never shows without its parent (property)", () => {
     return { threads, ids: threads.map((thread) => thread.id) };
   }
 
-  it("holds for random forests, folds, filters, settings, open threads and reveals", () => {
+  it("holds for random forests, folds, settings, open threads, holds and reveals, and draws each thread once", () => {
     let checked = 0;
     for (let seed = 1; seed <= 400; seed += 1) {
       const next = random(seed);
@@ -159,7 +142,7 @@ describe("a grandchild never shows without its parent (property)", () => {
       const view = viewOf({
         threads,
         activeThreadId: active,
-        filter: next() < 0.4 ? "attention" : "all",
+        heldRootId: next() < 0.3 ? ids[Math.floor(next() * ids.length)]! : null,
         prefs: {
           expandedChildren: pick(),
           expandedOlder: pick(),
@@ -168,10 +151,13 @@ describe("a grandchild never shows without its parent (property)", () => {
         },
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
-      for (const group of [...view.groups, ...view.more]) {
+      const drawn = new Set<string>();
+      for (const rows of [view.needsYou?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
         const seen: ThreadRow[] = [];
-        for (const row of group.rows) {
+        for (const row of rows) {
           if (row.type !== "thread") continue;
+          expect(drawn.has(row.info.thread.id), `seed ${seed}: ${row.info.thread.id} is drawn twice`).toBe(false);
+          drawn.add(row.info.thread.id);
           if (row.depth > 0) {
             // The row above it one level up must be its parent, the same family and group.
             const above = [...seen].reverse().find((candidate) => candidate.depth < row.depth);

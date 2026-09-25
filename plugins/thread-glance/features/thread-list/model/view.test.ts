@@ -5,6 +5,7 @@ import {
   finishedUnread,
   forestOf,
   makeThread,
+  needsYouIds,
   rowIds,
   T0,
   viewOf,
@@ -23,8 +24,8 @@ function render(scenario: Scenario, previous: ReturnType<typeof snapshotOf> | nu
 }
 
 function threadRow(view: ReturnType<typeof viewOf>, id: string): ThreadRow {
-  for (const group of [...view.groups, ...view.more]) {
-    for (const row of group.rows) if (row.type === "thread" && row.info.thread.id === id) return row;
+  for (const rows of [view.needsYou?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
+    for (const row of rows) if (row.type === "thread" && row.info.thread.id === id) return row;
   }
   throw new Error(`no row ${id}`);
 }
@@ -50,13 +51,16 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
     makeThread({ id: "other", latestAttentionAt: T0 + 200, lastReadAt: T0 + 200 }),
   ];
 
-  it("the chip shows 5 with the question and auto-expands only the blocked child", () => {
+  it("Needs you draws the path to the blocked child and counts the other four", () => {
     const { view } = render({ threads }, null, new Map());
+    expect(needsYouIds(view)).toEqual(["m", "c3", "+4"]);
+    expect(view.needsYou?.familyCount).toBe(1);
     const root = threadRow(view, "m");
-    // The chip still expands; a "+4 more" row says what the reveal left out.
-    expect(root.chip).toEqual({ count: 5, flag: "waits-on-you", expanded: false, providerIds: [] });
+    expect(root.chip).toBeNull();
+    expect(root.homeGroupLabel).toBe("Alpha");
     expect(root.info.state.kind).toBe("idle");
-    expect(rowIds(view, "project:proj_a")).toEqual(["other", "m", "c3", "older:4"]);
+    expect(threadRow(view, "c3")).toMatchObject({ depth: 1, homeGroupLabel: null });
+    expect(rowIds(view, "project:proj_a")).toEqual(["other"]);
     expect(threadRow(view, "c3").info.state.glyph).toMatchObject({ icon: "CircleQuestion", tone: "attention" });
   });
 
@@ -66,20 +70,21 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
     expect(group(viewOf({ threads: busyRoot }), "project:proj_a").counters.working).toBe(6);
   });
 
-  it("the family keeps its place: questions don't move rows", () => {
+  it("answered, the family goes back to its place in its group", () => {
     const calm = threads.map((t) => ({ ...t, hasPendingInteraction: false }));
     const ids = (s: Scenario) => rowIds(viewOf(s), "project:proj_a").filter((id) => !id.startsWith("c"));
-    expect(ids({ threads })).toEqual(ids({ threads: calm }));
+    expect(ids({ threads })).toEqual(["other"]);
+    expect(ids({ threads: calm })).toEqual(["other", "m"]);
+    expect(viewOf({ threads: calm }).needsYou).toBeNull();
   });
 
-  it("collapsing the chip sticks until another transition", () => {
+  it("back in its group, the family keeps the path the question opened until its chip is collapsed", () => {
     const first = render({ threads }, null, new Map());
-    const collapsed = pruneTargets(first.targets, (id) => id.startsWith("c"));
-    const again = render({ threads }, first.snapshot, collapsed);
-    expect(rowIds(again.view, "project:proj_a")).toEqual(["other", "m"]);
-    const c5blocked = threads.map((t) => (t.id === "c5" ? { ...t, hasPendingInteraction: true } : t));
-    const next = render({ threads: c5blocked }, again.snapshot, again.targets);
-    expect(rowIds(next.view, "project:proj_a")).toEqual(["other", "m", "c5", "older:4"]);
+    const calm = threads.map((t) => ({ ...t, hasPendingInteraction: false }));
+    const back = render({ threads: calm }, first.snapshot, first.targets);
+    expect(rowIds(back.view, "project:proj_a")).toEqual(["other", "m", "c3", "older:4"]);
+    const collapsed = pruneTargets(back.targets, (id) => id.startsWith("c"));
+    expect(rowIds(render({ threads: calm }, back.snapshot, collapsed).view, "project:proj_a")).toEqual(["other", "m"]);
   });
 });
 
@@ -89,12 +94,13 @@ describe("scenario 2: child failed while its parent finished", () => {
     makeThread({ id: "c", parentThreadId: "p", ...failedUnread }),
   ];
 
-  it("root unread, chip CircleX, failed child revealed bold; header failed 1 unread 2", () => {
+  it("root unread and the failed child bold, both in Needs you; header failed 1 unread 1", () => {
     const { view } = render({ threads }, null, new Map());
+    expect(needsYouIds(view)).toEqual(["p", "c"]);
     const root = threadRow(view, "p");
     expect(root.info.unread).toBe(true);
     expect(root.info.state.kind).toBe("unread");
-    expect(root.chip?.flag).toBe("unread-failed");
+    expect(root.chip).toBeNull();
     const child = threadRow(view, "c");
     expect(child.info).toMatchObject({ unread: true, state: { kind: "failed" } });
     // The finished child adds nothing to the counters; its failure does, as its parent finished no later.
@@ -127,7 +133,7 @@ describe("scenario 2: child failed while its parent finished", () => {
 });
 
 describe("scenario 3: machine offline", () => {
-  it("offline row, header offline 1, kept under Needs attention", () => {
+  it("offline row, header offline 1, in Needs you", () => {
     const threads = [
       makeThread({ id: "t", status: "active", runtimeStatus: "waiting-for-host" }),
       makeThread({ id: "u" }),
@@ -135,7 +141,8 @@ describe("scenario 3: machine offline", () => {
     const view = viewOf({ threads });
     expect(threadRow(view, "t").info.state).toMatchObject({ kind: "offline", label: "Machine offline" });
     expect(group(view, "project:proj_a").counters.offline).toBe(1);
-    expect(rowIds(viewOf({ threads, filter: "attention" }), "project:proj_a")).toEqual(["t"]);
+    expect(needsYouIds(view)).toEqual(["t"]);
+    expect(rowIds(view, "project:proj_a")).toEqual(["u"]);
   });
   it("host-reconnecting counts as working", () => {
     const view = viewOf({ threads: [makeThread({ id: "t", status: "active", runtimeStatus: "host-reconnecting" })] });
@@ -166,10 +173,11 @@ describe("scenario 5: a project with 60 old threads", () => {
   it("fold older off shows everything", () => {
     expect(rowIds(viewOf({ threads: old, prefs: { foldOlder: false } }), "project:proj_a")).toHaveLength(60);
   });
-  it("unread roots don't fold; the header counts them", () => {
+  it("unread roots go to Needs you rather than the fold; the header still counts them", () => {
     const unread = old.map((t) => ({ ...t, lastReadAt: T0 - 1 }));
     const view = viewOf({ threads: unread });
-    expect(rowIds(view, "project:proj_a")).toHaveLength(60);
+    expect(view.needsYou?.familyCount).toBe(60);
+    expect(rowIds(view, "project:proj_a")).toEqual([]);
     expect(group(view, "project:proj_a").counters.unread).toBe(60);
   });
 });
@@ -238,7 +246,7 @@ describe("scenario 7: active grandchild inside a collapsed project", () => {
   });
 });
 
-describe("scenario 8: Needs attention with a quiet parent whose child is blocked", () => {
+describe("scenario 8: Needs you with a quiet parent whose child is blocked", () => {
   const threads = [
     makeThread({ id: "p" }),
     makeThread({ id: "c1", parentThreadId: "p", hasPendingInteraction: true, createdAt: T0 + 1 }),
@@ -250,16 +258,18 @@ describe("scenario 8: Needs attention with a quiet parent whose child is blocked
   ];
   const finishedAt = { dc: T0 + 50 };
 
-  it("keeps the parent and only the blocked child; empty groups disappear", () => {
-    const view = viewOf({ threads, filter: "attention", finishedAt, prefs: { hiddenGroups: ["project:proj_b"] } });
-    expect(view.groups.map((g) => g.descriptor.id)).toEqual(["project:proj_a"]);
-    expect(view.more).toEqual([]);
-    // dc finished unread, which a child never counts, so d and dc drop out.
-    expect(rowIds(view, "project:proj_a")).toEqual(["p", "c1"]);
+  it("draws the parent and only the blocked child, counts the other, and leaves the rest in their groups", () => {
+    const view = viewOf({ threads, finishedAt, prefs: { hiddenGroups: ["project:proj_b"] } });
+    expect(needsYouIds(view)).toEqual(["p", "c1", "+1"]);
+    // dc finished unread, which a child does not count, so d stays in its group.
+    expect(rowIds(view, "project:proj_a")).toEqual(["d"]);
+    expect(rowIds(view, "pinned")).toEqual(["pin"]);
+    expect(view.more.map((g) => g.descriptor.id)).toEqual(["project:proj_b"]);
   });
-  it("keeps a finished child too when children count as everything", () => {
-    const view = viewOf({ threads, filter: "attention", finishedAt, prefs: { childAttention: "everything" } });
-    expect(rowIds(view, "project:proj_a")).toEqual(["p", "c1", "d", "dc"]);
+  it("brings the finished child's family too when children count as everything", () => {
+    const view = viewOf({ threads, finishedAt, prefs: { childAttention: "everything" } });
+    expect(needsYouIds(view)).toEqual(["p", "c1", "+1", "d", "dc"]);
+    expect(rowIds(view, "project:proj_a")).toEqual([]);
   });
 });
 
@@ -270,6 +280,7 @@ describe("scenario 9: cross-project child", () => {
   ];
   it("sits under its parent with the badge and counts in the parent's project", () => {
     const view = viewOf({ threads, prefs: { expandedChildren: ["p"] } });
+    expect(needsYouIds(view)).toEqual(["p", "c"]);
     expect(threadRow(view, "c").crossGroupLabel).toBe("In project Beta");
     expect(group(view, "project:proj_a").counters.waitsOnYou).toBe(1);
     expect(group(view, "project:proj_b").counters.waitsOnYou).toBe(0);
@@ -374,22 +385,22 @@ describe("a group's fold while a thread is open", () => {
   });
 });
 
-describe("folding a family by the attention rule", () => {
+describe("folding a family by the Needs you rule", () => {
   // A parent whose 12 workers all finished after you last looked at them (done-unseen).
   const workers = Array.from({ length: 12 }, (_, n) =>
     makeThread({ id: `w${n}`, parentThreadId: "m", createdAt: T0 + n }),
   );
   const finishedAt = Object.fromEntries(workers.map((worker) => [worker.id, T0 + 100]));
   const threads = [makeThread({ id: "m" }), ...workers];
-  const rows = (scenario: Scenario, attention: "blocked" | "everything" = "blocked") =>
-    rowIds(
-      viewOf({
-        finishedAt,
-        ...scenario,
-        prefs: { expandedChildren: ["m"], childAttention: attention, ...scenario.prefs },
-      }),
-      "project:proj_a",
-    );
+  // The family's rows wherever it is drawn: Needs you when a thread in it needs you, else its group.
+  const rows = (scenario: Scenario, mode: "blocked" | "everything" = "blocked") => {
+    const view = viewOf({
+      finishedAt,
+      ...scenario,
+      prefs: { expandedChildren: ["m"], childAttention: mode, ...scenario.prefs },
+    });
+    return view.needsYou === null ? rowIds(view, "project:proj_a") : needsYouIds(view);
+  };
   const withState = (overrides: Record<string, Partial<PluginSidebarThread>>) =>
     threads.map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t));
 
@@ -402,10 +413,10 @@ describe("folding a family by the attention rule", () => {
     expect(shown).toHaveLength(12);
     for (const row of shown) expect(row.info.state.kind).toBe("unread");
   });
-  it("with Everything, a finished-unread child stays visible, as a root would", () => {
+  it("with Everything, finished-unread children need you, as a root would", () => {
     expect(rows({ threads }, "everything")).toEqual(["m", ...workers.map((worker) => worker.id)]);
   });
-  it("keeps children that work, wait on you, are offline or failed under an idle parent", () => {
+  it("keeps working children out of the fold, and takes the family to Needs you for those that wait, are offline or failed", () => {
     const mixed = withState({
       w0: working,
       w1: { status: "idle", runtimeStatus: "provisioning" },
@@ -414,16 +425,18 @@ describe("folding a family by the attention rule", () => {
       w4: { runtimeStatus: "waiting-for-host" },
       w5: failedUnread,
     });
-    expect(rows({ threads: mixed })).toEqual(["m", "w0", "w1", "w2", "w3", "w4", "w5", "w9", "w10", "w11", "older:3"]);
+    expect(rows({ threads: mixed })).toEqual(["m", "w3", "w4", "w5", "+9"]);
+    const running = withState({ w0: working, w1: { status: "idle", runtimeStatus: "provisioning" } });
+    expect(rows({ threads: running })).toEqual(["m", "w0", "w1", "w9", "w10", "w11", "older:7"]);
   });
   it("folds a failed child while its parent is busy, and shows it once the parent is idle and has not run since", () => {
     const busy = withState({ m: working, w0: failedUnread });
     expect(rows({ threads: busy })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
-    expect(rows({ threads: withState({ w0: failedUnread }) })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+    expect(rows({ threads: withState({ w0: failedUnread }) })).toEqual(["m", "w0", "+11"]);
   });
-  it("keeps a child whose own child is stuck, even with its own chip closed", () => {
+  it("draws the path to a stuck grandchild in Needs you", () => {
     const stuck = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50, hasPendingInteraction: true })];
-    expect(rows({ threads: stuck })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+    expect(rows({ threads: stuck })).toEqual(["m", "w0", "g", "+11"]);
     const quietIgnoringOpen = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50 })];
     expect(rows({ threads: quietIgnoringOpen, finishedAt: { ...finishedAt, g: T0 + 100 } })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
   });
@@ -437,13 +450,13 @@ describe("folding a family by the attention rule", () => {
     const prefs = { threadLifecycles: ["active", "archived"] as ("active" | "archived")[] };
     expect(rows({ threads: archived, prefs })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
   });
-  it("counts a hidden grandchild only when it needs attention", () => {
+  it("counts a hidden grandchild only when it needs you", () => {
     const hidden = (overrides: Partial<PluginSidebarThread>) => [
       ...threads,
       makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50, isHidden: true, ...overrides }),
     ];
     expect(rows({ threads: hidden(working) })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
-    expect(rows({ threads: hidden({ hasPendingInteraction: true }) })).toEqual(["m", "w0", "w9", "w10", "w11", "older:8"]);
+    expect(rows({ threads: hidden({ hasPendingInteraction: true }) })).toEqual(["m", "w0", "g", "+11"]);
   });
   it("adds the open child behind the fold, and moving between children keeps the rest in place", () => {
     expect(rows({ threads, activeThreadId: "w2" })).toEqual(["m", "w2", "w9", "w10", "w11", "older:8"]);
@@ -466,10 +479,12 @@ describe("hidden threads", () => {
       makeThread({ id: "hb", parentThreadId: "p", isHidden: true, hasPendingInteraction: true, createdAt: T0 + 2 }),
     ];
     const view = viewOf({ threads, prefs: { expandedChildren: ["p"] } });
-    expect(rowIds(view, "project:proj_a")).toEqual(["p", "w", "hb"]);
-    expect(threadRow(view, "w").nested).toBe(false);
+    expect(needsYouIds(view)).toEqual(["p", "hb", "+1"]);
     expect(threadRow(view, "hb").hiddenBadge).toBe(true);
-    expect(threadRow(view, "p").chip).toMatchObject({ count: 1, flag: "waits-on-you" });
+    const calm = viewOf({ threads: threads.filter((t) => t.id !== "hb"), prefs: { expandedChildren: ["p"] } });
+    expect(rowIds(calm, "project:proj_a")).toEqual(["p", "w"]);
+    expect(threadRow(calm, "w").nested).toBe(false);
+    expect(threadRow(calm, "p").chip).toMatchObject({ count: 1, flag: null });
   });
   it("hidden working threads don't count", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "h", parentThreadId: "p", isHidden: true, ...working })];
@@ -532,9 +547,9 @@ describe("groups and modes", () => {
   it("environment folders group 2+ roots sharing a worktree when enabled", () => {
     const wt = { id: "env_wt", isWorktree: true, branchName: "feat/x" };
     const threads = [
-      makeThread({ id: "a", environment: wt, latestAttentionAt: T0 + 3 }),
-      makeThread({ id: "b", environment: wt, latestAttentionAt: T0 + 2 }),
-      makeThread({ id: "c", latestAttentionAt: T0 + 1 }),
+      makeThread({ id: "a", environment: wt, latestAttentionAt: T0 + 3, lastReadAt: T0 + 3 }),
+      makeThread({ id: "b", environment: wt, latestAttentionAt: T0 + 2, lastReadAt: T0 + 3 }),
+      makeThread({ id: "c", latestAttentionAt: T0 + 1, lastReadAt: T0 + 3 }),
     ];
     expect(rowIds(viewOf({ threads }), "project:proj_a")).toEqual(["a", "b", "c"]);
     const on = viewOf({ threads, prefs: { environmentGrouping: true } });
@@ -546,7 +561,7 @@ describe("groups and modes", () => {
 
 describe("sort", () => {
   const threads = [
-    makeThread({ id: "a", title: "b-title", createdAt: T0 + 1, latestAttentionAt: T0 + 1 }),
+    makeThread({ id: "a", title: "b-title", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
     makeThread({ id: "b", title: "a-title", createdAt: T0 + 2, latestAttentionAt: T0 }),
     makeThread({ id: "c", parentThreadId: "b", latestAttentionAt: T0 + 9, status: "error", lastReadAt: T0 + 9 }),
   ];
@@ -589,11 +604,11 @@ describe("transitions", () => {
     const again = detectTransitions(first.snapshot, snapshotOf(forestOf({ threads, activeThreadId: "b" }), "b"));
     expect(again.size).toBe(0);
   });
-  it("a finished child opens its group but not its parent's chip", () => {
+  it("with Everything, a finished child brings its family to Needs you but opens only its group, not its parent's chip", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
-    const { view } = render({ threads, finishedAt: { c: T0 + 5 }, prefs: { childAttention: "everything" } }, null, new Map());
-    expect(rowIds(view, "project:proj_a")).toEqual(["p"]);
-    expect(threadRow(view, "p").chip?.flag).toBe("unread");
+    const { view, targets } = render({ threads, finishedAt: { c: T0 + 5 }, prefs: { childAttention: "everything" } }, null, new Map());
+    expect(needsYouIds(view)).toEqual(["p", "c"]);
+    expect(targets.get("c")).toBe("open");
   });
   it("a finished child opens nothing and leaves the chip plain", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
@@ -604,15 +619,17 @@ describe("transitions", () => {
   });
 });
 
-describe("attention badge", () => {
-  it("counts each thread once, whatever flags it carries", () => {
+describe("the Needs you header", () => {
+  it("counts families, not threads", () => {
     const view = viewOf({
       threads: [
         makeThread({ id: "a", ...failedUnread }),
         makeThread({ id: "b", hasPendingInteraction: true, ...working }),
+        makeThread({ id: "b1", parentThreadId: "b", hasPendingInteraction: true }),
         makeThread({ id: "c", ...working }),
       ],
     });
-    expect(view.attentionCount).toBe(2);
+    expect(view.needsYou?.familyCount).toBe(2);
+    expect(needsYouIds(view)).toEqual(["b", "b1", "a"]);
   });
 });

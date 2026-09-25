@@ -1,5 +1,5 @@
-// The fold rows (`N older` on a group, `N more child threads` on a family)
-// and the environment folder row.
+// The fold rows (`N older` on a group, `N more child threads` on a family),
+// the "+N more" line in Needs you, and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
@@ -14,7 +14,7 @@ import { ICONS } from "../icons";
 import { RowRails } from "./Rails";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import { EMPTY_LEVEL_TEXT, type EmptyRow, type EnvironmentRow, type OlderRow } from "../model/view";
+import type { EnvironmentRow, MoreRow, OlderRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
@@ -50,16 +50,17 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** A plain line under an opened chip that Needs attention leaves empty; not a control. */
-export const EmptyRowView = memo(function EmptyRowView({ row, controller }: { row: EmptyRow; controller: RowController }) {
+/** The "+N more" line under a family in Needs you: a count, not a control. */
+export const MoreRowView = memo(function MoreRowView({ row }: { row: MoreRow }) {
+  const noun = row.count === 1 ? "child thread" : "child threads";
   return (
     <div
-      className="relative flex h-7 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground max-md:pointer-coarse:h-9"
+      className="relative flex h-6 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
       <RowRails rails={row.rails} />
       <span aria-hidden className="size-4 shrink-0" />
-      <span>{EMPTY_LEVEL_TEXT}</span>
+      <span title={`${row.count} more ${noun}`}>+{row.count} more</span>
     </div>
   );
 });

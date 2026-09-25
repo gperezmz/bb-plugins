@@ -1,4 +1,4 @@
-// Group header counters and the Needs attention filter test. Pure.
+// Group header counters. Pure.
 import type { Family } from "./families";
 
 export interface Counters {
@@ -13,10 +13,11 @@ export interface Counters {
 export const EMPTY_COUNTERS: Counters = { waitsOnYou: 0, failed: 0, offline: 0, working: 0, unread: 0 };
 
 /**
- * Counts the threads in the families. A thread counts what its attention
- * flags say, so a child adds to needs-you, failed, offline and unread only as
- * the Child threads in Needs attention setting lets it; working counts every thread that runs. Hidden threads carry
- * only needs-you and unread-failed flags already; archived threads never count.
+ * Counts the threads in the families. A thread counts what its Needs you
+ * flags say, so a child adds to waits-on-you, failed, offline and unread only
+ * as "Needs you counts every child" lets it; working counts every thread that
+ * runs. Hidden threads carry only waits-on-you and unread-failed flags
+ * already; archived threads never count.
  */
 export function countFamilies(families: readonly Family[]): Counters {
   const counters = { ...EMPTY_COUNTERS };
@@ -43,13 +44,6 @@ export function addCounters(a: Counters, b: Counters): Counters {
     unread: a.unread + b.unread,
   };
 }
-
-/** The Needs attention tooltip: short enough to read at a glance. */
-export const ATTENTION_SUMMARY = "Waiting on you, failed, offline, or finished and unread. Child threads count only when stuck.";
-
-/** What the Needs attention toggle keeps, in full, for its accessible description. */
-export const ATTENTION_EXPLANATION =
-  "Threads only you can move forward: a question, approval or plan review waiting on you; a machine that is offline; a failed thread or queued message; finished threads you haven't opened. For a child thread, only what waits on you or is offline, or a failure whose parent thread is idle (Filter settings can widen this).";
 
 /**
  * Which counters a header draws. needs-you, failed and offline

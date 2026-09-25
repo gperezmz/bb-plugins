@@ -486,7 +486,14 @@ export const ThreadRowView = memo(function ThreadRowView({
             </kbd>
           ) : (
             <>
-              {time !== null ? (
+              {row.homeGroupLabel !== null ? (
+                <span
+                  title={`In ${row.homeGroupLabel}`}
+                  className={cn("pointer-events-none max-w-24 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
+                >
+                  {row.homeGroupLabel}
+                </span>
+              ) : time !== null ? (
                 <span
                   title={time.label}
                   aria-label={time.label}

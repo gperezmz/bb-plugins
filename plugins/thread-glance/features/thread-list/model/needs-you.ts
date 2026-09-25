@@ -87,3 +87,29 @@ export function revealsOn(needsYou: ReadonlySet<Flag>, isRoot: boolean): boolean
   if (needsYou.has("waits-on-you") || needsYou.has("unread-failed")) return true;
   return !isRoot && needsYou.has("queue-failed");
 }
+
+/**
+ * Whether a family is in the Needs you section: one of its threads needs
+ * you, or it is the family the section holds while one of its threads is open.
+ */
+export function inNeedsYou(
+  family: { root: { thread: { id: string } }; needsYouFlags: ReadonlySet<Flag> },
+  heldRootId: string | null,
+): boolean {
+  return family.needsYouFlags.size > 0 || family.root.thread.id === heldRootId;
+}
+
+/**
+ * The family Needs you holds after a render, by its root's id: the open
+ * thread's family, when it needs you now or was already held. Held, it stays
+ * in the section after nothing in it needs you, until a thread outside it is
+ * opened; a family that never needed you is not pulled in by opening it.
+ */
+export function holdNeedsYou(
+  previous: string | null,
+  openFamily: { root: { thread: { id: string } }; needsYouFlags: ReadonlySet<Flag> } | undefined,
+): string | null {
+  if (openFamily === undefined) return null;
+  const rootId = openFamily.root.thread.id;
+  return openFamily.needsYouFlags.size > 0 || previous === rootId ? rootId : null;
+}

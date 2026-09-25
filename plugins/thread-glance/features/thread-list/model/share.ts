@@ -1,6 +1,6 @@
 // Structural sharing between two list views: whatever did not change keeps
 // the previous object, so memoized rows and groups skip their render. Pure.
-import type { GroupView, ListView, Row } from "./view";
+import type { GroupView, ListView, NeedsYouView, Row } from "./view";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object") return false;
@@ -86,6 +86,11 @@ function shareGroups(previousGroups: GroupView[], all: ReadonlyMap<string, Group
   return sameItems(previousGroups, result) ? previousGroups : result;
 }
 
+function shareNeedsYou(previous: NeedsYouView | null, next: NeedsYouView | null): NeedsYouView | null {
+  if (previous === null || next === null) return next;
+  return shareFields(previous, next, { rows: shareRows(previous.rows, next.rows) });
+}
+
 /**
  * `next`, sharing every group and row that did not change since `previous`.
  * Groups match by id and rows by key, never by position. A group keeps its
@@ -95,6 +100,7 @@ export function shareView(previous: ListView | null, next: ListView): ListView {
   if (previous === null) return next;
   const all = new Map([...previous.groups, ...previous.more].map((group) => [group.descriptor.id, group]));
   return shareFields(previous, next, {
+    needsYou: shareNeedsYou(previous.needsYou, next.needsYou),
     groups: shareGroups(previous.groups, all, next.groups),
     more: shareGroups(previous.more, all, next.more),
   });

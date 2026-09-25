@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, needsYouIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { visibleCounters } from "./counters";
 import { modelDisplayName, sinceLabel } from "./details";
 import { rowMenuItems } from "./menu";
@@ -105,26 +105,16 @@ describe("hover card facts", () => {
   });
 });
 
-describe("Needs attention order", () => {
-  it("puts needs-you first, then failed, then unread, whatever the recency", () => {
+describe("Needs you order", () => {
+  it("puts what waits on you first, then failed, then unread, whatever the recency", () => {
     const view = viewOf({
-      filter: "attention",
       threads: [
         makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 300 }),
         makeThread({ id: "f", ...failedUnread, latestAttentionAt: T0 + 200 }),
         makeThread({ id: "q", hasPendingInteraction: true, latestAttentionAt: T0 + 1 }),
       ],
     });
-    expect(rowIds(view, "project:proj_a")).toEqual(["q", "f", "u"]);
-  });
-  it("All keeps its stable order", () => {
-    const view = viewOf({
-      threads: [
-        makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 300 }),
-        makeThread({ id: "q", hasPendingInteraction: true, latestAttentionAt: T0 + 1 }),
-      ],
-    });
-    expect(rowIds(view, "project:proj_a")).toEqual(["u", "q"]);
+    expect(needsYouIds(view)).toEqual(["q", "f", "u"]);
   });
 });
 

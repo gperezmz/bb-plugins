@@ -1,12 +1,9 @@
-// The top of the scroll area: the filter toggle and the settings
-// popover.
+// The top of the scroll area: the settings button and its popover.
 import { useState } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Lifecycle, Preferences } from "@/shared/preferences";
-import { ATTENTION_EXPLANATION, ATTENTION_SUMMARY } from "../model/counters";
 import { ICONS } from "../icons";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
@@ -224,60 +221,21 @@ export function SettingsPanel({
   );
 }
 
+/** The slim row above the list: ⚙ alone at its right. */
 export function Toolbar({
   prefs,
   client,
-  attentionCount,
-  compact,
   onPrefs,
   onClient,
 }: {
   prefs: Preferences;
   client: ClientPreferences;
-  /** Threads that need attention, for the filter's badge. */
-  attentionCount: number;
-  /** Phone width: the filter's long label would truncate. */
-  compact: boolean;
   onPrefs(patch: Partial<Preferences>): void;
   onClient(patch: Partial<ClientPreferences>): void;
 }) {
   return (
-    // Sticky with the group headers, so the filter stays in reach.
-    <div className="sticky top-0 z-30 flex h-8 items-center gap-1 bg-sidebar pb-1">
-      <TooltipProvider delayDuration={400}>
-        <div role="radiogroup" aria-label="Filter threads" className={cn(SEGMENT_TRACK, "min-w-0 flex-1")}>
-          {(
-            [
-              ["all", "All"],
-              ["attention", "Needs attention"],
-            ] as const
-          ).map(([value, label]) => {
-            const button = (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={client.filter === value}
-                aria-description={value === "attention" ? ATTENTION_EXPLANATION : undefined}
-                onClick={() => onClient({ filter: value })}
-                className={cn(segmentClass(client.filter === value), "min-w-0 flex-1 gap-1 truncate px-1.5 py-0.5 focus-visible:ring-sidebar-ring")}
-              >
-                <span className="truncate">{value === "attention" && compact ? "Attention" : label}</span>
-                {value === "attention" && attentionCount > 0 ? (
-                  <span className="shrink-0 tabular-nums text-muted-foreground">{attentionCount}</span>
-                ) : null}
-              </button>
-            );
-            if (value !== "attention") return button;
-            return (
-              <Tooltip key={value}>
-                <TooltipTrigger asChild>{button}</TooltipTrigger>
-                <TooltipContent side="bottom">{ATTENTION_SUMMARY}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </TooltipProvider>
+    // Sticky with the group headers, so the settings stay in reach.
+    <div className="sticky top-0 z-30 flex h-7 items-center justify-end bg-sidebar">
       <Popover>
         <PopoverTrigger asChild>
           <button type="button" aria-label="Thread Glance settings" title="List settings" className={ROW_ICON_BUTTON}>

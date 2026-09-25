@@ -15,7 +15,7 @@ export type Targets = ReadonlyMap<string, TargetKind>;
 export interface Snapshot {
   activeThreadId: string | null;
   unread: ReadonlySet<string>;
-  /** Threads that wait on you or failed, as Needs attention counts them. */
+  /** Threads that wait on you or failed, as Needs you counts them. */
   needsYou: ReadonlySet<string>;
 }
 
@@ -24,7 +24,7 @@ export function snapshotOf(forest: Forest, activeThreadId: string | null): Snaps
   const needsYou = new Set<string>();
   for (const info of forest.infos.values()) {
     if (info.thread.isArchived) continue;
-    // A finished child that Needs attention does not count never opens anything.
+    // A finished child that does not need you never opens anything.
     if (info.needsYou.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
     if (revealsOn(info.needsYou, info.parentId === null)) needsYou.add(info.thread.id);
   }

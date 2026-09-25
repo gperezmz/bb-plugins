@@ -131,7 +131,7 @@ export const PREFERENCES = {
   childAttention: define(
     childAttentionSchema,
     "blocked" as ChildAttention,
-    "Which child threads count under Needs attention, in badges and counters, and stay out of a family's fold along with running children: blocked (waiting on you, offline, or an orphaned failure) or everything (also every failed and unread child).",
+    "Needs you counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a family's older fold, as running ones do.",
   ),
   harnessIcon: define(
     harnessIconSchema,
@@ -212,9 +212,8 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   return mapped as Partial<Preferences>;
 }
 
-/** Per-client preferences, kept in localStorage only. */
+/** Per-client preferences, kept in localStorage only. A saved `filter` from before Needs you is dropped. */
 export const clientPreferencesSchema = z.object({
-  filter: z.enum(["all", "attention"]).catch("all"),
   density: z.enum(["compact", "comfortable"]).catch("compact"),
 });
 export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
@@ -225,5 +224,5 @@ export const BB_PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1"
 
 export function parseClientPreferences(raw: unknown): ClientPreferences {
   const result = clientPreferencesSchema.safeParse(raw ?? {});
-  return result.success ? result.data : { filter: "all", density: "compact" };
+  return result.success ? result.data : { density: "compact" };
 }
