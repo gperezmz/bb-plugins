@@ -97,7 +97,7 @@ export function stateSince(
   const at =
     kind === "working"
       ? stamps.startedAt[threadId]
-      : kind === "needs-you"
+      : kind === "waits-on-you"
         ? stamps.pendingAt[threadId]
         : kind === "idle" || kind === "unread" || kind === "failed"
           ? stamps.finishedAt[threadId]

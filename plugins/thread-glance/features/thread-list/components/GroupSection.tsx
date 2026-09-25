@@ -1,5 +1,5 @@
 // A top-level group: its header with counters, and its rows, windowed
-// in chunks.
+// in chunks; and the Needs you section above every group.
 import { memo, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import type { GroupView, Row } from "../model/view";
+import { NEEDS_YOU_GROUP_ID, type GroupView, type NeedsYouView, type Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
-import { EmptyRowView, EnvironmentRowView, OlderRowView } from "./FoldRows";
+import { EnvironmentRowView, LeftOutRowView, OlderRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
@@ -44,8 +44,7 @@ export interface GroupController {
 export type DropStates = ReadonlyMap<string, "valid" | "blocked" | "unchanged" | "before" | "after">;
 
 /** The sticky toolbar's height; headers stick below it. */
-export const TOOLBAR_HEIGHT = 32;
-const HEADER_HEIGHT = 28;
+export const TOOLBAR_HEIGHT = 28;
 const ROW_HEIGHT = { compact: 28, comfortable: 44 };
 
 function canRename(group: GroupView): boolean {
@@ -267,38 +266,107 @@ function WindowedChunk({
   );
 }
 
-export const GroupSection = memo(function GroupSection({
-  group,
-  rowController,
-  groupController,
-  environmentProviders,
-  dropStates,
-  dropTargetGroupId,
-  activeThreadId,
-  editingId,
-  now,
-  stamps,
-  inOverflow = false,
-}: {
-  group: GroupView;
+interface RowsProps {
+  rows: readonly Row[];
+  /** The group the rows are drawn in, for drag ids. */
+  groupId: string;
+  inPinned: boolean;
+  /** Mount every chunk, whatever is on screen (the More popover). */
+  forceMount: boolean;
   rowController: RowController;
-  groupController: GroupController;
   environmentProviders: readonly PluginEnvironmentProvider[];
   dropStates: DropStates;
-  dropTargetGroupId: string | null;
   activeThreadId: string | null;
   editingId: string | null;
   now: number;
   /** Rows get their own stamps as props, so a stamp renders one row. */
   stamps: Stamps;
+}
+
+/** A group's rows, windowed in chunks. */
+function Rows({
+  rows: all,
+  groupId,
+  inPinned,
+  forceMount,
+  rowController,
+  environmentProviders,
+  dropStates,
+  activeThreadId,
+  editingId,
+  now,
+  stamps,
+}: RowsProps) {
+  const rowHeight = rowController.comfortable ? ROW_HEIGHT.comfortable : ROW_HEIGHT.compact;
+  return (
+    <div data-sidebar="group-content" className="flex w-full flex-col text-sm">
+      {chunk(all).map((rows) => (
+        <WindowedChunk
+          key={rowKey(rows[0]!)}
+          rows={rows}
+          rowHeight={rowHeight}
+          forceMount={
+            forceMount ||
+            rows.some(
+              (row) =>
+                row.type === "thread" &&
+                (row.info.thread.id === activeThreadId || row.info.thread.id === editingId),
+            )
+          }
+        >
+          {rows.map((row) =>
+            row.type === "thread" ? (
+              <ThreadRowView
+                key={row.key}
+                row={row}
+                controller={rowController}
+                groupId={groupId}
+                inPinned={inPinned}
+                dropState={dropStates.get(row.info.thread.id) ?? null}
+                active={row.info.thread.id === activeThreadId}
+                editing={row.info.thread.id === editingId}
+                now={now}
+                startedAt={stamps.startedAt[row.info.thread.id]}
+                finishedAt={stamps.finishedAt[row.info.thread.id]}
+                pendingAt={stamps.pendingAt[row.info.thread.id]}
+              />
+            ) : row.type === "older" ? (
+              <OlderRowView key={row.key} row={row} controller={rowController} />
+            ) : row.type === "left-out" ? (
+              <LeftOutRowView key={row.key} row={row} />
+            ) : (
+              <EnvironmentRowView
+                key={row.key}
+                row={row}
+                controller={rowController}
+                environmentProviders={environmentProviders}
+              />
+            ),
+          )}
+        </WindowedChunk>
+      ))}
+    </div>
+  );
+}
+
+type SectionProps = Omit<RowsProps, "rows" | "groupId" | "inPinned" | "forceMount">;
+
+export const GroupSection = memo(function GroupSection({
+  group,
+  groupController,
+  dropTargetGroupId,
+  inOverflow = false,
+  ...rest
+}: SectionProps & {
+  group: GroupView;
+  groupController: GroupController;
+  dropTargetGroupId: string | null;
   inOverflow?: boolean;
 }) {
   const droppable = useDroppable({
     id: `drop-group:${group.descriptor.id}`,
     data: { kind: "group", groupId: group.descriptor.id },
   });
-  const rowHeight = rowController.comfortable ? ROW_HEIGHT.comfortable : ROW_HEIGHT.compact;
-  const inPinned = group.descriptor.id === "pinned";
   return (
     <section
       ref={droppable.setNodeRef}
@@ -314,57 +382,38 @@ export const GroupSection = memo(function GroupSection({
         dropActive={dropTargetGroupId === group.descriptor.id}
       />
       {group.collapsed ? null : group.rows.length === 0 ? (
-        <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p>
+        // A group whose every family sits in Needs you draws only its header.
+        group.rootIds.length === 0 ? <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p> : null
       ) : (
-        <div data-sidebar="group-content" className="flex w-full flex-col text-sm">
-          {chunk(group.rows).map((rows) => (
-            <WindowedChunk
-              key={rowKey(rows[0]!)}
-              rows={rows}
-              rowHeight={rowHeight}
-              forceMount={
-                inOverflow ||
-                rows.some(
-                  (row) =>
-                    row.type === "thread" &&
-                    (row.info.thread.id === activeThreadId || row.info.thread.id === editingId),
-                )
-              }
-            >
-              {rows.map((row) =>
-                row.type === "thread" ? (
-                  <ThreadRowView
-                    key={row.key}
-                    row={row}
-                    controller={rowController}
-                    groupId={group.descriptor.id}
-                    inPinned={inPinned}
-                    dropState={dropStates.get(row.info.thread.id) ?? null}
-                    stickyTop={row.stickyLevel !== null ? TOOLBAR_HEIGHT + HEADER_HEIGHT + row.stickyLevel * rowHeight : null}
-                    active={row.info.thread.id === activeThreadId}
-                    editing={row.info.thread.id === editingId}
-                    now={now}
-                    startedAt={stamps.startedAt[row.info.thread.id]}
-                    finishedAt={stamps.finishedAt[row.info.thread.id]}
-                    pendingAt={stamps.pendingAt[row.info.thread.id]}
-                  />
-                ) : row.type === "older" ? (
-                  <OlderRowView key={row.key} row={row} controller={rowController} />
-                ) : row.type === "empty" ? (
-                  <EmptyRowView key={row.key} row={row} controller={rowController} />
-                ) : (
-                  <EnvironmentRowView
-                    key={row.key}
-                    row={row}
-                    controller={rowController}
-                    environmentProviders={environmentProviders}
-                  />
-                ),
-              )}
-            </WindowedChunk>
-          ))}
-        </div>
+        <Rows
+          {...rest}
+          rows={group.rows}
+          groupId={group.descriptor.id}
+          inPinned={group.descriptor.id === "pinned"}
+          forceMount={inOverflow}
+        />
       )}
+    </section>
+  );
+});
+
+/**
+ * The Needs you section: a header with its family count, then its rows. It
+ * has no collapse, menu or drag, and no drop target of its own.
+ */
+export const NeedsYouSection = memo(function NeedsYouSection({ view, ...rest }: SectionProps & { view: NeedsYouView }) {
+  return (
+    <section aria-label="Needs you" className="relative flex w-full min-w-0 flex-col">
+      <h2
+        style={{ top: TOOLBAR_HEIGHT }}
+        className="sticky z-20 flex h-7 items-center gap-1 bg-sidebar pl-2 pr-2 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
+      >
+        <span className="min-w-0 flex-1 truncate">Needs you</span>
+        <span className="tabular-nums" aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}>
+          {view.familyCount}
+        </span>
+      </h2>
+      <Rows {...rest} rows={view.rows} groupId={NEEDS_YOU_GROUP_ID} inPinned={false} forceMount={false} />
     </section>
   );
 });

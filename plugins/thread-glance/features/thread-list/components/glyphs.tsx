@@ -101,7 +101,7 @@ const COUNTER_ITEMS: readonly {
   flag: Flag;
   label: (count: number) => string;
 }[] = [
-  { key: "needsYou", flag: "needs-you", label: (n) => `${n} need${n === 1 ? "s" : ""} you` },
+  { key: "waitsOnYou", flag: "waits-on-you", label: (n) => `${n} need${n === 1 ? "s" : ""} you` },
   { key: "failed", flag: "unread-failed", label: (n) => `${n} failed` },
   { key: "offline", flag: "offline", label: (n) => `${n} waiting for an offline machine` },
   { key: "working", flag: "working", label: (n) => `${n} working` },

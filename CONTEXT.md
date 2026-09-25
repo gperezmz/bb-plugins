@@ -10,6 +10,10 @@ Plugins that extend bb, the agentic IDE, and the words they share.
 The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. A family leaves it once nothing in it needs you and you have opened another thread.
 _Avoid_: Needs attention, inbox, attention filter
 
+**Home group**:
+The group a thread family is listed in when it is not in Needs you: its project, custom section, machine, Pinned or Threads.
+_Avoid_: Source group, original group
+
 **Parent thread**:
 The thread that spawned a child thread.
 _Avoid_: Manager, owner

@@ -3,7 +3,7 @@ import type { Family, ThreadInfo } from "./families";
 import type { StateKind } from "./state";
 
 const SUMMARY_ORDER: readonly [StateKind, string][] = [
-  ["needs-you", "needing you"],
+  ["waits-on-you", "needing you"],
   ["failed", "failed"],
   ["queue-failed", "queue failed"],
   ["offline", "offline"],
@@ -61,7 +61,7 @@ export function sinceLabel(kind: string, since: string | null): string | null {
     case "working":
     case "background":
       return `started ${ago}`;
-    case "needs-you":
+    case "waits-on-you":
       return `waiting since ${ago}`;
     case "failed":
       return `failed ${ago}`;

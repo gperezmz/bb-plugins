@@ -54,7 +54,7 @@ function render() {
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
       rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), nesting: "tree", foldOlder: false } }),
+        listPreferences: () => ({ preferences: { ...defaultPreferences(), expandedChildren: ["p"], foldOlder: false } }),
         setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
         resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
         importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),

@@ -1,6 +1,5 @@
 // The guide rails of a nested row: one hairline per nesting level,
 // drawn inside the row so they join up from row to row.
-import type { Nesting } from "@/shared/preferences";
 import { railLeft, type Rail } from "../model/layout";
 
 // `start` begins just under the 16px status slot, which is centred in the row.
@@ -10,7 +9,7 @@ const SPAN: Record<Rail, { top: string; bottom: string }> = {
   end: { top: "0px", bottom: "50%" },
 };
 
-export function RowRails({ rails, nesting }: { rails: readonly (Rail | null)[]; nesting: Nesting }) {
+export function RowRails({ rails }: { rails: readonly (Rail | null)[] }) {
   if (rails.every((rail) => rail === null)) return null;
   return (
     <span aria-hidden data-rails="" className="pointer-events-none absolute inset-0">
@@ -19,7 +18,7 @@ export function RowRails({ rails, nesting }: { rails: readonly (Rail | null)[]; 
           <span
             key={level}
             className="absolute w-px bg-border"
-            style={{ left: railLeft(level, nesting), ...SPAN[rail] }}
+            style={{ left: railLeft(level), ...SPAN[rail] }}
           />
         ),
       )}

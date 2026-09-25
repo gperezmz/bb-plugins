@@ -6,7 +6,7 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { buildForest, type Forest } from "../model/families";
-import { buildListView, type ListFilter, type ListView } from "../model/view";
+import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
 
 export const T0 = 1_780_000_000_000;
@@ -107,8 +107,8 @@ export interface Scenario {
   projects?: PluginSidebarProject[];
   sections?: PluginSidebarSection[];
   prefs?: Partial<Preferences>;
-  filter?: ListFilter;
   activeThreadId?: string | null;
+  heldRootId?: string | null;
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -140,23 +140,32 @@ export function viewOf(scenario: Scenario): ListView {
     projects: scenario.projects ?? PROJECTS,
     sections: scenario.sections ?? [],
     prefs: { ...defaultPreferences(), ...scenario.prefs },
-    filter: scenario.filter ?? "all",
     activeThreadId: scenario.activeThreadId ?? null,
+    heldRootId: scenario.heldRootId ?? null,
     targets: scenario.targets ?? new Map(),
   });
+}
+
+function idsOf(rows: readonly Row[]): string[] {
+  return rows.map((row) =>
+    row.type === "thread"
+      ? row.info.thread.id
+      : row.type === "older"
+        ? `older:${row.count}`
+        : row.type === "left-out"
+          ? `+${row.count}`
+          : `env:${row.environmentId}`,
+  );
 }
 
 /** Thread ids in the group's rows, in order; older rows as `older:N`. */
 export function rowIds(view: ListView, groupId: string): string[] {
   const group = [...view.groups, ...view.more].find((candidate) => candidate.descriptor.id === groupId);
   if (group === undefined) throw new Error(`no group ${groupId}`);
-  return group.rows.map((row) =>
-    row.type === "thread"
-      ? row.info.thread.id
-      : row.type === "older"
-        ? `older:${row.count}`
-        : row.type === "empty"
-          ? `empty:${row.scopeId}`
-          : `env:${row.environmentId}`,
-  );
+  return idsOf(group.rows);
+}
+
+/** Thread ids in Needs you, in order; "+N more" lines as `+N`. Empty when the section is absent. */
+export function needsYouIds(view: ListView): string[] {
+  return idsOf(view.needsYou?.rows ?? []);
 }

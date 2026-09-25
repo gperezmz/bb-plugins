@@ -1,5 +1,5 @@
-// The fold rows (`N older` on a group, `N more child threads` on a family)
-// and the environment folder row.
+// The fold rows (`N older` on a group, `N more child threads` on a family),
+// the "+N more" line in Needs you, and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
@@ -14,7 +14,7 @@ import { ICONS } from "../icons";
 import { RowRails } from "./Rails";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import { EMPTY_LEVEL_TEXT, type EmptyRow, type EnvironmentRow, type OlderRow } from "../model/view";
+import type { EnvironmentRow, LeftOutRow, OlderRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
@@ -35,9 +35,9 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
         "relative flex w-full items-center rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         inFamily ? "h-7 gap-1.5 max-md:pointer-coarse:h-9" : "h-6 gap-1",
       )}
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) + (inFamily ? 0 : 2) }}
+      style={{ paddingLeft: rowIndent(row.depth) + (inFamily ? 0 : 2) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       {inFamily ? (
         <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
           <Icon name={ICONS.more} className="size-3.5" />
@@ -50,16 +50,17 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** A plain line under an opened chip that Needs attention leaves empty; not a control. */
-export const EmptyRowView = memo(function EmptyRowView({ row, controller }: { row: EmptyRow; controller: RowController }) {
+/** The "+N more" line under a family in Needs you: a count, not a control. */
+export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftOutRow }) {
+  const noun = row.count === 1 ? "child thread" : "child threads";
   return (
     <div
-      className="relative flex h-7 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground max-md:pointer-coarse:h-9"
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) }}
+      className="relative flex h-6 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground"
+      style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       <span aria-hidden className="size-4 shrink-0" />
-      <span>{EMPTY_LEVEL_TEXT}</span>
+      <span title={`${row.count} more ${noun}`}>+{row.count} more</span>
     </div>
   );
 });
@@ -81,9 +82,9 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
   return (
     <div
       className="group/row relative flex h-7 w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent"
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) }}
+      style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       <button
         type="button"
         aria-expanded={!row.collapsed}

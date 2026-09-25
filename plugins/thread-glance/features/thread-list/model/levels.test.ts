@@ -12,13 +12,13 @@ const depths = (view: ListView) =>
   rowsOf(view).map((row) =>
     row.type === "thread" ? `${row.info.thread.id}@${row.depth}` : row.type === "older"
         ? `older:${row.count}@${row.depth}`
-        : row.type === "empty"
-          ? `empty@${row.depth}`
+        : row.type === "left-out"
+          ? `more:${row.count}@${row.depth}`
           : `env@${row.depth}`,
   );
 
 describe("per-level folding", () => {
-  // A manager with one busy child that has three reviewers under it, and four quiet children.
+  // A parent with one busy child that has three reviewers under it, and four quiet children.
   const quiet = ["a", "b", "c", "d"].map((id, n) => makeThread({ id, parentThreadId: "m", createdAt: T0 + 1 + n }));
   const reviewers = ["r1", "r2", "r3"].map((id, n) =>
     makeThread({ id, parentThreadId: "fix", createdAt: T0 + 10 + n }),
@@ -30,7 +30,7 @@ describe("per-level folding", () => {
     ...reviewers,
   ];
 
-  it("shows the manager's direct children only, so reviewers never take their slots", () => {
+  it("shows the parent's direct children only, so reviewers never take their slots", () => {
     const view = viewOf({ threads, prefs: { expandedChildren: ["m"] } });
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "older:1@1"]);
     const fix = rowsOf(view).find((row): row is ThreadRow => row.type === "thread" && row.info.thread.id === "fix");
@@ -60,15 +60,15 @@ describe("per-level folding", () => {
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "s3@2", "s4@2", "s5@2", "older:3@2", "older:1@1"]);
     const fold = rowsOf(view).find((row): row is OlderRow => row.type === "older" && row.depth === 2)!;
     expect(fold).toMatchObject({ scope: "family", scopeId: "fix" });
-    // The rail of the child level runs through its fold row and stops there; the manager's carries on.
+    // The rail of the child level runs through its fold row and stops there; the parent's carries on.
     expect(fold.rails).toEqual(["full", "end", null]);
   });
 
-  it("opens the level on the way to a question, keeping every ancestor and saying what it left out", () => {
+  it("opens the level on the way to a revealed thread, keeping every ancestor and saying what it left out", () => {
     const withQuestion = [
       makeThread({ id: "m" }),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
-      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2, hasPendingInteraction: true }),
+      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2 }),
       makeThread({ id: "h", parentThreadId: "c", createdAt: T0 + 3 }),
     ];
     const view = viewOf({
@@ -91,29 +91,6 @@ describe("per-level folding", () => {
       targets: new Map([["g", "reveal" as const]]),
     });
     expect(rowIds(view, "project:proj_a")).toEqual(["m", "c", "g"]);
-  });
-});
-
-describe("an opened chip that Needs attention empties", () => {
-  const threads = [
-    makeThread({ id: "m", hasPendingInteraction: true }),
-    makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
-  ];
-  it("says so under the chip, at child indent, when the family opened it", () => {
-    const view = viewOf({ threads, filter: "attention", prefs: { expandedChildren: ["m"] } });
-    expect(depths(view)).toEqual(["m@0", "empty@1"]);
-    expect(rowsOf(view).at(-1)?.rails).toEqual(["end", null]);
-  });
-  it("leaves a chip nobody opened alone, and shows the children once one needs attention", () => {
-    expect(depths(viewOf({ threads, filter: "attention" }))).toEqual(["m@0"]);
-    const blocked = threads.map((t) => (t.id === "c" ? { ...t, hasPendingInteraction: true } : t));
-    expect(depths(viewOf({ threads: blocked, filter: "attention", prefs: { expandedChildren: ["m"] } }))).toEqual(["m@0", "c@1"]);
-  });
-  it("draws a tree chip closed when nothing is under it", () => {
-    const view = viewOf({ threads, filter: "attention", prefs: { nesting: "tree" } });
-    const root = rowsOf(view).find((row): row is ThreadRow => row.type === "thread")!;
-    expect(root.chip).toMatchObject({ expanded: false });
-    expect(rowsOf(view)).toHaveLength(1);
   });
 });
 
@@ -155,7 +132,7 @@ describe("a grandchild never shows without its parent (property)", () => {
     return { threads, ids: threads.map((thread) => thread.id) };
   }
 
-  it("holds for random forests, folds, filters, settings, open threads and reveals", () => {
+  it("holds for random forests, folds, settings, open threads, holds and reveals, and draws each thread once", () => {
     let checked = 0;
     for (let seed = 1; seed <= 400; seed += 1) {
       const next = random(seed);
@@ -165,7 +142,7 @@ describe("a grandchild never shows without its parent (property)", () => {
       const view = viewOf({
         threads,
         activeThreadId: active,
-        filter: next() < 0.4 ? "attention" : "all",
+        heldRootId: next() < 0.3 ? ids[Math.floor(next() * ids.length)]! : null,
         prefs: {
           expandedChildren: pick(),
           expandedOlder: pick(),
@@ -174,10 +151,13 @@ describe("a grandchild never shows without its parent (property)", () => {
         },
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
-      for (const group of [...view.groups, ...view.more]) {
+      const drawn = new Set<string>();
+      for (const rows of [view.needsYou?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
         const seen: ThreadRow[] = [];
-        for (const row of group.rows) {
+        for (const row of rows) {
           if (row.type !== "thread") continue;
+          expect(drawn.has(row.info.thread.id), `seed ${seed}: ${row.info.thread.id} is drawn twice`).toBe(false);
+          drawn.add(row.info.thread.id);
           if (row.depth > 0) {
             // The row above it one level up must be its parent, the same family and group.
             const above = [...seen].reverse().find((candidate) => candidate.depth < row.depth);

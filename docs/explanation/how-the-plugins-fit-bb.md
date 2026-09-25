@@ -38,15 +38,15 @@ All four rely on plugin APIs that bb marks experimental, and are built against b
 
 A **harness** is the coding agent a thread runs on, such as Claude Code, Codex, pi or Cursor; bb calls it the thread's provider.
 
-A **child thread** is one another thread spawned: bb records the spawner as its parent. The spawner is its **manager**. A thread with no parent is a **root**. A thread's **family** is the thread and every thread under it: its children, their children, and so on.
+A **child thread** is one another thread spawned: bb records the spawner as its **parent thread**. A thread with no parent is a **root**. A thread's **family** is the thread and every thread under it: its children, their children, and so on.
 
-Thread Glance lists a root's family together, so one busy manager does not push other work off the screen. Thread Usage adds up a family's cost, so a manager's figure includes what its workers spent. A **fork** (a thread started from another thread's history, side chats included) is not a child and is not in the family: bb records it as a copy, not as delegated work.
+Thread Glance lists a root's family together, so one busy parent thread does not push other work off the screen. Thread Usage adds up a family's cost, so a parent thread's figure includes what its workers spent. A **fork** (a thread started from another thread's history, side chats included) is not a child and is not in the family: bb records it as a copy, not as delegated work.
 
 ## What each plugin stores
 
 | Plugin | Where | What |
 |---|---|---|
-| Thread Glance | The plugin's key-value store on the server; the browser's `localStorage` for filter and density | Layout preferences, per-thread time stamps, and a short note per thread: what it asks, what failed, or its last reply |
+| Thread Glance | The plugin's key-value store on the server; the browser's `localStorage` for density | Layout preferences, per-thread time stamps, and a short note per thread: what it asks, what failed, or its last reply |
 | Thread Usage | `<data dir>/plugins/thread-usage/data.db` (SQLite) | Turn records, gateway rows, harness-log entries, the thread tree |
 | Team Onboarding | The plugin's storage on the server; `<data dir>/skills`; files on each machine it fixed | Results by category, approvals, which skill folders it installed |
 | OpenAI-compatible inference | `<data dir>/plugins/openai-inference/host-data/`, readable only by bb's user | `endpoints.json`, a copy of its endpoints, keys included, for the host entry; `learned-fields.json`, the request fields each endpoint refused |

@@ -81,7 +81,6 @@ export interface ThreadRowViewProps {
   inPinned: boolean;
   /** Drop feedback from the list's drag state. */
   dropState: "valid" | "blocked" | "unchanged" | "before" | "after" | null;
-  stickyTop: number | null;
   /** The open thread is this one. */
   active: boolean;
   /** Its title is being renamed. */
@@ -100,7 +99,6 @@ export const ThreadRowView = memo(function ThreadRowView({
   groupId,
   inPinned,
   dropState,
-  stickyTop,
   active: isActive,
   editing,
   now,
@@ -165,7 +163,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           finishedAt: finishedAt === undefined ? {} : { [thread.id]: finishedAt },
         },
         now,
-        info.state.kind === "needs-you" ? (pendingAt ?? null) : undefined,
+        info.state.kind === "waits-on-you" ? (pendingAt ?? null) : undefined,
       );
   const menuItems = rowMenuItems({
     thread,
@@ -292,7 +290,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     : {};
 
   const chip = row.chip;
-  const indent = rowIndent(row.depth, controller.nesting);
+  const indent = rowIndent(row.depth);
   const title = titleTreatment(row.depth, { unread: info.unread, active: isActive });
   const twoLines = controller.comfortable || info.note !== null;
   // A parent keeps full colour so its children read as the quieter ones.
@@ -342,10 +340,8 @@ export const ThreadRowView = memo(function ThreadRowView({
         dropState === "blocked" && "ring-1 ring-inset ring-destructive/60",
         dropState === "before" && "shadow-[inset_0_2px_0_0_var(--sidebar-ring)]",
         dropState === "after" && "shadow-[inset_0_-2px_0_0_var(--sidebar-ring)]",
-        stickyTop !== null && "sticky z-10 bg-sidebar",
-        stickyTop !== null && isActive && "bg-state-active",
       )}
-      style={{ paddingLeft: indent, top: stickyTop ?? undefined }}
+      style={{ paddingLeft: indent }}
     >
       <a
         ref={anchor}
@@ -363,7 +359,7 @@ export const ThreadRowView = memo(function ThreadRowView({
         }}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">{stateSlot}</span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
@@ -490,7 +486,14 @@ export const ThreadRowView = memo(function ThreadRowView({
             </kbd>
           ) : (
             <>
-              {time !== null ? (
+              {row.homeGroupLabel !== null ? (
+                <span
+                  title={`In ${row.homeGroupLabel}`}
+                  className={cn("pointer-events-none max-w-24 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
+                >
+                  {row.homeGroupLabel}
+                </span>
+              ) : time !== null ? (
                 <span
                   title={time.label}
                   aria-label={time.label}

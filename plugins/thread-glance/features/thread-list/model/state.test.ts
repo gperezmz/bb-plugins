@@ -20,9 +20,9 @@ function stateOf(overrides: Parameters<typeof makeThread>[0], inputs: Partial<St
 }
 
 describe("computeState (first match wins)", () => {
-  it("1 needs-you outranks everything", () => {
+  it("1 waits-on-you outranks everything", () => {
     const state = stateOf({ id: "t", hasPendingInteraction: true, ...working, status: "error" });
-    expect(state).toMatchObject({ kind: "needs-you", glyph: { icon: "CircleQuestion", tone: "attention" } });
+    expect(state).toMatchObject({ kind: "waits-on-you", glyph: { icon: "CircleQuestion", tone: "attention" } });
   });
   it("2 failed while status is error, read or not", () => {
     expect(stateOf({ id: "t", status: "error" }).glyph).toMatchObject({ icon: "CircleX", tone: "destructive" });
@@ -105,7 +105,7 @@ describe("computeState (first match wins)", () => {
 
 describe("plugin row status", () => {
   const status = { icon: "Zap", label: "Custom" };
-  it("never replaces needs-you, failed or the plain spinner", () => {
+  it("never replaces waits-on-you, failed or the plain spinner", () => {
     expect(pluginStatusWins(stateOf({ id: "t", hasPendingInteraction: true }), status)).toBe(false);
     expect(pluginStatusWins(stateOf({ id: "t", status: "error" }), status)).toBe(false);
     expect(pluginStatusWins(stateOf({ id: "t", ...working }), status)).toBe(false);
@@ -145,7 +145,7 @@ describe("unread", () => {
 describe("flags", () => {
   it("are independent of the first-match state", () => {
     const flags = threadFlags(makeThread({ id: "t", hasPendingInteraction: true, ...working }), false);
-    expect([...flags].sort()).toEqual(["needs-you", "working"]);
+    expect([...flags].sort()).toEqual(["waits-on-you", "working"]);
   });
   it("unread-failed needs both error and unread", () => {
     expect(threadFlags(makeThread({ id: "t", status: "error" }), false).has("unread-failed")).toBe(false);

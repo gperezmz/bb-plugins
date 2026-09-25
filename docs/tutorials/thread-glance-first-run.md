@@ -39,14 +39,16 @@ Click the chip. The child's row opens under the parent, slightly indented, on a 
 
 When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's chip does not turn urgent, because the parent is the one waiting for that result.
 
-When the parent finishes, its row shows the dot and a bold title, and it moves to the top of its group. Open it, and the dot goes.
+When the parent finishes, its row shows the dot and a bold title.
 
-## 5. Filter to what needs you
+## 5. See what needs you
 
-Click **Needs attention** above the list. Only threads that wait on you, failed, lost their machine or finished unread stay. Your finished child is not among them: [what "needs attention" means](../explanation/thread-glance-attention.md) explains why. Click **All** to go back.
+When the parent finished unread, its family moved into **Needs you**, the section at the top of the list, and left its project's group. Your finished child did not bring it there: [what "Needs you" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
+
+Open the parent. The family stays in the section while you read it. Open a thread outside it, and the family goes back to its project.
 
 ## 6. Change a setting
 
-Click the gear at the top of the list, open **Display**, and set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
+Click the gear at the top of the list, and under **Rows** set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
 
-You have installed Thread Glance, read its rows and chips, and used its filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
+You have installed Thread Glance, read its rows and chips, and watched a family move through Needs you. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.

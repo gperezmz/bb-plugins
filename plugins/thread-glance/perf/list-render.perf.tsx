@@ -196,9 +196,8 @@ function median(values: number[]): number {
 
 const SCENARIOS: Record<string, Partial<Preferences>> = {
   // Every thread drawn: archived shown, nothing collapsed or folded.
-  "all-expanded-tree": {
+  "all-expanded": {
     threadLifecycles: ["active", "archived"],
-    nesting: "tree",
     foldOlder: false,
     collapsedSections: [],
     collapsedProjects: [],
@@ -207,7 +206,6 @@ const SCENARIOS: Record<string, Partial<Preferences>> = {
   "folded-archived": {
     threadLifecycles: ["active", "archived"],
     organizationMode: "project",
-    nesting: "folded",
     foldOlder: true,
     collapsedSections: ["threads"],
     collapsedProjects: [],
@@ -386,7 +384,7 @@ describe.skipIf(!SNAPSHOT)("list model cost over a real snapshot", () => {
           childAttention: preferences.childAttention,
         });
         const b = performance.now();
-        buildListView({ forest, threads, projects, sections: [], prefs: preferences, filter: "all", activeThreadId: null, targets: new Map() });
+        buildListView({ forest, threads, projects, sections: [], prefs: preferences, activeThreadId: null, heldRootId: null, targets: new Map() });
         const c = performance.now();
         forestMs.push(b - a);
         viewMs.push(c - b);

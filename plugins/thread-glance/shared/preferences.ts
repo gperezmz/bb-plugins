@@ -9,7 +9,6 @@ const idListSchema = z.array(idSchema).max(MAX_ITEMS);
 export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
 export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
 export const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
-export const nestingSchema = z.enum(["folded", "tree"]);
 export const lifecycleSchema = z.enum(["active", "archived"]);
 export const harnessIconSchema = z.enum(["muted", "colour", "hidden"]);
 export const childAttentionSchema = z.enum(["blocked", "everything"]);
@@ -22,7 +21,6 @@ const hiddenGroupsSchema = z
 export type OrganizationMode = z.infer<typeof organizationModeSchema>;
 export type SortField = z.infer<typeof sortFieldSchema>;
 export type SortDirection = z.infer<typeof sortDirectionSchema>;
-export type Nesting = z.infer<typeof nestingSchema>;
 export type Lifecycle = z.infer<typeof lifecycleSchema>;
 export type HarnessIcon = z.infer<typeof harnessIconSchema>;
 export type ChildAttention = z.infer<typeof childAttentionSchema>;
@@ -50,7 +48,7 @@ export const PREFERENCES = {
       .max(2)
       .refine((values) => new Set(values).size === values.length, "Lifecycles must be unique"),
     ["active"] as Lifecycle[],
-    "Thread lifecycles shown: active, archived, or both. At least one is required.",
+    "Threads shown: [\"active\"], [\"archived\"] or both. At least one is required.",
   ),
   organizationMode: define(
     organizationModeSchema,
@@ -60,7 +58,7 @@ export const PREFERENCES = {
   environmentGrouping: define(
     z.boolean(),
     false,
-    "Whether sibling threads sharing a worktree environment fold into a folder row.",
+    "Worktrees as folders: whether sibling threads sharing a worktree environment fold into a folder row.",
   ),
   chronologicalSort: define(
     sortFieldSchema,
@@ -70,7 +68,7 @@ export const PREFERENCES = {
   sortDirection: define(
     sortDirectionSchema,
     "default" as SortDirection,
-    "Sort direction; default keeps the field's natural direction.",
+    "Sort direction: ascending or descending. A saved default reads as the field's own direction (descending for dates, ascending for alpha).",
   ),
   sectionOrder: define(
     idListSchema,
@@ -109,20 +107,15 @@ export const PREFERENCES = {
     [] as string[],
     "Environment ids whose folder row is collapsed.",
   ),
-  nesting: define(
-    nestingSchema,
-    "folded" as Nesting,
-    "Child thread nesting: folded (one flat level behind a chip) or tree (bb's tree).",
-  ),
   foldOlder: define(
     z.boolean(),
     true,
-    "Whether quiet roots past the 5 most recent fold behind an N older row.",
+    "Collapse older threads: whether each group's quiet roots past its 5 newest fold behind an N older row.",
   ),
   workingFirst: define(
     z.boolean(),
     false,
-    "Whether working threads sort first under Updated, as bb's list does.",
+    "Working threads first: whether working threads sort first under Updated, as bb's list does.",
   ),
   expandedOlder: define(
     idListSchema,
@@ -132,18 +125,13 @@ export const PREFERENCES = {
   expandedChildren: define(
     idListSchema,
     [] as string[],
-    "Parent thread ids the user expanded (folded nesting).",
-  ),
-  collapsedChildren: define(
-    idListSchema,
-    [] as string[],
-    "Parent thread ids the user collapsed (tree nesting).",
+    "Parent thread ids whose chip the user opened.",
   ),
   showPullRequests: define(z.boolean(), true, "Whether rows show a pull request badge."),
   childAttention: define(
     childAttentionSchema,
     "blocked" as ChildAttention,
-    "Which child threads count under Needs attention, in badges and counters, and stay out of a family's fold along with running children: blocked (waiting on you, offline, or an orphaned failure) or everything (also every failed and unread child).",
+    "Needs you counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a family's older fold, as running ones do.",
   ),
   harnessIcon: define(
     harnessIconSchema,
@@ -207,7 +195,7 @@ export function coercePreferences(raw: unknown): Preferences {
 /**
  * Maps bb's own thread-list preferences onto ours for the first-run import
  *. `environmentGrouping: "auto"` becomes off, `collapsedThreads` is
- * skipped because it means the inverse of folded nesting, and invalid values
+ * skipped because it means the inverse of `expandedChildren`, and invalid values
  * are skipped. Returns only the keys that parsed.
  */
 export function mapBbPreferences(raw: unknown): Partial<Preferences> {
@@ -224,9 +212,8 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   return mapped as Partial<Preferences>;
 }
 
-/** Per-client preferences, kept in localStorage only. */
+/** Per-client preferences, kept in localStorage only. A saved `filter` from before Needs you is dropped. */
 export const clientPreferencesSchema = z.object({
-  filter: z.enum(["all", "attention"]).catch("all"),
   density: z.enum(["compact", "comfortable"]).catch("compact"),
 });
 export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
@@ -237,5 +224,5 @@ export const BB_PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1"
 
 export function parseClientPreferences(raw: unknown): ClientPreferences {
   const result = clientPreferencesSchema.safeParse(raw ?? {});
-  return result.success ? result.data : { filter: "all", density: "compact" };
+  return result.success ? result.data : { density: "compact" };
 }

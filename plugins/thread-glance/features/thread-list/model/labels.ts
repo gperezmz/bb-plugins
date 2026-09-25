@@ -12,7 +12,7 @@ export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   return base;
 }
 
-/** "Open Fix login — Working; Claude Code; child of Manager; unread". */
+/** "Open Fix login — Working; Claude Code; child of Release; unread". */
 export function rowAriaLabel(
   row: ThreadRow,
   options: { providerName: string; pluginLabel: string | null; hasDraft: boolean },
@@ -20,6 +20,7 @@ export function rowAriaLabel(
   const parts = [stateText(row, options.pluginLabel), options.providerName];
   if (row.parentTitle !== null && row.depth > 0) parts.push(`child of ${row.parentTitle}`);
   if (row.crossGroupLabel !== null) parts.push(row.crossGroupLabel.toLowerCase());
+  if (row.homeGroupLabel !== null) parts.push(`in ${row.homeGroupLabel}`);
   if (row.hiddenBadge) parts.push("hidden thread");
   if (row.info.unread && row.info.state.kind !== "unread") parts.push("unread");
   if (options.hasDraft && row.info.state.kind !== "draft") parts.push("unsubmitted draft");

@@ -23,12 +23,7 @@ function under(forest: Forest, parentId: string): (id: string) => boolean {
 export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): ToggleOutcome {
   const id = row.info.thread.id;
   const expanded = row.chip?.expanded ?? false;
-  if (prefs.nesting === "tree") {
-    return expanded
-      ? { patch: { collapsedChildren: [...without(prefs.collapsedChildren, id), id] }, drop: under(forest, id) }
-      : { patch: { collapsedChildren: without(prefs.collapsedChildren, id) }, drop: null };
-  }
-  // Folded: expanding shows every child; collapsing also drops auto-reveals.
+  // Expanding shows every child; collapsing also drops auto-reveals.
   return expanded
     ? { patch: { expandedChildren: without(prefs.expandedChildren, id) }, drop: under(forest, id) }
     : { patch: { expandedChildren: [...without(prefs.expandedChildren, id), id] }, drop: null };
@@ -46,7 +41,7 @@ export function toggleOlder(row: OlderRow, prefs: Preferences, group: GroupView 
   if (row.scope === "family") return { patch, drop: under(forest, row.scopeId) };
   // Folding a group's older roots drops the targets that held it open.
   const quietRoots = new Set<string>();
-  for (const family of forest.families) if (family.settled) quietRoots.add(family.root.thread.id);
+  for (const family of forest.families) if (family.quietIgnoringOpen) quietRoots.add(family.root.thread.id);
   const inGroup = new Set(group?.rootIds ?? []);
   return {
     patch,

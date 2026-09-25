@@ -38,15 +38,23 @@ export function effectiveSortField(field: SortField): Exclude<SortField, "none">
   return field === "none" ? "updated" : field;
 }
 
+/** A field's own direction: A–Z for names, newest first for dates. */
+export function naturalDirection(field: SortField): "ascending" | "descending" {
+  return effectiveSortField(field) === "alpha" ? "ascending" : "descending";
+}
+
+/** The direction the list is sorted in: a saved `default` reads as the field's own. */
+export function effectiveDirection(field: SortField, direction: SortDirection): "ascending" | "descending" {
+  return direction === "default" ? naturalDirection(field) : direction;
+}
+
 /**
- * The comparator for roots in a group. Direction follows bb: `default` keeps
- * the field's natural direction (ascending for alpha, descending otherwise).
- * Working first keeps active threads on top whatever the direction.
+ * The comparator for roots in a group. Working first keeps active threads on
+ * top whatever the direction.
  */
 export function makeComparator(options: SortOptions): (a: SortKey, b: SortKey) => number {
   const field = effectiveSortField(options.field);
-  const natural = field === "alpha" ? "ascending" : "descending";
-  const sign = options.direction === "default" || options.direction === natural ? 1 : -1;
+  const sign = effectiveDirection(field, options.direction) === naturalDirection(field) ? 1 : -1;
   const base = field === "alpha" ? byAlpha : field === "created" ? byCreated : byUpdated;
   return (a, b) => {
     if (field === "updated" && options.workingFirst) {
@@ -70,7 +78,7 @@ export function comparePinned(a: PluginSidebarThread, b: PluginSidebarThread): n
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** Children in Folded nesting: creation order. */
+/** Children under a chip: creation order. */
 export function compareCreationAscending(a: PluginSidebarThread, b: PluginSidebarThread): number {
   const diff = a.createdAt - b.createdAt;
   if (diff !== 0) return diff;

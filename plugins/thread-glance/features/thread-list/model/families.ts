@@ -12,13 +12,13 @@ import {
   type StateKind,
   type ThreadState,
 } from "./state";
-import { attentionFlagsOf, isOrphanedFailure } from "./attention";
+import { needsYouFlagsOf, isOrphanedFailure } from "./needs-you";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ChildAttention } from "@/shared/preferences";
 
-/** States that keep a child out of its family's fold with `childAttention` `blocked`: working, setting up, background work. */
+/** States that keep a child out of its family's older fold with `childAttention` `blocked`: working, setting up, background work. */
 const RUNNING: ReadonlySet<StateKind> = new Set<StateKind>(["working", "background"]);
 
 /** Everything the list knows about one thread. */
@@ -26,24 +26,24 @@ export interface ThreadInfo {
   thread: PluginSidebarThread;
   state: ThreadState;
   unread: boolean;
-  /** Own flags; for hidden threads only needs-you and unread-failed. */
+  /** Own flags; for hidden threads only waits-on-you and unread-failed. */
   flags: ReadonlySet<Flag>;
   /**
-   * The flags of this thread that count towards Needs attention, its
+   * The flags of this thread that make it need you, for Needs you, the
    * counters and auto-reveal: a child counts less than a root.
    */
-  attention: Set<Flag>;
+  needsYou: Set<Flag>;
   /** Quiet test for the thread alone. */
   quiet: boolean;
   /**
-   * Nothing to see behind a family's fold. A root, or any child when
-   * `childAttention` is `everything`: the quiet test without the open
-   * thread's exemption. Otherwise a child is settled unless it runs or
-   * counts towards Needs attention, so finishing unread folds it; an
-   * archived child is always settled. The fold
-   * reads this, so opening a thread never changes which children stay shown.
+   * A quiet thread, as if no thread were open: nothing to see behind a
+   * family's fold. A root, or any child when `childAttention` is
+   * `everything`, takes the quiet test without the open thread's exemption.
+   * Otherwise a child is quiet unless it runs or needs you, so finishing
+   * unread folds it; an archived child is always quiet. The fold reads this,
+   * so opening a thread never changes which children stay shown.
    */
-  settled: boolean;
+  quietIgnoringOpen: boolean;
   isActive: boolean;
   /** The visible ancestor it attaches to, or null for a root. */
   parentId: string | null;
@@ -55,35 +55,35 @@ export interface ThreadInfo {
 export interface Subtree {
   /** Descendants, depth-first in creation order, hidden ones included. */
   descendants: ThreadInfo[];
-  /** Union of the descendants' attention flags and working, archived ones left out. */
+  /** Union of the descendants' Needs you flags and working, archived ones left out. */
   flags: ReadonlySet<Flag>;
   /** Visible descendants: the chip's number. */
   visibleCount: number;
-  /** Every visible descendant is settled, so the subtree adds nothing to see when folded. */
-  settled: boolean;
+  /** Every visible descendant is quiet, as if no thread were open, so the subtree adds nothing to see when folded. */
+  quietIgnoringOpen: boolean;
 }
 
 export interface Family {
   root: ThreadInfo;
   /** Descendants, depth-first in creation order, hidden ones included. */
   descendants: ThreadInfo[];
-  /** Union of the descendants' attention flags and working (the chip rollup). */
+  /** Union of the descendants' Needs you flags and working (the chip rollup). */
   descendantFlags: ReadonlySet<Flag>;
   /** The same over root and descendants (rollup, folder rows). */
   flags: ReadonlySet<Flag>;
-  /** Attention flags over root and descendants: what the filter and the urgency order read. */
-  attentionFlags: ReadonlySet<Flag>;
+  /** Needs you flags over root and descendants: what the section and its order read. */
+  needsYouFlags: ReadonlySet<Flag>;
   /** Visible descendants: the chip's number. */
   visibleDescendantCount: number;
   /** Largest latestAttentionAt over the family. */
-  attention: number;
+  latestAttentionAt: number;
   /** Every thread quiet and the active thread not in it. */
   quiet: boolean;
   /**
    * The quiet test without the open thread's exemption. A group's fold reads
    * this, so opening a thread never changes which roots stay shown.
    */
-  settled: boolean;
+  quietIgnoringOpen: boolean;
   containsActive: boolean;
 }
 
@@ -104,7 +104,7 @@ export interface ForestInputs extends ThreadContext {
   now: number;
   /** Server notes per thread id; absent until loaded. */
   notes?: Readonly<Record<string, ThreadNotes>>;
-  /** Which children count towards Needs attention; `blocked` when absent. */
+  /** Which children can need you; `blocked` when absent. */
   childAttention?: ChildAttention;
 }
 
@@ -159,9 +159,9 @@ export function buildForest(inputs: ForestInputs): Forest {
       state,
       unread,
       flags: thread.isHidden ? hiddenThreadFlags(flags) : flags,
-      attention: new Set<Flag>(),
+      needsYou: new Set<Flag>(),
       quiet: isQuietThread(state, unread, isActive),
-      settled: false,
+      quietIgnoringOpen: false,
       isActive,
       parentId: attachParent(thread, byId),
       note: rowNote(thread, inputs.notes?.[thread.id]),
@@ -170,18 +170,18 @@ export function buildForest(inputs: ForestInputs): Forest {
 
   const mode = inputs.childAttention ?? "blocked";
   for (const info of infos.values()) {
-    const manager = info.parentId === null ? undefined : infos.get(info.parentId);
-    info.attention = attentionFlagsOf(info.flags, {
-      isRoot: manager === undefined,
+    const parent = info.parentId === null ? undefined : infos.get(info.parentId);
+    info.needsYou = needsYouFlagsOf(info.flags, {
+      isRoot: parent === undefined,
       mode,
       orphaned:
-        manager !== undefined &&
-        isOrphanedFailure(info.thread, info.flags, { ...manager, finishedAt: inputs.finishedAt[manager.thread.id] }),
+        parent !== undefined &&
+        isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
     });
-    info.settled =
-      manager === undefined || mode === "everything"
+    info.quietIgnoringOpen =
+      parent === undefined || mode === "everything"
         ? isQuietThread(info.state, info.unread, false)
-        : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.attention.size === 0);
+        : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.needsYou.size === 0);
   }
 
   const children = new Map<string, string[]>();
@@ -208,7 +208,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     const descendants: ThreadInfo[] = [];
     const flags = new Set<Flag>();
     let visibleCount = 0;
-    let settled = true;
+    let quietIgnoringOpen = true;
     path.add(id);
     for (const childId of children.get(id) ?? []) {
       if (path.has(childId)) continue;
@@ -216,17 +216,17 @@ export function buildForest(inputs: ForestInputs): Forest {
       const below = subtreeOf(childId, path);
       descendants.push(child, ...below.descendants);
       if (!child.thread.isArchived) {
-        for (const flag of child.attention) flags.add(flag);
+        for (const flag of child.needsYou) flags.add(flag);
         if (child.flags.has("working")) flags.add("working");
       }
       for (const flag of below.flags) flags.add(flag);
-      if (child.thread.isHidden ? child.attention.size > 0 : !child.settled) settled = false;
+      if (child.thread.isHidden ? child.needsYou.size > 0 : !child.quietIgnoringOpen) quietIgnoringOpen = false;
       if (!child.thread.isHidden) visibleCount += 1;
       visibleCount += below.visibleCount;
-      if (!below.settled) settled = false;
+      if (!below.quietIgnoringOpen) quietIgnoringOpen = false;
     }
     path.delete(id);
-    const subtree: Subtree = { descendants, flags, visibleCount, settled };
+    const subtree: Subtree = { descendants, flags, visibleCount, quietIgnoringOpen };
     subtrees.set(id, subtree);
     return subtree;
   };
@@ -236,27 +236,27 @@ export function buildForest(inputs: ForestInputs): Forest {
   const familyOf = new Map<string, Family>();
   for (const root of roots) {
     const { descendants, flags: descendantFlags, visibleCount: visibleDescendantCount } = subtrees.get(root.thread.id)!;
-    let attention = root.thread.latestAttentionAt;
+    let latestAttentionAt = root.thread.latestAttentionAt;
     let quiet = root.quiet;
-    let settled = isQuietThread(root.state, root.unread, false);
+    let quietIgnoringOpen = isQuietThread(root.state, root.unread, false);
     let containsActive = root.isActive;
-    const attentionFlags = new Set<Flag>();
+    const needsYouFlags = new Set<Flag>();
     for (const info of descendants) {
-      if (!info.thread.isArchived) for (const flag of info.attention) attentionFlags.add(flag);
-      attention = Math.max(attention, info.thread.latestAttentionAt);
+      if (!info.thread.isArchived) for (const flag of info.needsYou) needsYouFlags.add(flag);
+      latestAttentionAt = Math.max(latestAttentionAt, info.thread.latestAttentionAt);
       if (info.isActive) containsActive = true;
       if (info.thread.isHidden) {
-        if (info.attention.size > 0) quiet = settled = false;
+        if (info.needsYou.size > 0) quiet = quietIgnoringOpen = false;
       } else {
         if (!info.quiet) quiet = false;
-        if (!isQuietThread(info.state, info.unread, false)) settled = false;
+        if (!isQuietThread(info.state, info.unread, false)) quietIgnoringOpen = false;
       }
     }
     const flags = new Set<Flag>(descendantFlags);
     if (!root.thread.isArchived) {
-      for (const flag of root.attention) {
+      for (const flag of root.needsYou) {
         flags.add(flag);
-        attentionFlags.add(flag);
+        needsYouFlags.add(flag);
       }
       if (root.flags.has("working")) flags.add("working");
     }
@@ -265,11 +265,11 @@ export function buildForest(inputs: ForestInputs): Forest {
       descendants,
       descendantFlags,
       flags,
-      attentionFlags,
+      needsYouFlags,
       visibleDescendantCount,
-      attention,
+      latestAttentionAt,
       quiet: quiet && !containsActive,
-      settled,
+      quietIgnoringOpen,
       containsActive,
     };
     families.push(family);

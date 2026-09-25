@@ -4,7 +4,7 @@
 import { createContext } from "react";
 import type { PluginSidebarSection, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { Stamps } from "@/shared/contract";
-import type { HarnessIcon, Nesting, OrganizationMode } from "@/shared/preferences";
+import type { HarnessIcon, OrganizationMode } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
 import type { Family } from "../model/families";
 import type { RowMenuAction } from "../model/menu";
@@ -30,7 +30,6 @@ export interface RowController {
   provider(providerId: string): ProviderDisplay;
   sections: readonly PluginSidebarSection[];
   mode: OrganizationMode;
-  nesting: Nesting;
   onNavigate(): void;
   onToggleChip(row: ThreadRow): void;
   onToggleOlder(row: OlderRow): void;

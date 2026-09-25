@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, needsYouIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { visibleCounters } from "./counters";
 import { modelDisplayName, sinceLabel } from "./details";
 import { rowMenuItems } from "./menu";
@@ -19,7 +19,7 @@ describe("working is visible, background stays faint", () => {
   });
 });
 
-describe("needs-you kinds", () => {
+describe("what a thread waits on you for", () => {
   const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
   it.each([
     ["question", "CircleQuestion", "Asks a question"],
@@ -28,7 +28,7 @@ describe("needs-you kinds", () => {
     ["input", "MessageQuestion", "Needs your input"],
   ] as const)("%s draws %s in the attention tone", (needsKind, icon, label) => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), { ...base, needsKind });
-    expect(state).toMatchObject({ kind: "needs-you", label, glyph: { icon, tone: "attention" } });
+    expect(state).toMatchObject({ kind: "waits-on-you", label, glyph: { icon, tone: "attention" } });
   });
   it("without a note it keeps the question glyph", () => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), base);
@@ -37,7 +37,7 @@ describe("needs-you kinds", () => {
 });
 
 describe("row notes", () => {
-  it("say why a thread needs you or failed, and nothing otherwise", () => {
+  it("say why a thread waits on you or failed, and nothing otherwise", () => {
     expect(rowNote(makeThread({ id: "a", hasPendingInteraction: true }), { pending: note("question", "Tabs or spaces?") })).toEqual({
       prefix: "Asks",
       text: "Tabs or spaces?",
@@ -94,7 +94,7 @@ describe("hover card facts", () => {
   });
   it("names the time for each state", () => {
     expect(sinceLabel("working", "4m")).toBe("started 4m ago");
-    expect(sinceLabel("needs-you", "now")).toBe("waiting since just now");
+    expect(sinceLabel("waits-on-you", "now")).toBe("waiting since just now");
     expect(sinceLabel("idle", "2h")).toBe("finished 2h ago");
     expect(sinceLabel("idle", null)).toBeNull();
   });
@@ -105,26 +105,16 @@ describe("hover card facts", () => {
   });
 });
 
-describe("Needs attention order", () => {
-  it("puts needs-you first, then failed, then unread, whatever the recency", () => {
+describe("Needs you order", () => {
+  it("puts what waits on you first, then failed, then unread, whatever the recency", () => {
     const view = viewOf({
-      filter: "attention",
       threads: [
         makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 300 }),
         makeThread({ id: "f", ...failedUnread, latestAttentionAt: T0 + 200 }),
         makeThread({ id: "q", hasPendingInteraction: true, latestAttentionAt: T0 + 1 }),
       ],
     });
-    expect(rowIds(view, "project:proj_a")).toEqual(["q", "f", "u"]);
-  });
-  it("All keeps its stable order", () => {
-    const view = viewOf({
-      threads: [
-        makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 300 }),
-        makeThread({ id: "q", hasPendingInteraction: true, latestAttentionAt: T0 + 1 }),
-      ],
-    });
-    expect(rowIds(view, "project:proj_a")).toEqual(["u", "q"]);
+    expect(needsYouIds(view)).toEqual(["q", "f", "u"]);
   });
 });
 
@@ -145,7 +135,7 @@ describe("chip harnesses", () => {
 });
 
 describe("header counters", () => {
-  const counters = { needsYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
+  const counters = { waitsOnYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
   it("keep what needs action; working only when collapsed; unread only on More", () => {
     expect(visibleCounters(counters, { collapsed: false, more: false })).toEqual({ ...counters, working: 0, unread: 0 });
     expect(visibleCounters(counters, { collapsed: true, more: false })).toEqual({ ...counters, unread: 0 });
