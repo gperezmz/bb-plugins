@@ -23,6 +23,13 @@ on:
 permissions:
   contents: read
 
+# GitHub sometimes starts two runs for one tag push. Queue them per tag, so the
+# second finds the version already on npm and the release already made, and
+# skips both, instead of racing the first to publish.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
