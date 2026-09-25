@@ -105,15 +105,9 @@ bb plugin source "$id"
 plugin_status() {
   bb plugin list --json | jq -r --arg id "$id" '.plugins[] | select(.id == $id) | .status'
 }
+# The first load must succeed: no reload, so a plugin that outlasts bb's
+# 30-second load limit on a server that has just started fails here.
 status=$(plugin_status)
-# Thread Usage's first load on a server that has only just started can
-# outlast bb's 30-second limit, whichever source it came from; a reload
-# then loads it.
-if [[ $status == error ]] && bb plugin list | grep -q "^$id@.*load timed out"; then
-  echo "::warning::$id: its first load timed out on the new server; reloading it"
-  bb plugin reload "$id"
-  status=$(plugin_status)
-fi
 if [[ $status != running ]]; then
   echo "::error::$id: installed from npm but its status is '$status', not running" >&2
   bb plugin logs "$id" -n 50 >&2 || true
