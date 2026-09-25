@@ -4,7 +4,8 @@
 # proxies every other package to registry.npmjs.org), starts a bb server on a
 # temporary data directory, runs `bb plugin install npm:<name>@<version>`,
 # then fails unless the plugin is running and bb downloaded no build
-# toolchain, which it would only do to build the plugin itself.
+# toolchain, which it would only do to build the plugin itself. Then loads
+# the plugin from server.ts, as bb does after an upgrade, which must run too.
 # check-plugin.sh calls this; it needs node, npm and bb-app's `bb` and
 # `bb-server` on PATH, and touches no other bb.
 #
@@ -122,3 +123,32 @@ if [[ ${#toolchains[@]} -gt 0 ]]; then
   echo "::error::$id: bb downloaded a build toolchain, so it built the plugin instead of using the published dist/" >&2
   exit 1
 fi
+
+# After a bb upgrade that changes the plugin SDK version, bb ignores
+# dist/server.js and loads server.ts from source, which needs the packages
+# the server source imports. pack-npm.sh keeps only those in
+# `dependencies`, so load the plugin that way too: stamp another SDK version
+# on the installed bundle, then disable and enable the plugin.
+root=$(bb plugin list --json | jq -r --arg id "$id" '.plugins[] | select(.id == $id) | .rootDir')
+jq '.sdkVersion = "0.0.1" | .builtWith.pluginSdkVersion = "0.0.1"' "$root/dist/server.meta.json" > "$work/server.meta.json"
+cp "$work/server.meta.json" "$root/dist/server.meta.json"
+bb plugin disable "$id"
+bb plugin enable "$id"
+# bb writes its log a moment after `enable` returns.
+fallback="plugin $id: ignoring prebuilt dist/server.js (built with SDK 0.0.1,"
+for _ in $(seq 15); do
+  if grep -qF "$fallback" "$work/bb/logs/server-stdio.log"; then break; fi
+  sleep 1
+done
+if ! grep -qF "$fallback" "$work/bb/logs/server-stdio.log"; then
+  echo "::error::$id: bb did not fall back to server.ts, so the source load went untested" >&2
+  exit 1
+fi
+status=$(plugin_status)
+if [[ $status != running ]]; then
+  echo "::error::$id: loaded from server.ts, as after a bb upgrade, its status is '$status', not running; the npm package lacks a dependency the server source imports" >&2
+  bb plugin logs "$id" -n 50 >&2 || true
+  grep -F "$id" "$work/bb/logs/server-stdio.log" | tail -50 >&2 || true
+  exit 1
+fi
+echo "$id: running from server.ts"

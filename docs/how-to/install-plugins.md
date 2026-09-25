@@ -39,7 +39,7 @@ Each release is also published to npm as `@gperezmz/bb-plugin-<name>`, with its 
 bb plugin install 'npm:@gperezmz/bb-plugin-thread-glance@^0.1.0'
 ```
 
-bb installs the package and its runtime dependencies with its own copy of npm, and builds nothing. A `git:` install instead clones the repository, installs the plugin's dependencies and builds it on the server, which takes minutes on a small machine. A range such as `^0.1.0` tracks updates the way a `git:` range does; an exact version such as `@0.1.1` pins it.
+bb installs the package with its own copy of npm, and builds nothing. The package lists as dependencies only the few packages its server needs when bb loads it from source; the bundles hold the rest. A `git:` install instead clones the repository, installs the plugin's dependencies and builds it on the server, which takes minutes on a small machine. A range such as `^0.1.0` tracks updates the way a `git:` range does; an exact version such as `@0.1.1` pins it.
 
 A plugin already installed from `git:` moves to npm only by removing it first, which deletes its settings, as [Remove](#remove) says.
 

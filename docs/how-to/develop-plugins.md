@@ -38,7 +38,7 @@ scripts/ci/check-plugin.sh thread-glance git-install
 scripts/ci/check-plugin.sh thread-glance npm-install
 ```
 
-The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory; it fails unless the plugin runs and bb built nothing. It needs `bb-server` on your `PATH` too, and leaves your own bb alone.
+The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. It needs `bb-server` on your `PATH` too, and leaves your own bb alone.
 
 The repository-wide checks:
 
