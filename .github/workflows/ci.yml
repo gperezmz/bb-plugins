@@ -46,6 +46,11 @@ jobs:
               - .github/workflows/ci.yml
               - .github/actions/setup/**
               - scripts/ci/check-plugin.sh
+            openai-inference:
+              - plugins/openai-inference/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
 
   plugin:
     name: ${{ matrix.plugin }} (${{ matrix.mode }})

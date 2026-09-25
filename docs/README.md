@@ -1,6 +1,6 @@
 # bb plugins
 
-Three plugins for [bb](https://getbb.app), each showing something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need you and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Four plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need you and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -10,11 +10,14 @@ flowchart LR
     skills["bb's skill folder"]
     installed["Installed plugins"]
     ui["bb window: sidebar, thread header and panel, nav pages"]
+    helper["Helper completions: thread titles, commit messages"]
   end
   tg["Thread Glance"]
   tu["Thread Usage"]
   to["Team Onboarding"]
+  oi["OpenAI-compatible inference"]
   gateway["LiteLLM gateway, optional"]
+  localmodel["Local model server, optional"]
   logs["Harness session logs"]
   manifest["onboarding.yaml on the server"]
   events -->|state and timing of each thread| tg
@@ -28,14 +31,18 @@ flowchart LR
   to -->|team skills| skills
   to -->|approved plugins| installed
   to -->|Onboarding page| ui
+  helper --> oi
+  oi -->|chat completions| gateway
+  oi -->|chat completions| localmodel
 ```
 
 The pages each plugin's behaviour rests on:
 
-- [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md): where each part runs, what it stores, and the words shared by all three.
+- [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md): where each part runs, what it stores, and the words the plugins share.
 - [What "needs attention" means](explanation/thread-glance-attention.md) in Thread Glance.
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
+- [How a helper completion is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for JSON and for no reasoning.
 
 ## Map
 
@@ -44,6 +51,7 @@ The pages each plugin's behaviour rests on:
 - [Thread Glance: first run](tutorials/thread-glance-first-run.md)
 - [Thread Usage: first run](tutorials/thread-usage-first-run.md)
 - [Team Onboarding: first run and a first manifest](tutorials/team-onboarding-first-run.md)
+- [OpenAI-compatible inference: first run](tutorials/openai-inference-first-run.md)
 
 **How-to guides** do one job you already know you need.
 
@@ -54,6 +62,7 @@ The pages each plugin's behaviour rests on:
 - [Set price overrides and model aliases](how-to/thread-usage-set-prices.md)
 - [Provision a manifest from a machine bootstrap](how-to/team-onboarding-provision-manifest.md)
 - [Approve your team's commands](how-to/team-onboarding-approve-commands.md)
+- [Title threads with a local model](how-to/openai-inference-local-server.md)
 
 **Reference** lists every part, one entry each.
 
@@ -67,6 +76,7 @@ The pages each plugin's behaviour rests on:
 - [Team Onboarding: `bb team-onboarding`](reference/team-onboarding-cli.md)
 - [Team Onboarding: items, statuses and safe fixes](reference/team-onboarding-items.md)
 - [Team Onboarding: manifest](reference/team-onboarding-manifest.md)
+- [OpenAI-compatible inference: endpoints, settings and error codes](reference/openai-inference-settings.md)
 
 **Explanation** says why things work the way they do.
 
@@ -74,3 +84,4 @@ The pages each plugin's behaviour rests on:
 - [What "needs attention" means](explanation/thread-glance-attention.md)
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
+- [How a helper completion is sent](explanation/openai-inference-requests.md)
