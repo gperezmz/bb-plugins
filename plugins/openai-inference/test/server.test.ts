@@ -43,6 +43,16 @@ describe("server entry", () => {
     await stop();
   });
 
+  it("keeps a long URL's display name within bb's 64 characters", async () => {
+    const url = "http://a-long-machine-name.example-tailnet.ts.net:8083/v1";
+    const { harness, stop } = await start({ endpoints: `[{"id": "mac", "url": "${url}"}]` });
+    await expect.poll(() => serviceIds(harness)).toEqual(["mac"]);
+    const [service] = harness.inspection.registrations.aiServiceRegistrations;
+    expect(service.displayName.length).toBeLessThanOrEqual(64);
+    expect(service.displayName).toMatch(/^OpenAI-compatible endpoint at http:\/\/a-long-machine-name.*…$/);
+    await stop();
+  });
+
   it("registers no endpoint whose variables the host lacks, and logs why", async () => {
     const { harness, stop } = await start({ endpoints: `[${gatewayByReference}]` }, ["GATEWAY_URL"]);
     await expect
