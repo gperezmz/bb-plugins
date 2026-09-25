@@ -9,19 +9,27 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin o
 bb settings ai-services
 ```
 
-The list of registered services now has `gateway` and `local` beside `codex`. `BB_INFERENCE` still names the service bb used before.
+If bb was started with `GATEWAY_URL` in its environment, the list of registered services now has `gateway`, an [endpoint](../reference/openai-inference-settings.md#endpoints) at that URL, beside `codex`, and the plugin sends it `GATEWAY_VIRTUAL_KEY` as the key. Go to step 3.
 
-## 2. Tell it where the gateway is
+Otherwise the list has only bb's own services. `BB_INFERENCE` still names the service bb used before.
 
-If bb was started with `GATEWAY_URL` and `GATEWAY_VIRTUAL_KEY` in its environment, skip this step: the plugin reads them.
+## 2. Add the gateway as an endpoint
 
-Otherwise set the URL and the key in the plugin's settings. The URL is the gateway's base URL up to `/v1`:
+Skip this step if `gateway` is already listed.
 
-```sh
-bb plugin config openai-inference set gatewayUrl https://gateway.example.com/v1
+Under Settings → Installed plugins → OpenAI-compatible inference, set **Endpoints** to the gateway's base URL up to `/v1`, with the id `gateway`:
+
+```json
+[{"id": "gateway", "url": "https://gateway.example.com/v1"}]
 ```
 
-Paste the key into **Gateway virtual key** under Settings → Installed plugins → OpenAI-compatible inference. The key is a secret setting: bb keeps it out of its database and out of the browser.
+Set **Endpoint keys** to your virtual key, under the same id:
+
+```json
+{"gateway": "sk-..."}
+```
+
+Endpoint keys is a secret setting: bb keeps it out of its database and out of the browser. Run `bb settings ai-services` again: `gateway` is listed now, without a reload.
 
 ## 3. Select the gateway
 
@@ -60,4 +68,4 @@ To go back to the service you used before, set `BB_INFERENCE` to it again, for e
 bb-app config set BB_INFERENCE codex/gpt-5.6-luna
 ```
 
-[Services, settings and error codes](../reference/openai-inference-settings.md) lists every setting, and [how a helper completion is sent](../explanation/openai-inference-requests.md) explains what the plugin asks the gateway for.
+[Endpoints, settings and error codes](../reference/openai-inference-settings.md) lists every setting, and [how a helper completion is sent](../explanation/openai-inference-requests.md) explains what the plugin asks the gateway for.

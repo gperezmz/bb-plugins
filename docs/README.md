@@ -76,7 +76,7 @@ The pages each plugin's behaviour rests on:
 - [Team Onboarding: `bb team-onboarding`](reference/team-onboarding-cli.md)
 - [Team Onboarding: items, statuses and safe fixes](reference/team-onboarding-items.md)
 - [Team Onboarding: manifest](reference/team-onboarding-manifest.md)
-- [OpenAI-compatible inference: services, settings and error codes](reference/openai-inference-settings.md)
+- [OpenAI-compatible inference: endpoints, settings and error codes](reference/openai-inference-settings.md)
 
 **Explanation** says why things work the way they do.
 
