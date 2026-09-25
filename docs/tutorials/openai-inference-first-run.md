@@ -6,32 +6,36 @@ In this tutorial you install OpenAI-compatible inference, point bb's helper comp
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin openai-inference
+```
+
+The plugin has no endpoints yet, so `bb settings ai-services` still lists only bb's own services.
+
+## 2. Put the gateway in bb's environment
+
+The plugin reads the gateway's URL and key from bb's environment, so neither is written in its settings. If `GATEWAY_URL` and `GATEWAY_VIRTUAL_KEY` are already there, as on a workstation set up for them, go to step 3.
+
+Otherwise, under Settings → Environment variables, with the global scope, add:
+
+- `GATEWAY_URL`: the gateway's base URL up to `/v1`, for example `https://gateway.example.com/v1`.
+- `GATEWAY_VIRTUAL_KEY`: your virtual key.
+
+and press **Save variables**. The page keeps the values secret, and bb hands them to its daemon without a restart.
+
+## 3. Add the gateway as an endpoint
+
+Add an [endpoint](../reference/openai-inference-settings.md#endpoints) called `gateway` that references both variables:
+
+```sh
+bb plugin config openai-inference set endpoints '[{"id": "gateway", "url": "${GATEWAY_URL}", "key": "${GATEWAY_VIRTUAL_KEY}"}]'
+bb plugin reload openai-inference
 bb settings ai-services
 ```
 
-If bb was started with `GATEWAY_URL` in its environment, the list of registered services now has `gateway`, an [endpoint](../reference/openai-inference-settings.md#endpoints) at that URL, beside `codex`, and the plugin sends it `GATEWAY_VIRTUAL_KEY` as the key. Go to step 3.
+The single quotes keep your shell from expanding `${GATEWAY_URL}` itself: the plugin expands it, for each request, and stores only the reference. The reload lets the plugin see variables added in step 2. The list of registered services now has `gateway  OpenAI-compatible endpoint at ${GATEWAY_URL}`.
 
-Otherwise the list has only bb's own services. `BB_INFERENCE` still names the service bb used before.
+If it does not, `bb plugin logs openai-inference` names the variable the plugin could not find, and [environment variables](../reference/openai-inference-settings.md#environment-variables) says where bb must have it.
 
-## 2. Add the gateway as an endpoint
-
-Skip this step if `gateway` is already listed.
-
-Under Settings → Installed plugins → OpenAI-compatible inference, set **Endpoints** to the gateway's base URL up to `/v1`, with the id `gateway`:
-
-```json
-[{"id": "gateway", "url": "https://gateway.example.com/v1"}]
-```
-
-Set **Endpoint keys** to your virtual key, under the same id:
-
-```json
-{"gateway": "sk-..."}
-```
-
-Endpoint keys is a secret setting: bb keeps it out of its database and out of the browser. Run `bb settings ai-services` again: `gateway` is listed now, without a reload.
-
-## 3. Select the gateway
+## 4. Select the gateway
 
 ```sh
 bb-app config set BB_INFERENCE gateway/gpt-6-luna
@@ -40,7 +44,7 @@ bb settings ai-services
 
 The first line of the second command reads `BB_INFERENCE gateway/gpt-6-luna`. bb applies it without a restart.
 
-## 4. Start a thread
+## 5. Start a thread
 
 Start a thread in any project, with a prompt of a sentence or more, for example:
 
@@ -50,7 +54,7 @@ Find out why the settings page loads slowly and suggest a fix.
 
 Within a few seconds the sidebar shows a short title in place of the start of your prompt. It came from the gateway: the gateway's request log shows a `/chat/completions` call for `gpt-6-luna` from your key.
 
-## 5. If the title does not appear
+## 6. If the title does not appear
 
 bb logs each failed title to its server log with an error code. On the server machine:
 

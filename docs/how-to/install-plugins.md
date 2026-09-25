@@ -15,7 +15,7 @@ Then turn it on where it shows:
 - Thread Glance: [switch the sidebar to it](thread-glance-switch-sidebar.md).
 - Thread Usage: nothing to do; the coin appears in a thread's header after its next turn.
 - Team Onboarding: open **Onboarding** in the sidebar, and [put your team's manifest on the server](team-onboarding-provision-manifest.md).
-- OpenAI-compatible inference: select one of its services with `BB_INFERENCE`, as its [first run](../tutorials/openai-inference-first-run.md#3-select-the-gateway) shows.
+- OpenAI-compatible inference: add an endpoint and select it with `BB_INFERENCE`, as its [first run](../tutorials/openai-inference-first-run.md#3-add-the-gateway-as-an-endpoint) shows.
 
 ## Pin a release
 

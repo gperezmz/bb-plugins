@@ -20,7 +20,7 @@ Under Settings → Installed plugins → OpenAI-compatible inference, add the se
 [{"id": "mlx", "url": "http://127.0.0.1:8080/v1"}]
 ```
 
-Keep any endpoints already in the list. The url ends where `/chat/completions` starts. If the server asks for a key, add it to **Endpoint keys** under the same id, for example `{"mlx": "..."}`. `bb settings ai-services` lists `mlx` once you save.
+Keep any endpoints already in the list. The url ends where `/chat/completions` starts. If the server asks for a key, add it to **Endpoint keys** under the same id, for example `{"mlx": "..."}`, or set it in bb's environment and reference it as the endpoint's `"key": "${NAME}"`. `bb settings ai-services` lists `mlx` once you save.
 
 ## 3. Select it, with the gateway as fallback
 
@@ -29,7 +29,16 @@ bb-app config set BB_INFERENCE mlx/<model>
 bb-app config set BB_INFERENCE_FALLBACK gateway/gpt-6-luna
 ```
 
-with the model's `id` from step 1, and a model your gateway serves. The second line needs a `gateway` endpoint, from `GATEWAY_URL` or listed as in the [first run](../tutorials/openai-inference-first-run.md#2-add-the-gateway-as-an-endpoint). Start a thread to see a title from the local model.
+with the model's `id` from step 1, and a model your gateway serves. The second line needs a `gateway` endpoint: set `GATEWAY_URL` and `GATEWAY_VIRTUAL_KEY` in bb's environment, then reference them, as in the [first run](../tutorials/openai-inference-first-run.md#2-put-the-gateway-in-bbs-environment). With both endpoints the list reads:
+
+```json
+[
+  {"id": "mlx", "url": "http://127.0.0.1:8080/v1"},
+  {"id": "gateway", "url": "${GATEWAY_URL}", "key": "${GATEWAY_VIRTUAL_KEY}"}
+]
+```
+
+Start a thread to see a title from the local model.
 
 ## Keep it within bb's time limit
 

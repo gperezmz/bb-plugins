@@ -9,6 +9,7 @@ sequenceDiagram
   participant host as Host entry, server machine
   participant api as Endpoint
   backend->>host: configure (the endpoints, at start and on every change)
+  host-->>backend: which variables each endpoint lacks
   core->>host: ai.inference.complete (endpoint id, model, prompt, schema, timeout)
   host->>api: POST /chat/completions with every optional field
   loop HTTP 400 or 422, while optional fields are left
@@ -21,7 +22,9 @@ sequenceDiagram
 
 ## Where the request is made
 
-bb calls the plugin's host entry, which runs in bb's daemon on the server machine, not in the plugin's backend. The host entry cannot read the plugin's settings, so the backend reads the endpoints from the settings and from `GATEWAY_URL`, and sends them to the host entry when the plugin starts and whenever a setting changes. The host entry keeps them in a file only bb's user can read, so a daemon worker that restarts still has them.
+bb calls the plugin's host entry, which runs in bb's daemon on the server machine, not in the plugin's backend. The host entry cannot read the plugin's settings, so the backend sends it the endpoints when the plugin starts and whenever a setting changes. The host entry keeps them in a file only bb's user can read, so a daemon worker that restarts still has them.
+
+An endpoint's `${NAME}` references are expanded there too, from the daemon's environment, for each request. bb's machine variables reach that environment and not the server's, and the expanded URL and key stay inside the request: the file, bb's list of services and the error messages keep the reference or the endpoint's id. The host entry also answers which variables each endpoint lacks, and the backend registers only the endpoints that lack none.
 
 ## What the request asks for
 
