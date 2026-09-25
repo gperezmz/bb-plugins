@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-openai-inference",
+  "name": "@gperezmz/bb-plugin-openai-inference",
   "version": "0.1.2",
   "type": "module",
   "engines": {
@@ -44,5 +44,15 @@
     "typecheck": "tsc --noEmit",
     "build": "bb plugin build",
     "notices": "node scripts/third-party-notices.mjs"
-  }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "server.ts",
+    "tsconfig.json",
+    "THIRD_PARTY_NOTICES.md",
+    "host.ts",
+    "src",
+    "!**/*.test.*"
+  ]
 }

@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-thread-usage",
+  "name": "@gperezmz/bb-plugin-thread-usage",
   "version": "0.1.0",
   "type": "module",
   "engines": {
@@ -77,5 +77,21 @@
     "build": "bb plugin build",
     "prices": "node scripts/update-prices.mjs",
     "notices": "node scripts/third-party-notices.mjs"
-  }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "server.ts",
+    "tsconfig.json",
+    "THIRD_PARTY_NOTICES.md",
+    "app.tsx",
+    "host.ts",
+    "src",
+    "components",
+    "lib",
+    "hooks",
+    "icons",
+    "prices",
+    "!**/*.test.*"
+  ]
 }

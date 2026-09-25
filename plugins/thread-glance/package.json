@@ -1,5 +1,5 @@
 {
-  "name": "bb-plugin-thread-glance",
+  "name": "@gperezmz/bb-plugin-thread-glance",
   "version": "0.1.1",
   "type": "module",
   "engines": {
@@ -76,5 +76,21 @@
     "build": "bb plugin build",
     "notices": "node scripts/third-party-notices.mjs",
     "perf": "vitest run --config perf/vitest.config.ts"
-  }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "server.ts",
+    "tsconfig.json",
+    "THIRD_PARTY_NOTICES.md",
+    "app.tsx",
+    "server",
+    "shared",
+    "features",
+    "components",
+    "lib",
+    "hooks",
+    "types",
+    "!**/*.test.*"
+  ]
 }

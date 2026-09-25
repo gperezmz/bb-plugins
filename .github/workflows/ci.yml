@@ -36,21 +36,29 @@ jobs:
               - .github/workflows/ci.yml
               - .github/actions/setup/**
               - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
             thread-usage:
               - plugins/thread-usage/**
               - .github/workflows/ci.yml
               - .github/actions/setup/**
               - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
             team-onboarding:
               - plugins/team-onboarding/**
               - .github/workflows/ci.yml
               - .github/actions/setup/**
               - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
             openai-inference:
               - plugins/openai-inference/**
               - .github/workflows/ci.yml
               - .github/actions/setup/**
               - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
 
   plugin:
     name: ${{ matrix.plugin }} (${{ matrix.mode }})
@@ -64,8 +72,9 @@ jobs:
         plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
         # check: types, tests, build, generated files. git-install: what bb
         # runs after cloning the repository, which a devDependency the build
-        # needs can break.
-        mode: [check, git-install]
+        # needs can break. npm-install: the package the Release workflow
+        # publishes, installed from a local registry into a throwaway bb.
+        mode: [check, git-install, npm-install]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

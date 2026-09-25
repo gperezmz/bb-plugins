@@ -31,7 +31,18 @@ or a semver range over one plugin's tags:
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.1.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
-## Update
+## Install a prebuilt package from npm
+
+Each release is also published to npm as `@gperezmz/bb-plugin-<name>`, with its bundles already built:
+
+```sh
+bb plugin install 'npm:@gperezmz/bb-plugin-thread-glance@^0.1.0'
+```
+
+bb installs the package and its runtime dependencies with its own copy of npm, and builds nothing. A `git:` install instead clones the repository, installs the plugin's dependencies and builds it on the server, which takes minutes on a small machine. A range such as `^0.1.0` tracks updates the way a `git:` range does; an exact version such as `@0.1.1` pins it.
+
+A plugin already installed from `git:` moves to npm only by removing it first, which deletes its settings, as [Remove](#remove) says.
+
 
 ```sh
 bb plugin outdated
