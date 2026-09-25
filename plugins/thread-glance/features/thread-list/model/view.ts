@@ -25,7 +25,7 @@ import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import { railsFor, type Rail } from "./layout";
 
-/** How many quiet roots stay in a group. */
+/** How many of a group's newest quiet roots stay out of its older fold. */
 export const KEEP_QUIET = 5;
 /** How many quiet children stay in an expanded family. */
 export const KEEP_QUIET_CHILDREN = 3;
@@ -521,7 +521,11 @@ function buildGroup(
     // The fold reads `quietIgnoringOpen`, as if no thread were open. The open family
     // joins afterwards when it sits behind the fold, and takes no other row's place.
     const quietActive = sorted.filter((family) => family.quietIgnoringOpen && !family.root.thread.isArchived);
-    const keepQuiet = new Set(quietActive.slice(0, KEEP_QUIET));
+    // The newest quiet roots stay whatever the order: by creation under
+    // Created, by latest activity otherwise.
+    const byCreation = effectiveSortField(context.prefs.chronologicalSort) === "created";
+    const age = (family: Family) => (byCreation ? family.root.thread.createdAt : family.latestAttentionAt);
+    const keepQuiet = new Set([...quietActive].sort((a, b) => age(b) - age(a)).slice(0, KEEP_QUIET));
     const foldedFamilies = quietActive.filter((family) => !keepQuiet.has(family) && !family.containsActive);
     if (foldedFamilies.length > 0) {
       const opened =

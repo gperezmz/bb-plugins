@@ -171,7 +171,25 @@ describe("scenario 5: a project with 60 old threads", () => {
     expect(ids.at(-1)).toBe("older:55");
   });
   it("fold older off shows everything", () => {
-    expect(rowIds(viewOf({ threads: old, prefs: { foldOlder: false } }), "project:proj_a")).toHaveLength(60);
+    const ids = rowIds(viewOf({ threads: old, prefs: { foldOlder: false } }), "project:proj_a");
+    expect(ids).toHaveLength(60);
+    expect(ids.some((id) => id.startsWith("older"))).toBe(false);
+  });
+  it("keeps the 5 newest quiet roots whatever the order", () => {
+    const newest = ["o55", "o56", "o57", "o58", "o59"];
+    const ids = (prefs: Scenario["prefs"]) => rowIds(viewOf({ threads: old, prefs }), "project:proj_a");
+    expect(ids({ sortDirection: "ascending" })).toEqual([...newest, "older:55"]);
+    expect(ids({ chronologicalSort: "created", sortDirection: "ascending" })).toEqual([...newest, "older:55"]);
+    // Titles run against age here, so A–Z lists the five newest last-created first.
+    const titled = old.map((t, n) => ({ ...t, displayTitle: `t${String(99 - n).padStart(2, "0")}` }));
+    expect(rowIds(viewOf({ threads: titled, prefs: { chronologicalSort: "alpha" } }), "project:proj_a")).toEqual([
+      "o59",
+      "o58",
+      "o57",
+      "o56",
+      "o55",
+      "older:55",
+    ]);
   });
   it("unread roots go to Needs you rather than the fold; the header still counts them", () => {
     const unread = old.map((t) => ({ ...t, lastReadAt: T0 - 1 }));
