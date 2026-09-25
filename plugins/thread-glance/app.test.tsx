@@ -116,23 +116,23 @@ describe("Thread Glance slot", () => {
   it("names state, provider and parent in the row's accessible name", async () => {
     render(
       [
-        makeThread({ id: "m", title: "Manager" }),
+        makeThread({ id: "m", title: "Parent" }),
         makeThread({ id: "c", title: "Worker", parentThreadId: "m", providerId: "codex", hasPendingInteraction: true }),
       ],
     );
     expect(
-      await screen.findByRole("link", { name: "Open Worker — Needs your input; Codex; child of Manager" }),
+      await screen.findByRole("link", { name: "Open Worker — Needs your input; Codex; child of Parent" }),
     ).toBeTruthy();
   });
 
   it("scenario 1: chip, counters and only the blocked child", async () => {
     render([
-      makeThread({ id: "m", title: "Manager" }),
+      makeThread({ id: "m", title: "Parent" }),
       ...[1, 2, 3, 4, 5].map((n) =>
         makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
       ),
     ]);
-    const chip = await screen.findByRole("button", { name: /child threads of Manager, needs your input/ });
+    const chip = await screen.findByRole("button", { name: /child threads of Parent, needs your input/ });
     expect(chip.getAttribute("aria-expanded")).toBe("false");
     expect(chip.textContent).toContain("5");
     expect(screen.getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
@@ -142,7 +142,7 @@ describe("Thread Glance slot", () => {
     expect(screen.getByRole("group", { name: "1 needs you" })).toBeTruthy();
     fireEvent.click(chip);
     await waitFor(() => expect(screen.getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /Collapse 5 child threads of Manager/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Collapse 5 child threads of Parent/ }));
     await waitFor(() => expect(screen.queryByRole("link", { name: /Open Child 2/ })).toBeNull());
   });
 
@@ -156,12 +156,12 @@ describe("Thread Glance slot", () => {
 
   it("indents each folded level by one small step, and the grandchild carries its parent's name", async () => {
     render([
-      makeThread({ id: "m", title: "Manager" }),
+      makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, hasPendingInteraction: true }),
       makeThread({ id: "g", title: "Grandchild", parentThreadId: "c", createdAt: T0 + 2, hasPendingInteraction: true }),
     ]);
     const padding = async (name: RegExp) => (await screen.findByRole("link", { name })).parentElement!.style.paddingLeft;
-    expect(await padding(/Open Manager/)).toBe("8px");
+    expect(await padding(/Open Parent/)).toBe("8px");
     expect(await padding(/Open Child/)).toBe("20px");
     expect(await padding(/Open Grandchild/)).toBe("32px");
     expect(screen.getByText("↳").getAttribute("title")).toBe("Child of Child");
@@ -169,10 +169,10 @@ describe("Thread Glance slot", () => {
 
   it("says so under an opened chip when Needs attention leaves nothing under it", async () => {
     render([
-      makeThread({ id: "m", title: "Manager", hasPendingInteraction: true }),
+      makeThread({ id: "m", title: "Parent", hasPendingInteraction: true }),
       makeThread({ id: "c", title: "Quiet child", parentThreadId: "m", createdAt: T0 + 1 }),
     ]);
-    fireEvent.click(await screen.findByRole("button", { name: /Show 1 child thread of Manager/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Show 1 child thread of Parent/ }));
     await screen.findByRole("link", { name: /Open Quiet child/ });
     fireEvent.click(screen.getByRole("radio", { name: /Needs attention/ }));
     expect(await screen.findByText("No child threads need attention")).toBeTruthy();
@@ -181,11 +181,11 @@ describe("Thread Glance slot", () => {
 
   it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {
     render([
-      makeThread({ id: "m", title: "Manager" }),
+      makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Blocked child", parentThreadId: "m", createdAt: T0 + 1, hasPendingInteraction: true }),
       makeThread({ id: "u", title: "Fresh", ...finishedUnread }),
     ]);
-    const chip = await screen.findByRole("button", { name: /child thread of Manager/ });
+    const chip = await screen.findByRole("button", { name: /child thread of Parent/ });
     expect(chip.getAttribute("data-tone")).toBe("attention");
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
@@ -196,7 +196,7 @@ describe("Thread Glance slot", () => {
     await screen.findByRole("link", { name: /Open Busy/ });
     const attention = screen.getByRole("radio", { name: /Needs attention/ });
     const description = attention.getAttribute("aria-description") ?? "";
-    for (const kept of ["question", "approval", "plan review", "failed", "queued message", "offline", "child thread", "manager"]) {
+    for (const kept of ["question", "approval", "plan review", "failed", "queued message", "offline", "child thread", "parent"]) {
       expect(description).toContain(kept);
     }
     expect(screen.getByRole("radio", { name: "All" }).hasAttribute("aria-description")).toBe(false);

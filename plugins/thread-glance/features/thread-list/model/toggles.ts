@@ -46,7 +46,7 @@ export function toggleOlder(row: OlderRow, prefs: Preferences, group: GroupView 
   if (row.scope === "family") return { patch, drop: under(forest, row.scopeId) };
   // Folding a group's older roots drops the targets that held it open.
   const quietRoots = new Set<string>();
-  for (const family of forest.families) if (family.settled) quietRoots.add(family.root.thread.id);
+  for (const family of forest.families) if (family.quietIgnoringOpen) quietRoots.add(family.root.thread.id);
   const inGroup = new Set(group?.rootIds ?? []);
   return {
     patch,

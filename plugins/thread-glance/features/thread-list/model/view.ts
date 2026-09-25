@@ -203,15 +203,15 @@ function threadRow(
   };
 }
 
-function matchesAttention(info: ThreadInfo): boolean {
-  return info.attention.size > 0;
+function needsYouNow(info: ThreadInfo): boolean {
+  return info.needsYou.size > 0;
 }
 
 /** The children of `parent` that get a row: hidden ones only when they need you or failed. */
 function eligibleChildren(context: Context, parentId: string): ThreadInfo[] {
   return (context.forest.children.get(parentId) ?? [])
     .map((id) => context.forest.infos.get(id)!)
-    .filter((info) => !info.thread.isHidden || info.attention.size > 0);
+    .filter((info) => !info.thread.isHidden || info.needsYou.size > 0);
 }
 
 function subtreeOf(context: Context, id: string): Subtree {
@@ -235,7 +235,7 @@ function foldedChildren(
     test(kid) || subtreeOf(context, kid.thread.id).descendants.some(test);
 
   if (context.filter === "attention") {
-    const shown = kids.filter((kid) => holds(kid, (info) => matchesAttention(info) || info.isActive));
+    const shown = kids.filter((kid) => holds(kid, (info) => needsYouNow(info) || info.isActive));
     return { shown, older: null };
   }
 
@@ -261,10 +261,10 @@ function foldedChildren(
     return { shown, older: shown.length > 0 ? olderRow("reveal", left, false) : null };
   }
 
-  // The stable set reads `settled` for the child and everything under it, and
+  // The stable set reads `quietIgnoringOpen` for the child and everything under it, and
   // ignores which thread is open and the reveal targets: they join afterwards
   // and take no other row's place.
-  const quietTree = (kid: ThreadInfo) => kid.settled && subtreeOf(context, kid.thread.id).settled;
+  const quietTree = (kid: ThreadInfo) => kid.quietIgnoringOpen && subtreeOf(context, kid.thread.id).quietIgnoringOpen;
   const stable = new Set<string>();
   for (const kid of kids) if (kid.thread.isHidden || !quietTree(kid)) stable.add(kid.thread.id);
   const recentQuiet = kids
@@ -371,7 +371,7 @@ function childProviders(parent: ThreadInfo, descendants: readonly ThreadInfo[]):
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
   const subtree = subtreeOf(context, info.thread.id);
   const hasChildren =
-    subtree.visibleCount > 0 || subtree.descendants.some((descendant) => descendant.thread.isHidden && descendant.attention.size > 0);
+    subtree.visibleCount > 0 || subtree.descendants.some((descendant) => descendant.thread.isHidden && descendant.needsYou.size > 0);
   if (!hasChildren) return null;
   return {
     count: subtree.visibleCount,
@@ -383,7 +383,7 @@ function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | n
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */
 function rollupFlags(context: Context, info: ThreadInfo): Set<Flag> {
-  const flags = new Set<Flag>([...info.attention, ...subtreeOf(context, info.thread.id).flags]);
+  const flags = new Set<Flag>([...info.needsYou, ...subtreeOf(context, info.thread.id).flags]);
   if (info.flags.has("working")) flags.add("working");
   return flags;
 }
@@ -426,13 +426,13 @@ function treeRows(context: Context, family: Family, info: ThreadInfo, depth: num
   const root = family.root;
   const childIds = (context.forest.children.get(id) ?? []).filter((childId) => {
     const child = context.forest.infos.get(childId)!;
-    return !child.thread.isHidden || child.attention.size > 0;
+    return !child.thread.isHidden || child.needsYou.size > 0;
   });
   const subtree = subtreeOf(context, id);
   let children = childIds.map((childId) => context.forest.infos.get(childId)!);
   if (context.filter === "attention") {
     children = children.filter((child) => {
-      const test = (candidate: ThreadInfo) => matchesAttention(candidate) || candidate.isActive;
+      const test = (candidate: ThreadInfo) => needsYouNow(candidate) || candidate.isActive;
       return test(child) || subtreeOf(context, child.thread.id).descendants.some(test);
     });
   }
@@ -469,8 +469,8 @@ function familyUnit(context: Context, family: Family): Unit {
 
 /** needs-you, then failed, then offline, then unread, then the rest. */
 export function urgency(family: Family): number {
-  const flags = family.attentionFlags;
-  if (flags.has("needs-you")) return 0;
+  const flags = family.needsYouFlags;
+  if (flags.has("waits-on-you")) return 0;
   if (flags.has("unread-failed") || flags.has("queue-failed")) return 1;
   if (flags.has("offline")) return 2;
   if (flags.has("unread")) return 3;
@@ -495,7 +495,7 @@ function buildGroup(
 
   let kept = families;
   if (context.filter === "attention") {
-    kept = families.filter((family) => family.attentionFlags.size > 0 || family.containsActive);
+    kept = families.filter((family) => family.needsYouFlags.size > 0 || family.containsActive);
     if (kept.length === 0) return null;
   }
 
@@ -506,8 +506,8 @@ function buildGroup(
       (a, b) =>
         urgency(a) - urgency(b) ||
         context.compare(
-          { thread: a.root.thread, familyAttention: a.attention },
-          { thread: b.root.thread, familyAttention: b.attention },
+          { thread: a.root.thread, familyAttention: a.latestAttentionAt },
+          { thread: b.root.thread, familyAttention: b.latestAttentionAt },
         ),
     );
   } else if (isPinned) {
@@ -515,8 +515,8 @@ function buildGroup(
   } else {
     sorted.sort((a, b) =>
       context.compare(
-        { thread: a.root.thread, familyAttention: a.attention },
-        { thread: b.root.thread, familyAttention: b.attention },
+        { thread: a.root.thread, familyAttention: a.latestAttentionAt },
+        { thread: b.root.thread, familyAttention: b.latestAttentionAt },
       ),
     );
   }
@@ -525,9 +525,9 @@ function buildGroup(
   let older: OlderRow | null = null;
   const foldable = !isPinned && context.filter === "all" && context.prefs.foldOlder;
   if (foldable) {
-    // The fold reads `settled`, as if no thread were open. The open family
+    // The fold reads `quietIgnoringOpen`, as if no thread were open. The open family
     // joins afterwards when it sits behind the fold, and takes no other row's place.
-    const quietActive = sorted.filter((family) => family.settled && !family.root.thread.isArchived);
+    const quietActive = sorted.filter((family) => family.quietIgnoringOpen && !family.root.thread.isArchived);
     const keepQuiet = new Set(quietActive.slice(0, KEEP_QUIET));
     const foldedFamilies = quietActive.filter((family) => !keepQuiet.has(family) && !family.containsActive);
     if (foldedFamilies.length > 0) {
@@ -657,7 +657,7 @@ export function buildListView(inputs: ViewInputs): ListView {
   let attentionCount = 0;
   for (const family of forest.families) {
     for (const info of [family.root, ...family.descendants]) {
-      if (!info.thread.isArchived && matchesAttention(info)) attentionCount += 1;
+      if (!info.thread.isArchived && needsYouNow(info)) attentionCount += 1;
     }
   }
   return { groups, more, moreCounters, order, multiHost: hosts.size > 1, attentionCount };

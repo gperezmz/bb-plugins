@@ -208,7 +208,7 @@ export function SettingsPanel({
             <Heading>Child threads in Needs attention</Heading>
             <Choice
               label="Blocked and orphaned failures"
-              description="A child that waits on you, is offline, or failed while its manager is idle"
+              description="A child that waits on you, is offline, or failed while its parent thread is idle"
               value="blocked"
               current={prefs.childAttention}
               onSelect={(value) => onPrefs({ childAttention: value })}

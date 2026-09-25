@@ -165,7 +165,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           finishedAt: finishedAt === undefined ? {} : { [thread.id]: finishedAt },
         },
         now,
-        info.state.kind === "needs-you" ? (pendingAt ?? null) : undefined,
+        info.state.kind === "waits-on-you" ? (pendingAt ?? null) : undefined,
       );
   const menuItems = rowMenuItems({
     thread,

@@ -230,7 +230,7 @@ describe("title treatment", () => {
 
 describe("child chip tone", () => {
   it("is amber for needs-you, red for failures, blue for working, neutral otherwise", () => {
-    expect(chipTone("needs-you")).toBe("attention");
+    expect(chipTone("waits-on-you")).toBe("attention");
     expect(chipTone("unread-failed")).toBe("destructive");
     expect(chipTone("queue-failed")).toBe("destructive");
     expect(chipTone("working")).toBe("working");

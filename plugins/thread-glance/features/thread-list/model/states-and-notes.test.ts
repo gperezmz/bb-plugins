@@ -28,7 +28,7 @@ describe("needs-you kinds", () => {
     ["input", "MessageQuestion", "Needs your input"],
   ] as const)("%s draws %s in the attention tone", (needsKind, icon, label) => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), { ...base, needsKind });
-    expect(state).toMatchObject({ kind: "needs-you", label, glyph: { icon, tone: "attention" } });
+    expect(state).toMatchObject({ kind: "waits-on-you", label, glyph: { icon, tone: "attention" } });
   });
   it("without a note it keeps the question glyph", () => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), base);
@@ -94,7 +94,7 @@ describe("hover card facts", () => {
   });
   it("names the time for each state", () => {
     expect(sinceLabel("working", "4m")).toBe("started 4m ago");
-    expect(sinceLabel("needs-you", "now")).toBe("waiting since just now");
+    expect(sinceLabel("waits-on-you", "now")).toBe("waiting since just now");
     expect(sinceLabel("idle", "2h")).toBe("finished 2h ago");
     expect(sinceLabel("idle", null)).toBeNull();
   });
@@ -145,7 +145,7 @@ describe("chip harnesses", () => {
 });
 
 describe("header counters", () => {
-  const counters = { needsYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
+  const counters = { waitsOnYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
   it("keep what needs action; working only when collapsed; unread only on More", () => {
     expect(visibleCounters(counters, { collapsed: false, more: false })).toEqual({ ...counters, working: 0, unread: 0 });
     expect(visibleCounters(counters, { collapsed: true, more: false })).toEqual({ ...counters, unread: 0 });

@@ -6,7 +6,7 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 
 export type StateKind =
-  | "needs-you"
+  | "waits-on-you"
   | "failed"
   | "queue-failed"
   | "offline"
@@ -19,11 +19,11 @@ export type StateKind =
   | "idle";
 
 /** A rollup flag. Set independently of the first-match state. */
-export type Flag = "needs-you" | "unread-failed" | "queue-failed" | "offline" | "working" | "unread";
+export type Flag = "waits-on-you" | "unread-failed" | "queue-failed" | "offline" | "working" | "unread";
 
 /** Flags, most urgent first. */
 export const FLAG_ORDER: readonly Flag[] = [
-  "needs-you",
+  "waits-on-you",
   "unread-failed",
   "queue-failed",
   "offline",
@@ -179,7 +179,7 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
   if (thread.hasPendingInteraction) {
     const needs = NEEDS[inputs.needsKind ?? "input"] ?? NEEDS.input;
     const icon = inputs.needsKind ? needs.icon : "CircleQuestion";
-    return { kind: "needs-you", label: needs.label, glyph: glyph(icon, "attention"), ...none };
+    return { kind: "waits-on-you", label: needs.label, glyph: glyph(icon, "attention"), ...none };
   }
   if (status === "error") {
     return {
@@ -243,7 +243,7 @@ export function pluginStatusWins(
   rowStatus: PluginSidebarThreadRowStatus | null,
 ): boolean {
   if (rowStatus === null) return false;
-  if (state.kind === "needs-you" || state.kind === "failed") return false;
+  if (state.kind === "waits-on-you" || state.kind === "failed") return false;
   if (state.kind === "working" && state.glyph.spin) return false;
   return true;
 }
@@ -251,7 +251,7 @@ export function pluginStatusWins(
 /** The rollup flags a single thread carries. */
 export function threadFlags(thread: PluginSidebarThread, unread: boolean): Set<Flag> {
   const flags = new Set<Flag>();
-  if (thread.hasPendingInteraction) flags.add("needs-you");
+  if (thread.hasPendingInteraction) flags.add("waits-on-you");
   if (normalizeStatus(thread) === "error" && unread) flags.add("unread-failed");
   if (normalizeQueued(thread) === "failed") flags.add("queue-failed");
   if (isOffline(thread)) flags.add("offline");
@@ -263,7 +263,7 @@ export function threadFlags(thread: PluginSidebarThread, unread: boolean): Set<F
 /** Flags hidden threads contribute: needs-you and unread-failed only. */
 export function hiddenThreadFlags(flags: ReadonlySet<Flag>): Set<Flag> {
   const kept = new Set<Flag>();
-  if (flags.has("needs-you")) kept.add("needs-you");
+  if (flags.has("waits-on-you")) kept.add("waits-on-you");
   if (flags.has("unread-failed")) kept.add("unread-failed");
   return kept;
 }
@@ -279,7 +279,7 @@ export type ChipTone = "attention" | "destructive" | "working" | "neutral";
 /** The tone of a chip whose most urgent rolled-up flag is `flag`. */
 export function chipTone(flag: Flag | null): ChipTone {
   switch (flag) {
-    case "needs-you":
+    case "waits-on-you":
       return "attention";
     case "unread-failed":
     case "queue-failed":
@@ -292,7 +292,7 @@ export function chipTone(flag: Flag | null): ChipTone {
 }
 
 export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {
-  "needs-you": { ...glyph("CircleQuestion", "attention"), label: "needs your input" },
+  "waits-on-you": { ...glyph("CircleQuestion", "attention"), label: "needs your input" },
   "unread-failed": { ...glyph("CircleX", "destructive"), label: "failed" },
   "queue-failed": { ...glyph("AlertTriangle", "destructive"), label: "queued message failed" },
   offline: { ...glyph("CloudOff", "attention"), label: "machine offline" },

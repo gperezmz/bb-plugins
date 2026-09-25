@@ -18,7 +18,7 @@ const depths = (view: ListView) =>
   );
 
 describe("per-level folding", () => {
-  // A manager with one busy child that has three reviewers under it, and four quiet children.
+  // A parent with one busy child that has three reviewers under it, and four quiet children.
   const quiet = ["a", "b", "c", "d"].map((id, n) => makeThread({ id, parentThreadId: "m", createdAt: T0 + 1 + n }));
   const reviewers = ["r1", "r2", "r3"].map((id, n) =>
     makeThread({ id, parentThreadId: "fix", createdAt: T0 + 10 + n }),
@@ -30,7 +30,7 @@ describe("per-level folding", () => {
     ...reviewers,
   ];
 
-  it("shows the manager's direct children only, so reviewers never take their slots", () => {
+  it("shows the parent's direct children only, so reviewers never take their slots", () => {
     const view = viewOf({ threads, prefs: { expandedChildren: ["m"] } });
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "older:1@1"]);
     const fix = rowsOf(view).find((row): row is ThreadRow => row.type === "thread" && row.info.thread.id === "fix");
@@ -60,7 +60,7 @@ describe("per-level folding", () => {
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "s3@2", "s4@2", "s5@2", "older:3@2", "older:1@1"]);
     const fold = rowsOf(view).find((row): row is OlderRow => row.type === "older" && row.depth === 2)!;
     expect(fold).toMatchObject({ scope: "family", scopeId: "fix" });
-    // The rail of the child level runs through its fold row and stops there; the manager's carries on.
+    // The rail of the child level runs through its fold row and stops there; the parent's carries on.
     expect(fold.rails).toEqual(["full", "end", null]);
   });
 

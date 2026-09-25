@@ -1,6 +1,6 @@
 // Auto-expansion: transitions found by diffing snapshots, and the
 // transient targets they leave behind. Pure.
-import { revealsOn } from "./attention";
+import { revealsOn } from "./needs-you";
 import type { Forest } from "./families";
 
 /**
@@ -16,19 +16,19 @@ export interface Snapshot {
   activeThreadId: string | null;
   unread: ReadonlySet<string>;
   /** Threads that wait on you or failed, as Needs attention counts them. */
-  attention: ReadonlySet<string>;
+  needsYou: ReadonlySet<string>;
 }
 
 export function snapshotOf(forest: Forest, activeThreadId: string | null): Snapshot {
   const unread = new Set<string>();
-  const attention = new Set<string>();
+  const needsYou = new Set<string>();
   for (const info of forest.infos.values()) {
     if (info.thread.isArchived) continue;
     // A finished child that Needs attention does not count never opens anything.
-    if (info.attention.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
-    if (revealsOn(info.attention, info.parentId === null)) attention.add(info.thread.id);
+    if (info.needsYou.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
+    if (revealsOn(info.needsYou, info.parentId === null)) needsYou.add(info.thread.id);
   }
-  return { activeThreadId, unread, attention };
+  return { activeThreadId, unread, needsYou };
 }
 
 /**
@@ -40,8 +40,8 @@ export function detectTransitions(previous: Snapshot | null, next: Snapshot): Ma
   if (next.activeThreadId !== null && next.activeThreadId !== previous?.activeThreadId) {
     found.set(next.activeThreadId, "reveal");
   }
-  for (const id of next.attention) {
-    if (!previous?.attention.has(id)) found.set(id, "reveal");
+  for (const id of next.needsYou) {
+    if (!previous?.needsYou.has(id)) found.set(id, "reveal");
   }
   for (const id of next.unread) {
     if (id === next.activeThreadId || found.has(id)) continue;
