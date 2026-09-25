@@ -49,4 +49,15 @@ A chat template without an `enable_thinking` switch ignores it, and the model th
 
 A server that refuses a field answers HTTP 400, or 422 from servers built on FastAPI. LiteLLM refuses `reasoning_effort` for a model its list does not mark, unless the proxy sets `drop_params: true`; a server that validates its input strictly refuses fields it does not know.
 
-The host entry then sends the request again, within the same timeout, without the fields the error names: `response_format` (or `json_schema`), `reasoning_effort`, `chat_template_kwargs`, `enable_thinking` or `max_tokens`. An error that names none of them gets a request without all five, which relies on the prompt alone. When a request then succeeds, the host entry remembers what it dropped for that URL and model until its worker restarts, so the next completion goes straight to the request that works. A request that fails after every drop is not remembered, because a 400 or 422 can also mean an unknown model or, from LiteLLM, a spent budget.
+The host entry then sends the request again, within the same timeout, without the fields the error names: `response_format` (or `json_schema`), `reasoning_effort`, `chat_template_kwargs`, `enable_thinking` or `max_tokens`. An error that names none of them gets a request without all five, which relies on the prompt alone. When a request then succeeds, the host entry remembers what it dropped for that URL and model, so the next completion goes straight to the request that works. A request that fails after every drop is not remembered, because a 400 or 422 can also mean an unknown model or, from LiteLLM, a spent budget.
+
+### Why what was dropped is kept in a file
+
+bb 0.43.4 starts the host entry's worker when a completion needs it and stops it after a few idle minutes. Remembered only in the worker's memory, the dropped fields would be lost between most titles, and each title would pay again for every refusal: two extra requests to a server that refuses `chat_template_kwargs` and then `enable_thinking`. So the host entry keeps them in `learned-fields.json`, beside `endpoints.json` and readable only by bb's user. It reads the file on its first call and writes it only when it learns something new. A file it cannot read or parse counts as empty, so a completion never fails because of it.
+
+An entry is keyed by the endpoint's URL as the settings write it, `${NAME}` references included, and by the model. It is forgotten in two cases:
+
+- **The endpoint's URL changes in the settings**, or the endpoint is removed. What one URL refused says nothing about another.
+- **The server names a field it was not sent.** When the first request leaves out remembered fields and its 400 or 422 names one of them, the server has changed, for example to one that now needs `max_tokens`. The host entry forgets the entry and sends the request again with every field, then drops fields as above.
+
+A URL that stays the same while `${NAME}` points somewhere else keeps its entry until the second case applies.

@@ -49,9 +49,9 @@ Thread Glance lists a root's family together, so one busy manager does not push 
 | Thread Glance | The plugin's key-value store on the server; the browser's `localStorage` for filter and density | Layout preferences, per-thread time stamps, and a short note per thread: what it asks, what failed, or its last reply |
 | Thread Usage | `<data dir>/plugins/thread-usage/data.db` (SQLite) | Turn records, gateway rows, harness-log entries, the thread tree |
 | Team Onboarding | The plugin's storage on the server; `<data dir>/skills`; files on each machine it fixed | Results by category, approvals, which skill folders it installed |
-| OpenAI-compatible inference | `<data dir>/plugins/openai-inference/host-data/endpoints.json`, readable only by bb's user | A copy of its endpoints, keys included, for the host entry |
+| OpenAI-compatible inference | `<data dir>/plugins/openai-inference/host-data/`, readable only by bb's user | `endpoints.json`, a copy of its endpoints, keys included, for the host entry; `learned-fields.json`, the request fields each endpoint refused |
 
-`bb plugin uninstall` deletes a plugin's settings, secrets and schedules. Thread Usage's `data.db` stays, and a reinstall reads it again. What Team Onboarding wrote outside its own storage (team skills, SSH key and config) stays too, since it belongs to the machine, not the plugin. OpenAI-compatible inference's `endpoints.json` stays as well; [what stays after uninstalling](../reference/openai-inference-settings.md#what-stays-after-uninstalling) says to delete it.
+`bb plugin uninstall` deletes a plugin's settings, secrets and schedules. Thread Usage's `data.db` stays, and a reinstall reads it again. What Team Onboarding wrote outside its own storage (team skills, SSH key and config) stays too, since it belongs to the machine, not the plugin. OpenAI-compatible inference's `endpoints.json` and `learned-fields.json` stay as well; [what stays after uninstalling](../reference/openai-inference-settings.md#what-stays-after-uninstalling) says to delete them.
 
 Team Onboarding's full list of files it writes is under [what it touches](team-onboarding-checks.md#what-it-touches).
 

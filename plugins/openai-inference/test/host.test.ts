@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createHandlers } from "../src/handlers.js";
 import { hostContract } from "../src/host-contract.js";
 import { startFakeLiteLlm, type FakeLiteLlm } from "./fake-litellm.mjs";
@@ -23,10 +23,11 @@ afterAll(async () => {
 // `@get-bb/plugin-sdk/host` cannot be imported by native ESM, so the entry
 // object that `experimental_defineHostEntry` builds is written out here.
 const env = { FAKE_URL: "", FAKE_KEY: "sk-test" };
-const entry = () =>
+// Each call builds new handlers, as a worker that bb started again does.
+const entry = (dir = dataDir) =>
   experimental_createHostEntryHarness(
     { experimental_apiVersion: 1, contract: hostContract, handlers: createHandlers(env) },
-    { experimental_paths: { dataDir, tempDir: dataDir } },
+    { experimental_paths: { dataDir: dir, tempDir: dir } },
   );
 
 /** A host entry that knows the endpoints `gateway` and `mlx`, both at the fake. */
@@ -143,5 +144,69 @@ describe("host entry against a LiteLLM-like server", () => {
       code: "request_failed",
       message: 'No endpoint "codex" in the plugin\'s settings.',
     });
+  });
+});
+
+describe("fields learned across worker restarts", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "openai-inference-learned-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const learnedFile = () => join(dir, "learned-fields.json");
+  const configure = async (h: ReturnType<typeof entry>, url: string) =>
+    h.experimental_call("configure", [{ id: "gateway", url, key: "sk-test" }]);
+  /** Asks for a title from a model that refuses `reasoning_effort`; returns what each request sent it. */
+  const titleFromNoReasoning = async (h: ReturnType<typeof entry>) => {
+    const before = fake.requests.length;
+    expect(await h.experimental_call("ai.inference.complete", title("gateway", "no-reasoning"))).toMatchObject({ ok: true });
+    return fake.requests.slice(before).map((r) => ("reasoning_effort" in r.body ? "with" : "without"));
+  };
+
+  it("keeps them, in a file only its owner reads, for a worker that restarts", async () => {
+    const url = `${fake.url}/v1`;
+    await configure(entry(dir), url);
+    expect(await titleFromNoReasoning(entry(dir))).toEqual(["with", "without"]);
+    expect((await stat(learnedFile())).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(learnedFile(), "utf8"))).toEqual({ [url]: { "no-reasoning": ["reasoning_effort"] } });
+
+    expect(await titleFromNoReasoning(entry(dir))).toEqual(["without"]);
+  });
+
+  it("writes the file only when something new is learned", async () => {
+    const h = entry(dir);
+    await configure(h, `${fake.url}/v1`);
+    await titleFromNoReasoning(h);
+    await rm(learnedFile());
+    expect(await titleFromNoReasoning(h)).toEqual(["without"]);
+    await expect(stat(learnedFile())).rejects.toThrow();
+  });
+
+  it("forgets what a URL refused when the endpoint's URL changes", async () => {
+    const h = entry(dir);
+    await configure(h, `${fake.url}/v1`);
+    await titleFromNoReasoning(h);
+    await configure(h, "https://gateway.example.com/v1");
+    expect(JSON.parse(await readFile(learnedFile(), "utf8"))).toEqual({});
+    await configure(h, `${fake.url}/v1`);
+    expect(await titleFromNoReasoning(entry(dir))).toEqual(["with", "without"]);
+  });
+
+  it("reads a corrupt file as nothing learned, and replaces it", async () => {
+    await writeFile(learnedFile(), "{not json");
+    const h = entry(dir);
+    await configure(h, `${fake.url}/v1`);
+    expect(await titleFromNoReasoning(h)).toEqual(["with", "without"]);
+    expect(JSON.parse(await readFile(learnedFile(), "utf8"))).toEqual({ [`${fake.url}/v1`]: { "no-reasoning": ["reasoning_effort"] } });
+  });
+
+  it("answers when the file can be neither read nor written", async () => {
+    await mkdir(learnedFile());
+    await configure(entry(dir), `${fake.url}/v1`);
+    expect(await titleFromNoReasoning(entry(dir))).toEqual(["with", "without"]);
+    expect(await titleFromNoReasoning(entry(dir))).toEqual(["with", "without"]);
   });
 });
