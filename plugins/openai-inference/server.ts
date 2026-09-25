@@ -25,19 +25,24 @@ export const SETTINGS = {
   },
 } as const;
 
-const displayName = (endpoint: Endpoint) => `OpenAI-compatible endpoint at ${endpoint.url}`;
+// bb refuses a display name longer than 64 characters, which a long URL is.
+const MAX_DISPLAY_NAME = 64;
+export const displayName = (endpoint: Endpoint): string => {
+  const name = `OpenAI-compatible endpoint at ${endpoint.url}`;
+  return name.length <= MAX_DISPLAY_NAME ? name : `${name.slice(0, MAX_DISPLAY_NAME - 1)}…`;
+};
 
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define(SETTINGS);
   const host = bb.hosts.experimental_client({ contract: configureContract });
-  const services = new Map<string, { displayName: string; dispose(): void }>();
+  const services = new Map<string, { url: string; dispose(): void }>();
   let endpoints: Endpoint[] = [];
 
   // bb registers a service at once when the plugin is already running, so a
   // saved change needs no reload.
   const registerServices = (available: Endpoint[]) => {
     for (const [id, service] of services) {
-      if (!available.some((e) => e.id === id && displayName(e) === service.displayName)) {
+      if (!available.some((e) => e.id === id && e.url === service.url)) {
         service.dispose();
         services.delete(id);
       }
@@ -45,9 +50,12 @@ export default async function plugin(bb: BbPluginApi) {
     for (const endpoint of available) {
       if (services.has(endpoint.id)) continue;
       try {
-        const name = displayName(endpoint);
-        const { dispose } = bb.experimental_aiServices.register({ id: endpoint.id, displayName: name, kinds: ["inference"] });
-        services.set(endpoint.id, { displayName: name, dispose });
+        const { dispose } = bb.experimental_aiServices.register({
+          id: endpoint.id,
+          displayName: displayName(endpoint),
+          kinds: ["inference"],
+        });
+        services.set(endpoint.id, { url: endpoint.url, dispose });
       } catch (error) {
         bb.log.warn(`Endpoint "${endpoint.id}" is not a service: ${String(error)}`);
       }
