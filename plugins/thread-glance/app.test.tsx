@@ -224,6 +224,65 @@ describe("Thread Glance slot", () => {
     expect(screen.getByText("↳").getAttribute("title")).toBe("Child of Child");
   });
 
+  it("opens one settings panel with no tabs, holding exactly the listed settings", async () => {
+    render([makeThread({ id: "a", title: "Busy", ...working })]);
+    fireEvent.click(await screen.findByRole("button", { name: "Thread Glance settings" }));
+    const panel = await screen.findByRole("dialog");
+    expect(within(panel).queryByRole("tablist")).toBeNull();
+    expect(within(panel).queryByRole("tab")).toBeNull();
+    expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Show"]);
+    const segments = within(panel)
+      .getAllByRole("radiogroup")
+      .map((group) => [group.getAttribute("aria-label"), within(group).getAllByRole("radio").map((radio) => radio.textContent)]);
+    expect(segments).toEqual([
+      ["Group by", ["Project", "Custom", "Machine"]],
+      ["Sort by", ["Updated", "Created", "A–Z"]],
+      ["Density", ["Compact", "Comfortable"]],
+      ["Harness icon", ["Muted", "Colour", "Hidden"]],
+      ["Threads", ["Active", "Archived", "Both"]],
+    ]);
+    const checkboxes = within(panel)
+      .getAllByRole("checkbox")
+      .map((box) => [box.textContent, box.getAttribute("aria-checked")]);
+    expect(checkboxes).toEqual([
+      ["Working threads first", "false"],
+      ["Worktrees as foldersThreads sharing a worktree fold into one row", "false"],
+      ["Collapse older threads", "true"],
+      ["Pull request badge", "true"],
+      ["Needs you counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
+    ]);
+    expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
+    // Nothing else: the radios, checkboxes and the arrow are every control.
+    expect(within(panel).getAllByRole("radio")).toHaveLength(14);
+    expect(within(panel).getAllByRole("button")).toHaveLength(1);
+    expect(panel.querySelectorAll("button")).toHaveLength(14 + 5 + 1);
+  });
+
+  it("reverses every group with the ↓/↑ button, and saves Threads choices as lifecycles", async () => {
+    const setPreference = vi.fn(({ key, value }: { key: string; value: unknown }) => ({ key, value }));
+    const threads = [
+      makeThread({ id: "a1", title: "A old", createdAt: T0, latestAttentionAt: T0 }),
+      makeThread({ id: "a2", title: "A new", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
+      makeThread({ id: "b1", title: "B old", projectId: "proj_b", createdAt: T0, latestAttentionAt: T0 }),
+      makeThread({ id: "b2", title: "B new", projectId: "proj_b", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
+    ];
+    render(threads, { extra: { rpc: { ...rpc(), setPreference } as never } });
+    const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
+    await screen.findByRole("link", { name: /Open A new/ });
+    expect(order()).toEqual(["Open A new", "Open A old", "Open B new", "Open B old"]);
+    fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
+    const panel = await screen.findByRole("dialog");
+    fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
+    await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new", "Open B old", "Open B new"]));
+    expect(within(panel).getByRole("button", { name: /Sort order: Oldest first/ }).textContent).toBe("↑");
+    const threadsGroup = within(panel).getByRole("radiogroup", { name: "Threads" });
+    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Archived" }));
+    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Both" }));
+    await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "threadLifecycles", value: ["active", "archived"] }));
+    expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" });
+    expect(within(threadsGroup).getByRole("radio", { name: "Both" }).getAttribute("aria-checked")).toBe("true");
+  });
+
   it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
