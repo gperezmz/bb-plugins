@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Packs a plugin as the npm package bb installs without building: the
 # committed files at HEAD, plus the dist/ bundles `bb plugin build` writes,
-# as `npm pack` selects them through the plugin's `files`. Builds in a
-# temporary copy, so the checkout and its node_modules are left alone. The
-# Release workflow publishes this tarball; run it to make the same one.
+# as `npm pack` selects them through the plugin's `files`, with only the
+# dependencies the server source needs. Builds in a temporary copy, so the
+# checkout and its node_modules are left alone. The Release workflow
+# publishes this tarball; run it to make the same one.
 # Needs node, npm, git and the `bb` CLI on PATH.
 #
 #   scripts/ci/pack-npm.sh <plugin> [out-dir]
@@ -43,6 +44,23 @@ for file in "${required[@]}"; do
     exit 1
   fi
 done
+
+# The bundles inline the plugin's dependencies, so npm would only download
+# them again. Kept are those the server source imports: bb loads server.ts
+# instead of dist/server.js once dist/server.meta.json no longer names the
+# running SDK version, as after a bb upgrade that changes it. The server
+# bundle's source map lists every module the server source reaches.
+if [[ ! -f dist/server.js.map ]]; then
+  echo "::error::$plugin: bb plugin build wrote no dist/server.js.map to read the server's packages from" >&2
+  exit 1
+fi
+server_packages=$(jq -r '.sources[]' dist/server.js.map \
+  | sed -nE 's#.*node_modules/((@[^/]+/)?[^/]+)/.*#\1#p' | sort -u | jq -Rn '[inputs]')
+jq --argjson keep "$server_packages" \
+  'if .dependencies then .dependencies |= with_entries(select(.key as $name | $keep | any(.[]; . == $name))) else . end' \
+  package.json > package.json.tmp
+mv package.json.tmp package.json
+echo "$plugin: the package keeps dependencies $(jq -c '.dependencies // {} | keys' package.json)" >&2
 
 tarball=$(npm pack --ignore-scripts --pack-destination "$out" --json | jq -r '.[0].filename')
 echo "$out/$tarball"
