@@ -1,6 +1,6 @@
 /**
  * Answers one bb helper completion over OpenAI Chat Completions
- * (`POST {baseUrl}/chat/completions`), and maps every failure to the error
+ * (`POST {url}/chat/completions`), and maps every failure to the error
  * code bb's retry and fallback key on.
  */
 import type {
@@ -8,32 +8,14 @@ import type {
   ExperimentalAiInferenceCompleteOutput,
   ExperimentalAiServiceErrorCode,
 } from "@get-bb/plugin-sdk/ai-services";
-import type { Endpoint } from "./endpoint.js";
+import type { Endpoint } from "./endpoints.js";
 
 type JsonObject = { [key: string]: unknown };
 type Failure = Extract<ExperimentalAiInferenceCompleteOutput, { ok: false }>;
 
-/**
- * How a request asks the model not to think: OpenAI's `reasoning_effort`, or
- * the `enable_thinking` switch local servers pass to the chat template
- * (`chat_template_kwargs` for mlx_lm.server, vLLM and llama.cpp, top level for
- * mlx-vlm).
- */
-export type ThinkingOff = "reasoning_effort" | "enable_thinking";
-
-/** Which optional request fields an endpoint and model accept. */
-export interface Features {
-  /** `response_format: json_schema`. */
-  structured: boolean;
-  /** The fields of `CompleteOptions.thinkingOff`. */
-  thinkingOff: boolean;
-}
-
 export interface CompleteOptions {
-  /** Sends these fields until the endpoint rejects them. */
-  thinkingOff: ThinkingOff;
-  /** What each endpoint and model rejected before, so it is not asked again. */
-  learned?: Map<string, Features>;
+  /** The optional fields each URL and model refused before, so they are not sent again. */
+  learned?: Map<string, string[]>;
   /** Aborted when bb cancels the request. */
   signal?: AbortSignal;
   fetch?: typeof fetch;
@@ -46,7 +28,20 @@ const ERROR_DETAIL_CHARS = 300;
  * bb's few seconds on thinking.
  */
 const MAX_TOKENS = 256;
-const THINKING_FIELDS = /reasoning_effort|enable_thinking|chat_template_kwargs/i;
+
+/**
+ * The request fields a server may refuse, with the words that name each in
+ * an error. `reasoning_effort` turns thinking off for OpenAI models;
+ * `chat_template_kwargs` does for mlx_lm.server, vLLM and llama.cpp, and a
+ * top-level `enable_thinking` for mlx-vlm.
+ */
+const OPTIONAL_FIELDS: Record<string, RegExp> = {
+  response_format: /response_format|json_schema/i,
+  reasoning_effort: /reasoning_effort/i,
+  chat_template_kwargs: /chat_template_kwargs/i,
+  enable_thinking: /enable_thinking/i,
+  max_tokens: /max_tokens/i,
+};
 
 const fail = (code: ExperimentalAiServiceErrorCode, message: string): Failure => ({ ok: false, code, message });
 
@@ -56,12 +51,13 @@ const isObject = (value: unknown): value is JsonObject =>
 /**
  * Asks the endpoint for a JSON value matching `input.outputSchema`.
  *
- * The first request asks for it with `response_format: json_schema`, and
- * asks the model not to think. When the server rejects it (HTTP 400 or 422),
- * the request is sent again without the thinking fields if the error names
- * one, else without both; when that succeeds, `options.learned` records it for
- * the next call. Every request carries the schema in the prompt too, so a
- * server that ignores `response_format` still answers in JSON.
+ * The request asks for JSON with `response_format: json_schema`, asks the
+ * model not to think, and caps the answer's length. A server that refuses a
+ * field answers HTTP 400 or 422: the request is sent again without the fields
+ * the error names, or without all optional fields when it names none. When a
+ * request then succeeds, `options.learned` records what was dropped. Every
+ * request carries the schema in the prompt too, so a server that ignores
+ * `response_format` still answers in JSON.
  *
  * Args:
  *   input: bb's `ai.inference.complete` request.
@@ -74,72 +70,69 @@ const isObject = (value: unknown): value is JsonObject =>
 export async function complete(
   input: ExperimentalAiInferenceCompleteInput,
   endpoint: Endpoint,
-  options: CompleteOptions,
+  options: CompleteOptions = {},
 ): Promise<ExperimentalAiInferenceCompleteOutput> {
   const fetchImpl = options.fetch ?? fetch;
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), input.timeoutMs);
   const signal = options.signal ? AbortSignal.any([deadline.signal, options.signal]) : deadline.signal;
   const post = (body: JsonObject) =>
-    fetchImpl(`${endpoint.baseUrl}/chat/completions`, {
+    fetchImpl(`${endpoint.url}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {}),
+        ...(endpoint.key ? { Authorization: `Bearer ${endpoint.key}` } : {}),
       },
       body: JSON.stringify(body),
       signal,
     });
-  const key = `${endpoint.baseUrl} ${input.model}`;
-  let features = options.learned?.get(key) ?? { structured: true, thinkingOff: true };
+  const learnedKey = `${endpoint.url} ${input.model}`;
+  const learned = options.learned?.get(learnedKey) ?? [];
+  let dropped = learned;
   try {
-    let response = await post(requestBody(input, features, options.thinkingOff));
-    while ((response.status === 400 || response.status === 422) && (features.structured || features.thinkingOff)) {
-      const rejectsThinking = THINKING_FIELDS.test(await response.text()) && features.thinkingOff;
-      features = rejectsThinking ? { ...features, thinkingOff: false } : { structured: false, thinkingOff: false };
-      response = await post(requestBody(input, features, options.thinkingOff));
-      // Learned only from a success: a 400 or 422 can mean something else,
-      // such as an unknown model or, from LiteLLM, a spent budget.
-      if (response.ok) options.learned?.set(key, features);
+    let response = await post(requestBody(input, dropped));
+    while (response.status === 400 || response.status === 422) {
+      const left = Object.keys(OPTIONAL_FIELDS).filter((field) => !dropped.includes(field));
+      if (left.length === 0) break;
+      const error = await response.text();
+      const named = left.filter((field) => OPTIONAL_FIELDS[field].test(error));
+      dropped = [...dropped, ...(named.length > 0 ? named : left)];
+      response = await post(requestBody(input, dropped));
     }
+    // Learned only from a success: a 400 or 422 can mean something else,
+    // such as an unknown model or, from LiteLLM, a spent budget.
+    if (response.ok && dropped !== learned) options.learned?.set(learnedKey, dropped);
     if (!response.ok) return httpFailure(response.status, await response.text());
     return parseCompletion(await response.text(), input);
   } catch (error) {
-    if (deadline.signal.aborted) return fail("timeout", `No answer from ${endpoint.baseUrl} within ${input.timeoutMs} ms.`);
+    if (deadline.signal.aborted) return fail("timeout", `No answer from ${endpoint.url} within ${input.timeoutMs} ms.`);
     if (options.signal?.aborted) return fail("request_failed", "bb cancelled the request.");
-    return fail("service_unavailable", `Could not reach ${endpoint.baseUrl}: ${describe(error)}`);
+    return fail("service_unavailable", `Could not reach ${endpoint.url}: ${describe(error)}`);
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** The Chat Completions request body; exported for tests. */
-export function requestBody(
-  input: ExperimentalAiInferenceCompleteInput,
-  { structured, thinkingOff }: Features,
-  style: ThinkingOff,
-): JsonObject {
+/** The Chat Completions request body, without the `dropped` fields; exported for tests. */
+export function requestBody(input: ExperimentalAiInferenceCompleteInput, dropped: readonly string[] = []): JsonObject {
   const instruction =
     "Do not call any tool. Reply with only a JSON object, and no other text, that matches this JSON Schema:\n" +
     JSON.stringify(input.outputSchema);
-  return {
+  const body: JsonObject = {
     model: input.model,
     messages: [{ role: "user", content: `${input.prompt}\n\n${instruction}` }],
     stream: false,
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "result", schema: input.outputSchema, strict: isStrictSchema(input.outputSchema) },
+    },
+    reasoning_effort: input.reasoningEffort,
+    chat_template_kwargs: { enable_thinking: false },
+    enable_thinking: false,
     max_tokens: MAX_TOKENS,
-    ...(structured
-      ? {
-          response_format: {
-            type: "json_schema",
-            json_schema: { name: "result", schema: input.outputSchema, strict: isStrictSchema(input.outputSchema) },
-          },
-        }
-      : {}),
-    ...(thinkingOff && style === "reasoning_effort" ? { reasoning_effort: input.reasoningEffort } : {}),
-    ...(thinkingOff && style === "enable_thinking"
-      ? { chat_template_kwargs: { enable_thinking: false }, enable_thinking: false }
-      : {}),
   };
+  for (const field of dropped) delete body[field];
+  return body;
 }
 
 /**

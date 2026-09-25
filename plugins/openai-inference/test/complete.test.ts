@@ -1,6 +1,6 @@
 import type { ExperimentalAiInferenceCompleteInput } from "@get-bb/plugin-sdk/ai-services";
 import { describe, expect, it } from "vitest";
-import { complete, extractJsonObject, httpFailure, isStrictSchema, type Features } from "../src/complete.js";
+import { complete, extractJsonObject, httpFailure, isStrictSchema } from "../src/complete.js";
 
 // The schema bb sends for thread titles.
 const titleSchema = { type: "object", properties: { title: { type: "string" } }, required: ["title"] };
@@ -15,7 +15,7 @@ const input = (overrides: Partial<ExperimentalAiInferenceCompleteInput> = {}): E
   ...overrides,
 });
 
-const endpoint = { baseUrl: "https://gateway.example.com/v1", apiKey: "sk-test" };
+const endpoint = { id: "gateway", url: "https://gateway.example.com/v1", key: "sk-test" };
 
 const chat = (content: string, status = 200) =>
   new Response(JSON.stringify({ model: "gpt-6-luna-2026", choices: [{ index: 0, message: { role: "assistant", content } }] }), {
@@ -45,19 +45,22 @@ function fakeFetch(...answers: Array<Response | ((init: RequestInit) => Promise<
 describe("request shape", () => {
   it("posts the prompt as the user message and asks for json_schema output", async () => {
     const f = fakeFetch(chat('{"title":"Fix login bug"}'));
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input(), endpoint, { fetch: f.fetch });
 
     expect(out).toEqual({ ok: true, model: "gpt-6-luna", value: { title: "Fix login bug" } });
     expect(f.requests).toHaveLength(1);
     const [request] = f.requests;
     expect(request.url).toBe("https://gateway.example.com/v1/chat/completions");
     expect(request.headers).toEqual({ "Content-Type": "application/json", Authorization: "Bearer sk-test" });
-    expect(request.body).toMatchObject({
+    expect(request.body).toEqual({
       model: "gpt-6-luna",
+      messages: expect.any(Array),
       stream: false,
-      max_tokens: 256,
-      reasoning_effort: "none",
       response_format: { type: "json_schema", json_schema: { name: "result", schema: titleSchema, strict: false } },
+      reasoning_effort: "none",
+      chat_template_kwargs: { enable_thinking: false },
+      enable_thinking: false,
+      max_tokens: 256,
     });
     const messages = request.body.messages as Array<{ role: string; content: string }>;
     expect(messages).toHaveLength(1);
@@ -66,20 +69,10 @@ describe("request shape", () => {
     expect(messages[0].content).toContain(JSON.stringify(titleSchema));
   });
 
-  it("turns thinking off through the chat template for a local server, with no key", async () => {
+  it("sends no Authorization header without a key", async () => {
     const f = fakeFetch(chat('{"title":"x"}'));
-    await complete(input({ serviceId: "local" }), { baseUrl: "http://127.0.0.1:8080/v1", apiKey: null }, {
-      thinkingOff: "enable_thinking",
-      fetch: f.fetch,
-    });
+    await complete(input(), { id: "mlx", url: "http://127.0.0.1:8080/v1", key: null }, { fetch: f.fetch });
     expect(f.requests[0].headers).toEqual({ "Content-Type": "application/json" });
-    expect(f.requests[0].body).not.toHaveProperty("reasoning_effort");
-    expect(f.requests[0].body).toMatchObject({
-      max_tokens: 256,
-      chat_template_kwargs: { enable_thinking: false },
-      enable_thinking: false,
-      response_format: { type: "json_schema" },
-    });
   });
 
   it("asks for strict mode only when OpenAI's strict mode accepts the schema", () => {
@@ -99,53 +92,46 @@ describe("request shape", () => {
 describe("structured output paths", () => {
   it("falls back to prompt-only JSON when the server rejects response_format", async () => {
     const f = fakeFetch(
-      liteLlmError(400, "response_format json_schema is not supported"),
+      liteLlmError(400, "This model does not support structured output"),
       chat('Sure! Here it is:\n```json\n{"title": "Fix login bug"}\n```'),
     );
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input(), endpoint, { fetch: f.fetch });
 
     expect(out).toEqual({ ok: true, model: "gpt-6-luna", value: { title: "Fix login bug" } });
     expect(f.requests).toHaveLength(2);
-    expect(f.requests[1].body).not.toHaveProperty("response_format");
-    expect(f.requests[1].body).not.toHaveProperty("reasoning_effort");
+    expect(Object.keys(f.requests[1].body)).toEqual(["model", "messages", "stream"]);
   });
 
-  it("drops only reasoning_effort when the error names it, and remembers that", async () => {
-    const learned = new Map<string, Features>();
+  it("drops only the fields the error names, and remembers that per URL and model", async () => {
+    const learned = new Map<string, string[]>();
     const f = fakeFetch(
-      liteLlmError(400, "litellm.UnsupportedParamsError: azure does not support parameters: ['reasoning_effort']"),
+      liteLlmError(400, "litellm.UnsupportedParamsError: azure does not support parameters: ['reasoning_effort'], for model=gpt-6-luna"),
+      liteLlmError(400, "Unrecognized request arguments supplied: chat_template_kwargs, enable_thinking"),
       chat('{"title":"Fix login bug"}'),
       chat('{"title":"Again"}'),
+      chat('{"title":"Other model"}'),
     );
-    await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch, learned });
-    await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch, learned });
+    await complete(input(), endpoint, { fetch: f.fetch, learned });
+    await complete(input(), endpoint, { fetch: f.fetch, learned });
+    await complete(input({ model: "gpt-6-sol" }), endpoint, { fetch: f.fetch, learned });
 
-    expect(f.requests.map((r) => [Boolean(r.body.response_format), Boolean(r.body.reasoning_effort)])).toEqual([
-      [true, true],
-      [true, false],
-      [true, false],
+    const sent = f.requests.map((r) => Object.keys(r.body).filter((k) => !["model", "messages", "stream"].includes(k)));
+    expect(sent).toEqual([
+      ["response_format", "reasoning_effort", "chat_template_kwargs", "enable_thinking", "max_tokens"],
+      ["response_format", "chat_template_kwargs", "enable_thinking", "max_tokens"],
+      ["response_format", "max_tokens"],
+      ["response_format", "max_tokens"],
+      ["response_format", "reasoning_effort", "chat_template_kwargs", "enable_thinking", "max_tokens"],
     ]);
   });
 
-  it("drops only the chat-template switch when a local server names it", async () => {
-    const f = fakeFetch(
-      new Response('{"detail":[{"loc":["body","chat_template_kwargs"],"msg":"Extra inputs are not permitted"}]}', { status: 422 }),
-      chat('{"title":"Fix login bug"}'),
-    );
-    const out = await complete(input({ serviceId: "local" }), endpoint, { thinkingOff: "enable_thinking", fetch: f.fetch });
-    expect(out).toMatchObject({ ok: true });
-    expect(f.requests[1].body).toHaveProperty("response_format");
-    expect(f.requests[1].body).not.toHaveProperty("chat_template_kwargs");
-    expect(f.requests[1].body).not.toHaveProperty("enable_thinking");
-  });
-
   it("learns nothing when the fallback fails too", async () => {
-    const learned = new Map<string, Features>();
+    const learned = new Map<string, string[]>();
     const f = fakeFetch(
       liteLlmError(422, "Budget has been exceeded!", "budget_exceeded"),
       liteLlmError(422, "Budget has been exceeded!", "budget_exceeded"),
     );
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch, learned });
+    const out = await complete(input(), endpoint, { fetch: f.fetch, learned });
 
     expect(out).toEqual({ ok: false, code: "request_failed", message: "HTTP 422: Budget has been exceeded!" });
     expect(learned.size).toBe(0);
@@ -153,7 +139,7 @@ describe("structured output paths", () => {
 
   it("reads the answer after a thinking model's </think>", async () => {
     const f = fakeFetch(chat('<think>The user wants {"title": "wrong"}</think>\n{"title":"Right"}'));
-    const out = await complete(input({ serviceId: "local" }), endpoint, { thinkingOff: "enable_thinking", fetch: f.fetch });
+    const out = await complete(input({ serviceId: "local" }), endpoint, { fetch: f.fetch });
     expect(out).toMatchObject({ ok: true, value: { title: "Right" } });
   });
 
@@ -161,13 +147,13 @@ describe("structured output paths", () => {
     const f = fakeFetch(
       new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "", reasoning_content: 'Title: {"title":"Fix login bug"}' } }] })),
     );
-    const out = await complete(input({ serviceId: "local" }), endpoint, { thinkingOff: "enable_thinking", fetch: f.fetch });
+    const out = await complete(input({ serviceId: "local" }), endpoint, { fetch: f.fetch });
     expect(out).toMatchObject({ ok: true, value: { title: "Fix login bug" } });
   });
 
   it("returns invalid_response when a required key is missing", async () => {
     const f = fakeFetch(chat('{"name":"Fix login bug"}'));
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input(), endpoint, { fetch: f.fetch });
     expect(out).toEqual({ ok: false, code: "invalid_response", message: "The answer lacks required keys: title." });
   });
 
@@ -176,7 +162,7 @@ describe("structured output paths", () => {
     ["no choices", new Response('{"choices":[]}')],
     ["a body that is not JSON", new Response("<html>proxy error</html>")],
   ])("returns invalid_response for %s", async (_name, response) => {
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: fakeFetch(response).fetch });
+    const out = await complete(input(), endpoint, { fetch: fakeFetch(response).fetch });
     expect(out).toMatchObject({ ok: false, code: "invalid_response" });
   });
 
@@ -200,7 +186,7 @@ describe("error codes", () => {
     [504, "service_unavailable"],
   ])("maps HTTP %i to %s", async (status, code) => {
     const f = fakeFetch(liteLlmError(status, "upstream said no"));
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input(), endpoint, { fetch: f.fetch });
     expect(out).toEqual({ ok: false, code, message: `HTTP ${status}: upstream said no` });
   });
 
@@ -212,7 +198,7 @@ describe("error codes", () => {
 
   it("maps a network error to service_unavailable", async () => {
     const f = fakeFetch(() => Promise.reject(new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED") })));
-    const out = await complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input(), endpoint, { fetch: f.fetch });
     expect(out).toEqual({
       ok: false,
       code: "service_unavailable",
@@ -229,20 +215,20 @@ describe("timeout", () => {
 
   it("aborts the request and returns timeout when timeoutMs passes", async () => {
     const started = Date.now();
-    const out = await complete(input({ timeoutMs: 50 }), endpoint, { thinkingOff: "reasoning_effort", fetch: fakeFetch(hang).fetch });
+    const out = await complete(input({ timeoutMs: 50 }), endpoint, { fetch: fakeFetch(hang).fetch });
     expect(out).toEqual({ ok: false, code: "timeout", message: "No answer from https://gateway.example.com/v1 within 50 ms." });
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it("counts the fallback request against the same deadline", async () => {
     const f = fakeFetch(liteLlmError(400, "bad response_format"), hang);
-    const out = await complete(input({ timeoutMs: 50 }), endpoint, { thinkingOff: "reasoning_effort", fetch: f.fetch });
+    const out = await complete(input({ timeoutMs: 50 }), endpoint, { fetch: f.fetch });
     expect(out).toMatchObject({ ok: false, code: "timeout" });
   });
 
   it("returns request_failed when bb cancels the request", async () => {
     const cancel = new AbortController();
-    const pending = complete(input(), endpoint, { thinkingOff: "reasoning_effort", fetch: fakeFetch(hang).fetch, signal: cancel.signal });
+    const pending = complete(input(), endpoint, { fetch: fakeFetch(hang).fetch, signal: cancel.signal });
     cancel.abort();
     expect(await pending).toEqual({ ok: false, code: "request_failed", message: "bb cancelled the request." });
   });

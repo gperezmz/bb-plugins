@@ -1,77 +1,79 @@
-// OpenAI-compatible inference's backend entry: registers the `gateway` and
-// `local` AI services, and hands the settings to the host entry, which
-// answers bb's completions.
+// OpenAI-compatible inference's backend entry: registers each endpoint as an
+// AI service, and hands the endpoints to the host entry, which answers bb's
+// completions.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
-import { configureContract, type EndpointSettingsByService } from "./src/contract";
-
-const urlOrEmpty = z.union([z.literal(""), z.url({ protocol: /^https?$/ })], {
-  error: "Enter an http:// or https:// URL, or leave it empty.",
-});
+import { configureContract } from "./src/contract";
+import { endpointsText, keysText, resolveEndpoints, type Endpoint } from "./src/endpoints";
 
 export const SETTINGS = {
-  gatewayUrl: {
+  endpoints: {
     type: "string",
-    label: "Gateway base URL",
+    label: "Endpoints",
     description:
-      "Base URL of your LiteLLM gateway's OpenAI API, e.g. https://gateway.example.com/v1. Empty: the GATEWAY_URL variable in bb's environment.",
-    experimental_schema: urlOrEmpty,
-    default: "",
+      'JSON list of OpenAI-compatible servers, e.g. [{"id": "mlx", "url": "http://127.0.0.1:8080/v1"}]. Each id becomes an AI service: BB_INFERENCE=<id>/<model>. With GATEWAY_URL in bb\'s environment, a "gateway" endpoint is added unless one is listed. A change applies on save, without a reload.',
+    experimental_multiline: true,
+    experimental_schema: endpointsText,
+    default: "[]",
   },
-  gatewayKey: {
+  keys: {
     type: "string",
-    label: "Gateway virtual key",
-    description: "Sent as a Bearer token. Empty: the GATEWAY_VIRTUAL_KEY variable in bb's environment.",
-    secret: true,
-  },
-  localUrl: {
-    type: "string",
-    label: "Local server base URL",
+    label: "Endpoint keys",
     description:
-      "Base URL of a local OpenAI-compatible server (mlx_lm.server, LM Studio, llama.cpp), e.g. http://127.0.0.1:8080/v1.",
-    experimental_schema: urlOrEmpty,
-    default: "",
-  },
-  localKey: {
-    type: "string",
-    label: "Local server API key",
-    description: "Sent as a Bearer token. Leave it empty when the server asks for none.",
+      'JSON object from endpoint id to the key sent to it as a Bearer token, e.g. {"gateway": "sk-..."}. Without one, "gateway" uses GATEWAY_VIRTUAL_KEY.',
     secret: true,
+    experimental_schema: keysText,
   },
 } as const;
 
-type Values = { gatewayUrl: string; gatewayKey?: string; localUrl: string; localKey?: string };
-
-const orNull = (value: string | undefined): string | null => (value ? value : null);
-
-export const endpointSettings = (values: Values): EndpointSettingsByService => ({
-  gateway: { baseUrl: orNull(values.gatewayUrl), apiKey: orNull(values.gatewayKey) },
-  local: { baseUrl: orNull(values.localUrl), apiKey: orNull(values.localKey) },
-});
+const displayName = (endpoint: Endpoint) => `OpenAI-compatible endpoint at ${endpoint.url}`;
 
 export default async function plugin(bb: BbPluginApi) {
-  bb.experimental_aiServices.register({ id: "gateway", displayName: "LiteLLM gateway (OpenAI-compatible)", kinds: ["inference"] });
-  bb.experimental_aiServices.register({ id: "local", displayName: "Local OpenAI-compatible server", kinds: ["inference"] });
-
   const settings = bb.settings.define(SETTINGS);
   const host = bb.hosts.experimental_client({ contract: configureContract });
+  const services = new Map<string, { displayName: string; dispose(): void }>();
+  let endpoints: Endpoint[] = [];
 
-  // bb calls the host entry on the primary host, so that is where the
-  // settings go.
-  const sendSettings = async () => {
-    const { primaryHostId } = await bb.sdk.system.config();
-    if (primaryHostId === null) throw new Error("bb has no primary host to send the settings to");
-    await host.call("configure", endpointSettings(await settings.get()), { hostId: primaryHostId });
+  // bb registers a service at once when the plugin is already running, so a
+  // saved change needs no reload.
+  const registerServices = () => {
+    for (const [id, service] of services) {
+      if (!endpoints.some((e) => e.id === id && displayName(e) === service.displayName)) {
+        service.dispose();
+        services.delete(id);
+      }
+    }
+    for (const endpoint of endpoints) {
+      if (services.has(endpoint.id)) continue;
+      try {
+        const name = displayName(endpoint);
+        const { dispose } = bb.experimental_aiServices.register({ id: endpoint.id, displayName: name, kinds: ["inference"] });
+        services.set(endpoint.id, { displayName: name, dispose });
+      } catch (error) {
+        bb.log.warn(`Endpoint "${endpoint.id}" is not a service: ${String(error)}`);
+      }
+    }
   };
 
-  settings.onChange(() => {
-    sendSettings().catch((error: unknown) => bb.log.warn(`Could not send the settings to the host: ${String(error)}`));
+  // bb calls the host entry on the primary host, so that is where the
+  // endpoints go.
+  const sendEndpoints = async () => {
+    const { primaryHostId } = await bb.sdk.system.config();
+    if (primaryHostId === null) throw new Error("bb has no primary host to send the endpoints to");
+    await host.call("configure", endpoints, { hostId: primaryHostId });
+  };
+
+  endpoints = resolveEndpoints(await settings.get(), process.env);
+  registerServices();
+  settings.onChange((next) => {
+    endpoints = resolveEndpoints(next, process.env);
+    registerServices();
+    sendEndpoints().catch((error: unknown) => bb.log.warn(`Could not send the endpoints to the host: ${String(error)}`));
   });
   // A service, because bb.sdk is usable only once the server listens; a
   // failed send throws, and bb restarts the service with backoff.
-  bb.background.service("send-settings", {
+  bb.background.service("send-endpoints", {
     async start(signal) {
-      await sendSettings();
+      await sendEndpoints();
       await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
     },
   });
