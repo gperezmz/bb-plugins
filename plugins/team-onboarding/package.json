@@ -1,6 +1,6 @@
 {
-  "name": "bb-plugin-team-onboarding",
-  "version": "0.1.0",
+  "name": "@gperezmz/bb-plugin-team-onboarding",
+  "version": "0.1.1",
   "type": "module",
   "engines": {
     "bb": ">=0.43",
@@ -73,5 +73,21 @@
     "schema": "node --import ./scripts/ts-resolve.mjs scripts/emit-schema.ts",
     "refresh-keys": "node scripts/refresh-github-keys.mjs",
     "notices": "node scripts/third-party-notices.mjs"
-  }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "server.ts",
+    "tsconfig.json",
+    "THIRD_PARTY_NOTICES.md",
+    "app.tsx",
+    "host.ts",
+    "src",
+    "components",
+    "lib",
+    "hooks",
+    "schema",
+    "examples",
+    "!**/*.test.*"
+  ]
 }

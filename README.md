@@ -53,7 +53,7 @@ Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding` o
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
 ```
 
-[Install, update or remove a plugin](docs/how-to/install-plugins.md) covers pinning a release, updating and removing; [develop a plugin](docs/how-to/develop-plugins.md) covers running one from a checkout.
+[Install, update or remove a plugin](docs/how-to/install-plugins.md) covers pinning a release, installing a prebuilt package from npm, updating and removing; [develop a plugin](docs/how-to/develop-plugins.md) covers running one from a checkout.
 
 ## Contributing
 

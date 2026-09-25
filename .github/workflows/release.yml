@@ -1,15 +1,30 @@
 name: Release
 
 # One tag per plugin release: <plugin>/v<version>, e.g. thread-glance/v0.2.0.
+# The tag gets a GitHub Release and, once the repository variable NPM_PUBLISH
+# is "true", the plugin's npm package with provenance. npm trusted publishing
+# authenticates it with GitHub's OIDC token. npm trusts a workflow only for a
+# package that exists, so a new package's first version goes out with the
+# NPM_TOKEN secret instead, which is deleted once the package trusts this
+# workflow.
 on:
   push:
     tags: ['*/v*']
+  # Runs a release again, e.g. to publish a tag pushed before npm was set up.
+  # The tag's own files are checked and packed, so it must carry the npm
+  # packaging (scripts/ci/pack-npm.sh).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. thread-glance/v0.2.0
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 env:
-  TAG: ${{ github.ref_name }}
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   verify:
@@ -21,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
       - name: Match the tag to a plugin and its package.json version
         id: tag
@@ -47,10 +63,11 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        mode: [check, git-install]
+        mode: [check, git-install, npm-install]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
@@ -60,15 +77,71 @@ jobs:
           PLUGIN: ${{ needs.verify.outputs.plugin }}
           MODE: ${{ matrix.mode }}
 
+  npm:
+    name: npm publish
+    needs: [verify, check]
+    if: vars.NPM_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # npm's trusted publisher for each package names this workflow file and
+    # this environment; add protection rules to the environment to gate
+    # publishing.
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PLUGIN: ${{ needs.verify.outputs.plugin }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      # Trusted publishing needs npm 11.5.1 or later.
+      NPM_VERSION: 11.20.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          plugin: ${{ needs.verify.outputs.plugin }}
+      - run: npm install --global --no-audit --no-fund "npm@$NPM_VERSION"
+      - name: Pack
+        id: pack
+        run: echo "tarball=$(scripts/ci/pack-npm.sh "$PLUGIN" "$RUNNER_TEMP" | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Publish
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          name=$(jq -r .name "plugins/$PLUGIN/package.json")
+          # A version is never replaced; a re-run after publishing only
+          # notes it.
+          if npm view "$name@$VERSION" version > /dev/null 2>&1; then
+            echo "::notice::$name@$VERSION is already on npm"
+            exit 0
+          fi
+          # A prerelease must not become what `latest` and ranges resolve to.
+          tag=latest
+          if [[ $VERSION == *-* ]]; then tag=next; fi
+          if [[ -n $NPM_TOKEN ]]; then
+            # npm reads the token from the environment; the file names it.
+            # shellcheck disable=SC2016
+            echo '//registry.npmjs.org/:_authToken=${NPM_TOKEN}' > "$RUNNER_TEMP/.npmrc"
+            export NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/.npmrc
+          fi
+          npm publish "$TARBALL" --access public --ignore-scripts --provenance --tag "$tag"
+
   release:
     name: GitHub Release
-    needs: [verify, check]
+    needs: [verify, check, npm]
+    # After npm, so the notes offer the npm package only once it exists.
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.npm.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ env.TAG }}
           fetch-depth: 0
           persist-credentials: false
       - name: Create the release
@@ -76,7 +149,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PLUGIN: ${{ needs.verify.outputs.plugin }}
           VERSION: ${{ needs.verify.outputs.version }}
+          NPM_PUBLISHED: ${{ needs.npm.result == 'success' }}
         run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::$TAG already has a release"
+            exit 0
+          fi
+          if [[ $NPM_PUBLISHED == true ]]; then
+            NPM_PACKAGE=$(jq -r .name "plugins/$PLUGIN/package.json")
+            export NPM_PACKAGE
+          fi
           scripts/ci/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
           prerelease=()
           if [[ $VERSION == *-* ]]; then prerelease=(--prerelease); fi
