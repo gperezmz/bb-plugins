@@ -2,10 +2,10 @@
  * The OpenAI-compatible servers bb can send helper completions to. Each one
  * is an AI service whose id the user puts in `BB_INFERENCE=<id>/<model>`.
  *
- * The server reads them from the settings, adds `gateway` from bb's
- * environment, and hands the result to the host entry, which cannot read the
- * settings and keeps them in a file only its user can read, so a restarted
- * worker still has them.
+ * An endpoint's url and key may reference bb's environment as `${NAME}`. The
+ * server hands the endpoints to the host entry unexpanded; the host entry,
+ * which runs with bb's environment, expands them for each request and writes
+ * the expanded values nowhere.
  */
 import { chmod, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,21 +14,34 @@ import { z } from "zod";
 export const endpointSchema = z
   .object({
     id: z.string().min(1),
-    /** Base URL that `/chat/completions` is appended to, without a trailing slash. */
+    /** Base URL that `/chat/completions` is appended to; may hold `${NAME}`. */
     url: z.string().min(1),
+    /** A literal key from the `keys` setting, or a `${NAME}` reference. */
     key: z.string().nullable(),
   })
   .strict();
 export type Endpoint = z.infer<typeof endpointSchema>;
 export const endpointListSchema = z.array(endpointSchema);
 
-/** The `endpoints` setting: a JSON list of `{id, url}`. */
+const REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const httpUrl = z.url({ protocol: /^https?$/ });
+
+/** The `endpoints` setting: a JSON list of `{id, url, key?}`. */
 const listedSchema = z
   .array(
     z
       .object({
         id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "An id is lowercase letters, digits and dashes."),
-        url: z.url({ protocol: /^https?$/, error: "A url is an http:// or https:// URL." }),
+        url: z
+          .string()
+          .refine(
+            (url) => url.includes("${") || httpUrl.safeParse(url).success,
+            "A url is an http:// or https:// URL, or references a variable as ${NAME}.",
+          ),
+        key: z
+          .string()
+          .regex(/^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/, "A key here can only be a ${NAME} reference; put a literal key in Endpoint keys.")
+          .optional(),
       })
       .strict(),
   )
@@ -55,34 +68,30 @@ const jsonText = <T>(schema: z.ZodType<T>, empty: string) =>
 export const endpointsText = jsonText(listedSchema, "[]");
 export const keysText = jsonText(keysSchema, "{}");
 
-const trimmed = (value: string | undefined): string | null => value?.trim() || null;
-
 /**
- * The endpoints the settings and bb's environment define.
- *
- * Args:
- *   settings: The `endpoints` and `keys` settings, as stored.
- *   env: bb's environment. With `GATEWAY_URL` set and no endpoint called
- *     `gateway` listed, adds `gateway`, keyed by `GATEWAY_VIRTUAL_KEY` unless
- *     `keys` has one for it.
+ * The endpoints the settings define, unexpanded. A key in `keys` wins over
+ * the endpoint's own `${NAME}` reference.
  */
-export function resolveEndpoints(
-  settings: { endpoints: string; keys?: string },
-  env: Readonly<Record<string, string | undefined>>,
-): Endpoint[] {
+export function resolveEndpoints(settings: { endpoints: string; keys?: string }): Endpoint[] {
   const listed = parseJson(listedSchema, settings.endpoints.trim() || "[]");
   const keys = parseJson(keysSchema, settings.keys?.trim() || "{}");
-  const keyOf = (id: string) => (keys.success ? trimmed(keys.data[id]) : null);
-  const endpoints: Endpoint[] = (listed.success ? listed.data : []).map(({ id, url }) => ({
+  return (listed.success ? listed.data : []).map(({ id, url, key }) => ({
     id,
-    url: url.replace(/\/+$/, ""),
-    key: keyOf(id),
+    url,
+    key: (keys.success ? keys.data[id]?.trim() : undefined) || key || null,
   }));
-  const gatewayUrl = trimmed(env.GATEWAY_URL);
-  if (gatewayUrl !== null && !endpoints.some((e) => e.id === "gateway")) {
-    endpoints.push({ id: "gateway", url: gatewayUrl.replace(/\/+$/, ""), key: keyOf("gateway") ?? trimmed(env.GATEWAY_VIRTUAL_KEY) });
-  }
-  return endpoints;
+}
+
+/** The variables an endpoint references that are unset or empty in `env`. */
+export function missingVariables(endpoint: Endpoint, env: Readonly<Record<string, string | undefined>>): string[] {
+  const names = [...`${endpoint.url} ${endpoint.key ?? ""}`.matchAll(REFERENCE)].map((m) => m[1]);
+  return [...new Set(names.filter((name) => !env[name]?.trim()))];
+}
+
+/** The endpoint with its references replaced from `env`; call `missingVariables` first. */
+export function expandEndpoint(endpoint: Endpoint, env: Readonly<Record<string, string | undefined>>): Endpoint {
+  const expand = (text: string) => text.replace(REFERENCE, (_, name: string) => env[name]?.trim() ?? "");
+  return { id: endpoint.id, url: expand(endpoint.url).replace(/\/+$/, ""), key: endpoint.key === null ? null : expand(endpoint.key) };
 }
 
 const ENDPOINTS_FILE = "endpoints.json";

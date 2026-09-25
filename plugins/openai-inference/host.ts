@@ -6,5 +6,5 @@ import { createHandlers } from "./src/handlers.js";
 
 export default experimental_defineHostEntry({
   contract: hostContract,
-  handlers: createHandlers(),
+  handlers: createHandlers(process.env),
 });

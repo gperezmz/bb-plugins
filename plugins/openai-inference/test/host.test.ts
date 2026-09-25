@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
@@ -12,6 +12,7 @@ let dataDir: string;
 
 beforeAll(async () => {
   fake = await startFakeLiteLlm({ key: "sk-test", slowMs: 2_000 });
+  env.FAKE_URL = fake.url;
   dataDir = await mkdtemp(join(tmpdir(), "openai-inference-"));
 });
 afterAll(async () => {
@@ -21,9 +22,10 @@ afterAll(async () => {
 
 // `@get-bb/plugin-sdk/host` cannot be imported by native ESM, so the entry
 // object that `experimental_defineHostEntry` builds is written out here.
+const env = { FAKE_URL: "", FAKE_KEY: "sk-test" };
 const entry = () =>
   experimental_createHostEntryHarness(
-    { experimental_apiVersion: 1, contract: hostContract, handlers: createHandlers() },
+    { experimental_apiVersion: 1, contract: hostContract, handlers: createHandlers(env) },
     { experimental_paths: { dataDir, tempDir: dataDir } },
   );
 
@@ -107,6 +109,30 @@ describe("host entry against a LiteLLM-like server", () => {
     expect(await h.experimental_call("ai.inference.complete", title("gateway", "slow", 200))).toMatchObject({
       ok: false,
       code: "timeout",
+    });
+  });
+
+  it("expands ${NAME} in url and key from bb's environment, and writes the expansion nowhere", async () => {
+    const h = entry();
+    const endpoints = [{ id: "gateway", url: "${FAKE_URL}/v1/", key: "${FAKE_KEY}" }];
+    expect(await h.experimental_call("configure", endpoints)).toEqual([{ id: "gateway", missing: [] }]);
+    expect(await h.experimental_call("ai.inference.complete", title("gateway", "gpt-6-luna"))).toMatchObject({ ok: true });
+    expect(fake.requests.at(-1)).toMatchObject({ path: "/v1/chat/completions", authorized: true });
+    const stored = await readFile(join(dataDir, "endpoints.json"), "utf8");
+    expect(stored).toContain("${FAKE_URL}");
+    expect(stored).not.toContain(fake.url);
+    expect(stored).not.toContain("sk-test");
+  });
+
+  it("reports unset variables, and refuses a completion that needs them", async () => {
+    const h = entry();
+    expect(
+      await h.experimental_call("configure", [{ id: "gateway", url: "${UNSET_URL}", key: "${UNSET_KEY}" }]),
+    ).toEqual([{ id: "gateway", missing: ["UNSET_URL", "UNSET_KEY"] }]);
+    expect(await h.experimental_call("ai.inference.complete", title("gateway", "gpt-6-luna"))).toEqual({
+      ok: false,
+      code: "request_failed",
+      message: "Not set in bb's environment: UNSET_URL, UNSET_KEY.",
     });
   });
 

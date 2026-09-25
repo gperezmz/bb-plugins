@@ -105,9 +105,9 @@ export async function complete(
     if (!response.ok) return httpFailure(response.status, await response.text());
     return parseCompletion(await response.text(), input);
   } catch (error) {
-    if (deadline.signal.aborted) return fail("timeout", `No answer from ${endpoint.url} within ${input.timeoutMs} ms.`);
+    if (deadline.signal.aborted) return fail("timeout", `No answer from endpoint "${endpoint.id}" within ${input.timeoutMs} ms.`);
     if (options.signal?.aborted) return fail("request_failed", "bb cancelled the request.");
-    return fail("service_unavailable", `Could not reach ${endpoint.url}: ${describe(error)}`);
+    return fail("service_unavailable", `Could not reach endpoint "${endpoint.id}": ${describe(error)}`);
   } finally {
     clearTimeout(timer);
   }
@@ -237,8 +237,9 @@ function closingBrace(text: string, start: number): number {
   return -1;
 }
 
+/** The error without its cause's message, which names the host and port. */
 function describe(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
-  const cause = error.cause instanceof Error ? error.cause.message : null;
-  return cause ? `${error.message} (${cause})` : error.message;
+  if (!(error instanceof Error)) return "unknown error";
+  const code = (error.cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" ? `${error.message} (${code})` : error.message;
 }

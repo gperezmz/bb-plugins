@@ -197,12 +197,12 @@ describe("error codes", () => {
   });
 
   it("maps a network error to service_unavailable", async () => {
-    const f = fakeFetch(() => Promise.reject(new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED") })));
+    const f = fakeFetch(() => Promise.reject(new TypeError("fetch failed", { cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:9"), { code: "ECONNREFUSED" }) })));
     const out = await complete(input(), endpoint, { fetch: f.fetch });
     expect(out).toEqual({
       ok: false,
       code: "service_unavailable",
-      message: "Could not reach https://gateway.example.com/v1: fetch failed (connect ECONNREFUSED)",
+      message: 'Could not reach endpoint "gateway": fetch failed (ECONNREFUSED)',
     });
   });
 });
@@ -216,7 +216,7 @@ describe("timeout", () => {
   it("aborts the request and returns timeout when timeoutMs passes", async () => {
     const started = Date.now();
     const out = await complete(input({ timeoutMs: 50 }), endpoint, { fetch: fakeFetch(hang).fetch });
-    expect(out).toEqual({ ok: false, code: "timeout", message: "No answer from https://gateway.example.com/v1 within 50 ms." });
+    expect(out).toEqual({ ok: false, code: "timeout", message: 'No answer from endpoint "gateway" within 50 ms.' });
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
