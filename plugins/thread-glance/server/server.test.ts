@@ -67,25 +67,25 @@ describe("preferences", () => {
   it("stores, publishes and resets a value", async () => {
     const { bb, harness } = await load();
     expect(
-      await harness.behavior.callRpc("setPreference", { key: "nesting", value: "tree" }),
-    ).toEqual({ key: "nesting", value: "tree" });
-    expect(await bb.storage.kv.get(preferenceKvKey("nesting"))).toBe("tree");
-    expect(await harness.behavior.callRpc("resetPreference", { key: "nesting" })).toEqual({
-      key: "nesting",
-      value: "folded",
+      await harness.behavior.callRpc("setPreference", { key: "organizationMode", value: "machine" }),
+    ).toEqual({ key: "organizationMode", value: "machine" });
+    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBe("machine");
+    expect(await harness.behavior.callRpc("resetPreference", { key: "organizationMode" })).toEqual({
+      key: "organizationMode",
+      value: "project",
     });
-    expect(await bb.storage.kv.get(preferenceKvKey("nesting"))).toBeUndefined();
+    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBeUndefined();
     expect(signalsOn(harness, CHANNELS.preferences)).toEqual([
-      { key: "nesting", value: "tree" },
-      { key: "nesting", value: "folded" },
+      { key: "organizationMode", value: "machine" },
+      { key: "organizationMode", value: "project" },
     ]);
   });
 
   it("rejects an invalid value with an error that names the key", async () => {
     const { harness } = await load();
     await expect(
-      harness.behavior.callRpc("setPreference", { key: "nesting", value: "sideways" }),
-    ).rejects.toThrow(/nesting/);
+      harness.behavior.callRpc("setPreference", { key: "organizationMode", value: "sideways" }),
+    ).rejects.toThrow(/organizationMode/);
     expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
   });
 
@@ -137,9 +137,9 @@ describe("importPreferences", () => {
     const first = await load();
     expect(
       await first.harness.behavior.callRpc("importPreferences", {
-        bbMirror: JSON.stringify({ nesting: "tree" }),
+        bbMirror: JSON.stringify({ organizationMode: "machine" }),
       }),
-    ).toMatchObject({ source: "local-storage", keys: ["nesting"] });
+    ).toMatchObject({ source: "local-storage", keys: ["organizationMode"] });
     const second = await load();
     expect(
       await second.harness.behavior.callRpc("importPreferences", {
@@ -161,11 +161,11 @@ describe("importPreferences", () => {
   });
 
   it("falls back to bb's CLI when the mirror holds no bb preferences", async () => {
-    fakeBbCli(JSON.stringify({ nesting: "tree" }));
+    fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
     const { harness } = await load();
     expect(
       await harness.behavior.callRpc("importPreferences", { bbMirror: { unrelated: 1 } }),
-    ).toMatchObject({ source: "cli", keys: ["nesting"] });
+    ).toMatchObject({ source: "cli", keys: ["organizationMode"] });
   });
 
   it("uses the defaults and marks the import done when every source fails", async () => {
@@ -184,8 +184,8 @@ describe("importPreferences", () => {
   it("runs once when two windows import at the same time", async () => {
     const { harness } = await load();
     const results = await Promise.all([
-      harness.behavior.callRpc("importPreferences", { bbMirror: { nesting: "tree" } }),
-      harness.behavior.callRpc("importPreferences", { bbMirror: { nesting: "tree" } }),
+      harness.behavior.callRpc("importPreferences", { bbMirror: { organizationMode: "machine" } }),
+      harness.behavior.callRpc("importPreferences", { bbMirror: { organizationMode: "machine" } }),
     ]);
     expect(results.map((result) => (result as { status: string }).status).sort()).toEqual([
       "already-imported",
@@ -370,12 +370,12 @@ describe("bb thread-glance prefs", () => {
     const list = await harness.behavior.runCli(["prefs", "list", "--json"]);
     expect(JSON.parse(list.stdout)).toEqual(defaultPreferences());
 
-    const set = await harness.behavior.runCli(["prefs", "set", "nesting", "tree"]);
-    expect(set).toMatchObject({ exitCode: 0, stdout: 'nesting = "tree"' });
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([{ key: "nesting", value: "tree" }]);
+    const set = await harness.behavior.runCli(["prefs", "set", "organizationMode", "machine"]);
+    expect(set).toMatchObject({ exitCode: 0, stdout: 'organizationMode = "machine"' });
+    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([{ key: "organizationMode", value: "machine" }]);
 
-    const get = await harness.behavior.runCli(["prefs", "get", "nesting", "--json"]);
-    expect(JSON.parse(get.stdout)).toEqual({ key: "nesting", value: "tree" });
+    const get = await harness.behavior.runCli(["prefs", "get", "organizationMode", "--json"]);
+    expect(JSON.parse(get.stdout)).toEqual({ key: "organizationMode", value: "machine" });
 
     const setList = await harness.behavior.runCli([
       "prefs",
@@ -385,8 +385,8 @@ describe("bb thread-glance prefs", () => {
     ]);
     expect(setList.exitCode).toBe(0);
 
-    const reset = await harness.behavior.runCli(["prefs", "reset", "nesting"]);
-    expect(reset.stdout).toBe('nesting = "folded"');
+    const reset = await harness.behavior.runCli(["prefs", "reset", "organizationMode"]);
+    expect(reset.stdout).toBe('organizationMode = "project"');
   });
 
   it("reports unknown keys and invalid values with codes and hints", async () => {
@@ -398,11 +398,15 @@ describe("bb thread-glance prefs", () => {
       error: { code: "unknown_preference" },
     });
 
-    const invalid = await harness.behavior.runCli(["prefs", "set", "nesting", "sideways", "--json"]);
+    const tree = await harness.behavior.runCli(["prefs", "set", "nesting", "tree", "--json"]);
+    expect(JSON.parse(tree.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
+    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
+
+    const invalid = await harness.behavior.runCli(["prefs", "set", "organizationMode", "sideways", "--json"]);
     expect(invalid.exitCode).not.toBe(0);
     expect(JSON.parse(invalid.stdout)).toMatchObject({
       ok: false,
-      error: { code: "invalid_preference_value", message: expect.stringContaining("nesting") },
+      error: { code: "invalid_preference_value", message: expect.stringContaining("organizationMode") },
     });
   });
 });

@@ -1,25 +1,20 @@
 // How far a row sits from the list's left edge. Pure, so a test can
 // call it without rendering.
-import type { Nesting } from "@/shared/preferences";
-
 /** Left padding of a root row, as in bb's list. */
 export const ROOT_INDENT = 8;
-/** Tree nesting keeps bb's step per level. */
-export const TREE_STEP = 24;
 /**
- * Folded nesting shows one flat level. A child's status slot starts this far
- * right of its parent's, so the child's title sits this far right of the
- * parent's title.
+ * A child's status slot starts this far right of its parent's, so the
+ * child's title sits this far right of the parent's title.
  */
 export const FOLDED_STEP = 12;
 
-export function rowIndent(depth: number, nesting: Nesting): number {
-  return ROOT_INDENT + depth * (nesting === "tree" ? TREE_STEP : FOLDED_STEP);
+export function rowIndent(depth: number): number {
+  return ROOT_INDENT + depth * FOLDED_STEP;
 }
 
 /** How far the rail sits from a row's left edge: the centre of the status slot at that level. */
-export function railLeft(level: number, nesting: Nesting): number {
-  return rowIndent(level, nesting) + 8;
+export function railLeft(level: number): number {
+  return rowIndent(level) + 8;
 }
 
 /**

@@ -16,7 +16,7 @@ const threads = [
   makeThread({ id: "c", createdAt: 3, updatedAt: 3, parentThreadId: "b" }),
   makeThread({ id: "d", createdAt: 4, updatedAt: 4, projectId: "proj_b" }),
 ];
-const scenario: Scenario = { threads, prefs: { nesting: "tree", foldOlder: false } };
+const scenario: Scenario = { threads, prefs: { expandedChildren: ["b"], foldOlder: false } };
 
 describe("share", () => {
   it("returns the previous value when the next deep-equals it", () => {

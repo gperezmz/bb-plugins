@@ -70,7 +70,7 @@ export function comparePinned(a: PluginSidebarThread, b: PluginSidebarThread): n
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/** Children in Folded nesting: creation order. */
+/** Children under a chip: creation order. */
 export function compareCreationAscending(a: PluginSidebarThread, b: PluginSidebarThread): number {
   const diff = a.createdAt - b.createdAt;
   if (diff !== 0) return diff;

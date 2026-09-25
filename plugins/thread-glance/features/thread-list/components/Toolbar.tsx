@@ -150,9 +150,6 @@ export function SettingsPanel({
             <Choice label="By project" value="project" current={prefs.organizationMode} onSelect={(value) => onPrefs({ organizationMode: value })} />
             <Choice label="Custom" description="Your own sections" value="chronological" current={prefs.organizationMode} onSelect={(value) => onPrefs({ organizationMode: value })} />
             <Choice label="By machine" value="machine" current={prefs.organizationMode} onSelect={(value) => onPrefs({ organizationMode: value })} />
-            <Heading>Child threads</Heading>
-            <Choice label="Folded" description="One flat level behind a chip" value="folded" current={prefs.nesting} onSelect={(value) => onPrefs({ nesting: value })} />
-            <Choice label="Tree" description="bb's indented tree" value="tree" current={prefs.nesting} onSelect={(value) => onPrefs({ nesting: value })} />
             <Heading>Groups</Heading>
             <Toggle
               label="By environment"

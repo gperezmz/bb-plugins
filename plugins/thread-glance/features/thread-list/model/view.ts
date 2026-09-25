@@ -34,7 +34,7 @@ export type ListFilter = "all" | "attention";
 export interface Chip {
   count: number;
   flag: Flag | null;
-  /** Every child shows: folded, the user expanded it; tree, it's open. */
+  /** The user opened the chip, so every child shows. */
   expanded: boolean;
   /** Harnesses among the visible children that differ from the parent's. */
   providerIds: string[];
@@ -44,9 +44,9 @@ export interface ThreadRow {
   type: "thread";
   key: string;
   info: ThreadInfo;
-  /** Visual depth: 0 for roots; 1 for every child in folded nesting. */
+  /** Visual depth: 0 for roots, one more per level below. */
   depth: number;
-  /** Grandchild or deeper in folded nesting: draws `↳`. */
+  /** Grandchild or deeper: draws `↳`. */
   nested: boolean;
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
@@ -57,8 +57,6 @@ export interface ThreadRow {
   hiddenBadge: boolean;
   /** "In project X" when the thread is outside its family's group. */
   crossGroupLabel: string | null;
-  /** Tree nesting: this parent row sticks at this level (0-3), or null. */
-  stickyLevel: number | null;
   projectId: string;
 }
 
@@ -144,7 +142,6 @@ export interface ViewInputs {
 interface Context extends ViewInputs {
   compare: (a: SortKey, b: SortKey) => number;
   expandedChildren: ReadonlySet<string>;
-  collapsedChildren: ReadonlySet<string>;
   expandedOlder: ReadonlySet<string>;
   collapsedEnvironments: ReadonlySet<string>;
   /** Parent ids on the path to a reveal target. */
@@ -185,7 +182,7 @@ function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
-  options: { depth: number; nested: boolean; chip: Chip | null; stickyLevel?: number | null },
+  options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
   return {
     type: "thread",
@@ -198,7 +195,6 @@ function threadRow(
     rails: [],
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
-    stickyLevel: options.stickyLevel ?? null,
     projectId: info.thread.projectId,
   };
 }
@@ -219,7 +215,7 @@ function subtreeOf(context: Context, id: string): Subtree {
 }
 
 /**
- * The children of one parent that show in folded nesting. Each level
+ * The children of one parent that show under its chip. Each level
  * folds on its own: its direct children only, and a child's own children wait
  * for that child's chip. A child never shows without its parent, because the
  * parent's level is the only place it is drawn.
@@ -388,7 +384,7 @@ function rollupFlags(context: Context, info: ThreadInfo): Set<Flag> {
   return flags;
 }
 
-/** The rows under `parent` in folded nesting: each shown child, then its own level. */
+/** The rows under `parent`: each shown child, then its own level. */
 function foldedLevel(context: Context, family: Family, parent: ThreadInfo, depth: number): Row[] {
   const { shown, older } = foldedChildren(context, parent, depth);
   const units: Unit[] = shown.map((info) => ({
@@ -420,50 +416,7 @@ function foldedFamilyRows(context: Context, family: Family): Row[] {
   return [threadRow(context, root, root, { depth: 0, nested: false, chip }), ...foldedLevel(context, family, root, 1)];
 }
 
-/** Tree nesting: bb's tree, with chips on collapsed parents. */
-function treeRows(context: Context, family: Family, info: ThreadInfo, depth: number): Unit {
-  const id = info.thread.id;
-  const root = family.root;
-  const childIds = (context.forest.children.get(id) ?? []).filter((childId) => {
-    const child = context.forest.infos.get(childId)!;
-    return !child.thread.isHidden || child.needsYou.size > 0;
-  });
-  const subtree = subtreeOf(context, id);
-  let children = childIds.map((childId) => context.forest.infos.get(childId)!);
-  if (context.filter === "attention") {
-    children = children.filter((child) => {
-      const test = (candidate: ThreadInfo) => needsYouNow(candidate) || candidate.isActive;
-      return test(child) || subtreeOf(context, child.thread.id).descendants.some(test);
-    });
-  }
-  const open =
-    context.filter === "attention" ||
-    !context.collapsedChildren.has(id) ||
-    context.revealPath.has(id);
-  const chip: Chip | null =
-    childIds.length > 0
-      ? // Drawn closed when the filter leaves nothing under it.
-        { count: subtree.visibleCount, flag: mostUrgent(subtree.flags), expanded: open && children.length > 0, providerIds: childProviders(info, subtree.descendants) }
-      : null;
-  const ownRow = threadRow(context, info, root, {
-    depth,
-    nested: false,
-    chip,
-    stickyLevel: open && children.length > 0 && depth < 4 ? depth : null,
-  });
-  const ownFlags = rollupFlags(context, info);
-  if (!open || children.length === 0) return { info, rows: [ownRow], flags: ownFlags };
-  const keyed = children.map((child) => ({
-    child,
-    key: { thread: child.thread, familyAttention: subtreeAttention(context, child.thread.id) },
-  }));
-  keyed.sort((a, b) => context.compare(a.key, b.key));
-  const units = keyed.map(({ child }) => treeRows(context, family, child, depth + 1));
-  return { info, rows: [ownRow, ...clusterEnvironments(context, units, depth + 1)], flags: ownFlags };
-}
-
 function familyUnit(context: Context, family: Family): Unit {
-  if (context.prefs.nesting === "tree") return treeRows(context, family, family.root, 0);
   return { info: family.root, rows: foldedFamilyRows(context, family), flags: family.flags };
 }
 
@@ -591,7 +544,6 @@ export function buildListView(inputs: ViewInputs): ListView {
       workingFirst: prefs.workingFirst,
     }),
     expandedChildren: new Set(prefs.expandedChildren),
-    collapsedChildren: new Set(prefs.collapsedChildren),
     expandedOlder: new Set(prefs.expandedOlder),
     collapsedEnvironments: new Set(prefs.collapsedEnvironments),
     revealIds,

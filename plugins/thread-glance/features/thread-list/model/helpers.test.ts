@@ -4,7 +4,7 @@ import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText } from "./labels";
-import { FOLDED_STEP, railLeft, railsFor, ROOT_INDENT, rowIndent, titleTreatment, TREE_STEP } from "./layout";
+import { FOLDED_STEP, railLeft, railsFor, ROOT_INDENT, rowIndent, titleTreatment } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
 import type { OlderRow } from "./view";
@@ -166,7 +166,6 @@ describe("preferences", () => {
   it("defaults follow the spec", () => {
     expect(defaultPreferences()).toMatchObject({
       organizationMode: "project",
-      nesting: "folded",
       foldOlder: true,
       workingFirst: false,
       environmentGrouping: false,
@@ -174,16 +173,21 @@ describe("preferences", () => {
     });
   });
   it("a bad mirror value falls back per key", () => {
-    expect(coercePreferences({ nesting: "tree", foldOlder: "yes" })).toMatchObject({ nesting: "tree", foldOlder: true });
+    expect(coercePreferences({ organizationMode: "machine", foldOlder: "yes" })).toMatchObject({ organizationMode: "machine", foldOlder: true });
+  });
+  it("reads a saved tree nesting as the folded layout, without an error", () => {
+    const prefs = coercePreferences({ nesting: "tree", collapsedChildren: ["p"], foldOlder: false });
+    expect(prefs).not.toHaveProperty("nesting");
+    expect(prefs).not.toHaveProperty("collapsedChildren");
+    expect(prefs.foldOlder).toBe(false);
   });
 });
 
 describe("row indent", () => {
-  it("steps a folded child by half of bb's tree step, and keeps the tree step in Tree", () => {
-    expect(rowIndent(0, "folded")).toBe(ROOT_INDENT);
-    expect(rowIndent(1, "folded")).toBe(ROOT_INDENT + FOLDED_STEP);
-    expect(rowIndent(1, "tree")).toBe(ROOT_INDENT + TREE_STEP);
-    expect(rowIndent(3, "tree")).toBe(8 + 24 * 3);
+  it("steps each level by 12px", () => {
+    expect(rowIndent(0)).toBe(ROOT_INDENT);
+    expect(rowIndent(1)).toBe(ROOT_INDENT + FOLDED_STEP);
+    expect(rowIndent(3)).toBe(8 + 12 * 3);
   });
 });
 
@@ -202,7 +206,7 @@ describe("guide rails", () => {
   it("draws no rail on a root with nothing under it", () => {
     expect(railsFor([0, 0])).toEqual([[null], [null]]);
   });
-  it("keeps one rail per level in a tree and ends each where its subtree ends", () => {
+  it("keeps one rail per level and ends each where its subtree ends", () => {
     // a > b > (c, d), then a's other child e, then root f.
     expect(railsFor([0, 1, 2, 2, 1, 0])).toEqual([
       ["start"],
@@ -214,8 +218,8 @@ describe("guide rails", () => {
     ]);
   });
   it("sits under the status slot of its level", () => {
-    expect(railLeft(0, "folded")).toBe(ROOT_INDENT + 8);
-    expect(railLeft(1, "tree")).toBe(ROOT_INDENT + TREE_STEP + 8);
+    expect(railLeft(0)).toBe(ROOT_INDENT + 8);
+    expect(railLeft(1)).toBe(ROOT_INDENT + FOLDED_STEP + 8);
   });
 });
 

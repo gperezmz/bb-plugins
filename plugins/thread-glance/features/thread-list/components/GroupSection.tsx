@@ -45,7 +45,6 @@ export type DropStates = ReadonlyMap<string, "valid" | "blocked" | "unchanged" |
 
 /** The sticky toolbar's height; headers stick below it. */
 export const TOOLBAR_HEIGHT = 32;
-const HEADER_HEIGHT = 28;
 const ROW_HEIGHT = { compact: 28, comfortable: 44 };
 
 function canRename(group: GroupView): boolean {
@@ -340,7 +339,6 @@ export const GroupSection = memo(function GroupSection({
                     groupId={group.descriptor.id}
                     inPinned={inPinned}
                     dropState={dropStates.get(row.info.thread.id) ?? null}
-                    stickyTop={row.stickyLevel !== null ? TOOLBAR_HEIGHT + HEADER_HEIGHT + row.stickyLevel * rowHeight : null}
                     active={row.info.thread.id === activeThreadId}
                     editing={row.info.thread.id === editingId}
                     now={now}

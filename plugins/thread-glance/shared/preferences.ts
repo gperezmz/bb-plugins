@@ -9,7 +9,6 @@ const idListSchema = z.array(idSchema).max(MAX_ITEMS);
 export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
 export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
 export const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
-export const nestingSchema = z.enum(["folded", "tree"]);
 export const lifecycleSchema = z.enum(["active", "archived"]);
 export const harnessIconSchema = z.enum(["muted", "colour", "hidden"]);
 export const childAttentionSchema = z.enum(["blocked", "everything"]);
@@ -22,7 +21,6 @@ const hiddenGroupsSchema = z
 export type OrganizationMode = z.infer<typeof organizationModeSchema>;
 export type SortField = z.infer<typeof sortFieldSchema>;
 export type SortDirection = z.infer<typeof sortDirectionSchema>;
-export type Nesting = z.infer<typeof nestingSchema>;
 export type Lifecycle = z.infer<typeof lifecycleSchema>;
 export type HarnessIcon = z.infer<typeof harnessIconSchema>;
 export type ChildAttention = z.infer<typeof childAttentionSchema>;
@@ -109,11 +107,6 @@ export const PREFERENCES = {
     [] as string[],
     "Environment ids whose folder row is collapsed.",
   ),
-  nesting: define(
-    nestingSchema,
-    "folded" as Nesting,
-    "Child thread nesting: folded (one flat level behind a chip) or tree (bb's tree).",
-  ),
   foldOlder: define(
     z.boolean(),
     true,
@@ -132,12 +125,7 @@ export const PREFERENCES = {
   expandedChildren: define(
     idListSchema,
     [] as string[],
-    "Parent thread ids the user expanded (folded nesting).",
-  ),
-  collapsedChildren: define(
-    idListSchema,
-    [] as string[],
-    "Parent thread ids the user collapsed (tree nesting).",
+    "Parent thread ids whose chip the user opened.",
   ),
   showPullRequests: define(z.boolean(), true, "Whether rows show a pull request badge."),
   childAttention: define(

@@ -477,28 +477,6 @@ describe("hidden threads", () => {
   });
 });
 
-describe("tree nesting", () => {
-  const threads = [
-    makeThread({ id: "p" }),
-    makeThread({ id: "c", parentThreadId: "p", latestAttentionAt: T0 + 1 }),
-    makeThread({ id: "g", parentThreadId: "c", hasPendingInteraction: true }),
-    makeThread({ id: "c2", parentThreadId: "p", latestAttentionAt: T0 + 5 }),
-  ];
-  it("indents by depth, expanded by default, siblings by the list's comparator", () => {
-    const view = viewOf({ threads, prefs: { nesting: "tree" } });
-    expect(rowIds(view, "project:proj_a")).toEqual(["p", "c2", "c", "g"]);
-    expect(threadRow(view, "g").depth).toBe(2);
-    expect(threadRow(view, "p").stickyLevel).toBe(0);
-  });
-  it("a collapsed parent shows the rollup chip unless a transition opens it", () => {
-    const collapsed = viewOf({ threads, prefs: { nesting: "tree", collapsedChildren: ["c"] } });
-    expect(rowIds(collapsed, "project:proj_a")).toEqual(["p", "c2", "c"]);
-    expect(threadRow(collapsed, "c").chip).toMatchObject({ count: 1, flag: "waits-on-you", expanded: false });
-    const { view } = render({ threads, prefs: { nesting: "tree", collapsedChildren: ["c"] } }, null, new Map());
-    expect(rowIds(view, "project:proj_a")).toEqual(["p", "c2", "c", "g"]);
-  });
-});
-
 describe("groups and modes", () => {
   it("project mode: Pinned first, projects in host order, personal threads in Threads", () => {
     const view = viewOf({

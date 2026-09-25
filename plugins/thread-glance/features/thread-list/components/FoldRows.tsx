@@ -35,9 +35,9 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
         "relative flex w-full items-center rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
         inFamily ? "h-7 gap-1.5 max-md:pointer-coarse:h-9" : "h-6 gap-1",
       )}
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) + (inFamily ? 0 : 2) }}
+      style={{ paddingLeft: rowIndent(row.depth) + (inFamily ? 0 : 2) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       {inFamily ? (
         <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
           <Icon name={ICONS.more} className="size-3.5" />
@@ -55,9 +55,9 @@ export const EmptyRowView = memo(function EmptyRowView({ row, controller }: { ro
   return (
     <div
       className="relative flex h-7 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground max-md:pointer-coarse:h-9"
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) }}
+      style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       <span aria-hidden className="size-4 shrink-0" />
       <span>{EMPTY_LEVEL_TEXT}</span>
     </div>
@@ -81,9 +81,9 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
   return (
     <div
       className="group/row relative flex h-7 w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent"
-      style={{ paddingLeft: rowIndent(row.depth, controller.nesting) }}
+      style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} nesting={controller.nesting} />
+      <RowRails rails={row.rails} />
       <button
         type="button"
         aria-expanded={!row.collapsed}

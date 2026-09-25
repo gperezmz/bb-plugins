@@ -356,7 +356,6 @@ function ThreadListBody({
       provider: providerDisplay,
       sections: sidebar.sections,
       mode: prefs.organizationMode,
-      nesting: prefs.nesting,
       onNavigate,
       onToggleChip: (row) => {
         const { prefs, forest } = latest.current;
@@ -399,7 +398,6 @@ function ThreadListBody({
     prefs.showPullRequests,
     prefs.harnessIcon,
     prefs.organizationMode,
-    prefs.nesting,
     defaultBranches,
     multiHost,
     providerDisplay,

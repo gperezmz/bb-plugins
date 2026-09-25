@@ -23,12 +23,7 @@ function under(forest: Forest, parentId: string): (id: string) => boolean {
 export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): ToggleOutcome {
   const id = row.info.thread.id;
   const expanded = row.chip?.expanded ?? false;
-  if (prefs.nesting === "tree") {
-    return expanded
-      ? { patch: { collapsedChildren: [...without(prefs.collapsedChildren, id), id] }, drop: under(forest, id) }
-      : { patch: { collapsedChildren: without(prefs.collapsedChildren, id) }, drop: null };
-  }
-  // Folded: expanding shows every child; collapsing also drops auto-reveals.
+  // Expanding shows every child; collapsing also drops auto-reveals.
   return expanded
     ? { patch: { expandedChildren: without(prefs.expandedChildren, id) }, drop: under(forest, id) }
     : { patch: { expandedChildren: [...without(prefs.expandedChildren, id), id] }, drop: null };

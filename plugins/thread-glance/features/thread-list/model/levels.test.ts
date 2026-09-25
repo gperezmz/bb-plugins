@@ -109,12 +109,6 @@ describe("an opened chip that Needs attention empties", () => {
     const blocked = threads.map((t) => (t.id === "c" ? { ...t, hasPendingInteraction: true } : t));
     expect(depths(viewOf({ threads: blocked, filter: "attention", prefs: { expandedChildren: ["m"] } }))).toEqual(["m@0", "c@1"]);
   });
-  it("draws a tree chip closed when nothing is under it", () => {
-    const view = viewOf({ threads, filter: "attention", prefs: { nesting: "tree" } });
-    const root = rowsOf(view).find((row): row is ThreadRow => row.type === "thread")!;
-    expect(root.chip).toMatchObject({ expanded: false });
-    expect(rowsOf(view)).toHaveLength(1);
-  });
 });
 
 /** A small seeded generator, so a failure names its seed. */
