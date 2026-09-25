@@ -200,21 +200,17 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // ---- attribution header on every provider command ----
-  let providerIds = [...TAGGED_PROVIDERS];
-  try {
-    const listed = (await bb.sdk.providers.list()) as unknown as { id: string }[] | { providers?: { id: string }[] };
-    const ids = (Array.isArray(listed) ? listed : (listed.providers ?? [])).map((p) => p.id);
-    providerIds = [...new Set([...providerIds, ...ids])];
-  } catch {
-    // Isolated harnesses may not bind the SDK at load; the fixed list covers the tagged harnesses.
-  }
-  for (const providerId of providerIds) {
+  const tagged = new Set<string>();
+  const tagProvider = (providerId: string) => {
+    if (tagged.has(providerId)) return;
+    tagged.add(providerId);
     bb.providers.experimental_contributeEnv(providerId, (context) =>
       settings.adapter === "litellm"
         ? attributionEnv(providerId, context.threadId, settings.extraHeaders)
         : [],
     );
-  }
+  };
+  for (const providerId of TAGGED_PROVIDERS) tagProvider(providerId);
 
   // ---- lifecycle events ----
   bb.events.on("experimental_thread.events", ({ thread, sequence }) => {
@@ -281,6 +277,24 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // ---- background work ----
+  // Nothing above awaits bb.sdk, the network or the logs: bb gives the factory
+  // 30 seconds, and on a server that has just started bb.sdk can take all of
+  // them to answer. What needs them runs in the services below.
+  // The other providers bb has are tagged too, once bb lists them.
+  bb.background.service("provider-env", {
+    async start(signal) {
+      while (!signal.aborted) {
+        try {
+          const listed = (await bb.sdk.providers.list()) as unknown as { id: string }[] | { providers?: { id: string }[] };
+          for (const p of Array.isArray(listed) ? listed : (listed.providers ?? [])) tagProvider(p.id);
+          break;
+        } catch (error) {
+          bb.log.warn(`could not list bb's providers: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        await sleep(60_000, signal);
+      }
+    },
+  });
   bb.background.service("gateway-sweep", {
     async start(signal) {
       while (!signal.aborted) {
