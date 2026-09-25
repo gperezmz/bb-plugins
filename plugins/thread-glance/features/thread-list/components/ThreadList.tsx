@@ -681,13 +681,8 @@ function ThreadListBody({
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
         <Toolbar prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
         {threads.length === 0 ? (
-          <div className="flex flex-col items-start gap-2 px-3 py-4 text-sm text-muted-foreground">
-            <p>No threads yet.</p>
-            <Button size="sm" variant="outline" onClick={() => actions.openNewThread({ focusPrompt: true })}>
-              <Icon name="Plus" aria-hidden />
-              New thread
-            </Button>
-          </div>
+          // bb's own pinned New thread button covers the empty list.
+          <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
             {view.needsYou !== null ? (

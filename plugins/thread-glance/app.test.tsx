@@ -316,6 +316,19 @@ describe("Thread Glance slot", () => {
     );
   });
 
+  it("says so on an empty list, with no New thread button of its own", async () => {
+    render([]);
+    expect(await screen.findByText("No threads yet.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /New thread/ })).toBeNull();
+  });
+
+  it("keeps New thread in a group's menu", async () => {
+    render([makeThread({ id: "t" })]);
+    const trigger = await screen.findByRole("button", { name: "Alpha actions" });
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    expect(await screen.findByRole("menuitem", { name: "New thread" })).toBeTruthy();
+  });
+
   it("draws a two-letter mark for providers without a logo", async () => {
     render([makeThread({ id: "t", providerId: "codex" })]);
     const marks = await screen.findAllByRole("img", { name: "Codex" });
