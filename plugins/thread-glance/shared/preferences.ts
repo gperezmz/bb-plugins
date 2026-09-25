@@ -48,7 +48,7 @@ export const PREFERENCES = {
       .max(2)
       .refine((values) => new Set(values).size === values.length, "Lifecycles must be unique"),
     ["active"] as Lifecycle[],
-    "Thread lifecycles shown: active, archived, or both. At least one is required.",
+    "Threads shown: [\"active\"], [\"archived\"] or both. At least one is required.",
   ),
   organizationMode: define(
     organizationModeSchema,
@@ -58,7 +58,7 @@ export const PREFERENCES = {
   environmentGrouping: define(
     z.boolean(),
     false,
-    "Whether sibling threads sharing a worktree environment fold into a folder row.",
+    "Worktrees as folders: whether sibling threads sharing a worktree environment fold into a folder row.",
   ),
   chronologicalSort: define(
     sortFieldSchema,
@@ -68,7 +68,7 @@ export const PREFERENCES = {
   sortDirection: define(
     sortDirectionSchema,
     "default" as SortDirection,
-    "Sort direction; default keeps the field's natural direction.",
+    "Sort direction: ascending or descending. A saved default reads as the field's own direction (descending for dates, ascending for alpha).",
   ),
   sectionOrder: define(
     idListSchema,
@@ -110,12 +110,12 @@ export const PREFERENCES = {
   foldOlder: define(
     z.boolean(),
     true,
-    "Whether quiet roots past the 5 most recent fold behind an N older row.",
+    "Collapse older threads: whether each group's quiet roots past its 5 newest fold behind an N older row.",
   ),
   workingFirst: define(
     z.boolean(),
     false,
-    "Whether working threads sort first under Updated, as bb's list does.",
+    "Working threads first: whether working threads sort first under Updated, as bb's list does.",
   ),
   expandedOlder: define(
     idListSchema,
@@ -195,7 +195,7 @@ export function coercePreferences(raw: unknown): Preferences {
 /**
  * Maps bb's own thread-list preferences onto ours for the first-run import
  *. `environmentGrouping: "auto"` becomes off, `collapsedThreads` is
- * skipped because it means the inverse of folded nesting, and invalid values
+ * skipped because it means the inverse of `expandedChildren`, and invalid values
  * are skipped. Returns only the keys that parsed.
  */
 export function mapBbPreferences(raw: unknown): Partial<Preferences> {

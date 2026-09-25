@@ -60,7 +60,7 @@ The plugin reads the billing mode from what the harness reports about its rate l
 
 ## Families, forks and deleted threads
 
-A family's figure is added up when read, from the plugin's own copy of the thread tree, because a thread can be moved under another parent at any time. That copy keeps deleted threads too: bb stops listing them, but their usage was spent, so a manager's figure does not drop when you delete one of its workers.
+A family's figure is added up when read, from the plugin's own copy of the thread tree, because a thread can be moved under another parent at any time. That copy keeps deleted threads too: bb stops listing them, but their usage was spent, so a parent thread's figure does not drop when you delete one of its workers.
 
 A fork starts with a copy of its source's history. Its own figure counts only the turns after it was created, and it appears under **Forks of this thread** in the Usage tab, outside the family.
 

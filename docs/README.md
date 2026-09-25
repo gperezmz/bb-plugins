@@ -39,7 +39,7 @@ flowchart LR
 The pages each plugin's behaviour rests on:
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md): where each part runs, what it stores, and the words the plugins share.
-- [What "needs attention" means](explanation/thread-glance-attention.md) in Thread Glance.
+- [What "Needs you" means](explanation/thread-glance-attention.md) in Thread Glance.
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How a helper completion is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for JSON and for no reasoning.
@@ -81,7 +81,7 @@ The pages each plugin's behaviour rests on:
 **Explanation** says why things work the way they do.
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md)
-- [What "needs attention" means](explanation/thread-glance-attention.md)
+- [What "Needs you" means](explanation/thread-glance-attention.md)
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
 - [How a helper completion is sent](explanation/openai-inference-requests.md)
