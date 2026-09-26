@@ -58,11 +58,12 @@ function swallowNextClick(): void {
 }
 
 /**
- * A quiet title, and its chip: the foreground mixed toward the sidebar in
- * oklch, which keeps 4.5:1 in both of bb's themes. Opacity blends in sRGB
- * and lands lower in the light theme.
+ * A quiet title, and its chip: the foreground mixed toward the surface under
+ * the row (the sidebar, or the Needs attention band) in oklch, which keeps
+ * 4.5:1 in both of bb's themes. Opacity blends in sRGB and lands lower in
+ * the light theme.
  */
-const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--sidebar))]";
+const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--tg-surface,var(--sidebar)))]";
 
 export const ROW_ICON_BUTTON =
   "pointer-events-auto relative z-10 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-active";

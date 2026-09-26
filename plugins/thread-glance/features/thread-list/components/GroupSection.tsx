@@ -412,11 +412,14 @@ export const GroupSection = memo(function GroupSection({
 });
 
 // bb's attention colour, thinned over the sidebar: the one colour the section
-// adds. Opaque, so the sticky header hides the rows scrolling under it.
-const ATTENTION_BAND = "bg-[color-mix(in_oklch,var(--attention)_8%,var(--sidebar))]";
-// The count takes the attention tone's text colour, on a stronger tint.
+// adds. Opaque, so the sticky header hides the rows scrolling under it. Mixed
+// in oklab: the sidebar's grey has hue 0 in oklch, which would pull the tint
+// toward pink. Set as the surface quiet titles mix toward, so they keep
+// their contrast on the band.
+const ATTENTION_BAND =
+  "[--tg-surface:color-mix(in_oklab,var(--attention)_8%,var(--sidebar))] bg-[var(--tg-surface)]";
 const ATTENTION_COUNT =
-  "bg-[color-mix(in_oklch,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklch,var(--attention),var(--foreground)_55%)]";
+  "bg-[color-mix(in_oklab,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklab,var(--attention),var(--foreground)_55%)]";
 
 /**
  * The Needs attention section: a header with its family count, then its rows,
@@ -428,10 +431,7 @@ export const AttentionSection = memo(function AttentionSection({ view, ...rest }
     <section aria-label="Needs attention" className={cn("relative mb-1 flex w-full min-w-0 flex-col rounded-md pb-0.5", ATTENTION_BAND)}>
       <h2
         style={{ top: TOOLBAR_HEIGHT }}
-        className={cn(
-          "sticky z-20 flex h-7 items-center gap-1 rounded-t-md pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9",
-          ATTENTION_BAND,
-        )}
+        className="sticky z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
       >
         <span className="min-w-0 flex-1 truncate">Needs attention</span>
         <span
