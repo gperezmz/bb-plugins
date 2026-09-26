@@ -10,12 +10,12 @@ _Avoid_: Canary, nightly check, smoke test
 
 ### Thread Glance
 
-**Needs you**:
-The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward.
-_Avoid_: Needs attention, inbox, attention filter
+**Needs attention**:
+The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. In code it is `attention`, bb's own word.
+_Avoid_: Needs you, inbox, attention filter
 
 **Home group**:
-The group a thread family is listed in when it is not in Needs you: its project, custom section, machine, Pinned or Threads.
+The group a thread family is listed in when it is not in Needs attention: its project, custom section, machine, Pinned or Threads.
 _Avoid_: Source group, original group
 
 **Parent thread**:
@@ -31,7 +31,7 @@ The count badge beside a parent thread's title that opens and closes its childre
 _Avoid_: Pill, children badge
 
 **Quiet thread**:
-A thread that is not running, does not need you and is not the one open.
+A thread that is not running, does not need attention and is not the one open.
 _Avoid_: Settled, idle thread
 
 **Older fold**:
