@@ -49,6 +49,6 @@ Open the parent. The family stays in the section while you read it, in the same 
 
 ## 6. Change a setting
 
-Click the **Thread Glance** item in the sidebar footer, the List view icon beside bb's gear, and under **Rows** set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
+Click the **Thread Glance** item, its List view icon, in the sidebar footer, and under **Rows** set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
 
 You have installed Thread Glance, read its rows and chips, and watched a family move through Needs attention. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
