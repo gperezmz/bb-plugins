@@ -3,7 +3,7 @@
 // builds. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { ChildAttention } from "@/shared/preferences";
-import type { Family } from "./families";
+import type { Family, Forest } from "./families";
 import { type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
@@ -90,17 +90,20 @@ export function revealsOn(attention: ReadonlySet<Flag>, isRoot: boolean): boolea
 }
 
 /** What the section reads of a family. */
-type SectionFamily = Pick<Family, "root" | "attentionFlags">;
+export type SectionFamily = Pick<Family, "root" | "attentionFlags" | "latestAttentionAt">;
 
 /** What Needs attention remembers between renders: the family it holds, and the family that was open. */
 export interface AttentionHold {
-  /** The root of the family held in the section, if any. */
-  heldRootId: string | null;
+  /**
+   * The family held in the section, if any, as it was when opened. The section
+   * orders it by this, so nothing that happens inside it moves it.
+   */
+  held: SectionFamily | null;
   /** The root of the family the open thread belonged to at the last render, if any. */
   openRootId: string | null;
 }
 
-export const NO_HOLD: AttentionHold = { heldRootId: null, openRootId: null };
+export const NO_HOLD: AttentionHold = { held: null, openRootId: null };
 
 /**
  * Whether a family is in the Needs attention section: it is the held family, or one
@@ -115,19 +118,36 @@ export function inAttention(family: SectionFamily, heldRootId: string | null, op
 }
 
 /**
+ * Whether a family is attended: held in the section with nothing in it needing
+ * attention any more. It keeps its place and draws and counts as in its home group.
+ */
+export function isAttended(family: SectionFamily, heldRootId: string | null): boolean {
+  return family.root.thread.id === heldRootId && family.attentionFlags.size === 0;
+}
+
+/**
  * The hold after a render. A family is judged when a thread in it is opened
  * from outside it: it is held if something in it needs attention then, and it stays
  * held while one of its threads is open, after nothing in it needs attention any
- * more, until a thread outside it is opened. A family that does not need attention
+ * more, until none of its threads is open. An attended family whose open thread
+ * is archived counts as closed. A family that does not need attention
  * when opened is not pulled in later, whatever happens in it; nor is one
  * that never needed attention. Opening another thread of the open family judges
  * nothing again.
  */
-export function holdAttention(previous: AttentionHold, openFamily: SectionFamily | undefined): AttentionHold {
+export function holdAttention(
+  previous: AttentionHold,
+  forest: Pick<Forest, "infos" | "familyOf">,
+  activeThreadId: string | null,
+): AttentionHold {
+  if (activeThreadId === null) return NO_HOLD;
+  const openFamily = forest.familyOf.get(activeThreadId);
   if (openFamily === undefined) return NO_HOLD;
   const openRootId = openFamily.root.thread.id;
   if (openRootId === previous.openRootId) {
-    return { heldRootId: previous.heldRootId === openRootId ? openRootId : null, openRootId };
+    const archived = forest.infos.get(activeThreadId)?.thread.isArchived ?? false;
+    const held = previous.held?.root.thread.id === openRootId && !(archived && openFamily.attentionFlags.size === 0);
+    return held ? previous : { held: null, openRootId };
   }
-  return { heldRootId: openFamily.attentionFlags.size > 0 ? openRootId : null, openRootId };
+  return { held: openFamily.attentionFlags.size > 0 ? openFamily : null, openRootId };
 }

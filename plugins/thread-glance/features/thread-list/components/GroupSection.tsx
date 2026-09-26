@@ -423,9 +423,9 @@ const ATTENTION_COUNT =
   "bg-[color-mix(in_oklab,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklab,var(--attention),var(--foreground)_55%)]";
 
 /**
- * The Needs attention section: a header with its family count, then its rows,
- * on one band of bb's attention colour. It has no collapse, menu or drag, and
- * no drop target of its own.
+ * The Needs attention section: a header with its family count (none when every
+ * family in it is attended), then its rows, on one band of bb's attention
+ * colour. It has no collapse, menu or drag, and no drop target of its own.
  */
 export const AttentionSection = memo(function AttentionSection({ view, ...rest }: SectionProps & { view: AttentionView }) {
   return (
@@ -435,12 +435,14 @@ export const AttentionSection = memo(function AttentionSection({ view, ...rest }
         className="sticky z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
       >
         <span className="min-w-0 flex-1 truncate">Needs attention</span>
-        <span
-          className={cn("rounded-full px-1.5 text-[11px] leading-4 tabular-nums", ATTENTION_COUNT)}
-          aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}
-        >
-          {view.familyCount}
-        </span>
+        {view.familyCount > 0 ? (
+          <span
+            className={cn("rounded-full px-1.5 text-[11px] leading-4 tabular-nums", ATTENTION_COUNT)}
+            aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}
+          >
+            {view.familyCount}
+          </span>
+        ) : null}
       </h2>
       <Rows {...rest} rows={view.rows} groupId={ATTENTION_GROUP_ID} inPinned={false} forceMount={false} />
     </section>
