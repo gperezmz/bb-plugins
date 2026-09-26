@@ -1,11 +1,11 @@
-// Which family Needs you holds while one of its threads is open. Diffed
+// Which family Needs you holds, and which family is open, while one of its threads is open. Diffed
 // render to render, as auto-expansion is; nothing here is persisted.
 import { useRef } from "react";
 import type { Forest } from "../model/families";
-import { holdNeedsYou } from "../model/needs-you";
+import { holdNeedsYou, NO_HOLD, type NeedsYouHold } from "../model/needs-you";
 
 export function useNeedsYouHold(forest: Forest | null, activeThreadId: string | null): string | null {
-  const held = useRef<string | null>(null);
+  const held = useRef<NeedsYouHold>(NO_HOLD);
   const lastForest = useRef<Forest | null>(null);
   const lastActive = useRef<string | null | undefined>(undefined);
   // Derived during render, so the family never leaves for a frame. Idempotent:
@@ -15,5 +15,5 @@ export function useNeedsYouHold(forest: Forest | null, activeThreadId: string | 
     lastForest.current = forest;
     lastActive.current = activeThreadId;
   }
-  return held.current;
+  return held.current.heldRootId;
 }
