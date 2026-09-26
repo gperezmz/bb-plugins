@@ -38,7 +38,17 @@ scripts/ci/check-plugin.sh thread-glance git-install
 scripts/ci/check-plugin.sh thread-glance npm-install
 ```
 
-The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered; OpenAI-compatible inference's points an Endpoint at a stub server and runs each AI task through it. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone. It listens on fixed ports; set `REGISTRY_PORT`, `BB_TEST_SERVER_PORT` and `BB_TEST_DAEMON_PORT` to run two at once.
+The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered: OpenAI-compatible inference's fixture points an Endpoint at a stub server and runs each AI task through it. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone.
+
+The npm-install check listens on fixed ports. To run two at once, give one of them others with `REGISTRY_PORT`, `BB_TEST_SERVER_PORT` and `BB_TEST_DAEMON_PORT`.
+
+CI also proves the npm-install check fails when bb refuses what a plugin registers, whenever OpenAI-compatible inference or the check changes:
+
+```sh
+scripts/ci/npm-install-refusal-check.sh
+```
+
+It builds OpenAI-compatible inference with a registration bb refuses, and fails unless the npm-install check fails on it and prints bb's refusal.
 
 The repository-wide checks:
 
