@@ -12,6 +12,10 @@ _Avoid_: Canary, nightly check, smoke test
 The bb release line a compatibility run tests, named by its npm dist-tag: `latest` for releases, `nightly` for nightly builds.
 _Avoid_: Track, release stream
 
+**Fixture**:
+The configuration and the assertions the npm-install check applies to one plugin after installing it, to exercise what the plugin registers.
+_Avoid_: Scenario, smoke config
+
 ### Thread Glance
 
 **Needs attention**:
