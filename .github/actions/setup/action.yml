@@ -6,10 +6,10 @@ inputs:
     required: true
   bb-version:
     description: >-
-      Version of the npm package bb-app, which ships the bb CLI. Keep the
-      default on the bb release whose SDK the plugins pin (@get-bb/plugin-sdk);
+      Version of the npm package bb-app, which ships the bb CLI. Empty picks
+      the bb release that ships the SDK the plugin pins (@get-bb/plugin-sdk);
       the Compatibility workflow passes newer ones.
-    default: 0.43.4
+    default: ''
 runs:
   using: composite
   steps:
@@ -24,4 +24,17 @@ runs:
       shell: bash
       env:
         BB_VERSION: ${{ inputs.bb-version }}
-      run: npm install --global --ignore-scripts --no-audit --no-fund "bb-app@$BB_VERSION"
+        PLUGIN: ${{ inputs.plugin }}
+      run: |
+        if [[ -z $BB_VERSION ]]; then
+          sdk=$(jq -r '.devDependencies["@get-bb/plugin-sdk"]' "plugins/$PLUGIN/package.json")
+          # The bb release whose `bb plugin types` reports each SDK pin. A
+          # plugin repinned to an SDK missing here fails until it is added.
+          case $sdk in
+            0.5.9) BB_VERSION=0.43.4 ;;
+            0.5.29) BB_VERSION=0.44.0 ;;
+            *) echo "::error::$PLUGIN pins @get-bb/plugin-sdk $sdk, which no bb release is listed for in .github/actions/setup/action.yml" >&2; exit 1 ;;
+          esac
+        fi
+        echo "bb-app $BB_VERSION for $PLUGIN"
+        npm install --global --ignore-scripts --no-audit --no-fund "bb-app@$BB_VERSION"
