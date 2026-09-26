@@ -1,4 +1,4 @@
-// What needs you, thread by thread. The Needs you section, the header
+// What needs attention, thread by thread. The Needs attention section, the header
 // counters, the section's order and auto-reveal all read the set this
 // builds. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
@@ -7,7 +7,7 @@ import type { Family } from "./families";
 import { type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
-export const ROOT_NEEDS_YOU: ReadonlySet<Flag> = new Set<Flag>([
+export const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
   "waits-on-you",
   "unread-failed",
   "queue-failed",
@@ -60,18 +60,18 @@ export function isOrphanedFailure(
 }
 
 /**
- * The flags of one thread that make it need you. A root keeps its own. A
+ * The flags of one thread that make it need attention. A root keeps its own. A
  * child counts when it waits on you or is offline, or for an orphaned
  * failure; a finished-unread child never does. With `everything`, a child
  * counts like a root.
  */
-export function needsYouFlagsOf(
+export function attentionFlagsOf(
   flags: ReadonlySet<Flag>,
   options: { isRoot: boolean; mode: ChildAttention; orphaned: boolean },
 ): Set<Flag> {
   const kept = new Set<Flag>();
   if (options.isRoot || options.mode === "everything") {
-    for (const flag of flags) if (ROOT_NEEDS_YOU.has(flag)) kept.add(flag);
+    for (const flag of flags) if (ROOT_ATTENTION.has(flag)) kept.add(flag);
     return kept;
   }
   if (flags.has("waits-on-you")) kept.add("waits-on-you");
@@ -83,51 +83,51 @@ export function needsYouFlagsOf(
   return kept;
 }
 
-/** Whether a set of Needs you flags is worth an auto-reveal: it waits on you or failed. */
-export function revealsOn(needsYou: ReadonlySet<Flag>, isRoot: boolean): boolean {
-  if (needsYou.has("waits-on-you") || needsYou.has("unread-failed")) return true;
-  return !isRoot && needsYou.has("queue-failed");
+/** Whether a set of Needs attention flags is worth an auto-reveal: it waits on you or failed. */
+export function revealsOn(attention: ReadonlySet<Flag>, isRoot: boolean): boolean {
+  if (attention.has("waits-on-you") || attention.has("unread-failed")) return true;
+  return !isRoot && attention.has("queue-failed");
 }
 
 /** What the section reads of a family. */
-type SectionFamily = Pick<Family, "root" | "needsYouFlags">;
+type SectionFamily = Pick<Family, "root" | "attentionFlags">;
 
-/** What Needs you remembers between renders: the family it holds, and the family that was open. */
-export interface NeedsYouHold {
+/** What Needs attention remembers between renders: the family it holds, and the family that was open. */
+export interface AttentionHold {
   /** The root of the family held in the section, if any. */
   heldRootId: string | null;
   /** The root of the family the open thread belonged to at the last render, if any. */
   openRootId: string | null;
 }
 
-export const NO_HOLD: NeedsYouHold = { heldRootId: null, openRootId: null };
+export const NO_HOLD: AttentionHold = { heldRootId: null, openRootId: null };
 
 /**
- * Whether a family is in the Needs you section: it is the held family, or one
- * of its threads needs you and none of them is open. Nothing moves while you
+ * Whether a family is in the Needs attention section: it is the held family, or one
+ * of its threads needs attention and none of them is open. Nothing moves while you
  * are inside a family, so the open family only enters by being judged when
- * opened (see `holdNeedsYou`).
+ * opened (see `holdAttention`).
  */
-export function inNeedsYou(family: SectionFamily, heldRootId: string | null, openRootId: string | null): boolean {
+export function inAttention(family: SectionFamily, heldRootId: string | null, openRootId: string | null): boolean {
   const rootId = family.root.thread.id;
   if (rootId === heldRootId) return true;
-  return family.needsYouFlags.size > 0 && rootId !== openRootId;
+  return family.attentionFlags.size > 0 && rootId !== openRootId;
 }
 
 /**
  * The hold after a render. A family is judged when a thread in it is opened
- * from outside it: it is held if something in it needs you then, and it stays
- * held while one of its threads is open, after nothing in it needs you any
- * more, until a thread outside it is opened. A family that does not need you
+ * from outside it: it is held if something in it needs attention then, and it stays
+ * held while one of its threads is open, after nothing in it needs attention any
+ * more, until a thread outside it is opened. A family that does not need attention
  * when opened is not pulled in later, whatever happens in it; nor is one
  * that never needed you. Opening another thread of the open family judges
  * nothing again.
  */
-export function holdNeedsYou(previous: NeedsYouHold, openFamily: SectionFamily | undefined): NeedsYouHold {
+export function holdAttention(previous: AttentionHold, openFamily: SectionFamily | undefined): AttentionHold {
   if (openFamily === undefined) return NO_HOLD;
   const openRootId = openFamily.root.thread.id;
   if (openRootId === previous.openRootId) {
     return { heldRootId: previous.heldRootId === openRootId ? openRootId : null, openRootId };
   }
-  return { heldRootId: openFamily.needsYouFlags.size > 0 ? openRootId : null, openRootId };
+  return { heldRootId: openFamily.attentionFlags.size > 0 ? openRootId : null, openRootId };
 }

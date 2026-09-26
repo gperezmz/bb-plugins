@@ -13,9 +13,9 @@ export interface Counters {
 export const EMPTY_COUNTERS: Counters = { waitsOnYou: 0, failed: 0, offline: 0, working: 0, unread: 0 };
 
 /**
- * Counts the threads in the families. A thread counts what its Needs you
+ * Counts the threads in the families. A thread counts what its Needs attention
  * flags say, so a child adds to waits-on-you, failed, offline and unread only
- * as "Needs you counts every child" lets it; working counts every thread that
+ * as "Needs attention counts every child" lets it; working counts every thread that
  * runs. Hidden threads carry only waits-on-you and unread-failed flags
  * already; archived threads never count.
  */
@@ -24,7 +24,7 @@ export function countFamilies(families: readonly Family[]): Counters {
   for (const family of families) {
     for (const info of [family.root, ...family.descendants]) {
       if (info.thread.isArchived) continue;
-      const flags = info.needsYou;
+      const flags = info.attention;
       if (flags.has("waits-on-you")) counters.waitsOnYou += 1;
       if (flags.has("unread-failed") || flags.has("queue-failed")) counters.failed += 1;
       if (flags.has("offline")) counters.offline += 1;

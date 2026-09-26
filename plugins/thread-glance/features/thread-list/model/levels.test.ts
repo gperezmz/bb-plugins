@@ -152,7 +152,7 @@ describe("a grandchild never shows without its parent (property)", () => {
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
       const drawn = new Set<string>();
-      for (const rows of [view.needsYou?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
+      for (const rows of [view.attention?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
         const seen: ThreadRow[] = [];
         for (const row of rows) {
           if (row.type !== "thread") continue;

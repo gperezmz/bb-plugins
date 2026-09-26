@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failedUnread, finishedUnread, forestOf, makeThread, needsYouIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, attentionIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { visibleCounters } from "./counters";
 import { modelDisplayName, sinceLabel } from "./details";
 import { rowMenuItems } from "./menu";
@@ -105,7 +105,7 @@ describe("hover card facts", () => {
   });
 });
 
-describe("Needs you order", () => {
+describe("Needs attention order", () => {
   it("puts what waits on you first, then failed, then unread, whatever the recency", () => {
     const view = viewOf({
       threads: [
@@ -114,7 +114,7 @@ describe("Needs you order", () => {
         makeThread({ id: "q", hasPendingInteraction: true, latestAttentionAt: T0 + 1 }),
       ],
     });
-    expect(needsYouIds(view)).toEqual(["q", "f", "u"]);
+    expect(attentionIds(view)).toEqual(["q", "f", "u"]);
   });
 });
 

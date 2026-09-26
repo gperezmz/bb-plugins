@@ -25,7 +25,7 @@ export function needsKindOf(notes: ThreadNotes | undefined): NeedsKind | null {
 }
 
 /**
- * The line under a row: why it needs you, or why it failed. Other states
+ * The line under a row: why it needs attention, or why it failed. Other states
  * have none, so the list stays one line per thread where nothing is wrong.
  */
 export function rowNote(thread: PluginSidebarThread, notes: ThreadNotes | undefined): RowNote | null {

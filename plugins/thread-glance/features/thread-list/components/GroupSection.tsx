@@ -1,5 +1,5 @@
 // A top-level group: its header with counters, and its rows, windowed
-// in chunks; and the Needs you section above every group.
+// in chunks; and the Needs attention section above every group.
 import { memo, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { NEEDS_YOU_GROUP_ID, type GroupView, type NeedsYouView, type Row } from "../model/view";
+import { ATTENTION_GROUP_ID, type GroupView, type AttentionView, type Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
 import { EnvironmentRowView, LeftOutRowView, OlderRowView } from "./FoldRows";
@@ -382,7 +382,7 @@ export const GroupSection = memo(function GroupSection({
         dropActive={dropTargetGroupId === group.descriptor.id}
       />
       {group.collapsed ? null : group.rows.length === 0 ? (
-        // A group whose every family sits in Needs you draws only its header.
+        // A group whose every family sits in Needs attention draws only its header.
         group.rootIds.length === 0 ? <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p> : null
       ) : (
         <Rows
@@ -398,22 +398,22 @@ export const GroupSection = memo(function GroupSection({
 });
 
 /**
- * The Needs you section: a header with its family count, then its rows. It
+ * The Needs attention section: a header with its family count, then its rows. It
  * has no collapse, menu or drag, and no drop target of its own.
  */
-export const NeedsYouSection = memo(function NeedsYouSection({ view, ...rest }: SectionProps & { view: NeedsYouView }) {
+export const AttentionSection = memo(function AttentionSection({ view, ...rest }: SectionProps & { view: AttentionView }) {
   return (
-    <section aria-label="Needs you" className="relative flex w-full min-w-0 flex-col">
+    <section aria-label="Needs attention" className="relative flex w-full min-w-0 flex-col">
       <h2
         style={{ top: TOOLBAR_HEIGHT }}
         className="sticky z-20 flex h-7 items-center gap-1 bg-sidebar pl-2 pr-2 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
       >
-        <span className="min-w-0 flex-1 truncate">Needs you</span>
+        <span className="min-w-0 flex-1 truncate">Needs attention</span>
         <span className="tabular-nums" aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}>
           {view.familyCount}
         </span>
       </h2>
-      <Rows {...rest} rows={view.rows} groupId={NEEDS_YOU_GROUP_ID} inPinned={false} forceMount={false} />
+      <Rows {...rest} rows={view.rows} groupId={ATTENTION_GROUP_ID} inPinned={false} forceMount={false} />
     </section>
   );
 });

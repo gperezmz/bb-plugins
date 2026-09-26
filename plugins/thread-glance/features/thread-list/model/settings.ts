@@ -18,7 +18,7 @@ export function lifecyclesFor(shown: ThreadsShown): Lifecycle[] {
   return [shown];
 }
 
-/** "Needs you counts every child" is on when children count as `everything`. */
+/** "Needs attention counts every child" is on when children count as `everything`. */
 export function countsEveryChild(childAttention: ChildAttention): boolean {
   return childAttention === "everything";
 }

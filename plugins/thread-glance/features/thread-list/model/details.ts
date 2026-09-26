@@ -16,7 +16,7 @@ const SUMMARY_ORDER: readonly [StateKind, string][] = [
   ["idle", "idle"],
 ];
 
-/** "2 working, 1 need you, 3 idle": visible descendants by state. */
+/** "2 working, 1 needing you, 3 idle": visible descendants by state. */
 export function childSummary(descendants: readonly ThreadInfo[]): string | null {
   const counts = new Map<StateKind, number>();
   for (const info of descendants) {

@@ -1,6 +1,6 @@
 # bb plugins
 
-Four plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need you and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Four plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -39,7 +39,7 @@ flowchart LR
 The pages each plugin's behaviour rests on:
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md): where each part runs, what it stores, and the words the plugins share.
-- [What "Needs you" means](explanation/thread-glance-attention.md) in Thread Glance.
+- [What "Needs attention" means](explanation/thread-glance-attention.md) in Thread Glance.
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
@@ -81,7 +81,7 @@ The pages each plugin's behaviour rests on:
 **Explanation** says why things work the way they do.
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md)
-- [What "Needs you" means](explanation/thread-glance-attention.md)
+- [What "Needs attention" means](explanation/thread-glance-attention.md)
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
 - [How an AI task is sent](explanation/openai-inference-requests.md)

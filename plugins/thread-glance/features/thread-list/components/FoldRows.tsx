@@ -1,5 +1,5 @@
 // The fold rows (`N older` on a group, `N more child threads` on a family),
-// the "+N more" line in Needs you, and the environment folder row.
+// the "+N more" line in Needs attention, and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
@@ -50,7 +50,7 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The "+N more" line under a family in Needs you: a count, not a control. */
+/** The "+N more" line under a family in Needs attention: a count, not a control. */
 export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftOutRow }) {
   const noun = row.count === 1 ? "child thread" : "child threads";
   return (

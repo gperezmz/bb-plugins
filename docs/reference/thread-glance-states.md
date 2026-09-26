@@ -16,7 +16,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
 | 11 | Idle | None of the above | none | – |
 
-A failed thread keeps its red glyph after you read it; reading it only stops it [needing you](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state.
+A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state.
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
 
@@ -40,7 +40,7 @@ With **Comfortable** density, other rows use the second line for the branch (whe
 |---|---|
 | Working | How long it has been working, `<1m`, `4m`, `2h`, in blue |
 | Waits on you | How long it has waited on you, muted |
-| A root in Needs you | The name of its home group, muted |
+| A root in Needs attention | The name of its home group, muted |
 | Anything else | How long since it last finished: `now`, `5m`, `3h`, `2d`, `4w`, muted |
 
 A thread that started before Thread Glance was installed has no start time, and shows no timer until its next run.
@@ -51,11 +51,11 @@ The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#thre
 
 A parent thread in a group carries a chip with the number of its children and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three child harnesses that differ from the parent's show as small logos beside it.
 
-Which children count toward the chip, and which show without opening it, is set out in [what "Needs you" means](../explanation/thread-glance-attention.md). Rows in the Needs you section carry no chip.
+Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). Rows in the Needs attention section carry no chip.
 
 ## Group header counters
 
-Each group header counts, over every [family](../explanation/how-the-plugins-fit-bb.md#threads-and-families) whose home is the group, those drawn in Needs you included:
+Each group header counts, over every [family](../explanation/how-the-plugins-fit-bb.md#threads-and-families) whose home is the group, those drawn in Needs attention included:
 
 | Counter | Glyph | Shown |
 |---|---|---|
@@ -65,4 +65,4 @@ Each group header counts, over every [family](../explanation/how-the-plugins-fit
 | Working | Spinner | Only while the group is collapsed |
 | Unread | Dot | Only on **More**, which holds hidden groups |
 
-The wait-on-you, failed, offline and unread counters count threads that [need you](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs you section's own header counts its families.
+The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs attention section's own header counts its families.

@@ -125,7 +125,7 @@ describe("Thread Glance slot", () => {
     ).toBeTruthy();
   });
 
-  it("scenario 1: Needs you draws the blocked child's path, and the group header keeps its counter", async () => {
+  it("scenario 1: Needs attention draws the blocked child's path, and the group header keeps its counter", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2, 3, 4, 5].map((n) =>
@@ -133,7 +133,7 @@ describe("Thread Glance slot", () => {
       ),
       makeThread({ id: "o", title: "Other" }),
     ]);
-    const section = await screen.findByRole("region", { name: "Needs you" });
+    const section = await screen.findByRole("region", { name: "Needs attention" });
     expect(within(section).getByRole("link", { name: /Open Parent — .*; in Alpha/ })).toBeTruthy();
     expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
     expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
@@ -144,7 +144,7 @@ describe("Thread Glance slot", () => {
     const project = screen.getByRole("region", { name: "Alpha" });
     expect(within(project).queryByRole("link", { name: /Open Parent/ })).toBeNull();
     expect(within(project).getByRole("link", { name: /Open Other/ })).toBeTruthy();
-    expect(within(project).getByRole("group", { name: "1 needs you" })).toBeTruthy();
+    expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
   });
 
   it("opens and closes a family from its chip", async () => {
@@ -162,7 +162,7 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull());
   });
 
-  it("draws Needs you first under the settings row, above Pinned, with no All / Needs attention control", async () => {
+  it("draws Needs attention first under the settings row, above Pinned, with no All / Needs attention filter", async () => {
     render([
       makeThread({ id: "a", title: "Busy", ...working }),
       makeThread({ id: "b", title: "Done", ...finishedUnread }),
@@ -170,32 +170,33 @@ describe("Thread Glance slot", () => {
     ]);
     await screen.findByRole("link", { name: /Open Done/ });
     const regions = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
-    expect(regions).toEqual(["Needs you", "Pinned", "Alpha", "Beta"]);
-    expect(within(screen.getByRole("region", { name: "Needs you" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
+    expect(regions).toEqual(["Needs attention", "Pinned", "Alpha", "Beta"]);
+    expect(within(screen.getByRole("region", { name: "Needs attention" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Busy/ })).toBeTruthy();
     expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.queryByText(/Needs attention/)).toBeNull();
+    // The section's own header is the only "Needs attention" on screen.
+    expect(screen.getAllByText(/Needs attention/)).toHaveLength(1);
     // The settings row holds ⚙ alone, ahead of the section.
     const settings = screen.getByRole("button", { name: "Thread Glance settings" });
     expect(settings.parentElement!.children).toHaveLength(1);
-    expect(settings.compareDocumentPosition(screen.getByRole("region", { name: "Needs you" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(settings.compareDocumentPosition(screen.getByRole("region", { name: "Needs attention" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("draws no Needs you section, and no line for it, when nothing needs you", async () => {
+  it("draws no Needs attention section, and no line for it, when nothing needs attention", async () => {
     render([makeThread({ id: "a", title: "Busy", ...working })]);
     await screen.findByRole("link", { name: /Open Busy/ });
-    expect(screen.queryByRole("region", { name: "Needs you" })).toBeNull();
-    expect(screen.queryByText(/Needs you|Nothing needs/)).toBeNull();
+    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
+    expect(screen.queryByText(/Needs attention|Nothing needs/)).toBeNull();
   });
 
-  it("shows the whole list with Needs you to someone whose saved view was Needs attention", async () => {
+  it("shows the whole list with Needs attention to someone whose saved view was the old Needs attention filter", async () => {
     localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ filter: "attention", density: "comfortable" }));
     render([makeThread({ id: "a", title: "Busy", ...working }), makeThread({ id: "b", title: "Done", ...finishedUnread })]);
     expect(await screen.findByRole("link", { name: /Open Busy/ })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Needs you" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Needs attention" })).toBeTruthy();
   });
 
-  it("gives the Needs you header no collapse, menu or count other than its families", async () => {
+  it("gives the Needs attention header no collapse, menu or count other than its families", async () => {
     render(
       [
         makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
@@ -203,15 +204,15 @@ describe("Thread Glance slot", () => {
       ],
       { prefs: { collapsedProjects: ["proj_a", "proj_b"] } },
     );
-    const section = await screen.findByRole("region", { name: "Needs you" });
-    const header = within(section).getByRole("heading", { name: /Needs you/ });
+    const section = await screen.findByRole("region", { name: "Needs attention" });
+    const header = within(section).getByRole("heading", { name: /Needs attention/ });
     expect(within(header).getByLabelText("2 families").textContent).toBe("2");
     expect(within(header).queryAllByRole("button")).toEqual([]);
     fireEvent.click(header);
     expect(within(section).getByRole("link", { name: /Open Asks/ })).toBeTruthy();
   });
 
-  it("indents each level of a Needs you path by one small step, and the grandchild carries its parent's name", async () => {
+  it("indents each level of a Needs attention path by one small step, and the grandchild carries its parent's name", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1 }),
@@ -249,7 +250,7 @@ describe("Thread Glance slot", () => {
       ["Worktrees as foldersThreads sharing a worktree fold into one row", "false"],
       ["Collapse older threads", "true"],
       ["Pull request badge", "true"],
-      ["Needs you counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
+      ["Needs attention counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
@@ -367,7 +368,7 @@ describe("compact viewport", () => {
 });
 
 describe("notes and moves", () => {
-  it("writes why a thread needs you under its row", async () => {
+  it("writes why a thread needs attention under its row", async () => {
     render([makeThread({ id: "q", title: "Asker", hasPendingInteraction: true })], {
       notes: { q: { pending: { kind: "approval", text: "rm -rf build/", at: T0 } } },
     });

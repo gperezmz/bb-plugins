@@ -199,7 +199,7 @@ export function SettingsPanel({
         />
       </Line>
       <Toggle
-        label="Needs you counts every child"
+        label="Needs attention counts every child"
         description="Every unread or failed child thread; otherwise only those blocked on you."
         checked={countsEveryChild(prefs.childAttention)}
         onChange={(value) => onPrefs({ childAttention: childAttentionFor(value) })}
