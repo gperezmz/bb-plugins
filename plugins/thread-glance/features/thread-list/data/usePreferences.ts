@@ -14,9 +14,12 @@ import {
   type PreferenceKey,
   type Preferences,
 } from "@/shared/preferences";
+import { sameWindow } from "./same-window";
 import { readJson, writeJson } from "./storage";
 
 const WRITE_DEBOUNCE_MS = 150;
+
+const copies = sameWindow<Partial<Preferences>>();
 
 export interface PreferencesState {
   prefs: Preferences;
@@ -103,6 +106,10 @@ export function usePreferences(): PreferencesState {
     [flush],
   );
 
+  // Another copy's change, already mirrored and on its way to the server.
+  const apply = useCallback((patch: Partial<Preferences>) => setPrefs((current) => ({ ...current, ...patch })), []);
+  useEffect(() => copies.join(apply), [apply]);
+
   const update = useCallback(
     (patch: Partial<Preferences>) => {
       setPrefs((current) => {
@@ -110,6 +117,7 @@ export function usePreferences(): PreferencesState {
         writeJson(PREFERENCES_MIRROR_STORAGE_KEY, next);
         return next;
       });
+      copies.tell(apply, patch);
       for (const [key, value] of Object.entries(patch)) {
         if (isPreferenceKey(key)) pending.current.set(key, value);
       }
@@ -119,7 +127,7 @@ export function usePreferences(): PreferencesState {
         flush();
       }, WRITE_DEBOUNCE_MS);
     },
-    [flush],
+    [flush, apply],
   );
 
   return { prefs, hydrated, update };

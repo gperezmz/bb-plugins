@@ -1,13 +1,12 @@
-// The top of the scroll area: the settings button and its popover.
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+// Thread Glance's settings, shown by its item in bb's sidebar footer.
+import { experimental_Icon as Icon, type ExperimentalSidebarFooterDisclosureProps } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "../model/settings";
 import { effectiveSortField } from "../model/sort";
+import { useClientPreferences } from "../data/useClientPreferences";
+import { usePreferences } from "../data/usePreferences";
 import { ICONS } from "../icons";
-import { TOOLBAR_HEIGHT } from "./GroupSection";
-import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 // bb's own segmented controls (the Reasoning picker, the diff view toggle)
 // mark the chosen item with the state-active token and no shadow. The track
@@ -104,7 +103,7 @@ function Heading({ children }: { children: React.ReactNode }) {
   return <h3 className="px-2 pb-0.5 pt-3 text-xs font-medium text-muted-foreground first:pt-0">{children}</h3>;
 }
 
-export function SettingsPanel({
+function SettingsPanel({
   prefs,
   client,
   onPrefs,
@@ -208,31 +207,13 @@ export function SettingsPanel({
   );
 }
 
-/** The slim row above the list: ⚙ alone at its right. */
-export function Toolbar({
-  prefs,
-  client,
-  onPrefs,
-  onClient,
-}: {
-  prefs: Preferences;
-  client: ClientPreferences;
-  onPrefs(patch: Partial<Preferences>): void;
-  onClient(patch: Partial<ClientPreferences>): void;
-}) {
+/** The footer item's panel, reading and writing the preferences the list reads. */
+export function SettingsDisclosure(_props: ExperimentalSidebarFooterDisclosureProps) {
+  const { prefs, update } = usePreferences();
+  const [client, updateClient] = useClientPreferences();
   return (
-    // Sticky with the group headers, so the settings stay in reach.
-    <div style={{ height: TOOLBAR_HEIGHT }} className="sticky top-0 z-30 flex items-center justify-end bg-sidebar">
-      <Popover>
-        <PopoverTrigger asChild>
-          <button type="button" aria-label="Thread Glance settings" title="List settings" className={ROW_ICON_BUTTON}>
-            <Icon name={ICONS.settings} aria-hidden className="size-4" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 p-2">
-          <SettingsPanel prefs={prefs} client={client} onPrefs={onPrefs} onClient={onClient} />
-        </PopoverContent>
-      </Popover>
+    <div className="p-2">
+      <SettingsPanel prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
     </div>
   );
 }
