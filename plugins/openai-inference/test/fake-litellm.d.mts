@@ -5,8 +5,8 @@ export interface FakeRequest {
   body: Record<string, unknown>;
   /** When the request's connection closed, in epoch milliseconds. */
   closedAt: number | undefined;
-  /** The message content it was answered with, once it was. */
-  answer: string | undefined;
+  /** The message content of the completion sent back, or undefined until one is sent. */
+  reply: string | undefined;
 }
 export interface FakeLiteLlm {
   url: string;

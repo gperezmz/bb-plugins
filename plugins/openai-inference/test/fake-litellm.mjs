@@ -81,7 +81,7 @@ export async function startFakeLiteLlm(opts = {}) {
     } catch {
       return send(400, error(400, "Invalid JSON body", "invalid_request_error").body);
     }
-    const record = { path: url.pathname, authorized, body: request, closedAt: undefined, answer: undefined };
+    const record = { path: url.pathname, authorized, body: request, closedAt: undefined, reply: undefined };
     requests.push(record);
     res.on("close", () => (record.closedAt = Date.now()));
     if (!authorized) {
@@ -91,7 +91,7 @@ export async function startFakeLiteLlm(opts = {}) {
     if (delayMs === Infinity) return;
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (res.destroyed) return;
-    record.answer = body.choices?.[0]?.message.content;
+    record.reply = body.choices?.[0]?.message.content;
     send(status, body);
   });
   server.on("connection", (socket) => {
