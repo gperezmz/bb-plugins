@@ -53,6 +53,8 @@ export default async function plugin(bb: BbPluginApi) {
   let started = false;
   let firstSend!: (sent: Promise<Missing>) => void;
   let missing = new Promise<Missing>((resolve) => (firstSend = resolve));
+  // Takes on a failed first send, which only a status read reports.
+  missing.catch(() => undefined);
   const sendEndpoints = (): Promise<Missing> => {
     const sent = (async () => {
       const report = await host.call("configure", endpoints, { hostId: await primaryHostId() });

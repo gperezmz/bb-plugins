@@ -130,6 +130,21 @@ describe("status", () => {
     await stop();
   });
 
+  it("says so when there is no primary machine to send the Endpoints to", async () => {
+    // Vitest fails the run on an unhandled rejection, which a failed first send left before.
+    const fake = createFakePluginHost({
+      pluginId: "openai-inference",
+      settings: { endpoints: `[${mlx}]` },
+      sdk: { system: { config: async () => ({ primaryHostId: null }) } as never },
+    });
+    await plugin(fake.bb);
+    const run = fake.harness.behavior.runService("send-endpoints");
+    await run.done.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const [s] = fake.harness.inspection.registrations.aiServiceRegistrations;
+    await expect(s.status!()).rejects.toThrow("No primary machine is connected");
+  });
+
   it("calls nothing on the host, however often it is read", async () => {
     const { harness, stop } = await start({ endpoints: `[${mlx}]` });
     for (let i = 0; i < 5; i++) await status(harness, "mlx");
