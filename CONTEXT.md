@@ -4,10 +4,14 @@ Plugins that extend bb, the agentic IDE, and the words they share.
 
 ## Language
 
+**Compatibility run**:
+The scheduled CI run that checks every plugin against bb releases newer than the one the plugins pin.
+_Avoid_: Canary, nightly check, smoke test
+
 ### Thread Glance
 
 **Needs you**:
-The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. A family leaves it once nothing in it needs you and you have opened another thread. A family enters it only while none of its threads is open: opening a thread judges its family afresh, and nothing that then happens in the family moves it in.
+The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward.
 _Avoid_: Needs attention, inbox, attention filter
 
 **Home group**:
@@ -19,7 +23,7 @@ The thread that spawned a child thread.
 _Avoid_: Manager, owner
 
 **Orphaned failure**:
-A child thread's failure that its parent thread went idle without handling. It reaches Needs you even with the child-thread checkbox off.
+A child thread's failure that its parent thread went idle without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Chip**:
@@ -31,5 +35,15 @@ A thread that is not running, does not need you and is not the one open.
 _Avoid_: Settled, idle thread
 
 **Older fold**:
-The "N older" row that holds a group's quiet threads past its five newest.
+The "N older" row that holds a group's quiet threads past its newest ones.
 _Avoid_: More row, older threads
+
+### OpenAI-compatible inference
+
+**Endpoint**:
+One OpenAI-compatible server listed in OpenAI-compatible inference's settings, which bb offers as one AI service.
+_Avoid_: Server, backend, provider
+
+**AI task**:
+A helper job bb hands to an AI service: a thread title, a commit message or a voice transcript.
+_Avoid_: Helper completion, helper inference
