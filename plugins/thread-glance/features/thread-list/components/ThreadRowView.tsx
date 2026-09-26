@@ -18,6 +18,7 @@ import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
+import { noteText, type RowNote } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
@@ -55,6 +56,13 @@ function swallowNextClick(): void {
     once: true,
   });
 }
+
+/** A note's prefix takes the tone of the row's glyph for the same reason. */
+const NOTE_TONE_CLASS: Record<RowNote["tone"], string> = {
+  attention: "text-attention",
+  destructive: "text-destructive",
+  muted: "text-muted-foreground",
+};
 
 /**
  * A quiet title, and its chip: the foreground mixed toward the sidebar in
@@ -297,7 +305,8 @@ export const ThreadRowView = memo(function ThreadRowView({
 
   const chip = row.chip;
   const indent = rowIndent(row.depth);
-  const twoLines = controller.comfortable || info.note !== null;
+  const note = row.note;
+  const twoLines = controller.comfortable || note !== null;
   const dimmed = row.dimmed && !editing;
   const menuShowing = menuOpen || contextOpen;
   // Desktop: the actions cross-fade over the harness and age, as bb's
@@ -416,10 +425,10 @@ export const ThreadRowView = memo(function ThreadRowView({
             {thread.displayTitle}
           </span>
         )}
-        {!editing && info.note !== null ? (
-          <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={`${info.note.prefix}: ${info.note.text}`}>
-            <span className={info.note.tone === "destructive" ? "text-destructive" : "text-attention"}>{info.note.prefix}:</span>{" "}
-            {info.note.text}
+        {!editing && note !== null ? (
+          <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
+            <span className={NOTE_TONE_CLASS[note.tone]}>{note.text === "" ? note.prefix : `${note.prefix}:`}</span>
+            {note.text === "" ? null : ` ${note.text}`}
           </span>
         ) : controller.comfortable && !editing ? (
           <SecondLine row={row} multiHost={controller.multiHost} defaultBranch={controller.defaultBranchOf(thread)} />

@@ -14,7 +14,7 @@ import {
 } from "./state";
 import { attentionFlagsOf, isOrphanedFailure } from "./attention";
 import { compareCreationAscending } from "./sort";
-import { needsKindOf, rowNote, type RowNote } from "./notes";
+import { attentionNote, needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ChildAttention } from "@/shared/preferences";
 
@@ -47,8 +47,10 @@ export interface ThreadInfo {
   isActive: boolean;
   /** The visible ancestor it attaches to, or null for a root. */
   parentId: string | null;
-  /** Why it needs attention or failed, for the line under the row. */
+  /** Why it waits on you or failed, for the line under the row. */
   note: RowNote | null;
+  /** Why it needs attention, for the line under its row in Needs attention. */
+  attentionNote: RowNote | null;
 }
 
 /** What a thread's descendants add up to, for its chip and for folding. */
@@ -165,6 +167,7 @@ export function buildForest(inputs: ForestInputs): Forest {
       isActive,
       parentId: attachParent(thread, byId),
       note: rowNote(thread, inputs.notes?.[thread.id]),
+      attentionNote: null,
     });
   }
 
@@ -178,6 +181,7 @@ export function buildForest(inputs: ForestInputs): Forest {
         parent !== undefined &&
         isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
     });
+    info.attentionNote = attentionNote(info.thread, inputs.notes?.[info.thread.id], info.attention);
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
         ? isQuietThread(info.state, info.unread, false)

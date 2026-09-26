@@ -4,10 +4,11 @@ import { visibleCounters } from "./counters";
 import { modelDisplayName, sinceLabel } from "./details";
 import { rowMenuItems } from "./menu";
 import { moveTargets } from "./move";
-import { rowNote } from "./notes";
+import { attentionNote, noteText, rowNote } from "./notes";
 import { computeState } from "./state";
 import { finishedAtFor, trailingTime } from "./time";
-import type { ThreadRow } from "./view";
+import type { Row, ThreadRow } from "./view";
+import type { Flag } from "./state";
 
 const note = (kind: "question" | "approval" | "plan" | "input" | "failed" | "done", text: string) => ({ kind, text, at: T0 });
 
@@ -61,6 +62,59 @@ describe("row notes", () => {
     const info = forest.infos.get("a")!;
     expect(info.note?.prefix).toBe("Plan");
     expect(info.state.glyph.icon).toBe("ListTodo");
+  });
+});
+
+describe("why a row in Needs attention is there", () => {
+  const flags = (...list: Flag[]) => new Set<Flag>(list);
+  const line = (thread: Parameters<typeof attentionNote>[0], notes: Parameters<typeof attentionNote>[1], attention: Set<Flag>) => {
+    const found = attentionNote(thread, notes, attention);
+    return found === null ? null : { line: noteText(found), tone: found.tone };
+  };
+
+  it("names each reason with its prefix and its glyph's tone", () => {
+    const pending = makeThread({ id: "a", hasPendingInteraction: true });
+    expect(line(pending, { pending: note("question", "Tabs or spaces?") }, flags("waits-on-you"))).toEqual({ line: "Asks: Tabs or spaces?", tone: "attention" });
+    expect(line(pending, undefined, flags("waits-on-you"))).toEqual({ line: "Needs", tone: "attention" });
+    const failed = makeThread({ id: "b", status: "error" });
+    expect(line(failed, { failed: note("failed", "429 quota exceeded") }, flags("unread-failed"))).toEqual({ line: "Failed: 429 quota exceeded", tone: "destructive" });
+    expect(line(failed, undefined, flags("unread-failed"))).toEqual({ line: "Failed", tone: "destructive" });
+    expect(line(failed, { failed: note("failed", "Failed") }, flags("unread-failed"))?.line).toBe("Failed");
+    expect(line(makeThread({ id: "q", queuedWork: "failed" }), undefined, flags("queue-failed"))?.line).toBe("Failed: queued message wasn't sent");
+    const offline = makeThread({ id: "c", runtimeStatus: "waiting-for-host", host: { id: "h", name: "Build box" } });
+    expect(line(offline, undefined, flags("offline"))).toEqual({ line: "Offline: Build box", tone: "attention" });
+    expect(line(makeThread({ id: "c", runtimeStatus: "waiting-for-host", host: null }), undefined, flags("offline"))?.line).toBe("Offline");
+    const done = makeThread({ id: "d", ...finishedUnread });
+    expect(line(done, { done: note("done", "Updated 3 files") }, flags("unread"))).toEqual({ line: "Finished: Updated 3 files", tone: "muted" });
+    expect(line(done, undefined, flags("unread"))).toEqual({ line: "Finished", tone: "muted" });
+  });
+
+  it("shows the most urgent of several: waits on you, failed, offline, finished", () => {
+    const thread = makeThread({ id: "a", hasPendingInteraction: true, status: "error", runtimeStatus: "waiting-for-host" });
+    expect(line(thread, undefined, flags("unread", "offline", "unread-failed", "waits-on-you"))?.line).toBe("Needs");
+    expect(line(thread, undefined, flags("unread", "offline", "unread-failed"))?.line).toBe("Failed");
+    expect(line(thread, undefined, flags("unread", "offline"))?.line).toBe("Offline: Laptop");
+    expect(line(thread, undefined, flags("working"))).toBeNull();
+  });
+
+  it("goes under rows in Needs attention that need attention, and 0.2.1's line everywhere else", () => {
+    const threads = [
+      makeThread({ id: "p", ...finishedUnread }),
+      makeThread({ id: "c", parentThreadId: "p", createdAt: T0 + 1, runtimeStatus: "waiting-for-host", host: { id: "h2", name: "Build box" } }),
+      makeThread({ id: "u", parentThreadId: "p", createdAt: T0 + 2, ...finishedUnread }),
+      makeThread({ id: "lone", ...finishedUnread, projectId: "proj_b" }),
+    ];
+    const notes = { p: { done: note("done", "Shipped it") }, u: { done: note("done", "All green") } };
+    const view = viewOf({ threads, notes, prefs: { expandedChildren: ["p"] } });
+    const lines = (rows: readonly Row[]) =>
+      rows.flatMap((row): [string, string | null][] => (row.type === "thread" ? [[row.info.thread.id, row.note === null ? null : noteText(row.note)]] : []));
+    const inSection = new Map(lines(view.attention!.rows));
+    expect(inSection.get("lone")).toBe("Finished");
+    expect(inSection.get("p")).toBe("Finished: Shipped it");
+    expect(inSection.get("c")).toBe("Offline: Build box");
+    // Outside the section, a finished or offline thread has no line.
+    const outside = viewOf({ threads, notes, activeThreadId: "p", heldRootId: null, prefs: { expandedChildren: ["p"] } });
+    expect(outside.groups.flatMap((group) => lines(group.rows)).filter(([, text]) => text !== null)).toEqual([]);
   });
 });
 

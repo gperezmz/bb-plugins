@@ -22,15 +22,19 @@ When another plugin sets a status for a row, that status replaces the glyph in e
 
 ## The second line
 
-A thread that waits on you or failed says why under its title:
+A thread that waits on you or failed says why under its title. In the Needs attention section, every row that itself [needs attention](../explanation/thread-glance-attention.md) says why, finished and offline threads included; a row there that does not, such as a child opened with the chip, keeps the rule above.
 
-| Starts with | Meaning |
-|---|---|
-| `Asks:` | The question it asked |
-| `Approve:` | The command, file change or tool it wants to run |
-| `Plan:` | The first line of the plan to review |
-| `Needs:` | Any other request |
-| `Failed:` | The error the provider reported |
+| Starts with | Meaning | Tone |
+|---|---|---|
+| `Asks:` | The question it asked | Amber |
+| `Approve:` | The command, file change or tool it wants to run | Amber |
+| `Plan:` | The first line of the plan to review | Amber |
+| `Needs:` | Any other request | Amber |
+| `Failed:` | The error the provider reported, or that a queued message was not sent | Red |
+| `Offline:` | The machine it waits for; Needs attention only | Amber |
+| `Finished:` | The start of its last reply; Needs attention only | Grey |
+
+The prefix stands alone when there is nothing to follow it. A thread with more than one reason shows the first in the table's order: waits on you, failed, offline, finished.
 
 With **Comfortable** density, other rows use the second line for the branch (when it is not the project's default branch) and the machine (when threads run on more than one).
 

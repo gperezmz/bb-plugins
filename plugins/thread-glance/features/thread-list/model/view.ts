@@ -23,6 +23,7 @@ import { comparePinned, effectiveSortField, makeComparator, type SortKey } from 
 import { inAttention } from "./attention";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
+import type { RowNote } from "./notes";
 
 /** How many of a group's newest quiet roots stay out of its older fold. */
 export const KEEP_QUIET = 5;
@@ -49,6 +50,11 @@ export interface ThreadRow {
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
   chip: Chip | null;
+  /**
+   * The line under the title. In Needs attention, a row that itself needs
+   * attention says why; any other row says why it waits on you or failed.
+   */
+  note: RowNote | null;
   /** The title, and the chip with it, step back: see `isDimmed`. */
   dimmed: boolean;
   /** A hidden thread shown because it needs attention or failed. */
@@ -200,8 +206,9 @@ function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
-  options: { depth: number; nested: boolean; chip: Chip | null },
+  options: { depth: number; nested: boolean; chip: Chip | null; inAttention?: boolean },
 ): ThreadRow {
+  const needsAttention = !info.thread.isArchived && info.attention.size > 0;
   return {
     type: "thread",
     key: `thread:${info.thread.id}`,
@@ -210,6 +217,7 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
+    note: options.inAttention === true && needsAttention ? info.attentionNote : info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
@@ -434,11 +442,11 @@ function attentionFamilyRows(context: Context, family: Family, homeGroupLabel: s
     onPath.add(info.thread.id);
     for (const ancestor of ancestorsOf(info.thread.id, context.forest.infos, root.thread.id)) onPath.add(ancestor);
   }
-  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip: null }), homeGroupLabel }];
+  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip: null, inAttention: true }), homeGroupLabel }];
   const walk = (parentId: string, depth: number) => {
     for (const id of context.forest.children.get(parentId) ?? []) {
       if (!onPath.has(id)) continue;
-      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null }));
+      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null, inAttention: true }));
       walk(id, depth + 1);
     }
   };
