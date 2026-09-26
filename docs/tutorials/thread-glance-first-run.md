@@ -16,7 +16,7 @@ The list looks much like bb's: Thread Glance copied your grouping, sort, group o
 
 Look at any thread you have run before. From left to right, its row holds:
 
-- a state glyph, or nothing when the thread is idle and read;
+- a state glyph, or a faint ring when the thread is idle and read;
 - the title, bold if you have not read the thread since it finished;
 - a small logo of the harness that runs it;
 - how long ago it last finished.

@@ -22,7 +22,7 @@ import { ROW_ICON_BUTTON } from "./ThreadRowView";
 export const OlderRowView = memo(function OlderRowView({ row, controller }: { row: OlderRow; controller: RowController }) {
   const { label, ariaLabel } = olderRowText(row);
   // A family's fold sits where its children do, with a dots glyph in the
-  // status slot; the group's fold keeps the chevron.
+  // Status column; the group's fold keeps the chevron.
   const inFamily = row.scope !== "group";
   return (
     <button

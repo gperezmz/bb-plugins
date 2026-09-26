@@ -47,9 +47,9 @@ export function UnreadDot({ label, className }: { label?: string; className?: st
   );
 }
 
-// An idle thread's ring: uncoloured, smaller than the column and thinned, so it
-// reads as status yet stays fainter than the unread dot and the draft pencil.
-// Screen readers skip it; an idle row announces nothing more than before.
+// The Idle state's ring: uncoloured, smaller than the column and thinned, so
+// it reads as status yet stays fainter than the unread dot and the draft
+// pencil. Screen readers skip it, so an Idle row announces what it did before.
 export function IdleRing({ className }: { className?: string }) {
   return (
     <span

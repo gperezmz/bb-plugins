@@ -1,6 +1,6 @@
 # Thread Glance: states and glyphs
 
-Every row shows one **state**, the first in this table that matches the thread. The glyph's tooltip and its screen-reader label name the state. Source: [`features/thread-list/model/state.ts`](../../plugins/thread-glance/features/thread-list/model/state.ts).
+Every row shows one **state**, the first in this table that matches the thread. The glyph's tooltip and its screen-reader label name the state; Idle's ring has the tooltip only. Source: [`features/thread-list/model/state.ts`](../../plugins/thread-glance/features/thread-list/model/state.ts).
 
 | # | State | When | Glyph | Colour |
 |---|---|---|---|---|

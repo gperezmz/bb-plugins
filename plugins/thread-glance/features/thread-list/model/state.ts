@@ -49,8 +49,8 @@ const NEEDS: Record<NeedsKind, { icon: string; label: string }> = {
 };
 
 /**
- * How a glyph is drawn. `dot` is the unread dot, `ring` the faint ring an idle
- * thread draws; everything else a host icon.
+ * How a glyph is drawn. `dot` is the unread dot, `ring` the Idle state's
+ * faint ring; everything else a host icon.
  */
 export interface Glyph {
   icon: string | "dot" | "ring";
