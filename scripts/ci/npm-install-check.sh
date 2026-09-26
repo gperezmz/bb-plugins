@@ -121,17 +121,25 @@ fi
 
 # A primary machine, which a plugin's host entry and bb's AI services need:
 # the key the server hands a daemon on its own machine, as bb-app asks for it.
-enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$BB_SERVER_URL/internal/hosts/enroll-key")
+if ! enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$BB_SERVER_URL/internal/hosts/enroll-key"); then
+  echo "::error::the bb server gave no host enroll key" >&2
+  exit 1
+fi
+enroll_key=$(jq -r .enrollKey <<< "$enroll")
+host_id=$(jq -r .hostId <<< "$enroll")
 env "${unset_bb[@]}" BB_DATA_DIR="$work/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_TELEMETRY=0 \
-  BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$(jq -r .hostId <<< "$enroll")" \
+  BB_HOST_ENROLL_KEY="$enroll_key" BB_HOST_ID="$host_id" \
   bb-host-daemon --server-url "$BB_SERVER_URL" --host-daemon-port "$daemon_port" \
   > "$work/host-daemon.log" 2>&1 &
 pids+=("$!")
+host_connected() {
+  [[ $(bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]
+}
 for _ in $(seq 60); do
-  if [[ $(bb machine list --json | jq '[.[] | select(.status == "connected")] | length') -gt 0 ]]; then break; fi
+  if host_connected; then break; fi
   sleep 1
 done
-if [[ $(bb machine list --json | jq '[.[] | select(.status == "connected")] | length') -eq 0 ]]; then
+if ! host_connected; then
   echo "::error::the host daemon did not connect to the bb server" >&2
   tail -50 "$work/host-daemon.log" >&2 || true
   exit 1
@@ -139,8 +147,12 @@ fi
 
 # Fails with every warning and error in the plugin's own log.
 check_log() {
-  local lines
-  lines=$(bb plugin logs "$id" -n 100000 | jq -Rc 'fromjson? | select(.level == "warn" or .level == "error")')
+  local log lines
+  if ! log=$(bb plugin logs "$id" -n 100000); then
+    echo "::error::could not read $id's log" >&2
+    return 1
+  fi
+  lines=$(jq -Rc 'fromjson? | select(.level == "warn" or .level == "error")' <<< "$log")
   if [[ -n $lines ]]; then
     echo "::error::$id logged a warning or an error:" >&2
     echo "$lines" >&2
