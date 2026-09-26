@@ -397,19 +397,33 @@ export const GroupSection = memo(function GroupSection({
   );
 });
 
+// bb's attention colour, thinned over the sidebar: the one colour the section
+// adds. Opaque, so the sticky header hides the rows scrolling under it.
+const ATTENTION_BAND = "bg-[color-mix(in_oklch,var(--attention)_8%,var(--sidebar))]";
+// The count takes the attention chip's text colour, on a stronger tint.
+const ATTENTION_COUNT =
+  "bg-[color-mix(in_oklch,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklch,var(--attention),var(--foreground)_55%)]";
+
 /**
- * The Needs attention section: a header with its family count, then its rows. It
- * has no collapse, menu or drag, and no drop target of its own.
+ * The Needs attention section: a header with its family count, then its rows,
+ * on one band of bb's attention colour. It has no collapse, menu or drag, and
+ * no drop target of its own.
  */
 export const AttentionSection = memo(function AttentionSection({ view, ...rest }: SectionProps & { view: AttentionView }) {
   return (
-    <section aria-label="Needs attention" className="relative flex w-full min-w-0 flex-col">
+    <section aria-label="Needs attention" className={cn("relative mb-1 flex w-full min-w-0 flex-col rounded-md pb-0.5", ATTENTION_BAND)}>
       <h2
         style={{ top: TOOLBAR_HEIGHT }}
-        className="sticky z-20 flex h-7 items-center gap-1 bg-sidebar pl-2 pr-2 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
+        className={cn(
+          "sticky z-20 flex h-7 items-center gap-1 rounded-t-md pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9",
+          ATTENTION_BAND,
+        )}
       >
         <span className="min-w-0 flex-1 truncate">Needs attention</span>
-        <span className="tabular-nums" aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}>
+        <span
+          className={cn("rounded-full px-1.5 text-[11px] leading-4 tabular-nums", ATTENTION_COUNT)}
+          aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}
+        >
           {view.familyCount}
         </span>
       </h2>
