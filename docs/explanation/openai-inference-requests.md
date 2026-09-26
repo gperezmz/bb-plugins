@@ -2,7 +2,7 @@
 
 bb titles every new thread, and writes commit messages, with an AI task: one prompt in, one piece of text out. bb writes the prompt, sends it to the service selected for that task, and cleans the reply itself: think blocks, quotes, labels and extra lines. OpenAI-compatible inference makes each [Endpoint](../reference/openai-inference-settings.md#endpoints) you list a service, which sends the prompt to a server that speaks OpenAI Chat Completions. A LiteLLM gateway and a local server get the same request: every field that asks for no reasoning is sent to both, and a field a server refuses is left out.
 
-You choose the service for each AI task, since Automatic never picks an Endpoint, and bb has no fallback from one selected service to another; [selecting an Endpoint](../reference/openai-inference-settings.md#selecting-an-endpoint) says how.
+You choose the service for each AI task with `bb settings ai-services set <task> <id>`, since Automatic never picks an Endpoint, and bb has no fallback from one selected service to another; [selecting an Endpoint](../reference/openai-inference-settings.md#selecting-an-endpoint) says more.
 
 ```mermaid
 sequenceDiagram
