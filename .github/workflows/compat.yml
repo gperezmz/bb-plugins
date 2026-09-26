@@ -9,8 +9,6 @@ on:
   schedule:
     - cron: '23 */6 * * *'
   workflow_dispatch:
-  push:
-    branches: [build/36]
 
 permissions:
   contents: read
@@ -193,5 +191,4 @@ jobs:
           CHANNEL: ${{ matrix.channel }}
           BB_VERSION: ${{ needs.resolve.outputs[matrix.channel] }}
           PLUGINS: ${{ needs.resolve.outputs.plugins }}
-          DRY_RUN: '1'
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
