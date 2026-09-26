@@ -8,7 +8,7 @@ import { lastReply } from "../model/notes";
 import { finishedAtFor, stateSince } from "../model/time";
 import { ICONS } from "../icons";
 import { ListLiveContext, type ModelInfo, type RowController } from "./controller";
-import { GlyphIcon } from "./glyphs";
+import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
 
@@ -87,8 +87,7 @@ export function ThreadDetails({
       </div>
       {info.note !== null ? (
         <p className="break-words leading-snug">
-          <span className={info.note.tone === "destructive" ? "text-destructive" : "text-attention"}>{info.note.prefix}:</span>{" "}
-          {info.note.text}
+          <NoteLine note={info.note} />
         </p>
       ) : null}
       <dl className="flex flex-col gap-1">

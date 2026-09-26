@@ -16,19 +16,19 @@ export interface Snapshot {
   activeThreadId: string | null;
   unread: ReadonlySet<string>;
   /** Threads that wait on you or failed, as Needs attention counts them. */
-  attention: ReadonlySet<string>;
+  attentionIds: ReadonlySet<string>;
 }
 
 export function snapshotOf(forest: Forest, activeThreadId: string | null): Snapshot {
   const unread = new Set<string>();
-  const attention = new Set<string>();
+  const attentionIds = new Set<string>();
   for (const info of forest.infos.values()) {
     if (info.thread.isArchived) continue;
     // A finished child that does not need attention never opens anything.
-    if (info.attention.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
-    if (revealsOn(info.attention, info.parentId === null)) attention.add(info.thread.id);
+    if (info.attentionFlags.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
+    if (revealsOn(info.attentionFlags, info.parentId === null)) attentionIds.add(info.thread.id);
   }
-  return { activeThreadId, unread, attention };
+  return { activeThreadId, unread, attentionIds };
 }
 
 /**
@@ -40,8 +40,8 @@ export function detectTransitions(previous: Snapshot | null, next: Snapshot): Ma
   if (next.activeThreadId !== null && next.activeThreadId !== previous?.activeThreadId) {
     found.set(next.activeThreadId, "reveal");
   }
-  for (const id of next.attention) {
-    if (!previous?.attention.has(id)) found.set(id, "reveal");
+  for (const id of next.attentionIds) {
+    if (!previous?.attentionIds.has(id)) found.set(id, "reveal");
   }
   for (const id of next.unread) {
     if (id === next.activeThreadId || found.has(id)) continue;

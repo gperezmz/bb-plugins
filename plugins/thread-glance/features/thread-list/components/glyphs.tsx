@@ -4,6 +4,7 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { Counters } from "../model/counters";
+import type { RowNote } from "../model/notes";
 import { FLAG_GLYPHS, type ChipTone, type Flag, type Glyph, type Tone } from "../model/state";
 
 export const TONE_CLASS: Record<Tone, string> = {
@@ -89,6 +90,23 @@ export function PluginStatusGlyph({ status }: { status: PluginSidebarThreadRowSt
       aria-label={status.label}
       className={cn("size-4 shrink-0", tone, status.tone === "running" && SHINE)}
     />
+  );
+}
+
+/** A note's prefix takes the tone of the row's glyph for the same reason. */
+const NOTE_TONE_CLASS: Record<RowNote["tone"], string> = {
+  attention: "text-attention",
+  destructive: "text-destructive",
+  muted: "text-muted-foreground",
+};
+
+/** "Failed: timeout", its prefix in the note's tone, or the prefix alone when there is no text. */
+export function NoteLine({ note }: { note: RowNote }) {
+  return (
+    <>
+      <span className={NOTE_TONE_CLASS[note.tone]}>{note.text === "" ? note.prefix : `${note.prefix}:`}</span>
+      {note.text === "" ? null : ` ${note.text}`}
+    </>
   );
 }
 

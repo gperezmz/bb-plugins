@@ -18,13 +18,13 @@ import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
-import { noteText, type RowNote } from "../model/notes";
+import { noteText } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { CHIP_TONE_CLASS, FlagGlyph, GlyphIcon, PluginStatusGlyph } from "./glyphs";
+import { CHIP_TONE_CLASS, FlagGlyph, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -56,13 +56,6 @@ function swallowNextClick(): void {
     once: true,
   });
 }
-
-/** A note's prefix takes the tone of the row's glyph for the same reason. */
-const NOTE_TONE_CLASS: Record<RowNote["tone"], string> = {
-  attention: "text-attention",
-  destructive: "text-destructive",
-  muted: "text-muted-foreground",
-};
 
 /**
  * A quiet title, and its chip: the foreground mixed toward the sidebar in
@@ -427,8 +420,7 @@ export const ThreadRowView = memo(function ThreadRowView({
         )}
         {!editing && note !== null ? (
           <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
-            <span className={NOTE_TONE_CLASS[note.tone]}>{note.text === "" ? note.prefix : `${note.prefix}:`}</span>
-            {note.text === "" ? null : ` ${note.text}`}
+            <NoteLine note={note} />
           </span>
         ) : controller.comfortable && !editing ? (
           <SecondLine row={row} multiHost={controller.multiHost} defaultBranch={controller.defaultBranchOf(thread)} />

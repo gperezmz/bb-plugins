@@ -120,7 +120,7 @@ export function inAttention(family: SectionFamily, heldRootId: string | null, op
  * held while one of its threads is open, after nothing in it needs attention any
  * more, until a thread outside it is opened. A family that does not need attention
  * when opened is not pulled in later, whatever happens in it; nor is one
- * that never needed you. Opening another thread of the open family judges
+ * that never needed attention. Opening another thread of the open family judges
  * nothing again.
  */
 export function holdAttention(previous: AttentionHold, openFamily: SectionFamily | undefined): AttentionHold {

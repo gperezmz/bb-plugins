@@ -26,7 +26,7 @@ export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): 
   // Expanding shows every child; collapsing also drops auto-reveals.
   return expanded
     ? { patch: { expandedChildren: without(prefs.expandedChildren, id) }, drop: under(forest, id) }
-    : { patch: { expandedChildren: [...without(prefs.expandedChildren, id), id] }, drop: null };
+    : openChildren(id, prefs);
 }
 
 /** Opens a parent's children, as its chip does: "+N more" in Needs attention and an auto-reveal's fold. */

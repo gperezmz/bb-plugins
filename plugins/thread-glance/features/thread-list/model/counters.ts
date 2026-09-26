@@ -24,7 +24,7 @@ export function countFamilies(families: readonly Family[]): Counters {
   for (const family of families) {
     for (const info of [family.root, ...family.descendants]) {
       if (info.thread.isArchived) continue;
-      const flags = info.attention;
+      const flags = info.attentionFlags;
       if (flags.has("waits-on-you")) counters.waitsOnYou += 1;
       if (flags.has("unread-failed") || flags.has("queue-failed")) counters.failed += 1;
       if (flags.has("offline")) counters.offline += 1;

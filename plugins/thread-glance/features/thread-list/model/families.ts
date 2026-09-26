@@ -32,7 +32,7 @@ export interface ThreadInfo {
    * The flags of this thread that make it need attention, for Needs attention, the
    * counters and auto-reveal: a child counts less than a root.
    */
-  attention: Set<Flag>;
+  attentionFlags: Set<Flag>;
   /** Quiet test for the thread alone. */
   quiet: boolean;
   /**
@@ -161,7 +161,7 @@ export function buildForest(inputs: ForestInputs): Forest {
       state,
       unread,
       flags: thread.isHidden ? hiddenThreadFlags(flags) : flags,
-      attention: new Set<Flag>(),
+      attentionFlags: new Set<Flag>(),
       quiet: isQuietThread(state, unread, isActive),
       quietIgnoringOpen: false,
       isActive,
@@ -174,18 +174,18 @@ export function buildForest(inputs: ForestInputs): Forest {
   const mode = inputs.childAttention ?? "blocked";
   for (const info of infos.values()) {
     const parent = info.parentId === null ? undefined : infos.get(info.parentId);
-    info.attention = attentionFlagsOf(info.flags, {
+    info.attentionFlags = attentionFlagsOf(info.flags, {
       isRoot: parent === undefined,
       mode,
       orphaned:
         parent !== undefined &&
         isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
     });
-    info.attentionNote = attentionNote(info.thread, inputs.notes?.[info.thread.id], info.attention);
+    info.attentionNote = attentionNote(info.thread, inputs.notes?.[info.thread.id], info.attentionFlags);
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
         ? isQuietThread(info.state, info.unread, false)
-        : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.attention.size === 0);
+        : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.attentionFlags.size === 0);
   }
 
   const children = new Map<string, string[]>();
@@ -220,11 +220,11 @@ export function buildForest(inputs: ForestInputs): Forest {
       const below = subtreeOf(childId, path);
       descendants.push(child, ...below.descendants);
       if (!child.thread.isArchived) {
-        for (const flag of child.attention) flags.add(flag);
+        for (const flag of child.attentionFlags) flags.add(flag);
         if (child.flags.has("working")) flags.add("working");
       }
       for (const flag of below.flags) flags.add(flag);
-      if (child.thread.isHidden ? child.attention.size > 0 : !child.quietIgnoringOpen) quietIgnoringOpen = false;
+      if (child.thread.isHidden ? child.attentionFlags.size > 0 : !child.quietIgnoringOpen) quietIgnoringOpen = false;
       if (!child.thread.isHidden) visibleCount += 1;
       visibleCount += below.visibleCount;
       if (!below.quietIgnoringOpen) quietIgnoringOpen = false;
@@ -246,11 +246,11 @@ export function buildForest(inputs: ForestInputs): Forest {
     let containsActive = root.isActive;
     const attentionFlags = new Set<Flag>();
     for (const info of descendants) {
-      if (!info.thread.isArchived) for (const flag of info.attention) attentionFlags.add(flag);
+      if (!info.thread.isArchived) for (const flag of info.attentionFlags) attentionFlags.add(flag);
       latestAttentionAt = Math.max(latestAttentionAt, info.thread.latestAttentionAt);
       if (info.isActive) containsActive = true;
       if (info.thread.isHidden) {
-        if (info.attention.size > 0) quiet = quietIgnoringOpen = false;
+        if (info.attentionFlags.size > 0) quiet = quietIgnoringOpen = false;
       } else {
         if (!info.quiet) quiet = false;
         // A child reads as its own fold does, so with `blocked` an unread child
@@ -260,7 +260,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     }
     const flags = new Set<Flag>(descendantFlags);
     if (!root.thread.isArchived) {
-      for (const flag of root.attention) {
+      for (const flag of root.attentionFlags) {
         flags.add(flag);
         attentionFlags.add(flag);
       }

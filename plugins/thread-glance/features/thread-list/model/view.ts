@@ -167,7 +167,7 @@ interface Context extends ViewInputs {
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
   /** The rows are drawn in Needs attention. */
-  inAttention: boolean;
+  drawnInAttention: boolean;
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -210,7 +210,7 @@ function threadRow(
   root: ThreadInfo,
   options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
-  const needsAttention = !info.thread.isArchived && info.attention.size > 0;
+  const needsAttention = !info.thread.isArchived && info.attentionFlags.size > 0;
   return {
     type: "thread",
     key: `thread:${info.thread.id}`,
@@ -219,7 +219,7 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
-    note: context.inAttention && needsAttention ? info.attentionNote : info.note,
+    note: context.drawnInAttention && needsAttention ? info.attentionNote : info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
@@ -232,7 +232,7 @@ function threadRow(
 function eligibleChildren(context: Context, parentId: string): ThreadInfo[] {
   return (context.forest.children.get(parentId) ?? [])
     .map((id) => context.forest.infos.get(id)!)
-    .filter((info) => !info.thread.isHidden || info.attention.size > 0);
+    .filter((info) => !info.thread.isHidden || info.attentionFlags.size > 0);
 }
 
 function subtreeOf(context: Context, id: string): Subtree {
@@ -371,7 +371,7 @@ function childProviders(parent: ThreadInfo, descendants: readonly ThreadInfo[]):
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
   const subtree = subtreeOf(context, info.thread.id);
   const hasChildren =
-    subtree.visibleCount > 0 || subtree.descendants.some((descendant) => descendant.thread.isHidden && descendant.attention.size > 0);
+    subtree.visibleCount > 0 || subtree.descendants.some((descendant) => descendant.thread.isHidden && descendant.attentionFlags.size > 0);
   if (!hasChildren) return null;
   return {
     count: subtree.visibleCount,
@@ -383,7 +383,7 @@ function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | n
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */
 function rollupFlags(context: Context, info: ThreadInfo): Set<Flag> {
-  const flags = new Set<Flag>([...info.attention, ...subtreeOf(context, info.thread.id).flags]);
+  const flags = new Set<Flag>([...info.attentionFlags, ...subtreeOf(context, info.thread.id).flags]);
   if (info.flags.has("working")) flags.add("working");
   return flags;
 }
@@ -437,11 +437,11 @@ export function urgency(family: Family): number {
  * with the root's chip, it draws as in its home group and keeps the path.
  */
 function attentionFamilyRows(groupContext: Context, family: Family, homeGroupLabel: string): Row[] {
-  const context: Context = { ...groupContext, inAttention: true };
+  const context: Context = { ...groupContext, drawnInAttention: true };
   const root = family.root;
   const onPath = new Set<string>([root.thread.id]);
   for (const info of family.descendants) {
-    const attention = !info.thread.isArchived && info.attention.size > 0;
+    const attention = !info.thread.isArchived && info.attentionFlags.size > 0;
     if (!attention && !info.isActive) continue;
     onPath.add(info.thread.id);
     for (const ancestor of ancestorsOf(info.thread.id, context.forest.infos, root.thread.id)) onPath.add(ancestor);
@@ -614,7 +614,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     activePath,
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
-    inAttention: false,
+    drawnInAttention: false,
   };
 
   const byGroup = new Map<string, Family[]>();

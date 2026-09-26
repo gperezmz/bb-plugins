@@ -414,7 +414,7 @@ export const GroupSection = memo(function GroupSection({
 // bb's attention colour, thinned over the sidebar: the one colour the section
 // adds. Opaque, so the sticky header hides the rows scrolling under it.
 const ATTENTION_BAND = "bg-[color-mix(in_oklch,var(--attention)_8%,var(--sidebar))]";
-// The count takes the attention chip's text colour, on a stronger tint.
+// The count takes the attention tone's text colour, on a stronger tint.
 const ATTENTION_COUNT =
   "bg-[color-mix(in_oklch,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklch,var(--attention),var(--foreground)_55%)]";
 
