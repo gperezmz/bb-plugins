@@ -8,6 +8,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { buildForest, type Forest } from "../model/families";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
+import type { SectionFamily } from "../model/attention";
 
 export const T0 = 1_780_000_000_000;
 
@@ -109,6 +110,7 @@ export interface Scenario {
   prefs?: Partial<Preferences>;
   activeThreadId?: string | null;
   heldRootId?: string | null;
+  heldAt?: SectionFamily | null;
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -142,6 +144,7 @@ export function viewOf(scenario: Scenario): ListView {
     prefs: { ...defaultPreferences(), ...scenario.prefs },
     activeThreadId: scenario.activeThreadId ?? null,
     heldRootId: scenario.heldRootId ?? null,
+    heldAt: scenario.heldAt ?? null,
     targets: scenario.targets ?? new Map(),
   });
 }

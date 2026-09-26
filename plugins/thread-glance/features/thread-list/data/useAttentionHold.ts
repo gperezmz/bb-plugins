@@ -4,16 +4,21 @@ import { useRef } from "react";
 import type { Forest } from "../model/families";
 import { holdAttention, NO_HOLD, type AttentionHold } from "../model/attention";
 
-export function useAttentionHold(forest: Forest | null, activeThreadId: string | null): string | null {
+export function useAttentionHold(forest: Forest | null, activeThreadId: string | null): AttentionHold {
   const held = useRef<AttentionHold>(NO_HOLD);
   const lastForest = useRef<Forest | null>(null);
   const lastActive = useRef<string | null | undefined>(undefined);
   // Derived during render, so the family never leaves for a frame. Idempotent:
   // a repeated render with the same inputs keeps what it stored.
   if (forest !== null && (forest !== lastForest.current || activeThreadId !== lastActive.current)) {
-    held.current = holdAttention(held.current, activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId));
+    const open = activeThreadId === null ? undefined : forest.infos.get(activeThreadId);
+    held.current = holdAttention(
+      held.current,
+      activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId),
+      open?.thread.isArchived ?? false,
+    );
     lastForest.current = forest;
     lastActive.current = activeThreadId;
   }
-  return held.current.heldRootId;
+  return held.current;
 }

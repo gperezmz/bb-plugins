@@ -408,7 +408,7 @@ export const ThreadRowView = memo(function ThreadRowView({
             title={thread.displayTitle}
             className={cn(
               "min-w-0 truncate",
-              info.unread ? "font-semibold" : "font-normal",
+              row.bold ? "font-semibold" : "font-normal",
               // Children sit a step below their parent.
               row.depth > 0 && "text-xs",
               // Quiet threads step back so live ones lead; hover brings them back.

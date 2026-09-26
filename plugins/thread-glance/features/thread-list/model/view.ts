@@ -20,7 +20,7 @@ import {
 } from "./groups";
 import { addCounters, countFamilies, EMPTY_COUNTERS, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
-import { inAttention } from "./attention";
+import { inAttention, isAttended, type SectionFamily } from "./attention";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
@@ -50,9 +50,12 @@ export interface ThreadRow {
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
   chip: Chip | null;
+  /** The title is bold: the thread is unread and its family is not attended. */
+  bold: boolean;
   /**
    * The line under the title. In Needs attention, a row that itself needs
-   * attention says why; any other row says why it waits on you or failed.
+   * attention says why, and an attended family's rows have none; any other
+   * row says why it waits on you or failed.
    */
   note: RowNote | null;
   /** The title, and the chip with it, step back: see `isDimmed`. */
@@ -122,7 +125,7 @@ export const ATTENTION_GROUP_ID = "attention";
 
 /** The Needs attention section: every family with a thread that needs attention, or held there while one of its threads is open. */
 export interface AttentionView {
-  /** How many families the section holds, for its header. */
+  /** How many families the section holds, attended ones left out, for its header. */
   familyCount: number;
   rows: Row[];
   /** The home group of each thread drawn here, by thread id: a drop on its row acts there. */
@@ -151,6 +154,8 @@ export interface ViewInputs {
   activeThreadId: string | null;
   /** The root of the family Needs attention keeps while one of its threads is open. */
   heldRootId: string | null;
+  /** The held family as it was when opened, if any: the section orders it by this. */
+  heldAt: SectionFamily | null;
   targets: Targets;
 }
 
@@ -168,6 +173,8 @@ interface Context extends ViewInputs {
   sectionNames: ReadonlyMap<string, string>;
   /** The rows are drawn in Needs attention. */
   drawnInAttention: boolean;
+  /** The rows are an attended family's: they draw as in its home group, with no bold title or why line. */
+  attended: boolean;
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -219,7 +226,8 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
-    note: context.drawnInAttention && needsAttention ? info.attentionNote : info.note,
+    bold: info.unread && !context.attended,
+    note: context.attended ? null : context.drawnInAttention && needsAttention ? info.attentionNote : info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
@@ -421,7 +429,7 @@ function familyUnit(context: Context, family: Family): Unit {
 }
 
 /** Waiting on you, then failed, then offline, then unread, then the rest. */
-export function urgency(family: Family): number {
+export function urgency(family: Pick<Family, "attentionFlags">): number {
   const flags = family.attentionFlags;
   if (flags.has("waits-on-you")) return 0;
   if (flags.has("unread-failed") || flags.has("queue-failed")) return 1;
@@ -437,7 +445,11 @@ export function urgency(family: Family): number {
  * with the root's chip, it draws as in its home group and keeps the path.
  */
 function attentionFamilyRows(groupContext: Context, family: Family, homeGroupLabel: string): Row[] {
-  const context: Context = { ...groupContext, drawnInAttention: true };
+  const context: Context = {
+    ...groupContext,
+    drawnInAttention: true,
+    attended: isAttended(family, groupContext.heldRootId),
+  };
   const root = family.root;
   const onPath = new Set<string>([root.thread.id]);
   for (const info of family.descendants) {
@@ -475,20 +487,26 @@ function buildAttention(
 ): AttentionView | null {
   if (families.length === 0) return null;
   // Most urgent first, then the chosen field in its natural direction: the
-  // sort direction orders the groups only.
+  // sort direction orders the groups only. The held family sorts as it was
+  // when opened, so nothing inside it moves it.
   const compare = makeComparator({
     field: context.prefs.chronologicalSort,
     direction: "default",
     workingFirst: context.prefs.workingFirst,
   });
-  const sorted = [...families].sort(
-    (a, b) =>
+  const slotOf = (family: Family): SectionFamily =>
+    context.heldAt !== null && family.root.thread.id === context.heldRootId ? context.heldAt : family;
+  const sorted = [...families].sort((familyA, familyB) => {
+    const a = slotOf(familyA);
+    const b = slotOf(familyB);
+    return (
       urgency(a) - urgency(b) ||
       compare(
         { thread: a.root.thread, familyAttention: a.latestAttentionAt },
         { thread: b.root.thread, familyAttention: b.latestAttentionAt },
-      ),
-  );
+      )
+    );
+  });
   const homeGroupIds: Record<string, string> = {};
   const rows = sorted.flatMap((family) => {
     const home = homeGroupOf(family);
@@ -497,7 +515,7 @@ function buildAttention(
     return familyRows;
   });
   return {
-    familyCount: sorted.length,
+    familyCount: sorted.filter((family) => !isAttended(family, context.heldRootId)).length,
     rows,
     homeGroupIds,
   };
@@ -615,6 +633,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
     drawnInAttention: false,
+    attended: false,
   };
 
   const byGroup = new Map<string, Family[]>();

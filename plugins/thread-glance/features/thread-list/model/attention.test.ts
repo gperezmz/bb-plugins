@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { failedUnread, finishedUnread, forestOf, makeThread, attentionIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { holdAttention, NO_HOLD, type AttentionHold, isOrphanedFailure, isParentIdle, attentionFlagsOf, revealsOn } from "./attention";
 import { chipTone, type Flag } from "./state";
-import type { ThreadRow } from "./view";
+import type { ListView, ThreadRow } from "./view";
 
 const flags = (...list: Flag[]) => new Set<Flag>(list);
 const idleParent = { thread: { latestAttentionAt: T0 }, state: { kind: "idle" as const } };
@@ -266,12 +266,7 @@ describe("a family held in Needs attention while one of its threads is open", ()
 
   /** Renders a sequence of (threads, open thread), carrying the hold as the list does. */
   function renders(steps: [ReturnType<typeof makeThread>[], string | null][]): string[][] {
-    let held: AttentionHold = NO_HOLD;
-    return steps.map(([threads, activeThreadId]) => {
-      const forest = forestOf({ threads, activeThreadId });
-      held = holdAttention(held, activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId));
-      return attentionIds(viewOf({ threads, activeThreadId, heldRootId: held.heldRootId }));
-    });
+    return viewsOf(steps).map(attentionIds);
   }
 
   it("stays after its question is answered, until a thread outside it is opened", () => {
@@ -317,7 +312,157 @@ describe("a family held in Needs attention while one of its threads is open", ()
 
   it("is not pulled in by opening a family that never needed attention", () => {
     expect(renders([[answered, "c"], [answered, "m"]])).toEqual([[], []]);
-    expect(holdAttention({ heldRootId: "m", openRootId: "m" }, undefined)).toEqual(NO_HOLD);
+    expect(holdAttention({ heldRootId: "m", heldAt: null, openRootId: "m" }, undefined)).toEqual(NO_HOLD);
+  });
+});
+
+/** The list views of a sequence of (threads, open thread), carrying the hold as the list does. */
+function viewsOf(steps: [ReturnType<typeof makeThread>[], string | null][]): ListView[] {
+  let held: AttentionHold = NO_HOLD;
+  return steps.map(([threads, activeThreadId]) => {
+    const forest = forestOf({ threads, activeThreadId });
+    const open = activeThreadId === null ? undefined : forest.infos.get(activeThreadId);
+    held = holdAttention(
+      held,
+      activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId),
+      open?.thread.isArchived ?? false,
+    );
+    return viewOf({ threads, activeThreadId, heldRootId: held.heldRootId, heldAt: held.heldAt });
+  });
+}
+
+describe("an attended family", () => {
+  // A finished, unread root with a quiet child and a running one, beside two
+  // families that need attention: one waits on you, one finished unread before it.
+  const unread = [
+    makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 20 }),
+    makeThread({ id: "uq", parentThreadId: "u", createdAt: T0 + 1 }),
+    makeThread({ id: "ur", parentThreadId: "u", createdAt: T0 + 2, ...working }),
+    makeThread({ id: "q", projectId: "proj_b", hasPendingInteraction: true }),
+    makeThread({ id: "o", projectId: "proj_b", ...finishedUnread }),
+    makeThread({ id: "x", projectId: "proj_b" }),
+  ];
+  const with_ = (threads: ReturnType<typeof makeThread>[], id: string, overrides: Record<string, unknown>) =>
+    threads.map((t) => (t.id === id ? { ...t, ...overrides } : t));
+  // bb records the read when the unread thread is opened.
+  const read = with_(unread, "u", { lastReadAt: T0 + 30 });
+  const rowsOf = (view: ListView) =>
+    Object.fromEntries(
+      (view.attention?.rows ?? [])
+        .filter((row): row is ThreadRow => row.type === "thread")
+        .map((row) => [row.info.thread.id, { bold: row.bold, note: row.note, dimmed: row.dimmed }]),
+    );
+
+  it("stays after bb records the read, with no bold title or why line, at its home group's brightness", () => {
+    const [before, after] = viewsOf([[unread, "u"], [read, "u"]]);
+    expect(rowsOf(before!).u).toMatchObject({ bold: true, dimmed: false });
+    expect(rowsOf(before!).u!.note).not.toBeNull();
+    expect(attentionIds(after!)).toContain("u");
+    expect(rowsOf(after!).u).toEqual({ bold: false, note: null, dimmed: false });
+  });
+
+  it("draws its children as its home group does: quiet ones dimmed, running ones not", () => {
+    const prefs = { expandedChildren: ["u"] };
+    let held: AttentionHold = NO_HOLD;
+    const views = ([[unread, "u"], [read, "u"]] as const).map(([threads, active]) => {
+      const forest = forestOf({ threads, activeThreadId: active, prefs });
+      held = holdAttention(held, forest.familyOf.get(active));
+      return viewOf({ threads, activeThreadId: active, heldRootId: held.heldRootId, heldAt: held.heldAt, prefs });
+    });
+    const home = viewOf({ threads: read, activeThreadId: "x", prefs });
+    const homeRows = Object.fromEntries(
+      home.groups.flatMap((group) => group.rows).filter((row): row is ThreadRow => row.type === "thread")
+        .map((row) => [row.info.thread.id, row.dimmed]),
+    );
+    const attended = rowsOf(views[1]!);
+    expect(attended.uq).toMatchObject({ dimmed: true, bold: false, note: null });
+    expect(attended.ur).toMatchObject({ dimmed: false, bold: false, note: null });
+    expect(homeRows).toMatchObject({ uq: true, ur: false });
+  });
+
+  it("draws and counts as attended whatever settled it: a question answered, a plan approved, a failure read", () => {
+    const asks = with_(unread, "u", { lastReadAt: T0 + 30, hasPendingInteraction: true });
+    const failed = with_(unread, "u", { ...failedUnread });
+    for (const [needs, settled] of [
+      [asks, with_(asks, "u", { hasPendingInteraction: false })],
+      [failed, with_(failed, "u", { lastReadAt: T0 + 30 })],
+    ] as const) {
+      const [, after] = viewsOf([[needs, "u"], [settled, "u"]]);
+      expect(rowsOf(after!).u).toEqual({ bold: false, note: null, dimmed: false });
+      expect(after!.attention?.familyCount).toBe(2);
+    }
+  });
+
+  it("is left out of the section's count, which draws none when only attended families remain", () => {
+    const [before, after] = viewsOf([[unread, "u"], [read, "u"]]);
+    expect(before!.attention?.familyCount).toBe(3);
+    expect(after!.attention?.familyCount).toBe(2);
+    const alone = unread.filter((t) => t.projectId !== "proj_b");
+    const [, only] = viewsOf([[alone, "u"], [with_(alone, "u", { lastReadAt: T0 + 30 }), "u"]]);
+    expect(only!.attention).not.toBeNull();
+    expect(only!.attention?.familyCount).toBe(0);
+  });
+
+  it("counts none of its threads as waiting on you, failed, offline or unread, in its group or under More", () => {
+    // A child that finished after you last saw it is unread, and still counts nothing.
+    const doneUnseen = with_(read, "uq", { latestAttentionAt: T0 + 40, lastReadAt: T0 });
+    for (const prefs of [{ expandedChildren: ["u"] }, { expandedChildren: ["u"], hiddenGroups: ["project:proj_a"] }]) {
+      let held: AttentionHold = NO_HOLD;
+      let view: ListView | null = null;
+      for (const threads of [unread, doneUnseen]) {
+        const forest = forestOf({ threads, activeThreadId: "u", prefs });
+        held = holdAttention(held, forest.familyOf.get("u"));
+        view = viewOf({ threads, activeThreadId: "u", heldRootId: held.heldRootId, heldAt: held.heldAt, prefs });
+      }
+      const group = [...view!.groups, ...view!.more].find((candidate) => candidate.descriptor.id === "project:proj_a")!;
+      expect(group.counters).toMatchObject({ waitsOnYou: 0, failed: 0, offline: 0, unread: 0 });
+      expect(view!.moreCounters).toMatchObject({ waitsOnYou: 0, failed: 0, offline: 0, unread: 0 });
+      const family = rowsOf(view!);
+      expect([family.u, family.uq, family.ur]).toEqual([
+        { bold: false, note: null, dimmed: false },
+        // Unread, so not quiet: bright, as in its home group, but not bold.
+        { bold: false, note: null, dimmed: false },
+        { bold: false, note: null, dimmed: false },
+      ]);
+    }
+  });
+
+  it("keeps its place when it becomes attended, and again when it needs attention again", () => {
+    const asksAgain = with_(read, "ur", { hasPendingInteraction: true });
+    const views = viewsOf([[unread, "u"], [read, "u"], [asksAgain, "u"], [read, "u"]]);
+    const roots = (view: ListView) => attentionIds(view).filter((id) => ["u", "q", "o"].includes(id));
+    // Newest unread first: u sits above o, below the question.
+    expect(views.map(roots)).toEqual([["q", "u", "o"], ["q", "u", "o"], ["q", "u", "o"], ["q", "u", "o"]]);
+    // Today's order would sink a read family to the bottom, and lift one that asks to the top.
+    expect(roots(viewOf({ threads: read, activeThreadId: "u", heldRootId: "u" }))).toEqual(["q", "o", "u"]);
+  });
+
+  it("needs attention again in the same place when a child asks a question while it is open", () => {
+    const asksAgain = with_(read, "ur", { hasPendingInteraction: true });
+    const [, attended, again] = viewsOf([[unread, "u"], [read, "u"], [asksAgain, "u"]]);
+    expect(attended!.attention?.familyCount).toBe(2);
+    expect(again!.attention?.familyCount).toBe(3);
+    expect(rowsOf(again!).ur!.note).not.toBeNull();
+    const group = again!.groups.find((candidate) => candidate.descriptor.id === "project:proj_a")!;
+    expect(group.counters.waitsOnYou).toBe(1);
+  });
+
+  it("leaves for its home group once none of its threads is open, and not for another thread of its own", () => {
+    const gone = (views: ListView[]) => views.map((view) => attentionIds(view).includes("u"));
+    expect(gone(viewsOf([[unread, "u"], [read, "u"], [read, "uq"], [read, "x"]]))).toEqual([true, true, true, false]);
+    expect(gone(viewsOf([[unread, "u"], [read, "u"], [read, null]]))).toEqual([true, true, false]);
+    const archived = with_(read, "u", { isArchived: true });
+    expect(gone(viewsOf([[unread, "u"], [read, "u"], [archived, "u"]]))).toEqual([true, true, false]);
+    const deleted = read.filter((t) => t.id !== "u" && t.parentThreadId !== "u");
+    expect(gone(viewsOf([[unread, "u"], [read, "u"], [deleted, "u"]]))).toEqual([true, true, false]);
+    const [, , home] = viewsOf([[unread, "u"], [read, "u"], [read, "x"]]);
+    expect(rowIds(home!, "project:proj_a")).toContain("u");
+  });
+
+  it("does not draw a family that still needs attention when opened as attended", () => {
+    const [opened] = viewsOf([[unread, "u"]]);
+    expect(rowsOf(opened!).u).toMatchObject({ bold: true });
+    expect(opened!.attention?.familyCount).toBe(3);
   });
 });
 

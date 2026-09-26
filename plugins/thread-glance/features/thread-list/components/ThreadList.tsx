@@ -160,7 +160,7 @@ function ThreadListBody({
     [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
-  const heldRootId = useAttentionHold(forest, activeThreadId);
+  const hold = useAttentionHold(forest, activeThreadId);
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
@@ -175,10 +175,11 @@ function ThreadListBody({
             sections: sidebar.sections,
             prefs,
             activeThreadId,
-            heldRootId,
+            heldRootId: hold.heldRootId,
+            heldAt: hold.heldAt,
             targets,
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, heldRootId, targets],
+    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, hold, targets],
   );
   useLayoutEffect(() => {
     previousView.current = view;
