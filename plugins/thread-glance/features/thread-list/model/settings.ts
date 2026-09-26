@@ -1,4 +1,4 @@
-// What the settings popover's controls show and write. Pure.
+// What the settings panel's controls show and write. Pure.
 import type { ChildAttention, Lifecycle, Preferences, SortField } from "@/shared/preferences";
 import { effectiveDirection, effectiveSortField, naturalDirection } from "./sort";
 

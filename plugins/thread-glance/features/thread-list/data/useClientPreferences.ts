@@ -1,19 +1,18 @@
 // Per-client preferences: density, localStorage only.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   CLIENT_PREFERENCES_STORAGE_KEY,
   parseClientPreferences,
   type ClientPreferences,
 } from "@/shared/preferences";
-import { sameWindow } from "./same-window";
+import { sameWindow, useSameWindow } from "./same-window";
 import { readJson, writeJson } from "./storage";
 
 const copies = sameWindow<Partial<ClientPreferences>>();
 
 export function useClientPreferences(): [ClientPreferences, (patch: Partial<ClientPreferences>) => void] {
   const [value, setValue] = useState(() => parseClientPreferences(readJson(CLIENT_PREFERENCES_STORAGE_KEY)));
-  const apply = useCallback((patch: Partial<ClientPreferences>) => setValue((current) => ({ ...current, ...patch })), []);
-  useEffect(() => copies.join(apply), [apply]);
+  const tellOthers = useSameWindow(copies, setValue);
   const update = useCallback(
     (patch: Partial<ClientPreferences>) => {
       setValue((current) => {
@@ -21,9 +20,9 @@ export function useClientPreferences(): [ClientPreferences, (patch: Partial<Clie
         writeJson(CLIENT_PREFERENCES_STORAGE_KEY, next);
         return next;
       });
-      copies.tell(apply, patch);
+      tellOthers(patch);
     },
-    [apply],
+    [tellOthers],
   );
   return [value, update];
 }
