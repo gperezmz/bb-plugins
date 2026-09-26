@@ -50,6 +50,16 @@ _Avoid_: Settled, idle thread
 The "N older" row that holds a group's quiet threads past its newest ones.
 _Avoid_: More row, older threads
 
+**Status column**:
+The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
+_Avoid_: Glyph slot, indent, gutter
+
+### Compact navigation
+
+**Compact navigation**:
+The plugin that draws bb's sidebar navigation as one row of icons and a New thread line on a phone.
+_Avoid_: Mobile nav, nav strip plugin
+
 ### OpenAI-compatible inference
 
 **Endpoint**:
