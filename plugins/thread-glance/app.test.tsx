@@ -4,6 +4,8 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import { CHANNELS } from "@/shared/signals";
+import manifest from "./package.json";
 import {
   finishedUnread,
   makeThread,
@@ -87,9 +89,24 @@ function render(
   });
 }
 
+/** Thread Glance's item in bb's sidebar footer, opened: the settings panel. */
+function renderSettings(options: { prefs?: Partial<Preferences>; extra?: object } = {}) {
+  const item = app.experimentalSidebarFooterItems[0]!;
+  if (item.kind !== "disclosure") throw new Error("the footer item opens no panel");
+  return renderSlot(item, { dismiss() {} }, { rpc: rpc(options.prefs) as never, ...options.extra }).container;
+}
+
 describe("Thread Glance slot", () => {
   it("registers one thread list", () => {
     expect(app.threadLists.map((list) => list.id)).toEqual(["thread-glance"]);
+  });
+
+  it("puts one Thread Glance item in bb's footer, drawn with the icon the manifest brands it with", () => {
+    expect(app.experimentalSidebarFooterItems.map(({ kind, label, icon }) => ({ kind, label, icon }))).toEqual([
+      { kind: "disclosure", label: "Thread Glance", icon: manifest.bb.branding.icon },
+    ]);
+    expect(manifest.bb.branding.icon).not.toBe("Settings");
+    expect(app.sidebarFooterActions).toEqual([]);
   });
 
   it("shows a skeleton while threads load", async () => {
@@ -183,8 +200,8 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull());
   });
 
-  it("draws Needs attention first under the settings row, above Pinned, with no All / Needs attention filter", async () => {
-    render([
+  it("draws Needs attention first, above Pinned, with no row above it and no All / Needs attention filter", async () => {
+    const { container } = render([
       makeThread({ id: "a", title: "Busy", ...working }),
       makeThread({ id: "b", title: "Done", ...finishedUnread }),
       makeThread({ id: "p", title: "Pinned one", pinnedAt: T0, isPinned: true }),
@@ -197,10 +214,10 @@ describe("Thread Glance slot", () => {
     expect(screen.queryByRole("radio")).toBeNull();
     // The section's own header is the only "Needs attention" on screen.
     expect(screen.getAllByText(/Needs attention/)).toHaveLength(1);
-    // The settings row holds ⚙ alone, ahead of the section.
-    const settings = screen.getByRole("button", { name: "Thread Glance settings" });
-    expect(settings.parentElement!.children).toHaveLength(1);
-    expect(settings.compareDocumentPosition(screen.getByRole("region", { name: "Needs attention" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The list starts at the section: no settings row above it.
+    expect(screen.queryByRole("button", { name: /settings/i })).toBeNull();
+    const list = container.firstElementChild!;
+    expect(list.firstElementChild).toBe(screen.getByRole("region", { name: "Needs attention" }));
   });
 
   it("draws no Needs attention section, and no line for it, when nothing needs attention", async () => {
@@ -246,10 +263,15 @@ describe("Thread Glance slot", () => {
     expect(screen.getByText("↳").getAttribute("title")).toBe("Child of Child");
   });
 
+  it("starts the list at its first group header when nothing needs attention", async () => {
+    const { container } = render([makeThread({ id: "a", title: "Busy", ...working })]);
+    await screen.findByRole("link", { name: /Open Busy/ });
+    expect(container.firstElementChild!.firstElementChild).toBe(screen.getByRole("region", { name: "Alpha" }));
+  });
+
   it("opens one settings panel with no tabs, holding exactly the listed settings", async () => {
-    render([makeThread({ id: "a", title: "Busy", ...working })]);
-    fireEvent.click(await screen.findByRole("button", { name: "Thread Glance settings" }));
-    const panel = await screen.findByRole("dialog");
+    const panel = renderSettings();
+    await within(panel).findByRole("heading", { name: "List" });
     expect(within(panel).queryByRole("tablist")).toBeNull();
     expect(within(panel).queryByRole("tab")).toBeNull();
     expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Show"]);
@@ -288,12 +310,12 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "b1", title: "B old", projectId: "proj_b", createdAt: T0, latestAttentionAt: T0 }),
       makeThread({ id: "b2", title: "B new", projectId: "proj_b", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
     ];
-    render(threads, { extra: { rpc: { ...rpc(), setPreference } as never } });
+    render(threads);
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
     expect(order()).toEqual(["Open A new", "Open A old", "Open B new", "Open B old"]);
-    fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
-    const panel = await screen.findByRole("dialog");
+    // The panel mounts apart from the list, as bb's footer draws it.
+    const panel = renderSettings({ extra: { rpc: { ...rpc(), setPreference } as never } });
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new", "Open B old", "Open B new"]));
     expect(within(panel).getByRole("button", { name: /Sort order: Oldest first/ }).textContent).toBe("↑");
@@ -303,6 +325,39 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "threadLifecycles", value: ["active", "archived"] }));
     expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" });
     expect(within(threadsGroup).getByRole("radio", { name: "Both" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("keeps a change made in the panel when the list hears the old value before the write goes out", async () => {
+    const threads = [
+      makeThread({ id: "a1", title: "A old", createdAt: T0, latestAttentionAt: T0 }),
+      makeThread({ id: "a2", title: "A new", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
+    ];
+    const list = render(threads);
+    const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
+    await screen.findByRole("link", { name: /Open A new/ });
+    const panel = renderSettings();
+    fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
+    await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
+    await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
+    expect(order()).toEqual(["Open A old", "Open A new"]);
+  });
+
+  it("applies a density picked in the panel to the list at once, and keeps it for the next list", async () => {
+    // Comfortable rows add a second line, here the branch.
+    const threads = [makeThread({ id: "a", title: "Busy", ...working, environment: { branchName: "feature" } })];
+    render(threads);
+    const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
+    await screen.findByRole("link", { name: /Open Busy/ });
+    const compact = row().textContent;
+    const panel = renderSettings();
+    fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Comfortable" }));
+    await waitFor(() => expect(row().textContent).not.toBe(compact));
+    const comfortable = row().textContent;
+    expect(comfortable).toContain("feature");
+    cleanup();
+    render(threads);
+    await screen.findByRole("link", { name: /Open Busy/ });
+    expect(row().textContent).toBe(comfortable);
   });
 
   it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {

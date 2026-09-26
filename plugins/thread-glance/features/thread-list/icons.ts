@@ -24,7 +24,6 @@ export const ICONS = {
   moveUp: "ChevronUp",
   newThread: "Plus",
   newSection: "SectionAdd",
-  settings: "Settings",
   customize: "SlidersHorizontal",
   check: "Check",
   pullRequest: "GitPullRequest",

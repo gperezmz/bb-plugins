@@ -54,7 +54,6 @@ import { cancelPendingCards } from "./row-card";
 import { GroupSection, AttentionSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
-import { Toolbar } from "./Toolbar";
 
 const PLUGIN_ID = "thread-glance";
 
@@ -108,7 +107,7 @@ function ThreadListBody({
   onRetry,
 }: PluginThreadListProps & { attempt: number; onRetry(): void }) {
   const { prefs, hydrated, update } = usePreferences();
-  const [client, updateClient] = useClientPreferences();
+  const [client] = useClientPreferences();
   const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.threadLifecycles });
   const actions = useThreadActions();
   const sdk = useSdk();
@@ -679,7 +678,6 @@ function ThreadListBody({
   return (
     <ListLiveContext.Provider value={live}>
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
-        <Toolbar prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
         {threads.length === 0 ? (
           // bb's own pinned New thread button covers the empty list.
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>

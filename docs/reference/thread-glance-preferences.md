@@ -2,9 +2,9 @@
 
 Thread Glance keeps two kinds of preference. **Server preferences** are stored by the plugin on the bb server and follow you to every window and device. **Device preferences** are stored in the browser and stay in that browser. Source: [`shared/preferences.ts`](../../plugins/thread-glance/shared/preferences.ts).
 
-## The settings popover
+## The settings panel
 
-The gear alone on the slim row at the top of the list opens one panel.
+The **Thread Glance** item in bb's sidebar footer, drawn with the plugin's List view icon, opens one panel above the footer; activating it again closes it. bb's footer customisation can reorder the item or move it into the footer's **More** menu like any other footer item.
 
 | Heading | Setting | Preference |
 |---|---|---|

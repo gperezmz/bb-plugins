@@ -43,8 +43,6 @@ export interface GroupController {
 
 export type DropStates = ReadonlyMap<string, "valid" | "blocked" | "unchanged" | "before" | "after">;
 
-/** The sticky toolbar's height; headers stick below it. */
-export const TOOLBAR_HEIGHT = 28;
 const ROW_HEIGHT = { compact: 28, comfortable: 44 };
 
 function canRename(group: GroupView): boolean {
@@ -96,9 +94,8 @@ const GroupHeader = memo(function GroupHeader({
       role={undefined}
       tabIndex={undefined}
       data-sidebar="group-label"
-      style={{ top: inOverflow ? 0 : TOOLBAR_HEIGHT }}
       className={cn(
-        "group/header sticky z-20 flex h-7 items-center gap-1 rounded-md bg-sidebar pl-2 pr-1 text-xs text-muted-foreground max-md:pointer-coarse:h-9",
+        "group/header sticky top-0 z-20 flex h-7 items-center gap-1 rounded-md bg-sidebar pl-2 pr-1 text-xs text-muted-foreground max-md:pointer-coarse:h-9",
         dropActive && "bg-sidebar-accent",
         draggable.isDragging && "opacity-50",
         !controller.compact && !inOverflow && "select-none",
@@ -431,8 +428,7 @@ export const AttentionSection = memo(function AttentionSection({ view, ...rest }
   return (
     <section aria-label="Needs attention" className={cn("relative mb-1 flex w-full min-w-0 flex-col rounded-md pb-0.5", ATTENTION_BAND)}>
       <h2
-        style={{ top: TOOLBAR_HEIGHT }}
-        className="sticky z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
+        className="sticky top-0 z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
       >
         <span className="min-w-0 flex-1 truncate">Needs attention</span>
         {view.familyCount > 0 ? (

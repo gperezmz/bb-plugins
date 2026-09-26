@@ -1,20 +1,21 @@
-// The top of the scroll area: the settings button and its popover.
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+// Thread Glance's settings, shown by its item in bb's sidebar footer.
+import { experimental_Icon as Icon, type ExperimentalSidebarFooterDisclosureProps } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "../model/settings";
 import { effectiveSortField } from "../model/sort";
+import { useClientPreferences } from "../data/useClientPreferences";
+import { usePreferences } from "../data/usePreferences";
 import { ICONS } from "../icons";
-import { TOOLBAR_HEIGHT } from "./GroupSection";
-import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 // bb's own segmented controls (the Reasoning picker, the diff view toggle)
 // mark the chosen item with the state-active token and no shadow. The track
 // is a translucent tint, so the chosen item reads as raised in both themes.
-const SEGMENT_TRACK = "flex min-w-0 flex-1 gap-0.5 rounded-md bg-surface-recessed p-0.5";
+// An item never shrinks below its text: where a line cannot hold its label
+// and its control, the control wraps onto a line of its own.
+const SEGMENT_TRACK = "flex flex-1 gap-0.5 rounded-md bg-surface-recessed p-0.5";
 const SEGMENT_ITEM =
-  "flex min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-sm px-1 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex flex-1 items-center justify-center whitespace-nowrap rounded-sm px-1 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function segmentClass(selected: boolean): string {
   return cn(
@@ -25,12 +26,12 @@ function segmentClass(selected: boolean): string {
   );
 }
 
-/** A label, then its control, on one line. */
+/** A label, then its control: on one line where the panel is wide enough, else the control below. */
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-2 py-1">
-      <span className="w-[5.5rem] shrink-0 text-sm">{label}</span>
-      {children}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1">
+      <span className="min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm">{label}</span>
+      <div className="flex flex-1 gap-2">{children}</div>
     </div>
   );
 }
@@ -104,7 +105,7 @@ function Heading({ children }: { children: React.ReactNode }) {
   return <h3 className="px-2 pb-0.5 pt-3 text-xs font-medium text-muted-foreground first:pt-0">{children}</h3>;
 }
 
-export function SettingsPanel({
+function SettingsPanel({
   prefs,
   client,
   onPrefs,
@@ -208,31 +209,13 @@ export function SettingsPanel({
   );
 }
 
-/** The slim row above the list: ⚙ alone at its right. */
-export function Toolbar({
-  prefs,
-  client,
-  onPrefs,
-  onClient,
-}: {
-  prefs: Preferences;
-  client: ClientPreferences;
-  onPrefs(patch: Partial<Preferences>): void;
-  onClient(patch: Partial<ClientPreferences>): void;
-}) {
+/** The footer item's panel, reading and writing the preferences the list reads. */
+export function SettingsDisclosure(_props: ExperimentalSidebarFooterDisclosureProps) {
+  const { prefs, update } = usePreferences();
+  const [client, updateClient] = useClientPreferences();
   return (
-    // Sticky with the group headers, so the settings stay in reach.
-    <div style={{ height: TOOLBAR_HEIGHT }} className="sticky top-0 z-30 flex items-center justify-end bg-sidebar">
-      <Popover>
-        <PopoverTrigger asChild>
-          <button type="button" aria-label="Thread Glance settings" title="List settings" className={ROW_ICON_BUTTON}>
-            <Icon name={ICONS.settings} aria-hidden className="size-4" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 p-2">
-          <SettingsPanel prefs={prefs} client={client} onPrefs={onPrefs} onClient={onClient} />
-        </PopoverContent>
-      </Popover>
+    <div className="p-1">
+      <SettingsPanel prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
     </div>
   );
 }
