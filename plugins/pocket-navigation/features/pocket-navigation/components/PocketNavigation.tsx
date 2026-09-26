@@ -21,10 +21,9 @@ import { pocketLayout } from "../model/layout";
 
 type Item = ExperimentalSidebarNavigationItem;
 
-// The height and colours of bb's own navigation rows.
-const ROW_HEIGHT = "h-[var(--bb-sidebar-row-height)] max-md:pointer-coarse:h-[var(--bb-sidebar-row-height-coarse)]";
+// The height, colours and states of bb's own navigation rows.
 const CONTROL = cn(
-  ROW_HEIGHT,
+  "h-[var(--bb-sidebar-row-height)] max-md:pointer-coarse:h-[var(--bb-sidebar-row-height-coarse)]",
   "shrink-0 cursor-pointer rounded-md font-normal text-sidebar-foreground transition-none",
   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 ring-sidebar-ring",
   "disabled:cursor-default disabled:opacity-70 max-md:pointer-coarse:[&_[data-icon-root]]:size-5",
@@ -49,11 +48,12 @@ function PhoneNavigation() {
   const { items, activeItemId, actions } = experimental_useSidebarNavigation();
   if (items.length === 0) return null;
   const { iconRow, newThread, search, overflow } = pocketLayout(items);
+  const isActive = (item: Item) => item.id === activeItemId;
   const activate = (item: Item) => actions.activate(item.id, { openInSplit: false });
   const itemProps = (item: Item) => ({
     disabled: item.isDisabled,
     "aria-busy": item.isLoading || undefined,
-    "aria-current": item.id === activeItemId ? ("page" as const) : undefined,
+    "aria-current": isActive(item) ? ("page" as const) : undefined,
     onClick: () => activate(item),
   });
 
@@ -64,11 +64,11 @@ function PhoneNavigation() {
           {/* Scrolls sideways when the icons outgrow the sidebar; "…" stays put. */}
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
             {iconRow.map((item) => (
-              <IconButton key={item.id} item={item} isActive={item.id === activeItemId} {...itemProps(item)} />
+              <IconButton key={item.id} item={item} isActive={isActive(item)} {...itemProps(item)} />
             ))}
           </div>
           {overflow.length > 0 ? (
-            <Overflow items={overflow} activeItemId={activeItemId} onActivate={activate} onCustomize={actions.openCustomize} />
+            <Overflow items={overflow} isActive={isActive} onActivate={activate} onCustomize={actions.openCustomize} />
           ) : null}
         </div>
         {newThread !== null || search !== null ? (
@@ -78,7 +78,7 @@ function PhoneNavigation() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={cn(CONTROL, "min-w-0 flex-1 justify-start gap-2 pl-2 text-sm", newThread.id === activeItemId && ACTIVE)}
+                className={cn(CONTROL, "min-w-0 flex-1 justify-start gap-2 pl-2 text-sm", isActive(newThread) && ACTIVE)}
                 {...itemProps(newThread)}
               >
                 <NavigationIcon icon={newThread.icon} />
@@ -86,7 +86,7 @@ function PhoneNavigation() {
               </Button>
             ) : null}
             {search !== null ? (
-              <IconButton item={search} isActive={search.id === activeItemId} className="ml-auto" {...itemProps(search)} />
+              <IconButton item={search} isActive={isActive(search)} className="ml-auto" {...itemProps(search)} />
             ) : null}
           </div>
         ) : null}
@@ -123,14 +123,14 @@ function IconButton({ item, isActive, className, ...props }: IconButtonProps) {
 
 interface OverflowProps {
   items: readonly Item[];
-  activeItemId: string | null;
+  isActive(item: Item): boolean;
   onActivate(item: Item): void;
   onCustomize(): void;
 }
 
 /** "…": every hidden item, then bb's Customize sidebar, as bb's own More lists them. */
-function Overflow({ items, activeItemId, onActivate, onCustomize }: OverflowProps) {
-  const isActiveInside = items.some((item) => item.id === activeItemId);
+function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
+  const isActiveInside = items.some(isActive);
   return (
     <DropdownMenu>
       <Tooltip>
@@ -154,11 +154,11 @@ function Overflow({ items, activeItemId, onActivate, onCustomize }: OverflowProp
           <DropdownMenuItem
             key={item.id}
             disabled={item.isDisabled}
-            className={cn(item.id === activeItemId && ACTIVE)}
+            className={cn(isActive(item) && ACTIVE)}
             onSelect={() => onActivate(item)}
           >
             {/* The phone drawer's item drops attributes it does not know, so the mark sits inside it. */}
-            <span className="contents" aria-current={item.id === activeItemId ? "page" : undefined}>
+            <span className="contents" aria-current={isActive(item) ? "page" : undefined}>
               <NavigationIcon icon={item.icon} />
               {item.label}
             </span>

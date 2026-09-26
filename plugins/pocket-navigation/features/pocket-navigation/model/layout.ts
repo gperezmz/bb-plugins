@@ -21,9 +21,6 @@ export interface PocketLayout<Item extends LayoutItem> {
  * `isVisible` is bb's reading of `sidebar.visiblePluginPanels`, the same one
  * bb's own navigation filters on, and `items` already come in the order of
  * `sidebar.pluginPanelOrder`.
- *
- * @param items Every navigation item bb reports, visible and hidden.
- * @returns The items grouped by where they are drawn.
  */
 export function pocketLayout<Item extends LayoutItem>(items: readonly Item[]): PocketLayout<Item> {
   const layout: PocketLayout<Item> = { iconRow: [], newThread: null, search: null, overflow: [] };
