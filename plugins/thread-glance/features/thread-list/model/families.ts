@@ -249,7 +249,9 @@ export function buildForest(inputs: ForestInputs): Forest {
         if (info.needsYou.size > 0) quiet = quietIgnoringOpen = false;
       } else {
         if (!info.quiet) quiet = false;
-        if (!isQuietThread(info.state, info.unread, false)) quietIgnoringOpen = false;
+        // A child reads as its own fold does, so with `blocked` an unread child
+        // does not keep an old family out of the group's fold.
+        if (!info.quietIgnoringOpen) quietIgnoringOpen = false;
       }
     }
     const flags = new Set<Flag>(descendantFlags);
