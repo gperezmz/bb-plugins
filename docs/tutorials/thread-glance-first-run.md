@@ -45,7 +45,7 @@ When the parent finishes, its row shows the dot and a bold title.
 
 When the parent finished unread, its family moved into **Needs attention**, the section at the top of the list, and left its project's group. Your finished child did not bring it there: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
 
-Open the parent. The family stays in the section while you read it. Open a thread outside it, and the family goes back to its project.
+Open the parent. The family stays in the section while you read it, in the same place, but its title is no longer bold and the section's count leaves it out: it is attended. Open a thread outside it, and the family goes back to its project.
 
 ## 6. Change a setting
 
