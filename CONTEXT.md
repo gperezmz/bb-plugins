@@ -41,7 +41,7 @@ _Avoid_: More row, older threads
 ### OpenAI-compatible inference
 
 **Endpoint**:
-One OpenAI-compatible server listed in OpenAI-compatible inference's settings, which bb offers as one AI service.
+One entry in OpenAI-compatible inference's `endpoints` setting, which bb offers as one AI service.
 _Avoid_: Server, backend, provider
 
 **AI task**:
