@@ -6,6 +6,12 @@ Branch from `main` and open a pull request against it. It merges when the **CI o
 
 Change a plugin's dependencies with `npm install` in its folder, and commit `package-lock.json` and the regenerated `THIRD_PARTY_NOTICES.md` with it. Leave `@get-bb/plugin-sdk`, React and the other packages bb provides at runtime to `bb plugin types`, which pins them to the bb release the plugin targets.
 
+## The compatibility run
+
+CI tests a pull request against the bb it pins in `.github/actions/setup/action.yml`. The Compatibility workflow tests `main` against newer bb: every 6 hours, and when started by hand from the Actions tab, it resolves the `latest` and `nightly` releases of `bb-app` on npm to exact versions and runs every plugin's `check` and `npm-install` checks and `bb plugin types --check` against each.
+
+Each channel keeps one issue open while it fails, and each failing run comments on it with the bb version, the failing plugins and checks, and the run. A `bb nightly warning` issue means a nightly build breaks a plugin before bb releases it; a `bb latest broken` issue means a released bb already does. The first passing run closes the issue. A plugin whose SDK pin differs from the SDK the tested bb ships is listed in the issue but fails nothing; `bb plugin types` repins it.
+
 ## Commit messages
 
 Every commit's first line is a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/), scoped to the plugin it changes: `fix(thread-usage): count cached tokens once`. A change to the repository itself takes no scope, or `ci`, `docs` and so on as the type. The [commit hooks](docs/how-to/develop-plugins.md#turn-on-the-commit-hooks) check the form before the commit is made.

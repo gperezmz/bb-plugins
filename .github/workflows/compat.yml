@@ -1,0 +1,195 @@
+name: Compatibility
+
+# The compatibility run: every plugin's checks against the bb releases npm
+# tags `latest` and `nightly`, each channel reported as one GitHub issue
+# (scripts/ci/compat-report.sh). A nightly issue warns before bb releases a
+# break; a `latest` issue means a released bb already carries one. CI keeps
+# testing pull requests against the bb it pins in .github/actions/setup.
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queued rather than overlapping, so two runs never both open a channel's
+# issue.
+concurrency:
+  group: compat
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve bb and plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      latest: ${{ steps.bb.outputs.latest }}
+      nightly: ${{ steps.bb.outputs.nightly }}
+      plugins: ${{ steps.plugins.outputs.plugins }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every folder with a package.json, so a new plugin is covered without
+      # editing this file.
+      - name: List the plugins
+        id: plugins
+        run: |
+          plugins=$(find plugins -mindepth 2 -maxdepth 2 -name package.json -printf '%h\n' \
+            | xargs -n1 basename | sort | jq -Rsc 'split("\n") | map(select(. != ""))')
+          echo "Plugins: $plugins"
+          echo "plugins=$plugins" >> "$GITHUB_OUTPUT"
+      # A channel that does not resolve is left empty; its check jobs and its
+      # report then fail on it, and the other channel carries on.
+      - name: Resolve bb-app@latest and bb-app@nightly
+        id: bb
+        run: |
+          for channel in latest nightly; do
+            version=$(npm view "bb-app@$channel" version 2> /dev/null || true)
+            if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::bb-app@$channel did not resolve to a version: '$version'"
+              version=
+            fi
+            echo "bb-app@$channel: ${version:-(unresolved)}" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "$channel=$version" >> "$GITHUB_OUTPUT"
+          done
+
+  check:
+    name: bb ${{ matrix.channel }} · ${{ matrix.plugin }} (${{ matrix.mode }})
+    needs: resolve
+    if: always() && needs.resolve.outputs.plugins != '' && needs.resolve.outputs.plugins != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest, nightly]
+        plugin: ${{ fromJSON(needs.resolve.outputs.plugins || '[]') }}
+        # The modes CI runs, less git-install, which this run leaves out by
+        # choice (#36).
+        mode: [check, npm-install]
+    env:
+      CHANNEL: ${{ matrix.channel }}
+      PLUGIN: ${{ matrix.plugin }}
+      MODE: ${{ matrix.mode }}
+      BB_VERSION: ${{ needs.resolve.outputs[matrix.channel] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve bb-app@${{ matrix.channel }}
+        id: resolve
+        run: |
+          if [[ -z $BB_VERSION ]]; then
+            echo "::error::bb-app@$CHANNEL did not resolve"
+            exit 1
+          fi
+          echo "bb-app@$CHANNEL: $BB_VERSION"
+      - uses: ./.github/actions/setup
+        id: install
+        with:
+          plugin: ${{ matrix.plugin }}
+          bb-version: ${{ env.BB_VERSION }}
+      - name: Run bb
+        id: start
+        run: |
+          reported=$(bb --version | tail -1)
+          echo "bb --version: $reported"
+          if [[ $reported != "$BB_VERSION" ]]; then
+            echo "::error::bb reports version '$reported', not $BB_VERSION"
+            exit 1
+          fi
+      - name: scripts/ci/check-plugin.sh ${{ matrix.plugin }} ${{ matrix.mode }}
+        id: run
+        run: scripts/ci/check-plugin.sh "$PLUGIN" "$MODE"
+      # A pin that differs from the SDK this bb ships is reported, not failed:
+      # pins follow bb only when `bb plugin types` repins them. Anything else
+      # it cannot answer fails the step.
+      - name: bb plugin types --check
+        id: types
+        if: ${{ !cancelled() && matrix.mode == 'check' && steps.start.outcome == 'success' }}
+        working-directory: plugins/${{ matrix.plugin }}
+        run: |
+          status=0
+          out=$(bb plugin types --check 2>&1) || status=$?
+          echo "$out"
+          versions=$(sed -n 's/.*; pin is \([^,]*\), host is \(.*\)\.$/\1 \2/p' <<< "$out" | tail -1)
+          if [[ -z $versions ]]; then
+            echo "::error::bb plugin types --check exited $status without naming the pinned and shipped SDK"
+            exit 1
+          fi
+          read -r pin host <<< "$versions"
+          if [[ $status -ne 0 && $pin == "$host" ]]; then
+            echo "::error::bb plugin types --check exited $status"
+            exit 1
+          fi
+          if [[ $pin != "$host" ]]; then
+            echo "::warning::$PLUGIN pins @get-bb/plugin-sdk $pin; bb $BB_VERSION ships $host"
+          fi
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+      - name: Record the result
+        if: always()
+        env:
+          RESOLVE: ${{ steps.resolve.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          START: ${{ steps.start.outcome }}
+          RUN: ${{ steps.run.outcome }}
+          TYPES: ${{ steps.types.outcome }}
+          PIN: ${{ steps.types.outputs.pin }}
+          HOST: ${{ steps.types.outputs.host }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/result"
+          failed=()
+          [[ $RESOLVE == success ]] || failed+=("Resolve \`bb-app@$CHANNEL\`")
+          [[ $RESOLVE != success || $INSTALL == success ]] || failed+=("Install bb-app@$BB_VERSION")
+          [[ $INSTALL != success || $START == success ]] || failed+=("Run bb $BB_VERSION")
+          [[ $START != success || $RUN == success ]] || failed+=("\`scripts/ci/check-plugin.sh $PLUGIN $MODE\`")
+          [[ $MODE != check || $START != success || $TYPES == success ]] || failed+=("\`bb plugin types --check\`")
+          jq -n --arg pin "$PIN" --arg host "$HOST" '{failed: $ARGS.positional, pin: $pin, host: $host}' \
+            --args "${failed[@]}" > "$RUNNER_TEMP/result/$PLUGIN.$MODE.json"
+          cat "$RUNNER_TEMP/result/$PLUGIN.$MODE.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: compat-${{ matrix.channel }}-${{ matrix.plugin }}-${{ matrix.mode }}
+          path: ${{ runner.temp }}/result/${{ matrix.plugin }}.${{ matrix.mode }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    name: Report bb ${{ matrix.channel }}
+    needs: [resolve, check]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The only job in this repository that writes issues.
+    permissions:
+      contents: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [latest, nightly]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A check job that uploaded nothing is missing from the results, and the
+      # report counts its checks as not run.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: compat-${{ matrix.channel }}-*
+          path: ${{ runner.temp }}/results
+          merge-multiple: true
+      - run: scripts/ci/compat-report.sh "$CHANNEL" "$RUNNER_TEMP/results"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CHANNEL: ${{ matrix.channel }}
+          BB_VERSION: ${{ needs.resolve.outputs[matrix.channel] }}
+          PLUGINS: ${{ needs.resolve.outputs.plugins }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
