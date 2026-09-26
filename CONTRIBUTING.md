@@ -8,7 +8,7 @@ Change a plugin's dependencies with `npm install` in its folder, and commit `pac
 
 ## The compatibility run
 
-CI tests a pull request against the bb it pins in `.github/actions/setup/action.yml`. The Compatibility workflow tests `main` against newer bb: every 6 hours, and when started by hand from the Actions tab, it resolves the `latest` and `nightly` releases of `bb-app` on npm to exact versions and runs every plugin's `check` and `npm-install` checks and `bb plugin types --check` against each.
+CI tests a pull request against the bb release that ships each plugin's SDK pin, as `.github/actions/setup/action.yml` lists them. The Compatibility workflow tests `main` against newer bb: every 6 hours, and when started by hand from the Actions tab, it resolves the `latest` and `nightly` releases of `bb-app` on npm to exact versions and runs every plugin's `check` and `npm-install` checks and `bb plugin types --check` against each.
 
 Each channel keeps one issue open while it fails, and each failing run comments on it with the bb version, the failing plugins and checks, and the run. A `bb nightly warning` issue means a nightly build breaks a plugin before bb releases it; a `bb latest broken` issue means a released bb already does. The first passing run closes the issue. A plugin whose SDK pin differs from the SDK the tested bb ships is listed in the issue but fails nothing; `bb plugin types` repins it.
 
