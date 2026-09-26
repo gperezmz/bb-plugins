@@ -37,7 +37,7 @@ Each plugin is published as `@gperezmz/bb-plugin-<name>`, the `name` in its `pac
 The workflow publishes with a provenance attestation, through [npm trusted publishing](https://docs.npmjs.com/trusted-publishers): the `npm` job gets a short-lived token from GitHub, so once a package exists no npm token is kept in the repository. It publishes only while the repository variable `NPM_PUBLISH` is `true`. npm trusts a workflow only for a package that already exists, so a new package takes an owner of the `@gperezmz` npm scope, once:
 
 1. Add a granular npm access token that can publish to the scope as the repository secret `NPM_TOKEN`, and release the plugin. The `npm` job publishes with the token when the secret is set.
-2. Trust the workflow: `npm trust github @gperezmz/bb-plugin-<name> --file release.yml --repo gperezmz/bb-plugins --environment npm`.
+2. Trust the workflow: `npm trust github @gperezmz/bb-plugin-<name> --file release.yml --repo gperezmz/bb-plugins --environment npm --allow-publish` (npm 11.19 and later refuse it without a permission flag).
 3. Delete the `NPM_TOKEN` secret and revoke the token. On the package's settings page, set publishing access to require two-factor authentication and disallow tokens.
 
 To publish a tag again, for example one pushed before its package was set up, run the Release workflow by hand with the tag as input.
