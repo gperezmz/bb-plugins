@@ -23,7 +23,7 @@ The section at the top of Thread Glance's list that holds every thread family wi
 _Avoid_: Needs you, inbox, attention filter
 
 **Attended**:
-A family in Needs attention that you opened and that has nothing left needing attention; it keeps its place until you open a thread outside it.
+A family in Needs attention that you opened and that has nothing left needing attention; it keeps its place until none of its threads is open.
 _Avoid_: Held, read
 
 **Home group**:
