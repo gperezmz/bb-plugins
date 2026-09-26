@@ -69,4 +69,4 @@ Each group header counts, over every [family](../explanation/how-the-plugins-fit
 | Working | Spinner | Only while the group is collapsed |
 | Unread | Dot | Only on **More**, which holds hidden groups |
 
-The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs attention section's own header counts its families.
+The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs attention section's own header counts its families. The counters sit at the right edge of the header, in line with the rows' ages; with the pointer over the header, or keyboard focus in it, the **+** and **…** buttons take their place.

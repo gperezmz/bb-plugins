@@ -63,15 +63,31 @@ const GroupHeader = memo(function GroupHeader({
   dropActive: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const label = group.descriptor.label;
   const draggable = useDraggable({
     id: `group:${group.descriptor.id}`,
     data: { kind: "group", groupId: group.descriptor.id },
     disabled: controller.compact || inOverflow || renaming,
   });
-  const actionsClass = controller.compact
+  const compact = controller.compact;
+  // Desktop: the counter sits flush right, and "+" and "…" fade in over its
+  // place on hover or focus, as a row's actions fade over its age. Nothing is
+  // kept for them otherwise. Phones keep them in line, always shown.
+  const counterFade = compact
     ? ""
-    : "opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+    : menuOpen
+      ? "opacity-0"
+      : "group-hover/header:opacity-0 group-focus-within/header:opacity-0";
+  const actionsFade = compact
+    ? ""
+    : cn(
+        "absolute top-1/2 right-0 -translate-y-1/2 pl-1",
+        dropActive ? "bg-sidebar-accent" : "bg-sidebar",
+        menuOpen
+          ? "opacity-100"
+          : "pointer-events-none opacity-0 group-hover/header:pointer-events-auto group-hover/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:opacity-100",
+      );
   return (
     <div
       ref={draggable.setNodeRef}
@@ -117,98 +133,96 @@ const GroupHeader = memo(function GroupHeader({
         </button>
       )}
       {!renaming ? (
-        <CounterStrip
-          counters={visibleCounters(group.counters, { collapsed: group.collapsed, more: false })}
-          className="ml-auto"
-        />
-      ) : null}
-      {!renaming &&
-      group.descriptor.kind !== "pinned" &&
-      (group.descriptor.newThreadProjectId !== null || group.descriptor.kind === "machine") &&
-      (!controller.compact || controller.activeGroupId === group.descriptor.id) ? (
-        <button
-          type="button"
-          aria-label={`New thread in ${label}`}
-          title={`New thread in ${label}`}
-          data-sidebar-hover-actions-mobile={controller.compact ? "always" : undefined}
-          className={cn(ROW_ICON_BUTTON, actionsClass)}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => controller.onNewThread(group)}
-        >
-          <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-        </button>
-      ) : !renaming && !controller.compact ? (
-        // Keeps every header's counters on one edge.
-        <span aria-hidden className="size-6 shrink-0" />
-      ) : null}
-      {!renaming ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${label} actions`}
-              className={cn(ROW_ICON_BUTTON, actionsClass)}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <Icon name={ICONS.more} aria-hidden className="size-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-48">
-            <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
-              <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-              Mark all read
-            </DropdownMenuItem>
-            {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
-              <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
-                <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-                New thread
-              </DropdownMenuItem>
-            ) : null}
-            {controller.canCreateSections ? (
-              <DropdownMenuItem onSelect={() => controller.onNewSection()}>
-                <Icon name={ICONS.newSection} aria-hidden className="size-4" />
-                New section
-              </DropdownMenuItem>
-            ) : null}
-            {canRename(group) ? (
-              <DropdownMenuItem onSelect={() => setRenaming(true)}>
-                <Icon name={ICONS.rename} aria-hidden className="size-4" />
-                Rename
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-            {group.descriptor.kind !== "pinned" ? (
-              group.hidden ? (
-                <DropdownMenuItem onSelect={() => controller.onShow(group)}>
-                  <Icon name={ICONS.show} aria-hidden className="size-4" />
-                  Show in list
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onSelect={() => controller.onHide(group)}>
-                  <Icon name={ICONS.hidden} aria-hidden className="size-4" />
-                  Hide from list
-                </DropdownMenuItem>
-              )
-            ) : null}
-            <DropdownMenuItem onSelect={() => controller.onToggleArchived()}>
-              <Icon name={controller.showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
-              Show archived threads
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => controller.onCustomize()}>
-              <Icon name={ICONS.customize} aria-hidden className="size-4" />
-              Customize list
-            </DropdownMenuItem>
-            {group.descriptor.kind === "section" ? (
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => controller.onRemove(group)}
+        <span className="relative ml-auto flex shrink-0 items-center">
+          <CounterStrip
+            counters={visibleCounters(group.counters, { collapsed: group.collapsed, more: false })}
+            className={cn("transition-opacity", counterFade)}
+          />
+          <span className={cn("flex items-center transition-opacity", actionsFade)}>
+            {group.descriptor.kind !== "pinned" &&
+            (group.descriptor.newThreadProjectId !== null || group.descriptor.kind === "machine") &&
+            (!controller.compact || controller.activeGroupId === group.descriptor.id) ? (
+              <button
+                type="button"
+                aria-label={`New thread in ${label}`}
+                title={`New thread in ${label}`}
+                data-sidebar-hover-actions-mobile={controller.compact ? "always" : undefined}
+                className={ROW_ICON_BUTTON}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => controller.onNewThread(group)}
               >
-                <Icon name={ICONS.remove} aria-hidden className="size-4" />
-                Remove section
-              </DropdownMenuItem>
+                <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+              </button>
             ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`${label} actions`}
+                  className={ROW_ICON_BUTTON}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <Icon name={ICONS.more} aria-hidden className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
+                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                  Mark all read
+                </DropdownMenuItem>
+                {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
+                  <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
+                    <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+                    New thread
+                  </DropdownMenuItem>
+                ) : null}
+                {controller.canCreateSections ? (
+                  <DropdownMenuItem onSelect={() => controller.onNewSection()}>
+                    <Icon name={ICONS.newSection} aria-hidden className="size-4" />
+                    New section
+                  </DropdownMenuItem>
+                ) : null}
+                {canRename(group) ? (
+                  <DropdownMenuItem onSelect={() => setRenaming(true)}>
+                    <Icon name={ICONS.rename} aria-hidden className="size-4" />
+                    Rename
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                {group.descriptor.kind !== "pinned" ? (
+                  group.hidden ? (
+                    <DropdownMenuItem onSelect={() => controller.onShow(group)}>
+                      <Icon name={ICONS.show} aria-hidden className="size-4" />
+                      Show in list
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onSelect={() => controller.onHide(group)}>
+                      <Icon name={ICONS.hidden} aria-hidden className="size-4" />
+                      Hide from list
+                    </DropdownMenuItem>
+                  )
+                ) : null}
+                <DropdownMenuItem onSelect={() => controller.onToggleArchived()}>
+                  <Icon name={controller.showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
+                  Show archived threads
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => controller.onCustomize()}>
+                  <Icon name={ICONS.customize} aria-hidden className="size-4" />
+                  Customize list
+                </DropdownMenuItem>
+                {group.descriptor.kind === "section" ? (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => controller.onRemove(group)}
+                  >
+                    <Icon name={ICONS.remove} aria-hidden className="size-4" />
+                    Remove section
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        </span>
       ) : null}
     </div>
   );
