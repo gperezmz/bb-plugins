@@ -191,6 +191,14 @@ describe("scenario 5: a project with 60 old threads", () => {
       "older:55",
     ]);
   });
+  it("an unread child folds with its old family unless Needs you counts every child", () => {
+    const child = makeThread({ id: "c", parentThreadId: "o0", createdAt: T0, latestAttentionAt: T0, lastReadAt: T0 - 1 });
+    const threads = [...old, child];
+    expect(rowIds(viewOf({ threads }), "project:proj_a")).toEqual(["o59", "o58", "o57", "o56", "o55", "older:55"]);
+    const every = viewOf({ threads, prefs: { childAttention: "everything" } });
+    expect(every.needsYou?.familyCount).toBe(1);
+    expect(rowIds(every, "project:proj_a")).toEqual(["o59", "o58", "o57", "o56", "o55", "older:54"]);
+  });
   it("unread roots go to Needs you rather than the fold; the header still counts them", () => {
     const unread = old.map((t) => ({ ...t, lastReadAt: T0 - 1 }));
     const view = viewOf({ threads: unread });
