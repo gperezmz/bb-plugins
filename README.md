@@ -1,6 +1,6 @@
 # bb plugins
 
-Four plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need you and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Five plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need you and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Pocket Navigation**, draws bb's sidebar navigation as one row of icons and a New thread line on a phone, where bb's own takes six full-width rows. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,9 @@ flowchart LR
   helper --> oi
   oi -->|chat completions| gateway
   oi -->|chat completions| localmodel
+  pn["Pocket Navigation"]
+  ui -->|navigation entries and settings| pn
+  pn -->|sidebar navigation on a phone| ui
 ```
 
 The documentation starts at [docs/README.md](docs/README.md): tutorials for a first run of each plugin, how-to guides, reference and explanation.
@@ -44,10 +47,11 @@ The documentation starts at [docs/README.md](docs/README.md): tutorials for a fi
 | [thread-usage](plugins/thread-usage) | Cost, tokens and time of a thread and all the threads it spawned, from bb or from your AI gateway. |
 | [team-onboarding](plugins/team-onboarding) | A live setup checklist from your team's manifest: GitHub over HTTPS or SSH, agent logins, skills, plugins and tools, checked and fixed on every machine. |
 | [openai-inference](plugins/openai-inference) | Thread titles and commit messages from a LiteLLM gateway or a local OpenAI-compatible server, in place of bb's built-in Codex service. |
+| [pocket-navigation](plugins/pocket-navigation) | bb's sidebar navigation on a phone as one row of icons and a New thread line, in bb's own order and visibility. |
 
 ## Install
 
-Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding` or `openai-inference`):
+Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding`, `openai-inference` or `pocket-navigation`):
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance

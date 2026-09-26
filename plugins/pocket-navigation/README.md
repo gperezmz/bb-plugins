@@ -13,8 +13,9 @@ It follows the order and visibility you set in bb's own Customize sidebar, and c
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin pocket-navigation
 ```
 
-Then choose **Pocket Navigation** under Settings → Appearance → Navigation.
+While bb's navigation is left on Automatic, bb uses it as soon as it is installed.
 
+- [Switch the sidebar navigation between Pocket Navigation and bb's](../../docs/how-to/pocket-navigation-switch-navigation.md)
 - [Install, update or remove a plugin](../../docs/how-to/install-plugins.md)
 - [Develop](../../docs/how-to/develop-plugins.md)
 
