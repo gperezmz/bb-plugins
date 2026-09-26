@@ -11,9 +11,11 @@ import { ICONS } from "../icons";
 // bb's own segmented controls (the Reasoning picker, the diff view toggle)
 // mark the chosen item with the state-active token and no shadow. The track
 // is a translucent tint, so the chosen item reads as raised in both themes.
-const SEGMENT_TRACK = "flex min-w-0 flex-1 gap-0.5 rounded-md bg-surface-recessed p-0.5";
+// An item never shrinks below its text: where a line cannot hold its label
+// and its control, the control wraps onto a line of its own.
+const SEGMENT_TRACK = "flex flex-1 gap-0.5 rounded-md bg-surface-recessed p-0.5";
 const SEGMENT_ITEM =
-  "flex min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-sm px-1 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex flex-1 items-center justify-center whitespace-nowrap rounded-sm px-1 py-0.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function segmentClass(selected: boolean): string {
   return cn(
@@ -24,12 +26,12 @@ function segmentClass(selected: boolean): string {
   );
 }
 
-/** A label, then its control, on one line. */
+/** A label, then its control: on one line where the panel is wide enough, else the control below. */
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-2 py-1">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1">
       <span className="w-[5.5rem] shrink-0 text-sm">{label}</span>
-      {children}
+      <div className="flex flex-1 gap-2">{children}</div>
     </div>
   );
 }
@@ -212,7 +214,7 @@ export function SettingsDisclosure(_props: ExperimentalSidebarFooterDisclosurePr
   const { prefs, update } = usePreferences();
   const [client, updateClient] = useClientPreferences();
   return (
-    <div className="p-2">
+    <div className="p-1">
       <SettingsPanel prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
     </div>
   );
