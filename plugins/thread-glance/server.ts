@@ -25,7 +25,7 @@ export default function threadGlance(bb: BbPluginApi): void {
   const scheduled = createScheduledTracker({
     publish: (signal) => bb.realtime.publish(CHANNELS.scheduled, signal),
   });
-  const readBbCli = createBbCliReader(bb.log);
+  const readBbCli = createBbCliReader(bb.log, () => bb.server.loopbackBaseUrl);
   const importOnce = createSerialQueue();
 
   bb.rpc.register(rpcContract, {

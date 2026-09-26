@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,14 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
 import { CHANNELS } from "../shared/contract";
 import { defaultPreferences } from "../shared/preferences";
-import { IMPORT_MARKER_KEY } from "./import";
+import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
 import { preferenceKvKey } from "./preference-store";
 import { stampKvKey } from "./stamps";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
-async function load(sdk: Overrides = {}) {
-  const host = createFakePluginHost({ pluginId: "thread-glance", sdk });
+async function load(sdk: Overrides = {}, loopbackBaseUrl?: string) {
+  const host = createFakePluginHost({ pluginId: "thread-glance", sdk, loopbackBaseUrl });
   await plugin(host.bb);
   return host;
 }
@@ -30,6 +30,7 @@ function signalsOn(harness: Awaited<ReturnType<typeof load>>["harness"], channel
 
 let tempDir: string;
 const savedBbCli = process.env.BB_CLI;
+const savedServerUrl = process.env.BB_SERVER_URL;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "thread-glance-test-"));
@@ -40,6 +41,8 @@ afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
   if (savedBbCli === undefined) delete process.env.BB_CLI;
   else process.env.BB_CLI = savedBbCli;
+  if (savedServerUrl === undefined) delete process.env.BB_SERVER_URL;
+  else process.env.BB_SERVER_URL = savedServerUrl;
   vi.useRealTimers();
 });
 
@@ -54,6 +57,21 @@ function fakeBbCli(output: string): string {
   chmodSync(script, 0o755);
   process.env.BB_CLI = script;
   return argvFile;
+}
+
+/**
+ * Points BB_CLI at a script standing in for two bb servers on one machine: it
+ * prints `own` when BB_SERVER_URL names `ownUrl`, and `other` otherwise, as the
+ * CLI would for whichever server it asked.
+ */
+function fakeTwoServerBbCli(ownUrl: string, own: string, other: string): void {
+  const script = join(tempDir, "bb");
+  writeFileSync(
+    script,
+    `#!/bin/sh\nif [ "$BB_SERVER_URL" = '${ownUrl}' ]; then\ncat <<'JSON'\n${own}\nJSON\nelse\ncat <<'JSON'\n${other}\nJSON\nfi\n`,
+  );
+  chmodSync(script, 0o755);
+  process.env.BB_CLI = script;
 }
 
 describe("preferences", () => {
@@ -156,8 +174,28 @@ describe("importPreferences", () => {
       source: "cli",
       keys: ["organizationMode"],
     });
-    const { readFileSync } = await import("node:fs");
     expect(readFileSync(argvFile, "utf8").trim()).toBe("thread-list prefs list --json");
+  });
+
+  it.each([
+    ["the CLI's default server", undefined],
+    ["the server BB_SERVER_URL names", "http://127.0.0.1:38886"],
+  ])("reads its own server's preferences, never %s", async (_, inherited) => {
+    const ownUrl = "http://127.0.0.1:41886";
+    if (inherited === undefined) delete process.env.BB_SERVER_URL;
+    else process.env.BB_SERVER_URL = inherited;
+    fakeTwoServerBbCli(
+      ownUrl,
+      JSON.stringify({ organizationMode: "machine" }),
+      JSON.stringify({ organizationMode: "chronological" }),
+    );
+    const { bb, harness } = await load({}, ownUrl);
+    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
+      status: "imported",
+      source: "cli",
+      keys: ["organizationMode"],
+    });
+    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBe("machine");
   });
 
   it("falls back to bb's CLI when the mirror holds no bb preferences", async () => {
@@ -179,6 +217,46 @@ describe("importPreferences", () => {
     expect(
       harness.inspection.logEntries.some((entry) => entry.message.includes("thread-list prefs")),
     ).toBe(true);
+  });
+
+  it("asks no server when it cannot tell which one it runs in", async () => {
+    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
+    const warnings: string[] = [];
+    const log = { ...createFakePluginHost().bb.log, warn: (message: string) => warnings.push(message) };
+    const read = createBbCliReader(log, () => {
+      throw new Error("server not listening yet");
+    });
+    expect(await read()).toBeNull();
+    expect(existsSync(argvFile)).toBe(false);
+    expect(warnings).toEqual([
+      "could not tell which bb server Thread Glance runs in (server not listening yet); " +
+        "importing nothing from bb's CLI and asking no other server",
+    ]);
+  });
+
+  it("starts from the defaults, or the browser copy, when its own server has no URL", async () => {
+    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
+    const bare = await load({}, "");
+    expect(await bare.harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
+      status: "defaults",
+      source: "none",
+      keys: [],
+    });
+    expect(await bare.bb.storage.kv.get(IMPORT_MARKER_KEY)).toMatchObject({ source: "none" });
+    expect(existsSync(argvFile)).toBe(false);
+    expect(
+      bare.harness.inspection.logEntries.some(
+        (entry) =>
+          entry.level === "warn" &&
+          entry.message.includes("could not tell which bb server Thread Glance runs in (it has no URL)"),
+      ),
+    ).toBe(true);
+    const mirrored = await load({}, "");
+    expect(
+      await mirrored.harness.behavior.callRpc("importPreferences", {
+        bbMirror: { organizationMode: "chronological" },
+      }),
+    ).toMatchObject({ source: "local-storage", keys: ["organizationMode"] });
   });
 
   it("runs once when two windows import at the same time", async () => {

@@ -21,8 +21,9 @@ export interface ImportResult {
 }
 
 /**
- * Reads bb's preferences from its CLI and returns the parsed JSON, or null
- * when the command fails or prints something that is not JSON.
+ * Reads bb's preferences from its CLI, asking the server Thread Glance runs
+ * in, and returns the parsed JSON, or null when that server is unknown, the
+ * command fails or it prints something that is not JSON.
  */
 export type BbCliReader = () => Promise<unknown>;
 
@@ -66,28 +67,57 @@ export function bbCliPath(env: NodeJS.ProcessEnv = process.env): string {
   return configured ? configured : "bb";
 }
 
-/** Runs `bb thread-list prefs list --json` with a 5 s timeout. */
+/**
+ * Runs `bb thread-list prefs list --json` with a 5 s timeout against the bb
+ * server Thread Glance runs in.
+ *
+ * `ownServerUrl` returns that server's URL, which goes to the CLI as
+ * `BB_SERVER_URL`: without it the CLI asks the machine's default server, which
+ * is another bb when two run on one machine. Where `ownServerUrl` throws or
+ * returns nothing, the CLI does not run, so no other server is asked.
+ */
 export function createBbCliReader(
   log: BbPluginApi["log"],
+  ownServerUrl: () => string,
   env: NodeJS.ProcessEnv = process.env,
 ): BbCliReader {
   return () =>
     new Promise((resolve) => {
+      let serverUrl = "";
+      let reason = "it has no URL";
+      try {
+        serverUrl = ownServerUrl().trim();
+      } catch (error) {
+        reason = error instanceof Error ? error.message : String(error);
+      }
+      if (!serverUrl) {
+        log.warn(
+          `could not tell which bb server Thread Glance runs in (${reason}); ` +
+            "importing nothing from bb's CLI and asking no other server",
+        );
+        resolve(null);
+        return;
+      }
       const file = bbCliPath(env);
       execFile(
         file,
         ["thread-list", "prefs", "list", "--json"],
-        { timeout: CLI_TIMEOUT_MS, maxBuffer: CLI_MAX_BUFFER_BYTES, encoding: "utf8" },
+        {
+          env: { ...env, BB_SERVER_URL: serverUrl },
+          timeout: CLI_TIMEOUT_MS,
+          maxBuffer: CLI_MAX_BUFFER_BYTES,
+          encoding: "utf8",
+        },
         (error, stdout) => {
           if (error) {
-            log.warn(`could not run ${file} thread-list prefs list: ${error.message}`);
+            log.warn(`could not run ${file} thread-list prefs list against ${serverUrl}: ${error.message}`);
             resolve(null);
             return;
           }
           try {
             resolve(JSON.parse(stdout) as unknown);
           } catch {
-            log.warn(`${file} thread-list prefs list printed output that is not JSON`);
+            log.warn(`${file} thread-list prefs list against ${serverUrl} printed output that is not JSON`);
             resolve(null);
           }
         },
