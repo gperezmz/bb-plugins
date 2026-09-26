@@ -190,6 +190,32 @@ describe("settings", () => {
     await stop();
   });
 
+  it("sends the Endpoints again at the next status read when a send after a save failed", async () => {
+    let failNext = false;
+    const fake = createFakePluginHost({
+      pluginId: "openai-inference",
+      settings: { endpoints: `[${mlx}]` },
+      sdk: { system: { config: async () => ({ primaryHostId: "host_primary" }) } as never },
+      experimental_callHostRpc: (call) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("host went away");
+        }
+        return (call.input as Array<{ id: string }>).map((e) => ({ id: e.id, missing: [] }));
+      },
+    });
+    await plugin(fake.bb);
+    const run = fake.harness.behavior.runService("send-endpoints");
+    await expect.poll(() => configureCalls(fake.harness).length).toBe(1);
+    failNext = true;
+    await fake.harness.behavior.setSettings({ endpoints: '[{"id": "lmstudio", "url": "http://127.0.0.1:1234/v1", "model": "m"}]' });
+    await expect.poll(() => configureCalls(fake.harness).length).toBe(2);
+    expect(await service(fake.harness, "lmstudio").status!()).toEqual({ ready: true });
+    expect(configureCalls(fake.harness)).toHaveLength(3);
+    run.controller.abort();
+    await run.done;
+  });
+
   it("changes the key an Endpoint sends, and its status, when keys changes", async () => {
     const { harness, stop } = await start({ endpoints: `[${gatewayByReference}]` }, { unset: ["GATEWAY_VIRTUAL_KEY"] });
     expect(await status(harness, "gateway")).toMatchObject({ ready: false });

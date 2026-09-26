@@ -48,21 +48,25 @@ export default async function plugin(bb: BbPluginApi) {
   };
 
   // Whether an Endpoint's variables are set is decided on the primary host,
-  // whose environment the host entry has. `missing` is what it answered for
-  // the Endpoints last sent; until the first send, a status waits for it.
-  let started = false;
-  let firstSend!: (sent: Promise<Missing>) => void;
-  let missing = new Promise<Missing>((resolve) => (firstSend = resolve));
-  // Takes on a failed first send, which only a status read reports.
-  missing.catch(() => undefined);
+  // whose environment the host entry has. `report` is what it answered for
+  // the Endpoints last sent, and is sent again when that failed or the
+  // Endpoints changed. bb.sdk is usable only once the service starts.
+  let markStarted!: () => void;
+  const started = new Promise<void>((resolve) => (markStarted = resolve));
+  let report: Promise<Missing> | undefined;
   const sendEndpoints = (): Promise<Missing> => {
     const sent = (async () => {
-      const report = await host.call("configure", endpoints, { hostId: await primaryHostId() });
-      return new Map(report.map((r) => [r.id, r.missing]));
+      const answer = await host.call("configure", endpoints, { hostId: await primaryHostId() });
+      return new Map(answer.map((r) => [r.id, r.missing]));
     })();
     // A failed send is reported by the status that reads it.
     sent.catch(() => undefined);
+    report = sent;
     return sent;
+  };
+  const missing = async (): Promise<Missing> => {
+    await started;
+    return (report ?? sendEndpoints()).catch(() => sendEndpoints());
   };
 
   const endpoint = (id: string): Endpoint => {
@@ -88,7 +92,7 @@ export default async function plugin(bb: BbPluginApi) {
           id,
           displayName: name,
           // Reads configuration only: bb calls it before every AI task.
-          status: async () => endpointStatus(endpoint(id), (await missing).get(id) ?? []),
+          status: async () => endpointStatus(endpoint(id), (await missing()).get(id) ?? []),
           complete: async (prompt, { signal }) => {
             const result = await host.call("complete", { endpoint: endpoint(id), prompt }, { hostId: await primaryHostId(), signal });
             if (!result.ok) throw new Error(result.message);
@@ -106,17 +110,17 @@ export default async function plugin(bb: BbPluginApi) {
   settings.onChange((next) => {
     endpoints = resolveEndpoints(next);
     registerServices();
-    if (started) missing = sendEndpoints();
+    report = undefined;
+    // Sent now rather than at the next status read, so the host entry
+    // forgets what URLs no longer listed refused.
+    void started.then(() => void sendEndpoints());
   });
   // A service, because bb.sdk is usable only once the server listens; a
   // failed send throws, and bb restarts the service with backoff.
   bb.background.service("send-endpoints", {
     async start(signal) {
-      const sent = sendEndpoints();
-      if (started) missing = sent;
-      else firstSend(sent);
-      started = true;
-      await sent;
+      markStarted();
+      await sendEndpoints();
       await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
     },
   });
