@@ -47,7 +47,7 @@ flowchart LR
 
 In the section, a family shows the path from its root down to each thread that needs you, and to the open thread. The root shows the name of its home group where the age normally is. Its other child threads are not drawn: one `+N more` line under the family counts them. Rows in the section carry no chip, since the section never opens one.
 
-A family stays in the section while you have one of its threads open, even after nothing in it needs you any more, so opening an unread thread does not move it out from under the pointer. It goes back to its group once you open a thread outside it. Opening a family that never needed you does not bring it into the section.
+Nothing moves while you are inside a family. A family in the section stays there while you have one of its threads open, even after nothing in it needs you any more, so opening an unread thread does not move it out from under the pointer. A family that is not in the section does not enter it while you have one of its threads open: not when its open thread finishes a turn (bb marks it read only when you act in it, so it reads as unread until then), not when it asks a question, not when a child in it needs you. Its row keeps the unread dot and its group keeps the counters. Whenever you open a thread outside the family, it is judged afresh: it goes to the section if something in it still needs you, and otherwise stays in its group.
 
 The section lists the families most urgent first: waiting on you, then failed, then offline, then unread. Within each, it follows **Sort by** in the field's own direction; the ↓/↑ button reverses the groups only. The header shows how many families the section holds. It cannot be collapsed or hidden, and it is absent when no family is in it.
 

@@ -7,7 +7,7 @@ Plugins that extend bb, the agentic IDE, and the words they share.
 ### Thread Glance
 
 **Needs you**:
-The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. A family leaves it once nothing in it needs you and you have opened another thread.
+The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. A family leaves it once nothing in it needs you and you have opened another thread. A family enters it only while none of its threads is open: opening a thread judges its family afresh, and nothing that then happens in the family moves it in.
 _Avoid_: Needs attention, inbox, attention filter
 
 **Home group**:

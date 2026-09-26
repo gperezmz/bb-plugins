@@ -599,6 +599,7 @@ export function buildListView(inputs: ViewInputs): ListView {
   const byGroup = new Map<string, Family[]>();
   const homeOf = new Map<Family, string>();
   const section: Family[] = [];
+  const openRootId = inputs.activeThreadId === null ? null : (forest.familyOf.get(inputs.activeThreadId)?.root.thread.id ?? null);
   for (const family of forest.families) {
     const id = groupIdForRoot(family.root.thread, {
       mode: prefs.organizationMode,
@@ -608,7 +609,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     list.push(family);
     byGroup.set(id, list);
     homeOf.set(family, id);
-    if (inNeedsYou(family, inputs.heldRootId)) section.push(family);
+    if (inNeedsYou(family, inputs.heldRootId, openRootId)) section.push(family);
   }
   const inSection = new Set(section);
 

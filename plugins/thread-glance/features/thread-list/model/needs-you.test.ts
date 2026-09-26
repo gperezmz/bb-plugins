@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { failedUnread, finishedUnread, forestOf, makeThread, needsYouIds, rowIds, T0, viewOf, working } from "../testing/fixtures";
-import { holdNeedsYou, isOrphanedFailure, isParentIdle, needsYouFlagsOf, revealsOn } from "./needs-you";
+import { holdNeedsYou, NO_HOLD, type NeedsYouHold, isOrphanedFailure, isParentIdle, needsYouFlagsOf, revealsOn } from "./needs-you";
 import { chipTone, type Flag } from "./state";
 import type { ThreadRow } from "./view";
 
@@ -118,8 +118,8 @@ describe("Needs you over a family", () => {
       makeThread({ id: "q1", parentThreadId: "q", createdAt: T0 + 6 }),
     ];
     expect(needsYouIds(viewOf({ threads }))).toEqual(["m", "a", "a1", "b", "+3"]);
-    // The open thread's path comes up too, and leaves the count.
-    expect(needsYouIds(viewOf({ threads, activeThreadId: "q1" }))).toEqual(["m", "a", "a1", "b", "q", "q1", "+1"]);
+    // The open thread's path comes up too, and leaves the count. The family was in the section when opened, so it is held.
+    expect(needsYouIds(viewOf({ threads, activeThreadId: "q1", heldRootId: "m" }))).toEqual(["m", "a", "a1", "b", "q", "q1", "+1"]);
   });
 
   it("draws the section's rows without chips, the root with its home group where the age goes", () => {
@@ -266,11 +266,11 @@ describe("a family held in Needs you while one of its threads is open", () => {
 
   /** Renders a sequence of (threads, open thread), carrying the hold as the list does. */
   function renders(steps: [ReturnType<typeof makeThread>[], string | null][]): string[][] {
-    let held: string | null = null;
+    let held: NeedsYouHold = NO_HOLD;
     return steps.map(([threads, activeThreadId]) => {
       const forest = forestOf({ threads, activeThreadId });
       held = holdNeedsYou(held, activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId));
-      return needsYouIds(viewOf({ threads, activeThreadId, heldRootId: held }));
+      return needsYouIds(viewOf({ threads, activeThreadId, heldRootId: held.heldRootId }));
     });
   }
 
@@ -292,9 +292,32 @@ describe("a family held in Needs you while one of its threads is open", () => {
     expect(renders([[unread, "u"], [read, "u"], [read, "o"]])).toEqual([["u"], ["u"], []]);
   });
 
+  it("does not pull in the open family when its root finishes a turn unread", () => {
+    const running = [makeThread({ id: "u", ...working, lastReadAt: T0 + 5 }), makeThread({ id: "o", projectId: "proj_b" })];
+    const finished = running.map((t) => (t.id === "u" ? { ...t, ...finishedUnread } : t));
+    expect(renders([[running, "u"], [finished, "u"], [finished, "u"]])).toEqual([[], [], []]);
+  });
+
+  it("does not pull in the open family when it asks a question or a child needs you", () => {
+    const idle = [makeThread({ id: "m" }), makeThread({ id: "c", parentThreadId: "m" }), makeThread({ id: "o", projectId: "proj_b" })];
+    const asks = (id: string) => idle.map((t) => (t.id === id ? { ...t, hasPendingInteraction: true } : t));
+    expect(renders([[idle, "m"], [asks("m"), "m"]])).toEqual([[], []]);
+    expect(renders([[idle, "c"], [asks("c"), "c"], [asks("c"), "m"]])).toEqual([[], [], []]);
+  });
+
+  it("judges a family afresh when a thread outside it is opened", () => {
+    const running = [makeThread({ id: "u", ...working, lastReadAt: T0 + 5 }), makeThread({ id: "o", projectId: "proj_b" })];
+    const finished = running.map((t) => (t.id === "u" ? { ...t, ...finishedUnread } : t));
+    expect(renders([[running, "u"], [finished, "u"], [finished, "o"], [finished, "o"]])).toEqual([[], [], ["u"], ["u"]]);
+    // Opened again, it is judged again: still unread, so it goes straight back in.
+    expect(renders([[finished, "u"], [finished, "o"], [finished, "u"]])).toEqual([["u"], ["u"], ["u"]]);
+    // Nothing in it needs you: it stays in its group.
+    expect(renders([[answered, "o"], [answered, "c"], [answered, "m"]])).toEqual([[], [], []]);
+  });
+
   it("is not pulled in by opening a family that never needed you", () => {
     expect(renders([[answered, "c"], [answered, "m"]])).toEqual([[], []]);
-    expect(holdNeedsYou("m", undefined)).toBeNull();
+    expect(holdNeedsYou({ heldRootId: "m", openRootId: "m" }, undefined)).toEqual(NO_HOLD);
   });
 });
 

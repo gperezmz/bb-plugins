@@ -92,21 +92,42 @@ export function revealsOn(needsYou: ReadonlySet<Flag>, isRoot: boolean): boolean
 /** What the section reads of a family. */
 type SectionFamily = Pick<Family, "root" | "needsYouFlags">;
 
+/** What Needs you remembers between renders: the family it holds, and the family that was open. */
+export interface NeedsYouHold {
+  /** The root of the family held in the section, if any. */
+  heldRootId: string | null;
+  /** The root of the family the open thread belonged to at the last render, if any. */
+  openRootId: string | null;
+}
+
+export const NO_HOLD: NeedsYouHold = { heldRootId: null, openRootId: null };
+
 /**
- * Whether a family is in the Needs you section: one of its threads needs
- * you, or it is the family the section holds while one of its threads is open.
+ * Whether a family is in the Needs you section: it is the held family, or one
+ * of its threads needs you and none of them is open. Nothing moves while you
+ * are inside a family, so the open family only enters by being judged when
+ * opened (see `holdNeedsYou`).
  */
-export function inNeedsYou(family: SectionFamily, heldRootId: string | null): boolean {
-  return family.needsYouFlags.size > 0 || family.root.thread.id === heldRootId;
+export function inNeedsYou(family: SectionFamily, heldRootId: string | null, openRootId: string | null): boolean {
+  const rootId = family.root.thread.id;
+  if (rootId === heldRootId) return true;
+  return family.needsYouFlags.size > 0 && rootId !== openRootId;
 }
 
 /**
- * The family Needs you holds after a render, by its root's id: the open
- * thread's family, when it needs you now or was already held. Held, it stays
- * in the section after nothing in it needs you, until a thread outside it is
- * opened; a family that never needed you is not pulled in by opening it.
+ * The hold after a render. A family is judged when a thread in it is opened
+ * from outside it: it is held if something in it needs you then, and it stays
+ * held while one of its threads is open, after nothing in it needs you any
+ * more, until a thread outside it is opened. A family that does not need you
+ * when opened is not pulled in later, whatever happens in it; nor is one
+ * that never needed you. Opening another thread of the open family judges
+ * nothing again.
  */
-export function holdNeedsYou(previous: string | null, openFamily: SectionFamily | undefined): string | null {
-  if (openFamily === undefined) return null;
-  return inNeedsYou(openFamily, previous) ? openFamily.root.thread.id : null;
+export function holdNeedsYou(previous: NeedsYouHold, openFamily: SectionFamily | undefined): NeedsYouHold {
+  if (openFamily === undefined) return NO_HOLD;
+  const openRootId = openFamily.root.thread.id;
+  if (openRootId === previous.openRootId) {
+    return { heldRootId: previous.heldRootId === openRootId ? openRootId : null, openRootId };
+  }
+  return { heldRootId: openFamily.needsYouFlags.size > 0 ? openRootId : null, openRootId };
 }
