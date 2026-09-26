@@ -60,6 +60,14 @@ _Avoid_: Glyph slot, indent, gutter
 The plugin that draws bb's sidebar navigation as one row of icons and a New thread line on a phone.
 _Avoid_: Compact navigation, mobile nav, nav strip plugin
 
+**Icon row**:
+Pocket Navigation's top line: an icon button for every entry bb's settings show other than New thread and search, then "…" when any entry is hidden.
+_Avoid_: Icon strip, toolbar, nav bar
+
+**New thread line**:
+Pocket Navigation's full-width New thread button below the icon row, with search at its right end when search is shown.
+_Avoid_: New thread row, action bar
+
 ### OpenAI-compatible inference
 
 **Endpoint**:
