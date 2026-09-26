@@ -312,7 +312,7 @@ describe("a family held in Needs attention while one of its threads is open", ()
 
   it("is not pulled in by opening a family that never needed attention", () => {
     expect(renders([[answered, "c"], [answered, "m"]])).toEqual([[], []]);
-    expect(holdAttention({ heldRootId: "m", heldAt: null, openRootId: "m" }, undefined)).toEqual(NO_HOLD);
+    expect(holdAttention({ held: null, openRootId: "m" }, forestOf({ threads: answered }), null)).toEqual(NO_HOLD);
   });
 });
 
@@ -320,14 +320,8 @@ describe("a family held in Needs attention while one of its threads is open", ()
 function viewsOf(steps: [ReturnType<typeof makeThread>[], string | null][]): ListView[] {
   let held: AttentionHold = NO_HOLD;
   return steps.map(([threads, activeThreadId]) => {
-    const forest = forestOf({ threads, activeThreadId });
-    const open = activeThreadId === null ? undefined : forest.infos.get(activeThreadId);
-    held = holdAttention(
-      held,
-      activeThreadId === null ? undefined : forest.familyOf.get(activeThreadId),
-      open?.thread.isArchived ?? false,
-    );
-    return viewOf({ threads, activeThreadId, heldRootId: held.heldRootId, heldAt: held.heldAt });
+    held = holdAttention(held, forestOf({ threads, activeThreadId }), activeThreadId);
+    return viewOf({ threads, activeThreadId, held: held.held });
   });
 }
 
@@ -342,10 +336,10 @@ describe("an attended family", () => {
     makeThread({ id: "o", projectId: "proj_b", ...finishedUnread }),
     makeThread({ id: "x", projectId: "proj_b" }),
   ];
-  const with_ = (threads: ReturnType<typeof makeThread>[], id: string, overrides: Record<string, unknown>) =>
+  const withOverrides = (threads: ReturnType<typeof makeThread>[], id: string, overrides: Record<string, unknown>) =>
     threads.map((t) => (t.id === id ? { ...t, ...overrides } : t));
   // bb records the read when the unread thread is opened.
-  const read = with_(unread, "u", { lastReadAt: T0 + 30 });
+  const read = withOverrides(unread, "u", { lastReadAt: T0 + 30 });
   const rowsOf = (view: ListView) =>
     Object.fromEntries(
       (view.attention?.rows ?? [])
@@ -365,9 +359,8 @@ describe("an attended family", () => {
     const prefs = { expandedChildren: ["u"] };
     let held: AttentionHold = NO_HOLD;
     const views = ([[unread, "u"], [read, "u"]] as const).map(([threads, active]) => {
-      const forest = forestOf({ threads, activeThreadId: active, prefs });
-      held = holdAttention(held, forest.familyOf.get(active));
-      return viewOf({ threads, activeThreadId: active, heldRootId: held.heldRootId, heldAt: held.heldAt, prefs });
+      held = holdAttention(held, forestOf({ threads, activeThreadId: active, prefs }), active);
+      return viewOf({ threads, activeThreadId: active, held: held.held, prefs });
     });
     const home = viewOf({ threads: read, activeThreadId: "x", prefs });
     const homeRows = Object.fromEntries(
@@ -381,11 +374,11 @@ describe("an attended family", () => {
   });
 
   it("draws and counts as attended whatever settled it: a question answered, a plan approved, a failure read", () => {
-    const asks = with_(unread, "u", { lastReadAt: T0 + 30, hasPendingInteraction: true });
-    const failed = with_(unread, "u", { ...failedUnread });
+    const asks = withOverrides(unread, "u", { lastReadAt: T0 + 30, hasPendingInteraction: true });
+    const failed = withOverrides(unread, "u", { ...failedUnread });
     for (const [needs, settled] of [
-      [asks, with_(asks, "u", { hasPendingInteraction: false })],
-      [failed, with_(failed, "u", { lastReadAt: T0 + 30 })],
+      [asks, withOverrides(asks, "u", { hasPendingInteraction: false })],
+      [failed, withOverrides(failed, "u", { lastReadAt: T0 + 30 })],
     ] as const) {
       const [, after] = viewsOf([[needs, "u"], [settled, "u"]]);
       expect(rowsOf(after!).u).toEqual({ bold: false, note: null, dimmed: false });
@@ -398,21 +391,20 @@ describe("an attended family", () => {
     expect(before!.attention?.familyCount).toBe(3);
     expect(after!.attention?.familyCount).toBe(2);
     const alone = unread.filter((t) => t.projectId !== "proj_b");
-    const [, only] = viewsOf([[alone, "u"], [with_(alone, "u", { lastReadAt: T0 + 30 }), "u"]]);
+    const [, only] = viewsOf([[alone, "u"], [withOverrides(alone, "u", { lastReadAt: T0 + 30 }), "u"]]);
     expect(only!.attention).not.toBeNull();
     expect(only!.attention?.familyCount).toBe(0);
   });
 
   it("counts none of its threads as waiting on you, failed, offline or unread, in its group or under More", () => {
     // A child that finished after you last saw it is unread, and still counts nothing.
-    const doneUnseen = with_(read, "uq", { latestAttentionAt: T0 + 40, lastReadAt: T0 });
+    const doneUnseen = withOverrides(read, "uq", { latestAttentionAt: T0 + 40, lastReadAt: T0 });
     for (const prefs of [{ expandedChildren: ["u"] }, { expandedChildren: ["u"], hiddenGroups: ["project:proj_a"] }]) {
       let held: AttentionHold = NO_HOLD;
       let view: ListView | null = null;
       for (const threads of [unread, doneUnseen]) {
-        const forest = forestOf({ threads, activeThreadId: "u", prefs });
-        held = holdAttention(held, forest.familyOf.get("u"));
-        view = viewOf({ threads, activeThreadId: "u", heldRootId: held.heldRootId, heldAt: held.heldAt, prefs });
+        held = holdAttention(held, forestOf({ threads, activeThreadId: "u", prefs }), "u");
+        view = viewOf({ threads, activeThreadId: "u", held: held.held, prefs });
       }
       const group = [...view!.groups, ...view!.more].find((candidate) => candidate.descriptor.id === "project:proj_a")!;
       expect(group.counters).toMatchObject({ waitsOnYou: 0, failed: 0, offline: 0, unread: 0 });
@@ -428,7 +420,7 @@ describe("an attended family", () => {
   });
 
   it("keeps its place when it becomes attended, and again when it needs attention again", () => {
-    const asksAgain = with_(read, "ur", { hasPendingInteraction: true });
+    const asksAgain = withOverrides(read, "ur", { hasPendingInteraction: true });
     const views = viewsOf([[unread, "u"], [read, "u"], [asksAgain, "u"], [read, "u"]]);
     const roots = (view: ListView) => attentionIds(view).filter((id) => ["u", "q", "o"].includes(id));
     // Newest unread first: u sits above o, below the question.
@@ -438,7 +430,7 @@ describe("an attended family", () => {
   });
 
   it("needs attention again in the same place when a child asks a question while it is open", () => {
-    const asksAgain = with_(read, "ur", { hasPendingInteraction: true });
+    const asksAgain = withOverrides(read, "ur", { hasPendingInteraction: true });
     const [, attended, again] = viewsOf([[unread, "u"], [read, "u"], [asksAgain, "u"]]);
     expect(attended!.attention?.familyCount).toBe(2);
     expect(again!.attention?.familyCount).toBe(3);
@@ -451,7 +443,7 @@ describe("an attended family", () => {
     const gone = (views: ListView[]) => views.map((view) => attentionIds(view).includes("u"));
     expect(gone(viewsOf([[unread, "u"], [read, "u"], [read, "uq"], [read, "x"]]))).toEqual([true, true, true, false]);
     expect(gone(viewsOf([[unread, "u"], [read, "u"], [read, null]]))).toEqual([true, true, false]);
-    const archived = with_(read, "u", { isArchived: true });
+    const archived = withOverrides(read, "u", { isArchived: true });
     expect(gone(viewsOf([[unread, "u"], [read, "u"], [archived, "u"]]))).toEqual([true, true, false]);
     const deleted = read.filter((t) => t.id !== "u" && t.parentThreadId !== "u");
     expect(gone(viewsOf([[unread, "u"], [read, "u"], [deleted, "u"]]))).toEqual([true, true, false]);

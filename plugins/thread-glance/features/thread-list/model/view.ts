@@ -152,14 +152,13 @@ export interface ViewInputs {
   sections: readonly PluginSidebarSection[];
   prefs: Preferences;
   activeThreadId: string | null;
-  /** The root of the family Needs attention keeps while one of its threads is open. */
-  heldRootId: string | null;
-  /** The held family as it was when opened, if any: the section orders it by this. */
-  heldAt: SectionFamily | null;
+  /** The family Needs attention keeps while one of its threads is open, as it was when opened: the section orders it by this. */
+  held: SectionFamily | null;
   targets: Targets;
 }
 
 interface Context extends ViewInputs {
+  heldRootId: string | null;
   compare: (a: SortKey, b: SortKey) => number;
   expandedChildren: ReadonlySet<string>;
   expandedOlder: ReadonlySet<string>;
@@ -495,7 +494,7 @@ function buildAttention(
     workingFirst: context.prefs.workingFirst,
   });
   const slotOf = (family: Family): SectionFamily =>
-    context.heldAt !== null && family.root.thread.id === context.heldRootId ? context.heldAt : family;
+    context.held !== null && family.root.thread.id === context.heldRootId ? context.held : family;
   const sorted = [...families].sort((familyA, familyB) => {
     const a = slotOf(familyA);
     const b = slotOf(familyB);
@@ -619,6 +618,7 @@ export function buildListView(inputs: ViewInputs): ListView {
   }
   const context: Context = {
     ...inputs,
+    heldRootId: inputs.held?.root.thread.id ?? null,
     compare: makeComparator({
       field: prefs.chronologicalSort,
       direction: prefs.sortDirection,
@@ -649,7 +649,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     list.push(family);
     byGroup.set(id, list);
     homeOf.set(family, id);
-    if (inAttention(family, inputs.heldRootId, openRootId)) section.push(family);
+    if (inAttention(family, context.heldRootId, openRootId)) section.push(family);
   }
   const inSection = new Set(section);
 

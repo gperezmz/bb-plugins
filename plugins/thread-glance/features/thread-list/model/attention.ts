@@ -3,7 +3,7 @@
 // builds. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { ChildAttention } from "@/shared/preferences";
-import type { Family } from "./families";
+import type { Family, Forest } from "./families";
 import { type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
@@ -94,18 +94,16 @@ export type SectionFamily = Pick<Family, "root" | "attentionFlags" | "latestAtte
 
 /** What Needs attention remembers between renders: the family it holds, and the family that was open. */
 export interface AttentionHold {
-  /** The root of the family held in the section, if any. */
-  heldRootId: string | null;
   /**
-   * The held family as it was when opened. The section orders it by this, so
-   * nothing that happens inside it moves it.
+   * The family held in the section, if any, as it was when opened. The section
+   * orders it by this, so nothing that happens inside it moves it.
    */
-  heldAt: SectionFamily | null;
+  held: SectionFamily | null;
   /** The root of the family the open thread belonged to at the last render, if any. */
   openRootId: string | null;
 }
 
-export const NO_HOLD: AttentionHold = { heldRootId: null, heldAt: null, openRootId: null };
+export const NO_HOLD: AttentionHold = { held: null, openRootId: null };
 
 /**
  * Whether a family is in the Needs attention section: it is the held family, or one
@@ -139,15 +137,17 @@ export function isAttended(family: SectionFamily, heldRootId: string | null): bo
  */
 export function holdAttention(
   previous: AttentionHold,
-  openFamily: SectionFamily | undefined,
-  openArchived = false,
+  forest: Pick<Forest, "infos" | "familyOf">,
+  activeThreadId: string | null,
 ): AttentionHold {
+  if (activeThreadId === null) return NO_HOLD;
+  const openFamily = forest.familyOf.get(activeThreadId);
   if (openFamily === undefined) return NO_HOLD;
   const openRootId = openFamily.root.thread.id;
   if (openRootId === previous.openRootId) {
-    const held = previous.heldRootId === openRootId && !(openArchived && openFamily.attentionFlags.size === 0);
-    return held ? previous : { ...NO_HOLD, openRootId };
+    const archived = forest.infos.get(activeThreadId)?.thread.isArchived ?? false;
+    const held = previous.held?.root.thread.id === openRootId && !(archived && openFamily.attentionFlags.size === 0);
+    return held ? previous : { held: null, openRootId };
   }
-  if (openFamily.attentionFlags.size === 0) return { ...NO_HOLD, openRootId };
-  return { heldRootId: openRootId, heldAt: openFamily, openRootId };
+  return { held: openFamily.attentionFlags.size > 0 ? openFamily : null, openRootId };
 }

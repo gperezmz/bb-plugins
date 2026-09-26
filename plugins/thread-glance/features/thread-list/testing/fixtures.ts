@@ -109,8 +109,10 @@ export interface Scenario {
   sections?: PluginSidebarSection[];
   prefs?: Partial<Preferences>;
   activeThreadId?: string | null;
+  /** The root of the held family, held as it stands now. */
   heldRootId?: string | null;
-  heldAt?: SectionFamily | null;
+  /** The held family as it was when opened; wins over `heldRootId`. */
+  held?: SectionFamily | null;
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -143,8 +145,7 @@ export function viewOf(scenario: Scenario): ListView {
     sections: scenario.sections ?? [],
     prefs: { ...defaultPreferences(), ...scenario.prefs },
     activeThreadId: scenario.activeThreadId ?? null,
-    heldRootId: scenario.heldRootId ?? null,
-    heldAt: scenario.heldAt ?? null,
+    held: scenario.held ?? (scenario.heldRootId == null ? null : (forest.familyOf.get(scenario.heldRootId) ?? null)),
     targets: scenario.targets ?? new Map(),
   });
 }
