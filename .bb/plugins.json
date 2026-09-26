@@ -18,6 +18,10 @@
     {
       "name": "openai-inference",
       "source": "./plugins/openai-inference"
+    },
+    {
+      "name": "pocket-navigation",
+      "source": "./plugins/pocket-navigation"
     }
   ]
 }
