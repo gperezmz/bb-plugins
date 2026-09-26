@@ -11,7 +11,9 @@
 #              repository: production dependencies only, no install scripts.
 # npm-install  packs the npm package the Release workflow publishes, then
 #              installs it with `bb plugin install npm:` into a throwaway bb
-#              (npm-install-check.sh), which must run it without building.
+#              (npm-install-check.sh), which must run it without building,
+#              apply the plugin's fixture where it has one, and log no
+#              warning or error from it.
 set -euo pipefail
 
 plugin=${1:?usage: check-plugin.sh <plugin> [check|git-install|npm-install]}
@@ -46,6 +48,7 @@ case $mode in
     ;;
   npm-install)
     out=$(mktemp -d)
+    trap 'rm -rf "$out"' EXIT
     tarball=$("$ci/pack-npm.sh" "$plugin" "$out" | tail -1)
     run "$ci/npm-install-check.sh" . "$tarball"
     ;;

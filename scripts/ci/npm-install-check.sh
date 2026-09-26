@@ -2,12 +2,27 @@
 # Installs a packed plugin the way a bb server installs an npm: source, into a
 # throwaway bb: publishes the tarball to a local registry (Verdaccio, which
 # proxies every other package to registry.npmjs.org), starts a bb server on a
-# temporary data directory, runs `bb plugin install npm:<name>@<version>`,
-# then fails unless the plugin is running and bb downloaded no build
-# toolchain, which it would only do to build the plugin itself. Then loads
-# the plugin from server.ts, as bb does after an upgrade, which must run too.
-# check-plugin.sh calls this; it needs node, npm and bb-app's `bb` and
-# `bb-server` on PATH, and touches no other bb.
+# temporary data directory with a host daemon enrolled as its primary machine,
+# runs `bb plugin install npm:<name>@<version>`, then fails unless the plugin
+# is running and bb downloaded no build toolchain, which it would only do to
+# build the plugin itself. Then loads the plugin from server.ts, as bb does
+# after an upgrade, which must run too. Then applies the plugin's fixture,
+# where it has one. Last, fails when the plugin's own log (`bb plugin logs`)
+# holds a warning or an error from any of these, and prints them.
+#
+# A fixture is an executable <plugin-dir>/test/npm-install-fixture.sh, for a
+# plugin that registers something only once it is configured: it sets the
+# plugin's configuration with `bb`, then checks from outside that what the
+# plugin registered works, and exits non-zero when it does not. It runs in the
+# plugin's directory with BB_SERVER_URL naming the throwaway bb, HOME and
+# TMPDIR inside the check's temporary directory, PLUGIN_ID, and FIXTURE_DIR, an
+# empty directory there for its own files. Every process it starts is stopped
+# when the check ends, pass or fail.
+#
+# check-plugin.sh calls this; it needs node, npm, jq and bb-app's `bb`,
+# `bb-server` and `bb-host-daemon` on PATH, and touches no other bb. Set
+# REGISTRY_PORT, BB_TEST_SERVER_PORT and BB_TEST_DAEMON_PORT to run two at
+# once.
 #
 #   scripts/ci/npm-install-check.sh <plugin-dir> <tarball>
 set -euo pipefail
@@ -24,13 +39,17 @@ id=${name#*/}
 id=${id#bb-plugin-}
 
 work=$(mktemp -d)
+# Every process this starts inherits the mark, the bb server's detached child
+# and whatever a fixture starts included, so cleanup finds them all.
+export NPM_INSTALL_CHECK=$work
 pids=()
 cleanup() {
   for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done
   # bb-server hands the server to a detached child; find it by its data dir.
   local proc
   for proc in /proc/[0-9]*; do
-    if grep -qzx "BB_DATA_DIR=$work/bb" "$proc/environ" 2>/dev/null; then
+    if [[ ${proc#/proc/} == "$$" ]]; then continue; fi
+    if grep -qzxE "BB_DATA_DIR=$work/bb|NPM_INSTALL_CHECK=$work" "$proc/environ" 2>/dev/null; then
       echo "Stopping ${proc#/proc/}: $(tr '\0' ' ' < "$proc/cmdline")"
       kill "${proc#/proc/}" 2>/dev/null || true
     fi
@@ -53,7 +72,8 @@ wait_for() {
 # Every command below reads this npmrc, the bb server's own npm included, and
 # none reads the user's.
 export HOME=$work/home
-mkdir -p "$HOME"
+export TMPDIR=$work/tmp
+mkdir -p "$HOME" "$TMPDIR"
 export npm_config_userconfig=$HOME/.npmrc
 export npm_config_registry=$registry
 
@@ -88,8 +108,8 @@ token=$(curl -fsS -X PUT -H 'Content-Type: application/json' \
 echo "//127.0.0.1:$registry_port/:_authToken=$token" > "$npm_config_userconfig"
 npm publish "$tarball" --ignore-scripts --provenance=false --access public
 
-env -u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID \
-  BB_HOST_DAEMON_PORT="$daemon_port" BB_TELEMETRY=0 \
+unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI)
+env "${unset_bb[@]}" BB_HOST_DAEMON_PORT="$daemon_port" BB_TELEMETRY=0 \
   bb-server --data-dir "$work/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" \
   > "$work/server.log" 2>&1 &
 pids+=("$!")
@@ -98,6 +118,47 @@ if ! wait_for "bb server" "$BB_SERVER_URL/health"; then
   tail -50 "$work/server.log" "$work/bb/logs/server-stdio.log" >&2 || true
   exit 1
 fi
+
+# A primary machine, which a plugin's host entry and bb's AI services need:
+# the key the server hands a daemon on its own machine, as bb-app asks for it.
+if ! enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$BB_SERVER_URL/internal/hosts/enroll-key"); then
+  echo "::error::the bb server gave no host enroll key" >&2
+  exit 1
+fi
+enroll_key=$(jq -r .enrollKey <<< "$enroll")
+host_id=$(jq -r .hostId <<< "$enroll")
+env "${unset_bb[@]}" BB_DATA_DIR="$work/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_TELEMETRY=0 \
+  BB_HOST_ENROLL_KEY="$enroll_key" BB_HOST_ID="$host_id" \
+  bb-host-daemon --server-url "$BB_SERVER_URL" --host-daemon-port "$daemon_port" \
+  > "$work/host-daemon.log" 2>&1 &
+pids+=("$!")
+host_connected() {
+  [[ $(bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]
+}
+for _ in $(seq 60); do
+  if host_connected; then break; fi
+  sleep 1
+done
+if ! host_connected; then
+  echo "::error::the host daemon did not connect to the bb server" >&2
+  tail -50 "$work/host-daemon.log" >&2 || true
+  exit 1
+fi
+
+# Fails with every warning and error in the plugin's own log.
+check_log() {
+  local log lines
+  if ! log=$(bb plugin logs "$id" -n 100000); then
+    echo "::error::could not read $id's log" >&2
+    return 1
+  fi
+  lines=$(jq -Rc 'fromjson? | select(.level == "warn" or .level == "error")' <<< "$log")
+  if [[ -n $lines ]]; then
+    echo "::error::$id logged a warning or an error:" >&2
+    echo "$lines" >&2
+    return 1
+  fi
+}
 
 start=$SECONDS
 bb plugin install "npm:$name@$version" --yes
@@ -152,3 +213,17 @@ if [[ $status != running ]]; then
   exit 1
 fi
 echo "$id: running from server.ts"
+
+fixture=$plugin_dir/test/npm-install-fixture.sh
+if [[ -e $fixture ]]; then
+  mkdir -p "$work/fixture"
+  if ! (cd "$plugin_dir" && PLUGIN_ID=$id FIXTURE_DIR=$work/fixture "$fixture"); then
+    echo "::error::$id: its fixture failed ($fixture)" >&2
+    check_log || true
+    exit 1
+  fi
+  echo "$id: fixture passed"
+fi
+
+check_log
+echo "$id: logged no warning or error"
