@@ -6,8 +6,9 @@ inputs:
     required: true
   bb-version:
     description: >-
-      Version of the npm package bb-app, which ships the bb CLI. Keep it on the
-      bb release whose SDK the plugins pin (@get-bb/plugin-sdk).
+      Version of the npm package bb-app, which ships the bb CLI. Keep the
+      default on the bb release whose SDK the plugins pin (@get-bb/plugin-sdk);
+      the Compatibility workflow passes newer ones.
     default: 0.43.4
 runs:
   using: composite

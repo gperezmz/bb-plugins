@@ -70,7 +70,7 @@ jobs:
         channel: [latest, nightly]
         plugin: ${{ fromJSON(needs.resolve.outputs.plugins || '[]') }}
         # The modes CI runs, less git-install, which this run leaves out by
-        # choice (#36).
+        # decision.
         mode: [check, npm-install]
     env:
       CHANNEL: ${{ matrix.channel }}
@@ -95,7 +95,7 @@ jobs:
           plugin: ${{ matrix.plugin }}
           bb-version: ${{ env.BB_VERSION }}
       - name: Run bb
-        id: start
+        id: bb-version
         run: |
           reported=$(bb --version | tail -1)
           echo "bb --version: $reported"
@@ -104,14 +104,14 @@ jobs:
             exit 1
           fi
       - name: scripts/ci/check-plugin.sh ${{ matrix.plugin }} ${{ matrix.mode }}
-        id: run
+        id: check-plugin
         run: scripts/ci/check-plugin.sh "$PLUGIN" "$MODE"
       # A pin that differs from the SDK this bb ships is reported, not failed:
       # pins follow bb only when `bb plugin types` repins them. Anything else
       # it cannot answer fails the step.
       - name: bb plugin types --check
         id: types
-        if: ${{ !cancelled() && matrix.mode == 'check' && steps.start.outcome == 'success' }}
+        if: ${{ !cancelled() && matrix.mode == 'check' && steps.bb-version.outcome == 'success' }}
         working-directory: plugins/${{ matrix.plugin }}
         run: |
           status=0
@@ -137,8 +137,8 @@ jobs:
         env:
           RESOLVE: ${{ steps.resolve.outcome }}
           INSTALL: ${{ steps.install.outcome }}
-          START: ${{ steps.start.outcome }}
-          RUN: ${{ steps.run.outcome }}
+          BB_RUNS: ${{ steps.bb-version.outcome }}
+          CHECK_PLUGIN: ${{ steps.check-plugin.outcome }}
           TYPES: ${{ steps.types.outcome }}
           PIN: ${{ steps.types.outputs.pin }}
           HOST: ${{ steps.types.outputs.host }}
@@ -146,10 +146,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/result"
           failed=()
           [[ $RESOLVE == success ]] || failed+=("Resolve \`bb-app@$CHANNEL\`")
-          [[ $RESOLVE != success || $INSTALL == success ]] || failed+=("Install bb-app@$BB_VERSION")
-          [[ $INSTALL != success || $START == success ]] || failed+=("Run bb $BB_VERSION")
-          [[ $START != success || $RUN == success ]] || failed+=("\`scripts/ci/check-plugin.sh $PLUGIN $MODE\`")
-          [[ $MODE != check || $START != success || $TYPES == success ]] || failed+=("\`bb plugin types --check\`")
+          [[ $RESOLVE != success || $INSTALL == success ]] || failed+=("Set up Node and install bb-app@$BB_VERSION")
+          [[ $INSTALL != success || $BB_RUNS == success ]] || failed+=("Run bb $BB_VERSION")
+          [[ $BB_RUNS != success || $CHECK_PLUGIN == success ]] || failed+=("\`scripts/ci/check-plugin.sh $PLUGIN $MODE\`")
+          [[ $MODE != check || $BB_RUNS != success || $TYPES == success ]] || failed+=("\`bb plugin types --check\`")
           jq -n --arg pin "$PIN" --arg host "$HOST" '{failed: $ARGS.positional, pin: $pin, host: $host}' \
             --args "${failed[@]}" > "$RUNNER_TEMP/result/$PLUGIN.$MODE.json"
           cat "$RUNNER_TEMP/result/$PLUGIN.$MODE.json"
@@ -167,7 +167,6 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # The only job in this repository that writes issues.
     permissions:
       contents: read
       issues: write
