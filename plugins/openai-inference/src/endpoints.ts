@@ -97,10 +97,14 @@ export function resolveEndpoints(settings: { endpoints: string; keys?: string })
   }));
 }
 
+/** The variables an Endpoint's url and key in effect reference, each once. */
+const references = (endpoint: Endpoint): string[] => [
+  ...new Set([...`${endpoint.url} ${endpoint.key ?? ""}`.matchAll(REFERENCE)].map((m) => m[1])),
+];
+
 /** The variables an Endpoint's url and key in effect reference that are unset or empty in `env`. */
 export function missingVariables(endpoint: Endpoint, env: Readonly<Record<string, string | undefined>>): string[] {
-  const names = [...`${endpoint.url} ${endpoint.key ?? ""}`.matchAll(REFERENCE)].map((m) => m[1]);
-  return [...new Set(names.filter((name) => !env[name]?.trim()))];
+  return references(endpoint).filter((name) => !env[name]?.trim());
 }
 
 /** Whether an Endpoint can answer, as bb's `status()` reports it. */
@@ -149,7 +153,7 @@ export function expandEndpoint(endpoint: Endpoint & { model: string }, env: Read
  */
 export function redactor(endpoint: Endpoint, env: Readonly<Record<string, string | undefined>>): (text: string) => string {
   const secrets = new Map<string, string>();
-  for (const [, name] of `${endpoint.url} ${endpoint.key ?? ""}`.matchAll(REFERENCE)) {
+  for (const name of references(endpoint)) {
     const value = env[name]?.trim();
     if (!value) continue;
     secrets.set(value, `\${${name}}`);

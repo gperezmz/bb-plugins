@@ -1,5 +1,5 @@
 /**
- * The optional fields each endpoint URL and model refused, kept in a file
+ * The optional fields each Endpoint URL and model refused, kept in a file
  * in the plugin's data directory because bb stops the host entry's worker after a
  * few idle minutes. Keyed by the URL as the settings write it, so the file
  * holds no expanded `${NAME}` value and no key.
