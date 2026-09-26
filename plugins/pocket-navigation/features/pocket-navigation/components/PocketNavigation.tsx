@@ -157,11 +157,9 @@ function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
             className={cn(isActive(item) && ACTIVE)}
             onSelect={() => onActivate(item)}
           >
+            <NavigationIcon icon={item.icon} />
             {/* The phone drawer's item drops attributes it does not know, so the mark sits inside it. */}
-            <span className="contents" aria-current={isActive(item) ? "page" : undefined}>
-              <NavigationIcon icon={item.icon} />
-              {item.label}
-            </span>
+            <span aria-current={isActive(item) ? "page" : undefined}>{item.label}</span>
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
