@@ -77,7 +77,22 @@ describe("computeState (first match wins)", () => {
   it("9 unread, 10 draft, 11 idle", () => {
     expect(stateOf({ id: "t" }, { unread: true }).glyph.icon).toBe("dot");
     expect(stateOf({ id: "t" }, { hasDraft: true })).toMatchObject({ kind: "draft", glyph: { icon: "Edit" } });
-    expect(stateOf({ id: "t" })).toMatchObject({ kind: "idle", glyph: { icon: null } });
+    expect(stateOf({ id: "t" })).toMatchObject({ kind: "idle", glyph: { icon: "ring" } });
+  });
+  it("only idle draws the ring", () => {
+    const others = [
+      stateOf({ id: "t", hasPendingInteraction: true }),
+      stateOf({ id: "t", status: "error" }),
+      stateOf({ id: "t", queuedWork: "failed" }),
+      stateOf({ id: "t", runtimeStatus: "waiting-for-host" }),
+      stateOf({ id: "t", ...working }),
+      stateOf({ id: "t", activity: { workflows: 1 } }),
+      stateOf({ id: "t", queuedWork: "waiting" }, { scheduledAt: T0 + 5 }),
+      stateOf({ id: "t", queuedWork: "waiting" }),
+      stateOf({ id: "t" }, { unread: true }),
+      stateOf({ id: "t" }, { hasDraft: true }),
+    ];
+    expect(others.filter((state) => state.glyph.icon === "ring").map((state) => state.kind)).toEqual([]);
   });
   it("unknown values fall back as documented", () => {
     expect(stateOf({ id: "t", status: "weird" as never }).kind).toBe("idle");
@@ -159,7 +174,7 @@ describe("icon names", () => {
       ...STATE_ICON_NAMES,
       ...Object.values(FLAG_GLYPHS)
         .map((glyph) => glyph.icon)
-        .filter((icon): icon is string => icon !== null && icon !== "dot"),
+        .filter((icon): icon is string => icon !== "dot" && icon !== "ring"),
       ...ROW_ICON_NAMES,
       ...COUNTER_ICON_NAMES,
     ]);

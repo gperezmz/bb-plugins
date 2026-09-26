@@ -48,9 +48,12 @@ const NEEDS: Record<NeedsKind, { icon: string; label: string }> = {
   input: { icon: "MessageQuestion", label: "Needs your input" },
 };
 
-/** How a glyph is drawn. `dot` is the unread dot; everything else a host icon. */
+/**
+ * How a glyph is drawn. `dot` is the unread dot, `ring` the Idle state's
+ * faint ring; everything else a host icon.
+ */
 export interface Glyph {
-  icon: string | "dot" | null;
+  icon: string | "dot" | "ring";
   tone: Tone;
   spin: boolean;
   shine: boolean;
@@ -231,7 +234,7 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
   }
   if (inputs.unread) return { kind: "unread", label: "Unread", glyph: glyph("dot", "none"), ...none };
   if (inputs.hasDraft) return { kind: "draft", label: "Unsubmitted draft", glyph: glyph("Edit", "muted"), ...none };
-  return { kind: "idle", label: "Idle", glyph: glyph(null, "none"), ...none };
+  return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted"), ...none };
 }
 
 /**

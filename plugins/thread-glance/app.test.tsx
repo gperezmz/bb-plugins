@@ -317,6 +317,22 @@ describe("Thread Glance slot", () => {
     expect(dot?.className).toContain("--timeline-accent");
   });
 
+  it("draws a ring screen readers skip in an idle row's Status column, and no ring in any other", async () => {
+    render([
+      makeThread({ id: "i", title: "Quiet" }),
+      makeThread({ id: "u", title: "Fresh", ...finishedUnread }),
+    ]);
+    const column = async (name: RegExp) => (await screen.findByRole("link", { name })).nextElementSibling as HTMLElement;
+    const idle = await column(/Open Quiet/);
+    const ring = idle.querySelector('span[class*="rounded-full"]');
+    expect(ring?.getAttribute("aria-hidden")).toBe("true");
+    expect(ring?.className).toContain("text-muted-foreground");
+    expect(within(idle).queryAllByRole("img")).toEqual([]);
+    const unread = await column(/Open Fresh/);
+    expect(within(unread).getByRole("img", { name: "Unread" })).toBeTruthy();
+    expect(unread.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
   it("marks read through the host's action from the row menu", async () => {
     const slot = render([makeThread({ id: "u", title: "Unread one", ...finishedUnread })]);
     const row = (await screen.findByRole("link", { name: /Open Unread one/ })).parentElement!;
