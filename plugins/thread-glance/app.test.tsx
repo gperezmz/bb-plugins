@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import { CHANNELS } from "@/shared/signals";
 import manifest from "./package.json";
 import {
   finishedUnread,
@@ -324,6 +325,21 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "threadLifecycles", value: ["active", "archived"] }));
     expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" });
     expect(within(threadsGroup).getByRole("radio", { name: "Both" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("keeps a change made in the panel when the list hears the old value before the write goes out", async () => {
+    const threads = [
+      makeThread({ id: "a1", title: "A old", createdAt: T0, latestAttentionAt: T0 }),
+      makeThread({ id: "a2", title: "A new", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
+    ];
+    const list = render(threads);
+    const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
+    await screen.findByRole("link", { name: /Open A new/ });
+    const panel = renderSettings();
+    fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
+    await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
+    await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
+    expect(order()).toEqual(["Open A old", "Open A new"]);
   });
 
   it("applies a density picked in the panel to the list at once, and keeps it for the next list", async () => {
