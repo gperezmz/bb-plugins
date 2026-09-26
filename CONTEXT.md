@@ -54,11 +54,11 @@ _Avoid_: More row, older threads
 The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
 _Avoid_: Glyph slot, indent, gutter
 
-### Compact navigation
+### Pocket Navigation
 
-**Compact navigation**:
+**Pocket Navigation**:
 The plugin that draws bb's sidebar navigation as one row of icons and a New thread line on a phone.
-_Avoid_: Mobile nav, nav strip plugin
+_Avoid_: Compact navigation, mobile nav, nav strip plugin
 
 ### OpenAI-compatible inference
 
