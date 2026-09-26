@@ -8,16 +8,16 @@
  *   curl localhost:4466/__admin/requests
  *
  * Models:
- * `gpt-6-luna` accepts everything. `no-reasoning` rejects `reasoning_effort`
- * the way LiteLLM does when its cost map lacks the model. `no-json-schema`
- * rejects `response_format` and answers in prose around a fenced JSON block.
- * `slow` answers after `slowMs`. `limited` answers 429, `down` 503. Any other
- * model is unknown (400).
+ * `gpt-6-luna` accepts everything and answers with a title. `no-reasoning`
+ * rejects `reasoning_effort` the way LiteLLM does when its cost map lacks the
+ * model. `slow` answers after `slowMs`, and `hang` never does. `limited`
+ * answers 429, `down` 503, and `echo` 500 with the request's URL and headers
+ * in its error. Any other model is unknown (400).
  */
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 
-export const MODELS = ["gpt-6-luna", "no-reasoning", "no-json-schema", "slow", "limited", "down"];
+export const MODELS = ["gpt-6-luna", "no-reasoning", "slow", "hang", "limited", "down", "echo"];
 
 const error = (status, message, type) => ({ status, body: { error: { message, type, param: null, code: String(status) } } });
 
@@ -27,8 +27,8 @@ function titleFor(prompt) {
   return task.split(/\s+/).filter(Boolean).slice(0, 5).join(" ") || "Untitled";
 }
 
-function answer(request, slowMs) {
-  const { model, messages, response_format: format, reasoning_effort: effort } = request;
+function answer(request, slowMs, req) {
+  const { model, messages, reasoning_effort: effort } = request;
   if (!MODELS.includes(model)) {
     return error(400, `/chat/completions: Invalid model name passed in model=${model}. Call \`/v1/models\` to view available models for your key.`, "invalid_request_error");
   }
@@ -37,11 +37,10 @@ function answer(request, slowMs) {
   if (model === "no-reasoning" && effort !== undefined) {
     return error(400, `litellm.UnsupportedParamsError: azure does not support parameters: ['reasoning_effort'], for model=${model}. To drop these, set \`litellm.drop_params=True\`.`, "None");
   }
-  if (model === "no-json-schema" && format !== undefined) {
-    return error(400, "litellm.BadRequestError: response_format is not supported for this model.", "invalid_request_error");
+  if (model === "echo") {
+    return error(500, `Upstream failed for ${req.headers.host}${req.url} with headers ${JSON.stringify(req.headers)}`, "None");
   }
-  const value = JSON.stringify({ title: titleFor(messages?.[0]?.content ?? "") });
-  const content = format === undefined ? `Here is the JSON:\n\`\`\`json\n${value}\n\`\`\`` : value;
+  const content = titleFor(messages?.[0]?.content ?? "");
   const body = {
     id: "chatcmpl-fake",
     object: "chat.completion",
@@ -50,13 +49,13 @@ function answer(request, slowMs) {
     choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }],
     usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 },
   };
-  return { status: 200, body, delayMs: model === "slow" ? slowMs : 0 };
+  return { status: 200, body, delayMs: model === "slow" ? slowMs : model === "hang" ? Infinity : 0 };
 }
 
 export async function startFakeLiteLlm(opts = {}) {
   const key = opts.key ?? "sk-test";
   const slowMs = opts.slowMs ?? 10_000;
-  /** Every completion request's body and whether it was authorized. */
+  /** Every completion request's body, whether it was authorized, and when its connection closed. */
   const requests = [];
   const sockets = new Set();
 
@@ -79,11 +78,14 @@ export async function startFakeLiteLlm(opts = {}) {
     } catch {
       return send(400, error(400, "Invalid JSON body", "invalid_request_error").body);
     }
-    requests.push({ path: url.pathname, authorized, body: request });
+    const record = { path: url.pathname, authorized, body: request, closedAt: undefined };
+    requests.push(record);
+    res.on("close", () => (record.closedAt = Date.now()));
     if (!authorized) {
       return send(401, error(401, "Authentication Error, Invalid proxy server token passed.", "auth_error").body);
     }
-    const { status, body, delayMs = 0 } = answer(request, slowMs);
+    const { status, body, delayMs = 0 } = answer(request, slowMs, req);
+    if (delayMs === Infinity) return;
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     if (!res.destroyed) send(status, body);
   });

@@ -3,6 +3,8 @@ export interface FakeRequest {
   path: string;
   authorized: boolean;
   body: Record<string, unknown>;
+  /** When the request's connection closed, in epoch milliseconds. */
+  closedAt: number | undefined;
 }
 export interface FakeLiteLlm {
   url: string;

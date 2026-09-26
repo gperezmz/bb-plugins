@@ -1,10 +1,10 @@
 {
   "name": "@gperezmz/bb-plugin-openai-inference",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
-    "bb": ">=0.43",
-    "bbPluginSdk": ">=0.5.9"
+    "bb": ">=0.44",
+    "bbPluginSdk": ">=0.5.29"
   },
   "bb": {
     "name": "OpenAI-compatible inference",
@@ -22,7 +22,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.5.9",
+    "@get-bb/plugin-sdk": "0.5.29",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",
@@ -32,7 +32,7 @@
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },
-  "description": "bb helper inference (thread titles, commit messages) over OpenAI Chat Completions, for a LiteLLM gateway or a local server.",
+  "description": "bb AI tasks (thread titles, commit messages) over OpenAI Chat Completions, for a LiteLLM gateway or a local server.",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -1,16 +1,16 @@
-// OpenAI-compatible inference's backend entry: hands the endpoints to the
-// host entry, which answers bb's completions, and registers as an AI service
-// each endpoint whose variables the host entry has.
+// OpenAI-compatible inference's backend entry: registers each Endpoint as an
+// AI service, and hands every AI task sent to one to the host entry on the
+// primary host, which sends it on.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { configureContract } from "./src/contract";
-import { endpointsText, keysText, resolveEndpoints, type Endpoint } from "./src/endpoints";
+import { contract } from "./src/contract";
+import { endpointStatus, endpointsText, keysText, resolveEndpoints, type Endpoint } from "./src/endpoints";
 
 export const SETTINGS = {
   endpoints: {
     type: "string",
     label: "Endpoints",
     description:
-      'JSON list of OpenAI-compatible servers, e.g. [{"id": "mlx", "url": "http://127.0.0.1:8080/v1"}, {"id": "gateway", "url": "${GATEWAY_URL}", "key": "${GATEWAY_VIRTUAL_KEY}"}]. Each id becomes an AI service: BB_INFERENCE=<id>/<model>. url and key may reference bb\'s environment as ${NAME}; key takes only a reference. An endpoint whose variables are unset is not registered. A change to this list applies on save; after changing a referenced variable, run bb plugin reload openai-inference.',
+      'JSON list of Endpoints, each an OpenAI-compatible server and the model it answers with, e.g. [{"id": "mlx", "url": "http://127.0.0.1:8080/v1", "model": "qwen3-4b"}, {"id": "gateway", "url": "${GATEWAY_URL}", "key": "${GATEWAY_VIRTUAL_KEY}", "model": "gpt-6-luna"}]. Each Endpoint is an AI service: select it for an AI task with bb settings ai-services set thread-title <id> (or commit-message). url and key may reference bb\'s environment as ${NAME}; key takes only a reference. A change to this list applies on save; after changing a referenced variable, run bb plugin reload openai-inference.',
     experimental_multiline: true,
     experimental_schema: endpointsText,
     default: "[]",
@@ -19,7 +19,7 @@ export const SETTINGS = {
     type: "string",
     label: "Endpoint keys",
     description:
-      'JSON object from endpoint id to the literal key sent to it as a Bearer token, e.g. {"mlx": "sk-..."}. It wins over the endpoint\'s own key reference.',
+      'JSON object from Endpoint id to the literal key sent to it as a Bearer token, e.g. {"mlx": "sk-..."}. It wins over the Endpoint\'s own key reference.',
     secret: true,
     experimental_schema: keysText,
   },
@@ -32,59 +32,89 @@ export const displayName = (endpoint: Endpoint): string => {
   return name.length <= MAX_DISPLAY_NAME ? name : `${name.slice(0, MAX_DISPLAY_NAME - 1)}…`;
 };
 
+/** The variables each Endpoint lacks on the primary host, by id. */
+type Missing = Map<string, string[]>;
+
 export default async function plugin(bb: BbPluginApi) {
   const settings = bb.settings.define(SETTINGS);
-  const host = bb.hosts.experimental_client({ contract: configureContract });
-  const services = new Map<string, { url: string; dispose(): void }>();
-  let endpoints: Endpoint[] = [];
+  const host = bb.hosts.experimental_client({ contract });
+  const services = new Map<string, { displayName: string; dispose(): void }>();
+  let endpoints = resolveEndpoints(await settings.get());
+
+  const primaryHostId = async (): Promise<string> => {
+    const { primaryHostId } = await bb.sdk.system.config();
+    if (primaryHostId === null) throw new Error("No primary machine is connected");
+    return primaryHostId;
+  };
+
+  // Whether an Endpoint's variables are set is decided on the primary host,
+  // whose environment the host entry has. `missing` is what it answered for
+  // the Endpoints last sent; until the first send, a status waits for it.
+  let started = false;
+  let firstSend!: (sent: Promise<Missing>) => void;
+  let missing = new Promise<Missing>((resolve) => (firstSend = resolve));
+  const sendEndpoints = (): Promise<Missing> => {
+    const sent = (async () => {
+      const report = await host.call("configure", endpoints, { hostId: await primaryHostId() });
+      return new Map(report.map((r) => [r.id, r.missing]));
+    })();
+    // A failed send is reported by the status that reads it.
+    sent.catch(() => undefined);
+    return sent;
+  };
+
+  const endpoint = (id: string): Endpoint => {
+    const found = endpoints.find((e) => e.id === id);
+    if (found === undefined) throw new Error(`No Endpoint "${id}" in the plugin's settings`);
+    return found;
+  };
 
   // bb registers a service at once when the plugin is already running, so a
   // saved change needs no reload.
-  const registerServices = (available: Endpoint[]) => {
+  const registerServices = () => {
     for (const [id, service] of services) {
-      if (!available.some((e) => e.id === id && e.url === service.url)) {
+      if (!endpoints.some((e) => e.id === id && displayName(e) === service.displayName)) {
         service.dispose();
         services.delete(id);
       }
     }
-    for (const endpoint of available) {
-      if (services.has(endpoint.id)) continue;
+    for (const { id, ...rest } of endpoints) {
+      if (services.has(id)) continue;
+      const name = displayName({ id, ...rest });
       try {
         const { dispose } = bb.experimental_aiServices.register({
-          id: endpoint.id,
-          displayName: displayName(endpoint),
-          kinds: ["inference"],
+          id,
+          displayName: name,
+          // Reads configuration only: bb calls it before every AI task.
+          status: async () => endpointStatus(endpoint(id), (await missing).get(id) ?? []),
+          complete: async (prompt, { signal }) => {
+            const result = await host.call("complete", { endpoint: endpoint(id), prompt }, { hostId: await primaryHostId(), signal });
+            if (!result.ok) throw new Error(result.message);
+            return result.text;
+          },
         });
-        services.set(endpoint.id, { url: endpoint.url, dispose });
+        services.set(id, { displayName: name, dispose });
       } catch (error) {
-        bb.log.warn(`Endpoint "${endpoint.id}" is not a service: ${String(error)}`);
+        bb.log.warn(`Endpoint "${id}" is not a service: ${String(error)}`);
       }
     }
   };
 
-  // bb calls the host entry on the primary host, so the endpoints go there,
-  // and whether their variables are set is decided there.
-  const sendEndpoints = async () => {
-    const { primaryHostId } = await bb.sdk.system.config();
-    if (primaryHostId === null) throw new Error("bb has no primary host to send the endpoints to");
-    const report = await host.call("configure", endpoints, { hostId: primaryHostId });
-    const missing = new Map(report.filter((r) => r.missing.length > 0).map((r) => [r.id, r.missing]));
-    for (const [id, names] of missing) {
-      bb.log.warn(`Endpoint "${id}" is not registered: not set in bb's environment: ${names.join(", ")}`);
-    }
-    registerServices(endpoints.filter((e) => !missing.has(e.id)));
-  };
-
-  endpoints = resolveEndpoints(await settings.get());
+  registerServices();
   settings.onChange((next) => {
     endpoints = resolveEndpoints(next);
-    sendEndpoints().catch((error: unknown) => bb.log.warn(`Could not send the endpoints to the host: ${String(error)}`));
+    registerServices();
+    if (started) missing = sendEndpoints();
   });
   // A service, because bb.sdk is usable only once the server listens; a
   // failed send throws, and bb restarts the service with backoff.
   bb.background.service("send-endpoints", {
     async start(signal) {
-      await sendEndpoints();
+      const sent = sendEndpoints();
+      if (started) missing = sent;
+      else firstSend(sent);
+      started = true;
+      await sent;
       await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
     },
   });
