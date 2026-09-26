@@ -130,7 +130,6 @@ interface OverflowProps {
 
 /** "…": every hidden item, then bb's Customize sidebar, as bb's own More lists them. */
 function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
-  const isActiveInside = items.some(isActive);
   return (
     <DropdownMenu>
       <Tooltip>
@@ -141,7 +140,7 @@ function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
               variant="ghost"
               size="icon"
               aria-label="More sidebar navigation"
-              className={cn(ICON_BUTTON, isActiveInside && ACTIVE)}
+              className={ICON_BUTTON}
             >
               <Icon name="MoreHorizontal" aria-hidden="true" />
             </Button>
