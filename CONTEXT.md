@@ -8,6 +8,10 @@ Plugins that extend bb, the agentic IDE, and the words they share.
 The scheduled CI run that checks every plugin against bb releases newer than the one the plugins pin.
 _Avoid_: Canary, nightly check, smoke test
 
+**Channel**:
+The bb release line a compatibility run tests, named by its npm dist-tag: `latest` for releases, `nightly` for nightly builds.
+_Avoid_: Track, release stream
+
 ### Thread Glance
 
 **Needs attention**:
