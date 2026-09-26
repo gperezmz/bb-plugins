@@ -23,7 +23,6 @@ import { comparePinned, effectiveSortField, makeComparator, type SortKey } from 
 import { inAttention } from "./attention";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
-import { railsFor, type Rail } from "./layout";
 
 /** How many of a group's newest quiet roots stay out of its older fold. */
 export const KEEP_QUIET = 5;
@@ -50,8 +49,6 @@ export interface ThreadRow {
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
   chip: Chip | null;
-  /** Guide rails by nesting level. */
-  rails: (Rail | null)[];
   /** A hidden thread shown because it needs attention or failed. */
   hiddenBadge: boolean;
   /** "In project X" when the thread is outside its family's group. */
@@ -71,7 +68,6 @@ export interface OlderRow {
   count: number;
   expanded: boolean;
   depth: number;
-  rails: (Rail | null)[];
 }
 
 export interface EnvironmentRow {
@@ -86,7 +82,6 @@ export interface EnvironmentRow {
   collapsed: boolean;
   flag: Flag | null;
   depth: number;
-  rails: (Rail | null)[];
 }
 
 /** Under a family in Needs attention: how many of its child threads it leaves out ("+N more"). Not a control. */
@@ -97,7 +92,6 @@ export interface LeftOutRow {
   scopeId: string;
   count: number;
   depth: number;
-  rails: (Rail | null)[];
 }
 
 export type Row = ThreadRow | OlderRow | EnvironmentRow | LeftOutRow;
@@ -204,7 +198,6 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
-    rails: [],
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
     homeGroupLabel: null,
@@ -248,7 +241,6 @@ function foldedChildren(
           count,
           expanded,
           depth,
-          rails: [],
         }
       : null;
 
@@ -330,7 +322,6 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Ro
       collapsed,
       flag: collapsed ? mostUrgent(flags) : null,
       depth,
-      rails: [],
     });
     if (!collapsed) {
       for (const member of members) {
@@ -440,7 +431,7 @@ function attentionFamilyRows(context: Context, family: Family, homeGroupLabel: s
   };
   walk(root.thread.id, 1);
   const left = family.descendants.filter((info) => !info.thread.isHidden && !onPath.has(info.thread.id)).length;
-  if (left > 0) rows.push({ type: "left-out", key: `left-out:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1, rails: [] });
+  if (left > 0) rows.push({ type: "left-out", key: `left-out:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1 });
   return rows;
 }
 
@@ -472,10 +463,9 @@ function buildAttention(
     for (const row of familyRows) if (row.type === "thread") homeGroupIds[row.info.thread.id] = home.id;
     return familyRows;
   });
-  const rails = railsFor(rows.map((row) => row.depth));
   return {
     familyCount: sorted.length,
-    rows: rows.map((row, index) => ({ ...row, rails: rails[index]! })),
+    rows,
     homeGroupIds,
   };
 }
@@ -544,15 +534,12 @@ function buildGroup(
         count: foldedFamilies.length,
         expanded: opened,
         depth: 0,
-        rails: [],
       };
     }
   }
 
   const units = visible.map((family) => familyUnit(context, family));
-  const clustered = clusterEnvironments(context, units, 0);
-  const rails = railsFor(clustered.map((row) => row.depth));
-  const rows = clustered.map((row, index) => ({ ...row, rails: rails[index]! }));
+  const rows = clusterEnvironments(context, units, 0);
   if (older !== null) rows.push(older);
   return {
     descriptor,

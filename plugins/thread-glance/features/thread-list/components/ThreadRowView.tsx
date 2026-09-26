@@ -27,7 +27,6 @@ import { CHIP_TONE_CLASS, FlagGlyph, GlyphIcon, PluginStatusGlyph } from "./glyp
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
-import { RowRails } from "./Rails";
 import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } from "./RowMenu";
 import { SplitMiniMap, type MiniMapPane } from "./SplitMiniMap";
 import { ThreadDetails } from "./ThreadDetails";
@@ -359,7 +358,6 @@ export const ThreadRowView = memo(function ThreadRowView({
         }}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
-      <RowRails rails={row.rails} />
       <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">{stateSlot}</span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.

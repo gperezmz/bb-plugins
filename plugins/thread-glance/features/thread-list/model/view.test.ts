@@ -357,12 +357,6 @@ describe("folding inside a family", () => {
     expect(rowIds(targeted, "project:proj_a")).toEqual(["p", "c1", "g", "c5", "c6", "c7", "older:4"]);
     expect(rows("g", withGrandchild)).toEqual(["p", "c1", "c5", "c6", "c7", "older:4"]);
   });
-  it("draws the rail from the parent down to the fold row, where it ends", () => {
-    const view = viewOf({ threads, prefs: { expandedChildren: ["p"] } });
-    const rows = group(view, "project:proj_a").rows;
-    expect(rows.map((row) => row.rails)).toEqual([["start"], ["full", null], ["full", null], ["full", null], ["end", null]]);
-    expect(rows.at(-1)).toMatchObject({ type: "older", scope: "family" });
-  });
   it("does not reshuffle when an auto-reveal target is a shown quiet child", () => {
     const idle = rowIds(viewOf({ threads, prefs: { expandedChildren: ["p"] } }), "project:proj_a");
     const targeted = viewOf({

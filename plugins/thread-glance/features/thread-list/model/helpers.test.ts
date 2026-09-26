@@ -4,7 +4,7 @@ import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText } from "./labels";
-import { FOLDED_STEP, railLeft, railsFor, ROOT_INDENT, rowIndent, titleTreatment } from "./layout";
+import { FOLDED_STEP, ROOT_INDENT, rowIndent, titleTreatment } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
 import type { OlderRow } from "./view";
@@ -191,38 +191,6 @@ describe("row indent", () => {
   });
 });
 
-describe("guide rails", () => {
-  it("runs from under the parent through its children and ends on the last row", () => {
-    // Root, three children (one a grandchild, at the same folded depth), the fold row, the next root.
-    expect(railsFor([0, 1, 1, 1, 1, 0])).toEqual([
-      ["start"],
-      ["full", null],
-      ["full", null],
-      ["full", null],
-      ["end", null],
-      [null],
-    ]);
-  });
-  it("draws no rail on a root with nothing under it", () => {
-    expect(railsFor([0, 0])).toEqual([[null], [null]]);
-  });
-  it("keeps one rail per level and ends each where its subtree ends", () => {
-    // a > b > (c, d), then a's other child e, then root f.
-    expect(railsFor([0, 1, 2, 2, 1, 0])).toEqual([
-      ["start"],
-      ["full", "start"],
-      ["full", "full", null],
-      ["full", "end", null],
-      ["end", null],
-      [null],
-    ]);
-  });
-  it("sits under the status slot of its level", () => {
-    expect(railLeft(0)).toBe(ROOT_INDENT + 8);
-    expect(railLeft(1)).toBe(ROOT_INDENT + FOLDED_STEP + 8);
-  });
-});
-
 describe("title treatment", () => {
   it("steps children down and mutes them, except unread or open ones", () => {
     expect(titleTreatment(0, { unread: false, active: false })).toEqual({ small: false, muted: false });
@@ -253,7 +221,6 @@ describe("fold row text", () => {
     count,
     expanded,
     depth: 1,
-    rails: [],
   });
   it("says child threads on a family's fold, singular for one", () => {
     expect(olderRowText(fold("family", 16))).toEqual({ label: "16 more child threads", ariaLabel: "Show 16 more child threads" });

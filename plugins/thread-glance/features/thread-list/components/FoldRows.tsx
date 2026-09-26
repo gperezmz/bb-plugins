@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { RowRails } from "./Rails";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import type { EnvironmentRow, LeftOutRow, OlderRow } from "../model/view";
@@ -37,7 +36,6 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
       )}
       style={{ paddingLeft: rowIndent(row.depth) + (inFamily ? 0 : 2) }}
     >
-      <RowRails rails={row.rails} />
       {inFamily ? (
         <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
           <Icon name={ICONS.more} className="size-3.5" />
@@ -58,7 +56,6 @@ export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftO
       className="relative flex h-6 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} />
       <span aria-hidden className="size-4 shrink-0" />
       <span title={`${row.count} more ${noun}`}>+{row.count} more</span>
     </div>
@@ -84,7 +81,6 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
       className="group/row relative flex h-7 w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} />
       <button
         type="button"
         aria-expanded={!row.collapsed}
