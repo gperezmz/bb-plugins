@@ -53,9 +53,9 @@ The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#thre
 
 ## The chip
 
-A parent thread in a group carries a chip with the number of its children and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three child harnesses that differ from the parent's show as small logos beside it.
+A parent thread carries a chip with the number of its children and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three child harnesses that differ from the parent's show as small logos beside it.
 
-Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). Rows in the Needs attention section carry no chip.
+Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). A family's root carries the same chip in the Needs attention section.
 
 ## Group header counters
 

@@ -112,6 +112,9 @@ describe("why a row in Needs attention is there", () => {
     expect(inSection.get("lone")).toBe("Finished");
     expect(inSection.get("p")).toBe("Finished: Shipped it");
     expect(inSection.get("c")).toBe("Offline: Build box");
+    // Opened with the chip, the unread child does not need attention with the setting off: 0.2.1's rule, no line.
+    expect(inSection.has("u")).toBe(true);
+    expect(inSection.get("u")).toBeNull();
     // Outside the section, a finished or offline thread has no line.
     const outside = viewOf({ threads, notes, activeThreadId: "p", heldRootId: null, prefs: { expandedChildren: ["p"] } });
     expect(outside.groups.flatMap((group) => lines(group.rows)).filter(([, text]) => text !== null)).toEqual([]);

@@ -45,7 +45,7 @@ flowchart LR
   section -->|"nothing in it needs attention, and a thread outside it is opened"| group
 ```
 
-In the section, a family shows the path from its root down to each thread that needs attention, and to the open thread. The root shows the name of its home group where the age normally is. Its other child threads are not drawn: one `+N more` line under the family counts them. Rows in the section carry no chip, since the section never opens one.
+In the section, a family arrives with the path from its root down to each thread that needs attention, and to the open thread. The root shows the name of its home group where the age normally is. Its other child threads wait behind one `+N more` line under the family. The root's chip, or that line, opens the family as it opens in its group, and the chip closes it back to the path. Whether a family is open is one state, shared by the section and its home group: a family opened in one is open in the other.
 
 Nothing moves while you are inside a family. A family in the section stays there while you have one of its threads open, even after nothing in it needs attention any more, so opening an unread thread does not move it out from under the pointer. A family that is not in the section does not enter it while you have one of its threads open: not when its open thread finishes a turn (bb marks it read only when you act in it, so it reads as unread until then), not when it asks a question, not when a child in it needs attention. Its row keeps the unread dot and its group keeps the counters. Whenever you open a thread outside the family, it is judged afresh: it goes to the section if something in it still needs attention, and otherwise stays in its group.
 

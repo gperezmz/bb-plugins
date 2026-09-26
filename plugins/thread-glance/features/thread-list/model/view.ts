@@ -92,7 +92,7 @@ export interface EnvironmentRow {
   depth: number;
 }
 
-/** Under a family in Needs attention: how many of its child threads it leaves out ("+N more"). Not a control. */
+/** Under a closed family in Needs attention: how many of its child threads it leaves out ("+N more"). Opens the family. */
 export interface LeftOutRow {
   type: "left-out";
   key: string;
@@ -166,6 +166,8 @@ interface Context extends ViewInputs {
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
+  /** The rows are drawn in Needs attention. */
+  inAttention: boolean;
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -206,7 +208,7 @@ function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
-  options: { depth: number; nested: boolean; chip: Chip | null; inAttention?: boolean },
+  options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
   const needsAttention = !info.thread.isArchived && info.attention.size > 0;
   return {
@@ -217,7 +219,7 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
-    note: options.inAttention === true && needsAttention ? info.attentionNote : info.note,
+    note: context.inAttention && needsAttention ? info.attentionNote : info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
@@ -429,11 +431,13 @@ export function urgency(family: Family): number {
 }
 
 /**
- * One family's rows in Needs attention: the path from the root down to each thread
- * that needs attention or is open, then one "+N more" line for the child threads
- * left out. No row draws a chip, since the section never opens one.
+ * One family's rows in Needs attention. It arrives with the path from the root
+ * down to each thread that needs attention or is open. Closed, the path is all
+ * it draws, with one "+N more" line for the child threads left out; opened
+ * with the root's chip, it draws as in its home group and keeps the path.
  */
-function attentionFamilyRows(context: Context, family: Family, homeGroupLabel: string): Row[] {
+function attentionFamilyRows(groupContext: Context, family: Family, homeGroupLabel: string): Row[] {
+  const context: Context = { ...groupContext, inAttention: true };
   const root = family.root;
   const onPath = new Set<string>([root.thread.id]);
   for (const info of family.descendants) {
@@ -442,11 +446,19 @@ function attentionFamilyRows(context: Context, family: Family, homeGroupLabel: s
     onPath.add(info.thread.id);
     for (const ancestor of ancestorsOf(info.thread.id, context.forest.infos, root.thread.id)) onPath.add(ancestor);
   }
-  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip: null, inAttention: true }), homeGroupLabel }];
+  const expanded = context.expandedChildren.has(root.thread.id);
+  if (expanded) {
+    // The path is kept the way a reveal target's is.
+    const kept: Context = { ...context, revealIds: new Set([...context.revealIds, ...onPath]) };
+    const [rootRow, ...rest] = foldedFamilyRows(kept, family);
+    return [{ ...(rootRow as ThreadRow), homeGroupLabel }, ...rest];
+  }
+  const chip = chipOf(context, root, false);
+  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip }), homeGroupLabel }];
   const walk = (parentId: string, depth: number) => {
     for (const id of context.forest.children.get(parentId) ?? []) {
       if (!onPath.has(id)) continue;
-      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null, inAttention: true }));
+      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null }));
       walk(id, depth + 1);
     }
   };
@@ -602,6 +614,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     activePath,
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
+    inAttention: false,
   };
 
   const byGroup = new Map<string, Family[]>();

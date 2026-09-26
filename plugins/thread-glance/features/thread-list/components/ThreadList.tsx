@@ -40,7 +40,7 @@ import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
 import { isDoneUnseen } from "../model/state";
-import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
+import { markAllReadPlan, openChildren, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
 import { buildListView, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
@@ -368,6 +368,7 @@ function ThreadListBody({
         const group = view!.groups.find((candidate) => candidate.descriptor.id === row.scopeId) ?? null;
         applyToggle(toggleOlder(row, prefs, group, forest!));
       },
+      onOpenChildren: (rootId) => applyToggle(openChildren(rootId, latest.current.prefs)),
       onToggleEnvironment: (environmentId) => {
         const { collapsedEnvironments } = latest.current.prefs;
         update({

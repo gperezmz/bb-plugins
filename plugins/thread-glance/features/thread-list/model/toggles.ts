@@ -29,11 +29,13 @@ export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): 
     : { patch: { expandedChildren: [...without(prefs.expandedChildren, id), id] }, drop: null };
 }
 
+/** Opens a parent's children, as its chip does: "+N more" in Needs attention and an auto-reveal's fold. */
+export function openChildren(parentId: string, prefs: Preferences): ToggleOutcome {
+  return { patch: { expandedChildren: [...without(prefs.expandedChildren, parentId), parentId] }, drop: null };
+}
+
 export function toggleOlder(row: OlderRow, prefs: Preferences, group: GroupView | null, forest: Forest): ToggleOutcome {
-  if (row.scope === "reveal") {
-    // "+N more" expands the whole family, as the chip does.
-    return { patch: { expandedChildren: [...without(prefs.expandedChildren, row.scopeId), row.scopeId] }, drop: null };
-  }
+  if (row.scope === "reveal") return openChildren(row.scopeId, prefs);
   if (!row.expanded) {
     return { patch: { expandedOlder: [...without(prefs.expandedOlder, row.scopeId), row.scopeId] }, drop: null };
   }

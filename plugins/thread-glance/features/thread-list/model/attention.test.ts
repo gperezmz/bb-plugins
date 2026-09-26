@@ -122,13 +122,13 @@ describe("Needs attention over a family", () => {
     expect(attentionIds(viewOf({ threads, activeThreadId: "q1", heldRootId: "m" }))).toEqual(["m", "a", "a1", "b", "q", "q1", "+1"]);
   });
 
-  it("draws the section's rows without chips, the root with its home group where the age goes", () => {
+  it("draws the root's chip, closed, and its home group where the age goes", () => {
     const threads = [
       parent({ hasPendingInteraction: true }),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
     ];
     const rows = sectionRows(viewOf({ threads }));
-    expect(rows.map((row) => row.chip)).toEqual([null]);
+    expect(rows.map((row) => row.chip)).toEqual([{ count: 1, flag: null, expanded: false, providerIds: [] }]);
     expect(rows[0]!.homeGroupLabel).toBe("Alpha");
     expect(attentionIds(viewOf({ threads }))).toEqual(["m", "+1"]);
   });

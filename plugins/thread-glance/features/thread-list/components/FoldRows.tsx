@@ -48,17 +48,22 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The "+N more" line under a family in Needs attention: a count, not a control. */
-export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftOutRow }) {
+/** The "+N more" line under a closed family in Needs attention: it opens the family, as the chip does. */
+export const LeftOutRowView = memo(function LeftOutRowView({ row, controller }: { row: LeftOutRow; controller: RowController }) {
   const noun = row.count === 1 ? "child thread" : "child threads";
   return (
-    <div
-      className="relative flex h-6 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground"
+    <button
+      type="button"
+      aria-expanded={false}
+      aria-label={`Show ${row.count} more ${noun}`}
+      title={`Show ${row.count} more ${noun}`}
+      onClick={() => controller.onOpenChildren(row.scopeId)}
+      className="relative flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
       <span aria-hidden className="size-4 shrink-0" />
-      <span title={`${row.count} more ${noun}`}>+{row.count} more</span>
-    </div>
+      +{row.count} more
+    </button>
   );
 });
 

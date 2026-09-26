@@ -333,7 +333,7 @@ function Rows({
             ) : row.type === "older" ? (
               <OlderRowView key={row.key} row={row} controller={rowController} />
             ) : row.type === "left-out" ? (
-              <LeftOutRowView key={row.key} row={row} />
+              <LeftOutRowView key={row.key} row={row} controller={rowController} />
             ) : (
               <EnvironmentRowView
                 key={row.key}

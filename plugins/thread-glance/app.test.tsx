@@ -139,12 +139,33 @@ describe("Thread Glance slot", () => {
     expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
     expect(within(section).getByText("+4 more")).toBeTruthy();
     expect(within(section).getByText("Alpha")).toBeTruthy();
-    // No chip in the section: the path is all it shows.
-    expect(within(section).queryByRole("button", { name: /child threads of Parent/ })).toBeNull();
     const project = screen.getByRole("region", { name: "Alpha" });
     expect(within(project).queryByRole("link", { name: /Open Parent/ })).toBeNull();
     expect(within(project).getByRole("link", { name: /Open Other/ })).toBeTruthy();
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
+  });
+
+  it("opens a family in Needs attention from its chip or +N more, and closes it back to the path", async () => {
+    render([
+      makeThread({ id: "m", title: "Parent" }),
+      ...[1, 2, 3].map((n) =>
+        makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
+      ),
+    ]);
+    const section = await screen.findByRole("region", { name: "Needs attention" });
+    const chip = within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" });
+    expect(chip.textContent).toContain("3");
+    expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
+    fireEvent.click(chip);
+    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
+    expect(within(section).getByRole("link", { name: /Open Child 3/ })).toBeTruthy();
+    expect(within(section).queryByText("+2 more")).toBeNull();
+    fireEvent.click(within(section).getByRole("button", { name: /Collapse 3 child threads of Parent/ }));
+    await waitFor(() => expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull());
+    // Closed, the path to what needs attention stays.
+    expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: "Show 2 more child threads" }));
+    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
   });
 
   it("opens and closes a family from its chip", async () => {
