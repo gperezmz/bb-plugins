@@ -10,7 +10,7 @@ flowchart LR
     skills["bb's skill folder"]
     installed["Installed plugins"]
     ui["bb window: sidebar, thread header and panel, nav pages"]
-    helper["Helper completions: thread titles, commit messages"]
+    helper["AI tasks: thread titles, commit messages"]
   end
   tg["Thread Glance"]
   tu["Thread Usage"]
@@ -42,7 +42,7 @@ The pages each plugin's behaviour rests on:
 - [What "Needs you" means](explanation/thread-glance-attention.md) in Thread Glance.
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
-- [How a helper completion is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for JSON and for no reasoning.
+- [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
 
 ## Map
 
@@ -76,7 +76,7 @@ The pages each plugin's behaviour rests on:
 - [Team Onboarding: `bb team-onboarding`](reference/team-onboarding-cli.md)
 - [Team Onboarding: items, statuses and safe fixes](reference/team-onboarding-items.md)
 - [Team Onboarding: manifest](reference/team-onboarding-manifest.md)
-- [OpenAI-compatible inference: endpoints, settings and error codes](reference/openai-inference-settings.md)
+- [OpenAI-compatible inference: endpoints, settings and failures](reference/openai-inference-settings.md)
 
 **Explanation** says why things work the way they do.
 
@@ -84,4 +84,4 @@ The pages each plugin's behaviour rests on:
 - [What "Needs you" means](explanation/thread-glance-attention.md)
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
-- [How a helper completion is sent](explanation/openai-inference-requests.md)
+- [How an AI task is sent](explanation/openai-inference-requests.md)

@@ -4,5 +4,11 @@ OpenAI-compatible inference's built files (`dist/`) include code from these pack
 
 | Package | Version | Licence | Copyright | In |
 |---|---|---|---|---|
-| @get-bb/plugin-sdk | 0.5.9 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | dist/host.js |
+| @get-bb/plugin-sdk | 0.5.29 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | dist/host.js |
+| cross-spawn | 7.0.6 | MIT | Copyright (c) 2018 Made With MOXY Lda <hello@moxy.studio> | dist/host.js |
+| isexe | 2.0.0 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors | dist/host.js |
+| path-key | 3.1.1 | MIT | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | dist/host.js |
+| shebang-command | 2.0.0 | MIT | Copyright (c) Kevin Mårtensson <kevinmartensson@gmail.com> (github.com/kevva) | dist/host.js |
+| shebang-regex | 3.0.0 | MIT | Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com) | dist/host.js |
+| which | 2.0.2 | ISC | Copyright (c) Isaac Z. Schlueter and Contributors | dist/host.js |
 | zod | 4.6.5 | MIT | Copyright (c) 2025 Colin McDonnell | dist/host.js, dist/server.js |
