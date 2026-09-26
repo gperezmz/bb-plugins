@@ -55,7 +55,10 @@ function answer(request, slowMs, req) {
 export async function startFakeLiteLlm(opts = {}) {
   const key = opts.key ?? "sk-test";
   const slowMs = opts.slowMs ?? 10_000;
-  /** Every completion request's body, whether it was authorized, and when its connection closed. */
+  /**
+   * Every completion request's body, whether it was authorized, when its
+   * connection closed, and the message content it was answered with.
+   */
   const requests = [];
   const sockets = new Set();
 
@@ -78,7 +81,7 @@ export async function startFakeLiteLlm(opts = {}) {
     } catch {
       return send(400, error(400, "Invalid JSON body", "invalid_request_error").body);
     }
-    const record = { path: url.pathname, authorized, body: request, closedAt: undefined };
+    const record = { path: url.pathname, authorized, body: request, closedAt: undefined, answer: undefined };
     requests.push(record);
     res.on("close", () => (record.closedAt = Date.now()));
     if (!authorized) {
@@ -87,7 +90,9 @@ export async function startFakeLiteLlm(opts = {}) {
     const { status, body, delayMs = 0 } = answer(request, slowMs, req);
     if (delayMs === Infinity) return;
     if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-    if (!res.destroyed) send(status, body);
+    if (res.destroyed) return;
+    record.answer = body.choices?.[0]?.message.content;
+    send(status, body);
   });
   server.on("connection", (socket) => {
     sockets.add(socket);
