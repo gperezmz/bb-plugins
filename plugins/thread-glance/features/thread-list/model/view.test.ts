@@ -653,3 +653,55 @@ describe("the Needs attention header", () => {
     expect(attentionIds(view)).toEqual(["b", "b1", "a"]);
   });
 });
+
+describe("brightness shows state, not depth", () => {
+  const dimmed = (scenario: Scenario, id: string) => threadRow(viewOf(scenario), id).dimmed;
+
+  it("dims a quiet root with no children, and a quiet child", () => {
+    const threads = [
+      makeThread({ id: "lone" }),
+      makeThread({ id: "p", ...working }),
+      makeThread({ id: "c", parentThreadId: "p", createdAt: T0 + 1 }),
+    ];
+    expect(dimmed({ threads }, "lone")).toBe(true);
+    expect(dimmed({ threads, prefs: { expandedChildren: ["p"] } }, "c")).toBe(true);
+  });
+
+  it("draws a running, unread or open thread bright, root or child", () => {
+    const threads = [
+      makeThread({ id: "run", ...working }),
+      makeThread({ id: "p" }),
+      makeThread({ id: "r", parentThreadId: "p", createdAt: T0 + 1, ...working }),
+      makeThread({ id: "u", parentThreadId: "p", createdAt: T0 + 2, ...finishedUnread }),
+      makeThread({ id: "o", parentThreadId: "p", createdAt: T0 + 3 }),
+    ];
+    const scenario = { threads, prefs: { expandedChildren: ["p"] }, activeThreadId: "o" };
+    for (const id of ["run", "r", "u", "o"]) expect(dimmed(scenario, id)).toBe(false);
+  });
+
+  it("keeps a running grandchild bright under a quiet child, which dims", () => {
+    const threads = [
+      makeThread({ id: "p" }),
+      makeThread({ id: "c", parentThreadId: "p", createdAt: T0 + 1 }),
+      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2, ...working }),
+    ];
+    const scenario = { threads, prefs: { expandedChildren: ["p", "c"] } };
+    expect(dimmed(scenario, "g")).toBe(false);
+    expect(dimmed(scenario, "c")).toBe(true);
+    expect(threadRow(viewOf(scenario), "g").depth).toBeGreaterThan(0);
+  });
+
+  it("keeps a quiet root with children bright while anything in its family is not quiet", () => {
+    const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p", createdAt: T0 + 1, ...working })];
+    expect(dimmed({ threads }, "p")).toBe(false);
+  });
+
+  it("dims a root, chip included, once its whole family is quiet", () => {
+    const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p", createdAt: T0 + 1 })];
+    const row = threadRow(viewOf({ threads }), "p");
+    expect(row.chip).not.toBeNull();
+    expect(row.dimmed).toBe(true);
+    // Opening a child brings its family back.
+    expect(dimmed({ threads, activeThreadId: "c" }, "p")).toBe(false);
+  });
+});

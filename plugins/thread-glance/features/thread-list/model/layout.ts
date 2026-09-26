@@ -11,16 +11,3 @@ export const FOLDED_STEP = 12;
 export function rowIndent(depth: number): number {
   return ROOT_INDENT + depth * FOLDED_STEP;
 }
-
-/**
- * How a row's title reads. Children step back from roots: a size smaller and
- * muted, unless the thread is unread or open. Hover restores the colour in
- * the component.
- */
-export function titleTreatment(
-  depth: number,
-  state: { unread: boolean; active: boolean },
-): { small: boolean; muted: boolean } {
-  const child = depth > 0;
-  return { small: child, muted: child && !state.unread && !state.active };
-}

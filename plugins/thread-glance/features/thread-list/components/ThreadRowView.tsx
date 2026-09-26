@@ -16,7 +16,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
-import { rowIndent, titleTreatment } from "../model/layout";
+import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { trailingTime } from "../model/time";
@@ -55,6 +55,13 @@ function swallowNextClick(): void {
     once: true,
   });
 }
+
+/**
+ * A quiet title, and its chip: the foreground mixed toward the sidebar in
+ * oklch, which keeps 4.5:1 in both of bb's themes. Opacity blends in sRGB
+ * and lands lower in the light theme.
+ */
+const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--sidebar))]";
 
 export const ROW_ICON_BUTTON =
   "pointer-events-auto relative z-10 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-active";
@@ -290,10 +297,8 @@ export const ThreadRowView = memo(function ThreadRowView({
 
   const chip = row.chip;
   const indent = rowIndent(row.depth);
-  const title = titleTreatment(row.depth, { unread: info.unread, active: isActive });
   const twoLines = controller.comfortable || info.note !== null;
-  // A parent keeps full colour so its children read as the quieter ones.
-  const dimmed = info.quiet && !isActive && !editing && chip === null;
+  const dimmed = row.dimmed && !editing;
   const menuShowing = menuOpen || contextOpen;
   // Desktop: the actions cross-fade over the harness and age, as bb's
   // trailing slot does. Compact: "…" always shows beside them.
@@ -401,12 +406,10 @@ export const ThreadRowView = memo(function ThreadRowView({
             className={cn(
               "min-w-0 truncate",
               info.unread ? "font-semibold" : "font-normal",
-              // Read, idle threads step back so live ones lead.
-              dimmed && !title.muted && "text-muted-foreground",
-              // Children sit a step below their parent; hover and selection bring them back.
-              title.small && "text-xs",
-              // Foreground thinned toward the sidebar: at least 4.5:1 in both themes, and below a muted root.
-              title.muted && "text-[color:color-mix(in_oklch,var(--foreground)_72%,var(--sidebar))] group-hover/row:text-foreground",
+              // Children sit a step below their parent.
+              row.depth > 0 && "text-xs",
+              // Quiet threads step back so live ones lead; hover brings them back.
+              dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
             )}
           >
             {/* Plain text: mention pills lost the truncation fight. */}
@@ -449,6 +452,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           className={cn(
             "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
             CHIP_TONE_CLASS[chipTone(chip.flag)],
+            dimmed && QUIET_TEXT,
           )}
         >
           {chip.count}

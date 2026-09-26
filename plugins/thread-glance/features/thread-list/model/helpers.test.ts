@@ -4,7 +4,7 @@ import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText } from "./labels";
-import { FOLDED_STEP, ROOT_INDENT, rowIndent, titleTreatment } from "./layout";
+import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
 import type { OlderRow } from "./view";
@@ -188,15 +188,6 @@ describe("row indent", () => {
     expect(rowIndent(0)).toBe(ROOT_INDENT);
     expect(rowIndent(1)).toBe(ROOT_INDENT + FOLDED_STEP);
     expect(rowIndent(3)).toBe(8 + 12 * 3);
-  });
-});
-
-describe("title treatment", () => {
-  it("steps children down and mutes them, except unread or open ones", () => {
-    expect(titleTreatment(0, { unread: false, active: false })).toEqual({ small: false, muted: false });
-    expect(titleTreatment(1, { unread: false, active: false })).toEqual({ small: true, muted: true });
-    expect(titleTreatment(1, { unread: true, active: false })).toEqual({ small: true, muted: false });
-    expect(titleTreatment(2, { unread: false, active: true })).toEqual({ small: true, muted: false });
   });
 });
 

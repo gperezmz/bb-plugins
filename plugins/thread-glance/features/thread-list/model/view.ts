@@ -49,6 +49,8 @@ export interface ThreadRow {
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
   chip: Chip | null;
+  /** The title, and the chip with it, step back: see `isDimmed`. */
+  dimmed: boolean;
   /** A hidden thread shown because it needs attention or failed. */
   hiddenBadge: boolean;
   /** "In project X" when the thread is outside its family's group. */
@@ -184,6 +186,16 @@ function crossGroupLabel(context: Context, info: ThreadInfo, root: ThreadInfo): 
   }
 }
 
+/**
+ * Whether a row's title steps back: a quiet thread does, at any depth, so
+ * brightness shows state and depth is left to the indent and smaller text.
+ * A root with children stays bright until its whole family is quiet.
+ */
+function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolean {
+  if (info.parentId === null && chip !== null) return context.forest.familyOf.get(info.thread.id)?.quiet ?? info.quiet;
+  return info.quiet;
+}
+
 function threadRow(
   context: Context,
   info: ThreadInfo,
@@ -198,6 +210,7 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
+    dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
     homeGroupLabel: null,
