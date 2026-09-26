@@ -1,6 +1,6 @@
 # bb plugins
 
-Four plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Five plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Pocket Navigation**, draws bb's sidebar navigation as one row of icons and a New thread line on a phone, where bb's own takes six full-width rows. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,9 @@ flowchart LR
   helper --> oi
   oi -->|chat completions| gateway
   oi -->|chat completions| localmodel
+  pn["Pocket Navigation"]
+  ui -->|navigation entries and settings| pn
+  pn -->|sidebar navigation on a phone| ui
 ```
 
 The pages each plugin's behaviour rests on:
@@ -63,6 +66,7 @@ The pages each plugin's behaviour rests on:
 - [Provision a manifest from a machine bootstrap](how-to/team-onboarding-provision-manifest.md)
 - [Approve your team's commands](how-to/team-onboarding-approve-commands.md)
 - [Title threads with a local model](how-to/openai-inference-local-server.md)
+- [Switch the sidebar navigation between Pocket Navigation and bb's](how-to/pocket-navigation-switch-navigation.md)
 
 **Reference** lists every part, one entry each.
 

@@ -1,6 +1,6 @@
 # Install, update or remove a plugin
 
-Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `team-onboarding` or `openai-inference`, as listed in [`.bb/plugins.json`](../../.bb/plugins.json). Run these on any machine with the `bb` CLI; they act on the bb server.
+Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `team-onboarding`, `openai-inference` or `pocket-navigation`, as listed in [`.bb/plugins.json`](../../.bb/plugins.json). Run these on any machine with the `bb` CLI; they act on the bb server.
 
 ## Install
 
@@ -16,6 +16,7 @@ Then turn it on where it shows:
 - Thread Usage: nothing to do; the coin appears in a thread's header after its next turn.
 - Team Onboarding: open **Onboarding** in the sidebar, and [put your team's manifest on the server](team-onboarding-provision-manifest.md).
 - OpenAI-compatible inference: add an Endpoint with its `model` and select it per AI task with `bb settings ai-services set`, as its [first run](../tutorials/openai-inference-first-run.md#3-add-the-gateway-as-an-endpoint) shows. Automatic never picks an Endpoint, and bb has no fallback from one selected service to another.
+- Pocket Navigation: nothing to do while bb's navigation is left on Automatic; otherwise [switch the sidebar navigation to it](pocket-navigation-switch-navigation.md).
 
 ## Pin a release
 

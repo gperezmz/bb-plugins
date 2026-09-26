@@ -52,6 +52,13 @@ jobs:
               - scripts/ci/check-plugin.sh
               - scripts/ci/pack-npm.sh
               - scripts/ci/npm-install-check.sh
+            pocket-navigation:
+              - plugins/pocket-navigation/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
             openai-inference:
               - plugins/openai-inference/**
               - .github/workflows/ci.yml
