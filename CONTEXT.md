@@ -22,6 +22,10 @@ _Avoid_: Scenario, smoke config
 The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. In code it is `attention`, bb's own word.
 _Avoid_: Needs you, inbox, attention filter
 
+**Attended**:
+A family in Needs attention that you opened and that has nothing left needing attention; it keeps its place until you open a thread outside it.
+_Avoid_: Held, read
+
 **Home group**:
 The group a thread family is listed in when it is not in Needs attention: its project, custom section, machine, Pinned or Threads.
 _Avoid_: Source group, original group
