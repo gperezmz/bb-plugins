@@ -414,10 +414,11 @@ export const GroupSection = memo(function GroupSection({
 // bb's attention colour, thinned over the sidebar: the one colour the section
 // adds. Opaque, so the sticky header hides the rows scrolling under it. Mixed
 // in oklab: the sidebar's grey has hue 0 in oklch, which would pull the tint
-// toward pink. Set as the surface quiet titles mix toward, so they keep
-// their contrast on the band.
+// toward pink. Set as the surface quiet titles mix toward; the band is
+// lighter than the sidebar in the dark theme, so they keep 70% of the
+// foreground there to stay above 4.5:1 (68% measured 4.44:1).
 const ATTENTION_BAND =
-  "[--tg-surface:color-mix(in_oklab,var(--attention)_8%,var(--sidebar))] bg-[var(--tg-surface)]";
+  "[--tg-surface:color-mix(in_oklab,var(--attention)_8%,var(--sidebar))] [--tg-quiet:70%] bg-[var(--tg-surface)]";
 const ATTENTION_COUNT =
   "bg-[color-mix(in_oklab,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklab,var(--attention),var(--foreground)_55%)]";
 
