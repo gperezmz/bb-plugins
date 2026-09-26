@@ -30,7 +30,7 @@ function segmentClass(selected: boolean): string {
 function Line({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1">
-      <span className="w-[5.5rem] shrink-0 text-sm">{label}</span>
+      <span className="min-w-[5.5rem] shrink-0 whitespace-nowrap text-sm">{label}</span>
       <div className="flex flex-1 gap-2">{children}</div>
     </div>
   );
