@@ -38,7 +38,7 @@ export function createCli(store: PreferenceStore): PluginCliRegistration {
     name: "thread-glance",
     summary: "Inspect and change the Thread Glance sidebar's layout preferences",
     description:
-      "Organization, sort, group order, hidden and collapsed groups, child-thread folding and which child threads Needs you counts, for the Thread Glance sidebar. Values are JSON; a bare word is read as a string.",
+      "Organization, sort, group order, hidden and collapsed groups, child-thread folding and which child threads Needs attention counts, for the Thread Glance sidebar. Values are JSON; a bare word is read as a string.",
     commands: {
       "prefs list": cliCommand({
         summary: "List every preference and its current value",

@@ -1,5 +1,5 @@
 // A top-level group: its header with counters, and its rows, windowed
-// in chunks; and the Needs you section above every group.
+// in chunks; and the Needs attention section above every group.
 import { memo, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { NEEDS_YOU_GROUP_ID, type GroupView, type NeedsYouView, type Row } from "../model/view";
+import { ATTENTION_GROUP_ID, type GroupView, type AttentionView, type Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
 import { EnvironmentRowView, LeftOutRowView, OlderRowView } from "./FoldRows";
@@ -63,15 +63,31 @@ const GroupHeader = memo(function GroupHeader({
   dropActive: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const label = group.descriptor.label;
   const draggable = useDraggable({
     id: `group:${group.descriptor.id}`,
     data: { kind: "group", groupId: group.descriptor.id },
     disabled: controller.compact || inOverflow || renaming,
   });
-  const actionsClass = controller.compact
+  const compact = controller.compact;
+  // Desktop: the counter sits flush right, and "+" and "…" fade in over its
+  // place on hover or focus, as a row's actions fade over its age. Nothing is
+  // kept for them otherwise. Phones keep them in line, always shown.
+  const counterFade = compact
     ? ""
-    : "opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+    : menuOpen
+      ? "opacity-0"
+      : "group-hover/header:opacity-0 group-focus-within/header:opacity-0";
+  const actionsFade = compact
+    ? ""
+    : cn(
+        "absolute top-1/2 right-0 -translate-y-1/2 pl-1",
+        dropActive ? "bg-sidebar-accent" : "bg-sidebar",
+        menuOpen
+          ? "opacity-100"
+          : "pointer-events-none opacity-0 group-hover/header:pointer-events-auto group-hover/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:opacity-100",
+      );
   return (
     <div
       ref={draggable.setNodeRef}
@@ -117,98 +133,96 @@ const GroupHeader = memo(function GroupHeader({
         </button>
       )}
       {!renaming ? (
-        <CounterStrip
-          counters={visibleCounters(group.counters, { collapsed: group.collapsed, more: false })}
-          className="ml-auto"
-        />
-      ) : null}
-      {!renaming &&
-      group.descriptor.kind !== "pinned" &&
-      (group.descriptor.newThreadProjectId !== null || group.descriptor.kind === "machine") &&
-      (!controller.compact || controller.activeGroupId === group.descriptor.id) ? (
-        <button
-          type="button"
-          aria-label={`New thread in ${label}`}
-          title={`New thread in ${label}`}
-          data-sidebar-hover-actions-mobile={controller.compact ? "always" : undefined}
-          className={cn(ROW_ICON_BUTTON, actionsClass)}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => controller.onNewThread(group)}
-        >
-          <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-        </button>
-      ) : !renaming && !controller.compact ? (
-        // Keeps every header's counters on one edge.
-        <span aria-hidden className="size-6 shrink-0" />
-      ) : null}
-      {!renaming ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={`${label} actions`}
-              className={cn(ROW_ICON_BUTTON, actionsClass)}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <Icon name={ICONS.more} aria-hidden className="size-4" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-48">
-            <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
-              <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-              Mark all read
-            </DropdownMenuItem>
-            {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
-              <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
-                <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-                New thread
-              </DropdownMenuItem>
-            ) : null}
-            {controller.canCreateSections ? (
-              <DropdownMenuItem onSelect={() => controller.onNewSection()}>
-                <Icon name={ICONS.newSection} aria-hidden className="size-4" />
-                New section
-              </DropdownMenuItem>
-            ) : null}
-            {canRename(group) ? (
-              <DropdownMenuItem onSelect={() => setRenaming(true)}>
-                <Icon name={ICONS.rename} aria-hidden className="size-4" />
-                Rename
-              </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuSeparator />
-            {group.descriptor.kind !== "pinned" ? (
-              group.hidden ? (
-                <DropdownMenuItem onSelect={() => controller.onShow(group)}>
-                  <Icon name={ICONS.show} aria-hidden className="size-4" />
-                  Show in list
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onSelect={() => controller.onHide(group)}>
-                  <Icon name={ICONS.hidden} aria-hidden className="size-4" />
-                  Hide from list
-                </DropdownMenuItem>
-              )
-            ) : null}
-            <DropdownMenuItem onSelect={() => controller.onToggleArchived()}>
-              <Icon name={controller.showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
-              Show archived threads
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => controller.onCustomize()}>
-              <Icon name={ICONS.customize} aria-hidden className="size-4" />
-              Customize list
-            </DropdownMenuItem>
-            {group.descriptor.kind === "section" ? (
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => controller.onRemove(group)}
+        <span className="relative ml-auto flex shrink-0 items-center">
+          <CounterStrip
+            counters={visibleCounters(group.counters, { collapsed: group.collapsed, more: false })}
+            className={cn("transition-opacity", counterFade)}
+          />
+          <span className={cn("flex items-center transition-opacity", actionsFade)}>
+            {group.descriptor.kind !== "pinned" &&
+            (group.descriptor.newThreadProjectId !== null || group.descriptor.kind === "machine") &&
+            (!controller.compact || controller.activeGroupId === group.descriptor.id) ? (
+              <button
+                type="button"
+                aria-label={`New thread in ${label}`}
+                title={`New thread in ${label}`}
+                data-sidebar-hover-actions-mobile={controller.compact ? "always" : undefined}
+                className={ROW_ICON_BUTTON}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => controller.onNewThread(group)}
               >
-                <Icon name={ICONS.remove} aria-hidden className="size-4" />
-                Remove section
-              </DropdownMenuItem>
+                <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+              </button>
             ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`${label} actions`}
+                  className={ROW_ICON_BUTTON}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <Icon name={ICONS.more} aria-hidden className="size-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-48">
+                <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
+                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                  Mark all read
+                </DropdownMenuItem>
+                {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
+                  <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
+                    <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+                    New thread
+                  </DropdownMenuItem>
+                ) : null}
+                {controller.canCreateSections ? (
+                  <DropdownMenuItem onSelect={() => controller.onNewSection()}>
+                    <Icon name={ICONS.newSection} aria-hidden className="size-4" />
+                    New section
+                  </DropdownMenuItem>
+                ) : null}
+                {canRename(group) ? (
+                  <DropdownMenuItem onSelect={() => setRenaming(true)}>
+                    <Icon name={ICONS.rename} aria-hidden className="size-4" />
+                    Rename
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                {group.descriptor.kind !== "pinned" ? (
+                  group.hidden ? (
+                    <DropdownMenuItem onSelect={() => controller.onShow(group)}>
+                      <Icon name={ICONS.show} aria-hidden className="size-4" />
+                      Show in list
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onSelect={() => controller.onHide(group)}>
+                      <Icon name={ICONS.hidden} aria-hidden className="size-4" />
+                      Hide from list
+                    </DropdownMenuItem>
+                  )
+                ) : null}
+                <DropdownMenuItem onSelect={() => controller.onToggleArchived()}>
+                  <Icon name={controller.showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
+                  Show archived threads
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => controller.onCustomize()}>
+                  <Icon name={ICONS.customize} aria-hidden className="size-4" />
+                  Customize list
+                </DropdownMenuItem>
+                {group.descriptor.kind === "section" ? (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => controller.onRemove(group)}
+                  >
+                    <Icon name={ICONS.remove} aria-hidden className="size-4" />
+                    Remove section
+                  </DropdownMenuItem>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        </span>
       ) : null}
     </div>
   );
@@ -333,7 +347,7 @@ function Rows({
             ) : row.type === "older" ? (
               <OlderRowView key={row.key} row={row} controller={rowController} />
             ) : row.type === "left-out" ? (
-              <LeftOutRowView key={row.key} row={row} />
+              <LeftOutRowView key={row.key} row={row} controller={rowController} />
             ) : (
               <EnvironmentRowView
                 key={row.key}
@@ -382,7 +396,7 @@ export const GroupSection = memo(function GroupSection({
         dropActive={dropTargetGroupId === group.descriptor.id}
       />
       {group.collapsed ? null : group.rows.length === 0 ? (
-        // A group whose every family sits in Needs you draws only its header.
+        // A group whose every family sits in Needs attention draws only its header.
         group.rootIds.length === 0 ? <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p> : null
       ) : (
         <Rows
@@ -397,23 +411,38 @@ export const GroupSection = memo(function GroupSection({
   );
 });
 
+// bb's attention colour, thinned over the sidebar: the one colour the section
+// adds. Opaque, so the sticky header hides the rows scrolling under it. Mixed
+// in oklab: the sidebar's grey has hue 0 in oklch, which would pull the tint
+// toward pink. Set as the surface quiet titles mix toward; the band is
+// lighter than the sidebar in the dark theme, so they keep 70% of the
+// foreground there to stay above 4.5:1 (68% measured 4.44:1).
+const ATTENTION_BAND =
+  "[--tg-surface:color-mix(in_oklab,var(--attention)_8%,var(--sidebar))] [--tg-quiet:70%] bg-[var(--tg-surface)]";
+const ATTENTION_COUNT =
+  "bg-[color-mix(in_oklab,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklab,var(--attention),var(--foreground)_55%)]";
+
 /**
- * The Needs you section: a header with its family count, then its rows. It
- * has no collapse, menu or drag, and no drop target of its own.
+ * The Needs attention section: a header with its family count, then its rows,
+ * on one band of bb's attention colour. It has no collapse, menu or drag, and
+ * no drop target of its own.
  */
-export const NeedsYouSection = memo(function NeedsYouSection({ view, ...rest }: SectionProps & { view: NeedsYouView }) {
+export const AttentionSection = memo(function AttentionSection({ view, ...rest }: SectionProps & { view: AttentionView }) {
   return (
-    <section aria-label="Needs you" className="relative flex w-full min-w-0 flex-col">
+    <section aria-label="Needs attention" className={cn("relative mb-1 flex w-full min-w-0 flex-col rounded-md pb-0.5", ATTENTION_BAND)}>
       <h2
         style={{ top: TOOLBAR_HEIGHT }}
-        className="sticky z-20 flex h-7 items-center gap-1 bg-sidebar pl-2 pr-2 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
+        className="sticky z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
       >
-        <span className="min-w-0 flex-1 truncate">Needs you</span>
-        <span className="tabular-nums" aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}>
+        <span className="min-w-0 flex-1 truncate">Needs attention</span>
+        <span
+          className={cn("rounded-full px-1.5 text-[11px] leading-4 tabular-nums", ATTENTION_COUNT)}
+          aria-label={`${view.familyCount} ${view.familyCount === 1 ? "family" : "families"}`}
+        >
           {view.familyCount}
         </span>
       </h2>
-      <Rows {...rest} rows={view.rows} groupId={NEEDS_YOU_GROUP_ID} inPinned={false} forceMount={false} />
+      <Rows {...rest} rows={view.rows} groupId={ATTENTION_GROUP_ID} inPinned={false} forceMount={false} />
     </section>
   );
 });

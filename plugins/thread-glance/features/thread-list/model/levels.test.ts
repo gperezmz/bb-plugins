@@ -60,8 +60,6 @@ describe("per-level folding", () => {
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "s3@2", "s4@2", "s5@2", "older:3@2", "older:1@1"]);
     const fold = rowsOf(view).find((row): row is OlderRow => row.type === "older" && row.depth === 2)!;
     expect(fold).toMatchObject({ scope: "family", scopeId: "fix" });
-    // The rail of the child level runs through its fold row and stops there; the parent's carries on.
-    expect(fold.rails).toEqual(["full", "end", null]);
   });
 
   it("opens the level on the way to a revealed thread, keeping every ancestor and saying what it left out", () => {
@@ -152,7 +150,7 @@ describe("a grandchild never shows without its parent (property)", () => {
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
       const drawn = new Set<string>();
-      for (const rows of [view.needsYou?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
+      for (const rows of [view.attention?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
         const seen: ThreadRow[] = [];
         for (const row of rows) {
           if (row.type !== "thread") continue;

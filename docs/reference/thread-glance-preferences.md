@@ -18,7 +18,7 @@ The gear alone on the slim row at the top of the list opens one panel.
 | Rows | Harness icon: Muted, Colour, Hidden | `harnessIcon` |
 | Rows | Pull request badge | `showPullRequests` |
 | Show | Threads: Active, Archived, Both | `threadLifecycles` |
-| Show | Needs you counts every child | `childAttention` |
+| Show | Needs attention counts every child | `childAttention` |
 
 Choosing a **Sort by** field starts it in its own direction: newest first for dates, A–Z for names.
 
@@ -37,7 +37,7 @@ Choosing a **Sort by** field starts it in its own direction: newest first for da
 | `harnessIcon` | `"muted"` | `muted`, `colour`, `hidden` |
 | `showPullRequests` | `true` | Whether rows show a pull request badge |
 | `threadLifecycles` | `["active"]` | `["active"]`, `["archived"]` or both (Threads: Active, Archived, Both); at least one |
-| `childAttention` | `"blocked"` | Needs you counts every child: `blocked` (off) or `everything` (on). Which children need you and stay out of a family's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#families-and-folding) |
+| `childAttention` | `"blocked"` | Needs attention counts every child: `blocked` (off) or `everything` (on). Which children need attention and stay out of a family's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#families-and-folding) |
 | `sectionOrder` | `["pinned","projects","threads"]` | Group order when grouped by project |
 | `manualSectionOrder` | `["pinned","sections","threads"]` | Group order in Custom mode |
 | `machineSectionOrder` | `["pinned","machines","threads"]` | Group order when grouped by machine |

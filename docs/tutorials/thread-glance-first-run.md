@@ -41,9 +41,9 @@ When the child finishes, its row shows a blue dot: it finished and you have not 
 
 When the parent finishes, its row shows the dot and a bold title.
 
-## 5. See what needs you
+## 5. See what needs attention
 
-When the parent finished unread, its family moved into **Needs you**, the section at the top of the list, and left its project's group. Your finished child did not bring it there: [what "Needs you" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
+When the parent finished unread, its family moved into **Needs attention**, the section at the top of the list, and left its project's group. Your finished child did not bring it there: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
 
 Open the parent. The family stays in the section while you read it. Open a thread outside it, and the family goes back to its project.
 
@@ -51,4 +51,4 @@ Open the parent. The family stays in the section while you read it. Open a threa
 
 Click the gear at the top of the list, and under **Rows** set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
 
-You have installed Thread Glance, read its rows and chips, and watched a family move through Needs you. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
+You have installed Thread Glance, read its rows and chips, and watched a family move through Needs attention. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.

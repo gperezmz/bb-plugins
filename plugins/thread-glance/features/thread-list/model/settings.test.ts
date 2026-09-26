@@ -34,7 +34,7 @@ describe("the ↓/↑ button", () => {
   });
 });
 
-describe("Needs you counts every child", () => {
+describe("Needs attention counts every child", () => {
   it("is on exactly when children count as everything", () => {
     expect(countsEveryChild("everything")).toBe(true);
     expect(countsEveryChild("blocked")).toBe(false);

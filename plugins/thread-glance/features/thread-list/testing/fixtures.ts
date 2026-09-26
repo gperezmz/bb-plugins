@@ -165,7 +165,7 @@ export function rowIds(view: ListView, groupId: string): string[] {
   return idsOf(group.rows);
 }
 
-/** Thread ids in Needs you, in order; "+N more" lines as `+N`. Empty when the section is absent. */
-export function needsYouIds(view: ListView): string[] {
-  return idsOf(view.needsYou?.rows ?? []);
+/** Thread ids in Needs attention, in order; "+N more" lines as `+N`. Empty when the section is absent. */
+export function attentionIds(view: ListView): string[] {
+  return idsOf(view.attention?.rows ?? []);
 }

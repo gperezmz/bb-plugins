@@ -4,6 +4,7 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { Counters } from "../model/counters";
+import type { RowNote } from "../model/notes";
 import { FLAG_GLYPHS, type ChipTone, type Flag, type Glyph, type Tone } from "../model/state";
 
 export const TONE_CLASS: Record<Tone, string> = {
@@ -92,6 +93,23 @@ export function PluginStatusGlyph({ status }: { status: PluginSidebarThreadRowSt
   );
 }
 
+/** A note's prefix takes the tone of the row's glyph for the same reason. */
+const NOTE_TONE_CLASS: Record<RowNote["tone"], string> = {
+  attention: "text-attention",
+  destructive: "text-destructive",
+  muted: "text-muted-foreground",
+};
+
+/** "Failed: timeout", its prefix in the note's tone, or the prefix alone when there is no text. */
+export function NoteLine({ note }: { note: RowNote }) {
+  return (
+    <>
+      <span className={NOTE_TONE_CLASS[note.tone]}>{note.text === "" ? note.prefix : `${note.prefix}:`}</span>
+      {note.text === "" ? null : ` ${note.text}`}
+    </>
+  );
+}
+
 export function FlagGlyph({ flag, className }: { flag: Flag; className?: string }) {
   return <GlyphIcon glyph={FLAG_GLYPHS[flag]} className={className} />;
 }
@@ -101,7 +119,7 @@ const COUNTER_ITEMS: readonly {
   flag: Flag;
   label: (count: number) => string;
 }[] = [
-  { key: "waitsOnYou", flag: "waits-on-you", label: (n) => `${n} need${n === 1 ? "s" : ""} you` },
+  { key: "waitsOnYou", flag: "waits-on-you", label: (n) => `${n} waiting on you` },
   { key: "failed", flag: "unread-failed", label: (n) => `${n} failed` },
   { key: "offline", flag: "offline", label: (n) => `${n} waiting for an offline machine` },
   { key: "working", flag: "working", label: (n) => `${n} working` },

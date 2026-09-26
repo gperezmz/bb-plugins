@@ -1,5 +1,5 @@
 // The fold rows (`N older` on a group, `N more child threads` on a family),
-// the "+N more" line in Needs you, and the environment folder row.
+// the "+N more" line in Needs attention, and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { RowRails } from "./Rails";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import type { EnvironmentRow, LeftOutRow, OlderRow } from "../model/view";
@@ -37,7 +36,6 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
       )}
       style={{ paddingLeft: rowIndent(row.depth) + (inFamily ? 0 : 2) }}
     >
-      <RowRails rails={row.rails} />
       {inFamily ? (
         <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
           <Icon name={ICONS.more} className="size-3.5" />
@@ -50,18 +48,22 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The "+N more" line under a family in Needs you: a count, not a control. */
-export const LeftOutRowView = memo(function LeftOutRowView({ row }: { row: LeftOutRow }) {
+/** The "+N more" line under a closed family in Needs attention: it opens the family, as the chip does. */
+export const LeftOutRowView = memo(function LeftOutRowView({ row, controller }: { row: LeftOutRow; controller: RowController }) {
   const noun = row.count === 1 ? "child thread" : "child threads";
   return (
-    <div
-      className="relative flex h-6 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground"
+    <button
+      type="button"
+      aria-expanded={false}
+      aria-label={`Show ${row.count} more ${noun}`}
+      title={`Show ${row.count} more ${noun}`}
+      onClick={() => controller.onOpenChildren(row.scopeId)}
+      className="relative flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} />
       <span aria-hidden className="size-4 shrink-0" />
-      <span title={`${row.count} more ${noun}`}>+{row.count} more</span>
-    </div>
+      +{row.count} more
+    </button>
   );
 });
 
@@ -84,7 +86,6 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
       className="group/row relative flex h-7 w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent"
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      <RowRails rails={row.rails} />
       <button
         type="button"
         aria-expanded={!row.collapsed}

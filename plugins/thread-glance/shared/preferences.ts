@@ -131,7 +131,7 @@ export const PREFERENCES = {
   childAttention: define(
     childAttentionSchema,
     "blocked" as ChildAttention,
-    "Needs you counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a family's older fold, as running ones do.",
+    "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a family's older fold, as running ones do.",
   ),
   harnessIcon: define(
     harnessIconSchema,
@@ -212,7 +212,7 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   return mapped as Partial<Preferences>;
 }
 
-/** Per-client preferences, kept in localStorage only. A saved `filter` from before Needs you is dropped. */
+/** Per-client preferences, kept in localStorage only. A saved `filter`, from the old All / Needs attention control, is dropped. */
 export const clientPreferencesSchema = z.object({
   density: z.enum(["compact", "comfortable"]).catch("compact"),
 });

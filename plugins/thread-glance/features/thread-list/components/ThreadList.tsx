@@ -29,7 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAutoExpand } from "../data/useAutoExpand";
 import { useClientPreferences } from "../data/useClientPreferences";
-import { useNeedsYouHold } from "../data/useNeedsYouHold";
+import { useAttentionHold } from "../data/useAttentionHold";
 import { useNow } from "../data/useNow";
 import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
@@ -40,7 +40,7 @@ import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
 import { isDoneUnseen } from "../model/state";
-import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
+import { markAllReadPlan, openChildren, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
 import { buildListView, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
@@ -51,7 +51,7 @@ import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
 import { cancelPendingCards } from "./row-card";
-import { GroupSection, NeedsYouSection, type DropStates, type GroupController } from "./GroupSection";
+import { GroupSection, AttentionSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
 import { Toolbar } from "./Toolbar";
@@ -160,7 +160,7 @@ function ThreadListBody({
     [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
-  const heldRootId = useNeedsYouHold(forest, activeThreadId);
+  const heldRootId = useAttentionHold(forest, activeThreadId);
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
@@ -368,6 +368,7 @@ function ThreadListBody({
         const group = view!.groups.find((candidate) => candidate.descriptor.id === row.scopeId) ?? null;
         applyToggle(toggleOlder(row, prefs, group, forest!));
       },
+      onOpenChildren: (rootId) => applyToggle(openChildren(rootId, latest.current.prefs)),
       onToggleEnvironment: (environmentId) => {
         const { collapsedEnvironments } = latest.current.prefs;
         update({
@@ -523,8 +524,8 @@ function ThreadListBody({
   }, []);
 
   const dropContext = useMemo(() => {
-    // A row in Needs you drops as it would in its home group.
-    const groupOfThread = new Map<string, string>(Object.entries(view?.needsYou?.homeGroupIds ?? {}));
+    // A row in Needs attention drops as it would in its home group.
+    const groupOfThread = new Map<string, string>(Object.entries(view?.attention?.homeGroupIds ?? {}));
     for (const group of [...(view?.groups ?? []), ...(view?.more ?? [])]) {
       for (const row of group.rows) if (row.type === "thread") groupOfThread.set(row.info.thread.id, group.descriptor.id);
     }
@@ -684,9 +685,9 @@ function ThreadListBody({
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-            {view.needsYou !== null ? (
-              <NeedsYouSection
-                view={view.needsYou}
+            {view.attention !== null ? (
+              <AttentionSection
+                view={view.attention}
                 rowController={rowController}
                 environmentProviders={environmentProviders}
                 dropStates={dropStates}

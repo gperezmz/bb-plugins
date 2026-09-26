@@ -38,7 +38,7 @@ export const FLAG_ORDER: readonly Flag[] = [
  */
 export type Tone = "attention" | "destructive" | "working" | "background" | "muted" | "muted-strong" | "none";
 
-/** What a thread that needs you is waiting for, from its note. */
+/** What a thread that needs attention is waiting for, from its note. */
 export type NeedsKind = "question" | "approval" | "plan" | "input";
 
 const NEEDS: Record<NeedsKind, { icon: string; label: string }> = {

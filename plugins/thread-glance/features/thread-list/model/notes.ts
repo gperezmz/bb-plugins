@@ -2,13 +2,15 @@
 // the server stores what it saw; this decides what a row says.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { Note, ThreadNotes } from "@/shared/contract";
-import { normalizeQueued, normalizeStatus, type NeedsKind } from "./state";
+import { normalizeQueued, normalizeStatus, type Flag, type NeedsKind } from "./state";
 
 export interface RowNote {
-  /** "Asks", "Approve", "Plan", "Failed"… */
+  /** "Asks", "Approve", "Plan", "Failed", "Offline", "Finished"… */
   prefix: string;
+  /** Empty when there is nothing to add: the prefix stands alone. */
   text: string;
-  tone: "attention" | "destructive";
+  /** The tone of the row's glyph for the same reason. */
+  tone: "attention" | "destructive" | "muted";
 }
 
 const PENDING_PREFIX: Record<NeedsKind, string> = {
@@ -25,7 +27,7 @@ export function needsKindOf(notes: ThreadNotes | undefined): NeedsKind | null {
 }
 
 /**
- * The line under a row: why it needs you, or why it failed. Other states
+ * The line under a row: why it needs attention, or why it failed. Other states
  * have none, so the list stays one line per thread where nothing is wrong.
  */
 export function rowNote(thread: PluginSidebarThread, notes: ThreadNotes | undefined): RowNote | null {
@@ -44,6 +46,37 @@ export function rowNote(thread: PluginSidebarThread, notes: ThreadNotes | undefi
     return { prefix: "Failed", text: "queued message wasn't sent", tone: "destructive" };
   }
   return null;
+}
+
+/**
+ * The line under a row in Needs attention that itself needs attention: its
+ * most urgent reason among `attention`, its Needs attention flags. Waits on
+ * you, then failed, then offline, then finished; each keeps its prefix when
+ * there is no text to follow it.
+ */
+export function attentionNote(
+  thread: PluginSidebarThread,
+  notes: ThreadNotes | undefined,
+  attention: ReadonlySet<Flag>,
+): RowNote | null {
+  if (attention.has("waits-on-you")) {
+    return { prefix: PENDING_PREFIX[needsKindOf(notes) ?? "input"], text: notes?.pending?.text.trim() ?? "", tone: "attention" };
+  }
+  if (attention.has("unread-failed")) {
+    const text = notes?.failed?.text.trim() ?? "";
+    return { prefix: "Failed", text: text.toLowerCase() === "failed" ? "" : text, tone: "destructive" };
+  }
+  if (attention.has("queue-failed")) {
+    return { prefix: "Failed", text: "queued message wasn't sent", tone: "destructive" };
+  }
+  if (attention.has("offline")) return { prefix: "Offline", text: thread.host?.name.trim() ?? "", tone: "attention" };
+  if (attention.has("unread")) return { prefix: "Finished", text: lastReply(notes)?.text.trim() ?? "", tone: "muted" };
+  return null;
+}
+
+/** A note as one line of text: "Failed: timeout", or "Failed" alone. */
+export function noteText(note: RowNote): string {
+  return note.text === "" ? note.prefix : `${note.prefix}: ${note.text}`;
 }
 
 /** The hover card's last-reply line. */

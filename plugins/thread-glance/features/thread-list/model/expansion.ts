@@ -1,6 +1,6 @@
 // Auto-expansion: transitions found by diffing snapshots, and the
 // transient targets they leave behind. Pure.
-import { revealsOn } from "./needs-you";
+import { revealsOn } from "./attention";
 import type { Forest } from "./families";
 
 /**
@@ -15,20 +15,20 @@ export type Targets = ReadonlyMap<string, TargetKind>;
 export interface Snapshot {
   activeThreadId: string | null;
   unread: ReadonlySet<string>;
-  /** Threads that wait on you or failed, as Needs you counts them. */
-  needsYou: ReadonlySet<string>;
+  /** Threads that wait on you or failed, as Needs attention counts them. */
+  attentionIds: ReadonlySet<string>;
 }
 
 export function snapshotOf(forest: Forest, activeThreadId: string | null): Snapshot {
   const unread = new Set<string>();
-  const needsYou = new Set<string>();
+  const attentionIds = new Set<string>();
   for (const info of forest.infos.values()) {
     if (info.thread.isArchived) continue;
-    // A finished child that does not need you never opens anything.
-    if (info.needsYou.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
-    if (revealsOn(info.needsYou, info.parentId === null)) needsYou.add(info.thread.id);
+    // A finished child that does not need attention never opens anything.
+    if (info.attentionFlags.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
+    if (revealsOn(info.attentionFlags, info.parentId === null)) attentionIds.add(info.thread.id);
   }
-  return { activeThreadId, unread, needsYou };
+  return { activeThreadId, unread, attentionIds };
 }
 
 /**
@@ -40,8 +40,8 @@ export function detectTransitions(previous: Snapshot | null, next: Snapshot): Ma
   if (next.activeThreadId !== null && next.activeThreadId !== previous?.activeThreadId) {
     found.set(next.activeThreadId, "reveal");
   }
-  for (const id of next.needsYou) {
-    if (!previous?.needsYou.has(id)) found.set(id, "reveal");
+  for (const id of next.attentionIds) {
+    if (!previous?.attentionIds.has(id)) found.set(id, "reveal");
   }
   for (const id of next.unread) {
     if (id === next.activeThreadId || found.has(id)) continue;
