@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -174,7 +174,6 @@ describe("importPreferences", () => {
       source: "cli",
       keys: ["organizationMode"],
     });
-    const { readFileSync } = await import("node:fs");
     expect(readFileSync(argvFile, "utf8").trim()).toBe("thread-list prefs list --json");
   });
 
@@ -228,12 +227,36 @@ describe("importPreferences", () => {
       throw new Error("server not listening yet");
     });
     expect(await read()).toBeNull();
-    const { existsSync } = await import("node:fs");
     expect(existsSync(argvFile)).toBe(false);
     expect(warnings).toEqual([
       "could not tell which bb server Thread Glance runs in (server not listening yet); " +
         "importing nothing from bb's CLI and asking no other server",
     ]);
+  });
+
+  it("starts from the defaults, or the browser copy, when its own server has no URL", async () => {
+    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
+    const bare = await load({}, "");
+    expect(await bare.harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
+      status: "defaults",
+      source: "none",
+      keys: [],
+    });
+    expect(await bare.bb.storage.kv.get(IMPORT_MARKER_KEY)).toMatchObject({ source: "none" });
+    expect(existsSync(argvFile)).toBe(false);
+    expect(
+      bare.harness.inspection.logEntries.some(
+        (entry) =>
+          entry.level === "warn" &&
+          entry.message.includes("could not tell which bb server Thread Glance runs in (it has no URL)"),
+      ),
+    ).toBe(true);
+    const mirrored = await load({}, "");
+    expect(
+      await mirrored.harness.behavior.callRpc("importPreferences", {
+        bbMirror: { organizationMode: "chronological" },
+      }),
+    ).toMatchObject({ source: "local-storage", keys: ["organizationMode"] });
   });
 
   it("runs once when two windows import at the same time", async () => {
