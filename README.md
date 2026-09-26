@@ -10,7 +10,7 @@ flowchart LR
     skills["bb's skill folder"]
     installed["Installed plugins"]
     ui["bb window: sidebar, thread header and panel, nav pages"]
-    helper["Helper completions: thread titles, commit messages"]
+    helper["AI tasks: thread titles, commit messages"]
   end
   tg["Thread Glance"]
   tu["Thread Usage"]
