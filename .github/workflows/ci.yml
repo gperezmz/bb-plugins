@@ -59,6 +59,7 @@ jobs:
               - scripts/ci/check-plugin.sh
               - scripts/ci/pack-npm.sh
               - scripts/ci/npm-install-check.sh
+              - scripts/ci/npm-install-refusal-check.sh
 
   plugin:
     name: ${{ matrix.plugin }} (${{ matrix.mode }})
@@ -86,6 +87,23 @@ jobs:
         env:
           PLUGIN: ${{ matrix.plugin }}
           MODE: ${{ matrix.mode }}
+
+  # The npm-install check must fail when bb refuses what a plugin registers;
+  # OpenAI-compatible inference built to be refused proves it does.
+  npm-install-refusal:
+    name: npm-install check catches a refused registration
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.plugins), 'openai-inference')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          plugin: openai-inference
+      - run: scripts/ci/npm-install-refusal-check.sh
 
   secrets:
     name: Secrets (gitleaks)
@@ -138,7 +156,7 @@ jobs:
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, plugin, secrets, docs]
+    needs: [changes, plugin, npm-install-refusal, secrets, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Fail when a job failed or was cancelled
