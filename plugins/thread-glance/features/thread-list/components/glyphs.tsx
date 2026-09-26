@@ -47,6 +47,18 @@ export function UnreadDot({ label, className }: { label?: string; className?: st
   );
 }
 
+// An idle thread's ring: uncoloured, smaller than the column and thinned, so it
+// reads as status yet stays fainter than the unread dot and the draft pencil.
+// Screen readers skip it; an idle row announces nothing more than before.
+export function IdleRing({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("inline-block size-2.5 shrink-0 rounded-full border-[1.5px] border-current opacity-50", className)}
+    />
+  );
+}
+
 export function GlyphIcon({
   glyph,
   label,
@@ -56,7 +68,7 @@ export function GlyphIcon({
   label?: string;
   className?: string;
 }) {
-  if (glyph.icon === null) return null;
+  if (glyph.icon === "ring") return <IdleRing className={TONE_CLASS[glyph.tone]} />;
   if (glyph.icon === "dot") return <UnreadDot label={label} />;
   return (
     <Icon
