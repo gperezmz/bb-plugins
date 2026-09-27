@@ -29,7 +29,7 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
           className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${view.compactOn ? "bg-primary" : "bg-muted"}`}
         >
           <span
-            className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition-transform ${view.compactOn ? "translate-x-4" : "translate-x-0.5"}`}
+            className={`absolute left-0 top-0.5 size-4 rounded-full bg-background shadow transition-transform ${view.compactOn ? "translate-x-4" : "translate-x-0.5"}`}
           />
         </button>
       </div>
