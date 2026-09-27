@@ -36,6 +36,18 @@ describe("TranscriptFold", () => {
     expect(callsPerMessage({ requests: 4, userMessages: 0 }, 3)).toBe(3);
   });
 
+  it("leaves Cache Keeper's own turns and /compact out of calls per message", () => {
+    const fold = new TranscriptFold();
+    fold.add(user("do it"));
+    fold.add(assistant(0, "a", { input_tokens: 1 }));
+    fold.add(assistant(1, "b", { input_tokens: 1 }));
+    fold.add(user('Still waiting on child thread thr_c ("x"). Nothing to do yet, just reply "OK".'));
+    fold.add(assistant(2, "c", { input_tokens: 1 }));
+    fold.add(user("<command-name>/compact</command-name>"));
+    expect(fold.result()).toMatchObject({ requests: 2, userMessages: 1 });
+    expect(fold.result().lastRequestAt).toBe(Date.parse(at(2)));
+  });
+
   it("takes the context from the last request, or a later compaction", () => {
     const fold = new TranscriptFold();
     fold.add(assistant(0, "a", { input_tokens: 10, cache_read_input_tokens: 200_000, cache_creation: { ephemeral_1h_input_tokens: 5_000 } }));

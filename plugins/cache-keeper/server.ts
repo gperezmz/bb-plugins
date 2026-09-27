@@ -5,9 +5,9 @@ import { cliCommand, defineCli, PluginCliError, type BbPluginApi } from "@get-bb
 import { z } from "zod";
 import { formatSize, parseSize, snapSetting } from "./src/core/line";
 import { PriceBook } from "./src/core/pricing";
-import { CHANGED, rowStatus, statusText, type ThreadView } from "./src/core/view";
+import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
-import { ClaudeOnlyError, Engine, NotReadyError, type ListedThread, type TaskEvent } from "./src/server/engine";
+import { ClaudeOnlyError, DAY_MS, Engine, NotReadyError, type ListedThread, type TaskEvent } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
 import { rpcContract, type Overview } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -19,7 +19,6 @@ export type { RpcContract } from "./src/server/rpc";
 
 const PASS_MS = 15_000;
 const HOST_TIMEOUT_MS = 20_000;
-const DAY_MS = 86_400_000;
 const HISTORY_DAYS = 90;
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -189,8 +188,8 @@ export default async function plugin(bb: BbPluginApi) {
     rowStatuses: async () =>
       engine
         .allViews()
-        .map((v) => ({ threadId: v.threadId, status: settings.checkIns || rowStatus(v) === "compaction" ? rowStatus(v) : null }))
-        .filter((r): r is { threadId: string; status: "compaction" | "clock" } => r.status !== null),
+        .map((v) => ({ threadId: v.threadId, status: rowStatus(v) }))
+        .filter((r): r is RowGlyph => r.status !== null),
     overview,
   });
 

@@ -3,6 +3,7 @@
  * written like a person's prompt, so the same state always sends the same
  * words.
  */
+import type { CheckInReason } from "./checkins";
 import { orderItems, type WaitItem } from "./waiting";
 
 /** What `/compact` is given on top of Claude Code's own summary prompt. */
@@ -61,28 +62,37 @@ export function itemsText(items: readonly WaitItem[], clock: ClockFormat = local
 }
 
 export function keepWarmText(items: readonly WaitItem[], clock: ClockFormat = localClock): string {
-  return `Still waiting on ${itemsText(items, clock)}. Nothing to do yet, just reply "OK".`;
+  return `Still waiting on ${itemsText(items, clock)}. ${KEEP_WARM_END}`;
 }
 
 /** One task due a check-in. */
 export type CheckInTask =
-  | { kind: "command"; reason: "stalled" | "routine"; id: string; description: string; startedAt: number; quietMs: number; runningMs: number; outputFile: string }
-  | { kind: "subagent"; reason: "stalled" | "routine"; id: string; description: string; startedAt: number; quietMs: number; runningMs: number; lastTool: string };
+  | { kind: "command"; reason: CheckInReason; id: string; description: string; startedAt: number; silentMs: number; runningMs: number; outputFile: string }
+  | { kind: "subagent"; reason: CheckInReason; id: string; description: string; startedAt: number; silentMs: number; runningMs: number; lastTool: string };
 
 function paragraph(task: CheckInTask): string {
   const name = `${task.id} ("${cut(task.description)}")`;
   if (task.kind === "command") {
     return task.reason === "stalled"
-      ? `Background command ${name} hasn't printed anything in ${duration(task.quietMs)}. Can you check it's still moving? Its output is in ${task.outputFile}. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`
+      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check it's still moving? Its output is in ${task.outputFile}. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`
       : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${task.outputFile} for repeated errors or retries. If it's looping, stop it, fix it and carry on. If it's fine, leave it running.`;
   }
   return task.reason === "stalled"
-    ? `Background subagent ${name} hasn't made progress in ${duration(task.quietMs)}; its last tool was ${task.lastTool}. Can you check on it? If it's stuck, stop it, then fix the problem or do that part yourself and keep going. If it's fine, leave it.`
+    ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${task.lastTool}. Can you check on it? If it's stuck, stop it, then fix the problem or do that part yourself and keep going. If it's fine, leave it.`
     : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${task.lastTool}. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`;
 }
 
 /** One paragraph per due task, commands before subagents and oldest first, then the closing line. */
 export function checkInText(tasks: readonly CheckInTask[]): string {
   const ordered = [...tasks].sort((a, b) => (a.kind === b.kind ? a.startedAt - b.startedAt : a.kind === "command" ? -1 : 1));
-  return [...ordered.map(paragraph), "Tell me in a line what you found. Don't wait for me either way."].join("\n\n");
+  return [...ordered.map(paragraph), CHECK_IN_END].join("\n\n");
+}
+
+const KEEP_WARM_END = 'Nothing to do yet, just reply "OK".';
+const CHECK_IN_END = "Tell me in a line what you found. Don't wait for me either way.";
+
+/** Whether a message's text is a keep-warm or check-in Cache Keeper sent. */
+export function isKeeperMessage(text: string): boolean {
+  const t = text.trim();
+  return (t.startsWith("Still waiting on ") && t.endsWith(KEEP_WARM_END)) || t.endsWith(CHECK_IN_END);
 }

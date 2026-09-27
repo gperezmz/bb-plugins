@@ -7,7 +7,7 @@ const opus = { input: 5e-6, output: 25e-6, cacheRead: 0.5e-6, cacheWrite: 6.25e-
 describe("compactionLine", () => {
   it("is the smallest context that repays compacting N times over", () => {
     const rates = ratesOf(opus, "1h");
-    const line = compactionLine({ rates, k: 3, p: 40_000, n: 2, window: 1_000_000 })!;
+    const line = compactionLine({ rates, k: 3, p: 40_000, setting: 2, window: 1_000_000 })!;
     const holds = (c: number) => (rates.w + 3 * rates.r) * (c - 40_000) >= 2 * (rates.r * c + rates.o * SUMMARY_TOKENS);
     expect(holds(line)).toBe(true);
     expect(holds(line - 1)).toBe(false);
@@ -16,8 +16,8 @@ describe("compactionLine", () => {
 
   it("is never when no context up to the window satisfies it", () => {
     const rates = ratesOf(opus, "5m");
-    expect(compactionLine({ rates, k: 3, p: 40_000, n: 10, window: 1_000_000 })).toBeNull();
-    expect(compactionLine({ rates, k: 3, p: 40_000, n: 2, window: 50_000 })).toBeNull();
+    expect(compactionLine({ rates, k: 3, p: 40_000, setting: 10, window: 1_000_000 })).toBeNull();
+    expect(compactionLine({ rates, k: 3, p: 40_000, setting: 2, window: 50_000 })).toBeNull();
   });
 
   it("rises with the setting", () => {
@@ -28,7 +28,7 @@ describe("compactionLine", () => {
   });
 
   it("refuses a setting outside 1–10", () => {
-    expect(() => compactionLine({ rates: ratesOf(opus, "1h"), k: 3, p: 0, n: 11, window: 1 })).toThrow(RangeError);
+    expect(() => compactionLine({ rates: ratesOf(opus, "1h"), k: 3, p: 0, setting: 11, window: 1 })).toThrow(RangeError);
   });
 });
 
@@ -59,6 +59,7 @@ describe("parseSize and snapSetting", () => {
     expect(formatSize(139_048)).toBe("139k");
     expect(formatSize(1_000_000)).toBe("1M");
     expect(formatSize(1_250_000)).toBe("1.25M");
+    expect(formatSize(1_234_400)).toBe("1.234M");
     expect(formatSize(null)).toBe("never");
   });
 });

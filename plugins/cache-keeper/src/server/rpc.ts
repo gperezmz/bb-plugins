@@ -1,7 +1,7 @@
 /** The frontend's calls to the server. `app.tsx` imports this contract's type only. */
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import type { ThreadView } from "../core/view";
+import type { RowGlyph, ThreadView } from "../core/view";
 import type { HistoryRow } from "./store";
 
 const threadId = z.string().regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id");
@@ -48,7 +48,7 @@ export const rpcContract = defineRpcContract({
   },
   rowStatuses: {
     input: z.null(),
-    output: z.array(z.object({ threadId: z.string(), status: z.enum(["compaction", "clock"]) })),
+    output: z.custom<RowGlyph[]>(Array.isArray),
   },
   overview: {
     input: z.null(),

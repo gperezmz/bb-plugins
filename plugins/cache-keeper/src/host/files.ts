@@ -5,7 +5,7 @@
  * subagent's transcript at `<root>/<cwd slug>/<sessionId>/subagents/agent-<id>.jsonl`.
  */
 import { open, readdir, stat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { TranscriptFold, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
 
@@ -19,8 +19,7 @@ export interface Roots {
 export function resolveRoots(env: NodeJS.ProcessEnv = process.env, home = homedir()): Roots {
   const config = env.CLAUDE_CONFIG_DIR ? [env.CLAUDE_CONFIG_DIR] : [join(home, ".claude"), join(home, ".config", "claude")];
   const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-  const tmp = env.CLAUDE_CODE_TMPDIR ?? (process.platform === "win32" ? tmpdir() : "/tmp");
-  return { projects: config.map((d) => join(d, "projects")), tasks: join(tmp, `claude-${uid}`) };
+  return { projects: config.map((d) => join(d, "projects")), tasks: join("/tmp", `claude-${uid}`) };
 }
 
 const exists = async (path: string) => (await stat(path).catch(() => null)) !== null;

@@ -46,6 +46,8 @@ class Harness {
   outputs = new Map<string, number>();
   sent: { threadId: string; text: string }[] = [];
   checkIns = true;
+  failTasks = false;
+  queued = new Map<string, { sendAt: number | null; createdAt: number; failed: boolean }[]>();
   db = new Database(":memory:");
   store: Store;
   engine: Engine;
@@ -63,7 +65,7 @@ class Harness {
       settings: () => ({ checkIns: this.checkIns, waitMs: 15 * MIN, fetchPrices: false }),
       prices: () => prices,
       listThreads: async () => this.threads,
-      queuedMessages: async () => [],
+      queuedMessages: async (id) => this.queued.get(id) ?? [],
       contextWindow: async () => 1_000_000,
       sessionId: async (id) => `session-${id}`,
       taskEvents: async (id, after) => (this.events.get(id) ?? []).filter((e) => e.seq > after),
@@ -73,10 +75,13 @@ class Harness {
         facts: this.facts.get(session.replace("session-", "")) ?? EMPTY_FACTS,
         requests: [],
       }),
-      tasks: async (_host, input) => ({
+      tasks: async (_host, input) => {
+        if (this.failTasks) throw new Error("machine offline");
+        return {
         commands: input.commands.map((id) => ({ id, outputFile: `/tmp/claude-1000/-work/${input.sessionId}/tasks/${id}.output`, changedAt: this.outputs.get(id) ?? null })),
         subagents: input.subagents.map((id) => ({ id, lastTool: "Grep", changedAt: null })),
-      }),
+        };
+      },
       send: async (threadId, text) => {
         this.sent.push({ threadId, text });
       },
@@ -232,6 +237,42 @@ describe("keep-warms and check-ins", () => {
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.text).toContain('Background command b1 ("npm test") hasn\'t printed anything in 15 minutes.');
     expect(h.sent[0]!.text).toContain("/tmp/claude-1000/-work/session-t1/tasks/b1.output");
+  });
+
+  it("ends the idle stretch when you send a message after Cache Keeper's own turn started", async () => {
+    h.threads = waitingOnChild();
+    h.transcript("p", T0, 200_000);
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    await h.engine.skip("p", "warm", false);
+    h.engine.onActive("p");
+    expect(h.store.get("p").stretch?.warmSkipped).toBe(true);
+    h.engine.onActive("p");
+    expect(h.store.get("p").stretch).toBeNull();
+  });
+
+  it("holds a check-in back when the machine's files cannot be read", async () => {
+    h.threads = [thread({ id: "t1", activity: { activeBackgroundCommandCount: 1, activeBackgroundAgentCount: 0 } })];
+    h.transcript("t1", T0, 100_000);
+    h.events.set("t1", [
+      { seq: 1, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
+    ]);
+    h.failTasks = true;
+    h.now = T0 + 16 * MIN;
+    await h.engine.pass();
+    expect(h.sent).toEqual([]);
+  });
+
+  it("waits on a child whose queue holds a failed message beside a pending one", async () => {
+    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", queuedWork: "failed" })];
+    h.queued.set("c", [
+      { sendAt: null, createdAt: T0, failed: true },
+      { sendAt: null, createdAt: T0, failed: false },
+    ]);
+    h.transcript("p", T0, 200_000);
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    expect(h.sent.map((m) => m.threadId)).toEqual(["p"]);
   });
 
   it("ends the idle stretch on a turn it did not cause, and a new one starts fresh", async () => {

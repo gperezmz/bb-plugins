@@ -38,9 +38,21 @@ export interface Rates {
  * write, 2× for a 1-hour one, 0.1× for a read.
  */
 export function ratesOf(price: ModelPrice, lifetime: CacheLifetime): Rates {
-  const w = lifetime === "5m" ? (price.cacheWrite ?? 1.25 * price.input) : (price.cacheWrite1h ?? 2 * price.input);
-  return { w, r: price.cacheRead ?? 0.1 * price.input, o: price.output };
+  const cache = cacheRatesOf(price);
+  return { w: lifetime === "5m" ? cache.write5m : cache.write1h, r: cache.read, o: price.output };
 }
+
+/** A model's cache rates, each missing one taken at its multiple of the input price. */
+export function cacheRatesOf(price: ModelPrice): { write5m: number; write1h: number; read: number } {
+  return {
+    write5m: price.cacheWrite ?? 1.25 * price.input,
+    write1h: price.cacheWrite1h ?? 2 * price.input,
+    read: price.cacheRead ?? 0.1 * price.input,
+  };
+}
+
+/** A compaction reads the context warm and writes a summary: r·C + o·S. */
+export const compactionUsd = (rates: Rates, context: number) => rates.r * context + rates.o * SUMMARY_TOKENS;
 
 export interface LineInput {
   rates: Rates;
@@ -48,14 +60,14 @@ export interface LineInput {
   k: number;
   /** Context after the last compaction, tokens. */
   p: number;
-  /** The setting, 1–10. */
-  n: number;
+  /** The setting N, 1–10: how many times over the first message back must repay compacting. */
+  setting: number;
   /** The model's context window, tokens; the line is "never" above it. */
   window: number;
 }
 
 /** The compaction line in tokens, or null for "never". */
-export function compactionLine({ rates, k, p, n, window }: LineInput): number | null {
+export function compactionLine({ rates, k, p, setting: n, window }: LineInput): number | null {
   if (!Number.isInteger(n) || n < SETTINGS_MIN || n > SETTINGS_MAX) throw new RangeError(`setting must be 1–10, got ${n}`);
   const { w, r, o } = rates;
   const gain = w + k * r;
@@ -69,9 +81,9 @@ export function compactionLine({ rates, k, p, n, window }: LineInput): number | 
 }
 
 /** The line for every setting, index 0 holding setting 1. */
-export function linesFor(input: Omit<LineInput, "n">): (number | null)[] {
+export function linesFor(input: Omit<LineInput, "setting">): (number | null)[] {
   const out: (number | null)[] = [];
-  for (let n = SETTINGS_MIN; n <= SETTINGS_MAX; n++) out.push(compactionLine({ ...input, n }));
+  for (let setting = SETTINGS_MIN; setting <= SETTINGS_MAX; setting++) out.push(compactionLine({ ...input, setting }));
   return out;
 }
 
@@ -106,15 +118,12 @@ export function parseSize(text: string): number | null {
   return Number.isFinite(tokens) ? Math.round(tokens) : null;
 }
 
-/** A token count to the nearest thousand: `140k`, `1.2M`; the line's display form. */
+/** A token count to the nearest thousand: `140k`, `1.234M`; the line's display form. */
 export function formatSize(tokens: number | null): string {
   if (tokens === null) return "never";
   const k = Math.round(tokens / 1_000);
-  if (k >= 1_000) {
-    const m = k / 1_000;
-    return `${Number.isInteger(m) ? m : m.toFixed(m >= 10 ? 1 : 2).replace(/0+$/, "")}M`;
-  }
-  return `${k}k`;
+  if (k < 1_000) return `${k}k`;
+  return `${(k / 1_000).toFixed(3).replace(/\.?0+$/, "")}M`;
 }
 
 /** The dollar figures behind a line, at a given context. */
@@ -129,7 +138,7 @@ export interface LineWhy {
 
 export function lineWhy(rates: Rates, k: number, p: number, context: number): LineWhy {
   return {
-    compactUsd: rates.r * context + rates.o * SUMMARY_TOKENS,
+    compactUsd: compactionUsd(rates, context),
     savedUsd: Math.max(0, (rates.w + k * rates.r) * (context - p)),
     coldRewriteUsd: rates.w * context,
   };

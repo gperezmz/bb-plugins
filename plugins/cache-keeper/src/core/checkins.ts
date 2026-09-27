@@ -33,15 +33,15 @@ export function routineDueAt(clock: TaskClock): number {
   return Math.max(clock.startedAt, clock.lastCheckInAt ?? -Infinity) + ROUTINE_MS;
 }
 
-/** Quiet for the wait: no output or progress for W. */
-export function isQuiet(clock: TaskClock, now: number, waitMs: number): boolean {
+/** Stalled: no output or progress for the no-output wait W. */
+export function isStalled(clock: TaskClock, now: number, waitMs: number): boolean {
   return now - clock.lastActivityAt >= waitMs;
 }
 
 /** The check-in `clock` is due at `now`, or null. */
 export function dueCheckIn(clock: TaskClock, now: number, waitMs: number): CheckInReason | null {
   if (now >= stalledDueAt(clock, waitMs)) return "stalled";
-  if (!isQuiet(clock, now, waitMs) && now >= routineDueAt(clock)) return "routine";
+  if (!isStalled(clock, now, waitMs) && now >= routineDueAt(clock)) return "routine";
   return null;
 }
 
@@ -49,7 +49,7 @@ export function dueCheckIn(clock: TaskClock, now: number, waitMs: number): Check
 export function nextCheckInAt(clock: TaskClock, now: number, waitMs: number): number {
   const stalled = stalledDueAt(clock, waitMs);
   const routine = routineDueAt(clock);
-  return isQuiet(clock, now, waitMs) ? stalled : Math.min(stalled, routine);
+  return isStalled(clock, now, waitMs) ? stalled : Math.min(stalled, routine);
 }
 
 /** The clock after a check-in for `reason` was sent at `at`. */

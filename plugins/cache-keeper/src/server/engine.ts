@@ -7,9 +7,10 @@
  * `EngineDeps`, so a test drives it with fakes.
  */
 import { afterActivity, afterCheckIn, type TaskClock } from "../core/checkins";
-import { compactionUsd, requestsUsd } from "../core/cost";
-import { keepWarmUsd, newStretch, plan, type KeeperAction, type Stretch, type WatchedTask } from "../core/keeper";
+import { requestsUsd } from "../core/cost";
+import { keepWarmUsd, newIdleStretch, plan, type KeeperAction, type IdleStretch, type WatchedTask } from "../core/keeper";
 import {
+  compactionUsd,
   DEFAULT_CALLS_PER_MESSAGE,
   DEFAULT_POST_COMPACTION,
   DEFAULT_SETTING,
@@ -19,9 +20,9 @@ import {
 } from "../core/line";
 import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
-import { callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import { countItems, type ThreadView } from "../core/view";
-import { waitingChildren, type WaitItem, type WaitThread } from "../core/waiting";
+import { hasOwnWork, waitingChildren, type TaskKind, type WaitItem, type WaitThread } from "../core/waiting";
 import type { KeeperSettings } from "./settings";
 import type { Store, TaskRecord, ThreadRecord } from "./store";
 
@@ -94,8 +95,11 @@ interface Observed {
 }
 
 const DEFAULT_WINDOW = 200_000;
-/** A send whose turn never showed up is given up on after this long. */
+/** A send whose turn never ended is given up on after this long. */
 const IN_FLIGHT_MS = 10 * 60_000;
+/** A send bb has not yet reported active is taken as the cause of the next activation within this long. */
+const START_MS = 2 * 60_000;
+export const DAY_MS = 86_400_000;
 const LAST_SETTING_META = "lastSetting";
 /** How long a thread a surface showed keeps being read on every pass. */
 const VIEWED_MS = 10 * 60_000;
@@ -108,6 +112,7 @@ export class Engine {
   private views = new Map<string, ThreadView>();
   private passing: Promise<void> | null = null;
   private windows = new Map<string, number>();
+  private pendingQueued = new Map<string, number>();
   /** When a surface last asked for each thread; a thread stays read for a while after. */
   private viewedAt = new Map<string, number>();
 
@@ -129,7 +134,7 @@ export class Engine {
       return;
     }
     const record = this.deps.store.get(threadId);
-    let next: ThreadRecord = { ...record, stretch: record.stretch ?? newStretch(now) };
+    let next: ThreadRecord = { ...record, stretch: record.stretch ?? newIdleStretch(now) };
     if (record.inFlight !== null && record.inFlight.kind === "check-in") {
       const cost = await this.checkInCost(threadId, record.inFlight.at).catch(() => null);
       if (cost !== null && next.stretch !== null) {
@@ -147,7 +152,12 @@ export class Engine {
     if (!this.deps.store.has(threadId)) return;
     const now = this.deps.now();
     const record = this.deps.store.get(threadId);
-    if (record.inFlight !== null && now - record.inFlight.at < IN_FLIGHT_MS) return;
+    const inFlight = record.inFlight;
+    // The first activation after a send is the send's turn; any other ends the stretch.
+    if (inFlight !== null && inFlight.started !== true && now - inFlight.at < START_MS) {
+      this.deps.store.put(threadId, { ...record, inFlight: { ...inFlight, started: true } }, now);
+      return;
+    }
     if (record.stretch === null) return;
     this.endStretch(threadId, record, now);
   }
@@ -182,9 +192,34 @@ export class Engine {
     await this.passing;
   }
 
-  private async run(only: string[] | null): Promise<void> {
+  /** bb's threads, with the queued messages of any whose queue holds a failed one counted, since a failed message hides pending ones. */
+  private async load(): Promise<ListedThread[]> {
     const listed = await this.deps.listThreads();
     this.threads = new Map(listed.map((t) => [t.id, t]));
+    this.pendingQueued = new Map();
+    for (const t of listed) {
+      if (t.queuedWork !== "failed") continue;
+      const queued = await this.deps.queuedMessages(t.id).catch(() => []);
+      this.pendingQueued.set(t.id, queued.filter((q) => !q.failed).length);
+    }
+    return listed;
+  }
+
+  private toWait = (t: ListedThread): WaitThread => ({
+    id: t.id,
+    parentThreadId: t.parentThreadId,
+    status: t.status,
+    archived: t.archivedAt !== null,
+    deleted: t.deletedAt !== null,
+    title: t.title ?? t.titleFallback ?? t.id,
+    createdAt: t.createdAt,
+    activeBackgroundCommandCount: t.activity.activeBackgroundCommandCount,
+    activeBackgroundAgentCount: t.activity.activeBackgroundAgentCount,
+    queuedMessageCount: this.pendingQueued.get(t.id) ?? (t.queuedWork === "waiting" ? 1 : 0),
+  });
+
+  private async run(only: string[] | null): Promise<void> {
+    const listed = await this.load();
     const changed: string[] = [];
     for (const thread of listed) {
       if (only !== null && !only.includes(thread.id)) continue;
@@ -220,7 +255,7 @@ export class Engine {
 
     // After a restart, bb's status is the truth: an idle thread is in a stretch, a working one is not.
     if (thread.status === "idle" && record.stretch === null && (stored || this.mayAct(thread, listed, settings))) {
-      record = { ...record, stretch: newStretch(now) };
+      record = { ...record, stretch: newIdleStretch(now) };
       this.deps.store.put(thread.id, record, now);
     } else if (thread.status !== "idle" && record.stretch !== null && (record.inFlight === null || now - record.inFlight.at >= IN_FLIGHT_MS)) {
       this.endStretch(thread.id, record, now);
@@ -237,14 +272,16 @@ export class Engine {
       this.views.delete(thread.id);
       return;
     }
-    const observed = await this.observe(thread, listed, record);
+    let observed = await this.observe(thread, listed, record);
     const done = observed.facts?.lastCompaction;
-    if (record.compaction !== null && record.compaction.contextAfter === null && done != null && done.at >= record.compaction.at - 60_000) {
+    if (record.compaction !== null && record.compaction.contextAfter === null && done != null && done.at >= record.compaction.at - CACHE_MARGIN_MS) {
       this.deps.store.setContextAfter(record.compaction.historyId, done.postTokens);
       record = { ...record, compaction: { ...record.compaction, contextAfter: done.postTokens } };
     }
-    if (observed.waiting) record = await this.watchTasks(thread, observed, record);
-    else if (Object.keys(record.tasks).length > 0) record = { ...record, tasks: {} };
+    if (observed.waiting) {
+      record = await this.watchTasks(thread, observed, record);
+      observed = { ...observed, items: [...observed.items.filter((i) => i.kind !== "command" && i.kind !== "subagent"), ...taskItems(record)] };
+    } else if (Object.keys(record.tasks).length > 0) record = { ...record, tasks: {} };
     this.deps.store.put(thread.id, record, now);
 
     const input = this.keeperInput(observed, record, now, settings);
@@ -259,16 +296,13 @@ export class Engine {
   }
 
   private waitsByCounts(thread: ListedThread, listed: ListedThread[]): boolean {
-    const w = toWait(thread);
-    return w.activeBackgroundCommandCount > 0 || w.activeBackgroundAgentCount > 0 || w.queuedMessageCount > 0 || waitingChildren(thread.id, listed.map(toWait)).length > 0;
+    return hasOwnWork(this.toWait(thread)) || waitingChildren(thread.id, listed.map(this.toWait)).length > 0;
   }
 
   private async observe(thread: ListedThread, listed: ListedThread[], record: ThreadRecord): Promise<Observed> {
-    const waitThreads = listed.map(toWait);
+    const waitThreads = listed.map(this.toWait);
     const items: WaitItem[] = [];
-    for (const [id, task] of Object.entries(record.tasks)) {
-      items.push({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt });
-    }
+    items.push(...taskItems(record));
     for (const child of waitingChildren(thread.id, waitThreads)) {
       items.push({ kind: "child", id: child.id, title: child.title, startedAt: child.createdAt });
     }
@@ -322,7 +356,8 @@ export class Engine {
         } else if (tasks[item.familyId] === undefined) {
           const clock: TaskClock = { startedAt: e.createdAt, lastActivityAt: e.createdAt, lastCheckInAt: null, stalledStreak: 0 };
           tasks[item.familyId] = { kind, description: item.description ?? "", clock };
-        } else if (e.type === "item/backgroundTask/progress") {
+        } else if (e.type === "item/backgroundTask/progress" && kind === "subagent") {
+          // A command's progress is its output file, read below; bb's events for it say nothing of its output.
           const task = tasks[item.familyId]!;
           tasks[item.familyId] = { ...task, clock: afterActivity(task.clock, e.createdAt) };
         }
@@ -337,10 +372,6 @@ export class Engine {
         const task = tasks[c.id];
         if (task !== undefined && c.changedAt !== null) tasks[c.id] = { ...task, clock: afterActivity(task.clock, c.changedAt) };
       }
-    }
-    observed.items = observed.items.filter((i) => i.kind !== "command" && i.kind !== "subagent");
-    for (const [id, task] of Object.entries(tasks)) {
-      observed.items.push({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt });
     }
     return { ...record, tasks, eventsAfterSeq: afterSeq };
   }
@@ -443,13 +474,21 @@ export class Engine {
     }
   }
 
+  /**
+   * The check-in paragraphs for the tasks due. A task whose output file or
+   * transcript could not be read on its machine is left for a later pass
+   * rather than sent without them.
+   */
   private async checkInTasks(observed: Observed, record: ThreadRecord, action: Extract<KeeperAction, { kind: "check-in" }>, now: number): Promise<CheckInTask[]> {
-    const subagents = action.tasks.filter((t) => record.tasks[t.id]?.kind === "subagent").map((t) => t.id);
-    const commands = action.tasks.filter((t) => record.tasks[t.id]?.kind === "command").map((t) => t.id);
+    const ids = (kind: TaskKind) => action.tasks.filter((t) => record.tasks[t.id]?.kind === kind).map((t) => t.id);
     const hostId = observed.thread.environmentHostId;
-    let read: Awaited<ReturnType<EngineDeps["tasks"]>> = { commands: [], subagents: [] };
-    if (hostId !== null && observed.sessionId !== null && observed.cwdSlug !== null) {
-      read = await this.deps.tasks(hostId, { sessionId: observed.sessionId, cwdSlug: observed.cwdSlug, commands, subagents });
+    if (hostId === null || observed.sessionId === null || observed.cwdSlug === null) return [];
+    let read: Awaited<ReturnType<EngineDeps["tasks"]>>;
+    try {
+      read = await this.deps.tasks(hostId, { sessionId: observed.sessionId, cwdSlug: observed.cwdSlug, commands: ids("command"), subagents: ids("subagent") });
+    } catch (error) {
+      this.deps.log.warn(`could not read ${observed.thread.id}'s background tasks; its check-in waits: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
     }
     const out: CheckInTask[] = [];
     for (const { id, reason } of action.tasks) {
@@ -460,14 +499,15 @@ export class Engine {
         reason,
         description: task.description,
         startedAt: task.clock.startedAt,
-        quietMs: now - task.clock.lastActivityAt,
+        silentMs: now - task.clock.lastActivityAt,
         runningMs: now - task.clock.startedAt,
       };
       if (task.kind === "command") {
-        const outputFile = read.commands.find((c) => c.id === id)?.outputFile ?? `${id}.output`;
-        out.push({ kind: "command", ...common, outputFile });
+        const command = read.commands.find((c) => c.id === id);
+        if (command !== undefined) out.push({ kind: "command", ...common, outputFile: command.outputFile });
       } else {
-        out.push({ kind: "subagent", ...common, lastTool: read.subagents.find((s) => s.id === id)?.lastTool ?? "unknown" });
+        const subagent = read.subagents.find((a) => a.id === id);
+        if (subagent !== undefined) out.push({ kind: "subagent", ...common, lastTool: subagent.lastTool ?? "none yet" });
       }
     }
     return out;
@@ -492,10 +532,10 @@ export class Engine {
     threadId: string,
     text: string,
     inFlight: NonNullable<ThreadRecord["inFlight"]>,
-    change: (stretch: Stretch) => Stretch,
+    change: (stretch: IdleStretch) => IdleStretch,
   ): Promise<boolean> {
     const now = this.deps.now();
-    const before = this.deps.store.update(threadId, now, (r) => ({ ...r, inFlight, stretch: r.stretch ?? newStretch(now) }));
+    const before = this.deps.store.update(threadId, now, (r) => ({ ...r, inFlight, stretch: r.stretch ?? newIdleStretch(now) }));
     try {
       await this.deps.send(threadId, text);
     } catch (error) {
@@ -503,7 +543,7 @@ export class Engine {
       this.deps.log.warn(`could not send ${inFlight.kind} to ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
-    this.deps.store.update(threadId, now, (r) => ({ ...r, stretch: change(r.stretch ?? newStretch(now)) }));
+    this.deps.store.update(threadId, now, (r) => ({ ...r, stretch: change(r.stretch ?? newIdleStretch(now)) }));
     this.deps.publish([threadId]);
     return true;
   }
@@ -523,8 +563,7 @@ export class Engine {
   async viewOf(threadId: string): Promise<ThreadView | null> {
     this.viewedAt.set(threadId, this.deps.now());
     if (!this.views.has(threadId)) {
-      const listed = await this.deps.listThreads();
-      this.threads = new Map(listed.map((t) => [t.id, t]));
+      const listed = await this.load();
       const thread = this.threads.get(threadId);
       if (thread === undefined || thread.providerId !== "claude-code") return null;
       const record = this.deps.store.get(threadId);
@@ -537,11 +576,6 @@ export class Engine {
 
   allViews(): ThreadView[] {
     return [...this.views.values()];
-  }
-
-  isKnownNonClaude(threadId: string): boolean {
-    const t = this.threads.get(threadId);
-    return t !== undefined && t.providerId !== "claude-code";
   }
 
   /** Switches compact-when-idle on or off, optionally at a setting. */
@@ -569,7 +603,7 @@ export class Engine {
   async skip(threadId: string, what: "compaction" | "warm", undo: boolean): Promise<ThreadView | null> {
     const now = this.deps.now();
     this.deps.store.update(threadId, now, (r) => {
-      const stretch = r.stretch ?? newStretch(now);
+      const stretch = r.stretch ?? newIdleStretch(now);
       return { ...r, stretch: what === "compaction" ? { ...stretch, compactSkipped: !undo } : { ...stretch, warmSkipped: !undo } };
     });
     return this.refresh(threadId);
@@ -578,8 +612,7 @@ export class Engine {
   /** Compacts now, over the line or not, when the thread is idle, has no pending interaction and is not waiting. */
   async compactNow(threadId: string): Promise<ThreadView | null> {
     await this.requireClaude(threadId);
-    const listed = await this.deps.listThreads();
-    this.threads = new Map(listed.map((t) => [t.id, t]));
+    const listed = await this.load();
     const thread = this.threads.get(threadId)!;
     const record = this.deps.store.get(threadId);
     const observed = await this.observe(thread, listed, record);
@@ -599,7 +632,7 @@ export class Engine {
   }
 
   private async requireClaude(threadId: string): Promise<void> {
-    if (!this.threads.has(threadId)) this.threads = new Map((await this.deps.listThreads()).map((t) => [t.id, t]));
+    if (!this.threads.has(threadId)) await this.load();
     const thread = this.threads.get(threadId);
     if (thread === undefined) throw new NotReadyError(`no thread ${threadId}`);
     if (thread.providerId !== "claude-code") throw new ClaudeOnlyError("Cache Keeper acts on Claude Code threads only");
@@ -607,7 +640,7 @@ export class Engine {
 
   /** Totals for the last `days` days. */
   totals(days: number) {
-    const rows = this.deps.store.history(this.deps.now() - days * 86_400_000, 100_000);
+    const rows = this.deps.store.history(this.deps.now() - days * DAY_MS, 100_000);
     const sum = (kind: string) => rows.filter((r) => r.kind === kind).reduce((s, r) => s + (r.record.usd ?? 0), 0);
     const count = (kind: string) => rows.filter((r) => r.kind === kind).length;
     return {
@@ -621,17 +654,6 @@ export class Engine {
   }
 }
 
-function toWait(t: ListedThread): WaitThread {
-  return {
-    id: t.id,
-    parentThreadId: t.parentThreadId,
-    status: t.status,
-    archived: t.archivedAt !== null,
-    deleted: t.deletedAt !== null,
-    title: t.title ?? t.titleFallback ?? t.id,
-    createdAt: t.createdAt,
-    activeBackgroundCommandCount: t.activity.activeBackgroundCommandCount,
-    activeBackgroundAgentCount: t.activity.activeBackgroundAgentCount,
-    queuedMessageCount: t.queuedWork === "waiting" ? 1 : 0,
-  };
+function taskItems(record: ThreadRecord): WaitItem[] {
+  return Object.entries(record.tasks).map(([id, task]) => ({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt }));
 }

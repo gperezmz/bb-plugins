@@ -5,16 +5,13 @@
  * kind the thread waits on and the time to the next, with Skip. It never
  * shows command text or descriptions.
  */
-import { useState } from "react";
-import { useComposer } from "@get-bb/plugin-sdk/app";
 import { formatSize } from "@/src/core/line";
-import { countsText, minutesTo, type ThreadView } from "@/src/core/view";
+import { countsText, minutesTo } from "@/src/core/view";
 import { Button } from "@/components/ui/button";
-import { touches, useKeeperRpc, useLive, useNow } from "../api";
+import { touches, useAction, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 
 export function Banner() {
-  const composer = useComposer();
-  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
+  const threadId = useComposerThreadId();
   if (threadId === null) return null;
   return <ThreadBanner threadId={threadId} />;
 }
@@ -22,18 +19,10 @@ export function Banner() {
 function ThreadBanner({ threadId }: { threadId: string }) {
   const rpc = useKeeperRpc();
   const now = useNow();
-  const [error, setError] = useState<string | null>(null);
   const live = useLive(() => rpc.call("view", { threadId }), [rpc, threadId], (p) => touches(p, [threadId]));
+  const { run: act, error } = useAction((next) => next !== null && live.setData(next));
   const view = live.data;
   if (view === null || !view.eligible || view.status !== "idle" || view.hasPendingInteraction) return null;
-  const act = (call: Promise<ThreadView | null>) =>
-    call.then(
-      (next) => {
-        setError(null);
-        if (next !== null) live.setData(next);
-      },
-      (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
-    );
 
   let body: React.ReactNode = null;
   if (view.compactionDue && view.deadline !== null) {

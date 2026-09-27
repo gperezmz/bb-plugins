@@ -3,24 +3,15 @@
  * line's handle, the status line, what the line rests on, and a folded
  * "Why {line}?" with the dollar figures.
  */
-import { useState } from "react";
 import { formatSize, lineWhy } from "@/src/core/line";
 import { statusText, type ThreadView } from "@/src/core/view";
-import { useKeeperRpc } from "../api";
+import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { ContextBar } from "./ContextBar";
 
 export function CompactPopover({ view, now, onChange }: { view: ThreadView; now: number; onChange: (next: ThreadView | null) => void }) {
   const rpc = useKeeperRpc();
-  const [error, setError] = useState<string | null>(null);
-  const run = (call: Promise<ThreadView | null>) =>
-    call.then(
-      (next) => {
-        setError(null);
-        onChange(next);
-      },
-      (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
-    );
+  const { run, error } = useAction(onChange);
   const line = formatSize(view.line);
   const lifetime = view.lifetime === null ? "cache lifetime not read yet" : view.lifetime === "5m" ? "5 min cache" : "1 h cache";
 
@@ -71,7 +62,7 @@ function Why({ view, line }: { view: ThreadView; line: string }) {
           {perM(rates.w)}/M instead of {formatSize(view.postCompaction)}
           {view.postMeasured ? "" : " (assumed)"}, and {view.callsPerMessage.toFixed(1)} reads at {perM(rates.r)}/M.
         </p>
-        <p>That repays compacting {view.setting}×, the setting the handle is at. A cold rewrite of the whole context now costs {formatUsd(at.coldRewriteUsd)}.</p>
+        <p>{line} is the smallest size at which that saving repays compacting as many times over as the handle asks. A cold rewrite of the whole thread at {line} costs {formatUsd(at.coldRewriteUsd)}.</p>
       </div>
     </details>
   );

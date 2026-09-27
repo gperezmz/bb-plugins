@@ -3,8 +3,9 @@
  * idle stretch stands, what was sent, and the fetched price lists. Rows hold
  * JSON; indexed columns are only what queries filter on.
  */
-import type { TaskClock } from "../core/checkins";
-import type { Stretch } from "../core/keeper";
+import type { CheckInReason, TaskClock } from "../core/checkins";
+import type { IdleStretch } from "../core/keeper";
+import type { TaskKind } from "../core/waiting";
 
 /** The subset of better-sqlite3's Database the store uses. */
 export interface Db {
@@ -37,7 +38,7 @@ export const MIGRATIONS: string[] = [
 
 /** A background task Cache Keeper watches on a thread. */
 export interface TaskRecord {
-  kind: "command" | "subagent";
+  kind: TaskKind;
   description: string;
   clock: TaskClock;
 }
@@ -48,13 +49,15 @@ export interface InFlight {
   at: number;
   /** The history row the send wrote, for its cost once the turn ends. */
   historyId: number;
+  /** bb reported the thread active after the send: that activation was this message's. */
+  started?: boolean;
 }
 
 export interface ThreadRecord {
   compactOn: boolean;
   /** The setting N; null until switched on. */
   setting: number | null;
-  stretch: Stretch | null;
+  stretch: IdleStretch | null;
   inFlight: InFlight | null;
   tasks: Record<string, TaskRecord>;
   /** Last background-task event read from bb, so a restart reads on from it. */
@@ -99,7 +102,7 @@ export interface HistoryRecord {
   contextBefore?: number | null;
   contextAfter?: number | null;
   /** Check-in: the tasks it asked about. */
-  tasks?: { id: string; kind: "command" | "subagent"; reason: "stalled" | "routine" }[];
+  tasks?: { id: string; kind: TaskKind; reason: CheckInReason }[];
   /** Return: the cold rewrite a compaction spared the first message back. */
   avoidedUsd?: number;
 }
@@ -140,17 +143,9 @@ export class Store {
     return next;
   }
 
-  remove(threadId: string): void {
-    this.db.prepare("DELETE FROM threads WHERE thread_id = ?").run(threadId);
-  }
-
   all(): { threadId: string; record: ThreadRecord }[] {
     const rows = this.db.prepare("SELECT thread_id, record FROM threads").all() as { thread_id: string; record: string }[];
     return rows.map((r) => ({ threadId: r.thread_id, record: { ...emptyRecord(), ...parse<Partial<ThreadRecord>>(r.record, {}) } }));
-  }
-
-  compactOnIds(): string[] {
-    return (this.db.prepare("SELECT thread_id FROM threads WHERE compact_on = 1").all() as { thread_id: string }[]).map((r) => r.thread_id);
   }
 
   addHistory(threadId: string, at: number, kind: HistoryKind, record: HistoryRecord): number {
@@ -161,9 +156,17 @@ export class Store {
   }
 
   setHistoryCost(id: number, usd: number): void {
+    this.patchHistory(id, { usd });
+  }
+
+  setContextAfter(id: number, contextAfter: number): void {
+    this.patchHistory(id, { contextAfter });
+  }
+
+  private patchHistory(id: number, patch: Partial<HistoryRecord>): void {
     const row = this.db.prepare("SELECT record FROM history WHERE id = ?").get(id) as { record: string } | undefined;
     if (row === undefined) return;
-    this.db.prepare("UPDATE history SET record = ? WHERE id = ?").run(JSON.stringify({ ...parse<HistoryRecord>(row.record, { usd: null }), usd }), id);
+    this.db.prepare("UPDATE history SET record = ? WHERE id = ?").run(JSON.stringify({ ...parse<HistoryRecord>(row.record, { usd: null }), ...patch }), id);
   }
 
   history(since: number, limit = 1000): HistoryRow[] {
@@ -171,14 +174,6 @@ export class Store {
       .prepare("SELECT id, thread_id, at, kind, record FROM history WHERE at >= ? ORDER BY at DESC LIMIT ?")
       .all(since, limit) as { id: number; thread_id: string; at: number; kind: HistoryKind; record: string }[];
     return rows.map((r) => ({ id: r.id, threadId: r.thread_id, at: r.at, kind: r.kind, record: parse<HistoryRecord>(r.record, { usd: null }) }));
-  }
-
-  setContextAfter(id: number, contextAfter: number): void {
-    const row = this.db.prepare("SELECT record FROM history WHERE id = ?").get(id) as { record: string } | undefined;
-    if (row === undefined) return;
-    this.db
-      .prepare("UPDATE history SET record = ? WHERE id = ?")
-      .run(JSON.stringify({ ...parse<HistoryRecord>(row.record, { usd: null }), contextAfter }), id);
   }
 
   pruneHistory(before: number): void {

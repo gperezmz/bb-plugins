@@ -1,14 +1,12 @@
 /**
  * The sidebar glyph: Cache Keeper's icon on a row while its compaction is
  * due, a clock while a keep-warm or check-in is due. A content script, so it
- * reads the server over plain HTTP and polls rather than using hooks.
+ * polls the server through `fetchRowStatuses` rather than using hooks.
  */
 import type { PluginContentScriptContext } from "@get-bb/plugin-sdk/app";
-import { KEEPER_ICON, PLUGIN_ID } from "./api";
+import { fetchRowStatuses, KEEPER_ICON } from "./api";
 
 const POLL_MS = 20_000;
-
-type RowStatus = { threadId: string; status: "compaction" | "clock" };
 
 export function mountRowStatus(context: PluginContentScriptContext): () => void {
   const set = context.experimental_setThreadRowStatus;
@@ -16,15 +14,7 @@ export function mountRowStatus(context: PluginContentScriptContext): () => void 
   if (set === undefined) return () => {};
   let shown = new Set<string>();
   const load = async () => {
-    const res = await fetch(`/api/v1/plugins/${PLUGIN_ID}/rpc/rowStatuses`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "null",
-      signal: context.signal,
-    });
-    if (!res.ok) return;
-    const rows = (await res.json()) as RowStatus[] | { result?: RowStatus[] };
-    const list = Array.isArray(rows) ? rows : (rows.result ?? []);
+    const list = await fetchRowStatuses(context.signal);
     const next = new Set<string>();
     for (const row of list) {
       next.add(row.threadId);

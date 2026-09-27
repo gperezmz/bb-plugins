@@ -4,16 +4,15 @@
  * pending interaction. Clicking opens the popover.
  */
 import { useState } from "react";
-import { experimental_Icon as Icon, useComposer } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { chipSentence, chipText, type ThreadView } from "@/src/core/view";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { KEEPER_ICON, touches, useKeeperRpc, useLive, useNow } from "../api";
+import { KEEPER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 import { CompactPopover } from "./CompactPopover";
 
 export function Chip() {
-  const composer = useComposer();
-  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
+  const threadId = useComposerThreadId();
   if (threadId === null) return null;
   return <ThreadChip threadId={threadId} />;
 }

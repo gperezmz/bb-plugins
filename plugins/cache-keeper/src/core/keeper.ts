@@ -9,10 +9,11 @@
  */
 import { dueCheckIn, nextCheckInAt, type CheckInReason, type TaskClock } from "./checkins";
 import type { Rates } from "./line";
-import type { WaitItem } from "./waiting";
+import { CACHE_MARGIN_MS } from "./transcript";
+import type { TaskKind, WaitItem } from "./waiting";
 
 /** The thread's idle stretch: from turning idle to the next turn Cache Keeper did not cause. */
-export interface Stretch {
+export interface IdleStretch {
   startedAt: number;
   compactedAt: number | null;
   compactSkipped: boolean;
@@ -21,7 +22,7 @@ export interface Stretch {
   warmSpentUsd: number;
 }
 
-export const newStretch = (at: number): Stretch => ({
+export const newIdleStretch = (at: number): IdleStretch => ({
   startedAt: at,
   compactedAt: null,
   compactSkipped: false,
@@ -31,7 +32,7 @@ export const newStretch = (at: number): Stretch => ({
 
 /** A background task Cache Keeper watches, with its clocks. */
 export interface WatchedTask {
-  kind: "command" | "subagent";
+  kind: TaskKind;
   id: string;
   clock: TaskClock;
 }
@@ -53,7 +54,7 @@ export interface KeeperInput {
   compactOn: boolean;
   /** The thread's compaction line; null is "never". */
   line: number | null;
-  stretch: Stretch | null;
+  stretch: IdleStretch | null;
   checkIns: boolean;
   waitMs: number;
 }
@@ -75,8 +76,8 @@ export interface KeeperPlan {
 
 const NONE: KeeperPlan = { compactionDue: false, warmDue: false, nextWarmAt: null, action: null };
 
-/** How long after the deadline the cache is still warm enough to act. */
-export const ACT_WINDOW_MS = 60_000;
+/** How long after the deadline the cache is still warm enough to act: the margin the deadline leaves. */
+const ACT_WINDOW_MS = CACHE_MARGIN_MS;
 
 /** Estimated cost of one keep-warm: a cache read of the context. */
 export const keepWarmUsd = (rates: Rates, context: number) => rates.r * context;
@@ -90,7 +91,7 @@ const inWindow = (now: number, deadline: number | null) => deadline !== null && 
  * Whether keep-warms are pointless because the only thing waited on is a
  * scheduled message due after the cost stop would be reached.
  */
-export function scheduledBeyondStop(input: KeeperInput): boolean {
+function scheduledBeyondStop(input: KeeperInput): boolean {
   const { items, rates, context, deadline, lifetimeMs, stretch } = input;
   if (items.length === 0 || !items.every((i) => i.kind === "scheduled")) return false;
   if (rates === null || context === null || deadline === null || lifetimeMs === null) return false;

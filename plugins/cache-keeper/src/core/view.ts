@@ -3,6 +3,7 @@
  * thread, as data. Every surface reads this rather than working it out.
  */
 import { formatSize, type CacheLifetime } from "./line";
+import { joinAnd } from "./messages";
 import type { WaitItem } from "./waiting";
 
 /** The realtime channel every surface refetches on; its payload names the changed threads. */
@@ -113,12 +114,17 @@ export function countsText(counts: WaitCounts): string {
   if (counts.subagents > 0) parts.push(plural(counts.subagents, "background subagent", "background subagents"));
   if (counts.children > 0) parts.push(plural(counts.children, "child thread", "child threads"));
   if (counts.messages > 0) parts.push(plural(counts.messages, "queued message", "queued messages"));
-  if (parts.length <= 1) return parts[0] ?? "background work";
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return parts.length === 0 ? "background work" : joinAnd(parts);
+}
+
+/** A sidebar row showing a Cache Keeper glyph, and which. */
+export interface RowGlyph {
+  threadId: string;
+  status: "compaction" | "clock";
 }
 
 /** What the sidebar row shows in place of its status glyph, or null. */
-export function rowStatus(view: ThreadView): "compaction" | "clock" | null {
+export function rowStatus(view: ThreadView): RowGlyph["status"] | null {
   if (view.compactionDue) return "compaction";
   if (view.warmDue) return "clock";
   return null;

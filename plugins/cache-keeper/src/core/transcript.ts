@@ -8,6 +8,7 @@
  * incremental: lines are fed in file order, as they are appended.
  */
 import type { CacheLifetime } from "./line";
+import { isKeeperMessage } from "./messages";
 
 /** A request in the transcript, as the cost of a check-in reads it. */
 export interface TranscriptRequest {
@@ -53,18 +54,18 @@ const toMs = (v: unknown): number | null => {
   return Number.isNaN(ms) ? null : ms;
 };
 
-/** A typed prompt: a user line that is not a tool result, a meta line or a compaction summary. */
-function isUserMessage(line: Json): boolean {
-  if (line.type !== "user" || line.isMeta === true || line.isCompactSummary === true || line.isSidechain === true) return false;
+/** The text of a user line, or null for a tool result, a meta line or a compaction summary. */
+function userText(line: Json): string | null {
+  if (line.type !== "user" || line.isMeta === true || line.isCompactSummary === true || line.isSidechain === true) return null;
   const content = rec(line.message).content;
-  const typed = (text: string) => text.trim() !== "" && !NOT_TYPED.test(text);
-  if (typeof content === "string") return typed(content);
-  if (!Array.isArray(content) || content.some((block) => rec(block).type === "tool_result")) return false;
-  return content.some((block) => rec(block).type === "text" && typed(str(rec(block).text) ?? ""));
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content) || content.some((block) => rec(block).type === "tool_result")) return null;
+  const texts = content.filter((block) => rec(block).type === "text").map((block) => str(rec(block).text) ?? "");
+  return texts.length === 0 ? null : texts.join("\n");
 }
 
-/** Lines Claude Code writes as the user without anyone typing them. */
-const NOT_TYPED = /^\s*<(task-notification|local-command-stdout|local-command-stderr|local-command-caveat)>/;
+/** Lines Claude Code writes as the user without anyone typing them, and `/compact` itself. */
+const NOT_TYPED = /^\s*<(task-notification|local-command-stdout|local-command-stderr|local-command-caveat)>|<command-name>\/compact<\/command-name>/;
 
 /** Reads one request from an assistant line, or null. */
 export function requestOf(line: Json): (TranscriptRequest & { key: string }) | null {
@@ -100,6 +101,8 @@ export class TranscriptFold {
   private lastKey: string | null = null;
   private contextAt = -Infinity;
   private readonly recent: (TranscriptRequest & { key: string })[] = [];
+  /** Inside a turn a Cache Keeper message started: its requests are not the user's calls per message. */
+  private keeperTurn = false;
 
   constructor(private readonly keepRecent = 200) {}
 
@@ -117,14 +120,16 @@ export class TranscriptFold {
       }
       return;
     }
-    if (isUserMessage(line)) {
-      this.facts.userMessages += 1;
+    const text = userText(line);
+    if (text !== null && text.trim() !== "" && !NOT_TYPED.test(text)) {
+      this.keeperTurn = isKeeperMessage(text);
+      if (!this.keeperTurn) this.facts.userMessages += 1;
       return;
     }
     const request = requestOf(line);
     if (request === null) return;
     if (request.key !== this.lastKey) {
-      this.facts.requests += 1;
+      if (!this.keeperTurn) this.facts.requests += 1;
       this.lastKey = request.key;
       this.recent.push(request);
       if (this.recent.length > this.keepRecent) this.recent.shift();
@@ -158,10 +163,13 @@ export function callsPerMessage(facts: Pick<TranscriptFacts, "requests" | "userM
   return facts.userMessages > 0 ? facts.requests / facts.userMessages : fallback;
 }
 
+/** The minute before the cache expires in which Cache Keeper acts. */
+export const CACHE_MARGIN_MS = 60_000;
+
 /** When the cache expires, less the minute Cache Keeper acts before it; null without a request or lifetime. */
 export function deadlineOf(facts: Pick<TranscriptFacts, "lastRequestAt" | "lifetime">): number | null {
   if (facts.lastRequestAt === null || facts.lifetime === null) return null;
-  return facts.lastRequestAt + lifetimeMs(facts.lifetime) - 60_000;
+  return facts.lastRequestAt + lifetimeMs(facts.lifetime) - CACHE_MARGIN_MS;
 }
 
 export function lifetimeMs(lifetime: CacheLifetime): number {

@@ -48,8 +48,8 @@ describe("messages", () => {
 
   it("writes one paragraph per task and the closing line", () => {
     const text = checkInText([
-      { kind: "subagent", reason: "routine", id: "a1", description: "Explore", startedAt: 1, quietMs: 0, runningMs: 30 * 60_000, lastTool: "Grep" },
-      { kind: "command", reason: "stalled", id: "b1", description: "npm test", startedAt: 2, quietMs: 15 * 60_000, runningMs: 0, outputFile: "/tmp/b1.output" },
+      { kind: "subagent", reason: "routine", id: "a1", description: "Explore", startedAt: 1, silentMs: 0, runningMs: 30 * 60_000, lastTool: "Grep" },
+      { kind: "command", reason: "stalled", id: "b1", description: "npm test", startedAt: 2, silentMs: 15 * 60_000, runningMs: 0, outputFile: "/tmp/b1.output" },
     ]);
     expect(text.split("\n\n")).toEqual([
       `Background command b1 ("npm test") hasn't printed anything in 15 minutes. Can you check it's still moving? Its output is in /tmp/b1.output. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`,

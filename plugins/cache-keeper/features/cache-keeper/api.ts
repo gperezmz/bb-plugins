@@ -3,8 +3,8 @@
  * on Cache Keeper's change signal.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
-import { CHANGED } from "@/src/core/view";
+import { useComposer, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import { CHANGED, type RowGlyph, type ThreadView } from "@/src/core/view";
 import type { RpcContract } from "@/src/server/rpc";
 
 export const PLUGIN_ID = "cache-keeper";
@@ -68,4 +68,40 @@ export function useNow(ms = 15_000): number {
     return () => clearInterval(timer);
   }, [ms]);
   return now;
+}
+
+/** The thread of the composer a surface is mounted in, or null outside a thread. */
+export function useComposerThreadId(): string | null {
+  const { scope } = useComposer();
+  return scope.kind === "thread" ? scope.threadId : null;
+}
+
+/** Runs an RPC that answers with the thread's new view, keeping its error to show. */
+export function useAction(onDone: (next: ThreadView | null) => void) {
+  const [error, setError] = useState<string | null>(null);
+  const run = (call: Promise<ThreadView | null>) =>
+    call.then(
+      (next) => {
+        setError(null);
+        onDone(next);
+      },
+      (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
+    );
+  return { run, error };
+}
+
+/**
+ * The rows that show a Cache Keeper glyph, for the sidebar script, which
+ * runs outside React and so cannot use `useRpc`.
+ */
+export async function fetchRowStatuses(signal: AbortSignal): Promise<RowGlyph[]> {
+  const res = await fetch(`/api/v1/plugins/${PLUGIN_ID}/rpc/rowStatuses`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "null",
+    signal,
+  });
+  if (!res.ok) throw new Error(`rowStatuses: HTTP ${res.status}`);
+  const body = (await res.json()) as RowGlyph[] | { result?: RowGlyph[] };
+  return Array.isArray(body) ? body : (body.result ?? []);
 }

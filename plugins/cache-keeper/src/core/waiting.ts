@@ -21,6 +21,9 @@ export interface WaitThread {
   queuedMessageCount: number;
 }
 
+/** The background tasks a thread runs itself, the ones that get check-ins. */
+export type TaskKind = "command" | "subagent";
+
 export type WaitItem =
   | { kind: "command"; id: string; description: string; startedAt: number }
   | { kind: "subagent"; id: string; description: string; startedAt: number }
@@ -52,7 +55,7 @@ export function waitingChildren(parentId: string, threads: readonly WaitThread[]
     if (cached !== undefined) return cached;
     if (seen.has(t.id)) return false;
     seen.add(t.id);
-    const result = ownWork(t) || (byParent.get(t.id) ?? []).some((c) => working(c) || waits(c, seen));
+    const result = hasOwnWork(t) || (byParent.get(t.id) ?? []).some((c) => working(c) || waits(c, seen));
     memo.set(t.id, result);
     return result;
   };
@@ -60,9 +63,10 @@ export function waitingChildren(parentId: string, threads: readonly WaitThread[]
 }
 
 const working = (t: WaitThread) => t.status !== "idle" && t.status !== "error";
-const ownWork = (t: WaitThread) => t.activeBackgroundCommandCount > 0 || t.activeBackgroundAgentCount > 0 || t.queuedMessageCount > 0;
+/** Its own background work or queued messages. */
+export const hasOwnWork = (t: WaitThread) => t.activeBackgroundCommandCount > 0 || t.activeBackgroundAgentCount > 0 || t.queuedMessageCount > 0;
 
 /** Whether `thread` is waiting, from bb's counts and its children. */
 export function isWaiting(thread: WaitThread, threads: readonly WaitThread[]): boolean {
-  return ownWork(thread) || waitingChildren(thread.id, threads).length > 0;
+  return hasOwnWork(thread) || waitingChildren(thread.id, threads).length > 0;
 }

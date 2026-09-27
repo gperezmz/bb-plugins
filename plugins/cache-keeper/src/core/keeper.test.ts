@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { afterActivity, afterCheckIn, dueCheckIn, type TaskClock } from "./checkins";
-import { newStretch, plan, type KeeperInput } from "./keeper";
+import { newIdleStretch, plan, type KeeperInput } from "./keeper";
 
 const MIN = 60_000;
 const rates = { w: 10e-6, r: 0.5e-6, o: 25e-6 };
@@ -19,7 +19,7 @@ const base = (over: Partial<KeeperInput> = {}): KeeperInput => ({
   rates,
   compactOn: true,
   line: 140_000,
-  stretch: newStretch(0),
+  stretch: newIdleStretch(0),
   checkIns: true,
   waitMs: 15 * MIN,
   ...over,
@@ -45,8 +45,8 @@ describe("plan: compaction", () => {
     ["working", { status: "active" }],
     ["pending interaction", { hasPendingInteraction: true }],
     ["another provider", { claudeCode: false }],
-    ["skipped", { stretch: { ...newStretch(0), compactSkipped: true } }],
-    ["compacted this stretch", { stretch: { ...newStretch(0), compactedAt: 1 } }],
+    ["skipped", { stretch: { ...newIdleStretch(0), compactSkipped: true } }],
+    ["compacted this stretch", { stretch: { ...newIdleStretch(0), compactedAt: 1 } }],
   ] as [string, Partial<KeeperInput>][])("does nothing when %s", (_name, over) => {
     expect(plan(base(over)).action).toBeNull();
   });
@@ -68,8 +68,8 @@ describe("plan: keep-warms and check-ins", () => {
   });
 
   it("stops at the cost stop and after Skip", () => {
-    expect(plan(waiting({ stretch: { ...newStretch(0), warmSpentUsd: rates.w * 300_000 } })).warmDue).toBe(false);
-    expect(plan(waiting({ stretch: { ...newStretch(0), warmSkipped: true } })).warmDue).toBe(false);
+    expect(plan(waiting({ stretch: { ...newIdleStretch(0), warmSpentUsd: rates.w * 300_000 } })).warmDue).toBe(false);
+    expect(plan(waiting({ stretch: { ...newIdleStretch(0), warmSkipped: true } })).warmDue).toBe(false);
     expect(plan(waiting({ hasPendingInteraction: true })).warmDue).toBe(false);
   });
 
