@@ -22,6 +22,10 @@
     {
       "name": "pocket-navigation",
       "source": "./plugins/pocket-navigation"
+    },
+    {
+      "name": "cache-keeper",
+      "source": "./plugins/cache-keeper"
     }
   ]
 }
