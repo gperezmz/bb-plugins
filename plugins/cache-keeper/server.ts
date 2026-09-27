@@ -200,7 +200,8 @@ export default async function plugin(bb: BbPluginApi) {
     const size = parseSize(above);
     if (size === null) throw new PluginCliError(`not a size: ${above}`, { code: "bad_size", hint: "Give tokens, e.g. 500k or 0.5m" });
     const view = await engine.viewOf(threadId);
-    if (view === null) return undefined;
+    // With no line known yet (no transcript or price), the thread keeps its setting.
+    if (view === null || view.lines.every((l) => l === null)) return undefined;
     return snapSetting(size, view.lines);
   };
 

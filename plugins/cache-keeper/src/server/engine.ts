@@ -97,6 +97,8 @@ const DEFAULT_WINDOW = 200_000;
 /** A send whose turn never showed up is given up on after this long. */
 const IN_FLIGHT_MS = 10 * 60_000;
 const LAST_SETTING_META = "lastSetting";
+/** How long a thread a surface showed keeps being read on every pass. */
+const VIEWED_MS = 10 * 60_000;
 
 export class ClaudeOnlyError extends Error {}
 export class NotReadyError extends Error {}
@@ -106,6 +108,8 @@ export class Engine {
   private views = new Map<string, ThreadView>();
   private passing: Promise<void> | null = null;
   private windows = new Map<string, number>();
+  /** When a surface last asked for each thread; a thread stays read for a while after. */
+  private viewedAt = new Map<string, number>();
 
   constructor(private readonly deps: EngineDeps) {}
 
@@ -119,8 +123,12 @@ export class Engine {
   /** A thread turned idle: a new idle stretch unless one is running, and the end of a Cache Keeper turn. */
   async onIdle(threadId: string): Promise<void> {
     const now = this.deps.now();
+    // A thread with nothing stored starts its stretch in the pass, if it has anything for Cache Keeper to do.
+    if (!this.deps.store.has(threadId)) {
+      await this.pass([threadId]);
+      return;
+    }
     const record = this.deps.store.get(threadId);
-    if (!this.deps.store.has(threadId) && !this.isClaude(threadId)) return;
     let next: ThreadRecord = { ...record, stretch: record.stretch ?? newStretch(now) };
     if (record.inFlight !== null && record.inFlight.kind === "check-in") {
       const cost = await this.checkInCost(threadId, record.inFlight.at).catch(() => null);
@@ -223,7 +231,8 @@ export class Engine {
       this.deps.store.put(thread.id, record, now);
     }
 
-    const interesting = record.compactOn || this.views.has(thread.id) || this.mayAct(thread, listed, settings);
+    const viewed = now - (this.viewedAt.get(thread.id) ?? -Infinity) < VIEWED_MS;
+    const interesting = record.compactOn || record.stretch?.compactedAt != null || viewed || this.mayAct(thread, listed, settings);
     if (!interesting) {
       this.views.delete(thread.id);
       return;
@@ -512,6 +521,7 @@ export class Engine {
 
   /** The view of a thread, read now if the last pass skipped it. */
   async viewOf(threadId: string): Promise<ThreadView | null> {
+    this.viewedAt.set(threadId, this.deps.now());
     if (!this.views.has(threadId)) {
       const listed = await this.deps.listThreads();
       this.threads = new Map(listed.map((t) => [t.id, t]));
