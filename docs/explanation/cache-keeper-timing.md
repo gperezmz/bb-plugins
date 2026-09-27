@@ -26,7 +26,7 @@ The **deadline** is the most recent request's time, plus the cache lifetime, min
 
 bb records every input it hands a thread, and which turn took it. A turn is a **Cache Keeper turn** when every input it took is a message Cache Keeper sent, or bb's **report** of a child thread's turn that was itself a Cache Keeper turn, at any depth. Anything else in the turn makes it real: a message you typed, even into a turn Cache Keeper started; a report of a child's turn that was real, failed or was interrupted; a turn with no input at all, which is Claude Code woken by a background task finishing. The answer comes from bb's event history alone, so it is the same after Cache Keeper or bb restarts.
 
-bb 0.44 does not keep a plugin's `pluginSubmission` marker in that history, so Cache Keeper recognises its own messages by their fixed text, and a report's children by the thread mentions bb writes into it.
+bb 0.44 does not keep a plugin's `pluginSubmission` marker in that history, so Cache Keeper recognises its own messages by their fixed text, and a report's children by the thread mentions bb writes into it. A report held in a queue can arrive after its child has run further turns, so a report line stands for every turn the child ended since its previous report, and counts as Cache Keeper's only when all of them do.
 
 ## The idle stretch
 
