@@ -1,12 +1,9 @@
 /**
- * The banner above the composer. While a compaction is due: the countdown
- * with Skip and Compact now, then "Skipped until this thread's next idle."
- * with Undo. While a keep-warm or check-in is due: how many things of each
- * kind the thread waits on and the time to the next, with Skip. It never
- * shows command text or descriptions.
+ * The banner above the composer: one line saying what Cache Keeper is about
+ * to do, with the buttons that change it. Its text comes from `bannerOf`;
+ * details are on the Cache Keeper page.
  */
-import { formatSize } from "@/src/core/line";
-import { countsText, minutesTo } from "@/src/core/view";
+import { bannerOf, type BannerAction } from "@/src/core/view";
 import { Button } from "@/components/ui/button";
 import { touches, useAction, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 
@@ -16,56 +13,46 @@ export function Banner() {
   return <ThreadBanner threadId={threadId} />;
 }
 
+const LABELS: Record<BannerAction, string> = {
+  "skip-compaction": "Skip",
+  "compact-now": "Compact now",
+  "undo-compaction": "Undo",
+  "skip-warm": "Skip",
+  "undo-warm": "Undo",
+};
+
 function ThreadBanner({ threadId }: { threadId: string }) {
   const rpc = useKeeperRpc();
   const now = useNow();
   const live = useLive(() => rpc.call("view", { threadId }), [rpc, threadId], (p) => touches(p, [threadId]));
   const { run: act, error } = useAction((next) => next !== null && live.setData(next));
-  const view = live.data;
-  if (view === null || !view.eligible || view.status !== "idle" || view.hasPendingInteraction) return null;
+  const banner = live.data === null ? null : bannerOf(live.data, now);
+  if (banner === null) return null;
 
-  let body: React.ReactNode = null;
-  if (view.compactionDue && view.deadline !== null) {
-    body = (
-      <>
-        <span className="flex-1">
-          {view.context === null ? "" : formatSize(view.context)} idle · compacting in {minutesTo(view.deadline, now)}m before the cache goes cold
-        </span>
-        <Button size="sm" variant="ghost" onClick={() => void act(rpc.call("skip", { threadId, what: "compaction", undo: false }))}>
-          Skip
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void act(rpc.call("compactNow", { threadId }))}>
-          Compact now
-        </Button>
-      </>
-    );
-  } else if (view.compactOn && view.compactSkipped && view.compactedAt === null && !view.waiting) {
-    body = (
-      <>
-        <span className="flex-1">Skipped until this thread's next idle.</span>
-        <Button size="sm" variant="ghost" onClick={() => void act(rpc.call("skip", { threadId, what: "compaction", undo: true }))}>
-          Undo
-        </Button>
-      </>
-    );
-  } else if (view.warmDue) {
-    const next = view.nextWarmAt === null ? "" : ` · next check-in or keep-warm in ${minutesTo(view.nextWarmAt, now)}m`;
-    body = (
-      <>
-        <span className="flex-1">
-          Waiting on {countsText(view.counts)}
-          {next}
-        </span>
-        <Button size="sm" variant="ghost" onClick={() => void act(rpc.call("skip", { threadId, what: "warm", undo: false }))}>
-          Skip
-        </Button>
-      </>
-    );
-  }
-  if (body === null) return null;
+  const call = (action: BannerAction) => {
+    switch (action) {
+      case "skip-compaction":
+        return rpc.call("skip", { threadId, what: "compaction", undo: false });
+      case "undo-compaction":
+        return rpc.call("skip", { threadId, what: "compaction", undo: true });
+      case "compact-now":
+        return rpc.call("compactNow", { threadId });
+      case "skip-warm":
+        return rpc.call("skip", { threadId, what: "warm", undo: false });
+      case "undo-warm":
+        return rpc.call("skip", { threadId, what: "warm", undo: true });
+    }
+  };
   return (
     <div role="status" className="flex flex-col gap-1 px-3 py-1.5 text-xs">
-      <div className="flex items-center gap-2">{body}</div>
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate">{banner.text}</span>
+        {banner.actions.map((action) => (
+          <Button key={action} size="sm" variant={action === "compact-now" ? "outline" : "ghost"} onClick={() => void act(call(action))}>
+            {LABELS[action]}
+          </Button>
+        ))}
+      </div>
       {error !== null && <p className="text-destructive">{error}</p>}
     </div>
   );

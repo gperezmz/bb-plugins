@@ -3,9 +3,9 @@
  *
  * A task stalls once it has had no output or progress for the no-output wait
  * W. While it stays stalled, each further check-in waits twice as long as the
- * one before (W, 2W, 4W…). While it keeps printing or making progress, it gets
- * a routine check-in every 30 minutes of running. A check-in restarts both
- * clocks; when both fall due together the stalled one is sent.
+ * one before (W, 2W, 4W…). A task that keeps printing or making progress gets
+ * no turn of its own: once it has run 30 minutes, the thread's next keep-warm
+ * also asks the agent to look at it, and again every 30 minutes after.
  */
 
 export const ROUTINE_MS = 30 * 60_000;
@@ -28,7 +28,7 @@ export function stalledDueAt(clock: TaskClock, waitMs: number): number {
   return since + waitMs * 2 ** clock.stalledStreak;
 }
 
-/** When the next routine check-in falls due. */
+/** When the task is next folded into a keep-warm. */
 export function routineDueAt(clock: TaskClock): number {
   return Math.max(clock.startedAt, clock.lastCheckInAt ?? -Infinity) + ROUTINE_MS;
 }
@@ -38,18 +38,14 @@ export function isStalled(clock: TaskClock, now: number, waitMs: number): boolea
   return now - clock.lastActivityAt >= waitMs;
 }
 
-/** The check-in `clock` is due at `now`, or null. */
-export function dueCheckIn(clock: TaskClock, now: number, waitMs: number): CheckInReason | null {
-  if (now >= stalledDueAt(clock, waitMs)) return "stalled";
-  if (!isStalled(clock, now, waitMs) && now >= routineDueAt(clock)) return "routine";
-  return null;
+/** Whether `clock`'s task is due a check-in of its own at `now`: it has stalled. */
+export function dueCheckIn(clock: TaskClock, now: number, waitMs: number): boolean {
+  return now >= stalledDueAt(clock, waitMs);
 }
 
-/** The earliest time a check-in could fall due, for the banner's countdown. */
-export function nextCheckInAt(clock: TaskClock, now: number, waitMs: number): number {
-  const stalled = stalledDueAt(clock, waitMs);
-  const routine = routineDueAt(clock);
-  return isStalled(clock, now, waitMs) ? stalled : Math.min(stalled, routine);
+/** Whether the thread's next keep-warm should ask about `clock`'s task: running 30 minutes since it was last looked at, and not stalled. */
+export function foldDue(clock: TaskClock, now: number, waitMs: number): boolean {
+  return !isStalled(clock, now, waitMs) && now >= routineDueAt(clock);
 }
 
 /** The clock after a check-in for `reason` was sent at `at`. */

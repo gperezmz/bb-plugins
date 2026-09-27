@@ -7,7 +7,8 @@ import { formatSize, parseSize, snapSetting } from "./src/core/line";
 import { PriceBook } from "./src/core/pricing";
 import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
-import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, type ListedThread, type TaskEvent } from "./src/server/engine";
+import { TURN_EVENT_TYPES, type BbEvent } from "./src/core/turns";
+import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, type ListedThread, type QueuedRow, type TaskEvent } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
 import { rpcContract, type Overview } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -18,6 +19,8 @@ export { rpcContract };
 export type { RpcContract } from "./src/server/rpc";
 
 const PASS_MS = 15_000;
+/** Nothing is run sooner than this after the last pass, however soon a send falls due. */
+const MIN_SLEEP_MS = 250;
 const HOST_TIMEOUT_MS = 20_000;
 const HISTORY_DAYS = 90;
 
@@ -72,14 +75,27 @@ export default async function plugin(bb: BbPluginApi) {
       }
       return out;
     },
-    async queuedMessages(threadId) {
+    async queuedMessages(threadId): Promise<QueuedRow[]> {
       const listed = (await bb.sdk.threads.queuedMessages.list({ threadId })) as unknown;
       const rows = (Array.isArray(listed) ? listed : ((listed as { messages?: unknown[] }).messages ?? [])) as {
+        id: string;
         sendAt: number | null;
         createdAt: number;
         failureReason: string | null;
+        initiator: string;
+        content: unknown[];
       }[];
-      return rows.map((r) => ({ sendAt: r.sendAt, createdAt: r.createdAt, failed: r.failureReason !== null }));
+      return rows.map((r) => ({
+        id: r.id,
+        sendAt: r.sendAt,
+        createdAt: r.createdAt,
+        failed: r.failureReason !== null,
+        system: r.initiator === "system",
+        content: Array.isArray(r.content) ? r.content : [],
+      }));
+    },
+    async deleteQueued(threadId, queuedMessageId) {
+      await bb.sdk.threads.queuedMessages.delete({ threadId, queuedMessageId });
     },
     async contextWindow(threadId) {
       const context = (await bb.sdk.threads.context({ threadId })) as unknown as { usage?: { modelContextWindow?: number } | null };
@@ -106,10 +122,39 @@ export default async function plugin(bb: BbPluginApi) {
       })) as unknown as { seq: number | string; type: string; createdAt: number; data?: { item?: TaskEvent["item"] } }[];
       return rows.map((r) => ({ seq: Number(r.seq), type: r.type, createdAt: r.createdAt, item: r.data?.item ?? null }));
     },
+    async turnEvents(threadId, afterSeq) {
+      const rows = (await bb.sdk.threads.events.list({
+        threadId,
+        afterSeq: String(afterSeq),
+        order: "asc",
+        limit: String(EVENTS_PAGE),
+        types: [...TURN_EVENT_TYPES],
+      })) as unknown as { seq: number | string; type: string; createdAt: number; data?: unknown }[];
+      return rows.map((r): BbEvent => ({ seq: Number(r.seq), type: r.type, createdAt: r.createdAt, data: r.data ?? null }));
+    },
+    async latestEventSeq(threadId) {
+      const rows = (await bb.sdk.threads.events.list({ threadId, order: "desc", limit: "1" })) as unknown as { seq: number | string }[];
+      return rows.length === 0 ? 0 : Number(rows[0]!.seq);
+    },
     transcript: (hostId, sessionId, requestsSince) => host.call("transcript", { sessionId, requestsSince }, { hostId, timeoutMs: HOST_TIMEOUT_MS }),
     tasks: (hostId, input) => host.call("tasks", input, { hostId, timeoutMs: HOST_TIMEOUT_MS }),
-    async send(threadId, text) {
-      await bb.sdk.threads.send({ threadId, input: [{ type: "text", text, mentions: [] }], mode: "start" });
+    async send(threadId, text, marker) {
+      await bb.sdk.threads.send({
+        threadId,
+        input: [{ type: "text", text, mentions: [] }],
+        mode: "start",
+        pluginSubmission: { pluginId: bb.pluginId, data: { kind: marker.kind, sendId: marker.sendId } },
+      });
+    },
+    async readState(threadId) {
+      const thread = (await bb.sdk.threads.get({ threadId })) as unknown as { lastReadAt: number | null; latestAttentionAt: number | null };
+      return { lastReadAt: thread.lastReadAt ?? null, latestAttentionAt: thread.latestAttentionAt ?? null };
+    },
+    async markRead(threadId) {
+      await bb.sdk.threads.markRead({ threadId });
+    },
+    async markUnread(threadId) {
+      await bb.sdk.threads.markUnread({ threadId });
     },
     publish,
     log: bb.log,
@@ -125,7 +170,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   // ---- bb's thread events ----
   bb.events.on("thread.active", ({ thread }) => {
-    engine.onActive((thread as { id: string }).id);
+    const id = (thread as { id: string }).id;
+    void engine.onActive(id).catch((error) => bb.log.warn(`active ${id}: ${message(error)}`));
   });
   bb.events.on("thread.idle", ({ thread }) => {
     void engine.onIdle((thread as { id: string }).id).catch((error) => bb.log.warn(`idle ${(thread as { id: string }).id}: ${message(error)}`));
@@ -133,18 +179,34 @@ export default async function plugin(bb: BbPluginApi) {
 
   // ---- background work ----
   // Nothing above awaits bb.sdk or a host: bb gives the factory 30 seconds.
+  // A pass runs every 15 seconds, and at the moment the next send falls due.
   bb.background.service("keeper", {
     async start(signal) {
+      // Every 15 seconds a pass over every tree; in between, a pass over only the trees whose next send falls due.
+      let due = false;
       while (!signal.aborted) {
         try {
-          await engine.pass();
+          await engine.pass(due ? { due: true } : null);
         } catch (error) {
           bb.log.warn(`pass failed: ${message(error)}`);
         }
-        await sleep(PASS_MS, signal);
+        due = false;
+        const pollAt = Date.now() + PASS_MS;
+        // A pass run for bb's thread.idle may bring the next send forward, so the wait is checked at least every second.
+        while (!signal.aborted) {
+          const now = Date.now();
+          const wake = engine.wakeAt();
+          if (wake !== null && wake <= now) {
+            due = true;
+            break;
+          }
+          if (now >= pollAt) break;
+          await sleep(Math.max(MIN_SLEEP_MS, Math.min(1_000, pollAt - now, wake === null ? Infinity : wake - now)), signal);
+        }
       }
     },
   });
+
   // Once a day, and at startup when the stored copy is older than that; a failure is retried hourly.
   bb.background.service("prices", {
     async start(signal) {
@@ -161,14 +223,17 @@ export default async function plugin(bb: BbPluginApi) {
   // ---- RPC ----
   const overview = async (): Promise<Overview> => {
     const views = engine.allViews();
-    const titles = new Map(views.map((v) => [v.threadId, v.title]));
+    const recent = store
+      .history(Date.now() - 30 * DAY_MS, 50)
+      .filter((h) => h.kind !== "return")
+      .map((h) => ({ ...h, title: engine.titleOf(h.threadId) }));
+    const titles: Record<string, string> = {};
+    for (const h of recent) for (const id of Object.keys(h.record.split ?? {})) titles[id] = engine.titleOf(id);
     return {
       switchedOn: await engine.switchedOn(),
-      waiting: views.filter((v) => v.warmDue),
-      recent: store
-        .history(Date.now() - 30 * DAY_MS, 50)
-        .filter((h) => h.kind !== "return")
-        .map((h) => ({ ...h, title: titles.get(h.threadId) ?? h.threadId })),
+      waiting: views.filter((v) => v.waiting && v.checkIns && v.status === "idle"),
+      recent,
+      titles,
       totals: engine.totals(30),
       checkIns: settings.checkIns,
     };

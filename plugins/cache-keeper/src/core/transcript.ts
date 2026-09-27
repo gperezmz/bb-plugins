@@ -168,9 +168,18 @@ export class TranscriptFold {
   }
 }
 
-/** Mean requests per user message, or the default for a thread with none. */
-export function callsPerMessage(facts: Pick<TranscriptFacts, "requests" | "userMessages">, fallback: number): number {
-  return facts.userMessages > 0 ? facts.requests / facts.userMessages : fallback;
+/**
+ * Mean requests per user message, or the default for a thread with none.
+ * `keeperReports` are bb's reports that started Cache Keeper turns: the
+ * transcript cannot tell them from a real report, so they are taken out here.
+ */
+export function callsPerMessage(
+  facts: Pick<TranscriptFacts, "requests" | "userMessages">,
+  fallback: number,
+  keeperReports: { turns: number; requests: number } = { turns: 0, requests: 0 },
+): number {
+  const messages = facts.userMessages - keeperReports.turns;
+  return messages > 0 ? Math.max(0, facts.requests - keeperReports.requests) / messages : fallback;
 }
 
 /** The minute before the cache expires in which Cache Keeper acts. */

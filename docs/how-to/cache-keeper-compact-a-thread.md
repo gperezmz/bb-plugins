@@ -11,6 +11,6 @@ Or from a terminal:
 bb cache-keeper on thr_… --above 500k
 ```
 
-While a compaction is due, the banner above the composer counts down. **Skip** leaves the thread alone until its next idle; **Compact now** does it at once. To stop, turn the switch off or run `bb cache-keeper off thr_…`.
+While a compaction is due, the banner above the composer counts down. **Skip** leaves the thread alone until it next runs; **Compact now** does it at once. To stop, turn the switch off or run `bb cache-keeper off thr_…`.
 
 The line and when it fires are worked out in [when Cache Keeper acts](../explanation/cache-keeper-timing.md); every command is in [`bb cache-keeper`](../reference/cache-keeper-cli.md).

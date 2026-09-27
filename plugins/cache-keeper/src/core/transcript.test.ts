@@ -34,6 +34,9 @@ describe("TranscriptFold", () => {
     expect(facts.userMessages).toBe(1);
     expect(callsPerMessage(facts, 3)).toBe(2);
     expect(callsPerMessage({ requests: 4, userMessages: 0 }, 3)).toBe(3);
+    // Two report turns of Cache Keeper's, one request each, are not the user's.
+    expect(callsPerMessage({ requests: 6, userMessages: 3 }, 3, { turns: 2, requests: 2 })).toBe(4);
+    expect(callsPerMessage({ requests: 2, userMessages: 2 }, 3, { turns: 2, requests: 2 })).toBe(3);
   });
 
   it("leaves Cache Keeper's own turns and /compact out of calls per message", () => {
