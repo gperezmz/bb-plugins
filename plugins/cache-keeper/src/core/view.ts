@@ -5,6 +5,9 @@
 import { formatSize, type CacheLifetime } from "./line";
 import type { WaitItem } from "./waiting";
 
+/** The realtime channel every surface refetches on; its payload names the changed threads. */
+export const CHANGED = "cache-keeper-changed";
+
 export interface ThreadView {
   threadId: string;
   title: string;
