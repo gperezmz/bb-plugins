@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chipText, countsText, statusText, type ThreadView } from "@/src/core/view";
+import { chipText, countsText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
 import { formatUsd, fractionOf, settingAt, settingForText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
@@ -81,5 +81,15 @@ describe("the chip", () => {
 
   it("counts what a thread waits on without naming any of it", () => {
     expect(countsText({ commands: 2, subagents: 0, children: 1, messages: 1 })).toBe("2 background commands, 1 child thread and 1 queued message");
+  });
+});
+
+describe("the popover sentence", () => {
+  it("names the line, or says there is none and why", () => {
+    expect(popoverSentence(view())).toBe("When this thread stops at 150k or more, compact it just before its cache goes cold. Never while it's working.");
+    expect(popoverSentence(view({ line: null }))).toBe(
+      "No size up to this thread's 1M window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.",
+    );
+    expect(popoverSentence(view({ line: null, rates: null }))).toBe("With no price for this model yet, there is no line, so this thread is not compacted.");
   });
 });

@@ -93,6 +93,16 @@ export function chipSentence(view: ThreadView, now: number): string {
     : `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold.`;
 }
 
+/** The popover's sentence under the switch; with no line, it says the thread is never compacted and why. */
+export function popoverSentence(view: ThreadView): string {
+  if (view.line === null) {
+    return view.rates === null
+      ? "With no price for this model yet, there is no line, so this thread is not compacted."
+      : `No size up to this thread's ${formatSize(view.window)} window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.`;
+  }
+  return `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold. Never while it's working.`;
+}
+
 /** The status half of the popover's `now {context} · {status}` line. */
 export function statusText(view: ThreadView, now: number): string {
   if (view.status !== "idle") return "working";

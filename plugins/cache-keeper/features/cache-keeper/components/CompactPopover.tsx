@@ -4,7 +4,7 @@
  * "Why {line}?" with the dollar figures.
  */
 import { formatSize, lineWhy } from "@/src/core/line";
-import { statusText, type ThreadView } from "@/src/core/view";
+import { popoverSentence, statusText, type ThreadView } from "@/src/core/view";
 import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { ContextBar } from "./ContextBar";
@@ -33,9 +33,7 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
           />
         </button>
       </div>
-      <p className="text-muted-foreground">
-        When this thread stops at {line} or more, compact it just before its cache goes cold. Never while it's working.
-      </p>
+      <p className="text-muted-foreground">{popoverSentence(view)}</p>
       <ContextBar view={view} onSetting={(setting) => void run(rpc.call("setSetting", { threadId: view.threadId, setting }))} />
       <p className="tabular-nums">
         now {view.context === null ? "unknown" : formatSize(view.context)} · {statusText(view, now)}
@@ -44,8 +42,7 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
         {view.model ?? "Model not read yet"} · {lifetime} · {view.callsPerMessage.toFixed(1)} calls per message
         {view.callsMeasured ? "" : " (default)"}
       </p>
-      {view.rates !== null && view.line !== null && <Why view={view} line={line} />}
-      {view.rates === null && <p className="text-xs text-muted-foreground">No price for this model yet, so there is no line.</p>}
+      {view.rates !== null && (view.line !== null ? <Why view={view} line={line} /> : <WhyNever view={view} />)}
       {error !== null && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
@@ -68,6 +65,24 @@ function Why({ view, line }: { view: ThreadView; line: string }) {
           {view.postMeasured ? "" : " (assumed)"}, and {view.callsPerMessage.toFixed(1)} reads at {perM(rates.r)}/M.
         </p>
         <p>{line} is the smallest size at which that saving repays compacting as many times over as the handle asks. A cold rewrite of the whole thread at {line} costs {formatUsd(at.coldRewriteUsd)}.</p>
+      </div>
+    </details>
+  );
+}
+
+/** "Why never?": the same figures at the whole window, where even the most compacting can save falls short. */
+function WhyNever({ view }: { view: ThreadView }) {
+  const window = formatSize(view.window);
+  const at = lineWhy(view.rates!, view.callsPerMessage, view.postCompaction, view.window);
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer text-foreground">Why never?</summary>
+      <div className="mt-2 flex flex-col gap-1">
+        <p>
+          Even at {window}, this model's whole context window, compacting would cost about {formatUsd(at.compactUsd)}, and your first
+          message back after the cache goes cold would save {formatUsd(at.savedUsd)} by it.
+        </p>
+        <p>That saving does not repay compacting as many times over as the handle asks, at any size this thread can reach. A lower setting gives a line.</p>
       </div>
     </details>
   );
