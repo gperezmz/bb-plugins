@@ -202,14 +202,14 @@ export function isKeeperTurn(turn: Turn, lookup: LogLookup, depth = 0): boolean 
  * message it took got the nothing-new reply it asked for, and every child
  * turn it reports did the same.
  */
-export function isQuietTurn(turn: Turn, lookup: LogLookup, depth = 0): boolean {
+export function broughtNothingNew(turn: Turn, lookup: LogLookup, depth = 0): boolean {
   if (turn.status !== "completed" || turn.inputs.length === 0 || depth > MAX_DEPTH) return false;
   return turn.inputs.every((input) => {
     if (input.kind === "sent") return isNothingNewReply(input.text, turn.reply);
     if (input.kind === "other") return false;
     return input.lines.every((line) => {
       const child = line.completed ? reportedTurn(lookup(line.childId), input.at) : null;
-      return child !== null && isQuietTurn(child, lookup, depth + 1);
+      return child !== null && broughtNothingNew(child, lookup, depth + 1);
     });
   });
 }

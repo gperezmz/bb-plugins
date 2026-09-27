@@ -512,7 +512,7 @@ describe("keeping a thread tree warm", () => {
 });
 
 describe("read state", () => {
-  it("puts a read thread back to read after a quiet keep-warm and the parent's report of it", async () => {
+  it("puts a read thread back to read after a keep-warm that brought nothing new and the parent's report of it", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
@@ -562,7 +562,7 @@ describe("read state", () => {
 });
 
 describe("queued reports", () => {
-  it("deletes quiet report rows from a thread waiting on your answer, and does not wait on them", async () => {
+  it("deletes report rows that bring nothing new from a thread waiting on your answer, and does not wait on them", async () => {
     h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");

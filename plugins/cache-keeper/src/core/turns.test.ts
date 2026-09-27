@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { checkInText, keepWarmText } from "./messages";
-import { emptyTurnLog, foldTurns, isKeeperTurn, isQuietTurn, originsOf, reportPending, type BbEvent, type TurnLog } from "./turns";
+import { emptyTurnLog, foldTurns, isKeeperTurn, broughtNothingNew, originsOf, reportPending, type BbEvent, type TurnLog } from "./turns";
 
 const clock = () => "14:30";
 const KEEP_WARM = keepWarmText([{ kind: "command", id: "b1", description: "deploy", startedAt: 0 }], [], clock);
@@ -61,16 +61,16 @@ function report(children: { id: string; status?: string }[], reply = NOT_FINISHE
 }
 
 describe("turn attribution", () => {
-  it("counts a keep-warm turn and the parent's report of it as Cache Keeper's, and quiet", () => {
+  it("counts a keep-warm turn and the parent's report of it as Cache Keeper's, bringing nothing new", () => {
     const child = new History().turn(1_000, text("BACKGROUND please"), "Started it.").turn(300_000, text(KEEP_WARM), NOT_FINISHED).log();
     const parent = new History().turn(302_000, report([{ id: "c" }]), "Noted.", "completed", "system").log();
     const lookup = (id: string) => (id === "c" ? child : parent);
 
     expect(isKeeperTurn(child.turns[0]!, lookup)).toBe(false);
     expect(isKeeperTurn(child.turns[1]!, lookup)).toBe(true);
-    expect(isQuietTurn(child.turns[1]!, lookup)).toBe(true);
+    expect(broughtNothingNew(child.turns[1]!, lookup)).toBe(true);
     expect(isKeeperTurn(parent.turns[0]!, lookup)).toBe(true);
-    expect(isQuietTurn(parent.turns[0]!, lookup)).toBe(true);
+    expect(broughtNothingNew(parent.turns[0]!, lookup)).toBe(true);
     expect(originsOf("p", parent.turns[0]!, lookup)).toEqual([{ threadId: "c", at: 300_000, text: KEEP_WARM }]);
   });
 
@@ -83,7 +83,7 @@ describe("turn attribution", () => {
     expect(originsOf("top", top.turns[0]!, lookup).map((o) => o.threadId)).toEqual(["leaf"]);
   });
 
-  it("makes a batch real when any child turn in it was real, and quiet only when every one was", () => {
+  it("makes a batch real when any child turn in it was real, and nothing new only when every child brought nothing new", () => {
     const a = new History().turn(0, text(KEEP_WARM), NOT_FINISHED).log();
     const b = new History().turn(0, text("carry on"), "Done: shipped it.").log();
     const loud = new History().turn(0, text(KEEP_WARM), "I restarted the deploy.").log();
@@ -92,7 +92,7 @@ describe("turn attribution", () => {
     expect(isKeeperTurn(mixed.turns[0]!, lookup)).toBe(false);
     const both = new History().turn(3_000, report([{ id: "a" }, { id: "loud" }]), "ok", "completed", "system").log();
     expect(isKeeperTurn(both.turns[0]!, lookup)).toBe(true);
-    expect(isQuietTurn(both.turns[0]!, lookup)).toBe(false);
+    expect(broughtNothingNew(both.turns[0]!, lookup)).toBe(false);
     expect(originsOf("p", both.turns[0]!, lookup).map((o) => o.threadId)).toEqual(["a", "loud"]);
   });
 
@@ -115,13 +115,13 @@ describe("turn attribution", () => {
     expect(isKeeperTurn(new History().wake(0).log().turns[0]!, lookup)).toBe(false);
   });
 
-  it("does not take a check-in whose reply found something as quiet", () => {
+  it("does not take a check-in whose reply found something as nothing new", () => {
     const sent = checkInText([{ kind: "command", reason: "stalled", id: "b1", description: "x", startedAt: 0, silentMs: 0, runningMs: 0, outputFile: "/o" }]);
     const found = new History().turn(0, text(sent), "b1 was stuck on a prompt; I answered it.").log();
     const fine = new History().turn(0, text(sent), "Checked b1, still running normally, nothing new. Nothing needed from you.").log();
     expect(isKeeperTurn(found.turns[0]!, () => null)).toBe(true);
-    expect(isQuietTurn(found.turns[0]!, () => null)).toBe(false);
-    expect(isQuietTurn(fine.turns[0]!, () => null)).toBe(true);
+    expect(broughtNothingNew(found.turns[0]!, () => null)).toBe(false);
+    expect(broughtNothingNew(fine.turns[0]!, () => null)).toBe(true);
   });
 
   it("reads on from where it stopped, so a restart attributes the same way", () => {

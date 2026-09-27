@@ -4,8 +4,8 @@
  * keep-warm or check-in the rules in `src/core` call for.
  *
  * It works one thread tree at a time. Each pass reads the turns every thread
- * in the tree took from bb's event history, settles which were Cache Keeper's
- * and what they cost, puts back the read state quiet turns changed, then plans
+ * in the tree took from bb's event history, works out which were Cache Keeper's
+ * and what they cost, puts back the read state that turns bringing nothing new changed, then plans
  * the tree's keep-warms together and each thread's compaction and check-ins on
  * their own.
  *
@@ -25,7 +25,7 @@ import {
   emptyTurnLog,
   foldTurns,
   isKeeperTurn,
-  isQuietTurn,
+  broughtNothingNew,
   originsOf,
   reportedTurn,
   reportPending,
@@ -169,7 +169,7 @@ export class Engine {
   private queuedCounts = new Map<string, number>();
   private queuedRows = new Map<string, QueuedRow[]>();
   /** Queued report rows, by thread, that bring nothing new and are not waited on. */
-  private quietRows = new Map<string, Set<string>>();
+  private nothingNewRows = new Map<string, Set<string>>();
   /** When a surface last asked for each thread; a thread stays read for a while after. */
   private viewedAt = new Map<string, number>();
   private wake: number | null = null;
@@ -188,7 +188,7 @@ export class Engine {
 
   // ---- bb events ----
 
-  /** A thread turned idle: its turn is read and settled, and whatever now falls due is sent. */
+  /** A thread turned idle: its turn is read and accounted for, and whatever now falls due is sent. */
   async onIdle(_threadId: string): Promise<void> {
     await this.pass();
   }
@@ -196,7 +196,7 @@ export class Engine {
   /**
    * A thread turned active. If Cache Keeper sent nothing, a report or a message
    * started the turn: its read state now is the one to put back if the turn
-   * turns out quiet. A report leaves bb's read state as it was.
+   * brings nothing new. A report leaves bb's read state as it was.
    */
   async onActive(threadId: string): Promise<void> {
     if (!this.deps.store.has(threadId) || this.threads.get(threadId)?.providerId !== "claude-code") return;
@@ -306,7 +306,7 @@ export class Engine {
     return record.compactOn || record.stretch?.compactedAt != null || viewed || this.mayAct(thread, live, settings);
   }
 
-  /** One thread tree: read, settle, plan, act. Returns when anything in it next falls due. */
+  /** One thread tree: read, account, plan, act. Returns when anything in it next falls due. */
   private async runTree(members: ListedThread[], live: ListedThread[]): Promise<number | null> {
     const settings = this.deps.settings();
     let now = this.deps.now();
@@ -327,8 +327,8 @@ export class Engine {
     for (const m of members) logs.set(m.id, await this.readTurns(m.id));
     const lookup = (id: string) => logs.get(id) ?? null;
 
-    for (const m of claude) await this.settle(m, lookup);
-    await this.deleteQuietReports(claude, logs);
+    for (const m of claude) await this.account(m, lookup);
+    await this.deleteNothingNewReports(claude, logs);
     for (const m of claude) await this.restoreRead(m, lookup);
 
     now = this.deps.now();
@@ -382,12 +382,12 @@ export class Engine {
 
   // ---- reading ----
 
-  /** Lists the queued rows of every thread whose queue holds any, since failed and quiet rows are not waited on. */
+  /** Lists the queued rows of every thread whose queue holds any, since failed rows, and report rows that bring nothing new, are not waited on. */
   private async readQueues(members: ListedThread[]): Promise<void> {
     for (const m of members) {
       this.queuedRows.delete(m.id);
       this.queuedCounts.delete(m.id);
-      this.quietRows.delete(m.id);
+      this.nothingNewRows.delete(m.id);
       if (m.queuedWork === "none") continue;
       const rows = await this.deps.queuedMessages(m.id).catch(() => null);
       if (rows === null) continue;
@@ -415,18 +415,18 @@ export class Engine {
    * stretch; a Cache Keeper one is charged at its real cost, split equally
    * between the messages that caused it.
    */
-  private async settle(thread: ListedThread, lookup: (id: string) => TurnLog | null): Promise<void> {
+  private async account(thread: ListedThread, lookup: (id: string) => TurnLog | null): Promise<void> {
     const log = lookup(thread.id)!;
     const now = this.deps.now();
     let record = this.deps.store.get(thread.id);
-    const ended = log.turns.filter((t) => t.startSeq > record.settledSeq && t.endedAt !== null);
+    const ended = log.turns.filter((t) => t.startSeq > record.accountedSeq && t.endedAt !== null);
     const first = this.deps.store.has(thread.id) ? null : ended.at(-1)?.startSeq;
     // A thread seen for the first time starts from now: its past turns are nobody's to charge.
     if (first != null) {
-      this.deps.store.put(thread.id, { ...record, settledSeq: first }, now);
+      this.deps.store.put(thread.id, { ...record, accountedSeq: first }, now);
       return;
     }
-    const upTo = log.turns.find((t) => t.startSeq > record.settledSeq && t.endedAt === null)?.startSeq ?? Infinity;
+    const upTo = log.turns.find((t) => t.startSeq > record.accountedSeq && t.endedAt === null)?.startSeq ?? Infinity;
     const due = ended.filter((t) => t.startSeq < upTo);
     if (due.length === 0) return;
     let requests: TranscriptRequest[] | null = null;
@@ -447,9 +447,10 @@ export class Engine {
         }
         const usd = price === null ? null : requestsUsd(requestsIn(requests, turn.startedAt, turn.endedAt!), price.price);
         if (usd !== null) this.charge(thread.id, turn, usd, lookup);
-        record = this.deps.store.get(thread.id).stretch === record.stretch ? record : { ...record, stretch: this.deps.store.get(thread.id).stretch };
+        // The charge may have gone to this thread's own stretch.
+        record = { ...record, stretch: this.deps.store.get(thread.id).stretch };
       }
-      record = { ...record, settledSeq: turn.startSeq };
+      record = { ...record, accountedSeq: turn.startSeq };
     }
     this.deps.store.put(thread.id, record, now);
   }
@@ -491,30 +492,30 @@ export class Engine {
    * whose every line reports a Cache Keeper turn that brought nothing new.
    * Such rows are not waited on even when the delete fails.
    */
-  private async deleteQuietReports(claude: ListedThread[], logs: Map<string, TurnLog>): Promise<void> {
+  private async deleteNothingNewReports(claude: ListedThread[], logs: Map<string, TurnLog>): Promise<void> {
     const lookup = (id: string) => logs.get(id) ?? null;
     for (const m of claude) {
       if (!m.hasPendingInteraction) continue;
       const rows = this.queuedRows.get(m.id) ?? [];
-      const quiet = rows.filter((row) => {
+      const nothingNew = rows.filter((row) => {
         if (row.failed || !row.system) return false;
         const input = classify(row.content, row.createdAt);
         if (input.kind !== "report") return false;
         return input.lines.every((line) => {
           const turn = line.completed ? reportedTurn(lookup(line.childId), row.createdAt) : null;
-          return turn !== null && isQuietTurn(turn, lookup);
+          return turn !== null && broughtNothingNew(turn, lookup);
         });
       });
-      if (quiet.length === 0) continue;
-      this.quietRows.set(m.id, new Set(quiet.map((r) => r.id)));
-      this.queuedCounts.set(m.id, Math.max(0, (this.queuedCounts.get(m.id) ?? 0) - quiet.length));
+      if (nothingNew.length === 0) continue;
+      this.nothingNewRows.set(m.id, new Set(nothingNew.map((r) => r.id)));
+      this.queuedCounts.set(m.id, Math.max(0, (this.queuedCounts.get(m.id) ?? 0) - nothingNew.length));
       const log = logs.get(m.id)!;
       const delivered = [...log.delivered];
-      for (const row of quiet) {
+      for (const row of nothingNew) {
         try {
           await this.deps.deleteQueued(m.id, row.id);
         } catch (error) {
-          this.deps.log.warn(`could not delete a quiet report row from ${m.id}: ${error instanceof Error ? error.message : String(error)}`);
+          this.deps.log.warn(`could not delete a report row that brought nothing new from ${m.id}: ${error instanceof Error ? error.message : String(error)}`);
         }
         const input = classify(row.content, row.createdAt);
         if (input.kind === "report") for (const line of input.lines) delivered.push({ childId: line.childId, at: row.createdAt });
@@ -543,7 +544,7 @@ export class Engine {
     }
     if (thread.status !== "idle" || turns.some((t) => t.endedAt === null)) return;
     clear();
-    if (!turns.every((t) => isQuietTurn(t, lookup))) return;
+    if (!turns.every((t) => broughtNothingNew(t, lookup))) return;
     await this.putBack(thread.id, before);
   }
 
@@ -554,7 +555,7 @@ export class Engine {
     else if (!before.read && isRead(state)) await this.deps.markUnread(threadId);
   }
 
-  /** After a restart, bb's status is the truth: an idle thread with work for Cache Keeper is in a stretch. */
+  /** After a restart, bb's status is the truth: a thread bb lists as idle, with work for Cache Keeper, is in a stretch. */
   private syncStretch(thread: ListedThread, live: ListedThread[], settings: KeeperSettings, now: number): ThreadRecord {
     const stored = this.deps.store.has(thread.id);
     let record = this.deps.store.get(thread.id);
@@ -578,9 +579,9 @@ export class Engine {
       const c = this.threads.get(id)!;
       items.push({ kind: "child", id, title: c.title ?? c.titleFallback ?? id, startedAt: c.createdAt });
     }
-    const quiet = this.quietRows.get(thread.id);
+    const nothingNew = this.nothingNewRows.get(thread.id);
     for (const q of this.queuedRows.get(thread.id) ?? []) {
-      if (q.failed || quiet?.has(q.id)) continue;
+      if (q.failed || nothingNew?.has(q.id)) continue;
       items.push(q.sendAt !== null ? { kind: "scheduled", dueAt: q.sendAt, createdAt: q.createdAt } : { kind: "queued", createdAt: q.createdAt });
     }
     const waiting = this.waitsByCounts(thread, live) || items.length > 0;

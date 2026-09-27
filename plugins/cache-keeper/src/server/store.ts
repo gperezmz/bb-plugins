@@ -83,8 +83,8 @@ export interface ThreadRecord {
   /** The compaction Cache Keeper sent in the current or last idle stretch. */
   compaction: CompactionRecord | null;
   readBefore: ReadBefore | null;
-  /** The last turn whose attribution and cost were taken, by the seq it started at. */
-  settledSeq: number;
+  /** The last turn whose attribution and cost were accounted for, by the seq it started at. */
+  accountedSeq: number;
   /** Its most recent keep-warm, whose measured cost forecasts the next. */
   lastSendId: number | null;
 }
@@ -108,7 +108,7 @@ export const emptyRecord = (): ThreadRecord => ({
   eventsAfterSeq: 0,
   compaction: null,
   readBefore: null,
-  settledSeq: 0,
+  accountedSeq: 0,
   lastSendId: null,
 });
 
