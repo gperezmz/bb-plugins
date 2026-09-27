@@ -53,7 +53,7 @@ export interface ReportLine {
 export const REPORT_KINDS = ["child-completed", "child-failed", "child-interrupted", "child-needs-attention", "child-outcome-batch"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 /** bb's other system messages: they report no child's turn. */
-const OTHER_SYSTEM_KINDS = ["ownership-assigned", "ownership-removed", "tool-result-delivered", "unlabeled"];
+const OTHER_SYSTEM_KINDS = ["ownership-assigned", "ownership-removed", "tool-result-delivered", "unlabeled"] as const;
 
 export type TurnInput =
   /** A message Cache Keeper sent. */
@@ -125,6 +125,8 @@ export interface ThreadContext {
 /** The fields of a `client/turn/requested` event that say who sent it and what it reports. */
 export interface RequestFields {
   requestId: string;
+  /** Which of the request's input groups this is, from 1, where it has more than one. */
+  group: number | null;
   initiator: string | null;
   systemMessageKind: string | null;
   /** The child a single report is about. */
@@ -137,25 +139,22 @@ export interface RequestFields {
  */
 export function classify(blocks: unknown[], at: number, request: RequestFields, thread: ThreadContext): TurnInput {
   const { text, mentions } = groupOf(blocks);
-  const where = `request ${request.requestId} into ${thread.threadId}`;
-  if (request.initiator === "system") {
-    const kind = request.systemMessageKind;
-    if (REPORT_KINDS.some((k) => k === kind)) {
-      const report = kind as ReportKind;
-      const children = report === "child-outcome-batch" ? mentions.filter((id) => thread.isChild(id)) : request.subjectThreadId === null ? [] : [request.subjectThreadId];
-      if (children.length === 0) {
-        thread.warn(`${where}: bb's ${report} report names no child thread; its turn counts as real`);
-        return { kind: "other" };
-      }
-      return { kind: "report", report, at, lines: children.map((childId) => ({ childId })) };
+  const logPrefix = `request ${request.requestId}${request.group === null ? "" : ` (input ${request.group})`} into ${thread.threadId}`;
+  const kind = request.systemMessageKind;
+  const system = request.initiator === "system";
+  if (system && REPORT_KINDS.some((k) => k === kind)) {
+    const report = kind as ReportKind;
+    const children = report === "child-outcome-batch" ? mentions.filter((id) => thread.isChild(id)) : request.subjectThreadId === null ? [] : [request.subjectThreadId];
+    if (children.length === 0) {
+      thread.warn(`${logPrefix}: bb's ${report} report names no child thread; its turn counts as real`);
+      return { kind: "other" };
     }
-    if (kind !== null && OTHER_SYSTEM_KINDS.includes(kind)) return { kind: "other" };
-    if (mentions.length > 0) {
-      thread.warn(`${where}: a system message mentioning a thread has ${kind === null ? "no systemMessageKind" : `the unknown systemMessageKind "${kind}"`}; it is not read as a report`);
-    }
-    return { kind: "other" };
+    return { kind: "report", report, at, lines: children.map((childId) => ({ childId })) };
   }
   if (sentKind(text) !== null) return { kind: "sent", text: text.trim(), at };
+  if (system && mentions.length > 0 && !OTHER_SYSTEM_KINDS.some((k) => k === kind)) {
+    thread.warn(`${logPrefix}: a system message mentioning a thread has ${kind === null ? "no systemMessageKind" : `the unknown systemMessageKind "${kind}"`}; it is not read as a report`);
+  }
   return { kind: "other" };
 }
 
@@ -179,6 +178,9 @@ export function classifyQueued(row: QueuedReportRow, isChild: (id: string) => bo
   return { kind: "report", at: row.createdAt, lines: mentions.filter(isChild).map((childId) => ({ childId })) };
 }
 
+/** The children an input reports: none unless it is a report. */
+export const reportLines = (input: TurnInput): ReportLine[] => (input.kind === "report" ? input.lines : []);
+
 /** Folds events, oldest first, into the log. */
 export function foldTurns(log: TurnLog, events: readonly BbEvent[], thread: ThreadContext): TurnLog {
   const requests = { ...log.requests };
@@ -199,13 +201,13 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[], thread: Thre
         if (requestId === null) break;
         const groups = arr(data.inputGroups).length > 0 ? arr(data.inputGroups).map(arr) : [arr(data.input)];
         const subject = rec(data.systemMessageSubject);
-        const fields: RequestFields = {
+        const fields: Omit<RequestFields, "group"> = {
           requestId,
           initiator: str(data.initiator),
           systemMessageKind: str(data.systemMessageKind),
           subjectThreadId: subject.kind === "thread" ? str(subject.threadId) : null,
         };
-        const inputs = groups.map((g) => classify(g, e.createdAt, fields, thread));
+        const inputs = groups.map((g, i) => classify(g, e.createdAt, { ...fields, group: groups.length > 1 ? i + 1 : null }, thread));
         requests[requestId] = { at: e.createdAt, inputs };
         for (const input of inputs) if (input.kind === "report") for (const line of input.lines) delivered.push({ childId: line.childId, at: e.createdAt });
         break;
@@ -278,8 +280,8 @@ export function reportedTurns(parent: TurnLog | null, child: TurnLog | null, chi
 /** Report lines deeper than this are taken as real: bb's trees are never this deep. */
 const MAX_DEPTH = 32;
 
-/** Reports whose kind alone says the child's turn did not end as asked: the turn that takes one is real. */
-const REAL_REPORTS: readonly (ReportKind | undefined)[] = ["child-failed", "child-interrupted", "child-needs-attention"];
+/** Whether a report's kind alone says the child's turn did not end as asked, so the turn that takes it is real. */
+const isRealReport = (kind: ReportKind | undefined) => kind === "child-failed" || kind === "child-interrupted" || kind === "child-needs-attention";
 
 /**
  * Whether a report line holds by `test`: every child turn it may stand for
@@ -296,7 +298,7 @@ export function lineHolds(parent: TurnLog | null, child: TurnLog | null, line: R
 function linesHold(threadId: string, turn: Turn, lookup: LogLookup, test: (childId: string, t: Turn) => boolean): boolean {
   return turn.inputs.every((input) => {
     if (input.kind !== "report") return true;
-    if (REAL_REPORTS.includes(input.report)) return false;
+    if (isRealReport(input.report)) return false;
     return input.lines.every((line) => lineHolds(lookup(threadId), lookup(line.childId), line, input.at, (t) => test(line.childId, t)));
   });
 }

@@ -257,6 +257,19 @@ describe("recognising bb's reports", () => {
     expect(retry.h.warnings).toEqual([]);
   });
 
+  it("still recognises Cache Keeper's own message by its text, whoever bb says sent it", () => {
+    const { turn } = parentOf({ initiator: "system", input: text(KEEP_WARM) });
+    expect(turn.inputs).toEqual([{ kind: "sent", text: KEEP_WARM.trim(), at: 3_000 }]);
+  });
+
+  it("warns once for each input of a request that has several", () => {
+    const { systemMessageKind: _, ...kindless } = report([{ id: "c" }]);
+    const h = new History();
+    h.events.push({ seq: 1, type: "client/turn/requested", createdAt: 0, data: { requestId: "creq_9", ...kindless, inputGroups: [kindless.input, kindless.input] } });
+    h.log();
+    expect(h.warnings.map((w) => w.split(":")[0])).toEqual(["request creq_9 (input 1) into t", "request creq_9 (input 2) into t"]);
+  });
+
   it("makes a report naming no child real and warns: a single one without a subject, or a batch mentioning no child", () => {
     const c = quietChild();
     const lookup = (id: string) => (id === "c" ? c : null);
