@@ -15,8 +15,8 @@ Set these under Settings → Installed plugins → Thread Usage, or with `bb plu
 | `billingCodex` | Billing for Codex | `auto` | as above |
 | `billingPi` | Billing for pi | `auto` | as above |
 | `billingOther` | Billing for other harnesses | `auto` | as above |
-| `showAmount` | Show amount in header | `false` | Show the family total beside the header coin |
-| `warnAbove` | Warn above | `0` | A family total that, once crossed, tints the coin and shows one toast. `0` turns it off |
+| `showAmount` | Show amount in header | `false` | Show the thread tree total beside the header coin |
+| `warnAbove` | Warn above | `0` | A thread tree total that, once crossed, tints the coin and shows one toast. `0` turns it off |
 | `currency` | Currency label | `$` | The label only; figures are USD |
 
 The `extraHeaders` values appear in bb's thread timeline, which is why credentials are refused there. The plugin's own value replaces any `ANTHROPIC_CUSTOM_HEADERS` your shell sets, so list those headers here too.

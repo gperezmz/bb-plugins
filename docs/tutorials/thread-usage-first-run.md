@@ -22,7 +22,7 @@ Wait for the parent to finish.
 
 ## 3. Read the header chip
 
-A coin has appeared in the thread's header. Hover it. The card shows the [family](../explanation/how-the-plugins-fit-bb.md#threads-and-families)'s [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use), a bar of tokens by kind, and `1 child thread`: the figure covers the parent and its child.
+A coin has appeared in the thread's header. Hover it. The card shows the [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees)'s [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use), a bar of tokens by kind, and `1 child thread`: the figure covers the parent and its child.
 
 If your agent runs on a subscription plan, the headline leads with tokens, and the dollars read **list-price equivalent**. With an API key it leads with dollars, labelled **estimate**. [Billed and subscription use](../explanation/thread-usage-counting.md#billed-and-subscription-use) explains the difference.
 
@@ -48,12 +48,12 @@ bb thread-usage show <threadId> --no-children
 
 The first matches the Usage tab's **With children**; the second, **This thread**.
 
-## 6. See the most expensive families
+## 6. See the most expensive thread trees
 
-Click **Thread usage** in the sidebar. The page ranks the most expensive thread families of the last 7 days; switch to 30 days, or pick a project at the top. The same list is in the CLI:
+Click **Thread usage** in the sidebar. The page ranks the most expensive thread trees of the last 7 days; switch to 30 days, or pick a project at the top. The same list is in the CLI:
 
 ```sh
 bb thread-usage top --since 30d
 ```
 
-You have installed Thread Usage and read one family's cost in each place it shows. To get exact costs instead of estimates, [connect a LiteLLM gateway](../how-to/thread-usage-connect-litellm.md).
+You have installed Thread Usage and read one tree's cost in each place it shows. To get exact costs instead of estimates, [connect a LiteLLM gateway](../how-to/thread-usage-connect-litellm.md).

@@ -16,7 +16,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
 | 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Faint grey |
 
-A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#families-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its family is quiet, chip included; anything running, unread, open or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
+A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, open or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
 
@@ -49,17 +49,17 @@ With **Comfortable** density, other rows use the second line for the branch (whe
 
 A thread that started before Thread Glance was installed has no start time, and shows no timer until its next run.
 
-The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-families) sits beside the time: the provider's logo, or a two-letter mark when the provider has none. The **Harness icon** preference draws it muted, in the provider's colour, or not at all.
+The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees) sits beside the time: the provider's logo, or a two-letter mark when the provider has none. The **Harness icon** preference draws it muted, in the provider's colour, or not at all.
 
 ## The chip
 
 A parent thread carries a chip with the number of its children and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three child harnesses that differ from the parent's show as small logos beside it.
 
-Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). A family's root carries the same chip in the Needs attention section.
+Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). A tree's root carries the same chip in the Needs attention section.
 
 ## Group header counters
 
-Each group header counts, over every [family](../explanation/how-the-plugins-fit-bb.md#threads-and-families) whose home is the group, those drawn in Needs attention included:
+Each group header counts, over every [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees) whose home is the group, those drawn in Needs attention included:
 
 | Counter | Glyph | Shown |
 |---|---|---|
@@ -69,4 +69,4 @@ Each group header counts, over every [family](../explanation/how-the-plugins-fit
 | Working | Spinner | Only while the group is collapsed |
 | Unread | Dot | Only on **More**, which holds hidden groups |
 
-The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs attention section's own header counts its families. The counters sit at the right edge of the header, in line with the rows' ages; with the pointer over the header, or keyboard focus in it, the **+** and **…** buttons take their place.
+The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The Needs attention section's own header counts its trees. The counters sit at the right edge of the header, in line with the rows' ages; with the pointer over the header, or keyboard focus in it, the **+** and **…** buttons take their place.

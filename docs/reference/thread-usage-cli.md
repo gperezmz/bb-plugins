@@ -8,7 +8,7 @@ The CLI runs on the bb server and reads the same records as the Usage tab. Befor
 bb thread-usage show [<threadId>] [--no-children] [--json]
 ```
 
-Shows one thread's usage, added up over its [family](../explanation/how-the-plugins-fit-bb.md#threads-and-families).
+Shows one thread's usage, added up over its [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees).
 
 | Argument or option | Meaning |
 |---|---|
@@ -23,9 +23,9 @@ The text output gives the headline, tokens by kind, turns, wall time, API time (
 | Field | Meaning |
 |---|---|
 | `threadId`, `title` | The thread |
-| `scope` | `family`, or `thread` with `--no-children` |
+| `scope` | `tree`, or `thread` with `--no-children` |
 | `descendants` | Number of threads under it |
-| `headline` | The [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use) as the Usage tab shows it: `primary` (the large figure), `primaryKind` (`usd` or `tokens`), `detail` (source and billing), `secondary` (subscription tokens beside billed dollars, or `null`), `unpricedNote`, `chip` (the header chip's short figure), `billing` (the figure's billing mode, `mixed` when the family's threads differ) |
+| `headline` | The [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use) as the Usage tab shows it: `primary` (the large figure), `primaryKind` (`usd` or `tokens`), `detail` (source and billing), `secondary` (subscription tokens beside billed dollars, or `null`), `unpricedNote`, `chip` (the header chip's short figure), `billing` (the figure's billing mode, `mixed` when the tree's threads differ) |
 | `usd` | Total dollars, list-price equivalent of subscription use included |
 | `billedUsd` | Dollars actually billed: `usd` without subscription use |
 | `listPriceUsd` | List-price equivalent of subscription use |
@@ -34,10 +34,10 @@ The text output gives the headline, tokens by kind, turns, wall time, API time (
 | `totalTokens` | Sum of `tokens` |
 | `unpricedTokens` | Tokens with no price |
 | `untrackedTokens` | Tokens the gateway reported beyond what bb and the logs saw |
-| `billing` | This thread's own billing mode; the family's is `headline.billing` |
+| `billing` | This thread's own billing mode; the tree's is `headline.billing` |
 | `state` | This thread's attribution state |
 | `turns`, `wallMs`, `apiMs`, `lines` | Turn count, wall and API time in milliseconds, lines `added` and `removed` |
-| `children` | One entry per descendant: `threadId`, `title`, `depth`, `usd`, `familyUsd`, `tokens` |
+| `children` | One entry per descendant: `threadId`, `title`, `depth`, `usd`, `treeUsd`, `tokens` |
 | `pricesUpdatedAt` | When LiteLLM's price list was last fetched, ISO time; `null` if never |
 
 A turn still running counts nothing yet: harnesses report a turn's tokens when it ends.
@@ -48,15 +48,15 @@ A turn still running counts nothing yet: harnesses report a turn's tokens when i
 bb thread-usage top [--project <id>] [--since <duration>] [--limit <1-200>] [--json]
 ```
 
-Lists the most expensive families, ranked by all their dollars, list-price equivalent of subscription use included. The Thread usage page in the sidebar shows the same list.
+Lists the most expensive thread trees, ranked by all their dollars, list-price equivalent of subscription use included. The Thread usage page in the sidebar shows the same list.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--project <id>` | all projects | Only families in this project |
-| `--since <duration>` | `7d` | Families active within this window, e.g. `7d`, `30d` |
-| `--limit <n>` | `20` | How many families, 1 to 200 |
+| `--project <id>` | all projects | Only thread trees in this project |
+| `--since <duration>` | `7d` | Thread trees active within this window, e.g. `7d`, `30d` |
+| `--limit <n>` | `20` | How many thread trees, 1 to 200 |
 | `--json` | | Machine-readable output |
 
-Each line gives the dollars, tokens, the root's title and id, and the family's thread count; the second line gives the project and the last activity.
+Each line gives the dollars, tokens, the root's title and id, and the tree's thread count; the second line gives the project and the last activity.
 
-`--json` prints `{ families, pricesUpdatedAt }`. Each family has `threadId`, `title`, `projectId`, `providerId`, `descendants`, `usd`, `billedUsd`, `listPriceUsd`, `tokens`, `billing`, `headline` and `lastActivityAt`.
+`--json` prints `{ trees, pricesUpdatedAt }`. Each tree has `threadId`, `title`, `projectId`, `providerId`, `descendants`, `usd`, `billedUsd`, `listPriceUsd`, `tokens`, `billing`, `headline` and `lastActivityAt`.
