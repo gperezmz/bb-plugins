@@ -4,6 +4,7 @@
  */
 import { formatSize, type CacheLifetime } from "./line";
 import { joinAnd } from "./messages";
+import type { KeepWarmSetting, ThreadRef } from "./switch";
 import type { WaitItem } from "./waiting";
 
 /** The realtime channel every surface refetches on; its payload names the changed threads. */
@@ -38,8 +39,12 @@ export interface ThreadView {
   compactedAt: number | null;
   canCompactNow: boolean;
   waiting: boolean;
-  /** "Check in on background work" is on. */
-  checkIns: boolean;
+  /** Its tree is kept warm while waiting: its tree top's switch is on, and the setting is not Never. */
+  keptWarm: boolean;
+  /** "Keep caches warm while waiting". */
+  warmSetting: KeepWarmSetting;
+  /** The tree top whose switch covers it; itself when it is one. */
+  treeTop: ThreadRef;
   /** A keep-warm is planned for this thread, or for a thread below it whose report will reach it. */
   warmPlanned: boolean;
   warmSkipped: boolean;
@@ -95,8 +100,27 @@ export function chipText(view: ThreadView, now: number): string {
   return view.line === null ? "no line" : `≥ ${formatSize(view.line)}`;
 }
 
-/** The chip's hover sentence. */
+/** The chip's hover sentence: its compaction sentence, then whether the thread is kept warm while it waits. */
 export function chipSentence(view: ThreadView, now: number): string {
+  return `${compactSentence(view, now)} ${warmSentence(view)}`;
+}
+
+/** Whether the popover's Keep warm while waiting switch can be flipped: on a tree top, unless the setting is Never. */
+export const warmSwitchFlippable = (view: ThreadView) => view.treeTop.threadId === view.threadId && view.warmSetting !== "never";
+
+/** The page's Next cell for a waiting thread: "off" where its tree is not kept warm. */
+export function nextWarmText(view: ThreadView, now: number): string {
+  if (!view.keptWarm) return "off";
+  return view.nextWarmAt === null ? "–" : `in ${minutesTo(view.nextWarmAt, now)}m`;
+}
+
+/** Whether a thread is kept warm while it waits, in a sentence. */
+export function warmSentence(view: ThreadView): string {
+  if (view.warmSetting === "never") return "Keep-warms are off in Settings.";
+  return view.keptWarm ? "While it waits, its cache is kept warm." : "While it waits, its cache is not kept warm.";
+}
+
+function compactSentence(view: ThreadView, now: number): string {
   if (!view.compactOn) return "Compact when idle is off. Click to switch it on for this thread.";
   if (view.hasPendingInteraction) return "Compact when idle is paused while this thread waits on your answer.";
   if (view.compactionDue && view.deadline !== null) {
@@ -154,7 +178,7 @@ export function countsText(counts: WaitCounts): string {
   return parts.length === 0 ? "background work" : joinAnd(parts);
 }
 
-export type BannerAction = "skip-compaction" | "compact-now" | "undo-compaction" | "skip-warm" | "undo-warm";
+export type BannerAction = "skip-compaction" | "compact-now" | "undo-compaction" | "skip-warm" | "undo-warm" | "keep-warm";
 
 /** The one line above the composer, and its buttons; null for none. */
 export function bannerOf(view: ThreadView, now: number): { text: string; actions: BannerAction[] } | null {
@@ -165,10 +189,14 @@ export function bannerOf(view: ThreadView, now: number): { text: string; actions
   if (view.compactOn && view.compactSkipped && view.compactedAt === null && !view.waiting) {
     return { text: "Skipped until this thread next runs", actions: ["undo-compaction"] };
   }
-  if (!view.waiting || !view.checkIns) return null;
+  if (!view.waiting) return null;
+  const on = `Waiting on ${countsText(view.counts)}`;
+  if (view.warmSetting === "never") return { text: `${on}, keep-warms are off in Settings`, actions: [] };
+  if (!view.keptWarm) return { text: `${on}, not keeping cache warm`, actions: ["keep-warm"] };
   if (view.warmSkipped) return { text: "Skipped for this wait", actions: ["undo-warm"] };
-  if (view.warmPlanned) return { text: `Waiting on ${countsText(view.counts)}, keeping cache warm`, actions: ["skip-warm"] };
-  return { text: `Waiting on ${countsText(view.counts)}, letting cache go cold`, actions: [] };
+  if (view.warmPlanned) return { text: `${on}, keeping cache warm`, actions: ["skip-warm"] };
+  // Past the cost stop, or a cache already cold when its tree was switched on.
+  return { text: `${on}, letting cache go cold`, actions: [] };
 }
 
 /** A sidebar row showing a Cache Keeper glyph, and which. */

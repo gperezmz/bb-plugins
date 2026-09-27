@@ -1,14 +1,30 @@
-/** Cache Keeper's three settings and their parsed form. */
+/** Cache Keeper's four settings and their parsed form. */
 import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
+import type { KeepWarmSetting } from "../core/switch";
 
 export const WAIT_OPTIONS = ["10 min", "15 min", "30 min"] as const;
 
+/** The "Keep caches warm while waiting" choices, as Settings shows them, and what each parses to. */
+export const KEEP_WARM_OPTIONS: Record<string, KeepWarmSetting> = {
+  "Every waiting thread": "every",
+  "Only threads switched on": "switched",
+  Never: "never",
+};
+
 export const SETTINGS = {
-  checkIns: {
-    type: "boolean",
-    label: "Check in on background work",
+  keepWarm: {
+    type: "select",
+    label: "Keep caches warm while waiting",
     description:
-      "On every Claude Code thread whose turn ends while it waits on background work, child threads or a scheduled message: keep its cache warm, and check in on a background command or subagent that has stopped producing output.",
+      "Which Claude Code threads get keep-warms while they wait on background work, child threads or a scheduled message. A thread tree follows this until you flip its Keep warm while waiting switch in the composer chip, from the banner or with `bb cache-keeper keep-warm`; Never sends none whatever the switches say.",
+    options: Object.keys(KEEP_WARM_OPTIONS),
+    default: "Only threads switched on",
+  },
+  stalledCheckIns: {
+    type: "boolean",
+    label: "Check in on stalled background work",
+    description:
+      "On every Claude Code thread, whatever its tree's Keep warm while waiting switch says: when a background command or subagent has produced no output or progress for the no-output wait, ask the agent to check it. Off also stops keep-warms asking about tasks running 30 minutes or more.",
     default: true,
   },
   noOutputWait: {
@@ -27,6 +43,7 @@ export const SETTINGS = {
 } satisfies PluginSettingDescriptors;
 
 export interface KeeperSettings {
+  keepWarm: KeepWarmSetting;
   checkIns: boolean;
   waitMs: number;
   fetchPrices: boolean;
@@ -35,7 +52,8 @@ export interface KeeperSettings {
 export function parseSettings(values: Record<string, unknown>): KeeperSettings {
   const wait = typeof values.noOutputWait === "string" ? Number.parseInt(values.noOutputWait, 10) : NaN;
   return {
-    checkIns: values.checkIns !== false,
+    keepWarm: (typeof values.keepWarm === "string" ? KEEP_WARM_OPTIONS[values.keepWarm] : undefined) ?? "switched",
+    checkIns: values.stalledCheckIns !== false,
     waitMs: ([10, 15, 30].includes(wait) ? wait : 15) * 60_000,
     fetchPrices: values.fetchPrices !== false,
   };

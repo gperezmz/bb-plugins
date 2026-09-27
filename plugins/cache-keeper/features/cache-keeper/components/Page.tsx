@@ -6,7 +6,7 @@
  */
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { formatSize } from "@/src/core/line";
-import { ago, countsText, entryText, minutesTo, statusText, type ThreadView } from "@/src/core/view";
+import { ago, countsText, entryText, nextWarmText, statusText, type ThreadView } from "@/src/core/view";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeeperRpc, useLive, useNow } from "../api";
 import { formatUsd, splitText } from "../model/bar";
@@ -47,9 +47,7 @@ export function Page() {
         </Section>
 
         <Section title="Waiting on background work">
-          {!data.checkIns ? (
-            <Empty>"Check in on background work" is off in Settings.</Empty>
-          ) : data.waiting.length === 0 ? (
+          {data.waiting.length === 0 ? (
             <Empty>No idle thread is waiting on anything.</Empty>
           ) : (
             <Table head={["Thread", "Waiting on", "Next"]}>
@@ -58,7 +56,7 @@ export function Page() {
                   key={v.threadId}
                   view={v}
                   onOpen={open}
-                  cells={[countsText(v.counts), v.nextWarmAt === null ? "–" : `in ${minutesTo(v.nextWarmAt, now)}m`]}
+                  cells={[countsText(v.counts), nextWarmText(v, now)]}
                 />
               ))}
             </Table>

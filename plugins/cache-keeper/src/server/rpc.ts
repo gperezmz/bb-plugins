@@ -24,7 +24,6 @@ export interface Overview {
   /** Titles of the threads the recent entries' costs fell on. */
   titles: Record<string, string>;
   totals: Totals;
-  checkIns: boolean;
 }
 
 export const rpcContract = defineRpcContract({
@@ -38,6 +37,11 @@ export const rpcContract = defineRpcContract({
   },
   setSetting: {
     input: z.object({ threadId, setting }).strict(),
+    output: z.custom<ThreadView | null>((v) => v === null || isObject(v)),
+  },
+  /** Flips Keep warm while waiting on the thread's tree top; answers with the thread's view. */
+  setKeepWarm: {
+    input: z.object({ threadId, on: z.boolean() }).strict(),
     output: z.custom<ThreadView | null>((v) => v === null || isObject(v)),
   },
   skip: {

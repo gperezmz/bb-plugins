@@ -1,10 +1,12 @@
 /**
- * The chip's popover: the switch, the sentence, the context bar with the
+ * The chip's popover: Keep warm while waiting, set on the thread's tree top;
+ * then Compact when idle: its switch, the sentence, the context bar with the
  * line's handle, the status line, what the line rests on, and a folded
  * "Why {line}?" with the dollar figures.
  */
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { formatSize, lineWhy } from "@/src/core/line";
-import { noLineReason, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { noLineReason, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { ContextBar } from "./ContextBar";
@@ -15,23 +17,40 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
   const line = formatSize(view.line);
   const lifetime = view.lifetime === null ? "cache lifetime not read yet" : view.lifetime === "5m" ? "5 min cache" : "1 h cache";
 
+  const navigate = useBbNavigate();
+  const below = view.treeTop.threadId !== view.threadId;
+  const flippable = warmSwitchFlippable(view);
+
   return (
     <div className="flex flex-col gap-3 text-sm">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3 font-medium">
+          <span id={`${view.threadId}-warm-label`} className={flippable ? undefined : "text-muted-foreground"}>
+            Keep warm while waiting
+          </span>
+          <Switch
+            checked={view.keptWarm}
+            disabled={!flippable}
+            labelledBy={`${view.threadId}-warm-label`}
+            onClick={() => void run(rpc.call("setKeepWarm", { threadId: view.threadId, on: !view.keptWarm }))}
+          />
+        </div>
+        {below && (
+          <p className="text-xs text-muted-foreground">
+            Set on{" "}
+            <button type="button" className="text-foreground hover:underline" onClick={() => navigate.toThread(view.treeTop.threadId)}>
+              {view.treeTop.title}
+            </button>
+          </p>
+        )}
+      </div>
       <div className="flex items-center justify-between gap-3 font-medium">
         <span id={`${view.threadId}-compact-label`}>Compact when idle</span>
-        {/* A button rather than a native checkbox: bb's composer reverts a checkbox toggled inside it. */}
-        <button
-          type="button"
-          role="switch"
-          aria-checked={view.compactOn}
-          aria-labelledby={`${view.threadId}-compact-label`}
+        <Switch
+          checked={view.compactOn}
+          labelledBy={`${view.threadId}-compact-label`}
           onClick={() => void run(rpc.call("setCompact", { threadId: view.threadId, on: !view.compactOn }))}
-          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${view.compactOn ? "bg-primary" : "bg-muted"}`}
-        >
-          <span
-            className={`absolute left-0 top-0.5 size-4 rounded-full bg-background shadow transition-transform ${view.compactOn ? "translate-x-4" : "translate-x-0.5"}`}
-          />
-        </button>
+        />
       </div>
       <p className="text-muted-foreground">{popoverSentence(view)}</p>
       <ContextBar view={view} onSetting={(setting) => void run(rpc.call("setSetting", { threadId: view.threadId, setting }))} />
@@ -45,6 +64,23 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
       {view.rates !== null && (view.line !== null ? <Why view={view} line={line} /> : <WhyNever view={view} />)}
       {error !== null && <p className="text-xs text-destructive">{error}</p>}
     </div>
+  );
+}
+
+/** A button rather than a native checkbox: bb's composer reverts a checkbox toggled inside it. */
+function Switch({ checked, disabled = false, labelledBy, onClick }: { checked: boolean; disabled?: boolean; labelledBy: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={labelledBy}
+      disabled={disabled}
+      onClick={onClick}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "bg-primary" : "bg-muted"}`}
+    >
+      <span className={`absolute left-0 top-0.5 size-4 rounded-full bg-background shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+    </button>
   );
 }
 
