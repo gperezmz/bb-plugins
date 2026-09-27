@@ -42,7 +42,7 @@ The **compaction line** for setting N is the smallest C with
 | w | The model's cache-write price at the thread's cache lifetime |
 | r | The cache-read price |
 | o | The output price |
-| k | The thread's mean model requests per user message, from its own transcript; 3 before its first |
+| k | The thread's mean model requests per user message, from its own transcript, leaving out Cache Keeper's own turns; 3 before its first message |
 | P | The thread's size after its last compaction; 40,000 tokens when it has none |
 | N | The setting, 1 to 10: how many times over the first message back must repay compacting |
 
