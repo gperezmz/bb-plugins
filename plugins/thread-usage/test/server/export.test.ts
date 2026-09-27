@@ -64,7 +64,7 @@ describe("titles built from the first prompt", () => {
     h.store.upsertEdge(edgeFromDto({ id: "thr_p", title: null, titleFallback: "sk-secret pasted in the first prompt" }), T0);
     h.store.upsertEdge(edgeFromDto({ id: "thr_c", parentThreadId: "thr_p", title: null, titleFallback: "another prompt line" }), T0);
     expect(h.store.getEdge("thr_p")!.titleFromPrompt).toBe(true);
-    const md = reportMarkdown(h.model.report("thr_p"), "family");
+    const md = reportMarkdown(h.model.report("thr_p"), "tree");
     expect(md).not.toContain("sk-secret");
     expect(md).not.toContain("another prompt line");
     expect(md).toContain("# Usage: thr_p");

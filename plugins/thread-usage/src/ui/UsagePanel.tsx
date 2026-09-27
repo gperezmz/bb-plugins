@@ -56,16 +56,16 @@ export function paramsThreadId(params: JsonValue | null, fallback: string): stri
 export function UsageTab({ threadId: ownThreadId, params }: { threadId: string; params: JsonValue | null }) {
   const threadId = paramsThreadId(params, ownThreadId);
   const rpc = useUsageRpc();
-  const [familyIds, setFamilyIds] = useState<string[]>([threadId]);
+  const [treeIds, setTreeIds] = useState<string[]>([threadId]);
   const { data, error } = useLive(
     () => rpc.call("report", { threadId }),
     [rpc, threadId],
-    (payload) => touches(payload, familyIds),
+    (payload) => touches(payload, treeIds),
   );
   useEffect(() => {
-    if (data !== null) setFamilyIds([data.threadId, ...data.tree.map((r) => r.threadId), ...data.forks.map((f) => f.threadId)]);
+    if (data !== null) setTreeIds([data.threadId, ...data.tree.map((r) => r.threadId), ...data.forks.map((f) => f.threadId)]);
   }, [data]);
-  // Opening the tab refreshes the family: catch-up, gateway sweep, and a retry of offline machines.
+  // Opening the tab refreshes the tree: catch-up, gateway sweep, and a retry of offline machines.
   useEffect(() => {
     void rpc.call("refresh", { threadId }).catch(() => undefined);
   }, [rpc, threadId]);
@@ -102,11 +102,11 @@ function LoadingState() {
 }
 
 export function Report({ report }: { report: ThreadReport }) {
-  const hasFamily = report.descendants > 0;
-  const [scope, setScope] = useState<"thread" | "family">(hasFamily ? "family" : "thread");
-  const effective = hasFamily ? scope : "thread";
-  const view = effective === "family" ? report.family : report.thread;
-  const other = effective === "family" ? report.thread : report.family;
+  const hasChildren = report.descendants > 0;
+  const [scope, setScope] = useState<"thread" | "tree">(hasChildren ? "tree" : "thread");
+  const effective = hasChildren ? scope : "thread";
+  const view = effective === "tree" ? report.treeTotal : report.thread;
+  const other = effective === "tree" ? report.thread : report.treeTotal;
   const f = view.figure;
   const [selected, setSelected] = useState<string | null>(null);
   const selectedTurn = report.turns.find((t) => t.turnId === selected) ?? null;
@@ -129,7 +129,7 @@ export function Report({ report }: { report: ThreadReport }) {
       ) : null}
 
       <Panel className="p-4">
-        {hasFamily ? (
+        {hasChildren ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <ToggleGroup
               type="single"
@@ -137,19 +137,19 @@ export function Report({ report }: { report: ThreadReport }) {
               variant="outline"
               value={effective}
               onValueChange={(v) => {
-                if (v === "thread" || v === "family") setScope(v);
+                if (v === "thread" || v === "tree") setScope(v);
               }}
               aria-label="Scope"
             >
               <ToggleGroupItem value="thread" className="px-2.5 text-xs">
                 This thread
               </ToggleGroupItem>
-              <ToggleGroupItem value="family" className="px-2.5 text-xs">
+              <ToggleGroupItem value="tree" className="px-2.5 text-xs">
                 With children
               </ToggleGroupItem>
             </ToggleGroup>
             <div className="text-xs text-muted-foreground tabular-nums">
-              {effective === "family" ? "This thread alone" : "With children"}: {other.headline.primary}
+              {effective === "tree" ? "This thread alone" : "With children"}: {other.headline.primary}
             </div>
           </div>
         ) : null}
@@ -174,7 +174,7 @@ export function Report({ report }: { report: ThreadReport }) {
         {report.budget !== null ? (
           <div className="mt-3 flex items-center gap-1.5 text-xs text-warning">
             <Icon name="AlertCircle" className="size-3.5" />
-            {report.descendants > 0 ? "This family" : "This thread"} crossed {formatUsd(report.budget.amount, report.currency)}
+            {report.descendants > 0 ? "This thread tree" : "This thread"} crossed {formatUsd(report.budget.amount, report.currency)}
           </div>
         ) : null}
       </Panel>
@@ -196,7 +196,7 @@ export function Report({ report }: { report: ThreadReport }) {
           }
           hint="From file-change diffs; edits made through shell commands are not counted"
         />
-        <Stat label="Turns" value={formatCount(f.turns)} hint={effective === "family" ? `Across ${formatCount(report.descendants + 1)} threads` : "Turns of this thread"} />
+        <Stat label="Turns" value={formatCount(f.turns)} hint={effective === "tree" ? `Across ${formatCount(report.descendants + 1)} threads` : "Turns of this thread"} />
       </div>
 
       <section>
@@ -457,7 +457,7 @@ function ChildTree({ rows }: { rows: TreeRow[] }) {
                 {row.ownChip}
               </span>
               <span className="w-16 shrink-0 text-right font-medium tabular-nums" title="With its children">
-                {row.familyChip}
+                {row.treeChip}
               </span>
               <span className="hidden w-14 shrink-0 items-center gap-1 sm:flex" title={`${formatPercent(row.share)} of the total`}>
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
@@ -530,7 +530,7 @@ export function Snippet({ label, code }: { label: string; code: string }) {
   );
 }
 
-function ExportBar({ report, scope }: { report: ThreadReport; scope: "thread" | "family" }) {
+function ExportBar({ report, scope }: { report: ThreadReport; scope: "thread" | "tree" }) {
   const [copied, copy] = useCopy();
   const csv = useMemo(() => turnsCsv(report.turns), [report.turns]);
   return (

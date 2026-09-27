@@ -317,10 +317,10 @@ describe("headline wording", () => {
     expect(headline(f).detail).toContain("billed by the gateway");
   });
 
-  it("a mixed family shows billed dollars first and a subscription line", () => {
+  it("a mixed tree shows billed dollars first and a subscription line", () => {
     const big = turnRecord({ turnId: "b", startedAt: T0, completedAt: T0 + SEC, model: "test-model", tokens: tokens({ input: 12_400_000 }) });
-    const family = sumFigures([fig("api-key"), fig("subscription", [big])]);
-    const h = headline(family);
+    const tree = sumFigures([fig("api-key"), fig("subscription", [big])]);
+    const h = headline(tree);
     expect(h.billing).toBe("mixed");
     expect(h.primary).toBe("$0.0020");
     expect(h.secondary).toBe("+ 12.4M tokens on subscription (≈ $12.40 list price)");

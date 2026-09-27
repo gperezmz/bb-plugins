@@ -69,7 +69,7 @@ describe("backfill queue", () => {
 });
 
 describe("budget crossings (scenario 17)", () => {
-  it("records a crossing once per family and amount, and the toast is claimed once", () => {
+  it("records a crossing once per tree and amount, and the toast is claimed once", () => {
     const store = memoryStore();
     const c = { rootThreadId: "root", amount: 5, crossedAt: T0, totalAtCrossing: 5.2 };
     store.addCrossing(crossingKey("root", 5), c);

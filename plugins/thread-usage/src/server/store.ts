@@ -3,7 +3,7 @@
  * the pure modules work on; indexed columns are only what queries filter on.
  */
 import type { Crossing } from "../core/budget";
-import type { Edge } from "../core/family";
+import type { Edge } from "../core/tree";
 import type { GatewayRow } from "../core/gateway";
 import { EMPTY_CURSOR, type LedgerCursor, type TurnRecord } from "../core/ledger";
 import type { StoredLogEntry } from "../core/summary";

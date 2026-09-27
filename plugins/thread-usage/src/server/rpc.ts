@@ -9,7 +9,7 @@ import type {
   PricesInfo,
   SettingsStatus,
   ThreadReport,
-  TopFamily,
+  TopTree,
 } from "../core/report-types";
 
 const threadId = z.string().regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id");
@@ -36,7 +36,7 @@ export const rpcContract = defineRpcContract({
     input: z
       .object({ projectId: z.string().nullable(), sinceDays: z.number().int().min(1).max(3650) })
       .strict(),
-    output: z.custom<{ families: TopFamily[]; projects: { id: string; name: string }[]; prices: PricesInfo }>(isObject),
+    output: z.custom<{ trees: TopTree[]; projects: { id: string; name: string }[]; prices: PricesInfo }>(isObject),
   },
   status: {
     input: z.null(),

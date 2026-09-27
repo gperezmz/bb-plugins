@@ -107,8 +107,8 @@ function mdEscape(text: string): string {
 }
 
 /** The report as Markdown: headline, stats, models, every turn, children, forks, data quality. */
-export function reportMarkdown(r: ThreadReport, scope: "thread" | "family"): string {
-  const view = scope === "family" ? r.family : r.thread;
+export function reportMarkdown(r: ThreadReport, scope: "thread" | "tree"): string {
+  const view = scope === "tree" ? r.treeTotal : r.thread;
   const f = view.figure;
   const cur = r.currency;
   const out: string[] = [];
@@ -118,7 +118,7 @@ export function reportMarkdown(r: ThreadReport, scope: "thread" | "family"): str
   out.push(`# Usage: ${mdEscape(titleOf(r))}`);
   out.push("");
   out.push(
-    `**${view.headline.primary}** ${view.headline.detail}${scope === "family" ? ` (with ${r.descendants} descendant threads)` : " (this thread)"}`,
+    `**${view.headline.primary}** ${view.headline.detail}${scope === "tree" ? ` (with ${r.descendants} descendant threads)` : " (this thread)"}`,
   );
   if (view.headline.secondary !== null) out.push(`\n${view.headline.secondary}`);
   if (view.headline.unpricedNote !== null) out.push(`\n${view.headline.unpricedNote}`);
@@ -167,7 +167,7 @@ export function reportMarkdown(r: ThreadReport, scope: "thread" | "family"): str
         .filter(Boolean)
         .join(", ");
       out.push(
-        `| ${"  ".repeat(Math.max(0, row.depth - 1))}${mdEscape(titleOf(row))}${marks === "" ? "" : ` (${marks})`} | ${row.providerId ?? ""} | ${row.ownChip} | ${row.familyChip} | ${Math.round(row.share * 100)}% |`,
+        `| ${"  ".repeat(Math.max(0, row.depth - 1))}${mdEscape(titleOf(row))}${marks === "" ? "" : ` (${marks})`} | ${row.providerId ?? ""} | ${row.ownChip} | ${row.treeChip} | ${Math.round(row.share * 100)}% |`,
       );
     }
   }

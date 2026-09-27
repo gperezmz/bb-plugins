@@ -7,7 +7,7 @@
 import { crossingKey, newCrossings } from "../core/budget";
 import type { Harness, LogEntry } from "../host/contract";
 import { LOG_PAGE_MAX } from "../host/contract";
-import { ancestorIds, indexEdges } from "../core/family";
+import { ancestorIds, indexEdges } from "../core/tree";
 import { costTotal } from "../core/figure-math";
 import {
   EMPTY_CURSOR,
@@ -178,7 +178,7 @@ export class Engine {
     const before = this.deps.store.getEdge(dto.id);
     const edge = edgeFromDto(dto);
     // bb detaches a deleted thread's children (parent becomes null). They
-    // stay under it here, so the family total above does not change.
+    // stay under it here, so the tree total above does not change.
     if (
       edge.parentThreadId === null &&
       before?.parentThreadId != null &&
@@ -375,7 +375,7 @@ export class Engine {
     this.deps.model.invalidate(all);
     let crossed = false;
     for (const id of threadIds) crossed = this.checkBudget(id) || crossed;
-    // A crossing tints every chip of the crossed family, including threads
+    // A crossing tints every chip of the crossed tree, including threads
     // outside this change's line of ancestors: tell every surface.
     this.deps.publish(USAGE_CHANGED, { threadIds: crossed ? [] : [...all] });
   }
@@ -388,7 +388,7 @@ export class Engine {
     const crossings = newCrossings(totals, settings.warnAbove, this.deps.store.crossingKeys(), this.deps.now());
     for (const c of crossings) {
       this.deps.store.addCrossing(crossingKey(c.rootThreadId, c.amount), c);
-      this.deps.log.info(`family ${c.rootThreadId} crossed ${c.amount}`);
+      this.deps.log.info(`tree ${c.rootThreadId} crossed ${c.amount}`);
     }
     return crossings.length > 0;
   }
@@ -591,10 +591,10 @@ export class Engine {
   }
 
   /**
-   * Opening the Usage tab: catches up the family's threads and reads the
+   * Opening the Usage tab: catches up the tree's threads and reads the
    * logs of those whose logs are missing (a machine offline) or older than
    * their last activity; logs read since are not read again. A few threads at
-   * a time, so a large family does not flood bb or the machine.
+   * a time, so a large tree does not flood bb or the machine.
    */
   async refresh(threadIds: readonly string[]): Promise<void> {
     await eachLimit(threadIds, REFRESH_CONCURRENCY, (id) => this.catchUpQuietly(id));
@@ -707,7 +707,7 @@ export class Engine {
   }
 
   /**
-   * Checks every family against Warn above, so a family already over the
+   * Checks every tree against Warn above, so a tree already over the
    * amount when it is set counts as crossed.
    */
   checkAllBudgets(): void {
@@ -716,14 +716,14 @@ export class Engine {
     const index = indexEdges(this.deps.store.allEdges());
     const totals = new Map<string, number>();
     for (const id of index.byId.keys()) {
-      const { figure } = this.deps.model.familyFigure(id, index);
+      const { figure } = this.deps.model.treeFigure(id, index);
       totals.set(id, costTotal(figure.cost) - figure.byBilling.subscription.usd);
     }
     const crossings = newCrossings(totals, settings.warnAbove, this.deps.store.crossingKeys(), this.deps.now());
     for (const c of crossings) {
       // Found by a sweep over history, not by new spend: tint only, no toast.
       this.deps.store.addCrossing(crossingKey(c.rootThreadId, c.amount), c, { silent: true });
-      this.deps.log.info(`family ${c.rootThreadId} is over ${c.amount}`);
+      this.deps.log.info(`tree ${c.rootThreadId} is over ${c.amount}`);
     }
     if (crossings.length > 0) this.deps.publish(USAGE_CHANGED, { threadIds: [] });
   }

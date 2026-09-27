@@ -1,6 +1,6 @@
 /**
  * Reads stored ledger, gateway rows and log entries and computes what every
- * surface shows. Family totals are computed when read, never stored,
+ * surface shows. Tree totals are computed when read, never stored,
  * because a parent can change.
  */
 import {
@@ -16,12 +16,12 @@ import {
 } from "../core/attribution";
 import {
   ancestorIds,
-  familyTree,
+  treeOf,
   forksOf,
   indexEdges,
   type EdgeIndex,
-  type FamilyNode,
-} from "../core/family";
+  type TreeNode,
+} from "../core/tree";
 import { formatDuration, formatTokens, formatUsd, headline, pricesStale } from "../core/format";
 import type { RateLimitKind } from "../core/ledger";
 import type { PriceBook } from "../core/pricing";
@@ -35,7 +35,7 @@ import type {
   PricesMeta,
   QualityNote,
   ThreadReport,
-  TopFamily,
+  TopTree,
   TreeRow,
 } from "../core/report-types";
 import {
@@ -181,13 +181,13 @@ export class UsageModel {
     };
   }
 
-  familyFigure(
+  treeFigure(
     rootId: string,
     index: EdgeIndex,
-  ): { figure: Figure; tree: FamilyNode; byNode: Map<string, Figure> } {
-    const tree = familyTree(index, rootId);
+  ): { figure: Figure; tree: TreeNode; byNode: Map<string, Figure> } {
+    const tree = treeOf(index, rootId);
     const byNode = new Map<string, Figure>();
-    const post = (node: FamilyNode): Figure => {
+    const post = (node: TreeNode): Figure => {
       const own = this.computeThread(node.edge.threadId, index).usage.figure;
       const figure = sumFigures([own, ...node.children.map(post)]);
       byNode.set(node.edge.threadId, figure);
@@ -237,29 +237,29 @@ export class UsageModel {
     const settings = this.deps.settings();
     const index = this.index();
     const self = this.computeThread(threadId, index);
-    const { figure: familyFig, tree, byNode } = this.familyFigure(threadId, index);
-    const familyUsd = costTotal(familyFig.cost);
-    const familyTokens = figureTokenCount(familyFig);
-    // Share follows what the headline leads with: tokens for a subscription family.
-    const familyHeadline = headline(familyFig, settings.currency);
-    const shareByTokens = familyHeadline.primaryKind === "tokens" || familyUsd === 0;
-    // A mixed family's headline shows billed dollars only, so its share does too.
+    const { figure: treeFig, tree, byNode } = this.treeFigure(threadId, index);
+    const treeUsd = costTotal(treeFig.cost);
+    const treeTokens = figureTokenCount(treeFig);
+    // Share follows what the headline leads with: tokens for a subscription tree.
+    const treeHeadline = headline(treeFig, settings.currency);
+    const shareByTokens = treeHeadline.primaryKind === "tokens" || treeUsd === 0;
+    // A mixed tree's headline shows billed dollars only, so its share does too.
     const billedOf = (f: Figure) => costTotal(f.cost) - f.byBilling.subscription.usd;
-    const familyBilled = billedOf(familyFig);
+    const treeBilled = billedOf(treeFig);
     const rows: TreeRow[] = [];
     let descendants = 0;
     let hiddenDescendants = 0;
-    const walk = (node: FamilyNode) => {
+    const walk = (node: TreeNode) => {
       const computed = this.computeThread(node.edge.threadId, index);
       const own = computed.usage.figure;
-      const fam = byNode.get(node.edge.threadId) ?? own;
+      const subtree = byNode.get(node.edge.threadId) ?? own;
       if (node !== tree) {
         descendants += 1;
         if (node.edge.hidden) hiddenDescendants += 1;
-        const famUsd = costTotal(fam.cost);
-        const famTokens = figureTokenCount(fam);
+        const subtreeUsd = costTotal(subtree.cost);
+        const subtreeTokens = figureTokenCount(subtree);
         const ownHeadline = headline(own, settings.currency);
-        const famHeadline = headline(fam, settings.currency);
+        const subtreeHeadline = headline(subtree, settings.currency);
         rows.push({
           threadId: node.edge.threadId,
           parentThreadId: node.edge.parentThreadId,
@@ -276,18 +276,18 @@ export class UsageModel {
           ownChip: ownHeadline.chip,
           ownUsd: costTotal(own.cost),
           ownTokens: figureTokenCount(own),
-          familyChip: famHeadline.chip,
-          familyUsd: famUsd,
-          familyTokens: famTokens,
+          treeChip: subtreeHeadline.chip,
+          treeUsd: subtreeUsd,
+          treeTokens: subtreeTokens,
           share: shareByTokens
-            ? familyTokens > 0
-              ? famTokens / familyTokens
+            ? treeTokens > 0
+              ? subtreeTokens / treeTokens
               : 0
-            : familyHeadline.billing === "mixed"
-              ? familyBilled > 0
-                ? billedOf(fam) / familyBilled
+            : treeHeadline.billing === "mixed"
+              ? treeBilled > 0
+                ? billedOf(subtree) / treeBilled
                 : 0
-              : famUsd / familyUsd,
+              : subtreeUsd / treeUsd,
         });
       }
       node.children.forEach(walk);
@@ -316,9 +316,9 @@ export class UsageModel {
       projectId: self.edge?.projectId ?? null,
       generatedAt: this.deps.now(),
       currency: settings.currency,
-      prices: this.pricesReport(familyFig),
+      prices: this.pricesReport(treeFig),
       thread: this.view(self.usage.figure),
-      family: this.view(familyFig),
+      treeTotal: this.view(treeFig),
       descendants,
       hiddenDescendants,
       state: self.state,
@@ -331,7 +331,7 @@ export class UsageModel {
       turns: self.usage.turns,
       tree: rows,
       forks,
-      quality: this.quality(self, index, familyFig),
+      quality: this.quality(self, index, treeFig),
       gatewayBanner: settings.adapter === "litellm" ? this.deps.gatewayBanner() : null,
       budget:
         crossing === null || settings.warnAbove === null
@@ -340,7 +340,7 @@ export class UsageModel {
     };
   }
 
-  private quality(self: ThreadComputed, index: EdgeIndex, family: Figure): QualityNote[] {
+  private quality(self: ThreadComputed, index: EdgeIndex, treeFig: Figure): QualityNote[] {
     const settings = this.deps.settings();
     const notes: QualityNote[] = [];
     const providerId = self.edge?.providerId ?? null;
@@ -371,8 +371,8 @@ export class UsageModel {
         text: `Logs on ${self.thread.logsMissingHost ?? "the thread's machine"} unavailable since ${new Date(self.thread.logsMissingSince).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}; subagent and history figures fill in when it is back`,
       });
     }
-    if (fig.unpricedModels.length > 0 || family.unpricedModels.length > 0) {
-      const models = [...new Set([...fig.unpricedModels, ...family.unpricedModels])];
+    if (fig.unpricedModels.length > 0 || treeFig.unpricedModels.length > 0) {
+      const models = [...new Set([...fig.unpricedModels, ...treeFig.unpricedModels])];
       notes.push({
         id: "unpriced",
         tone: "warn",
@@ -461,10 +461,10 @@ export class UsageModel {
   chip(threadId: string): ChipView {
     const settings = this.deps.settings();
     const index = this.index();
-    const { figure, tree } = this.familyFigure(threadId, index);
+    const { figure, tree } = this.treeFigure(threadId, index);
     let descendants = 0;
     let hiddenDescendants = 0;
-    const walk = (node: FamilyNode) => {
+    const walk = (node: TreeNode) => {
       if (node !== tree) {
         descendants += 1;
         if (node.edge.hidden) hiddenDescendants += 1;
@@ -473,7 +473,7 @@ export class UsageModel {
     };
     walk(tree);
     const h = headline(figure, settings.currency);
-    // Attention: this family, or any family it belongs to, crossed the budget.
+    // Attention: this tree, or any tree it belongs to, crossed the budget.
     let attention = false;
     let toast: ChipView["toast"] = null;
     if (settings.warnAbove !== null) {
@@ -505,21 +505,21 @@ export class UsageModel {
     };
   }
 
-  /** Families (roots with no parent) ordered by billed dollars, then tokens. */
-  top(projectId: string | null, sinceMs: number): TopFamily[] {
+  /** Trees (roots with no parent) ordered by billed dollars, then tokens. */
+  top(projectId: string | null, sinceMs: number): TopTree[] {
     const settings = this.deps.settings();
     const index = this.index();
-    const out: TopFamily[] = [];
+    const out: TopTree[] = [];
     for (const edge of index.byId.values()) {
       if (edge.parentThreadId !== null && index.byId.has(edge.parentThreadId) && edge.sourceThreadId === null) {
         continue;
       }
       if (projectId !== null && edge.projectId !== projectId) continue;
-      const { figure, tree } = this.familyFigure(edge.threadId, index);
+      const { figure, tree } = this.treeFigure(edge.threadId, index);
       if (!hasAnyUsage(figure)) continue;
       let last: number | null = null;
       let descendants = 0;
-      const walk = (node: FamilyNode) => {
+      const walk = (node: TreeNode) => {
         if (node !== tree) descendants += 1;
         const t = this.deps.store.getThread(node.edge.threadId);
         const at = t?.lastActivityAt ?? null;
@@ -547,12 +547,12 @@ export class UsageModel {
     return out.sort((a, b) => b.usd - a.usd || b.tokens - a.tokens || a.threadId.localeCompare(b.threadId));
   }
 
-  /** Family billed totals of the thread and each ancestor, for budget checks. */
+  /** Tree billed totals of the thread and each ancestor, for budget checks. */
   ancestorTotals(threadId: string): Map<string, number> {
     const index = this.index();
     const out = new Map<string, number>();
     for (const id of [threadId, ...ancestorIds(index, threadId)]) {
-      const { figure } = this.familyFigure(id, index);
+      const { figure } = this.treeFigure(id, index);
       out.set(id, costTotal(figure.cost) - figure.byBilling.subscription.usd);
     }
     return out;
@@ -561,7 +561,7 @@ export class UsageModel {
   /** Short text for CLI and agent tool output. */
   summaryText(threadId: string, withChildren: boolean): string {
     const report = this.report(threadId);
-    const view = withChildren ? report.family : report.thread;
+    const view = withChildren ? report.treeTotal : report.thread;
     const f = view.figure;
     const lines = [
       `${report.title} (${threadId})${withChildren ? `, with ${report.descendants} descendant thread${report.descendants === 1 ? "" : "s"}` : ""}`,
