@@ -38,7 +38,7 @@ scripts/ci/check-plugin.sh thread-glance git-install
 scripts/ci/check-plugin.sh thread-glance npm-install
 ```
 
-The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered: OpenAI-compatible inference's fixture points an Endpoint at a stub server and runs each AI task through it; Pocket Navigation's checks that bb serves its app bundle, that the bundle registers the sidebar navigation, and that bb takes it as its navigation. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone.
+The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered: OpenAI-compatible inference's fixture points an Endpoint at a stub server and runs each AI task through it; Pocket Navigation's checks that bb serves its app bundle, that the bundle registers the sidebar navigation, and that bb takes it as its navigation. Cache Keeper's checks that its app bundle registers the composer chip and banner, the sidebar script and the nav page, that bb holds its three settings, and that `bb cache-keeper` answers and refuses a thread bb does not list. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone.
 
 The npm-install check listens on fixed ports. To run two at once, give one of them others with `REGISTRY_PORT`, `BB_TEST_SERVER_PORT` and `BB_TEST_DAEMON_PORT`.
 
@@ -91,6 +91,12 @@ git config core.hooksPath .githooks
 |---|---|
 | `npm run schema` | After changing `src/core/manifest.ts`, to regenerate [`schema/onboarding.schema.json`](../../plugins/team-onboarding/schema/onboarding.schema.json). |
 | `npm run refresh-keys` | Before a release, to re-pin GitHub's SSH host keys from `api.github.com/meta`. |
+
+### Cache Keeper
+
+| Script | When to run it |
+|---|---|
+| `npm run prices` | To refresh the price list bundled in `prices/`, the same one Thread Usage bundles. The plugin fetches current prices daily while Fetch current prices daily is on; the bundled list is its last fallback. |
 
 ## Third-party notices
 

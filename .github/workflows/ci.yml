@@ -59,6 +59,13 @@ jobs:
               - scripts/ci/check-plugin.sh
               - scripts/ci/pack-npm.sh
               - scripts/ci/npm-install-check.sh
+            cache-keeper:
+              - plugins/cache-keeper/**
+              - .github/workflows/ci.yml
+              - .github/actions/setup/**
+              - scripts/ci/check-plugin.sh
+              - scripts/ci/pack-npm.sh
+              - scripts/ci/npm-install-check.sh
             openai-inference:
               - plugins/openai-inference/**
               - .github/workflows/ci.yml
