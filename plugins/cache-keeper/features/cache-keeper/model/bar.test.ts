@@ -58,7 +58,9 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   compactedAt: null,
   canCompactNow: true,
   waiting: false,
-  checkIns: true,
+  keptWarm: true,
+  warmSetting: "switched",
+  treeTop: { threadId: "thr_1", title: "Build the page" },
   warmPlanned: false,
   warmSkipped: false,
   nextWarmAt: null,
@@ -72,6 +74,13 @@ describe("the chip", () => {
     expect(chipText(view(), 0)).toBe("≥ 150k");
     expect(chipText(view({ compactionDue: true }), 0)).toBe("10m");
     expect(chipText(view({ hasPendingInteraction: true }), 0)).toBe("paused");
+  });
+
+  it("says on hover whether the thread is kept warm while it waits, whatever the chip's text", () => {
+    expect(chipText(view({ compactOn: false, keptWarm: true }), 0)).toBe("");
+    expect(chipSentence(view(), 0)).toMatch(/cold\. While it waits, its cache is kept warm\.$/);
+    expect(chipSentence(view({ keptWarm: false }), 0)).toMatch(/While it waits, its cache is not kept warm\.$/);
+    expect(chipSentence(view({ keptWarm: false, warmSetting: "never" }), 0)).toMatch(/Keep-warms are off in Settings\.$/);
   });
 
   it("names the status in the popover", () => {
@@ -98,17 +107,30 @@ describe("the banner", () => {
     expect(bannerOf(waiting({ warmSkipped: true }), 0)).toEqual({ text: "Skipped for this wait", actions: ["undo-warm"] });
   });
 
-  it("shows nothing when there is nothing to say, or keep-warms are switched off", () => {
+  it("says a waiting tree is not kept warm, with Keep warm, when its switch is off", () => {
+    for (const warmSetting of ["every", "switched"] as const) {
+      expect(bannerOf(waiting({ keptWarm: false, warmSetting }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, not keeping cache warm", actions: ["keep-warm"] });
+    }
+  });
+
+  it("says keep-warms are off in Settings under Never, with no button, whatever was skipped or planned", () => {
+    for (const over of [{}, { warmSkipped: true }, { warmPlanned: true }]) {
+      expect(bannerOf(waiting({ keptWarm: false, warmSetting: "never", ...over }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keep-warms are off in Settings", actions: [] });
+    }
+  });
+
+  it("shows nothing when there is nothing to say", () => {
     expect(bannerOf(view(), 0)).toBeNull();
-    expect(bannerOf(waiting({ checkIns: false }), 0)).toBeNull();
+    expect(bannerOf(view({ keptWarm: false }), 0)).toBeNull();
     expect(bannerOf(waiting({ warmPlanned: true, status: "active" }), 0)).toBeNull();
     expect(bannerOf(view({ compactionDue: true, hasPendingInteraction: true }), 0)).toBeNull();
   });
 
-  it("never uses Cache Keeper's own words", () => {
+  it("never uses Cache Keeper's own words but for the setting's", () => {
     const texts = [
       bannerOf(waiting({ warmPlanned: true }), 0),
       bannerOf(waiting(), 0),
+      bannerOf(waiting({ keptWarm: false }), 0),
       bannerOf(waiting({ warmSkipped: true }), 0),
       bannerOf(view({ compactionDue: true }), 0),
       bannerOf(view({ compactSkipped: true }), 0),

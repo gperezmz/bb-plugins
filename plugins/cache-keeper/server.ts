@@ -8,7 +8,7 @@ import { PriceBook } from "./src/core/pricing";
 import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
 import { TURN_EVENT_TYPES, type BbEvent } from "./src/core/turns";
-import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, queuedRowOf, type ListedThread, type QueuedRow, type TaskEvent } from "./src/server/engine";
+import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NoTreeTopError, NotReadyError, queuedRowOf, type ListedThread, type QueuedRow, type TaskEvent } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
 import { rpcContract, type Overview } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -217,16 +217,15 @@ export default async function plugin(bb: BbPluginApi) {
     for (const h of recent) for (const id of Object.keys(h.record.split ?? {})) titles[id] = engine.titleOf(id);
     return {
       switchedOn: await engine.switchedOn(),
-      waiting: views.filter((v) => v.waiting && v.checkIns && v.status === "idle"),
+      waiting: views.filter((v) => v.waiting && v.status === "idle"),
       recent,
       titles,
       totals: engine.totals(30),
-      checkIns: settings.checkIns,
     };
   };
 
   const rpcError = (error: unknown): never => {
-    if (error instanceof ClaudeOnlyError || error instanceof NotReadyError) throw new Error(error.message);
+    if (error instanceof ClaudeOnlyError || error instanceof NotReadyError || error instanceof NoTreeTopError) throw new Error(error.message);
     throw error;
   };
 
@@ -234,6 +233,11 @@ export default async function plugin(bb: BbPluginApi) {
     view: ({ threadId }) => engine.viewOf(threadId),
     setCompact: ({ threadId, on, setting }) => engine.setCompact(threadId, on, setting).catch(rpcError),
     setSetting: ({ threadId, setting }) => engine.setSetting(threadId, setting).catch(rpcError),
+    setKeepWarm: ({ threadId, on }) =>
+      engine
+        .setKeepWarm(threadId, on)
+        .then(() => engine.viewOf(threadId))
+        .catch(rpcError),
     skip: ({ threadId, what, undo }) => engine.skip(threadId, what, undo),
     compactNow: ({ threadId }) => engine.compactNow(threadId).catch(rpcError),
     rowStatuses: async () =>
@@ -270,6 +274,12 @@ export default async function plugin(bb: BbPluginApi) {
   const toCliError = (error: unknown): never => {
     if (error instanceof ClaudeOnlyError) throw new PluginCliError(error.message, { code: "not_claude_code" });
     if (error instanceof NotReadyError) throw new PluginCliError(error.message, { code: "not_ready" });
+    if (error instanceof NoTreeTopError) {
+      throw new PluginCliError(error.message, {
+        code: "no_tree_top",
+        hint: error.below.length === 0 ? "Pass a Claude Code thread" : `Pass one of: ${error.below.map((t) => t.threadId).join(", ")}`,
+      });
+    }
     throw error;
   };
 
@@ -279,6 +289,19 @@ export default async function plugin(bb: BbPluginApi) {
     return threadId;
   };
 
+  const keepWarm = (on: boolean) =>
+    cliCommand({
+      summary: `Switch keep warm while waiting ${on ? "on" : "off"} for a thread's tree`,
+      description:
+        "Records the choice on the thread's tree top, the highest Claude Code thread above it or the thread itself, and covers every thread below it. Under Never in Settings the choice is recorded for when the setting changes.",
+      positionals: thread,
+      async run(input, ctx) {
+        const r = await engine.setKeepWarm(target(input, ctx), on).catch(toCliError);
+        const state = r.never ? `${on ? "on" : "off"}, but keep-warms are off in Settings` : r.keptWarm ? "on" : "off";
+        return { exitCode: 0, stdout: `keep warm while waiting: ${state}\ntree top: ${r.treeTop.title} (${r.treeTop.threadId})` };
+      },
+    });
+
   const thread = [{ name: "thread", description: "Thread id (defaults to the current thread)" }] as const;
 
   bb.cli.register(
@@ -286,7 +309,7 @@ export default async function plugin(bb: BbPluginApi) {
       name: "cache-keeper",
       summary: "Compact idle Claude Code threads before their cache goes cold",
       description:
-        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line and status. Keep-warms and check-ins run on every Claude Code thread while \"Check in on background work\" is on.",
+        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line and status; switch keep warm while waiting on or off for a thread's tree. Which trees are kept warm until switched is set by \"Keep caches warm while waiting\" in Settings (default: only threads switched on); check-ins on stalled background work run on every Claude Code thread while \"Check in on stalled background work\" is on (the default).",
       commands: {
         on: cliCommand({
           summary: "Switch compact-when-idle on for a thread",
@@ -314,6 +337,8 @@ export default async function plugin(bb: BbPluginApi) {
             return { exitCode: 0, stdout: "compacting" };
           },
         }),
+        "keep-warm on": keepWarm(true),
+        "keep-warm off": keepWarm(false),
         status: cliCommand({
           summary: "Show a thread's line and status, or every switched-on thread and the 30-day totals",
           positionals: [{ name: "thread", description: "Thread id; without one, lists every thread with compact-when-idle on" }],

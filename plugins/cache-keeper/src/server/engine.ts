@@ -19,6 +19,7 @@ import { compactionUsd, DEFAULT_CALLS_PER_MESSAGE, DEFAULT_POST_COMPACTION, DEFA
 import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask, type SentKind } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
 import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { keptWarm, treeTopOf, treeTopsBelow } from "../core/switch";
 import { LEAD_PER_LEVEL_MS, planTree, topOf, type TreeNode, type TreePlan } from "../core/tree";
 import {
   classifyQueued,
@@ -164,6 +165,30 @@ const TURN_SLACK_MS = 5_000;
 
 export class ClaudeOnlyError extends Error {}
 export class NotReadyError extends Error {}
+/** A thread that is not Claude Code with no Claude Code thread above it, so no switch covers it. */
+export class NoTreeTopError extends Error {
+  constructor(
+    readonly threadId: string,
+    /** The tree tops below it, with their titles. */
+    readonly below: { threadId: string; title: string }[],
+  ) {
+    super(
+      below.length === 0
+        ? `${threadId} is not a Claude Code thread and has no Claude Code thread above or below it`
+        : `${threadId} is not a Claude Code thread and has no Claude Code thread above it; switch a tree top below it: ${below.map((t) => `${t.title} (${t.threadId})`).join(", ")}`,
+    );
+  }
+}
+
+/** Where a thread's Keep warm while waiting switch stands after it was flipped. */
+export interface KeepWarmResult {
+  treeTop: { threadId: string; title: string };
+  /** What was recorded on the tree top. */
+  on: boolean;
+  /** What the tree gets now: false under Never whatever was recorded. */
+  keptWarm: boolean;
+  never: boolean;
+}
 
 const isRead = (s: ReadState) => s.lastReadAt !== null && (s.latestAttentionAt === null || s.lastReadAt >= s.latestAttentionAt);
 
@@ -327,20 +352,38 @@ export class Engine {
     return this.threads.get(threadId)?.providerId === "claude-code";
   }
 
-  /** Whether keep-warms or check-ins could apply: idle, waiting by bb's counts, and the setting on. */
-  private mayAct(thread: ListedThread, live: ListedThread[], settings: KeeperSettings): boolean {
-    return settings.checkIns && thread.status === "idle" && this.waitsByCounts(thread, live);
+  /** Whether keep-warms or check-ins could apply, or the page lists it as waiting: idle and waiting by bb's counts. */
+  private mayAct(thread: ListedThread, live: ListedThread[]): boolean {
+    return thread.status === "idle" && this.waitsByCounts(thread, live);
+  }
+
+  /** A thread's parent while bb lists it as neither archived nor deleted, as the engine's trees read it. */
+  private liveParentOf = (id: string): string | null => {
+    const parent = this.threads.get(id)?.parentThreadId ?? null;
+    const t = parent === null ? undefined : this.threads.get(parent);
+    return t !== undefined && t.archivedAt === null && t.deletedAt === null ? parent : null;
+  };
+
+  /** The tree top whose switch covers `threadId`, or null for a thread that is not Claude Code with none above it. */
+  private treeTopOf(threadId: string): string | null {
+    return treeTopOf(threadId, this.liveParentOf, (id) => this.isClaude(id));
+  }
+
+  /** Whether `threadId`'s tree is kept warm: its tree top's switch and the setting. */
+  private keptWarm(threadId: string, settings: KeeperSettings): boolean {
+    const top = this.treeTopOf(threadId);
+    return keptWarm(settings.keepWarm, top === null ? null : this.deps.store.get(top).keepWarm);
   }
 
   private waitsByCounts(thread: ListedThread, live: ListedThread[]): boolean {
     return hasOwnWork(this.toWait(thread)) || waitingChildren(thread.id, live.map(this.toWait)).length > 0;
   }
 
-  private interesting(thread: ListedThread, live: ListedThread[], settings: KeeperSettings, now: number): boolean {
+  private interesting(thread: ListedThread, live: ListedThread[], now: number): boolean {
     if (thread.providerId !== "claude-code") return false;
     const record = this.deps.store.get(thread.id);
     const viewed = now - (this.viewedAt.get(thread.id) ?? -Infinity) < VIEWED_MS;
-    return record.compactOn || record.stretch?.compactedAt != null || viewed || this.mayAct(thread, live, settings);
+    return record.compactOn || record.stretch?.compactedAt != null || viewed || this.mayAct(thread, live);
   }
 
   /** One thread tree: read, account, plan, act. Returns when anything in it next falls due. */
@@ -353,7 +396,7 @@ export class Engine {
       const r = this.deps.store.get(m.id);
       return r.inFlight !== null || r.readBefore !== null;
     });
-    const active = claude.filter((m) => this.interesting(m, live, settings, now));
+    const active = claude.filter((m) => this.interesting(m, live, now));
     if (active.length === 0 && !open) {
       for (const m of members) this.views.delete(m.id);
       this.cycles.delete(top);
@@ -377,7 +420,7 @@ export class Engine {
         this.views.delete(m.id);
         continue;
       }
-      let record = this.syncStretch(m, live, settings, now);
+      let record = this.syncStretch(m, live, now);
       let o = await this.observe(m, members, live, record, logs, now);
       const done = o.facts?.lastCompaction;
       if (record.compaction !== null && record.compaction.contextAfter === null && done != null && done.at >= record.compaction.at - CACHE_MARGIN_MS) {
@@ -658,10 +701,10 @@ export class Engine {
   }
 
   /** After a restart, bb's status is the truth: a thread bb lists as idle, with work for Cache Keeper, is in a stretch. */
-  private syncStretch(thread: ListedThread, live: ListedThread[], settings: KeeperSettings, now: number): ThreadRecord {
+  private syncStretch(thread: ListedThread, live: ListedThread[], now: number): ThreadRecord {
     const stored = this.deps.store.has(thread.id);
     let record = this.deps.store.get(thread.id);
-    if (thread.status === "idle" && record.stretch === null && (stored || this.mayAct(thread, live, settings))) {
+    if (thread.status === "idle" && record.stretch === null && (stored || this.mayAct(thread, live))) {
       record = { ...record, stretch: newIdleStretch(now) };
     }
     if (record.inFlight !== null && now - record.inFlight.at >= IN_FLIGHT_MS) record = { ...record, inFlight: null };
@@ -831,7 +874,7 @@ export class Engine {
     return {
       id: m.id,
       parentId,
-      keepable: settings.checkIns && m.status === "idle" && !m.hasPendingInteraction && o.waiting && stretch !== null,
+      keepable: this.keptWarm(m.id, settings) && m.status === "idle" && !m.hasPendingInteraction && o.waiting && stretch !== null,
       deadline: o.deadline,
       lifetimeMs: o.lifetimeMs,
       blocks: stretch !== null && (stretch.warmSkipped || pastCostStop(charged, forecast, o.rates, context)),
@@ -870,7 +913,9 @@ export class Engine {
       compactedAt: record.stretch?.compactedAt ?? null,
       canCompactNow: thread.status === "idle" && !thread.hasPendingInteraction && !observed.waiting && facts !== null,
       waiting: observed.waiting,
-      checkIns: settings.checkIns,
+      keptWarm: this.keptWarm(thread.id, settings),
+      warmSetting: settings.keepWarm,
+      treeTop: this.treeTopRef(thread.id),
       warmPlanned: tree.planned.has(thread.id),
       warmSkipped: record.stretch?.warmSkipped ?? false,
       nextWarmAt: tree.nextAt.get(thread.id) ?? null,
@@ -891,8 +936,9 @@ export class Engine {
     for (const id of ids) {
       const o = observed.get(id)!;
       const record = this.deps.store.get(id);
+      const { checkIns, waitMs } = this.deps.settings();
       const due = Object.entries(record.tasks)
-        .filter(([, t]) => foldDue(t.clock, now, this.deps.settings().waitMs))
+        .filter(([, t]) => checkIns && foldDue(t.clock, now, waitMs))
         .map(([taskId]) => ({ id: taskId, reason: "routine" as const }));
       const folded = due.length === 0 ? [] : await this.checkInTasks(o, record, due, now);
       texts.set(id, { text: keepWarmText(o.items, folded), folded });
@@ -1072,6 +1118,32 @@ export class Engine {
     this.deps.store.update(threadId, this.deps.now(), (r) => ({ ...r, setting }));
     this.deps.store.setMeta(LAST_SETTING_META, setting);
     return this.refresh(threadId);
+  }
+
+  /**
+   * Flips Keep warm while waiting for the tree of `threadId`, recording `on`
+   * on its tree top, whatever the setting says: under Never it is kept for
+   * when the setting changes.
+   */
+  async setKeepWarm(threadId: string, on: boolean): Promise<KeepWarmResult> {
+    await this.load();
+    if (!this.threads.has(threadId)) throw new NotReadyError(`no thread ${threadId}`);
+    const top = this.treeTopOf(threadId);
+    if (top === null) {
+      const childrenOf = (id: string) => [...this.threads.values()].filter((t) => this.liveParentOf(t.id) === id).map((t) => t.id);
+      const below = treeTopsBelow(threadId, childrenOf, (id) => this.isClaude(id));
+      throw new NoTreeTopError(threadId, below.map((id) => ({ threadId: id, title: this.titleOf(id) })));
+    }
+    this.deps.store.update(top, this.deps.now(), (r) => ({ ...r, keepWarm: on }));
+    await this.refresh(threadId);
+    const settings = this.deps.settings();
+    return { treeTop: this.treeTopRef(threadId), on, keptWarm: keptWarm(settings.keepWarm, on), never: settings.keepWarm === "never" };
+  }
+
+  /** The tree top covering `threadId`, with its title; the thread itself where none covers it. */
+  private treeTopRef(threadId: string): { threadId: string; title: string } {
+    const top = this.treeTopOf(threadId) ?? threadId;
+    return { threadId: top, title: this.titleOf(top) };
   }
 
   /** Skip, or undo a Skip, of the compaction until the thread next runs, or of the keep-warms for this wait, for it and every thread below it. */

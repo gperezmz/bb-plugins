@@ -19,6 +19,7 @@ const LABELS: Record<BannerAction, string> = {
   "undo-compaction": "Undo",
   "skip-warm": "Skip",
   "undo-warm": "Undo",
+  "keep-warm": "Keep warm",
 };
 
 function ThreadBanner({ threadId }: { threadId: string }) {
@@ -41,6 +42,8 @@ function ThreadBanner({ threadId }: { threadId: string }) {
         return rpc.call("skip", { threadId, what: "warm", undo: false });
       case "undo-warm":
         return rpc.call("skip", { threadId, what: "warm", undo: true });
+      case "keep-warm":
+        return rpc.call("setKeepWarm", { threadId, on: true });
     }
   };
   return (

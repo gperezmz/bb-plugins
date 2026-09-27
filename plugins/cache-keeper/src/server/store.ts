@@ -1,5 +1,5 @@
 /**
- * Cache Keeper's SQLite storage: what each thread is set to and where its
+ * Cache Keeper's SQLite storage: what each thread is set to (its switches and setting) and where its
  * idle stretch stands, what was sent and what it cost, how far each thread's
  * turns have been read, and the fetched price lists. Rows hold JSON; indexed
  * columns are only what queries filter on.
@@ -73,6 +73,8 @@ export interface ReadBefore {
 
 export interface ThreadRecord {
   compactOn: boolean;
+  /** Keep warm while waiting, as flipped on this tree top; null until flipped, when the setting decides. */
+  keepWarm: boolean | null;
   /** The setting N; null until switched on. */
   setting: number | null;
   stretch: IdleStretch | null;
@@ -103,6 +105,7 @@ export interface CompactionRecord {
 
 export const emptyRecord = (): ThreadRecord => ({
   compactOn: false,
+  keepWarm: null,
   setting: null,
   stretch: null,
   inFlight: null,

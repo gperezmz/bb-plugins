@@ -3,9 +3,10 @@ import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { COMPACT_MESSAGE } from "../core/messages";
 import { PriceBook } from "../core/pricing";
+import type { KeepWarmSetting } from "../core/switch";
 import { EMPTY_FACTS, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import type { BbEvent } from "../core/turns";
-import { ClaudeOnlyError, Engine, EVENTS_PAGE, NotReadyError, queuedRowOf, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
+import { ClaudeOnlyError, Engine, EVENTS_PAGE, NoTreeTopError, NotReadyError, queuedRowOf, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
 import { MIGRATIONS, Store } from "./store";
 
 const S = 1_000;
@@ -86,6 +87,8 @@ class Harness {
   deleted: string[] = [];
   warnings: string[] = [];
   checkIns = true;
+  /** Every waiting thread by default here, so the tests of how a tree is kept warm need no switch. */
+  keepWarm: KeepWarmSetting = "every";
   failTasks = false;
   failEvents = false;
   /** What bb puts on each report it delivers; a test changes it to drop a field. */
@@ -108,7 +111,7 @@ class Harness {
     const deps: EngineDeps = {
       store: this.store,
       now: () => this.now,
-      settings: () => ({ checkIns: this.checkIns, waitMs: 15 * MIN, fetchPrices: false }),
+      settings: () => ({ keepWarm: this.keepWarm, checkIns: this.checkIns, waitMs: 15 * MIN, fetchPrices: false }),
       prices: () => prices,
       listThreads: async () => this.threads.map((t) => ({ ...t })),
       queuedMessages: async (id) => this.side(id).queued,
@@ -354,7 +357,7 @@ describe("compact when idle", () => {
     h.transcript("under", T0, 50_000);
     h.transcript("off", T0, 300_000);
     h.transcript("busy", T0, 300_000);
-    h.checkIns = false;
+    h.keepWarm = "never";
     await h.engine.setCompact("under", true);
     await h.engine.setCompact("busy", true);
     h.now = T0 + 59 * MIN;
@@ -587,9 +590,9 @@ describe("keeping a thread tree warm", () => {
     expect((await h.engine.viewOf("c"))?.warmPlanned).toBe(false);
 
     await h.engine.skip("p", "warm", true);
-    h.checkIns = false;
+    h.keepWarm = "never";
     await h.run(T0 + 12 * MIN);
-    h.checkIns = true;
+    h.keepWarm = "every";
     h.patch("c", { hasPendingInteraction: true });
     h.transcript("c", h.now, 100_000, "5m");
     await h.run(h.now + 5 * MIN);
@@ -654,6 +657,160 @@ describe("keeping a thread tree warm", () => {
     await h.deliver();
     expect(h.store.get("p").stretch?.startedAt).toBe(stretch);
     expect(h.store.get("c").stretch!.chargedUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("keep warm while waiting", () => {
+  /** Keep-warms sent so far, by thread. */
+  const warmed = () => h.sent.filter((x) => (x.marker as { kind: string }).kind === "keep-warm").map((x) => x.threadId);
+
+  it("sends no keep-warm with the settings as installed and no switch flipped, and still checks in on a stalled task", async () => {
+    h.keepWarm = "switched";
+    h.threads = [thread({ id: "t", activity: busy })];
+    h.transcript("t", T0, 100_000);
+    h.taskEvents.set("t", [
+      { seq: 5, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
+    ]);
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    expect(warmed()).toEqual([]);
+    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["check-in"]);
+    const view = (await h.engine.viewOf("t"))!;
+    expect(view).toMatchObject({ keptWarm: false, warmPlanned: false, warmSetting: "switched", treeTop: { threadId: "t" } });
+  });
+
+  for (const [setting, untouched] of [["every", true], ["switched", false], ["never", false]] as const) {
+    for (const flipped of [null, true, false]) {
+      const expected = setting === "never" ? false : (flipped ?? untouched);
+      it(`${expected ? "keeps" : "does not keep"} a waiting thread warm under ${setting} with its switch ${flipped === null ? "untouched" : flipped ? "flipped on" : "flipped off"}`, async () => {
+        h.keepWarm = setting;
+        h.threads = [thread({ id: "t", activity: busy })];
+        h.transcript("t", T0, 100_000);
+        if (flipped !== null) await h.engine.setKeepWarm("t", flipped);
+        h.now = T0 + 59 * MIN;
+        await h.engine.pass();
+        expect(warmed()).toEqual(expected ? ["t"] : []);
+        expect((await h.engine.viewOf("t"))?.keptWarm).toBe(expected);
+      });
+    }
+  }
+
+  it("follows a change of setting live on an untouched tree top, and keeps a flipped one's record through Never", async () => {
+    h.keepWarm = "switched";
+    h.threads = [thread({ id: "a", activity: busy }), thread({ id: "b", activity: busy })];
+    await h.engine.setKeepWarm("b", false);
+    h.keepWarm = "every";
+    // A change of setting runs a pass, as server.ts does on bb's onChange.
+    await h.engine.pass();
+    expect((await h.engine.viewOf("a"))?.keptWarm).toBe(true);
+    expect((await h.engine.viewOf("b"))?.keptWarm).toBe(false);
+    h.keepWarm = "never";
+    await h.engine.setKeepWarm("b", true);
+    await h.engine.pass();
+    expect((await h.engine.viewOf("b"))?.keptWarm).toBe(false);
+    h.keepWarm = "switched";
+    await h.engine.pass();
+    expect((await h.engine.viewOf("a"))?.keptWarm).toBe(false);
+    expect((await h.engine.viewOf("b"))?.keptWarm).toBe(true);
+  });
+
+  it("keeps the switch through a restart", async () => {
+    h.keepWarm = "switched";
+    h.threads = [thread({ id: "t", activity: busy })];
+    h.transcript("t", T0, 100_000);
+    await h.engine.setKeepWarm("t", true);
+    h.engine = h.build();
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    expect(warmed()).toEqual(["t"]);
+  });
+
+  it("records Keep warm from a child on its Claude Code tree top, and keeps the whole tree warm", async () => {
+    h.keepWarm = "switched";
+    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c", activity: busy })];
+    for (const id of ["p", "c"]) h.transcript(id, T0, 20_000, "1h");
+    h.transcript("g", T0, 20_000, "5m");
+    h.now = T0 + 3 * MIN;
+    expect((await h.engine.viewOf("g"))?.treeTop).toEqual({ threadId: "p", title: "p" });
+    const result = await h.engine.setKeepWarm("g", true);
+    expect(result).toMatchObject({ treeTop: { threadId: "p" }, on: true, keptWarm: true, never: false });
+    expect(h.store.get("p").keepWarm).toBe(true);
+    expect(h.store.get("g").keepWarm).toBeNull();
+    const view = (await h.engine.viewOf("g"))!;
+    expect(view).toMatchObject({ keptWarm: true, warmPlanned: true });
+    await h.run(T0 + 15 * MIN);
+    expect(warmed().filter((id) => id === "g").length).toBeGreaterThanOrEqual(2);
+
+    // Switched off again, the tree gets no more.
+    await h.engine.setKeepWarm("p", false);
+    const before = warmed().length;
+    await h.run(T0 + 30 * MIN);
+    expect(warmed().length).toBe(before);
+  });
+
+  it("switches each Claude Code branch under a root that is not Claude Code on its own", async () => {
+    h.keepWarm = "switched";
+    h.threads = [
+      thread({ id: "root", providerId: "pi" }),
+      thread({ id: "a", parentThreadId: "root", activity: busy }),
+      thread({ id: "b", parentThreadId: "root", activity: busy }),
+    ];
+    for (const id of ["a", "b"]) h.transcript(id, T0, 20_000, "1h");
+    await h.engine.setKeepWarm("a", true);
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    expect(warmed()).toEqual(["a"]);
+    expect((await h.engine.viewOf("b"))?.treeTop.threadId).toBe("b");
+    const refused = await h.engine.setKeepWarm("root", true).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(NoTreeTopError);
+    expect((refused as NoTreeTopError).below.map((t) => t.threadId)).toEqual(["a", "b"]);
+    expect(h.store.has("root")).toBe(false);
+  });
+
+  it("keeps a thread spawned under a switched-on tree top warm", async () => {
+    h.keepWarm = "switched";
+    h.threads = [thread({ id: "p" })];
+    h.transcript("p", T0, 20_000, "1h");
+    await h.engine.setKeepWarm("p", true);
+    h.threads.push(thread({ id: "late", parentThreadId: "p", activity: busy }));
+    h.transcript("late", T0, 20_000, "1h");
+    h.now = T0 + 59 * MIN;
+    await h.engine.pass();
+    expect(warmed()).toContain("late");
+  });
+
+  it("checks in on a switched-off tree, and not at all with the checkbox off, where a keep-warm asks about no task", async () => {
+    const withTask = () => {
+      h.threads = [thread({ id: "t", activity: busy })];
+      h.transcript("t", T0, 100_000);
+      h.taskEvents.set("t", [
+        { seq: 5, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
+      ]);
+    };
+    withTask();
+    h.keepWarm = "every";
+    await h.engine.setKeepWarm("t", false);
+    h.now = T0 + 16 * MIN;
+    await h.engine.pass();
+    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["check-in"]);
+
+    h = new Harness();
+    withTask();
+    h.checkIns = false;
+    h.keepWarm = "every";
+    // Printing all along, so the 59-minute keep-warm would otherwise ask about it.
+    h.outputs.set("b1", T0 + 58 * MIN);
+    for (const at of [T0 + 16 * MIN, T0 + 59 * MIN]) {
+      h.now = at;
+      await h.engine.pass();
+    }
+    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["keep-warm"]);
+    expect(h.sent[0]!.text).not.toContain("has been running");
+    h.outputs.delete("b1");
+    h.now = T0 + 120 * MIN;
+    h.transcript("t", h.now - MIN, 100_000);
+    await h.engine.pass();
+    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["keep-warm"]);
   });
 });
 

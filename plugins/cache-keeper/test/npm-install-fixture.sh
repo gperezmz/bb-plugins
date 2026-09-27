@@ -3,9 +3,9 @@
 # scripts/ci/npm-install-check.sh). The throwaway bb has no Claude Code
 # thread, so this checks what it can reach without one: bb serves an app
 # bundle it calls compatible that registers the composer chip and banner, the
-# sidebar script and the nav page; bb holds the plugin's three settings; its
+# sidebar script and the nav page; bb holds the plugin's four settings; its
 # CLI answers from the server with nothing switched on; and it refuses to
-# switch on a thread that does not exist.
+# switch on, or keep warm, a thread that does not exist.
 set -euo pipefail
 
 app=$(bb plugin list --json | jq -c --arg id "$PLUGIN_ID" '.plugins[] | select(.id == $id) | .app')
@@ -24,12 +24,12 @@ echo "The app bundle registers the composer chip and banner, the sidebar script 
 
 config=$(bb plugin config "$PLUGIN_ID" --json)
 keys=$(jq -c '[(.settings // .values // .) | keys[]] | sort' <<< "$config")
-if [[ $keys != '["checkIns","fetchPrices","noOutputWait"]' ]]; then
-  echo "::error::$PLUGIN_ID's settings are $keys, not the three it declares" >&2
+if [[ $keys != '["fetchPrices","keepWarm","noOutputWait","stalledCheckIns"]' ]]; then
+  echo "::error::$PLUGIN_ID's settings are $keys, not the four it declares" >&2
   echo "$config" >&2
   exit 1
 fi
-echo "bb holds the three settings"
+echo "bb holds the four settings"
 
 status=$(bb cache-keeper status)
 if ! grep -qF "No thread has compact-when-idle on." <<< "$status" || ! grep -qF "Last 30 days:" <<< "$status"; then
@@ -44,3 +44,9 @@ if out=$(bb cache-keeper on thr_doesnotexist 2>&1); then
   exit 1
 fi
 echo "bb cache-keeper on refuses a thread bb does not list"
+
+if out=$(bb cache-keeper keep-warm on thr_doesnotexist 2>&1); then
+  echo "::error::bb cache-keeper keep-warm on accepted a thread that does not exist: $out" >&2
+  exit 1
+fi
+echo "bb cache-keeper keep-warm on refuses a thread bb does not list"

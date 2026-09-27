@@ -47,9 +47,7 @@ export function Page() {
         </Section>
 
         <Section title="Waiting on background work">
-          {!data.checkIns ? (
-            <Empty>"Check in on background work" is off in Settings.</Empty>
-          ) : data.waiting.length === 0 ? (
+          {data.waiting.length === 0 ? (
             <Empty>No idle thread is waiting on anything.</Empty>
           ) : (
             <Table head={["Thread", "Waiting on", "Next"]}>
@@ -58,7 +56,7 @@ export function Page() {
                   key={v.threadId}
                   view={v}
                   onOpen={open}
-                  cells={[countsText(v.counts), v.nextWarmAt === null ? "–" : `in ${minutesTo(v.nextWarmAt, now)}m`]}
+                  cells={[countsText(v.counts), nextWarm(v, now)]}
                 />
               ))}
             </Table>
@@ -109,6 +107,9 @@ export function Page() {
     </TooltipProvider>
   );
 }
+
+/** The Next cell: "off" for a thread whose tree is not kept warm. */
+const nextWarm = (v: ThreadView, now: number) => (!v.keptWarm ? "off" : v.nextWarmAt === null ? "–" : `in ${minutesTo(v.nextWarmAt, now)}m`);
 
 /** An entry's cost, and on hover how it fell between threads. */
 function Cost({ usd, split }: { usd: number | null; split: string | null }) {
