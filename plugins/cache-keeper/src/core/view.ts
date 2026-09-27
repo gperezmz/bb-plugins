@@ -38,26 +38,31 @@ export interface ThreadView {
   compactedAt: number | null;
   canCompactNow: boolean;
   waiting: boolean;
-  warmDue: boolean;
+  /** "Check in on background work" is on. */
+  checkIns: boolean;
+  /** A keep-warm is planned for this thread, or for a thread below it whose report will reach it. */
+  warmPlanned: boolean;
   warmSkipped: boolean;
   nextWarmAt: number | null;
   counts: WaitCounts;
 }
 
 export interface WaitCounts {
+  threads: number;
   commands: number;
   subagents: number;
-  children: number;
-  messages: number;
+  queued: number;
+  scheduled: number;
 }
 
 export function countItems(items: readonly WaitItem[]): WaitCounts {
-  const counts: WaitCounts = { commands: 0, subagents: 0, children: 0, messages: 0 };
+  const counts: WaitCounts = { threads: 0, commands: 0, subagents: 0, queued: 0, scheduled: 0 };
   for (const item of items) {
     if (item.kind === "command") counts.commands += 1;
     else if (item.kind === "subagent") counts.subagents += 1;
-    else if (item.kind === "child") counts.children += 1;
-    else counts.messages += 1;
+    else if (item.kind === "child") counts.threads += 1;
+    else if (item.kind === "scheduled") counts.scheduled += 1;
+    else counts.queued += 1;
   }
   return counts;
 }
@@ -129,7 +134,7 @@ export function statusText(view: ThreadView, now: number): string {
   if (view.hasPendingInteraction) return "waiting on your answer";
   if (view.compactionDue && view.deadline !== null) return `compacting in ${minutesTo(view.deadline, now)}m`;
   if (view.compactedAt !== null) return `compacted ${ago(view.compactedAt, now)}`;
-  if (view.compactSkipped) return "skipped until next idle";
+  if (view.compactSkipped) return "skipped until this thread next runs";
   if (view.waiting) return "waiting on background work";
   if (view.line === null) return "idle, no line";
   if (view.context === null || view.context < view.line) return "idle, under the line";
@@ -138,14 +143,32 @@ export function statusText(view: ThreadView, now: number): string {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** The waiting banner's count of what the thread waits on; never any command text. */
+/** "2 threads and 1 command": how many things of each kind a thread waits on, never what they are. */
 export function countsText(counts: WaitCounts): string {
   const parts: string[] = [];
-  if (counts.commands > 0) parts.push(plural(counts.commands, "background command", "background commands"));
-  if (counts.subagents > 0) parts.push(plural(counts.subagents, "background subagent", "background subagents"));
-  if (counts.children > 0) parts.push(plural(counts.children, "child thread", "child threads"));
-  if (counts.messages > 0) parts.push(plural(counts.messages, "queued message", "queued messages"));
+  if (counts.threads > 0) parts.push(plural(counts.threads, "thread", "threads"));
+  if (counts.commands > 0) parts.push(plural(counts.commands, "command", "commands"));
+  if (counts.subagents > 0) parts.push(plural(counts.subagents, "subagent", "subagents"));
+  if (counts.queued > 0) parts.push(plural(counts.queued, "queued message", "queued messages"));
+  if (counts.scheduled > 0) parts.push(plural(counts.scheduled, "scheduled message", "scheduled messages"));
   return parts.length === 0 ? "background work" : joinAnd(parts);
+}
+
+export type BannerAction = "skip-compaction" | "compact-now" | "undo-compaction" | "skip-warm" | "undo-warm";
+
+/** The one line above the composer, and its buttons; null for none. */
+export function bannerOf(view: ThreadView, now: number): { text: string; actions: BannerAction[] } | null {
+  if (!view.eligible || view.status !== "idle" || view.hasPendingInteraction) return null;
+  if (view.compactionDue && view.deadline !== null) {
+    return { text: `Compacting in ${minutesTo(view.deadline, now)}m, before the cache goes cold`, actions: ["skip-compaction", "compact-now"] };
+  }
+  if (view.compactOn && view.compactSkipped && view.compactedAt === null && !view.waiting) {
+    return { text: "Skipped until this thread next runs", actions: ["undo-compaction"] };
+  }
+  if (!view.waiting || !view.checkIns) return null;
+  if (view.warmSkipped) return { text: "Skipped for this wait", actions: ["undo-warm"] };
+  if (view.warmPlanned) return { text: `Waiting on ${countsText(view.counts)}, keeping cache warm`, actions: ["skip-warm"] };
+  return { text: `Waiting on ${countsText(view.counts)}, letting cache go cold`, actions: [] };
 }
 
 /** A sidebar row showing a Cache Keeper glyph, and which. */
@@ -157,6 +180,29 @@ export interface RowGlyph {
 /** What the sidebar row shows in place of its status glyph, or null. */
 export function rowStatus(view: ThreadView): RowGlyph["status"] | null {
   if (view.compactionDue) return "compaction";
-  if (view.warmDue) return "clock";
+  if (view.warmPlanned) return "clock";
   return null;
+}
+
+/** What a Cache Keeper page entry records of what was sent. */
+export interface EntryFacts {
+  contextBefore?: number | null;
+  contextAfter?: number | null;
+  /** A check-in's tasks. */
+  tasks?: { id: string }[];
+  /** A keep-warm's threads, sent at the same moment. */
+  threads?: string[];
+  /** The tasks a keep-warm asked about. */
+  folded?: string[];
+}
+
+/** "Kept warm, 3 threads, checked b0vq", "Checked b1", "Compacted 300k → 12k". */
+export function entryText(kind: "compaction" | "keep-warm" | "check-in", facts: EntryFacts): string {
+  if (kind === "compaction") return `Compacted ${formatSize(facts.contextBefore ?? null)} → ${facts.contextAfter == null ? "…" : formatSize(facts.contextAfter)}`;
+  if (kind === "check-in") return `Checked ${joinAnd((facts.tasks ?? []).map((t) => t.id))}`;
+  const n = facts.threads?.length ?? 1;
+  const parts = ["Kept warm"];
+  if (n > 1) parts.push(`${n} threads`);
+  if ((facts.folded ?? []).length > 0) parts.push(`checked ${joinAnd(facts.folded!)}`);
+  return parts.join(", ");
 }

@@ -36,6 +36,20 @@ describe("TranscriptFold", () => {
     expect(callsPerMessage({ requests: 4, userMessages: 0 }, 3)).toBe(3);
   });
 
+  it("keeps bb's report turns so Cache Keeper's can be taken out of calls per message", () => {
+    const fold = new TranscriptFold();
+    fold.add(user("build it"));
+    fold.add(assistant(0, "a", { input_tokens: 1 }));
+    fold.add(assistant(1, "b", { input_tokens: 1 }));
+    fold.add({ type: "user", timestamp: at(5), message: { content: "[bb system]\n\n@thread:thr_c completed:\n\nNot finished yet." } });
+    fold.add(assistant(5, "c", { input_tokens: 1 }));
+    const facts = fold.result();
+    expect(facts.userMessages).toBe(2);
+    expect(fold.reportTurns()).toEqual([{ at: Date.parse(at(5)), requests: 1 }]);
+    expect(callsPerMessage(facts, 3)).toBe(1.5);
+    expect(callsPerMessage(facts, 3, fold.reportTurns())).toBe(2);
+  });
+
   it("leaves Cache Keeper's own turns and /compact out of calls per message", () => {
     const fold = new TranscriptFold();
     fold.add(user("do it"));

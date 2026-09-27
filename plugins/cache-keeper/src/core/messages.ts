@@ -56,9 +56,9 @@ function entry(item: WaitItem, clock: ClockFormat): string {
   }
 }
 
-/** Everything a thread waits on, in order, as one phrase. */
+/** Everything a thread waits on, in order, as one phrase; "background work" while bb counts tasks not yet read. */
 export function itemsText(items: readonly WaitItem[], clock: ClockFormat = localClock): string {
-  return joinAnd(orderItems(items).map((item) => entry(item, clock)));
+  return items.length === 0 ? "background work" : joinAnd(orderItems(items).map((item) => entry(item, clock)));
 }
 
 /** One task a message asks the agent to look at: stalled, or folded into a keep-warm after 30 minutes of running. */

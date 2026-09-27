@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { chipSentence, chipText, countsText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
-import { formatUsd, fractionOf, settingAt, settingForText, stepSetting } from "./bar";
+import { bannerOf, chipSentence, chipText, countsText, entryText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
 
@@ -58,10 +58,11 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   compactedAt: null,
   canCompactNow: true,
   waiting: false,
-  warmDue: false,
+  checkIns: true,
+  warmPlanned: false,
   warmSkipped: false,
   nextWarmAt: null,
-  counts: { commands: 0, subagents: 0, children: 0, messages: 0 },
+  counts: { threads: 0, commands: 0, subagents: 0, queued: 0, scheduled: 0 },
   ...over,
 });
 
@@ -80,7 +81,57 @@ describe("the chip", () => {
   });
 
   it("counts what a thread waits on without naming any of it", () => {
-    expect(countsText({ commands: 2, subagents: 0, children: 1, messages: 1 })).toBe("2 background commands, 1 child thread and 1 queued message");
+    expect(countsText({ threads: 1, commands: 2, subagents: 0, queued: 1, scheduled: 0 })).toBe("1 thread, 2 commands and 1 queued message");
+    expect(countsText({ threads: 2, commands: 0, subagents: 1, queued: 0, scheduled: 3 })).toBe("2 threads, 1 subagent and 3 scheduled messages");
+    expect(countsText({ threads: 0, commands: 1, subagents: 0, queued: 0, scheduled: 0 })).toBe("1 command");
+  });
+});
+
+describe("the banner", () => {
+  const waiting = (over: Partial<ThreadView> = {}) => view({ waiting: true, counts: { threads: 2, commands: 1, subagents: 0, queued: 0, scheduled: 0 }, ...over });
+
+  it("says in one line what is about to happen, with its buttons", () => {
+    expect(bannerOf(view({ compactionDue: true }), 0)).toEqual({ text: "Compacting in 10m, before the cache goes cold", actions: ["skip-compaction", "compact-now"] });
+    expect(bannerOf(view({ compactSkipped: true }), 0)).toEqual({ text: "Skipped until this thread next runs", actions: ["undo-compaction"] });
+    expect(bannerOf(waiting({ warmPlanned: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keeping cache warm", actions: ["skip-warm"] });
+    expect(bannerOf(waiting(), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, letting cache go cold", actions: [] });
+    expect(bannerOf(waiting({ warmSkipped: true }), 0)).toEqual({ text: "Skipped for this wait", actions: ["undo-warm"] });
+  });
+
+  it("shows nothing when there is nothing to say, or keep-warms are switched off", () => {
+    expect(bannerOf(view(), 0)).toBeNull();
+    expect(bannerOf(waiting({ checkIns: false }), 0)).toBeNull();
+    expect(bannerOf(waiting({ warmPlanned: true, status: "active" }), 0)).toBeNull();
+    expect(bannerOf(view({ compactionDue: true, hasPendingInteraction: true }), 0)).toBeNull();
+  });
+
+  it("never uses Cache Keeper's own words", () => {
+    const texts = [
+      bannerOf(waiting({ warmPlanned: true }), 0),
+      bannerOf(waiting(), 0),
+      bannerOf(waiting({ warmSkipped: true }), 0),
+      bannerOf(view({ compactionDue: true }), 0),
+      bannerOf(view({ compactSkipped: true }), 0),
+    ].map((b) => b!.text);
+    for (const t of texts) expect(t).not.toMatch(/keep-warm|check-in|family|tree|report|cost stop/i);
+  });
+});
+
+describe("page entries", () => {
+  it("names each send the way the page lists it", () => {
+    expect(entryText("keep-warm", {})).toBe("Kept warm");
+    expect(entryText("keep-warm", { threads: ["a"] })).toBe("Kept warm");
+    expect(entryText("keep-warm", { threads: ["a", "b", "c"] })).toBe("Kept warm, 3 threads");
+    expect(entryText("keep-warm", { threads: ["a"], folded: ["b0vq"] })).toBe("Kept warm, checked b0vq");
+    expect(entryText("keep-warm", { threads: ["a", "b", "c"], folded: ["b0vq"] })).toBe("Kept warm, 3 threads, checked b0vq");
+    expect(entryText("check-in", { tasks: [{ id: "b0vq" }, { id: "c1xx" }] })).toBe("Checked b0vq and c1xx");
+    expect(entryText("compaction", { contextBefore: 300_000, contextAfter: 12_000 })).toBe("Compacted 300k → 12k");
+  });
+
+  it("says how an entry's cost was split between threads", () => {
+    const titles: Record<string, string> = { p: "Parent", c: "Build the page" };
+    expect(splitText({ c: 0.02, p: 0.031 }, (id) => titles[id]!)).toBe("Parent $0.03, Build the page $0.02");
+    expect(splitText(undefined, (id) => id)).toBeNull();
   });
 });
 

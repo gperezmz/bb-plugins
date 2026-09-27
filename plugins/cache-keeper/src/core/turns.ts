@@ -91,8 +91,8 @@ function groupOf(blocks: unknown[]): { text: string; mentions: { at: number; thr
   return { text, mentions };
 }
 
-/** What one input group is: a Cache Keeper message, a report of child turns, or anything else. */
-function classify(blocks: unknown[], at: number): TurnInput {
+/** What one input group is (prompt blocks as bb records them): a Cache Keeper message, a report of child turns, or anything else. */
+export function classify(blocks: unknown[], at: number): TurnInput {
   const { text, mentions } = groupOf(blocks);
   if (sentKind(text) !== null) return { kind: "sent", text: text.trim(), at };
   // A report's text is bb's template; each child is a mention followed by its status.

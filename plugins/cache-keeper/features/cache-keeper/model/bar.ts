@@ -35,3 +35,10 @@ export function formatUsd(usd: number): string {
   if (usd > 0 && usd < 0.005) return "<$0.01";
   return `$${usd.toFixed(2)}`;
 }
+
+/** How a page entry's cost fell between threads, largest first: "Parent $0.03, Build the page $0.02". Null with nothing to split. */
+export function splitText(split: Record<string, number> | undefined, titleOf: (threadId: string) => string): string | null {
+  const parts = Object.entries(split ?? {}).sort((a, b) => b[1] - a[1]);
+  if (parts.length === 0) return null;
+  return parts.map(([id, usd]) => `${titleOf(id)} ${formatUsd(usd)}`).join(", ");
+}

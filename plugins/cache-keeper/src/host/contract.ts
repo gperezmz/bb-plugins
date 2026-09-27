@@ -49,6 +49,8 @@ export const hostContract = defineRpcContract({
         cwdSlug: z.string().nullable(),
         facts: factsSchema,
         requests: z.array(requestSchema),
+        /** The most recent turns bb's reports of child turns started. */
+        reports: z.array(z.object({ at: z.number(), requests: z.number() }).strict()),
       })
       .strict(),
   },

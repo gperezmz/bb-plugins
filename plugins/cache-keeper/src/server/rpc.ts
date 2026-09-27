@@ -21,6 +21,8 @@ export interface Overview {
   switchedOn: ThreadView[];
   waiting: ThreadView[];
   recent: (HistoryRow & { title: string })[];
+  /** Titles of the threads the recent entries' costs fell on. */
+  titles: Record<string, string>;
   totals: Totals;
   checkIns: boolean;
 }
