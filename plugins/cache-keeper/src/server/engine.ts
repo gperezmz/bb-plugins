@@ -410,7 +410,7 @@ export class Engine {
       // A report delivered at that level since the cycle began; bb records it before the thread turns active.
       const reached = (depth: number) =>
         members.some((m) => depthOf(m.id) === depth && (logs.get(m.id)?.delivered.some((d) => d.at >= cycle.at) ?? false));
-      const ready = cycle.pending.filter((p) => reached(p.depth) || now >= cycle.at + (cycle.deepest - p.depth) * LEAD_PER_LEVEL_MS);
+      const ready = cycle.pending.filter((p) => reached(p.depth) || now >= stagedFallback(cycle, p));
       const go = ready.filter((p) => sendable(p.id) && nodes.find((n) => n.id === p.id)?.keepable === true).map((p) => p.id);
       if (go.length > 0) await this.sendKeepWarms(go, observed, top, cycle.historyId);
       sent ||= go.length > 0;
@@ -420,7 +420,7 @@ export class Engine {
     // No new tree keep-warm starts while the last one still has leaves to send.
     const staging = this.cycles.has(top);
     const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
-    const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: depthOf(d.id) }));
+    const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: depthOf(d.id), deadline: observed.get(d.id)?.deadline ?? null }));
     if (together.length > 0) {
       const deepest = Math.max(...together.map((t) => t.depth));
       const first = together.filter((t) => t.depth === deepest).map((t) => t.id);
@@ -435,7 +435,7 @@ export class Engine {
 
     const wakes = [tree.wakeAt, ...[...plans.values()].map((p) => p.wakeAt)].filter((w): w is number => w !== null);
     const staged = this.cycles.get(top);
-    if (staged !== undefined) for (const p of staged.pending) wakes.push(staged.at + (staged.deepest - p.depth) * LEAD_PER_LEVEL_MS);
+    if (staged !== undefined) for (const p of staged.pending) wakes.push(stagedFallback(staged, p));
     // A report still on its way stops holding things once it is given up on.
     for (const o of observed.values()) for (const c of o.pendingReports) {
       const ended = logs.get(c)?.turns.at(-1)?.endedAt;
@@ -1138,9 +1138,12 @@ const DUE_EARLY_MS = 500;
 interface Cycle {
   at: number;
   deepest: number;
-  pending: { id: string; depth: number }[];
+  pending: { id: string; depth: number; deadline: number | null }[];
   historyId: number;
 }
+
+/** A shallower leaf no report reached goes 30 s a level after the deepest, and never past its own deadline. */
+const stagedFallback = (cycle: Cycle, p: Cycle["pending"][number]) => Math.min(cycle.at + (cycle.deepest - p.depth) * LEAD_PER_LEVEL_MS, p.deadline ?? Infinity);
 
 /** bb counts a background task before its events are read; the banner takes whichever count is higher. */
 function withBbCounts(counts: WaitCounts, thread: ListedThread): WaitCounts {

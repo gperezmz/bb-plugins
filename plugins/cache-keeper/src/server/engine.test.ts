@@ -358,7 +358,7 @@ describe("compact when idle", () => {
     ];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("b", T0, 100_000, "5m");
-    h.now = T0 + 150 * S;
+    h.now = T0 + 240 * S;
     h.turn("a", h.now - 5 * S, [], "Finished the page.");
     h.side("p").queued = [{ id: "row", sendAt: null, createdAt: h.now - 3 * S, failed: false, system: true, content: reportInput([{ id: "a", reply: "Finished the page." }]) }];
     await h.engine.pass();
@@ -417,11 +417,11 @@ describe("keeping a thread tree warm", () => {
   it("keeps a thread waiting on background work warm at its deadline with an unconditional keep-warm", async () => {
     h.threads = [thread({ id: "t", activity: busy })];
     h.transcript("t", T0, 200_000);
-    h.now = T0 + 59 * MIN - 61 * S;
+    h.now = T0 + 59 * MIN - 1 * S;
     await h.engine.pass();
     expect(h.sent).toEqual([]);
-    expect(h.engine.wakeAt()).toBe(T0 + 59 * MIN - 60 * S);
-    h.now = T0 + 59 * MIN - 60 * S;
+    expect(h.engine.wakeAt()).toBe(T0 + 59 * MIN);
+    h.now = T0 + 59 * MIN;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.text).toMatch(/^Still waiting on .*There's no need to check anything\. Reply with exactly "Not finished yet, still waiting on .*\. Nothing needed from you\."$/);
@@ -440,9 +440,9 @@ describe("keeping a thread tree warm", () => {
     expect(h.reportTurns("p")).toBe(toChild.length);
     // Those report turns are not your messages in the parent's calls per message.
     expect(h.store.get("p").keeperReports).toEqual({ turns: toChild.length, requests: toChild.length });
-    // Each keep-warm went 90 seconds before the child's deadline: every 150 seconds once aligned.
+    // Each keep-warm went at the child's deadline: every 240 seconds, a cache lifetime less the minute's margin.
     const times = h.sides.get("c")!.requests.map((r) => r.at);
-    for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeLessThanOrEqual(150 * S + 5 * S);
+    for (let i = 2; i < times.length; i++) expect(Math.abs(times[i]! - times[i - 1]! - 240 * S)).toBeLessThanOrEqual(5 * S);
   });
 
   it("stops the child's keep-warms within its first hour under a 1-hour parent of similar size", async () => {
@@ -473,7 +473,7 @@ describe("keeping a thread tree warm", () => {
     h.transcript("c1", T0, 20_000, "1h");
     h.transcript("g", T0, 20_000, "5m");
     h.transcript("c2", T0, 20_000, "5m");
-    h.now = T0 + 4 * MIN - 120 * S;
+    h.now = T0 + 4 * MIN;
     await h.engine.pass();
     expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
     await h.deliver();
@@ -509,14 +509,17 @@ describe("keeping a thread tree warm", () => {
     expect(h.sent).toEqual([]);
   });
 
-  it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes", async () => {
+  it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes, or at its deadline if sooner", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c1", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c1", activity: busy }), thread({ id: "c2", parentThreadId: "p", activity: busy })];
     for (const id of ["p", "c1"]) h.transcript(id, T0, 20_000, "1h");
-    for (const id of ["g", "c2"]) h.transcript(id, T0, 20_000, "5m");
-    h.now = T0 + 4 * MIN - 120 * S;
+    h.transcript("g", T0, 20_000, "5m");
+    h.transcript("c2", T0 + 20 * S, 20_000, "5m");
+    h.now = T0 + 4 * MIN;
     await h.engine.pass();
-    expect(h.engine.wakeAt()).toBe(h.now + 30 * S);
-    h.now += 30 * S;
+    expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
+    // c2's deadline, 20 s on, comes before 30 s a level.
+    expect(h.engine.wakeAt()).toBe(h.now + 20 * S);
+    h.now += 20 * S;
     await h.engine.pass({ due: true });
     expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
   });
@@ -585,7 +588,7 @@ describe("keeping a thread tree warm", () => {
     h.transcript("p", T0, 40_000, "1h");
     h.transcript("a", T0, 10_000, "5m");
     h.transcript("b", T0, 10_000, "5m");
-    await h.run(T0 + 3 * MIN);
+    await h.run(T0 + 5 * MIN);
     const entry = h.store.history(0).find((r) => r.kind === "keep-warm")!;
     expect(entry.record.threads).toEqual(["a", "b"]);
     const read = (tokens: number) => 3 * PRICE.input + 20 * PRICE.output + tokens * PRICE.read;
@@ -599,7 +602,7 @@ describe("keeping a thread tree warm", () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    h.now = T0 + 150 * S;
+    h.now = T0 + 240 * S;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
     h.engine = h.build();
@@ -615,7 +618,7 @@ describe("read state", () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 3 * MIN);
+    await h.run(T0 + 5 * MIN);
     expect(h.reportTurns("p")).toBe(1);
     const p = h.get("p");
     expect(p.lastReadAt! >= p.latestAttentionAt!).toBe(true);
@@ -625,7 +628,7 @@ describe("read state", () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy, lastReadAt: null })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 3 * MIN);
+    await h.run(T0 + 5 * MIN);
     expect(h.sent.map((s) => s.threadId)).toEqual(["c"]);
     expect(h.get("c").lastReadAt).toBeNull();
   });
@@ -633,7 +636,7 @@ describe("read state", () => {
   it("leaves an unread thread unread, though bb marked it read when the keep-warm arrived", async () => {
     h.threads = [thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 })];
     h.transcript("t", T0, 100_000, "5m");
-    await h.run(T0 + 3 * MIN);
+    await h.run(T0 + 5 * MIN);
     expect(h.sent).toHaveLength(1);
     const t = h.get("t");
     expect(t.lastReadAt === null || t.lastReadAt < t.latestAttentionAt!).toBe(true);
@@ -644,7 +647,7 @@ describe("read state", () => {
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
     h.replies.set("c", "The deploy failed; I restarted it.");
-    await h.run(T0 + 3 * MIN);
+    await h.run(T0 + 5 * MIN);
     const p = h.get("p");
     expect(p.lastReadAt! < p.latestAttentionAt!).toBe(true);
   });
@@ -652,7 +655,7 @@ describe("read state", () => {
   it("keeps a thread read when you read it during the turn, though the turn's end drew attention to it", async () => {
     h.threads = [thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 })];
     h.transcript("t", T0, 100_000, "5m");
-    h.now = T0 + 180 * S;
+    h.now = T0 + 240 * S;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
     h.now += 500;
@@ -665,7 +668,7 @@ describe("read state", () => {
   it("leaves the read state as you set it during the turn", async () => {
     h.threads = [thread({ id: "t", activity: busy })];
     h.transcript("t", T0, 100_000, "5m");
-    h.now = T0 + 180 * S;
+    h.now = T0 + 240 * S;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
     h.patch("t", { lastReadAt: null });
@@ -679,7 +682,7 @@ describe("queued reports", () => {
     h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    h.now = T0 + 150 * S;
+    h.now = T0 + 240 * S;
     await h.engine.pass();
     await h.deliver();
     // bb queued the report behind the question instead of delivering it.
@@ -703,7 +706,7 @@ describe("queued reports", () => {
     h.typed("c", "deploy it");
     const real: QueuedRow = { id: "real", sendAt: null, createdAt: h.now + 3 * S, failed: false, system: true, content: reportInput([{ id: "c", reply: "Done." }]) };
     h.side("p").queued = [real];
-    h.now = T0 + 150 * S;
+    h.now = T0 + 240 * S;
     h.transcript("c", T0 + 21 * S, 100_000, "5m");
     await h.run(T0 + 5 * MIN);
     const keepWarm = h.side("c").events.filter((e) => e.type === "turn/completed").at(-1)!;
@@ -772,11 +775,11 @@ describe("check-ins", () => {
     // Printing all along: never stalled.
     h.transcript("t1", T0 + 35 * MIN, 100_000, "5m");
     h.outputs.set("b1", T0 + 38 * MIN);
-    h.now = T0 + 38 * MIN + 30 * S;
+    h.now = T0 + 39 * MIN;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.text).toMatch(/^Still waiting on background command b1/);
-    expect(h.sent[0]!.text).toContain("has been running 38 minutes and is still printing");
+    expect(h.sent[0]!.text).toContain("has been running 39 minutes and is still printing");
     expect(h.sent[0]!.text).toContain('"Checked b1, still running normally, nothing new. Nothing needed from you."');
     expect(h.store.history(0).find((r) => r.kind === "keep-warm")?.record.folded).toEqual(["b1"]);
   });

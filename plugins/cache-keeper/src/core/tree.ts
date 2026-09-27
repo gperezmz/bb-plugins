@@ -4,10 +4,14 @@
  * bb reports every child turn to its parent, and the report's turn refreshes
  * the parent's cache, so a keep-warm sent to a waiting thread at the bottom
  * of a tree keeps every waiting thread above it warm too. Cache Keeper sends
- * keep-warms only to those leaves, all at once, early enough before the
- * earliest deadline in the tree for the reports to climb: 60 seconds plus 30
- * for each level down to the deepest leaf in the send. A thread whose cache
- * nothing refreshed by its own deadline still gets its own keep-warm then.
+ * keep-warms only to those leaves, together. A leaf goes at its own deadline,
+ * or earlier where a waiting thread above it would reach its deadline first:
+ * that thread's deadline less 60 seconds and 30 for each level between them,
+ * so the report climbs to it in time. Once a tree is aligned, the threads
+ * above are refreshed by the reports and their deadlines trail the leaves',
+ * so a tree cycles about once per cache lifetime, less the minute's margin.
+ * A thread whose cache nothing refreshed by its own deadline still gets its
+ * own keep-warm then, a little later while a report is climbing to it.
  */
 import { CACHE_MARGIN_MS } from "./transcript";
 
@@ -45,8 +49,8 @@ export const LEAD_MS = 60_000;
 export const LEAD_PER_LEVEL_MS = 30_000;
 /** How long after its deadline a thread's cache is still warm: the margin the deadline leaves. */
 const ACT_WINDOW_MS = CACHE_MARGIN_MS;
-/** An own-deadline keep-warm waits this long for a report already on its way. */
-const REPORT_GRACE_MS = 20_000;
+/** An own-deadline keep-warm waits this long for a report already on its way; the cache is still warm for 60. */
+const REPORT_GRACE_MS = 30_000;
 
 /** The lead for a send whose deepest leaf is `depth` levels below the top-level thread. */
 export const leadMs = (depth: number) => LEAD_MS + LEAD_PER_LEVEL_MS * depth;
@@ -82,20 +86,24 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
   if (candidates.length === 0) return { planned, due, nextAt, wakeAt: null };
 
   const leaves = candidates.filter((n) => !hasCandidateBelow(n));
-  const earliest = Math.min(...candidates.map((n) => n.deadline!));
-  const shortest = Math.min(...candidates.map((n) => n.lifetimeMs!));
-  // The leaves too close to their deadline to wait for the tree's next send; the rest go with that one.
-  const sendAtFor = (lead: number) => earliest - lead;
-  const inSend = (lead: number) => {
-    const next = sendAtFor(lead) + shortest - CACHE_MARGIN_MS - lead;
-    return leaves.filter((n) => n.deadline! - lead < next);
+  // When each leaf must go: its own deadline, or earlier for a waiting thread above whose deadline comes first.
+  const dueOf = (leaf: TreeNode) => {
+    let at = leaf.deadline!;
+    for (const a of ancestors(leaf)) {
+      if (isCandidate.has(a.id) && a.deadline! < leaf.deadline!) at = Math.min(at, a.deadline! - leadMs(depth(leaf) - depth(a)));
+    }
+    return at;
   };
-  const deepest = (list: readonly TreeNode[]) => Math.max(0, ...list.map(depth));
-  const lead = leadMs(deepest(inSend(leadMs(deepest(leaves)))));
-  const send = inSend(lead);
-  const sendAt = sendAtFor(lead);
+  const dues = new Map(leaves.map((n) => [n.id, dueOf(n)]));
+  const sendAt = Math.min(...dues.values());
+  // The leaves that could not wait for the tree's next send, once this one has refreshed it, go with this one.
+  const next = sendAt + Math.min(...leaves.map((n) => n.lifetimeMs!)) - CACHE_MARGIN_MS;
+  const send = leaves.filter((n) => dues.get(n.id)! < next);
   // A send, or a report, still on its way is part of the last cycle.
   const holding = nodes.some((n) => n.inFlight || n.reportPending);
+  // A thread with a send or report on its way below it waits a little past its deadline for the report.
+  const climbing = (n: TreeNode) => n.reportPending || nodes.some((d) => (d.inFlight || d.reportPending) && ancestors(d).includes(n));
+  const ownAt = (n: TreeNode) => (climbing(n) ? n.deadline! + REPORT_GRACE_MS : n.deadline!);
 
   const sending = new Set<string>();
   if (!holding && now >= sendAt) {
@@ -107,16 +115,15 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
   }
   for (const n of candidates) {
     if (sending.has(n.id) || n.inFlight) continue;
-    const late = n.reportPending ? n.deadline! + REPORT_GRACE_MS : n.deadline!;
-    if (now >= late) due.push({ id: n.id, tree: false });
+    if (now >= ownAt(n)) due.push({ id: n.id, tree: false });
   }
 
   const wakes: number[] = [];
   for (const n of candidates) {
-    const own = n.reportPending ? n.deadline! + REPORT_GRACE_MS : n.deadline!;
-    const next = send.includes(n) ? Math.min(sendAt, own) : own;
-    nextAt.set(n.id, next);
-    if (!n.inFlight) wakes.push(n.reportPending ? own : next);
+    const own = ownAt(n);
+    const at = send.includes(n) && !holding ? Math.min(sendAt, own) : own;
+    nextAt.set(n.id, send.includes(n) ? Math.min(sendAt, own) : own);
+    if (!n.inFlight) wakes.push(at);
   }
   for (const n of nodes) if (!nextAt.has(n.id) && planned.has(n.id)) nextAt.set(n.id, Math.min(...candidates.filter((c) => ancestors(c).includes(n)).map((c) => nextAt.get(c.id)!)));
   const future = wakes.filter((w) => w > now);
