@@ -283,9 +283,10 @@ export default async function plugin(bb: BbPluginApi) {
     throw error;
   };
 
-  const target = (input: { positionals: { thread?: string } }, ctx: { threadId?: string | null }) => {
+  /** The thread given, or the current one; `command` names the subcommand in the hint when there is neither. */
+  const target = (input: { positionals: { thread?: string } }, ctx: { threadId?: string | null }, command: string) => {
     const threadId = input.positionals.thread ?? ctx.threadId ?? null;
-    if (threadId === null) throw new PluginCliError("no thread given", { code: "missing_thread", hint: "Pass a thread id: bb cache-keeper status thr_…" });
+    if (threadId === null) throw new PluginCliError("no thread given", { code: "missing_thread", hint: `Pass a thread id: bb cache-keeper ${command} thr_…` });
     return threadId;
   };
 
@@ -296,7 +297,7 @@ export default async function plugin(bb: BbPluginApi) {
         "Records the choice on the thread's tree top, the highest Claude Code thread above it or the thread itself, and covers every thread below it. Under Never in Settings the choice is recorded for when the setting changes.",
       positionals: thread,
       async run(input, ctx) {
-        const r = await engine.setKeepWarm(target(input, ctx), on).catch(toCliError);
+        const r = await engine.setKeepWarm(target(input, ctx, `keep-warm ${on ? "on" : "off"}`), on).catch(toCliError);
         const state = r.never ? `${on ? "on" : "off"}, but keep-warms are off in Settings` : r.keptWarm ? "on" : "off";
         return { exitCode: 0, stdout: `keep warm while waiting: ${state}\ntree top: ${r.treeTop.title} (${r.treeTop.threadId})` };
       },
@@ -316,7 +317,7 @@ export default async function plugin(bb: BbPluginApi) {
           positionals: thread,
           options: { above: { type: "string", description: "Compaction line, e.g. 500k; snapped to the nearest setting" } },
           async run(input, ctx) {
-            const threadId = target(input, ctx);
+            const threadId = target(input, ctx, "on");
             const view = await engine.setCompact(threadId, true, await settingFor(threadId, input.options.above).catch(toCliError)).catch(toCliError);
             return { exitCode: 0, stdout: view === null ? "on" : `on, at ${formatSize(view.line)}` };
           },
@@ -325,7 +326,7 @@ export default async function plugin(bb: BbPluginApi) {
           summary: "Switch compact-when-idle off for a thread",
           positionals: thread,
           async run(input, ctx) {
-            await engine.setCompact(target(input, ctx), false).catch(toCliError);
+            await engine.setCompact(target(input, ctx, "off"), false).catch(toCliError);
             return { exitCode: 0, stdout: "off" };
           },
         }),
@@ -333,7 +334,7 @@ export default async function plugin(bb: BbPluginApi) {
           summary: "Compact a thread now, whatever its size, if it is idle and not waiting",
           positionals: thread,
           async run(input, ctx) {
-            await engine.compactNow(target(input, ctx)).catch(toCliError);
+            await engine.compactNow(target(input, ctx, "now")).catch(toCliError);
             return { exitCode: 0, stdout: "compacting" };
           },
         }),
