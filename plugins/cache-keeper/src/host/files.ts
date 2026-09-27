@@ -5,21 +5,22 @@
  * subagent's transcript at `<root>/<cwd slug>/<sessionId>/subagents/agent-<id>.jsonl`.
  */
 import { open, readdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { TranscriptFold, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
 
 export interface Roots {
   /** Claude Code's `projects` directories, most likely first. */
   projects: string[];
-  /** Where Claude Code writes background output: `<tmp>/claude-<uid>`. */
-  tasks: string;
+  /** Where Claude Code may write background output, `<tmp>/claude-<uid>`: under `$TMPDIR` when set, else `/tmp`. */
+  tasks: string[];
 }
 
 export function resolveRoots(env: NodeJS.ProcessEnv = process.env, home = homedir()): Roots {
   const config = env.CLAUDE_CONFIG_DIR ? [env.CLAUDE_CONFIG_DIR] : [join(home, ".claude"), join(home, ".config", "claude")];
   const uid = typeof process.getuid === "function" ? process.getuid() : 0;
-  return { projects: config.map((d) => join(d, "projects")), tasks: join("/tmp", `claude-${uid}`) };
+  const tmps = [...new Set([env.TMPDIR ?? tmpdir(), "/tmp"])];
+  return { projects: config.map((d) => join(d, "projects")), tasks: tmps.map((t) => join(t, `claude-${uid}`)) };
 }
 
 const exists = async (path: string) => (await stat(path).catch(() => null)) !== null;
@@ -115,9 +116,12 @@ function slugOf(path: string): string {
 
 /** When a background command last printed: its output file's modification time. */
 export async function commandActivity(roots: Roots, cwdSlug: string, sessionId: string, id: string) {
-  const outputFile = join(roots.tasks, cwdSlug, sessionId, "tasks", `${id}.output`);
-  const info = await stat(outputFile).catch(() => null);
-  return { id, outputFile, changedAt: info === null ? null : info.mtimeMs };
+  const paths = roots.tasks.map((t) => join(t, cwdSlug, sessionId, "tasks", `${id}.output`));
+  for (const outputFile of paths) {
+    const info = await stat(outputFile).catch(() => null);
+    if (info !== null) return { id, outputFile, changedAt: info.mtimeMs };
+  }
+  return { id, outputFile: paths[0]!, changedAt: null };
 }
 
 const TAIL = 256 * 1024;

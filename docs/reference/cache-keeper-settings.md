@@ -67,4 +67,4 @@ Also record: approaches that were tried or considered and ruled out, with the re
 
 ## What it stores
 
-`<data dir>/plugins/cache-keeper/` holds, in SQLite: each thread's switch, setting and idle stretch, the background tasks it watches, 90 days of what it sent, and the fetched price lists. The host entry reads Claude Code's transcripts and `/tmp/claude-<uid>/…/tasks/<id>.output` files on each machine and writes nothing there.
+`<data dir>/plugins/cache-keeper/` holds, in SQLite: each thread's switch, setting and idle stretch, the background tasks it watches, 90 days of what it sent, and the fetched price lists. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.

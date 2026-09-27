@@ -103,6 +103,12 @@ export class TranscriptFold {
   private readonly recent: (TranscriptRequest & { key: string })[] = [];
   /** Inside a turn a Cache Keeper message started: its requests are not the user's calls per message. */
   private keeperTurn = false;
+  /**
+   * A typed message not yet followed by a request. It counts as a user message
+   * only once a request follows, so a local command such as /model, and the
+   * copies Claude Code writes again after compacting, do not.
+   */
+  private awaitingRequest = false;
 
   constructor(private readonly keepRecent = 200) {}
 
@@ -123,12 +129,16 @@ export class TranscriptFold {
     const text = userText(line);
     if (text !== null && text.trim() !== "" && !NOT_TYPED.test(text)) {
       this.keeperTurn = isKeeperMessage(text);
-      if (!this.keeperTurn) this.facts.userMessages += 1;
+      this.awaitingRequest = !this.keeperTurn;
       return;
     }
     const request = requestOf(line);
     if (request === null) return;
     if (request.key !== this.lastKey) {
+      if (this.awaitingRequest) {
+        this.facts.userMessages += 1;
+        this.awaitingRequest = false;
+      }
       if (!this.keeperTurn) this.facts.requests += 1;
       this.lastKey = request.key;
       this.recent.push(request);

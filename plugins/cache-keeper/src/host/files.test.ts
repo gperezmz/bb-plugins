@@ -9,7 +9,7 @@ const SLUG = "-work-repo";
 
 async function roots(): Promise<Roots> {
   const dir = await mkdtemp(join(tmpdir(), "cache-keeper-"));
-  return { projects: [join(dir, "projects")], tasks: join(dir, "claude-1000") };
+  return { projects: [join(dir, "projects")], tasks: [join(dir, "tmpdir", "claude-1000"), join(dir, "claude-1000")] };
 }
 
 const request = (min: number, id: string, write1h: number) =>
@@ -49,7 +49,8 @@ describe("TranscriptReader", () => {
 describe("task activity", () => {
   it("reads a command's output time and a subagent's last tool", async () => {
     const r = await roots();
-    const tasks = join(r.tasks, SLUG, SESSION, "tasks");
+    // Written under the second root, as when $TMPDIR is set but Claude Code's process had none.
+    const tasks = join(r.tasks[1]!, SLUG, SESSION, "tasks");
     await mkdir(tasks, { recursive: true });
     await writeFile(join(tasks, "b1.output"), "tick\n");
     await utimes(join(tasks, "b1.output"), 1000, 1000);

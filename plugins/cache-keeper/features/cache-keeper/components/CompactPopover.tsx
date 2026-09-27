@@ -17,17 +17,22 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
 
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <label className="flex items-center justify-between gap-3 font-medium">
-        <span>Compact when idle</span>
-        <input
-          type="checkbox"
+      <div className="flex items-center justify-between gap-3 font-medium">
+        <span id={`${view.threadId}-compact-label`}>Compact when idle</span>
+        {/* A button rather than a native checkbox: bb's composer reverts a checkbox toggled inside it. */}
+        <button
+          type="button"
           role="switch"
           aria-checked={view.compactOn}
-          checked={view.compactOn}
-          onChange={(e) => void run(rpc.call("setCompact", { threadId: view.threadId, on: e.target.checked }))}
-          className="size-4 accent-[var(--primary)]"
-        />
-      </label>
+          aria-labelledby={`${view.threadId}-compact-label`}
+          onClick={() => void run(rpc.call("setCompact", { threadId: view.threadId, on: !view.compactOn }))}
+          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${view.compactOn ? "bg-primary" : "bg-muted"}`}
+        >
+          <span
+            className={`absolute top-0.5 size-4 rounded-full bg-background shadow transition-transform ${view.compactOn ? "translate-x-4" : "translate-x-0.5"}`}
+          />
+        </button>
+      </div>
       <p className="text-muted-foreground">
         When this thread stops at {line} or more, compact it just before its cache goes cold. Never while it's working.
       </p>

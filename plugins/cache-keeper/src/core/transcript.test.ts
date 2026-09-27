@@ -48,6 +48,16 @@ describe("TranscriptFold", () => {
     expect(fold.result().lastRequestAt).toBe(Date.parse(at(2)));
   });
 
+  it("counts only messages a request followed, so local commands and rewritten copies drop out", () => {
+    const fold = new TranscriptFold();
+    fold.add(user("<command-name>/model</command-name>"));
+    fold.add(user("<local-command-stdout>Set model</local-command-stdout>"));
+    fold.add(user("first question"));
+    fold.add(user("first question"));
+    fold.add(assistant(0, "a", { input_tokens: 1 }));
+    expect(fold.result()).toMatchObject({ requests: 1, userMessages: 1 });
+  });
+
   it("takes the context from the last request, or a later compaction", () => {
     const fold = new TranscriptFold();
     fold.add(assistant(0, "a", { input_tokens: 10, cache_read_input_tokens: 200_000, cache_creation: { ephemeral_1h_input_tokens: 5_000 } }));
