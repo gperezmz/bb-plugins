@@ -74,7 +74,7 @@ export interface OlderRow {
   key: string;
   /** A group id, or a parent thread id for a tree's fold. */
   scopeId: string;
-  /** `reveal`: an auto-reveal left `count` children hidden ("+N more"). */
+  /** `reveal`: an auto-reveal left `count` children hidden ("N more child threads"). */
   scope: "group" | "tree" | "reveal";
   count: number;
   expanded: boolean;
