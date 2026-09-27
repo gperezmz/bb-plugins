@@ -19,7 +19,7 @@ import { compactionUsd, DEFAULT_CALLS_PER_MESSAGE, DEFAULT_POST_COMPACTION, DEFA
 import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask, type SentKind } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
 import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
-import { keptWarm, treeTopOf, treeTopsBelow } from "../core/switch";
+import { keptWarm, treeTopOf, treeTopsBelow, type ThreadRef } from "../core/switch";
 import { LEAD_PER_LEVEL_MS, planTree, topOf, type TreeNode, type TreePlan } from "../core/tree";
 import {
   classifyQueued,
@@ -169,8 +169,8 @@ export class NotReadyError extends Error {}
 export class NoTreeTopError extends Error {
   constructor(
     readonly threadId: string,
-    /** The tree tops below it, with their titles. */
-    readonly below: { threadId: string; title: string }[],
+    /** The tree tops below it. */
+    readonly below: ThreadRef[],
   ) {
     super(
       below.length === 0
@@ -182,9 +182,7 @@ export class NoTreeTopError extends Error {
 
 /** Where a thread's Keep warm while waiting switch stands after it was flipped. */
 export interface KeepWarmResult {
-  treeTop: { threadId: string; title: string };
-  /** What was recorded on the tree top. */
-  on: boolean;
+  treeTop: ThreadRef;
   /** What the tree gets now: false under Never whatever was recorded. */
   keptWarm: boolean;
   never: boolean;
@@ -365,13 +363,13 @@ export class Engine {
   };
 
   /** The tree top whose switch covers `threadId`, or null for a thread that is not Claude Code with none above it. */
-  private treeTopOf(threadId: string): string | null {
+  private treeTopIdOf(threadId: string): string | null {
     return treeTopOf(threadId, this.liveParentOf, (id) => this.isClaude(id));
   }
 
   /** Whether `threadId`'s tree is kept warm: its tree top's switch and the setting. */
-  private keptWarm(threadId: string, settings: KeeperSettings): boolean {
-    const top = this.treeTopOf(threadId);
+  private isKeptWarm(threadId: string, settings: KeeperSettings): boolean {
+    const top = this.treeTopIdOf(threadId);
     return keptWarm(settings.keepWarm, top === null ? null : this.deps.store.get(top).keepWarm);
   }
 
@@ -874,7 +872,7 @@ export class Engine {
     return {
       id: m.id,
       parentId,
-      keepable: this.keptWarm(m.id, settings) && m.status === "idle" && !m.hasPendingInteraction && o.waiting && stretch !== null,
+      keepable: this.isKeptWarm(m.id, settings) && m.status === "idle" && !m.hasPendingInteraction && o.waiting && stretch !== null,
       deadline: o.deadline,
       lifetimeMs: o.lifetimeMs,
       blocks: stretch !== null && (stretch.warmSkipped || pastCostStop(charged, forecast, o.rates, context)),
@@ -913,7 +911,7 @@ export class Engine {
       compactedAt: record.stretch?.compactedAt ?? null,
       canCompactNow: thread.status === "idle" && !thread.hasPendingInteraction && !observed.waiting && facts !== null,
       waiting: observed.waiting,
-      keptWarm: this.keptWarm(thread.id, settings),
+      keptWarm: this.isKeptWarm(thread.id, settings),
       warmSetting: settings.keepWarm,
       treeTop: this.treeTopRef(thread.id),
       warmPlanned: tree.planned.has(thread.id),
@@ -1128,7 +1126,7 @@ export class Engine {
   async setKeepWarm(threadId: string, on: boolean): Promise<KeepWarmResult> {
     await this.load();
     if (!this.threads.has(threadId)) throw new NotReadyError(`no thread ${threadId}`);
-    const top = this.treeTopOf(threadId);
+    const top = this.treeTopIdOf(threadId);
     if (top === null) {
       const childrenOf = (id: string) => [...this.threads.values()].filter((t) => this.liveParentOf(t.id) === id).map((t) => t.id);
       const below = treeTopsBelow(threadId, childrenOf, (id) => this.isClaude(id));
@@ -1137,12 +1135,12 @@ export class Engine {
     this.deps.store.update(top, this.deps.now(), (r) => ({ ...r, keepWarm: on }));
     await this.refresh(threadId);
     const settings = this.deps.settings();
-    return { treeTop: this.treeTopRef(threadId), on, keptWarm: keptWarm(settings.keepWarm, on), never: settings.keepWarm === "never" };
+    return { treeTop: this.treeTopRef(threadId), keptWarm: keptWarm(settings.keepWarm, on), never: settings.keepWarm === "never" };
   }
 
   /** The tree top covering `threadId`, with its title; the thread itself where none covers it. */
-  private treeTopRef(threadId: string): { threadId: string; title: string } {
-    const top = this.treeTopOf(threadId) ?? threadId;
+  private treeTopRef(threadId: string): ThreadRef {
+    const top = this.treeTopIdOf(threadId) ?? threadId;
     return { threadId: top, title: this.titleOf(top) };
   }
 

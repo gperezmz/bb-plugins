@@ -24,7 +24,7 @@ export const SETTINGS = {
     type: "boolean",
     label: "Check in on stalled background work",
     description:
-      "On every Claude Code thread, whatever its keep-warm switch says: when a background command or subagent has produced no output or progress for the no-output wait, ask the agent to check it. Off also stops keep-warms asking about tasks running 30 minutes or more.",
+      "On every Claude Code thread, whatever its tree's Keep warm while waiting switch says: when a background command or subagent has produced no output or progress for the no-output wait, ask the agent to check it. Off also stops keep-warms asking about tasks running 30 minutes or more.",
     default: true,
   },
   noOutputWait: {

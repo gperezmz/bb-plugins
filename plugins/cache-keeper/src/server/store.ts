@@ -1,7 +1,7 @@
 /**
- * Cache Keeper's SQLite storage: what each thread is set to (its switches and setting) and where its
- * idle stretch stands, what was sent and what it cost, how far each thread's
- * turns have been read, and the fetched price lists. Rows hold JSON; indexed
+ * Cache Keeper's SQLite storage: each thread's switches and setting, where
+ * its idle stretch stands, what was sent and what it cost, how far each
+ * thread's turns have been read, and the fetched price lists. Rows hold JSON; indexed
  * columns are only what queries filter on.
  */
 import type { CheckInReason, TaskClock } from "../core/checkins";

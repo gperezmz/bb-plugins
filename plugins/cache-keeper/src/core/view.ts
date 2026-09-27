@@ -4,7 +4,7 @@
  */
 import { formatSize, type CacheLifetime } from "./line";
 import { joinAnd } from "./messages";
-import type { KeepWarmSetting } from "./switch";
+import type { KeepWarmSetting, ThreadRef } from "./switch";
 import type { WaitItem } from "./waiting";
 
 /** The realtime channel every surface refetches on; its payload names the changed threads. */
@@ -44,7 +44,7 @@ export interface ThreadView {
   /** "Keep caches warm while waiting". */
   warmSetting: KeepWarmSetting;
   /** The tree top whose switch covers it; itself when it is one. */
-  treeTop: { threadId: string; title: string };
+  treeTop: ThreadRef;
   /** A keep-warm is planned for this thread, or for a thread below it whose report will reach it. */
   warmPlanned: boolean;
   warmSkipped: boolean;
@@ -103,6 +103,15 @@ export function chipText(view: ThreadView, now: number): string {
 /** The chip's hover sentence: its compaction sentence, then whether the thread is kept warm while it waits. */
 export function chipSentence(view: ThreadView, now: number): string {
   return `${compactSentence(view, now)} ${warmSentence(view)}`;
+}
+
+/** Whether the popover's Keep warm while waiting switch can be flipped: on a tree top, unless the setting is Never. */
+export const warmSwitchFlippable = (view: ThreadView) => view.treeTop.threadId === view.threadId && view.warmSetting !== "never";
+
+/** The page's Next cell for a waiting thread: "off" where its tree is not kept warm. */
+export function nextWarmText(view: ThreadView, now: number): string {
+  if (!view.keptWarm) return "off";
+  return view.nextWarmAt === null ? "–" : `in ${minutesTo(view.nextWarmAt, now)}m`;
 }
 
 /** Whether a thread is kept warm while it waits, in a sentence. */

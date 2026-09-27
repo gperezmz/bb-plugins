@@ -6,7 +6,7 @@
  */
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { formatSize } from "@/src/core/line";
-import { ago, countsText, entryText, minutesTo, statusText, type ThreadView } from "@/src/core/view";
+import { ago, countsText, entryText, nextWarmText, statusText, type ThreadView } from "@/src/core/view";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeeperRpc, useLive, useNow } from "../api";
 import { formatUsd, splitText } from "../model/bar";
@@ -56,7 +56,7 @@ export function Page() {
                   key={v.threadId}
                   view={v}
                   onOpen={open}
-                  cells={[countsText(v.counts), nextWarm(v, now)]}
+                  cells={[countsText(v.counts), nextWarmText(v, now)]}
                 />
               ))}
             </Table>
@@ -107,9 +107,6 @@ export function Page() {
     </TooltipProvider>
   );
 }
-
-/** The Next cell: "off" for a thread whose tree is not kept warm. */
-const nextWarm = (v: ThreadView, now: number) => (!v.keptWarm ? "off" : v.nextWarmAt === null ? "–" : `in ${minutesTo(v.nextWarmAt, now)}m`);
 
 /** An entry's cost, and on hover how it fell between threads. */
 function Cost({ usd, split }: { usd: number | null; split: string | null }) {

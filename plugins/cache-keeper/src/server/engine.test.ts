@@ -733,7 +733,7 @@ describe("keep warm while waiting", () => {
     h.now = T0 + 3 * MIN;
     expect((await h.engine.viewOf("g"))?.treeTop).toEqual({ threadId: "p", title: "p" });
     const result = await h.engine.setKeepWarm("g", true);
-    expect(result).toMatchObject({ treeTop: { threadId: "p" }, on: true, keptWarm: true, never: false });
+    expect(result).toMatchObject({ treeTop: { threadId: "p" }, keptWarm: true, never: false });
     expect(h.store.get("p").keepWarm).toBe(true);
     expect(h.store.get("g").keepWarm).toBeNull();
     const view = (await h.engine.viewOf("g"))!;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerOf, chipSentence, chipText, countsText, entryText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
@@ -136,6 +136,20 @@ describe("the banner", () => {
       bannerOf(view({ compactSkipped: true }), 0),
     ].map((b) => b!.text);
     for (const t of texts) expect(t).not.toMatch(/keep-warm|check-in|family|tree|report|cost stop/i);
+  });
+});
+
+describe("keep warm while waiting", () => {
+  it("can be flipped in the popover only on a tree top, and not under Never", () => {
+    expect(warmSwitchFlippable(view({ threadId: "thr_1" }))).toBe(true);
+    expect(warmSwitchFlippable(view({ threadId: "thr_2" }))).toBe(false);
+    expect(warmSwitchFlippable(view({ threadId: "thr_1", warmSetting: "never" }))).toBe(false);
+  });
+
+  it("reads off on the page for a waiting thread whose tree is not kept warm", () => {
+    expect(nextWarmText(view({ keptWarm: false, nextWarmAt: 5 * 60_000 }), 0)).toBe("off");
+    expect(nextWarmText(view({ nextWarmAt: 5 * 60_000 }), 0)).toBe("in 5m");
+    expect(nextWarmText(view(), 0)).toBe("–");
   });
 });
 

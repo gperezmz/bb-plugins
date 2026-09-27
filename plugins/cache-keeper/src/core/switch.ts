@@ -9,6 +9,12 @@
  * keeps what was recorded, except under Never, which sends none.
  */
 
+/** A thread as a surface names it. */
+export interface ThreadRef {
+  threadId: string;
+  title: string;
+}
+
 /** "Keep caches warm while waiting": every waiting thread, only threads switched on, or never. */
 export type KeepWarmSetting = "every" | "switched" | "never";
 

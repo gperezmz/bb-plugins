@@ -6,7 +6,7 @@
  */
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { formatSize, lineWhy } from "@/src/core/line";
-import { noLineReason, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { noLineReason, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { ContextBar } from "./ContextBar";
@@ -19,17 +19,18 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
 
   const navigate = useBbNavigate();
   const below = view.treeTop.threadId !== view.threadId;
+  const flippable = warmSwitchFlippable(view);
 
   return (
     <div className="flex flex-col gap-3 text-sm">
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-3 font-medium">
-          <span id={`${view.threadId}-warm-label`} className={below || view.warmSetting === "never" ? "text-muted-foreground" : undefined}>
+          <span id={`${view.threadId}-warm-label`} className={flippable ? undefined : "text-muted-foreground"}>
             Keep warm while waiting
           </span>
           <Switch
             checked={view.keptWarm}
-            disabled={below || view.warmSetting === "never"}
+            disabled={!flippable}
             labelledBy={`${view.threadId}-warm-label`}
             onClick={() => void run(rpc.call("setKeepWarm", { threadId: view.threadId, on: !view.keptWarm }))}
           />
