@@ -154,7 +154,8 @@ describe("Thread Glance slot", () => {
     expect(within(section).getByRole("link", { name: /Open Parent — .*; in Alpha/ })).toBeTruthy();
     expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
     expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
-    expect(within(section).getByText("+4 more")).toBeTruthy();
+    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
+    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
     expect(within(section).getByText("Alpha")).toBeTruthy();
     const project = screen.getByRole("region", { name: "Alpha" });
     expect(within(project).queryByRole("link", { name: /Open Parent/ })).toBeNull();
@@ -162,7 +163,7 @@ describe("Thread Glance slot", () => {
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
   });
 
-  it("opens a tree in Needs attention from its chip or +N more, and closes it back to the path", async () => {
+  it("opens a tree in Needs attention from its chip, and closes it back to the path", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2, 3].map((n) =>
@@ -176,12 +177,13 @@ describe("Thread Glance slot", () => {
     fireEvent.click(chip);
     await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
     expect(within(section).getByRole("link", { name: /Open Child 3/ })).toBeTruthy();
-    expect(within(section).queryByText("+2 more")).toBeNull();
     fireEvent.click(within(section).getByRole("button", { name: /Collapse 3 child threads of Parent/ }));
     await waitFor(() => expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull());
-    // Closed, the path to what needs attention stays.
+    // Closed, the path to what needs attention stays, and nothing counts the rest.
     expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
-    fireEvent.click(within(section).getByRole("button", { name: "Show 2 more child threads" }));
+    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
+    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
+    fireEvent.click(within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" }));
     await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
   });
 

@@ -45,7 +45,7 @@ flowchart LR
   section -->|"nothing in it needs attention, and none of its threads is open"| group
 ```
 
-In the section, a tree arrives with the path from its root down to each thread that needs attention, and to the open thread. The root shows the name of its home group where the age normally is. Its other child threads wait behind one `+N more` line under the tree. The root's chip, or that line, opens the tree as it opens in its group, and the chip closes it back to the path. Whether a tree is open is one state, shared by the section and its home group: a tree opened in one is open in the other.
+In the section, a tree arrives with the path from its root down to each thread that needs attention, and to the open thread. The root shows the name of its home group where the age normally is. Closed, the tree draws its root and that path and nothing else. The root's chip counts every thread under the root, as it does in the home group, and opens the tree as it opens there; clicking it again closes the tree back to the path. Whether a tree is open is one state, shared by the section and its home group: a tree opened in one is open in the other.
 
 Nothing moves while you are inside a tree. A tree in the section stays there while you have one of its threads open, even after nothing in it needs attention any more, so opening an unread thread does not move it out from under the pointer. Its place among the section's trees does not change either: it keeps the place it had when you opened it, whatever happens inside it.
 

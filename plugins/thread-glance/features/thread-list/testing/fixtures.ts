@@ -156,9 +156,7 @@ function idsOf(rows: readonly Row[]): string[] {
       ? row.info.thread.id
       : row.type === "older"
         ? `older:${row.count}`
-        : row.type === "left-out"
-          ? `+${row.count}`
-          : `env:${row.environmentId}`,
+        : `env:${row.environmentId}`,
   );
 }
 
@@ -169,7 +167,7 @@ export function rowIds(view: ListView, groupId: string): string[] {
   return idsOf(group.rows);
 }
 
-/** Thread ids in Needs attention, in order; "+N more" lines as `+N`. Empty when the section is absent. */
+/** Thread ids in Needs attention, in order. Empty when the section is absent. */
 export function attentionIds(view: ListView): string[] {
   return idsOf(view.attention?.rows ?? []);
 }

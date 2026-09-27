@@ -29,7 +29,7 @@ export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): 
     : openChildren(id, prefs);
 }
 
-/** Opens a parent's children, as its chip does: "+N more" in Needs attention and an auto-reveal's fold. */
+/** Opens a parent's children, as its chip does, from an auto-reveal's fold. */
 export function openChildren(parentId: string, prefs: Preferences): ToggleOutcome {
   return { patch: { expandedChildren: [...without(prefs.expandedChildren, parentId), parentId] }, drop: null };
 }

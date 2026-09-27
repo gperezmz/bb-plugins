@@ -1,5 +1,5 @@
-// The fold rows (`N older` on a group, `N more child threads` on a tree),
-// the "+N more" line in Needs attention, and the environment folder row.
+// The fold rows (`N older` on a group, `N more child threads` on a tree)
+// and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { olderRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import type { EnvironmentRow, LeftOutRow, OlderRow } from "../model/view";
+import type { EnvironmentRow, OlderRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
@@ -44,25 +44,6 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
         <Icon name={ICONS.expand} aria-hidden className={cn("size-3 transition-transform", row.expanded && "-rotate-90")} />
       )}
       {label}
-    </button>
-  );
-});
-
-/** The "+N more" line under a closed tree in Needs attention: it opens the tree, as the chip does. */
-export const LeftOutRowView = memo(function LeftOutRowView({ row, controller }: { row: LeftOutRow; controller: RowController }) {
-  const noun = row.count === 1 ? "child thread" : "child threads";
-  return (
-    <button
-      type="button"
-      aria-expanded={false}
-      aria-label={`Show ${row.count} more ${noun}`}
-      title={`Show ${row.count} more ${noun}`}
-      onClick={() => controller.onOpenChildren(row.scopeId)}
-      className="relative flex h-6 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-      style={{ paddingLeft: rowIndent(row.depth) }}
-    >
-      <span aria-hidden className="size-4 shrink-0" />
-      +{row.count} more
     </button>
   );
 });
