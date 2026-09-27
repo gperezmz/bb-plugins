@@ -58,17 +58,16 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
     if (n.parentId === null || !byId.has(n.parentId)) continue;
     children.set(n.parentId, [...(children.get(n.parentId) ?? []), n]);
   }
-  const depth = (n: TreeNode): number => {
-    let d = 0;
-    for (let p = n.parentId; p !== null && byId.has(p) && d < nodes.length; p = byId.get(p)!.parentId) d++;
-    return d;
-  };
-  const blocked = (n: TreeNode): boolean => {
-    for (let at: TreeNode | undefined = n, d = 0; at !== undefined && d <= nodes.length; at = at.parentId === null ? undefined : byId.get(at.parentId), d++) {
-      if (at.blocks) return true;
+  // Its parent, grandparent and so on up to the top-level thread; a loop ends it.
+  const ancestors = (n: TreeNode): TreeNode[] => {
+    const out: TreeNode[] = [];
+    for (let at = n.parentId === null ? undefined : byId.get(n.parentId); at !== undefined && out.length < nodes.length; at = at.parentId === null ? undefined : byId.get(at.parentId)) {
+      out.push(at);
     }
-    return false;
+    return out;
   };
+  const depth = (n: TreeNode) => ancestors(n).length;
+  const blocked = (n: TreeNode) => n.blocks || ancestors(n).some((a) => a.blocks);
   const candidate = (n: TreeNode) =>
     n.keepable && !n.selfOff && !blocked(n) && n.deadline !== null && n.lifetimeMs !== null && now < n.deadline + ACT_WINDOW_MS;
   const candidates = nodes.filter(candidate);
@@ -76,7 +75,7 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
   const hasCandidateBelow = (n: TreeNode): boolean => (children.get(n.id) ?? []).some((c) => isCandidate.has(c.id) || hasCandidateBelow(c));
 
   const planned = new Set<string>();
-  for (const n of candidates) for (let at: TreeNode | undefined = n; at !== undefined && !planned.has(at.id); at = at.parentId === null ? undefined : byId.get(at.parentId)) planned.add(at.id);
+  for (const n of candidates) for (const at of [n, ...ancestors(n)]) planned.add(at.id);
 
   const due: TreePlan["due"] = [];
   const nextAt = new Map<string, number>();
@@ -119,14 +118,9 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
     nextAt.set(n.id, next);
     if (!n.inFlight) wakes.push(n.reportPending ? own : next);
   }
-  for (const n of nodes) if (!nextAt.has(n.id) && planned.has(n.id)) nextAt.set(n.id, Math.min(...candidates.filter((c) => isBelow(c, n, byId)).map((c) => nextAt.get(c.id)!)));
+  for (const n of nodes) if (!nextAt.has(n.id) && planned.has(n.id)) nextAt.set(n.id, Math.min(...candidates.filter((c) => ancestors(c).includes(n)).map((c) => nextAt.get(c.id)!)));
   const future = wakes.filter((w) => w > now);
   return { planned, due, nextAt, wakeAt: future.length === 0 ? null : Math.min(...future) };
-}
-
-function isBelow(n: TreeNode, above: TreeNode, byId: Map<string, TreeNode>): boolean {
-  for (let p = n.parentId, d = 0; p !== null && d <= byId.size; p = byId.get(p)?.parentId ?? null, d++) if (p === above.id) return true;
-  return false;
 }
 
 /** The top-level thread of each thread: follow parents to one with none, or none listed. */
