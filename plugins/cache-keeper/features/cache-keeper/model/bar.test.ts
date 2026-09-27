@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chipText, countsText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { chipSentence, chipText, countsText, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
 import { formatUsd, fractionOf, settingAt, settingForText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
@@ -91,5 +91,18 @@ describe("the popover sentence", () => {
       "No size up to this thread's 1M window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.",
     );
     expect(popoverSentence(view({ line: null, rates: null }))).toBe("With no price for this model yet, there is no line, so this thread is not compacted.");
+    const never = Array.from({ length: 10 }, () => null);
+    expect(popoverSentence(view({ line: null, lines: never }))).toBe(
+      "At no setting does compacting this thread repay itself: even at its whole 1M window, your first message back would save less than compacting costs. It is never compacted.",
+    );
+  });
+
+  it("never says a thread with no line is under it, or shows ≥ never", () => {
+    const never = Array.from({ length: 10 }, () => null);
+    expect(statusText(view({ line: null }), 0)).toBe("idle, no line");
+    expect(chipText(view({ line: null }), 0)).toBe("no line");
+    expect(chipSentence(view({ line: null, rates: null }), 0)).toContain("no price yet");
+    expect(chipSentence(view({ line: null, lines: never }), 0)).toContain("at any setting");
+    expect(chipSentence(view({ line: null }), 0)).toContain("at this setting");
   });
 });

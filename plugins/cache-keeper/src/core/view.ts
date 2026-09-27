@@ -73,12 +73,21 @@ export function ago(at: number, now: number): string {
   return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
+/** Why a thread has no line, or null when it has one. */
+export type NoLine = "no-price" | "no-setting" | "this-setting";
+
+export function noLineReason(view: ThreadView): NoLine | null {
+  if (view.line !== null) return null;
+  if (view.rates === null) return "no-price";
+  return view.lines.some((l) => l !== null) ? "this-setting" : "no-setting";
+}
+
 /** The chip's text: empty for the icon alone. */
 export function chipText(view: ThreadView, now: number): string {
   if (!view.compactOn) return "";
   if (view.hasPendingInteraction) return "paused";
   if (view.compactionDue && view.deadline !== null) return `${minutesTo(view.deadline, now)}m`;
-  return `≥ ${formatSize(view.line)}`;
+  return view.line === null ? "no line" : `≥ ${formatSize(view.line)}`;
 }
 
 /** The chip's hover sentence. */
@@ -88,19 +97,30 @@ export function chipSentence(view: ThreadView, now: number): string {
   if (view.compactionDue && view.deadline !== null) {
     return `Compacting in ${minutesTo(view.deadline, now)}m, just before the cache goes cold.`;
   }
-  return view.line === null
-    ? "Compact when idle is on, but no context up to the window repays compacting at this setting."
-    : `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold.`;
+  switch (noLineReason(view)) {
+    case "no-price":
+      return "Compact when idle is on, but this model has no price yet, so there is no line and the thread is not compacted.";
+    case "no-setting":
+      return "Compact when idle is on, but compacting never repays itself on this thread at any setting, so it is not compacted.";
+    case "this-setting":
+      return "Compact when idle is on, but no size up to the context window repays compacting at this setting, so it is not compacted.";
+    case null:
+      return `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold.`;
+  }
 }
 
 /** The popover's sentence under the switch; with no line, it says the thread is never compacted and why. */
 export function popoverSentence(view: ThreadView): string {
-  if (view.line === null) {
-    return view.rates === null
-      ? "With no price for this model yet, there is no line, so this thread is not compacted."
-      : `No size up to this thread's ${formatSize(view.window)} window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.`;
+  switch (noLineReason(view)) {
+    case "no-price":
+      return "With no price for this model yet, there is no line, so this thread is not compacted.";
+    case "no-setting":
+      return `At no setting does compacting this thread repay itself: even at its whole ${formatSize(view.window)} window, your first message back would save less than compacting costs. It is never compacted.`;
+    case "this-setting":
+      return `No size up to this thread's ${formatSize(view.window)} window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.`;
+    case null:
+      return `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold. Never while it's working.`;
   }
-  return `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold. Never while it's working.`;
 }
 
 /** The status half of the popover's `now {context} · {status}` line. */
@@ -111,7 +131,8 @@ export function statusText(view: ThreadView, now: number): string {
   if (view.compactedAt !== null) return `compacted ${ago(view.compactedAt, now)}`;
   if (view.compactSkipped) return "skipped until next idle";
   if (view.waiting) return "waiting on background work";
-  if (view.line === null || view.context === null || view.context < view.line) return "idle, under the line";
+  if (view.line === null) return "idle, no line";
+  if (view.context === null || view.context < view.line) return "idle, under the line";
   return "idle";
 }
 

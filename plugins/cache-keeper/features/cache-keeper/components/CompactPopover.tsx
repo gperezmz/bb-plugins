@@ -4,7 +4,7 @@
  * "Why {line}?" with the dollar figures.
  */
 import { formatSize, lineWhy } from "@/src/core/line";
-import { popoverSentence, statusText, type ThreadView } from "@/src/core/view";
+import { noLineReason, popoverSentence, statusText, type ThreadView } from "@/src/core/view";
 import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { ContextBar } from "./ContextBar";
@@ -82,7 +82,11 @@ function WhyNever({ view }: { view: ThreadView }) {
           Even at {window}, this model's whole context window, compacting would cost about {formatUsd(at.compactUsd)}, and your first
           message back after the cache goes cold would save {formatUsd(at.savedUsd)} by it.
         </p>
-        <p>That saving does not repay compacting as many times over as the handle asks, at any size this thread can reach. A lower setting gives a line.</p>
+        <p>
+          {noLineReason(view) === "no-setting"
+            ? "That saving is less than compacting costs, so no setting gives this thread a line."
+            : "That saving does not repay compacting as many times over as the handle asks, at any size this thread can reach. A lower setting gives a line."}
+        </p>
       </div>
     </details>
   );
