@@ -171,30 +171,43 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[]): TurnLog {
 /** Reads other threads' logs; null for a thread whose history was not read. */
 export type LogLookup = (threadId: string) => TurnLog | null;
 
-/** The child's turn a report line requested at `at` stands for: its latest turn ended by then. */
-export function reportedTurn(child: TurnLog | null, at: number): Turn | null {
-  if (child === null) return null;
-  for (let i = child.turns.length - 1; i >= 0; i--) {
-    const t = child.turns[i]!;
-    if (t.endedAt !== null && t.endedAt <= at) return t;
-  }
-  return null;
+/**
+ * The child's turns a report line delivered into `parent` at `at` may stand
+ * for: those that ended after the child's previous report was delivered, and
+ * by `at`. bb reports every turn, but a report held in a queue arrives late,
+ * so where several turns ended since, the line could be any of them.
+ */
+export function reportedTurns(parent: TurnLog | null, child: TurnLog | null, childId: string, at: number): Turn[] {
+  if (child === null) return [];
+  const before = Math.max(-Infinity, ...(parent?.delivered ?? []).filter((d) => d.childId === childId && d.at < at).map((d) => d.at));
+  const ended = child.turns.filter((t) => t.endedAt !== null && t.endedAt <= at);
+  const since = ended.filter((t) => t.endedAt! > before);
+  return since.length > 0 ? since : ended.slice(-1);
 }
 
 /** Report lines deeper than this are taken as real: bb's trees are never this deep. */
 const MAX_DEPTH = 32;
 
-/** Whether a turn counts as Cache Keeper's. */
-export function isKeeperTurn(turn: Turn, lookup: LogLookup, depth = 0): boolean {
-  if (turn.inputs.length === 0 || depth > MAX_DEPTH) return false;
+/**
+ * Whether every report line of the turn holds by `test` for each child turn
+ * it may stand for. A line that cannot be traced, or reports a failure, does
+ * not: an unknown line is taken as news.
+ */
+function linesHold(threadId: string, turn: Turn, lookup: LogLookup, test: (childId: string, t: Turn) => boolean): boolean {
   return turn.inputs.every((input) => {
-    if (input.kind === "sent") return true;
-    if (input.kind === "other") return false;
+    if (input.kind !== "report") return true;
     return input.lines.every((line) => {
-      const child = line.completed ? reportedTurn(lookup(line.childId), input.at) : null;
-      return child !== null && isKeeperTurn(child, lookup, depth + 1);
+      if (!line.completed) return false;
+      const candidates = reportedTurns(lookup(threadId), lookup(line.childId), line.childId, input.at);
+      return candidates.length > 0 && candidates.every((t) => test(line.childId, t));
     });
   });
+}
+
+/** Whether a turn in `threadId` counts as Cache Keeper's. */
+export function isKeeperTurn(threadId: string, turn: Turn, lookup: LogLookup, depth = 0): boolean {
+  if (turn.inputs.length === 0 || depth > MAX_DEPTH || turn.inputs.some((i) => i.kind === "other")) return false;
+  return linesHold(threadId, turn, lookup, (childId, t) => isKeeperTurn(childId, t, lookup, depth + 1));
 }
 
 /**
@@ -202,16 +215,10 @@ export function isKeeperTurn(turn: Turn, lookup: LogLookup, depth = 0): boolean 
  * message it took got the nothing-new reply it asked for, and every child
  * turn it reports did the same.
  */
-export function broughtNothingNew(turn: Turn, lookup: LogLookup, depth = 0): boolean {
-  if (turn.status !== "completed" || turn.inputs.length === 0 || depth > MAX_DEPTH) return false;
-  return turn.inputs.every((input) => {
-    if (input.kind === "sent") return isNothingNewReply(input.text, turn.reply);
-    if (input.kind === "other") return false;
-    return input.lines.every((line) => {
-      const child = line.completed ? reportedTurn(lookup(line.childId), input.at) : null;
-      return child !== null && broughtNothingNew(child, lookup, depth + 1);
-    });
-  });
+export function broughtNothingNew(threadId: string, turn: Turn, lookup: LogLookup, depth = 0): boolean {
+  if (turn.status !== "completed" || turn.inputs.length === 0 || depth > MAX_DEPTH || turn.inputs.some((i) => i.kind === "other")) return false;
+  if (!turn.inputs.every((i) => i.kind !== "sent" || isNothingNewReply(i.text, turn.reply))) return false;
+  return linesHold(threadId, turn, lookup, (childId, t) => broughtNothingNew(childId, t, lookup, depth + 1));
 }
 
 /** A Cache Keeper message a turn traces back to: sent to `threadId`, requested at `at`. */
@@ -235,8 +242,9 @@ export function originsOf(threadId: string, turn: Turn, lookup: LogLookup, depth
     if (input.kind === "sent") add({ threadId, at: input.at, text: input.text });
     else if (input.kind === "report") {
       for (const line of input.lines) {
-        const child = reportedTurn(lookup(line.childId), input.at);
-        if (child !== null) for (const ref of originsOf(line.childId, child, lookup, depth + 1)) add(ref);
+        for (const child of reportedTurns(lookup(threadId), lookup(line.childId), line.childId, input.at)) {
+          for (const ref of originsOf(line.childId, child, lookup, depth + 1)) add(ref);
+        }
       }
     }
   }

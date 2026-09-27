@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { COMPACT_MESSAGE } from "../core/messages";
 import { PriceBook } from "../core/pricing";
-import { EMPTY_FACTS, type ReportTurn, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { EMPTY_FACTS, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import type { BbEvent } from "../core/turns";
 import { ClaudeOnlyError, Engine, EVENTS_PAGE, NotReadyError, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
 import { MIGRATIONS, Store } from "./store";
@@ -51,7 +51,6 @@ interface Side {
   events: BbEvent[];
   facts: TranscriptFacts;
   requests: TranscriptRequest[];
-  reports: ReportTurn[];
   queued: QueuedRow[];
   lifetime: "5m" | "1h";
 }
@@ -111,7 +110,7 @@ class Harness {
       latestEventSeq: async (id) => this.side(id).events.at(-1)?.seq ?? 0,
       transcript: async (_host, session, since) => {
         const side = this.side(session.replace("session-", ""));
-        return { found: true, cwdSlug: "-work", facts: side.facts, requests: since === null ? [] : side.requests.filter((r) => r.at >= since), reports: side.reports };
+        return { found: true, cwdSlug: "-work", facts: side.facts, requests: since === null ? [] : side.requests.filter((r) => r.at >= since) };
       },
       tasks: async (_host, input) => {
         if (this.failTasks) throw new Error("machine offline");
@@ -149,7 +148,7 @@ class Harness {
   side(id: string): Side {
     let side = this.sides.get(id);
     if (side === undefined) {
-      side = { events: [], facts: { ...EMPTY_FACTS }, requests: [], reports: [], queued: [], lifetime: "1h" };
+      side = { events: [], facts: { ...EMPTY_FACTS }, requests: [], queued: [], lifetime: "1h" };
       this.sides.set(id, side);
     }
     return side;
@@ -227,7 +226,6 @@ class Harness {
         this.now = at;
         await this.engine.onActive(parent);
         this.turn(parent, at, [r], "Noted.");
-        this.side(parent).reports.push({ at, requests: 1 });
         ended.set(parent, at + S);
       }
     }
@@ -327,6 +325,21 @@ describe("compact when idle", () => {
     expect((await h.engine.viewOf("p"))?.waiting).toBe(true);
   });
 
+  it("does not hold a tree for a report bb queued behind a question", async () => {
+    h.threads = [
+      thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }),
+      thread({ id: "a", parentThreadId: "p" }),
+      thread({ id: "b", parentThreadId: "p", activity: busy }),
+    ];
+    h.transcript("p", T0, 100_000, "1h");
+    h.transcript("b", T0, 100_000, "5m");
+    h.now = T0 + 150 * S;
+    h.turn("a", h.now - 5 * S, [], "Finished the page.");
+    h.side("p").queued = [{ id: "row", sendAt: null, createdAt: h.now - 3 * S, failed: false, system: true, content: reportInput([{ id: "a", reply: "Finished the page." }]) }];
+    await h.engine.pass();
+    expect(h.sent.map((x) => x.threadId)).toEqual(["b"]);
+  });
+
   it("does not send a compaction whose deadline passed while the server was down", async () => {
     h.threads = [thread({ id: "t1" })];
     h.transcript("t1", T0, 300_000);
@@ -400,6 +413,8 @@ describe("keeping a thread tree warm", () => {
     expect(toParent).toEqual([]);
     expect(toChild.length).toBeGreaterThan(3);
     expect(h.reportTurns("p")).toBe(toChild.length);
+    // Those report turns are not your messages in the parent's calls per message.
+    expect(h.store.get("p").keeperReports).toEqual({ turns: toChild.length, requests: toChild.length });
     // Each keep-warm went 90 seconds before the child's deadline: every 150 seconds once aligned.
     const times = h.sides.get("c")!.requests.map((r) => r.at);
     for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeLessThanOrEqual(150 * S + 5 * S);

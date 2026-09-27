@@ -63,15 +63,17 @@ function report(children: { id: string; status?: string }[], reply = NOT_FINISHE
 describe("turn attribution", () => {
   it("counts a keep-warm turn and the parent's report of it as Cache Keeper's, bringing nothing new", () => {
     const child = new History().turn(1_000, text("BACKGROUND please"), "Started it.").turn(300_000, text(KEEP_WARM), NOT_FINISHED).log();
-    const parent = new History().turn(302_000, report([{ id: "c" }]), "Noted.", "completed", "system").log();
+    // bb reported the child's first turn too, when it ended.
+    const parent = new History().turn(3_000, report([{ id: "c" }], "Started it."), "ok", "completed", "system").turn(302_000, report([{ id: "c" }]), "Noted.", "completed", "system").log();
     const lookup = (id: string) => (id === "c" ? child : parent);
 
-    expect(isKeeperTurn(child.turns[0]!, lookup)).toBe(false);
-    expect(isKeeperTurn(child.turns[1]!, lookup)).toBe(true);
-    expect(broughtNothingNew(child.turns[1]!, lookup)).toBe(true);
-    expect(isKeeperTurn(parent.turns[0]!, lookup)).toBe(true);
-    expect(broughtNothingNew(parent.turns[0]!, lookup)).toBe(true);
-    expect(originsOf("p", parent.turns[0]!, lookup)).toEqual([{ threadId: "c", at: 300_000, text: KEEP_WARM }]);
+    expect(isKeeperTurn("child", child.turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("child", child.turns[1]!, lookup)).toBe(true);
+    expect(broughtNothingNew("child", child.turns[1]!, lookup)).toBe(true);
+    expect(isKeeperTurn("parent", parent.turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("parent", parent.turns[1]!, lookup)).toBe(true);
+    expect(broughtNothingNew("parent", parent.turns[1]!, lookup)).toBe(true);
+    expect(originsOf("p", parent.turns[1]!, lookup)).toEqual([{ threadId: "c", at: 300_000, text: KEEP_WARM }]);
   });
 
   it("follows reports up any number of levels", () => {
@@ -79,7 +81,7 @@ describe("turn attribution", () => {
     const mid = new History().turn(3_000, report([{ id: "leaf" }]), "ok", "completed", "system").log();
     const top = new History().turn(6_000, report([{ id: "mid" }]), "ok", "completed", "system").log();
     const lookup = (id: string) => ({ leaf, mid, top })[id] ?? null;
-    expect(isKeeperTurn(top.turns[0]!, lookup)).toBe(true);
+    expect(isKeeperTurn("top", top.turns[0]!, lookup)).toBe(true);
     expect(originsOf("top", top.turns[0]!, lookup).map((o) => o.threadId)).toEqual(["leaf"]);
   });
 
@@ -89,10 +91,10 @@ describe("turn attribution", () => {
     const loud = new History().turn(0, text(KEEP_WARM), "I restarted the deploy.").log();
     const lookup = (id: string) => ({ a, b, loud })[id] ?? null;
     const mixed = new History().turn(3_000, report([{ id: "a" }, { id: "b" }]), "ok", "completed", "system").log();
-    expect(isKeeperTurn(mixed.turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("mixed", mixed.turns[0]!, lookup)).toBe(false);
     const both = new History().turn(3_000, report([{ id: "a" }, { id: "loud" }]), "ok", "completed", "system").log();
-    expect(isKeeperTurn(both.turns[0]!, lookup)).toBe(true);
-    expect(broughtNothingNew(both.turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("both", both.turns[0]!, lookup)).toBe(true);
+    expect(broughtNothingNew("both", both.turns[0]!, lookup)).toBe(false);
     expect(originsOf("p", both.turns[0]!, lookup).map((o) => o.threadId)).toEqual(["a", "loud"]);
   });
 
@@ -108,20 +110,34 @@ describe("turn attribution", () => {
     steered.events.splice(3, 0, typed, { seq: 0, type: "turn/input/accepted", createdAt: 400, data: { clientRequestId: id } });
     steered.events.forEach((e, i) => (e.seq = i + 1));
     expect(steered.log().turns[0]!.inputs.map((i) => i.kind)).toEqual(["sent", "other"]);
-    expect(isKeeperTurn(steered.log().turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("steered", steered.log().turns[0]!, lookup)).toBe(false);
 
     const failed = new History().turn(3_000, report([{ id: "c", status: "failed" }]), "ok", "completed", "system").log();
-    expect(isKeeperTurn(failed.turns[0]!, lookup)).toBe(false);
-    expect(isKeeperTurn(new History().wake(0).log().turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("failed", failed.turns[0]!, lookup)).toBe(false);
+    expect(isKeeperTurn("woken", new History().wake(0).log().turns[0]!, lookup)).toBe(false);
+  });
+
+  it("takes a report that arrives late as real when a real turn of the child may be behind it", () => {
+    // The child's real turn ended at 1 s; its report was held until after a keep-warm turn at 60 s.
+    const child = new History().turn(0, text("carry on"), "Shipped it.").turn(60_000, text(KEEP_WARM), NOT_FINISHED).log();
+    const late = new History().turn(90_000, report([{ id: "c" }]), "ok", "completed", "system").log();
+    const lookup = (id: string) => (id === "c" ? child : late);
+    expect(isKeeperTurn("p", late.turns[0]!, lookup)).toBe(false);
+
+    // Once a report of the real turn was delivered, the next one stands for the keep-warm alone.
+    const onTime = new History().turn(3_000, report([{ id: "c" }]), "ok", "completed", "system").turn(63_000, report([{ id: "c" }]), "ok", "completed", "system").log();
+    const lookup2 = (id: string) => (id === "c" ? child : onTime);
+    expect(isKeeperTurn("p", onTime.turns[0]!, lookup2)).toBe(false);
+    expect(isKeeperTurn("p", onTime.turns[1]!, lookup2)).toBe(true);
   });
 
   it("does not take a check-in whose reply found something as nothing new", () => {
     const sent = checkInText([{ kind: "command", reason: "stalled", id: "b1", description: "x", startedAt: 0, silentMs: 0, runningMs: 0, outputFile: "/o" }]);
     const found = new History().turn(0, text(sent), "b1 was stuck on a prompt; I answered it.").log();
     const fine = new History().turn(0, text(sent), "Checked b1, still running normally, nothing new. Nothing needed from you.").log();
-    expect(isKeeperTurn(found.turns[0]!, () => null)).toBe(true);
-    expect(broughtNothingNew(found.turns[0]!, () => null)).toBe(false);
-    expect(broughtNothingNew(fine.turns[0]!, () => null)).toBe(true);
+    expect(isKeeperTurn("found", found.turns[0]!, () => null)).toBe(true);
+    expect(broughtNothingNew("found", found.turns[0]!, () => null)).toBe(false);
+    expect(broughtNothingNew("fine", fine.turns[0]!, () => null)).toBe(true);
   });
 
   it("reads on from where it stopped, so a restart attributes the same way", () => {

@@ -34,12 +34,6 @@ export interface TranscriptFacts {
   lastCompaction: { at: number; preTokens: number | null; postTokens: number } | null;
 }
 
-/** A turn bb's report of child turns started, for taking Cache Keeper's out of calls per message. */
-export interface ReportTurn {
-  at: number;
-  requests: number;
-}
-
 export const EMPTY_FACTS: TranscriptFacts = {
   lastRequestAt: null,
   lifetime: null,
@@ -115,9 +109,6 @@ export class TranscriptFold {
    * copies Claude Code writes again after compacting, do not.
    */
   private awaitingRequest = false;
-  private readonly reports: ReportTurn[] = [];
-  /** The report turn requests are counted into, if the current turn is one. */
-  private report: ReportTurn | null = null;
 
   constructor(private readonly keepRecent = 200) {}
 
@@ -139,12 +130,6 @@ export class TranscriptFold {
     if (text !== null && text.trim() !== "" && !NOT_TYPED.test(text)) {
       this.keeperTurn = isKeeperMessage(text);
       this.awaitingRequest = !this.keeperTurn;
-      const at = toMs(line.timestamp);
-      this.report = text.startsWith("[bb system]") && at !== null ? { at, requests: 0 } : null;
-      if (this.report !== null) {
-        this.reports.push(this.report);
-        if (this.reports.length > this.keepRecent) this.reports.shift();
-      }
       return;
     }
     const request = requestOf(line);
@@ -155,7 +140,6 @@ export class TranscriptFold {
         this.awaitingRequest = false;
       }
       if (!this.keeperTurn) this.facts.requests += 1;
-      if (this.report !== null) this.report.requests += 1;
       this.lastKey = request.key;
       this.recent.push(request);
       if (this.recent.length > this.keepRecent) this.recent.shift();
@@ -178,11 +162,6 @@ export class TranscriptFold {
     return { ...this.facts, lastCompaction: this.facts.lastCompaction === null ? null : { ...this.facts.lastCompaction } };
   }
 
-  /** The most recent report turns, oldest first. */
-  reportTurns(): ReportTurn[] {
-    return this.reports.map((r) => ({ ...r }));
-  }
-
   /** Requests at or after `since`, oldest first, from the most recent ones kept. */
   requestsSince(since: number): TranscriptRequest[] {
     return this.recent.filter((r) => r.at >= since).map(({ key: _key, ...r }) => r);
@@ -191,13 +170,16 @@ export class TranscriptFold {
 
 /**
  * Mean requests per user message, or the default for a thread with none.
- * `keeperReports` are report turns that count as Cache Keeper's: neither
- * they nor their requests are the user's.
+ * `keeperReports` are bb's reports that started Cache Keeper turns: the
+ * transcript cannot tell them from a real report, so they are taken out here.
  */
-export function callsPerMessage(facts: Pick<TranscriptFacts, "requests" | "userMessages">, fallback: number, keeperReports: readonly ReportTurn[] = []): number {
-  const messages = facts.userMessages - keeperReports.length;
-  const requests = facts.requests - keeperReports.reduce((sum, r) => sum + r.requests, 0);
-  return messages > 0 ? Math.max(0, requests) / messages : fallback;
+export function callsPerMessage(
+  facts: Pick<TranscriptFacts, "requests" | "userMessages">,
+  fallback: number,
+  keeperReports: { turns: number; requests: number } = { turns: 0, requests: 0 },
+): number {
+  const messages = facts.userMessages - keeperReports.turns;
+  return messages > 0 ? Math.max(0, facts.requests - keeperReports.requests) / messages : fallback;
 }
 
 /** The minute before the cache expires in which Cache Keeper acts. */

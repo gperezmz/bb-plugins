@@ -87,6 +87,8 @@ export interface ThreadRecord {
   accountedSeq: number;
   /** Its most recent keep-warm, whose measured cost forecasts the next. */
   lastSendId: number | null;
+  /** bb's reports that started Cache Keeper turns here, and their requests: not the user's calls per message. */
+  keeperReports: { turns: number; requests: number };
 }
 
 export interface CompactionRecord {
@@ -110,6 +112,7 @@ export const emptyRecord = (): ThreadRecord => ({
   readBefore: null,
   accountedSeq: 0,
   lastSendId: null,
+  keeperReports: { turns: 0, requests: 0 },
 });
 
 /** A record as stored, brought to the current shape: the merged version kept `warmSpentUsd`, an estimate. */

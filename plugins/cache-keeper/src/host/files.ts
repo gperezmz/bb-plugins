@@ -7,7 +7,7 @@
 import { open, readdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { TranscriptFold, type ReportTurn, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
+import { TranscriptFold, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
 
 export interface Roots {
   /** Claude Code's `projects` directories, most likely first. */
@@ -55,12 +55,9 @@ export class TranscriptReader {
     return null;
   }
 
-  async read(
-    sessionId: string,
-    requestsSince: number | null,
-  ): Promise<{ found: boolean; cwdSlug: string | null; facts: TranscriptFacts; requests: TranscriptRequest[]; reports: ReportTurn[] }> {
+  async read(sessionId: string, requestsSince: number | null): Promise<{ found: boolean; cwdSlug: string | null; facts: TranscriptFacts; requests: TranscriptRequest[] }> {
     const located = await this.locate(sessionId);
-    if (located === null) return { found: false, cwdSlug: null, facts: new TranscriptFold().result(), requests: [], reports: [] };
+    if (located === null) return { found: false, cwdSlug: null, facts: new TranscriptFold().result(), requests: [] };
     let cursor = this.cursors.get(sessionId);
     const size = (await stat(located.path)).size;
     if (cursor === undefined || cursor.path !== located.path || size < cursor.offset) {
@@ -73,7 +70,6 @@ export class TranscriptReader {
       cwdSlug: located.cwdSlug,
       facts: cursor.fold.result(),
       requests: requestsSince === null ? [] : cursor.fold.requestsSince(requestsSince),
-      reports: cursor.fold.reportTurns(),
     };
   }
 

@@ -188,9 +188,14 @@ export default async function plugin(bb: BbPluginApi) {
         } catch (error) {
           bb.log.warn(`pass failed: ${message(error)}`);
         }
-        const wake = engine.wakeAt();
-        const until = wake === null ? PASS_MS : Math.min(PASS_MS, wake - Date.now());
-        await sleep(Math.max(MIN_SLEEP_MS, until), signal);
+        // A pass run for bb's thread.idle may bring the next send forward, so the wait is checked every second.
+        const pollUntil = Date.now() + PASS_MS;
+        while (!signal.aborted) {
+          const wake = engine.wakeAt();
+          const until = Math.min(pollUntil, wake === null ? Infinity : Math.max(wake, Date.now() + MIN_SLEEP_MS));
+          if (Date.now() >= until) break;
+          await sleep(Math.min(1_000, until - Date.now()), signal);
+        }
       }
     },
   });

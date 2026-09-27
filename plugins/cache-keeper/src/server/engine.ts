@@ -14,11 +14,11 @@
  */
 import { afterActivity, afterCheckIn, foldDue, type TaskClock } from "../core/checkins";
 import { estimateKeepWarmUsd, requestsIn, requestsUsd } from "../core/cost";
-import { newIdleStretch, pastCostStop, plan, scheduledBeyondStop, type IdleStretch, type KeeperPlan } from "../core/keeper";
+import { costStopUsd, newIdleStretch, pastCostStop, plan, scheduledBeyondStop, type IdleStretch, type KeeperPlan } from "../core/keeper";
 import { compactionUsd, DEFAULT_CALLS_PER_MESSAGE, DEFAULT_POST_COMPACTION, DEFAULT_SETTING, linesFor, ratesOf, type Rates } from "../core/line";
 import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask, type SentKind } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
-import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type ReportTurn, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import { planTree, topOf, type TreeNode, type TreePlan } from "../core/tree";
 import {
   classify,
@@ -27,7 +27,7 @@ import {
   isKeeperTurn,
   broughtNothingNew,
   originsOf,
-  reportedTurn,
+  reportedTurns,
   reportPending,
   REPORT_WAIT_MS,
   type BbEvent,
@@ -82,7 +82,6 @@ export interface TranscriptRead {
   cwdSlug: string | null;
   facts: TranscriptFacts;
   requests: TranscriptRequest[];
-  reports: ReportTurn[];
 }
 
 export interface ReadState {
@@ -360,7 +359,8 @@ export class Engine {
     for (const [id, p] of plans) {
       const o = observed.get(id)!;
       if (p.action === null || this.deps.store.get(id).inFlight !== null) continue;
-      const sent = p.action.kind === "compact" ? await this.sendCompact(id, o) : await this.sendCheckIn(o, p.action.tasks);
+      const pastStop = nodes.find((n) => n.id === id)?.blocks === true && !(this.deps.store.get(id).stretch?.warmSkipped ?? false);
+      const sent = p.action.kind === "compact" ? await this.sendCompact(id, o) : await this.sendCheckIn(o, p.action.tasks, pastStop);
       if (sent) acted.add(id);
     }
     const due = tree.due.filter((d) => !acted.has(d.id) && observed.has(d.id) && this.deps.store.get(d.id).inFlight === null);
@@ -432,7 +432,7 @@ export class Engine {
     let requests: TranscriptRequest[] | null = null;
     let price: ReturnType<PriceBook["lookup"]> = null;
     for (const turn of due) {
-      const keeper = isKeeperTurn(turn, lookup);
+      const keeper = isKeeperTurn(thread.id, turn, lookup);
       if (record.inFlight !== null && turn.startedAt >= record.inFlight.at - TURN_SLACK_MS && turn.inputs.some((i) => i.kind === "sent")) record = { ...record, inFlight: null };
       if (!keeper) {
         if (record.stretch !== null) {
@@ -445,7 +445,11 @@ export class Engine {
           requests = read?.requests ?? [];
           price = read?.price ?? null;
         }
-        const usd = price === null ? null : requestsUsd(requestsIn(requests, turn.startedAt, turn.endedAt!), price.price);
+        const own = requestsIn(requests, turn.startedAt, turn.endedAt!);
+        const usd = price === null ? null : requestsUsd(own, price.price);
+        if (turn.inputs.every((i) => i.kind === "report")) {
+          record = { ...record, keeperReports: { turns: record.keeperReports.turns + 1, requests: record.keeperReports.requests + own.length } };
+        }
         if (usd !== null) this.charge(thread.id, turn, usd, lookup);
         // The charge may have gone to this thread's own stretch.
         record = { ...record, stretch: this.deps.store.get(thread.id).stretch };
@@ -502,8 +506,8 @@ export class Engine {
         const input = classify(row.content, row.createdAt);
         if (input.kind !== "report") return false;
         return input.lines.every((line) => {
-          const turn = line.completed ? reportedTurn(lookup(line.childId), row.createdAt) : null;
-          return turn !== null && broughtNothingNew(turn, lookup);
+          const turns = line.completed ? reportedTurns(lookup(m.id), lookup(line.childId), line.childId, row.createdAt) : [];
+          return turns.length > 0 && turns.every((t) => broughtNothingNew(line.childId, t, lookup));
         });
       });
       if (nothingNew.length === 0) continue;
@@ -544,7 +548,7 @@ export class Engine {
     }
     if (thread.status !== "idle" || turns.some((t) => t.endedAt === null)) return;
     clear();
-    if (!turns.every((t) => broughtNothingNew(t, lookup))) return;
+    if (!turns.every((t) => broughtNothingNew(thread.id, t, lookup))) return;
     await this.putBack(thread.id, before);
   }
 
@@ -571,8 +575,15 @@ export class Engine {
     const items: WaitItem[] = [...taskItems(record)];
     const children = waitingChildren(thread.id, live.map(this.toWait));
     for (const child of children) items.push({ kind: "child", id: child.id, title: child.title, startedAt: child.createdAt });
+    // A report bb queued behind a question has arrived; it waits in the queue, not on the way.
+    const queuedReports = new Set(
+      (this.queuedRows.get(thread.id) ?? []).flatMap((r) => {
+        const input = r.system ? classify(r.content, r.createdAt) : null;
+        return input?.kind === "report" ? input.lines.map((l) => l.childId) : [];
+      }),
+    );
     const pendingReports = members
-      .filter((c) => c.parentThreadId === thread.id && reportPending(logs.get(thread.id) ?? null, c.id, logs.get(c.id) ?? null, now))
+      .filter((c) => c.parentThreadId === thread.id && !queuedReports.has(c.id) && reportPending(logs.get(thread.id) ?? null, c.id, logs.get(c.id) ?? null, now))
       .map((c) => c.id);
     for (const id of pendingReports) {
       if (children.some((c) => c.id === id)) continue;
@@ -589,13 +600,11 @@ export class Engine {
     const sessionId = await this.deps.sessionId(thread.id);
     let facts: TranscriptFacts | null = null;
     let cwdSlug: string | null = null;
-    let reports: ReportTurn[] = [];
     if (sessionId !== null && thread.environmentHostId !== null) {
       const read = await this.deps.transcript(thread.environmentHostId, sessionId, null);
       if (read.found) {
         facts = read.facts;
         cwdSlug = read.cwdSlug;
-        reports = read.reports;
       }
     }
     // bb learns the window from the thread's turns, so it is asked again until it answers, and again when the model changes.
@@ -608,7 +617,7 @@ export class Engine {
     }
     const price = this.deps.prices().lookup(facts?.model ?? null);
     const rates = price !== null && facts?.lifetime != null ? ratesOf(price.price, facts.lifetime) : null;
-    const k = facts === null ? DEFAULT_CALLS_PER_MESSAGE : callsPerMessage(facts, DEFAULT_CALLS_PER_MESSAGE, keeperReports(reports, logs.get(thread.id)!, (id) => logs.get(id) ?? null));
+    const k = facts === null ? DEFAULT_CALLS_PER_MESSAGE : callsPerMessage(facts, DEFAULT_CALLS_PER_MESSAGE, record.keeperReports);
     const p = facts?.lastCompaction?.postTokens ?? DEFAULT_POST_COMPACTION;
     const lines = rates === null ? Array.from({ length: 10 }, () => null) : linesFor({ rates, k, p, window });
     return {
@@ -692,13 +701,14 @@ export class Engine {
   private forecast(threadId: string, observed: Map<string, Observed>): number {
     const record = this.deps.store.get(threadId);
     const last = record.lastSendId === null ? null : this.deps.store.getSend(record.lastSendId);
-    if (last !== null && last.measured) return last.usd;
     const chain: Observed[] = [];
     for (let id: string | null = threadId, d = 0; id !== null && d < 64; id = this.threads.get(id)?.parentThreadId ?? null, d++) {
       const o = observed.get(id);
       if (o !== undefined) chain.push(o);
     }
-    return estimateKeepWarmUsd(chain.map((o) => ({ rates: o.rates, context: o.facts?.context ?? null })));
+    const estimate = estimateKeepWarmUsd(chain.map((o) => ({ rates: o.rates, context: o.facts?.context ?? null })));
+    // The report turns a keep-warm forced above are charged after its own turn, so a measured cost may not hold them yet.
+    return last !== null && last.measured ? Math.max(last.usd, estimate) : estimate;
   }
 
   private treeNode(m: ListedThread, observed: Map<string, Observed>, settings: KeeperSettings): TreeNode {
@@ -795,13 +805,15 @@ export class Engine {
     }
   }
 
-  private async sendCheckIn(o: Observed, taskIds: string[]): Promise<boolean> {
+  /** A check-in; past the cost stop the cache is cold, so its entry shows a cold write until its turn is charged. */
+  private async sendCheckIn(o: Observed, taskIds: string[], pastStop: boolean): Promise<boolean> {
     const now = this.deps.now();
     const record = this.deps.store.get(o.thread.id);
     const tasks = await this.checkInTasks(o, record, taskIds.map((id) => ({ id, reason: "stalled" as const })), now);
     if (tasks.length === 0) return false;
+    const context = o.facts?.context ?? null;
     const historyId = this.deps.store.addHistory(o.thread.id, now, "check-in", {
-      usd: null,
+      usd: pastStop && o.rates !== null && context !== null ? costStopUsd(o.rates, context) : null,
       tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, reason: t.reason })),
     });
     const sendId = await this.sendTracked(o.thread.id, checkInText(tasks), "check-in", historyId);
@@ -875,8 +887,8 @@ export class Engine {
     const record = this.deps.store.get(threadId);
     const stretch: IdleStretch = record.stretch ?? newIdleStretch(now);
     const sendId = this.deps.store.addSend({ threadId, at: now, historyId, kind, text, stretchStartedAt: stretch.startedAt });
-    const listed = this.threads.get(threadId);
-    const wasRead = listed === undefined ? true : isRead({ lastReadAt: listed.lastReadAt, latestAttentionAt: listed.latestAttentionAt });
+    const before = await this.deps.readState(threadId).catch(() => null);
+    const wasRead = before === null ? null : isRead(before);
     this.deps.store.put(threadId, { ...record, stretch, inFlight: { kind, at: now, sendId } }, now);
     try {
       await this.deps.send(threadId, text, { kind, sendId });
@@ -886,7 +898,7 @@ export class Engine {
       return null;
     }
     const after = await this.deps.readState(threadId).catch(() => null);
-    if (after !== null) {
+    if (after !== null && wasRead !== null) {
       this.deps.store.update(threadId, now, (r) => (r.readBefore !== null ? r : { ...r, readBefore: { read: wasRead, lastReadAt: after.lastReadAt, since: now } }));
     }
     this.deps.publish([threadId]);
@@ -1004,12 +1016,6 @@ export class Engine {
 
 function taskItems(record: ThreadRecord): WaitItem[] {
   return Object.entries(record.tasks).map(([id, task]) => ({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt }));
-}
-
-/** The transcript's report turns that bb's history says were Cache Keeper's. */
-function keeperReports(reports: readonly ReportTurn[], log: TurnLog, lookup: (id: string) => TurnLog | null): ReportTurn[] {
-  const keeper = log.turns.filter((t) => t.endedAt !== null && t.inputs.length > 0 && t.inputs.every((i) => i.kind === "report") && isKeeperTurn(t, lookup));
-  return reports.filter((r) => keeper.some((t) => r.at >= t.startedAt - TURN_SLACK_MS && r.at <= t.endedAt! + TURN_SLACK_MS));
 }
 
 /** bb counts a background task before its events are read; the banner takes whichever count is higher. */
