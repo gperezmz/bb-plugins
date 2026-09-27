@@ -197,6 +197,11 @@ class Harness {
     this.patch(id, { status: "active" });
   }
 
+  /** bb's request of a report of `child` into `parent`, before the turn that takes it starts. */
+  requestReport(parent: string, child: string) {
+    this.request(parent, this.now, reportInput([{ id: child, reply: this.lastReply(child) }]), "system");
+  }
+
   /** A message you type, and its turn. */
   typed(id: string, text: string) {
     const r = this.request(id, this.now, [{ type: "text", text, mentions: [] }], "user");
@@ -490,6 +495,18 @@ describe("keeping a thread tree warm", () => {
     h.startTurn("c");
     for (; h.now < T0 + 205 * S; h.now += 2 * S) await h.engine.pass();
     expect(h.sent.map((x) => x.threadId)).toEqual(["c"]);
+  });
+
+  it("starts no tree keep-warm between bb requesting a report and the turn that takes it", async () => {
+    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.transcript("p", T0, 100_000, "5m");
+    h.transcript("c", T0 + 10 * S, 100_000, "5m");
+    h.now = T0 + 150 * S - 3 * S;
+    h.turn("c", h.now - 2 * S, [], "Not finished yet.");
+    h.requestReport("p", "c");
+    h.now = T0 + 150 * S;
+    await h.engine.pass();
+    expect(h.sent).toEqual([]);
   });
 
   it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes", async () => {

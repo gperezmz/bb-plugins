@@ -417,7 +417,9 @@ export class Engine {
       cycle.pending = cycle.pending.filter((p) => !ready.includes(p));
       if (cycle.pending.length === 0) this.cycles.delete(top);
     }
-    const due = tree.due.filter((d) => sendable(d.id) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
+    // No new tree keep-warm starts while the last one still has leaves to send.
+    const staging = this.cycles.has(top);
+    const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
     const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: depthOf(d.id) }));
     if (together.length > 0) {
       const deepest = Math.max(...together.map((t) => t.depth));
@@ -801,7 +803,10 @@ export class Engine {
     const o = observed.get(m.id);
     const parentId = m.parentThreadId !== null && this.threads.has(m.parentThreadId) ? m.parentThreadId : null;
     const running = log?.turns.at(-1);
-    const cycleTurn = running !== undefined && running.endedAt === null && running.inputs.some((i) => i.kind !== "other");
+    // bb records a report's request before the turn that takes it starts: from then on it is part of the cycle too.
+    const cycleTurn =
+      (running !== undefined && running.endedAt === null && running.inputs.some((i) => i.kind !== "other")) ||
+      Object.values(log?.requests ?? {}).some((r) => this.deps.now() - r.at < REPORT_WAIT_MS && r.inputs.some((i) => i.kind !== "other"));
     const record = this.deps.store.get(m.id);
     const inFlight = cycleTurn || (this.deps.store.has(m.id) && record.inFlight !== null);
     if (o === undefined) {
