@@ -12,6 +12,10 @@ _Avoid_: Canary, nightly check, smoke test
 The bb release line a compatibility run tests, named by its npm dist-tag: `latest` for releases, `nightly` for nightly builds.
 _Avoid_: Track, release stream
 
+**Thread tree**:
+A top-level thread and every thread below it, its child threads and theirs.
+_Avoid_: Family, thread family, waiting tree
+
 **Fixture**:
 The configuration and the assertions the npm-install check applies to one plugin after installing it, to exercise what the plugin registers.
 _Avoid_: Scenario, smoke config
@@ -19,15 +23,15 @@ _Avoid_: Scenario, smoke config
 ### Thread Glance
 
 **Needs attention**:
-The section at the top of Thread Glance's list that holds every thread family with a thread only you can move forward. In code it is `attention`, bb's own word.
+The section at the top of Thread Glance's list that holds every thread tree with a thread only you can move forward. In code it is `attention`, bb's own word.
 _Avoid_: Needs you, inbox, attention filter
 
 **Attended**:
-A family in Needs attention that you opened and that has nothing left needing attention; it keeps its place until none of its threads is open.
+A thread tree in Needs attention that you opened and that has nothing left needing attention; it keeps its place until none of its threads is open.
 _Avoid_: Held, read
 
 **Home group**:
-The group a thread family is listed in when it is not in Needs attention: its project, custom section, machine, Pinned or Threads.
+The group a thread tree is listed in when it is not in Needs attention: its project, custom section, machine, Pinned or Threads.
 _Avoid_: Source group, original group
 
 **Parent thread**:
@@ -92,9 +96,9 @@ _Avoid_: Threshold, trigger, N
 A one-line turn Cache Keeper sends a thread whose turn has ended while it still waits on background work, child threads or a scheduled message, so its cache is warm when they report back.
 _Avoid_: Ping, heartbeat
 
-**Family keep-warm**:
-The keep-warms Cache Keeper sends at the same moment to the waiting threads at the bottom of a waiting tree, early enough that their reports climb to every thread above and keep it warm in one batched turn each.
-_Avoid_: Group ping, batch keep-warm
+**Tree keep-warm**:
+The keep-warms Cache Keeper sends at the same moment to the waiting threads at the bottom of a thread tree, early enough that their reports climb to every thread above and keep it warm in one batched turn each.
+_Avoid_: Family keep-warm, group ping, batch keep-warm
 
 **Check-in**:
 A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work, fix it if needed and carry on.
