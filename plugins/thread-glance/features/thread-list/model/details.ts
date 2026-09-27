@@ -1,5 +1,5 @@
 // Hover card and details drawer content. Pure.
-import type { Family, ThreadInfo } from "./families";
+import type { ThreadTree, ThreadInfo } from "./trees";
 import type { StateKind } from "./state";
 
 const SUMMARY_ORDER: readonly [StateKind, string][] = [
@@ -29,13 +29,13 @@ export function childSummary(descendants: readonly ThreadInfo[]): string | null 
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
-/** Descendants of `id` inside its family, for the card of any row. */
-export function descendantsOf(family: Family | undefined, id: string): ThreadInfo[] {
-  if (family === undefined) return [];
-  if (family.root.thread.id === id) return family.descendants;
+/** Descendants of `id` inside its tree, for the card of any row. */
+export function descendantsOf(tree: ThreadTree | undefined, id: string): ThreadInfo[] {
+  if (tree === undefined) return [];
+  if (tree.root.thread.id === id) return tree.descendants;
   const result: ThreadInfo[] = [];
   const within = new Set([id]);
-  for (const info of family.descendants) {
+  for (const info of tree.descendants) {
     if (info.parentId !== null && within.has(info.parentId)) {
       within.add(info.thread.id);
       result.push(info);

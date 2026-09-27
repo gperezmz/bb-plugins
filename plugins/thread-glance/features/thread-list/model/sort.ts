@@ -11,8 +11,8 @@ export interface SortOptions {
 /** What a comparator needs to know about a root beyond the thread itself. */
 export interface SortKey {
   thread: PluginSidebarThread;
-  /** Largest `latestAttentionAt` over the family. */
-  familyAttention: number;
+  /** Largest `latestAttentionAt` over the tree. */
+  treeAttention: number;
 }
 
 function byCreated(a: SortKey, b: SortKey): number {
@@ -28,7 +28,7 @@ function byAlpha(a: SortKey, b: SortKey): number {
 }
 
 function byUpdated(a: SortKey, b: SortKey): number {
-  const diff = b.familyAttention - a.familyAttention;
+  const diff = b.treeAttention - a.treeAttention;
   if (diff !== 0) return diff;
   return byCreated(a, b);
 }

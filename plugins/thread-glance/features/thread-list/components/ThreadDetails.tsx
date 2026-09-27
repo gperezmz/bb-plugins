@@ -2,7 +2,7 @@
 import { useContext, useEffect, useState } from "react";
 import { experimental_Icon as Icon, experimental_useSidebarThreadPullRequest as usePullRequest } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
-import type { ThreadInfo } from "../model/families";
+import type { ThreadInfo } from "../model/trees";
 import { childSummary, descendantsOf, formatDateTime, sinceLabel } from "../model/details";
 import { lastReply } from "../model/notes";
 import { finishedAtFor, stateSince } from "../model/time";
@@ -70,7 +70,7 @@ export function ThreadDetails({
   const model = useModel(controller, info);
   const live = useContext(ListLiveContext);
   const since = sinceLabel(info.state.kind, stateSince(info.state.kind, thread.id, live.stamps, live.now));
-  const children = childSummary(descendantsOf(live.familyOf(thread.id), thread.id));
+  const children = childSummary(descendantsOf(live.treeOf(thread.id), thread.id));
   const environment = thread.environment;
   const finished = finishedAtFor(thread, live.stamps.finishedAt);
   const reply = lastReply(live.notes[thread.id]);

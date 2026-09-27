@@ -162,7 +162,7 @@ describe("Thread Glance slot", () => {
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
   });
 
-  it("opens a family in Needs attention from its chip or +N more, and closes it back to the path", async () => {
+  it("opens a tree in Needs attention from its chip or +N more, and closes it back to the path", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2, 3].map((n) =>
@@ -185,7 +185,7 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
   });
 
-  it("opens and closes a family from its chip", async () => {
+  it("opens and closes a tree from its chip", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2].map((n) => makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working })),
@@ -234,7 +234,7 @@ describe("Thread Glance slot", () => {
     expect(screen.getByRole("region", { name: "Needs attention" })).toBeTruthy();
   });
 
-  it("gives the Needs attention header no collapse, menu or count other than its families", async () => {
+  it("gives the Needs attention header no collapse, menu or count other than its trees", async () => {
     render(
       [
         makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
@@ -244,7 +244,7 @@ describe("Thread Glance slot", () => {
     );
     const section = await screen.findByRole("region", { name: "Needs attention" });
     const header = within(section).getByRole("heading", { name: /Needs attention/ });
-    expect(within(header).getByLabelText("2 families").textContent).toBe("2");
+    expect(within(header).getByLabelText("2 thread trees").textContent).toBe("2");
     expect(within(header).queryAllByRole("button")).toEqual([]);
     fireEvent.click(header);
     expect(within(section).getByRole("link", { name: /Open Asks/ })).toBeTruthy();

@@ -1,4 +1,4 @@
-// Top-level groups: which group a family lands in, and the order
+// Top-level groups: which group a tree lands in, and the order
 // groups appear in. Pure.
 import type {
   PluginSidebarProject,
@@ -43,7 +43,7 @@ export function personalProject(
 }
 
 /**
- * The group a family root belongs to. Pinned roots go to Pinned. A root
+ * The group a tree root belongs to. Pinned roots go to Pinned. A root
  * whose project, section or machine isn't known goes to the loose Threads
  * bucket, except an unknown section, which gets a placeholder group as in
  * bb.

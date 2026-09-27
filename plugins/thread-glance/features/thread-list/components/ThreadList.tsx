@@ -35,7 +35,7 @@ import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
 import { useStamps } from "../data/useStamps";
 import { resolveDrop, type DraggedThread, type DropAction, type DropTarget } from "../model/drag";
-import { buildForest } from "../model/families";
+import { buildForest } from "../model/trees";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
@@ -200,8 +200,8 @@ function ThreadListBody({
   // Each project's default branch, fetched once per session.
   useEffect(() => {
     if (!prefs.showPullRequests || forest === null) return;
-    for (const family of forest.families) {
-      const thread = family.root.thread;
+    for (const tree of forest.trees) {
+      const thread = tree.root.thread;
       const projectId = thread.projectId;
       if (thread.environment?.branchName == null || thread.host === null) continue;
       if (branchRequests.current.has(projectId)) continue;
@@ -413,15 +413,15 @@ function ThreadListBody({
   ]);
 
   const live: ListLive = useMemo(
-    () => ({ now, stamps, notes, familyOf: (threadId) => forest?.familyOf.get(threadId) }),
+    () => ({ now, stamps, notes, treeOf: (threadId) => forest?.treeOf.get(threadId) }),
     [now, stamps, notes, forest],
   );
 
   const activeGroupId = useMemo(() => {
-    const family = activeThreadId === null || forest === null ? undefined : forest.familyOf.get(activeThreadId);
-    return family === undefined
+    const tree = activeThreadId === null || forest === null ? undefined : forest.treeOf.get(activeThreadId);
+    return tree === undefined
       ? null
-      : groupIdForRoot(family.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
+      : groupIdForRoot(tree.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
   }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
   const showArchived = prefs.threadLifecycles.includes("archived");
 
@@ -429,9 +429,9 @@ function ThreadListBody({
     if (!built) return null;
     const markAll = (group: GroupView) => {
       const { forest, activeThreadId, stamps } = latest.current;
-      // Folded roots count too: every family bucketed in the group.
-      const families = group.rootIds.flatMap((id) => forest!.familyOf.get(id) ?? []);
-      const plan = markAllReadPlan(families, {
+      // Folded roots count too: every tree bucketed in the group.
+      const trees = group.rootIds.flatMap((id) => forest!.treeOf.get(id) ?? []);
+      const plan = markAllReadPlan(trees, {
         activeThreadId,
         finishedAt: stamps.finishedAt,
         seenAt: stamps.seenAt,

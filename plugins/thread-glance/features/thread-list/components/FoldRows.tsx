@@ -1,4 +1,4 @@
-// The fold rows (`N older` on a group, `N more child threads` on a family),
+// The fold rows (`N older` on a group, `N more child threads` on a tree),
 // the "+N more" line in Needs attention, and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
@@ -21,9 +21,9 @@ import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 export const OlderRowView = memo(function OlderRowView({ row, controller }: { row: OlderRow; controller: RowController }) {
   const { label, ariaLabel } = olderRowText(row);
-  // A family's fold sits where its children do, with a dots glyph in the
+  // A tree's fold sits where its children do, with a dots glyph in the
   // Status column; the group's fold keeps the chevron.
-  const inFamily = row.scope !== "group";
+  const inTree = row.scope !== "group";
   return (
     <button
       type="button"
@@ -32,11 +32,11 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
       onClick={() => controller.onToggleOlder(row)}
       className={cn(
         "relative flex w-full items-center rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        inFamily ? "h-7 gap-1.5 max-md:pointer-coarse:h-9" : "h-6 gap-1",
+        inTree ? "h-7 gap-1.5 max-md:pointer-coarse:h-9" : "h-6 gap-1",
       )}
-      style={{ paddingLeft: rowIndent(row.depth) + (inFamily ? 0 : 2) }}
+      style={{ paddingLeft: rowIndent(row.depth) + (inTree ? 0 : 2) }}
     >
-      {inFamily ? (
+      {inTree ? (
         <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
           <Icon name={ICONS.more} className="size-3.5" />
         </span>
@@ -48,7 +48,7 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The "+N more" line under a closed family in Needs attention: it opens the family, as the chip does. */
+/** The "+N more" line under a closed tree in Needs attention: it opens the tree, as the chip does. */
 export const LeftOutRowView = memo(function LeftOutRowView({ row, controller }: { row: LeftOutRow; controller: RowController }) {
   const noun = row.count === 1 ? "child thread" : "child threads";
   return (

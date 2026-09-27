@@ -34,7 +34,7 @@ export function chipLabel(title: string, count: number, flag: Flag | null, expan
 }
 
 /**
- * The fold row's text and accessible name. The family's row says "child
+ * The fold row's text and accessible name. The tree's row says "child
  * threads" so it never reads like the group's "older" row.
  */
 export function olderRowText(row: OlderRow): { label: string; ariaLabel: string } {

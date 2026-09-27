@@ -1,5 +1,5 @@
 // "Move…": the keyboard route to what drag and drop does. Pure.
-import type { Forest } from "./families";
+import type { Forest } from "./trees";
 import { isInSubtree } from "./drag";
 
 export interface MoveTarget {

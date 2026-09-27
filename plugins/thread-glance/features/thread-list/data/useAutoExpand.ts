@@ -1,7 +1,7 @@
 // Transient auto-expansion. Transitions are diffed against the previous
 // render, as bb does; nothing here is persisted.
 import { useCallback, useRef, useState } from "react";
-import type { Forest } from "../model/families";
+import type { Forest } from "../model/trees";
 import {
   detectTransitions,
   mergeTargets,

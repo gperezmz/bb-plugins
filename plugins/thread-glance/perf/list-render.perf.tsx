@@ -361,7 +361,7 @@ describe.skipIf(!SNAPSHOT)("list render cost over a real snapshot", () => {
 
 describe.skipIf(!SNAPSHOT)("list model cost over a real snapshot", () => {
   it("times buildForest and buildListView per update", async () => {
-    const { buildForest } = await import("@/features/thread-list/model/families");
+    const { buildForest } = await import("@/features/thread-list/model/trees");
     const { buildListView } = await import("@/features/thread-list/model/view");
     const raw = JSON.parse(readFileSync(SNAPSHOT!, "utf8")) as CliThread[];
     const threads = raw.map(toSidebarThread);
