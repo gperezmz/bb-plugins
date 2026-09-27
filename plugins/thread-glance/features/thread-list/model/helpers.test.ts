@@ -213,14 +213,14 @@ describe("fold row text", () => {
     expanded,
     depth: 1,
   });
-  it("says child threads on a family's fold, singular for one", () => {
-    expect(olderRowText(fold("family", 16))).toEqual({ label: "16 more child threads", ariaLabel: "Show 16 more child threads" });
-    expect(olderRowText(fold("family", 1)).label).toBe("1 more child thread");
+  it("says child threads on a tree's fold, singular for one", () => {
+    expect(olderRowText(fold("tree", 16))).toEqual({ label: "16 more child threads", ariaLabel: "Show 16 more child threads" });
+    expect(olderRowText(fold("tree", 1)).label).toBe("1 more child thread");
     expect(olderRowText(fold("reveal", 4)).label).toBe("4 more child threads");
   });
   it("keeps 'older' for the group's fold, so the two never read alike", () => {
     expect(olderRowText(fold("group", 5)).label).toBe("5 older");
     expect(olderRowText(fold("group", 5, true)).label).toBe("Show fewer");
-    expect(olderRowText(fold("family", 5, true)).label).toBe("Show fewer");
+    expect(olderRowText(fold("tree", 5, true)).label).toBe("Show fewer");
   });
 });

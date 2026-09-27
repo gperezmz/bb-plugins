@@ -1,7 +1,7 @@
 // Auto-expansion: transitions found by diffing snapshots, and the
 // transient targets they leave behind. Pure.
 import { revealsOn } from "./attention";
-import type { Forest } from "./families";
+import type { Forest } from "./trees";
 
 /**
  * `reveal` targets open their group, their `N older` fold and the parent

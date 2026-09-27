@@ -77,7 +77,7 @@ describe("shareView", () => {
     expect(threadRow(next, "a")).toBe(threadRow(previous, "a"));
   });
 
-  it("keeps Needs attention's unchanged rows when a family joins it", () => {
+  it("keeps Needs attention's unchanged rows when a tree joins it", () => {
     const blocked = threads.map((thread) => (thread.id === "c" ? { ...thread, hasPendingInteraction: true } : thread));
     const previous = viewOf({ ...scenario, threads: blocked });
     const added = [...blocked, makeThread({ id: "e", createdAt: 5, updatedAt: 5, ...finishedUnread })];

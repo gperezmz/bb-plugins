@@ -1,6 +1,6 @@
 /**
- * Budget hint: the first time a family's total crosses the
- * "Warn above" amount, a crossing is recorded once per family and amount.
+ * Budget hint: the first time a tree's total crosses the
+ * "Warn above" amount, a crossing is recorded once per tree and amount.
  */
 
 export interface Crossing {
@@ -11,18 +11,18 @@ export interface Crossing {
 }
 
 /**
- * Families (by ancestor id) whose total is at or above `amount` and that
+ * Trees (by ancestor id) whose total is at or above `amount` and that
  * have no crossing recorded for that amount yet.
  */
 export function newCrossings(
-  familyTotals: ReadonlyMap<string, number>,
+  treeTotals: ReadonlyMap<string, number>,
   amount: number | null,
   recorded: ReadonlySet<string>,
   now: number,
 ): Crossing[] {
   if (amount === null || !(amount > 0)) return [];
   const out: Crossing[] = [];
-  for (const [rootThreadId, total] of familyTotals) {
+  for (const [rootThreadId, total] of treeTotals) {
     if (total < amount) continue;
     if (recorded.has(crossingKey(rootThreadId, amount))) continue;
     out.push({ rootThreadId, amount, crossedAt: now, totalAtCrossing: total });

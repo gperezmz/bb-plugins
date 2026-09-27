@@ -57,11 +57,11 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `expandedOlder` | Group ids and parent thread ids whose "N older" or "N more child threads" row is open | `[]` |
 | `expandedChildren` | Parent thread ids whose chip is open | `[]` |
 | `showPullRequests` | `true` shows a pull request badge on rows | `true` |
-| `childAttention` | Needs attention counts every child. Which child threads need attention (the Needs attention section, counters, auto-reveal) and stay out of a family's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |
+| `childAttention` | Needs attention counts every child. Which child threads need attention (the Needs attention section, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |
 | `harnessIcon` | How rows draw the harness logo: `muted` (monochrome), `colour` (the provider's tint) or `hidden` | `muted` |
 
 Row density is kept per browser, and the CLI cannot read or change it. No
-preference filters the list: families that need attention always move into the
+preference filters the list: trees that need attention always move into the
 Needs attention section.
 
 Sections themselves and the section a thread is in are bb core state: use

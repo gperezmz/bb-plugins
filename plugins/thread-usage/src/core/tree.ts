@@ -1,7 +1,7 @@
 /**
- * Families over the plugin's own edge table. A family is a
+ * Thread trees over the plugin's own edge table. A thread tree is a
  * thread plus every descendant by `parentThreadId`. Forks (threads with a
- * `sourceThreadId`, side chats included) are not family members, and their
+ * `sourceThreadId`, side chats included) are not tree members, and their
  * subtrees are not either.
  */
 
@@ -52,16 +52,16 @@ export function indexEdges(edges: Iterable<Edge>): EdgeIndex {
   return { byId, children, forks };
 }
 
-export interface FamilyNode {
+export interface TreeNode {
   edge: Edge;
   depth: number;
-  children: FamilyNode[];
+  children: TreeNode[];
 }
 
-/** The family tree under `rootId` (the root included). Cycles are cut. */
-export function familyTree(index: EdgeIndex, rootId: string): FamilyNode {
+/** The tree under `rootId` (the root included). Cycles are cut. */
+export function treeOf(index: EdgeIndex, rootId: string): TreeNode {
   const seen = new Set<string>();
-  const build = (edge: Edge, depth: number): FamilyNode => {
+  const build = (edge: Edge, depth: number): TreeNode => {
     seen.add(edge.threadId);
     const kids = (index.children.get(edge.threadId) ?? []).filter((c) => !seen.has(c.threadId));
     return { edge, depth, children: kids.map((c) => build(c, depth + 1)) };
@@ -70,18 +70,18 @@ export function familyTree(index: EdgeIndex, rootId: string): FamilyNode {
   return build(root, 0);
 }
 
-/** Every thread id in the family, root first, depth-first. */
-export function familyIds(index: EdgeIndex, rootId: string): string[] {
+/** Every thread id in the tree, root first, depth-first. */
+export function treeIds(index: EdgeIndex, rootId: string): string[] {
   const out: string[] = [];
-  const walk = (node: FamilyNode) => {
+  const walk = (node: TreeNode) => {
     out.push(node.edge.threadId);
     node.children.forEach(walk);
   };
-  walk(familyTree(index, rootId));
+  walk(treeOf(index, rootId));
   return out;
 }
 
-/** Ancestors by `parentThreadId`, nearest first. Stops at forks' sources: a fork's family ends at the fork. */
+/** Ancestors by `parentThreadId`, nearest first. Stops at forks' sources: a fork's tree ends at the fork. */
 export function ancestorIds(index: EdgeIndex, threadId: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>([threadId]);
@@ -95,7 +95,7 @@ export function ancestorIds(index: EdgeIndex, threadId: string): string[] {
   return out;
 }
 
-/** The top of `threadId`'s family: its furthest ancestor. */
+/** The top of `threadId`'s tree: its furthest ancestor. */
 export function rootOf(index: EdgeIndex, threadId: string): string {
   const ancestors = ancestorIds(index, threadId);
   return ancestors[ancestors.length - 1] ?? threadId;

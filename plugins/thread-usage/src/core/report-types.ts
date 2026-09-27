@@ -37,10 +37,10 @@ export interface TreeRow {
   ownChip: string;
   ownUsd: number;
   ownTokens: number;
-  familyChip: string;
-  familyUsd: number;
-  familyTokens: number;
-  /** Share of the root family's total (dollars when any, else tokens). */
+  treeChip: string;
+  treeUsd: number;
+  treeTokens: number;
+  /** Share of the root tree's total (dollars when any, else tokens). */
   share: number;
 }
 
@@ -100,11 +100,11 @@ export interface ThreadReport {
   generatedAt: number;
   currency: string;
   prices: PricesInfo & {
-    /** Per model of the family's By-model table; a model with no price is absent. */
+    /** Per model of the tree's By-model table; a model with no price is absent. */
     models: Record<string, PriceSourceInfo>;
   };
   thread: FigureView;
-  family: FigureView;
+  treeTotal: FigureView;
   descendants: number;
   hiddenDescendants: number;
   state: AttributionState;
@@ -133,7 +133,7 @@ export interface ChipView {
   toast: { amount: number; total: string; title: string; rootThreadId: string } | null;
 }
 
-export interface TopFamily {
+export interface TopTree {
   threadId: string;
   title: string;
   providerId: string | null;
@@ -142,7 +142,7 @@ export interface TopFamily {
   usd: number;
   /** Dollars billed (gateway, API key or unknown); `usd` minus the subscription's list-price part. */
   billedUsd: number;
-  /** List-price equivalent of the family's subscription use. */
+  /** List-price equivalent of the tree's subscription use. */
   listPriceUsd: number;
   tokens: number;
   descendants: number;

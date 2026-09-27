@@ -131,7 +131,7 @@ export const PREFERENCES = {
   childAttention: define(
     childAttentionSchema,
     "blocked" as ChildAttention,
-    "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a family's older fold, as running ones do.",
+    "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a thread tree's older fold, as running ones do.",
   ),
   harnessIcon: define(
     harnessIconSchema,

@@ -1,5 +1,5 @@
 /**
- * The header chip: an icon-only coin, shown once the family has
+ * The header chip: an icon-only coin, shown once the tree has
  * a turn record. Hover or focus shows the headline, the token bar and the
  * descendant count; clicking opens the Usage tab for this pane's thread.
  */
@@ -25,7 +25,7 @@ export function HeaderChip({
   const { values } = useSettings();
   const showAmount = values?.showAmount === true && !isCompactViewport;
   // A change names the changed threads and all their ancestors, so a signal
-  // that does not name this thread cannot move its family total. Budget
+  // that does not name this thread cannot move its tree total. Budget
   // crossings and price or settings changes name no thread: every chip refetches.
   const { data } = useLive(() => rpc.call("chip", { threadId }), [rpc, threadId], (payload) => touches(payload, [threadId]));
   useBudgetToast(data, typeof values?.currency === "string" && values.currency !== "" ? values.currency : "$");

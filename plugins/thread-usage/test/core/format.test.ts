@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { familyContext, familyTags, formatAgo, formatCount, formatExactTokens, priceSourceLabel, pricesLabel, sourceMix, usualBilling } from "../../src/core/format";
-import type { PricesInfo, TopFamily } from "../../src/core/report-types";
+import { treeContext, treeTags, formatAgo, formatCount, formatExactTokens, priceSourceLabel, pricesLabel, sourceMix, usualBilling } from "../../src/core/format";
+import type { PricesInfo, TopTree } from "../../src/core/report-types";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 8, 24, 12);
@@ -58,10 +58,10 @@ describe("price freshness wording", () => {
   });
 });
 
-describe("ranked family rows", () => {
-  const row = (billing: TopFamily["billing"], unpriced = false) => ({
+describe("ranked tree rows", () => {
+  const row = (billing: TopTree["billing"], unpriced = false) => ({
     billing,
-    headline: { unpricedNote: unpriced ? "+ 2k unpriced tokens" : null } as TopFamily["headline"],
+    headline: { unpricedNote: unpriced ? "+ 2k unpriced tokens" : null } as TopTree["headline"],
   });
 
   it("names a single cost source without repeating its amount", () => {
@@ -69,30 +69,30 @@ describe("ranked family rows", () => {
     expect(sourceMix({ gateway: 1, harness: 0, estimate: 0.25 })).toBe("$1.00 (gateway) + $0.25 (estimate)");
   });
 
-  it("takes the billing most families share as the list's usual one", () => {
+  it("takes the billing most trees share as the list's usual one", () => {
     expect(usualBilling([])).toBeNull();
     expect(usualBilling([row("gateway"), row("subscription"), row("subscription")])).toBe("subscription");
   });
 
-  it("tags only a family whose billing differs from the usual one, or that has unpriced tokens", () => {
-    expect(familyTags(row("subscription"), "subscription")).toEqual([]);
-    expect(familyTags(row("gateway"), "subscription")).toEqual(["gateway"]);
-    expect(familyTags(row("mixed", true), "subscription")).toEqual(["mixed billing", "partly unpriced"]);
-    expect(familyTags(row("subscription", true), "subscription")).toEqual(["partly unpriced"]);
+  it("tags only a tree whose billing differs from the usual one, or that has unpriced tokens", () => {
+    expect(treeTags(row("subscription"), "subscription")).toEqual([]);
+    expect(treeTags(row("gateway"), "subscription")).toEqual(["gateway"]);
+    expect(treeTags(row("mixed", true), "subscription")).toEqual(["mixed billing", "partly unpriced"]);
+    expect(treeTags(row("subscription", true), "subscription")).toEqual(["partly unpriced"]);
   });
 
   it("gives project, thread count and last activity, leaving out what is missing", () => {
     const now = 10 * 3_600_000;
     const at = now - 2 * 3_600_000;
-    expect(familyContext({ descendants: 2, lastActivityAt: at }, { projectName: "Alpha", countThreads: true, now })).toEqual([
+    expect(treeContext({ descendants: 2, lastActivityAt: at }, { projectName: "Alpha", countThreads: true, now })).toEqual([
       "Alpha",
       "3 threads",
       "2 hours ago",
     ]);
-    expect(familyContext({ descendants: 0, lastActivityAt: at }, { projectName: "Alpha", countThreads: true, now })).toEqual([
+    expect(treeContext({ descendants: 0, lastActivityAt: at }, { projectName: "Alpha", countThreads: true, now })).toEqual([
       "Alpha",
       "2 hours ago",
     ]);
-    expect(familyContext({ descendants: 4, lastActivityAt: null }, { projectName: null, countThreads: false, now })).toEqual([]);
+    expect(treeContext({ descendants: 4, lastActivityAt: null }, { projectName: null, countThreads: false, now })).toEqual([]);
   });
 });

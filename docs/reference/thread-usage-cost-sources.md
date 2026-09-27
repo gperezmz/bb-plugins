@@ -4,7 +4,7 @@ Why these exist is in [how Thread Usage counts tokens and cost](../explanation/t
 
 ## Cost sources
 
-Each turn takes its cost from the first source in this order that has one. A thread or family figure can mix sources turn by turn, and the Usage tab shows the mix, for example `$4.12 (gateway) + $0.30 (estimate)`.
+Each turn takes its cost from the first source in this order that has one. A thread or tree figure can mix sources turn by turn, and the Usage tab shows the mix, for example `$4.12 (gateway) + $0.30 (estimate)`.
 
 | # | Source | When | Exact |
 |---|---|---|---|
@@ -81,4 +81,4 @@ How a thread's tokens are paid for. Decided in this order:
 | `unknown` | Dollars, labelled estimate, with "Billing unknown: set it in settings" under **Data quality** |
 | `subscription` | Tokens; dollars smaller, as a list-price equivalent priced from overrides and public lists only |
 
-A family whose threads are billed differently is `mixed`: its headline is the billed dollars, with subscription tokens on a second line.
+A tree whose threads are billed differently is `mixed`: its headline is the billed dollars, with subscription tokens on a second line.

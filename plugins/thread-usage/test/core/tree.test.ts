@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   ancestorIds,
-  familyIds,
-  familyTree,
+  treeIds,
+  treeOf,
   forksOf,
   indexEdges,
   rootOf,
   unknownEdge,
   type Edge,
-} from "../../src/core/family";
+} from "../../src/core/tree";
 
 const edge = (threadId: string, p: Partial<Edge> = {}): Edge => ({ ...unknownEdge(threadId), createdAt: 0, ...p });
 
 // manager
 // ├── child (→ grandchild)
 // ├── hidden, archived, deleted (→ deleted-kid), codex
-// └── fork (sourceThreadId = manager) → fork-kid     [not family]
+// └── fork (sourceThreadId = manager) → fork-kid     [not in the tree]
 const edges = [
   edge("manager"),
   edge("child", { parentThreadId: "manager", createdAt: 1 }),
@@ -29,10 +29,10 @@ const edges = [
   edge("fork-kid", { parentThreadId: "fork", createdAt: 9 }),
 ];
 
-describe("family", () => {
+describe("tree", () => {
   it("includes every descendant recursively, hidden, archived and deleted ones too", () => {
     const index = indexEdges(edges);
-    expect(familyIds(index, "manager")).toEqual([
+    expect(treeIds(index, "manager")).toEqual([
       "manager",
       "child",
       "grandchild",
@@ -42,31 +42,31 @@ describe("family", () => {
       "deleted-kid",
       "codex",
     ]);
-    const tree = familyTree(index, "manager");
+    const tree = treeOf(index, "manager");
     expect(tree.children.find((c) => c.edge.threadId === "child")!.children[0]!.depth).toBe(2);
   });
 
   it("excludes forks and their subtrees, and lists forks separately", () => {
     const index = indexEdges(edges);
-    const ids = familyIds(index, "manager");
+    const ids = treeIds(index, "manager");
     expect(ids).not.toContain("fork");
     expect(ids).not.toContain("fork-kid");
     expect(forksOf(index, "manager").map((e) => e.threadId)).toEqual(["fork"]);
-    // A fork is the top of its own family.
-    expect(familyIds(index, "fork")).toEqual(["fork", "fork-kid"]);
+    // A fork is the top of its own tree.
+    expect(treeIds(index, "fork")).toEqual(["fork", "fork-kid"]);
     expect(ancestorIds(index, "fork-kid")).toEqual(["fork"]);
     expect(rootOf(index, "fork-kid")).toBe("fork");
   });
 
-  it("scenario 13: re-parenting moves a subtree between families on the next index", () => {
+  it("scenario 13: re-parenting moves a subtree between trees on the next index", () => {
     const moved = edges.map((e) => (e.threadId === "child" ? { ...e, parentThreadId: "codex" } : e));
     const before = indexEdges(edges);
     const after = indexEdges(moved);
-    expect(familyIds(before, "codex")).toEqual(["codex"]);
-    expect(familyIds(after, "codex")).toEqual(["codex", "child", "grandchild"]);
+    expect(treeIds(before, "codex")).toEqual(["codex"]);
+    expect(treeIds(after, "codex")).toEqual(["codex", "child", "grandchild"]);
     expect(ancestorIds(after, "grandchild")).toEqual(["child", "codex", "manager"]);
     // Still under the manager, one level deeper.
-    expect(familyIds(after, "manager")).toHaveLength(familyIds(before, "manager").length);
+    expect(treeIds(after, "manager")).toHaveLength(treeIds(before, "manager").length);
   });
 
   it("walks ancestors nearest first and finds the root", () => {
@@ -78,13 +78,13 @@ describe("family", () => {
 
   it("cuts cycles", () => {
     const index = indexEdges([edge("a", { parentThreadId: "b" }), edge("b", { parentThreadId: "a" }), edge("self", { parentThreadId: "self" })]);
-    expect(familyIds(index, "a")).toEqual(["a", "b"]);
+    expect(treeIds(index, "a")).toEqual(["a", "b"]);
     expect(ancestorIds(index, "a")).toEqual(["b"]);
-    expect(familyIds(index, "self")).toEqual(["self"]);
+    expect(treeIds(index, "self")).toEqual(["self"]);
     expect(ancestorIds(index, "self")).toEqual([]);
   });
 
-  it("treats an unknown root as a family of one", () => {
-    expect(familyIds(indexEdges(edges), "nobody")).toEqual(["nobody"]);
+  it("treats an unknown root as a tree of one", () => {
+    expect(treeIds(indexEdges(edges), "nobody")).toEqual(["nobody"]);
   });
 });

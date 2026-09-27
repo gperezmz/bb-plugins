@@ -33,11 +33,11 @@ Choosing a **Sort by** field starts it in its own direction: newest first for da
 | `chronologicalSort` | `"updated"` | `updated`, `created`, `alpha`; `none` is read as `updated` |
 | `sortDirection` | `"default"` | `ascending` or `descending`; a saved `default` reads as the field's own direction (descending for dates, ascending for `alpha`) |
 | `workingFirst` | `false` | `true` sorts working threads first under Updated, as bb's list does |
-| `foldOlder` | `true` | Collapse older threads: `true` folds a group's [quiet](../explanation/thread-glance-attention.md#families-and-folding) roots past its 5 newest behind an `N older` row; `false` shows every root. The fold inside an open family does not read it |
+| `foldOlder` | `true` | Collapse older threads: `true` folds a group's [quiet](../explanation/thread-glance-attention.md#trees-and-folding) roots past its 5 newest behind an `N older` row; `false` shows every root. The fold inside an open tree does not read it |
 | `harnessIcon` | `"muted"` | `muted`, `colour`, `hidden` |
 | `showPullRequests` | `true` | Whether rows show a pull request badge |
 | `threadLifecycles` | `["active"]` | `["active"]`, `["archived"]` or both (Threads: Active, Archived, Both); at least one |
-| `childAttention` | `"blocked"` | Needs attention counts every child: `blocked` (off) or `everything` (on). Which children need attention and stay out of a family's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#families-and-folding) |
+| `childAttention` | `"blocked"` | Needs attention counts every child: `blocked` (off) or `everything` (on). Which children need attention and stay out of a tree's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#trees-and-folding) |
 | `sectionOrder` | `["pinned","projects","threads"]` | Group order when grouped by project |
 | `manualSectionOrder` | `["pinned","sections","threads"]` | Group order in Custom mode |
 | `machineSectionOrder` | `["pinned","machines","threads"]` | Group order when grouped by machine |

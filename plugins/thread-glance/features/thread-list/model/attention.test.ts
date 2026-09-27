@@ -83,7 +83,7 @@ const threadRows = (view: ReturnType<typeof viewOf>, groupId = "project:proj_a")
 const sectionRows = (view: ReturnType<typeof viewOf>): ThreadRow[] =>
   (view.attention?.rows ?? []).filter((row): row is ThreadRow => row.type === "thread");
 
-describe("Needs attention over a family", () => {
+describe("Needs attention over a tree", () => {
   const parent = (overrides: Record<string, unknown> = {}) =>
     makeThread({ id: "m", latestAttentionAt: T0, lastReadAt: T0, ...overrides });
 
@@ -118,7 +118,7 @@ describe("Needs attention over a family", () => {
       makeThread({ id: "q1", parentThreadId: "q", createdAt: T0 + 6 }),
     ];
     expect(attentionIds(viewOf({ threads }))).toEqual(["m", "a", "a1", "b", "+3"]);
-    // The open thread's path comes up too, and leaves the count. The family was in the section when opened, so it is held.
+    // The open thread's path comes up too, and leaves the count. The tree was in the section when opened, so it is held.
     expect(attentionIds(viewOf({ threads, activeThreadId: "q1", heldRootId: "m" }))).toEqual(["m", "a", "a1", "b", "q", "q1", "+1"]);
   });
 
@@ -149,7 +149,7 @@ describe("Needs attention over a family", () => {
     expect(home(viewOf({ threads: blocked({ host: { id: "h2", name: "Server" } }), prefs: { organizationMode: "machine" } }))).toBe("Server");
   });
 
-  it("takes the family out of its group in every Group by mode, Pinned and hidden groups included", () => {
+  it("takes the tree out of its group in every Group by mode, Pinned and hidden groups included", () => {
     const threads = [
       makeThread({ id: "m", sectionId: "s1", host: { id: "h2", name: "Server" } }),
       makeThread({ id: "c", parentThreadId: "m", hasPendingInteraction: true }),
@@ -169,7 +169,7 @@ describe("Needs attention over a family", () => {
     }
   });
 
-  it("orders families by what they need, then the chosen field in its own direction, whatever the arrow says", () => {
+  it("orders trees by what they need, then the chosen field in its own direction, whatever the arrow says", () => {
     const threads = [
       makeThread({ id: "u", latestAttentionAt: T0 + 30, lastReadAt: T0 }),
       makeThread({ id: "f", ...failedUnread }),
@@ -180,7 +180,7 @@ describe("Needs attention over a family", () => {
     expect(attentionIds(viewOf({ threads, prefs: { sortDirection: "ascending" } }))).toEqual(["q2", "q1", "f", "u"]);
   });
 
-  it("counts its families in the header, and no group preference collapses or hides it", () => {
+  it("counts its trees in the header, and no group preference collapses or hides it", () => {
     const threads = [
       makeThread({ id: "a", hasPendingInteraction: true }),
       makeThread({ id: "b", projectId: "proj_b", hasPendingInteraction: true }),
@@ -189,12 +189,12 @@ describe("Needs attention over a family", () => {
       threads,
       prefs: { collapsedProjects: ["proj_a", "proj_b"], collapsedSections: ["pinned", "threads"], hiddenGroups: ["project:proj_a"] },
     });
-    expect(view.attention?.familyCount).toBe(2);
+    expect(view.attention?.treeCount).toBe(2);
     expect(attentionIds(view)).toEqual(["a", "b"]);
     expect(viewOf({ threads: [makeThread({ id: "a" })] }).attention).toBeNull();
   });
 
-  it("drops a family whose only news is a finished grandchild, and shows no counter or chip flag for it", () => {
+  it("drops a tree whose only news is a finished grandchild, and shows no counter or chip flag for it", () => {
     const threads = [
       parent(),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
@@ -206,7 +206,7 @@ describe("Needs attention over a family", () => {
     expect(group(view, "project:proj_a").counters).toMatchObject({ unread: 0, waitsOnYou: 0 });
     const rows = threadRows(view);
     expect(rows.find((row) => row.info.thread.id === "m")?.chip?.flag).toBeNull();
-    // The unread dot stays on its own row, inside the open family.
+    // The unread dot stays on its own row, inside the open tree.
     expect(rows.find((row) => row.info.thread.id === "g")?.info.state.kind).toBe("unread");
   });
 
@@ -226,7 +226,7 @@ describe("Needs attention over a family", () => {
     expect(group(stamped, "project:proj_a").counters.failed).toBe(0);
   });
 
-  it("tints a chip in a group for work, and takes a family whose child waits or failed orphaned to Needs attention", () => {
+  it("tints a chip in a group for work, and takes a tree whose child waits or failed orphaned to Needs attention", () => {
     const view = (children: ReturnType<typeof makeThread>[], m = parent({ lastReadAt: T0 + 50 })) => viewOf({ threads: [m, ...children] });
     const tone = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) => {
       const row = threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!;
@@ -256,7 +256,7 @@ describe("Needs attention over a family", () => {
   });
 });
 
-describe("a family held in Needs attention while one of its threads is open", () => {
+describe("a tree held in Needs attention while one of its threads is open", () => {
   const blocked = [
     makeThread({ id: "m" }),
     makeThread({ id: "c", parentThreadId: "m", hasPendingInteraction: true }),
@@ -287,20 +287,20 @@ describe("a family held in Needs attention while one of its threads is open", ()
     expect(renders([[unread, "u"], [read, "u"], [read, "o"]])).toEqual([["u"], ["u"], []]);
   });
 
-  it("does not pull in the open family when its root finishes a turn unread", () => {
+  it("does not pull in the open tree when its root finishes a turn unread", () => {
     const running = [makeThread({ id: "u", ...working, lastReadAt: T0 + 5 }), makeThread({ id: "o", projectId: "proj_b" })];
     const finished = running.map((t) => (t.id === "u" ? { ...t, ...finishedUnread } : t));
     expect(renders([[running, "u"], [finished, "u"], [finished, "u"]])).toEqual([[], [], []]);
   });
 
-  it("does not pull in the open family when it asks a question or a child needs attention", () => {
+  it("does not pull in the open tree when it asks a question or a child needs attention", () => {
     const idle = [makeThread({ id: "m" }), makeThread({ id: "c", parentThreadId: "m" }), makeThread({ id: "o", projectId: "proj_b" })];
     const asks = (id: string) => idle.map((t) => (t.id === id ? { ...t, hasPendingInteraction: true } : t));
     expect(renders([[idle, "m"], [asks("m"), "m"]])).toEqual([[], []]);
     expect(renders([[idle, "c"], [asks("c"), "c"], [asks("c"), "m"]])).toEqual([[], [], []]);
   });
 
-  it("judges a family afresh when a thread outside it is opened", () => {
+  it("judges a tree afresh when a thread outside it is opened", () => {
     const running = [makeThread({ id: "u", ...working, lastReadAt: T0 + 5 }), makeThread({ id: "o", projectId: "proj_b" })];
     const finished = running.map((t) => (t.id === "u" ? { ...t, ...finishedUnread } : t));
     expect(renders([[running, "u"], [finished, "u"], [finished, "o"], [finished, "o"]])).toEqual([[], [], ["u"], ["u"]]);
@@ -310,7 +310,7 @@ describe("a family held in Needs attention while one of its threads is open", ()
     expect(renders([[answered, "o"], [answered, "c"], [answered, "m"]])).toEqual([[], [], []]);
   });
 
-  it("is not pulled in by opening a family that never needed attention", () => {
+  it("is not pulled in by opening a tree that never needed attention", () => {
     expect(renders([[answered, "c"], [answered, "m"]])).toEqual([[], []]);
     expect(holdAttention({ held: null, openRootId: "m" }, forestOf({ threads: answered }), null)).toEqual(NO_HOLD);
   });
@@ -325,9 +325,9 @@ function viewsOf(steps: [ReturnType<typeof makeThread>[], string | null][]): Lis
   });
 }
 
-describe("an attended family", () => {
+describe("an attended tree", () => {
   // A finished, unread root with a quiet child and a running one, beside two
-  // families that need attention: one waits on you, one finished unread before it.
+  // trees that need attention: one waits on you, one finished unread before it.
   const unread = [
     makeThread({ id: "u", ...finishedUnread, latestAttentionAt: T0 + 20 }),
     makeThread({ id: "uq", parentThreadId: "u", createdAt: T0 + 1 }),
@@ -382,18 +382,18 @@ describe("an attended family", () => {
     ] as const) {
       const [, after] = viewsOf([[needs, "u"], [settled, "u"]]);
       expect(rowsOf(after!).u).toEqual({ bold: false, note: null, dimmed: false });
-      expect(after!.attention?.familyCount).toBe(2);
+      expect(after!.attention?.treeCount).toBe(2);
     }
   });
 
-  it("is left out of the section's count, which draws none when only attended families remain", () => {
+  it("is left out of the section's count, which draws none when only attended trees remain", () => {
     const [before, after] = viewsOf([[unread, "u"], [read, "u"]]);
-    expect(before!.attention?.familyCount).toBe(3);
-    expect(after!.attention?.familyCount).toBe(2);
+    expect(before!.attention?.treeCount).toBe(3);
+    expect(after!.attention?.treeCount).toBe(2);
     const alone = unread.filter((t) => t.projectId !== "proj_b");
     const [, only] = viewsOf([[alone, "u"], [withOverrides(alone, "u", { lastReadAt: T0 + 30 }), "u"]]);
     expect(only!.attention).not.toBeNull();
-    expect(only!.attention?.familyCount).toBe(0);
+    expect(only!.attention?.treeCount).toBe(0);
   });
 
   it("counts none of its threads as waiting on you, failed, offline or unread, in its group or under More", () => {
@@ -409,8 +409,8 @@ describe("an attended family", () => {
       const group = [...view!.groups, ...view!.more].find((candidate) => candidate.descriptor.id === "project:proj_a")!;
       expect(group.counters).toMatchObject({ waitsOnYou: 0, failed: 0, offline: 0, unread: 0 });
       expect(view!.moreCounters).toMatchObject({ waitsOnYou: 0, failed: 0, offline: 0, unread: 0 });
-      const family = rowsOf(view!);
-      expect([family.u, family.uq, family.ur]).toEqual([
+      const tree = rowsOf(view!);
+      expect([tree.u, tree.uq, tree.ur]).toEqual([
         { bold: false, note: null, dimmed: false },
         // Unread, so not quiet: bright, as in its home group, but not bold.
         { bold: false, note: null, dimmed: false },
@@ -425,15 +425,15 @@ describe("an attended family", () => {
     const roots = (view: ListView) => attentionIds(view).filter((id) => ["u", "q", "o"].includes(id));
     // Newest unread first: u sits above o, below the question.
     expect(views.map(roots)).toEqual([["q", "u", "o"], ["q", "u", "o"], ["q", "u", "o"], ["q", "u", "o"]]);
-    // Today's order would sink a read family to the bottom, and lift one that asks to the top.
+    // Today's order would sink a read tree to the bottom, and lift one that asks to the top.
     expect(roots(viewOf({ threads: read, activeThreadId: "u", heldRootId: "u" }))).toEqual(["q", "o", "u"]);
   });
 
   it("needs attention again in the same place when a child asks a question while it is open", () => {
     const asksAgain = withOverrides(read, "ur", { hasPendingInteraction: true });
     const [, attended, again] = viewsOf([[unread, "u"], [read, "u"], [asksAgain, "u"]]);
-    expect(attended!.attention?.familyCount).toBe(2);
-    expect(again!.attention?.familyCount).toBe(3);
+    expect(attended!.attention?.treeCount).toBe(2);
+    expect(again!.attention?.treeCount).toBe(3);
     expect(rowsOf(again!).ur!.note).not.toBeNull();
     const group = again!.groups.find((candidate) => candidate.descriptor.id === "project:proj_a")!;
     expect(group.counters.waitsOnYou).toBe(1);
@@ -451,10 +451,10 @@ describe("an attended family", () => {
     expect(rowIds(home!, "project:proj_a")).toContain("u");
   });
 
-  it("does not draw a family that still needs attention when opened as attended", () => {
+  it("does not draw a tree that still needs attention when opened as attended", () => {
     const [opened] = viewsOf([[unread, "u"]]);
     expect(rowsOf(opened!).u).toMatchObject({ bold: true });
-    expect(opened!.attention?.familyCount).toBe(3);
+    expect(opened!.attention?.treeCount).toBe(3);
   });
 });
 
@@ -479,12 +479,12 @@ describe("Needs attention counts every child", () => {
     expect(ids(parent({ latestAttentionAt: T0 + 20 }))).toEqual([]);
   });
 
-  it("off: the family stays while another of its threads needs attention", () => {
+  it("off: the tree stays while another of its threads needs attention", () => {
     const asks = makeThread({ id: "d", parentThreadId: "m", createdAt: T0 + 2, hasPendingInteraction: true });
     expect(attentionIds(viewOf({ threads: [parent({ ...working, latestAttentionAt: T0 }), child, asks] }))).toEqual(["m", "d", "+1"]);
   });
 
-  it("on: a child that failed while its parent runs brings its family in", () => {
+  it("on: a child that failed while its parent runs brings its tree in", () => {
     expect(ids(parent({ ...working, latestAttentionAt: T0 }), "everything")).toEqual(["m", "c"]);
   });
 

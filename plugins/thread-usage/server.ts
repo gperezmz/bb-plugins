@@ -11,7 +11,7 @@ import { attributionEnv } from "./src/core/headers";
 import { testConnection } from "./src/core/litellm";
 import { PriceBook } from "./src/core/pricing";
 import { turnsCsv } from "./src/core/export";
-import { familyContext, familyTags, familyThreads, formatTokens, formatUsd, usualBilling } from "./src/core/format";
+import { treeContext, treeTags, treeThreads, formatTokens, formatUsd, usualBilling } from "./src/core/format";
 import { costTotal, figureTokenCount } from "./src/core/summary";
 import { hostContract } from "./src/host/contract";
 import { Engine, PANEL_LOG_TIMEOUT_MS, type ThreadDto } from "./src/server/engine";
@@ -387,7 +387,7 @@ export default async function plugin(bb: BbPluginApi) {
     };
   };
 
-  const familyIdsOf = (threadId: string): string[] => {
+  const treeIdsOf = (threadId: string): string[] => {
     const index = model.index();
     const out: string[] = [];
     const walk = (id: string) => {
@@ -423,12 +423,12 @@ export default async function plugin(bb: BbPluginApi) {
     async refresh({ threadId }) {
       await readSettings();
       // Opening the tab also retries machines that were offline.
-      await engine.refresh(familyIdsOf(threadId));
+      await engine.refresh(treeIdsOf(threadId));
       return { ok: true };
     },
     async top({ projectId, sinceDays }) {
       await readSettings();
-      const families = model.top(projectId, Date.now() - sinceDays * DAY_MS);
+      const trees = model.top(projectId, Date.now() - sinceDays * DAY_MS);
       let projects: { id: string; name: string }[] = [];
       try {
         const listed = (await bb.sdk.projects.list()) as unknown as { id: string; name: string }[];
@@ -436,7 +436,7 @@ export default async function plugin(bb: BbPluginApi) {
       } catch {
         projects = [];
       }
-      return { families, projects, prices: model.pricesInfo() };
+      return { trees, projects, prices: model.pricesInfo() };
     },
     async status() {
       await readSettings();
@@ -554,14 +554,14 @@ export default async function plugin(bb: BbPluginApi) {
             const withChildren = input.options["no-children"] !== true;
             if (input.options.json === true) {
               const report = model.report(threadId);
-              const view = withChildren ? report.family : report.thread;
+              const view = withChildren ? report.treeTotal : report.thread;
               return {
                 exitCode: 0,
                 stdout: JSON.stringify(
                   {
                     threadId,
                     title: report.title,
-                    scope: withChildren ? "family" : "thread",
+                    scope: withChildren ? "tree" : "thread",
                     descendants: withChildren ? report.descendants : 0,
                     usd: costTotal(view.figure.cost),
                     billedUsd: costTotal(view.figure.cost) - view.figure.byBilling.subscription.usd,
@@ -580,7 +580,7 @@ export default async function plugin(bb: BbPluginApi) {
                     state: report.state,
                     pricesUpdatedAt: pricesUpdatedAt(report.prices.updatedAt),
                     children: withChildren
-                      ? report.tree.map((r) => ({ threadId: r.threadId, title: r.title, depth: r.depth, usd: r.ownUsd, familyUsd: r.familyUsd, tokens: r.ownTokens }))
+                      ? report.tree.map((r) => ({ threadId: r.threadId, title: r.title, depth: r.depth, usd: r.ownUsd, treeUsd: r.treeUsd, tokens: r.ownTokens }))
                       : [],
                   },
                   null,
@@ -592,27 +592,27 @@ export default async function plugin(bb: BbPluginApi) {
           },
         }),
         top: cliCommand({
-          summary: "List the most expensive thread families (dollars include the list-price equivalent of subscription use)",
+          summary: "List the most expensive thread trees (dollars include the list-price equivalent of subscription use)",
           options: {
-            project: { type: "string", description: "Only families in this project id" },
+            project: { type: "string", description: "Only thread trees in this project id" },
             since: {
               type: "duration",
               defaultUnit: "d",
               default: 7 * DAY_MS,
-              description: "Families active within this window, e.g. 7d or 30d (default 7d)",
+              description: "Thread trees active within this window, e.g. 7d or 30d (default 7d)",
             },
-            limit: { type: "integer", min: 1, max: 200, default: 20, description: "How many families (1–200, default 20)" },
+            limit: { type: "integer", min: 1, max: 200, default: 20, description: "How many thread trees (1–200, default 20)" },
             json: { type: "boolean", description: "Emit machine-readable JSON" },
           },
           async run(input) {
             await readSettings();
-            const families = model
+            const trees = model
               .top(input.options.project ?? null, Date.now() - input.options.since)
               .slice(0, input.options.limit);
             if (input.options.json === true) {
-              return { exitCode: 0, stdout: JSON.stringify({ pricesUpdatedAt: pricesUpdatedAt(model.pricesInfo().updatedAt), families }, null, 2) };
+              return { exitCode: 0, stdout: JSON.stringify({ pricesUpdatedAt: pricesUpdatedAt(model.pricesInfo().updatedAt), trees }, null, 2) };
             }
-            if (families.length === 0) return { exitCode: 0, stdout: "No thread families with usage in that window." };
+            if (trees.length === 0) return { exitCode: 0, stdout: "No thread trees with usage in that window." };
             const projectNames = new Map<string, string>();
             if (input.options.project === undefined) {
               try {
@@ -622,17 +622,17 @@ export default async function plugin(bb: BbPluginApi) {
                 // Without names the line just leaves the project out.
               }
             }
-            const usual = usualBilling(families);
+            const usual = usualBilling(trees);
             const now = Date.now();
-            const lines = families.map((f, i) => {
+            const lines = trees.map((f, i) => {
               // The first line already carries the amount, tokens and thread count.
-              const context = familyContext(f, {
+              const context = treeContext(f, {
                 projectName: f.projectId === null ? null : (projectNames.get(f.projectId) ?? null),
                 countThreads: false,
                 now,
               });
-              const second = [...context, ...familyTags(f, usual)].join(" · ");
-              const threads = familyThreads(f);
+              const second = [...context, ...treeTags(f, usual)].join(" · ");
+              const threads = treeThreads(f);
               return `${String(i + 1).padStart(2)}. ${formatUsd(f.usd, settings.currency).padEnd(9)} ${formatTokens(f.tokens).padStart(6)} tokens  ${f.title.slice(0, 60)}  (${f.threadId}${threads === null ? "" : `, ${threads}`})${second === "" ? "" : `\n      ${second}`}`;
             });
             return { exitCode: 0, stdout: lines.join("\n") };
@@ -652,12 +652,12 @@ export default async function plugin(bb: BbPluginApi) {
       await readSettings();
       await engine.catchUp(threadId);
       const report = model.report(threadId);
-      const f = report.family.figure;
+      const f = report.treeTotal.figure;
       return JSON.stringify({
         threadId,
-        scope: "family",
+        scope: "tree",
         descendants: report.descendants,
-        headline: [report.family.headline.primary, report.family.headline.detail, report.family.headline.secondary]
+        headline: [report.treeTotal.headline.primary, report.treeTotal.headline.detail, report.treeTotal.headline.secondary]
           .filter((part) => part !== null)
           .join(" · "),
         usd: costTotal(f.cost),
@@ -666,8 +666,8 @@ export default async function plugin(bb: BbPluginApi) {
         costBySource: f.cost,
         tokens: figureTokenCount(f),
         unpricedTokens: f.unpricedTokens,
-        // The family's billing: "mixed" when its threads are billed differently.
-        billing: report.family.headline.billing,
+        // The tree's billing: "mixed" when its threads are billed differently.
+        billing: report.treeTotal.headline.billing,
         thisThreadUsd: costTotal(report.thread.figure.cost),
         pricesUpdatedAt: pricesUpdatedAt(report.prices.updatedAt),
       });

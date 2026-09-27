@@ -101,13 +101,13 @@ export const SETTINGS = {
   showAmount: {
     type: "boolean",
     label: "Show amount in header",
-    description: "Show the family total beside the header icon.",
+    description: "Show the thread tree total beside the header icon.",
     default: false,
   },
   warnAbove: {
     type: "number",
     label: "Warn above",
-    description: "Tint the header icon and show one toast when a family's billed total crosses this amount. 0 turns it off.",
+    description: "Tint the header icon and show one toast when a thread tree's billed total crosses this amount. 0 turns it off.",
     default: 0,
     experimental_schema: z.number().min(0),
   },

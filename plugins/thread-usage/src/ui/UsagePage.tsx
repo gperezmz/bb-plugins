@@ -1,12 +1,12 @@
 /**
- * The global Usage page: the most expensive thread families of
+ * The global Usage page: the most expensive thread trees of
  * the last 7 or 30 days. The project filter lives in the route's `subPath`
  * (`project/<id>`), since a nav panel's only prop is `subPath`.
  */
 import { useState } from "react";
 import { useBbNavigate, useSettings } from "@get-bb/plugin-sdk/app";
-import { familyContext, familyTags, formatTokens, formatUsd, pricesLabel, pricesStale, usualBilling } from "../core/format";
-import type { TopFamily } from "../core/report-types";
+import { treeContext, treeTags, formatTokens, formatUsd, pricesLabel, pricesStale, usualBilling } from "../core/format";
+import type { TopTree } from "../core/report-types";
 import { EmptyState, HarnessIcon, Panel, Tag, useLive, useUsageRpc } from "./common";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,11 +26,11 @@ export function UsagePage({ subPath }: { subPath: string }) {
   const projectId = projectFromSubPath(subPath);
   const [days, setDays] = useState<7 | 30>(7);
   const { data, error, loading } = useLive(() => rpc.call("top", { projectId, sinceDays: days }), [rpc, projectId, days]);
-  const families = data?.families ?? null;
+  const trees = data?.trees ?? null;
   const { values } = useSettings();
   const currency = typeof values?.currency === "string" && values.currency !== "" ? values.currency : "$";
-  const max = Math.max(...(families ?? []).map((f) => (f.usd > 0 ? f.usd : 0)), 0);
-  const usual = usualBilling(families ?? []);
+  const max = Math.max(...(trees ?? []).map((f) => (f.usd > 0 ? f.usd : 0)), 0);
+  const usual = usualBilling(trees ?? []);
   const projectNames = new Map((data?.projects ?? []).map((p) => [p.id, p.name]));
   const now = Date.now();
 
@@ -39,7 +39,7 @@ export function UsagePage({ subPath }: { subPath: string }) {
       <div className="mx-auto w-full max-w-3xl space-y-4 p-4 md:p-5">
         <div className="flex flex-wrap items-center gap-2">
           <p className="mr-auto text-sm text-muted-foreground">
-            The most expensive thread families, each one a thread plus every thread it spawned. Dollars include the
+            The most expensive thread trees, each one a thread plus every thread it spawned. Dollars include the
             list-price equivalent of subscription use.
           </p>
           <Select
@@ -78,35 +78,35 @@ export function UsagePage({ subPath }: { subPath: string }) {
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
-        {error !== null && families === null ? (
+        {error !== null && trees === null ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
-        ) : families === null ? (
+        ) : trees === null ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-14 w-full" />
             ))}
           </div>
-        ) : families.length === 0 ? (
-          <EmptyState>No thread families with usage in the last {days} days.</EmptyState>
+        ) : trees.length === 0 ? (
+          <EmptyState>No thread trees with usage in the last {days} days.</EmptyState>
         ) : (
           <Panel className={cn("overflow-hidden transition-opacity", loading && "opacity-50")}>
             <ol className="divide-y divide-border" aria-busy={loading}>
-              {families.map((f, i) => (
-                <FamilyRow
+              {trees.map((f, i) => (
+                <TopTreeRow
                   key={f.threadId}
-                  family={f}
+                  tree={f}
                   rank={i + 1}
                   max={max}
                   currency={currency}
                   // A project filter already names the project.
-                  context={familyContext(f, {
+                  context={treeContext(f, {
                     projectName: projectId === null && f.projectId !== null ? (projectNames.get(f.projectId) ?? null) : null,
                     countThreads: true,
                     now,
                   })}
-                  tags={familyTags(f, usual)}
+                  tags={treeTags(f, usual)}
                   onOpen={() => navigate.toThread(f.threadId)}
                 />
               ))}
@@ -119,7 +119,7 @@ export function UsagePage({ subPath }: { subPath: string }) {
           </p>
         ) : null}
         <p className="text-xs text-muted-foreground">
-          Fleet-wide dashboards by day and model live in the separate Usage plugin; this page ranks bb thread families.
+          Fleet-wide dashboards by day and model live in the separate Usage plugin; this page ranks bb thread trees.
           The same list is available as <code className="font-mono">bb thread-usage top</code>.
         </p>
       </div>
@@ -127,8 +127,8 @@ export function UsagePage({ subPath }: { subPath: string }) {
   );
 }
 
-function FamilyRow({
-  family,
+function TopTreeRow({
+  tree,
   rank,
   max,
   currency,
@@ -136,7 +136,7 @@ function FamilyRow({
   tags,
   onOpen,
 }: {
-  family: TopFamily;
+  tree: TopTree;
   rank: number;
   max: number;
   currency: string;
@@ -152,9 +152,9 @@ function FamilyRow({
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
       >
         <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{rank}</span>
-        <HarnessIcon providerId={family.providerId} />
+        <HarnessIcon providerId={tree.providerId} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">{family.title}</span>
+          <span className="block truncate text-sm text-foreground">{tree.title}</span>
           {/* Parts wrap whole, so a narrow row keeps the last activity instead of cutting it off. */}
           <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             {context.map((part, i) => (
@@ -171,14 +171,14 @@ function FamilyRow({
         <span className="hidden w-24 shrink-0 sm:block" aria-hidden>
           <span className="block h-1.5 overflow-hidden rounded-full bg-muted">
             <span
-              className={cn("block h-full rounded-full", family.billing === "subscription" ? "bg-muted-foreground/50" : "bg-primary/70")}
-              style={{ width: `${max > 0 ? Math.max(2, (family.usd / max) * 100) : 0}%` }}
+              className={cn("block h-full rounded-full", tree.billing === "subscription" ? "bg-muted-foreground/50" : "bg-primary/70")}
+              style={{ width: `${max > 0 ? Math.max(2, (tree.usd / max) * 100) : 0}%` }}
             />
           </span>
         </span>
         <span className="w-20 shrink-0 text-right" title="All dollars, list-price equivalent of subscription use included">
-          <span className="block text-sm font-medium tabular-nums text-foreground">{formatUsd(family.usd, currency)}</span>
-          <span className="block text-[11px] tabular-nums text-muted-foreground">{formatTokens(family.tokens)} tokens</span>
+          <span className="block text-sm font-medium tabular-nums text-foreground">{formatUsd(tree.usd, currency)}</span>
+          <span className="block text-[11px] tabular-nums text-muted-foreground">{formatTokens(tree.tokens)} tokens</span>
         </span>
       </button>
     </li>

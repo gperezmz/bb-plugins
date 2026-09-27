@@ -237,7 +237,7 @@ describe("history backfill and offline machines (scenarios 8, 9)", () => {
 });
 
 describe("deletion (scenario 12)", () => {
-  it("keeps a deleted thread's ledger and leaves the parent's family total unchanged", async () => {
+  it("keeps a deleted thread's ledger and leaves the parent's tree total unchanged", async () => {
     const r = rig();
     r.clock.now = T0 + 60 * MIN;
     for (const [id, parent] of [["parent", null], ["child", "parent"], ["grandchild", "child"]] as const) {
@@ -245,14 +245,14 @@ describe("deletion (scenario 12)", () => {
       r.events.set(id, [...turns(1, 1, T0, 1_000_000)]);
       await r.engine.catchUp(id);
     }
-    const before = r.model.report("parent").family.figure;
+    const before = r.model.report("parent").treeTotal.figure;
     expect(costTotal(before.cost)).toBeCloseTo(3, 10);
     r.unreadable.add("child");
     await r.engine.onDeleted({ id: "child", parentThreadId: "parent", deletedAt: T0 + 61 * MIN });
     expect(r.store.getEdge("child")!.deletedAt).toBe(T0 + 61 * MIN);
     expect(r.store.countTurns("child")).toBe(1);
     const after = r.model.report("parent");
-    expect(costTotal(after.family.figure.cost)).toBeCloseTo(3, 10);
+    expect(costTotal(after.treeTotal.figure.cost)).toBeCloseTo(3, 10);
     expect(after.tree.find((row) => row.threadId === "grandchild")!.parentThreadId).toBe("child");
   });
 });
@@ -324,7 +324,7 @@ describe("gateway sweep", () => {
     const r = await gatewayRig("sk-read", 0.05);
     await r.engine.sweep();
     expect([...r.store.crossingKeys()]).toEqual(["thr_gw@0.05"]);
-    // A crossing names no thread, so every chip (the crossed family's included) refetches.
+    // A crossing names no thread, so every chip (the crossed tree's included) refetches.
     expect(r.published.at(-1)).toEqual({ channel: "usage-changed", payload: { threadIds: [] } });
     fake!.addRow({ request_id: "g2", session_id: "bb-thr_gw", startTime: new Date(T0 + 2 * SEC).toISOString(), spend: 0.2 });
     await r.engine.sweep();
@@ -333,7 +333,7 @@ describe("gateway sweep", () => {
     expect(r.model.chip("thr_gw").toast).not.toBeNull();
   });
 
-  it("counts a family already over Warn above when the amount is set", async () => {
+  it("counts a tree already over Warn above when the amount is set", async () => {
     const r = await gatewayRig("sk-read", 0);
     await r.engine.sweep();
     expect([...r.store.crossingKeys()]).toEqual([]);
@@ -401,8 +401,8 @@ describe("children of a parent deleted while the plugin was stopped", () => {
     await r.engine.discover();
     expect(r.store.getEdge("thr_gone")!.deletedAt).not.toBeNull();
     expect(r.store.getEdge("thr_kid")!.parentThreadId).toBe("thr_gone");
-    // The family total still counts all three threads.
-    expect(r.model.report("thr_root").family.figure.tokens.input).toBe(300);
+    // The tree total still counts all three threads.
+    expect(r.model.report("thr_root").treeTotal.figure.tokens.input).toBe(300);
   });
 
   it("does not mark threads deleted when the listing comes back empty", async () => {
@@ -550,7 +550,7 @@ describe("refresh on opening the Usage tab", () => {
     expect(read.sort()).toEqual([ids[3]!, ids[7]!].sort());
     spy.mockRestore();
 
-    // A family of stale threads is read at most REFRESH_CONCURRENCY at a time.
+    // A tree of stale threads is read at most REFRESH_CONCURRENCY at a time.
     for (const id of ids) {
       const s = r.store.getThread(id)!;
       r.store.putThread({ ...s, logsReadThrough: null }, T0);

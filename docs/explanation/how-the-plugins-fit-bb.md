@@ -36,13 +36,13 @@ The **server machine** is the machine that runs the bb server and holds its data
 
 All six rely on plugin APIs that bb marks experimental, and are built against bb 0.43 and plugin SDK 0.5.9, except OpenAI-compatible inference, Pocket Navigation and Cache Keeper, which need bb 0.44 and plugin SDK 0.5.29 (`engines` in each `package.json`). A bb upgrade that renames one of those APIs can stop a plugin loading until the plugin is updated; `bb status` warns when an enabled plugin is not running.
 
-## Threads and families
+## Threads and trees
 
 A **harness** is the coding agent a thread runs on, such as Claude Code, Codex, pi or Cursor; bb calls it the thread's provider.
 
-A **child thread** is one another thread spawned: bb records the spawner as its **parent thread**. A thread with no parent is a **root**. A thread's **family** is the thread and every thread under it: its children, their children, and so on.
+A **child thread** is one another thread spawned: bb records the spawner as its **parent thread**. A thread with no parent is a **root**. A thread's **thread tree**, or **tree**, is the thread and every thread under it: its children, their children, and so on.
 
-Thread Glance lists a root's family together, so one busy parent thread does not push other work off the screen. Thread Usage adds up a family's cost, so a parent thread's figure includes what its workers spent. A **fork** (a thread started from another thread's history, side chats included) is not a child and is not in the family: bb records it as a copy, not as delegated work.
+Thread Glance lists a root's tree together, so one busy parent thread does not push other work off the screen. Thread Usage adds up a tree's cost, so a parent thread's figure includes what its workers spent. A **fork** (a thread started from another thread's history, side chats included) is not a child and is not in the tree: bb records it as a copy, not as delegated work.
 
 ## What each plugin stores
 

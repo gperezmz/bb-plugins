@@ -1,7 +1,7 @@
 /**
  * Turns the stored ledger, gateway rows and harness-log entries of one
  * thread into what the surfaces show (log merge, cost, reconciliation and
- * billing), and adds threads up into families.
+ * billing), and adds threads up into trees.
  */
 import type { BillingMode } from "./attribution";
 import {
@@ -137,7 +137,7 @@ export interface TurnView {
   approximate: boolean;
 }
 
-/** Aggregated figures for one thread or a whole family. */
+/** Aggregated figures for one thread or a whole tree. */
 export interface Figure {
   tokens: Tokens;
   /** Gateway tokens bb and the logs did not see. */
@@ -678,7 +678,7 @@ function view(
   };
 }
 
-/** Adds figures (thread totals into a family total). */
+/** Adds figures (thread totals into a tree total). */
 export function sumFigures(figures: readonly Figure[]): Figure {
   const out = emptyFigure();
   const models = new ModelTable();

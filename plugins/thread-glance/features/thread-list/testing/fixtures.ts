@@ -5,10 +5,10 @@ import type {
   PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
-import { buildForest, type Forest } from "../model/families";
+import { buildForest, type Forest } from "../model/trees";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
-import type { SectionFamily } from "../model/attention";
+import type { SectionTree } from "../model/attention";
 
 export const T0 = 1_780_000_000_000;
 
@@ -109,10 +109,10 @@ export interface Scenario {
   sections?: PluginSidebarSection[];
   prefs?: Partial<Preferences>;
   activeThreadId?: string | null;
-  /** The root of the held family, held as it stands now. */
+  /** The root of the held tree, held as it stands now. */
   heldRootId?: string | null;
-  /** The held family as it was when opened; wins over `heldRootId`. */
-  held?: SectionFamily | null;
+  /** The held tree as it was when opened; wins over `heldRootId`. */
+  held?: SectionTree | null;
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -145,7 +145,7 @@ export function viewOf(scenario: Scenario): ListView {
     sections: scenario.sections ?? [],
     prefs: { ...defaultPreferences(), ...scenario.prefs },
     activeThreadId: scenario.activeThreadId ?? null,
-    held: scenario.held ?? (scenario.heldRootId == null ? null : (forest.familyOf.get(scenario.heldRootId) ?? null)),
+    held: scenario.held ?? (scenario.heldRootId == null ? null : (forest.treeOf.get(scenario.heldRootId) ?? null)),
     targets: scenario.targets ?? new Map(),
   });
 }

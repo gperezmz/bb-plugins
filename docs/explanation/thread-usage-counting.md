@@ -1,6 +1,6 @@
 # How Thread Usage counts tokens and cost
 
-bb reports how many tokens a thread used, but not what they cost, and not what the threads it spawned used. Thread Usage keeps its own record of every turn, prices it from the best source it has, and adds up [families](how-the-plugins-fit-bb.md#threads-and-families) when you ask.
+bb reports how many tokens a thread used, but not what they cost, and not what the threads it spawned used. Thread Usage keeps its own record of every turn, prices it from the best source it has, and adds up [trees](how-the-plugins-fit-bb.md#threads-and-trees) when you ask.
 
 ```mermaid
 flowchart LR
@@ -10,7 +10,7 @@ flowchart LR
   ledger --> cost{"Cost per turn"}
   rows --> cost
   prices["Price lists and overrides"] --> cost
-  cost --> figures["Thread and family figures"]
+  cost --> figures["Thread and tree figures"]
   figures --> surfaces["Header chip, Usage tab, Thread usage page, CLI, agent tool"]
 ```
 
@@ -54,15 +54,15 @@ Gateway rows are kept in the plugin's database. A gateway may keep its spend log
 
 ## Billed and subscription use
 
-A thread's **billing mode** says how its tokens are paid for: through the gateway, with an API key, or on a subscription plan. On a subscription, tokens are not billed one by one, so a dollar figure would be misleading as a bill. The **headline** is the large figure at the top of the Usage tab and in the header chip's card, with its cost source and billing mode beside it. On a subscription, tokens lead the headline, and dollars are shown smaller as a **list-price equivalent**: what the same tokens would cost at public list prices. A family that mixes both shows the billed dollars as its headline and the subscription tokens on a second line; the two sums are never added into one billed figure.
+A thread's **billing mode** says how its tokens are paid for: through the gateway, with an API key, or on a subscription plan. On a subscription, tokens are not billed one by one, so a dollar figure would be misleading as a bill. The **headline** is the large figure at the top of the Usage tab and in the header chip's card, with its cost source and billing mode beside it. On a subscription, tokens lead the headline, and dollars are shown smaller as a **list-price equivalent**: what the same tokens would cost at public list prices. A tree that mixes both shows the billed dollars as its headline and the subscription tokens on a second line; the two sums are never added into one billed figure.
 
 The plugin reads the billing mode from what the harness reports about its rate limits, and from how requests were routed. [Attribution and billing](../reference/thread-usage-cost-sources.md#billing-modes) lists the rules; the **Billing for** settings override them per harness.
 
-## Families, forks and deleted threads
+## Trees, forks and deleted threads
 
-A family's figure is added up when read, from the plugin's own copy of the thread tree, because a thread can be moved under another parent at any time. That copy keeps deleted threads too: bb stops listing them, but their usage was spent, so a parent thread's figure does not drop when you delete one of its workers.
+A tree's figure is added up when read, from the plugin's own copy of the thread tree, because a thread can be moved under another parent at any time. That copy keeps deleted threads too: bb stops listing them, but their usage was spent, so a parent thread's figure does not drop when you delete one of its workers.
 
-A fork starts with a copy of its source's history. Its own figure counts only the turns after it was created, and it appears under **Forks of this thread** in the Usage tab, outside the family.
+A fork starts with a copy of its source's history. Its own figure counts only the turns after it was created, and it appears under **Forks of this thread** in the Usage tab, outside the tree.
 
 ## Retention
 

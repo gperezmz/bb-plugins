@@ -6,7 +6,7 @@ import type { PluginSidebarSection, PluginSidebarThread } from "@get-bb/plugin-s
 import type { Stamps } from "@/shared/contract";
 import type { HarnessIcon, OrganizationMode } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
-import type { Family } from "../model/families";
+import type { ThreadTree } from "../model/trees";
 import type { RowMenuAction } from "../model/menu";
 import type { OlderRow, ThreadRow } from "../model/view";
 import type { ProviderDisplay } from "./ProviderBadge";
@@ -33,7 +33,7 @@ export interface RowController {
   onNavigate(): void;
   onToggleChip(row: ThreadRow): void;
   onToggleOlder(row: OlderRow): void;
-  /** Opens a family's children from its "+N more" line in Needs attention. */
+  /** Opens a tree's children from its "+N more" line in Needs attention. */
   onOpenChildren(rootId: string): void;
   onToggleEnvironment(environmentId: string): void;
   onMenuAction(action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null): void;
@@ -54,12 +54,12 @@ export interface ListLive {
   now: number;
   stamps: Stamps;
   notes: Readonly<Record<string, ThreadNotes>>;
-  familyOf(threadId: string): Family | undefined;
+  treeOf(threadId: string): ThreadTree | undefined;
 }
 
 export const ListLiveContext = createContext<ListLive>({
   now: 0,
   stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {} },
   notes: {},
-  familyOf: () => undefined,
+  treeOf: () => undefined,
 });

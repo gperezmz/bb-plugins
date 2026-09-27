@@ -7,7 +7,7 @@ describe("newCrossings", () => {
     ["child", 1],
   ]);
 
-  it("reports a family at or above the amount once", () => {
+  it("reports a tree at or above the amount once", () => {
     const first = newCrossings(totals, 5, new Set(), 100);
     expect(first).toEqual([{ rootThreadId: "root", amount: 5, crossedAt: 100, totalAtCrossing: 5.2 }]);
     expect(newCrossings(totals, 5, new Set([crossingKey("root", 5)]), 200)).toEqual([]);

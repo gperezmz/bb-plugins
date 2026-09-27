@@ -59,7 +59,7 @@ describe("per-level folding", () => {
     const view = viewOf({ threads: [...threads.filter((t) => !["r1", "r2", "r3"].includes(t.id)), ...many], prefs: { expandedChildren: ["m", "fix"] } });
     expect(depths(view)).toEqual(["m@0", "b@1", "c@1", "d@1", "fix@1", "s3@2", "s4@2", "s5@2", "older:3@2", "older:1@1"]);
     const fold = rowsOf(view).find((row): row is OlderRow => row.type === "older" && row.depth === 2)!;
-    expect(fold).toMatchObject({ scope: "family", scopeId: "fix" });
+    expect(fold).toMatchObject({ scope: "tree", scopeId: "fix" });
   });
 
   it("opens the level on the way to a revealed thread, keeping every ancestor and saying what it left out", () => {
@@ -157,7 +157,7 @@ describe("a grandchild never shows without its parent (property)", () => {
           expect(drawn.has(row.info.thread.id), `seed ${seed}: ${row.info.thread.id} is drawn twice`).toBe(false);
           drawn.add(row.info.thread.id);
           if (row.depth > 0) {
-            // The row above it one level up must be its parent, the same family and group.
+            // The row above it one level up must be its parent, the same tree and group.
             const above = [...seen].reverse().find((candidate) => candidate.depth < row.depth);
             expect(above?.depth, `seed ${seed}: ${row.info.thread.id} has no row one level up`).toBe(row.depth - 1);
             expect(above?.info.thread.id, `seed ${seed}: ${row.info.thread.id} sits under the wrong row`).toBe(row.info.parentId);

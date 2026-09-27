@@ -4,7 +4,7 @@
  */
 import type { BillingMode } from "./attribution";
 import { costTotal, figureTokenCount } from "./figure-math";
-import type { PriceSourceInfo, PricesInfo, TopFamily } from "./report-types";
+import type { PriceSourceInfo, PricesInfo, TopTree } from "./report-types";
 import type { CostBuckets, Figure } from "./summary";
 
 export function formatUsd(usd: number, label = "$"): string {
@@ -120,12 +120,12 @@ export function sourceMix(cost: CostBuckets, label = "$"): string {
   return parts.map(([name, usd]) => `${formatUsd(usd, label)} (${name})`).join(" + ");
 }
 
-type TopBilling = TopFamily["billing"];
+type TopBilling = TopTree["billing"];
 
-/** The billing most families in a ranked list share, or null for an empty list. */
-export function usualBilling(families: readonly Pick<TopFamily, "billing">[]): TopBilling | null {
+/** The billing most trees in a ranked list share, or null for an empty list. */
+export function usualBilling(trees: readonly Pick<TopTree, "billing">[]): TopBilling | null {
   const counts = new Map<TopBilling, number>();
-  for (const f of families) counts.set(f.billing, (counts.get(f.billing) ?? 0) + 1);
+  for (const f of trees) counts.set(f.billing, (counts.get(f.billing) ?? 0) + 1);
   let best: TopBilling | null = null;
   for (const [billing, n] of counts) if (best === null || n > (counts.get(best) as number)) best = billing;
   return best;
@@ -140,34 +140,34 @@ const BILLING_TAGS: Record<TopBilling, string> = {
 };
 
 /**
- * Tags for a family in a ranked list: its billing when that differs from
+ * Tags for a tree in a ranked list: its billing when that differs from
  * the list's usual one, and "partly unpriced" when some tokens had no price.
  */
-export function familyTags(family: Pick<TopFamily, "billing" | "headline">, usual: TopBilling | null): string[] {
+export function treeTags(tree: Pick<TopTree, "billing" | "headline">, usual: TopBilling | null): string[] {
   const tags: string[] = [];
-  if (usual !== null && family.billing !== usual) tags.push(BILLING_TAGS[family.billing]);
-  if (family.headline.unpricedNote !== null) tags.push("partly unpriced");
+  if (usual !== null && tree.billing !== usual) tags.push(BILLING_TAGS[tree.billing]);
+  if (tree.headline.unpricedNote !== null) tags.push("partly unpriced");
   return tags;
 }
 
-/** "3 threads" for a family with children, null for a root alone. */
-export function familyThreads(family: Pick<TopFamily, "descendants">): string | null {
-  return family.descendants > 0 ? `${formatCount(family.descendants + 1)} threads` : null;
+/** "3 threads" for a tree with children, null for a root alone. */
+export function treeThreads(tree: Pick<TopTree, "descendants">): string | null {
+  return tree.descendants > 0 ? `${formatCount(tree.descendants + 1)} threads` : null;
 }
 
 /**
- * The parts of the context line under a family's title, in order: project,
+ * The parts of the context line under a tree's title, in order: project,
  * thread count, last activity ("Alpha", "3 threads", "2 hours ago"). A part
  * that is missing is left out.
  */
-export function familyContext(
-  family: Pick<TopFamily, "descendants" | "lastActivityAt">,
+export function treeContext(
+  tree: Pick<TopTree, "descendants" | "lastActivityAt">,
   opts: { projectName: string | null; countThreads: boolean; now: number },
 ): string[] {
   return [
     opts.projectName,
-    opts.countThreads ? familyThreads(family) : null,
-    family.lastActivityAt === null ? null : formatAgo(Math.max(0, opts.now - family.lastActivityAt)),
+    opts.countThreads ? treeThreads(tree) : null,
+    tree.lastActivityAt === null ? null : formatAgo(Math.max(0, opts.now - tree.lastActivityAt)),
   ].filter((part): part is string => part !== null && part !== "");
 }
 
@@ -177,7 +177,7 @@ export interface Headline {
   primaryKind: "usd" | "tokens";
   /** Source mix or billing label under the primary figure. */
   detail: string;
-  /** Second line for a family that mixes billing modes. */
+  /** Second line for a tree that mixes billing modes. */
   secondary: string | null;
   /** "+ unpriced tokens" when any tokens had no price. */
   unpricedNote: string | null;
