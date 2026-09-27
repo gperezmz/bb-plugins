@@ -21,7 +21,7 @@ import {
 import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
 import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
-import { countItems, type ThreadView } from "../core/view";
+import { countItems, type ThreadView, type WaitCounts } from "../core/view";
 import { hasOwnWork, waitingChildren, type TaskKind, type WaitItem, type WaitThread } from "../core/waiting";
 import type { KeeperSettings } from "./settings";
 import type { Store, TaskRecord, ThreadRecord } from "./store";
@@ -100,6 +100,8 @@ const IN_FLIGHT_MS = 10 * 60_000;
 /** A send bb has not yet reported active is taken as the cause of the next activation within this long. */
 const START_MS = 2 * 60_000;
 export const DAY_MS = 86_400_000;
+/** The most events bb 0.44 returns for one `threads.events.list` call. */
+export const EVENTS_PAGE = 100;
 const LAST_SETTING_META = "lastSetting";
 /** How long a thread a surface showed keeps being read on every pass. */
 const VIEWED_MS = 10 * 60_000;
@@ -229,6 +231,8 @@ export class Engine {
         await this.step(thread, listed);
         if (JSON.stringify(this.views.get(thread.id) ?? null) !== before) changed.push(thread.id);
       } catch (error) {
+        // A view from before the failure would show a state bb has moved on from.
+        if (this.views.delete(thread.id)) changed.push(thread.id);
         this.deps.log.warn(`thread ${thread.id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
@@ -325,10 +329,13 @@ export class Engine {
         cwdSlug = read.cwdSlug;
       }
     }
-    let window = this.windows.get(thread.id);
+    // bb learns the window from the thread's turns, so it is asked again until it answers, and again when the model changes.
+    const windowKey = `${thread.id}\0${facts?.model ?? ""}`;
+    let window = this.windows.get(windowKey);
     if (window === undefined) {
-      window = (await this.deps.contextWindow(thread.id).catch(() => null)) ?? DEFAULT_WINDOW;
-      this.windows.set(thread.id, window);
+      const known = await this.deps.contextWindow(thread.id).catch(() => null);
+      if (known !== null) this.windows.set(windowKey, known);
+      window = known ?? DEFAULT_WINDOW;
     }
     const price = this.deps.prices().lookup(facts?.model ?? null);
     const rates = price !== null && facts?.lifetime != null ? ratesOf(price.price, facts.lifetime) : null;
@@ -342,7 +349,7 @@ export class Engine {
   private async watchTasks(thread: ListedThread, observed: Observed, record: ThreadRecord): Promise<ThreadRecord> {
     const tasks: Record<string, TaskRecord> = { ...record.tasks };
     let afterSeq = record.eventsAfterSeq;
-    for (let page = 0; page < 20; page++) {
+    for (let page = 0; page < 100; page++) {
       const events = await this.deps.taskEvents(thread.id, afterSeq);
       for (const e of events) {
         afterSeq = Math.max(afterSeq, e.seq);
@@ -362,7 +369,7 @@ export class Engine {
           tasks[item.familyId] = { ...task, clock: afterActivity(task.clock, e.createdAt) };
         }
       }
-      if (events.length < 500) break;
+      if (events.length < EVENTS_PAGE) break;
     }
     // A command's output file is its progress.
     const commands = Object.entries(tasks).filter(([, t]) => t.kind === "command").map(([id]) => id);
@@ -433,7 +440,7 @@ export class Engine {
       warmDue: decided.warmDue,
       warmSkipped: record.stretch?.warmSkipped ?? false,
       nextWarmAt: decided.nextWarmAt,
-      counts: countItems(observed.items),
+      counts: withBbCounts(countItems(observed.items), thread),
     };
   }
 
@@ -574,6 +581,16 @@ export class Engine {
     return this.views.get(threadId) ?? null;
   }
 
+  /** The views of every thread with compact when idle on, read now where the last pass has none. */
+  async switchedOn(): Promise<ThreadView[]> {
+    const out: ThreadView[] = [];
+    for (const id of this.deps.store.compactOnIds()) {
+      const view = await this.viewOf(id).catch(() => null);
+      if (view !== null) out.push(view);
+    }
+    return out;
+  }
+
   allViews(): ThreadView[] {
     return [...this.views.values()];
   }
@@ -656,4 +673,13 @@ export class Engine {
 
 function taskItems(record: ThreadRecord): WaitItem[] {
   return Object.entries(record.tasks).map(([id, task]) => ({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt }));
+}
+
+/** bb counts a background task before its events are read; the banner takes whichever count is higher. */
+function withBbCounts(counts: WaitCounts, thread: ListedThread): WaitCounts {
+  return {
+    ...counts,
+    commands: Math.max(counts.commands, thread.activity.activeBackgroundCommandCount),
+    subagents: Math.max(counts.subagents, thread.activity.activeBackgroundAgentCount),
+  };
 }

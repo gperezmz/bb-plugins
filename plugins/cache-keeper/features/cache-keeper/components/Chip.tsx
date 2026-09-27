@@ -3,13 +3,26 @@
  * is off, `≥ {line}` when on, `{m}m` while a compaction is due, `paused` on a
  * pending interaction. Clicking opens the popover.
  */
-import { useState } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { chipSentence, chipText, type ThreadView } from "@/src/core/view";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { KEEPER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 import { CompactPopover } from "./CompactPopover";
+
+const stop = (e: SyntheticEvent) => e.stopPropagation();
+const CONTAIN = {
+  onPointerDown: stop,
+  onPointerUp: stop,
+  onPointerMove: stop,
+  onMouseDown: stop,
+  onMouseUp: stop,
+  onClick: stop,
+  onKeyDown: stop,
+  onFocus: stop,
+  onBlur: stop,
+} as const;
 
 export function Chip() {
   const threadId = useComposerThreadId();
@@ -43,7 +56,9 @@ function ThreadChip({ threadId }: { threadId: string }) {
           {text !== "" && <span className="tabular-nums">{text}</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[22rem]">
+      {/* The popover is portaled out of the DOM, but React still bubbles its events to the
+          composer around the chip, which takes focus on a click and so closes the popover. */}
+      <PopoverContent align="end" className="w-[22rem]" {...CONTAIN}>
         <CompactPopover view={view} now={now} onChange={(next: ThreadView | null) => next !== null && live.setData(next)} />
       </PopoverContent>
     </Popover>

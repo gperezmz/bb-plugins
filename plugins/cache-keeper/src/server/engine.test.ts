@@ -47,6 +47,7 @@ class Harness {
   sent: { threadId: string; text: string }[] = [];
   checkIns = true;
   failTasks = false;
+  failEvents = false;
   queued = new Map<string, { sendAt: number | null; createdAt: number; failed: boolean }[]>();
   db = new Database(":memory:");
   store: Store;
@@ -68,7 +69,10 @@ class Harness {
       queuedMessages: async (id) => this.queued.get(id) ?? [],
       contextWindow: async () => 1_000_000,
       sessionId: async (id) => `session-${id}`,
-      taskEvents: async (id, after) => (this.events.get(id) ?? []).filter((e) => e.seq > after),
+      taskEvents: async (id, after) => {
+        if (this.failEvents) throw new Error("HTTP 400: Thread event limit cannot exceed 100");
+        return (this.events.get(id) ?? []).filter((e) => e.seq > after);
+      },
       transcript: async (_host, session) => ({
         found: true,
         cwdSlug: "-work",
@@ -273,6 +277,20 @@ describe("keep-warms and check-ins", () => {
     h.now = T0 + 59 * MIN;
     await h.engine.pass();
     expect(h.sent.map((m) => m.threadId)).toEqual(["p"]);
+  });
+
+  it("drops a thread's view when a pass fails on it, and still lists it as switched on", async () => {
+    h.threads = [thread({ id: "t1", activity: { activeBackgroundCommandCount: 1, activeBackgroundAgentCount: 0 } })];
+    h.transcript("t1", T0, 300_000);
+    await h.engine.setCompact("t1", true);
+    await h.engine.pass();
+    expect(h.engine.allViews().map((v) => v.threadId)).toEqual(["t1"]);
+    h.failEvents = true;
+    await h.engine.pass();
+    expect(h.engine.allViews()).toEqual([]);
+    h.failEvents = false;
+    expect((await h.engine.switchedOn()).map((v) => v.threadId)).toEqual(["t1"]);
+    expect((await h.engine.viewOf("t1"))?.counts.commands).toBe(1);
   });
 
   it("ends the idle stretch on a turn it did not cause, and a new one starts fresh", async () => {

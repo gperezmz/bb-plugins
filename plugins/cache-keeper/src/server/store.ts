@@ -148,6 +148,10 @@ export class Store {
     return rows.map((r) => ({ threadId: r.thread_id, record: { ...emptyRecord(), ...parse<Partial<ThreadRecord>>(r.record, {}) } }));
   }
 
+  compactOnIds(): string[] {
+    return (this.db.prepare("SELECT thread_id FROM threads WHERE compact_on = 1").all() as { thread_id: string }[]).map((r) => r.thread_id);
+  }
+
   addHistory(threadId: string, at: number, kind: HistoryKind, record: HistoryRecord): number {
     const result = this.db
       .prepare("INSERT INTO history (thread_id, at, kind, record) VALUES (?, ?, ?, ?)")

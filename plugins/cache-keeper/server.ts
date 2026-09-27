@@ -7,7 +7,7 @@ import { formatSize, parseSize, snapSetting } from "./src/core/line";
 import { PriceBook } from "./src/core/pricing";
 import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
-import { ClaudeOnlyError, DAY_MS, Engine, NotReadyError, type ListedThread, type TaskEvent } from "./src/server/engine";
+import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, type ListedThread, type TaskEvent } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
 import { rpcContract, type Overview } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -101,7 +101,7 @@ export default async function plugin(bb: BbPluginApi) {
         threadId,
         afterSeq: String(afterSeq),
         order: "asc",
-        limit: "500",
+        limit: String(EVENTS_PAGE),
         types: ["item/started", "item/backgroundTask/progress", "item/backgroundTask/completed"],
       })) as unknown as { seq: number | string; type: string; createdAt: number; data?: { item?: TaskEvent["item"] } }[];
       return rows.map((r) => ({ seq: Number(r.seq), type: r.type, createdAt: r.createdAt, item: r.data?.item ?? null }));
@@ -163,7 +163,7 @@ export default async function plugin(bb: BbPluginApi) {
     const views = engine.allViews();
     const titles = new Map(views.map((v) => [v.threadId, v.title]));
     return {
-      switchedOn: views.filter((v) => v.compactOn),
+      switchedOn: await engine.switchedOn(),
       waiting: views.filter((v) => v.warmDue),
       recent: store
         .history(Date.now() - 30 * DAY_MS, 50)
@@ -275,8 +275,7 @@ export default async function plugin(bb: BbPluginApi) {
               if (view === null) throw new PluginCliError(`${threadId} is not a Claude Code thread bb lists`, { code: "not_claude_code" });
               return { exitCode: 0, stdout: input.options.json === true ? JSON.stringify({ ...view, statusText: statusText(view, now) }, null, 2) : describe(view, now) };
             }
-            await engine.pass();
-            const on = engine.allViews().filter((v) => v.compactOn);
+            const on = await engine.switchedOn();
             const totals = engine.totals(30);
             if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify({ threads: on, totals }, null, 2) };
             const lines = on.length === 0 ? ["No thread has compact-when-idle on."] : on.map((v) => describe(v, now));
