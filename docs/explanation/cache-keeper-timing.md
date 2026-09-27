@@ -62,7 +62,7 @@ Prices come from LiteLLM's public list, then models.dev, then the LiteLLM list b
 
 ## Which trees are kept warm
 
-**Keep warm while waiting** is a switch on each **tree top**: a Claude Code thread with no Claude Code thread above it. It covers the tree top and every Claude Code thread below it, including threads spawned after it was set. A tree whose root is not a Claude Code thread has one tree top per Claude Code branch, each switched on its own, since only Claude Code threads have the chip and get keep-warms.
+**Keep warm while waiting** is a switch on each **tree top**: a Claude Code thread with no Claude Code thread above it. It covers the tree top and every Claude Code thread below it, including threads spawned after it was set. A tree whose root is not a Claude Code thread has one tree top per Claude Code branch, each switched on its own, since only Claude Code threads have the chip and get keep-warms. An archived or deleted thread ends its tree, as it does for tree keep-warms: archive a tree top and each Claude Code thread below it that has no other Claude Code thread above it becomes a tree top of its own, with its switch untouched.
 
 ```mermaid
 flowchart TB
