@@ -33,8 +33,6 @@ export interface RowController {
   onNavigate(): void;
   onToggleChip(row: ThreadRow): void;
   onToggleOlder(row: OlderRow): void;
-  /** Opens a tree's children from its "+N more" line in Needs attention. */
-  onOpenChildren(rootId: string): void;
   onToggleEnvironment(environmentId: string): void;
   onMenuAction(action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null): void;
   onRename(threadId: string, title: string): Promise<void>;

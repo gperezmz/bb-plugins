@@ -14,7 +14,7 @@ import {
 } from "../testing/fixtures";
 import { detectTransitions, mergeTargets, pruneTargets, snapshotOf, type Targets } from "./expansion";
 import type { ThreadRow } from "./view";
-import { openChildren, toggleChip } from "./toggles";
+import { toggleChip } from "./toggles";
 import { defaultPreferences } from "@/shared/preferences";
 
 /** Runs one render the way the list does: diff, merge targets, build. */
@@ -53,9 +53,9 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
     makeThread({ id: "other", latestAttentionAt: T0 + 200, lastReadAt: T0 + 200 }),
   ];
 
-  it("Needs attention draws the path to the blocked child and counts the other four", () => {
+  it("Needs attention draws the path to the blocked child and nothing else", () => {
     const { view } = render({ threads }, null, new Map());
-    expect(attentionIds(view)).toEqual(["m", "c3", "+4"]);
+    expect(attentionIds(view)).toEqual(["m", "c3"]);
     expect(view.attention?.treeCount).toBe(1);
     const root = threadRow(view, "m");
     // The same chip as in its group: every child, the most urgent flag, closed.
@@ -287,9 +287,9 @@ describe("scenario 8: Needs attention with a quiet parent whose child is blocked
   ];
   const finishedAt = { dc: T0 + 50 };
 
-  it("draws the parent and only the blocked child, counts the other, and leaves the rest in their groups", () => {
+  it("draws the parent and only the blocked child, and leaves the rest in their groups", () => {
     const view = viewOf({ threads, finishedAt, prefs: { hiddenGroups: ["project:proj_b"] } });
-    expect(attentionIds(view)).toEqual(["p", "c1", "+1"]);
+    expect(attentionIds(view)).toEqual(["p", "c1"]);
     // dc finished unread, which a child does not count, so d stays in its group.
     expect(rowIds(view, "project:proj_a")).toEqual(["d"]);
     expect(rowIds(view, "pinned")).toEqual(["pin"]);
@@ -297,7 +297,7 @@ describe("scenario 8: Needs attention with a quiet parent whose child is blocked
   });
   it("brings the finished child's tree too when children count as everything", () => {
     const view = viewOf({ threads, finishedAt, prefs: { childAttention: "everything" } });
-    expect(attentionIds(view)).toEqual(["p", "c1", "+1", "d", "dc"]);
+    expect(attentionIds(view)).toEqual(["p", "c1", "d", "dc"]);
     expect(rowIds(view, "project:proj_a")).toEqual([]);
   });
 });
@@ -450,7 +450,7 @@ describe("folding a tree by the Needs attention rule", () => {
     });
     // Open, the tree draws in Needs attention as in its group.
     expect(rows({ threads: mixed })).toEqual(["m", "w0", "w1", "w2", "w3", "w4", "w5", "w9", "w10", "w11", "older:3"]);
-    expect(attentionIds(viewOf({ threads: mixed }))).toEqual(["m", "w3", "w4", "w5", "+9"]);
+    expect(attentionIds(viewOf({ threads: mixed }))).toEqual(["m", "w3", "w4", "w5"]);
     const running = withState({ w0: working, w1: { status: "idle", runtimeStatus: "provisioning" } });
     expect(rows({ threads: running })).toEqual(["m", "w0", "w1", "w9", "w10", "w11", "older:7"]);
   });
@@ -462,7 +462,7 @@ describe("folding a tree by the Needs attention rule", () => {
   it("draws the path to a stuck grandchild in Needs attention", () => {
     const stuck = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50, hasPendingInteraction: true })];
     expect(rows({ threads: stuck })).toEqual(["m", "w0", "g", "w9", "w10", "w11", "older:8"]);
-    expect(attentionIds(viewOf({ threads: stuck }))).toEqual(["m", "w0", "g", "+11"]);
+    expect(attentionIds(viewOf({ threads: stuck }))).toEqual(["m", "w0", "g"]);
     const quietIgnoringOpen = [...threads, makeThread({ id: "g", parentThreadId: "w0", createdAt: T0 + 50 })];
     expect(rows({ threads: quietIgnoringOpen, finishedAt: { ...finishedAt, g: T0 + 100 } })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
   });
@@ -506,7 +506,7 @@ describe("hidden threads", () => {
     ];
     const view = viewOf({ threads, prefs: { expandedChildren: ["p"] } });
     expect(attentionIds(view)).toEqual(["p", "w", "hb"]);
-    expect(attentionIds(viewOf({ threads }))).toEqual(["p", "hb", "+1"]);
+    expect(attentionIds(viewOf({ threads }))).toEqual(["p", "hb"]);
     expect(threadRow(view, "hb").hiddenBadge).toBe(true);
     const calm = viewOf({ threads: threads.filter((t) => t.id !== "hb"), prefs: { expandedChildren: ["p"] } });
     expect(rowIds(calm, "project:proj_a")).toEqual(["p", "w"]);
@@ -727,7 +727,7 @@ describe("a tree in Needs attention behaves as in its home group", () => {
     expect(threadRow(viewOf({ threads, prefs: open }), "m").chip).toMatchObject({ expanded: true });
     expect(rowIds(viewOf({ threads: calm, prefs: open }), "project:proj_a")).toEqual(["m", "c", "d"]);
     // Closed: the path in the section, the chip alone in the group.
-    expect(attentionIds(viewOf({ threads }))).toEqual(["m", "+2"]);
+    expect(attentionIds(viewOf({ threads }))).toEqual(["m"]);
     expect(rowIds(viewOf({ threads: calm }), "project:proj_a")).toEqual(["m"]);
   });
 
@@ -739,9 +739,10 @@ describe("a tree in Needs attention behaves as in its home group", () => {
     expect(threadRow(viewOf({ threads, prefs: { expandedChildren: ["m"] } }), "m").homeGroupLabel).toBe("Alpha");
   });
 
-  it("opens a closed tree from +N more, as its chip does", () => {
+  it("opens a closed tree from its chip in the section, as in its home group", () => {
     const prefs = { ...defaultPreferences(), expandedChildren: ["x"] };
-    expect(openChildren("m", prefs).patch).toEqual({ expandedChildren: ["x", "m"] });
-    expect(toggleChip(threadRow(viewOf({ threads }), "m"), prefs, forestOf({ threads })).patch).toEqual({ expandedChildren: ["x", "m"] });
+    const opened = { expandedChildren: ["x", "m"] };
+    expect(toggleChip(threadRow(viewOf({ threads }), "m"), prefs, forestOf({ threads })).patch).toEqual(opened);
+    expect(toggleChip(threadRow(viewOf({ threads: calm }), "m"), prefs, forestOf({ threads: calm })).patch).toEqual(opened);
   });
 });

@@ -107,7 +107,7 @@ describe("Needs attention over a tree", () => {
     expect(group(view, "project:proj_a").counters.waitsOnYou).toBe(1);
   });
 
-  it("shows the path to each thread that needs attention, and counts the rest in one +N more line", () => {
+  it("shows the path to each thread that needs attention and nothing else, with no line counting the rest", () => {
     const threads = [
       parent(),
       makeThread({ id: "a", parentThreadId: "m", createdAt: T0 + 1 }),
@@ -117,9 +117,9 @@ describe("Needs attention over a tree", () => {
       makeThread({ id: "q", parentThreadId: "m", createdAt: T0 + 5 }),
       makeThread({ id: "q1", parentThreadId: "q", createdAt: T0 + 6 }),
     ];
-    expect(attentionIds(viewOf({ threads }))).toEqual(["m", "a", "a1", "b", "+3"]);
-    // The open thread's path comes up too, and leaves the count. The tree was in the section when opened, so it is held.
-    expect(attentionIds(viewOf({ threads, activeThreadId: "q1", heldRootId: "m" }))).toEqual(["m", "a", "a1", "b", "q", "q1", "+1"]);
+    expect(attentionIds(viewOf({ threads }))).toEqual(["m", "a", "a1", "b"]);
+    // The open thread's path comes up too. The tree was in the section when opened, so it is held.
+    expect(attentionIds(viewOf({ threads, activeThreadId: "q1", heldRootId: "m" }))).toEqual(["m", "a", "a1", "b", "q", "q1"]);
   });
 
   it("draws the root's chip, closed, and its home group where the age goes", () => {
@@ -130,7 +130,7 @@ describe("Needs attention over a tree", () => {
     const rows = sectionRows(viewOf({ threads }));
     expect(rows.map((row) => row.chip)).toEqual([{ count: 1, flag: null, expanded: false, providerIds: [] }]);
     expect(rows[0]!.homeGroupLabel).toBe("Alpha");
-    expect(attentionIds(viewOf({ threads }))).toEqual(["m", "+1"]);
+    expect(attentionIds(viewOf({ threads }))).toEqual(["m"]);
   });
 
   it("names the home group in every Group by mode, and Pinned for a pinned root", () => {
@@ -278,7 +278,7 @@ describe("a tree held in Needs attention while one of its threads is open", () =
         [answered, "m"],
         [answered, "o"],
       ]),
-    ).toEqual([["m", "c"], ["m", "c"], ["m", "c"], ["m", "+1"], []]);
+    ).toEqual([["m", "c"], ["m", "c"], ["m", "c"], ["m"], []]);
   });
 
   it("stays after an unread root is opened and read", () => {
@@ -481,7 +481,7 @@ describe("Needs attention counts every child", () => {
 
   it("off: the tree stays while another of its threads needs attention", () => {
     const asks = makeThread({ id: "d", parentThreadId: "m", createdAt: T0 + 2, hasPendingInteraction: true });
-    expect(attentionIds(viewOf({ threads: [parent({ ...working, latestAttentionAt: T0 }), child, asks] }))).toEqual(["m", "d", "+1"]);
+    expect(attentionIds(viewOf({ threads: [parent({ ...working, latestAttentionAt: T0 }), child, asks] }))).toEqual(["m", "d"]);
   });
 
   it("on: a child that failed while its parent runs brings its tree in", () => {

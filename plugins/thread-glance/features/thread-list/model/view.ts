@@ -95,17 +95,7 @@ export interface EnvironmentRow {
   depth: number;
 }
 
-/** Under a closed tree in Needs attention: how many of its child threads it leaves out ("+N more"). Opens the tree. */
-export interface LeftOutRow {
-  type: "left-out";
-  key: string;
-  /** The tree's root. */
-  scopeId: string;
-  count: number;
-  depth: number;
-}
-
-export type Row = ThreadRow | OlderRow | EnvironmentRow | LeftOutRow;
+export type Row = ThreadRow | OlderRow | EnvironmentRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
@@ -440,8 +430,8 @@ export function urgency(tree: Pick<ThreadTree, "attentionFlags">): number {
 /**
  * One tree's rows in Needs attention. It arrives with the path from the root
  * down to each thread that needs attention or is open. Closed, the path is all
- * it draws, with one "+N more" line for the child threads left out; opened
- * with the root's chip, it draws as in its home group and keeps the path.
+ * it draws; opened with the root's chip, it draws as in its home group and
+ * keeps the path.
  */
 function attentionTreeRows(groupContext: Context, tree: ThreadTree, homeGroupLabel: string): Row[] {
   const context: Context = {
@@ -474,8 +464,6 @@ function attentionTreeRows(groupContext: Context, tree: ThreadTree, homeGroupLab
     }
   };
   walk(root.thread.id, 1);
-  const left = tree.descendants.filter((info) => !info.thread.isHidden && !onPath.has(info.thread.id)).length;
-  if (left > 0) rows.push({ type: "left-out", key: `left-out:${root.thread.id}`, scopeId: root.thread.id, count: left, depth: 1 });
   return rows;
 }
 
