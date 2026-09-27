@@ -77,3 +77,25 @@ _Avoid_: Server, backend, provider
 **AI task**:
 A helper job bb hands to an AI service: a thread title, a commit message or a voice transcript.
 _Avoid_: Helper completion, helper inference
+
+### Cache Keeper
+
+**Cache Keeper**:
+The plugin that keeps Claude Code threads cheap to come back to after their turn ends, by compacting them or keeping their prompt cache warm before it expires.
+_Avoid_: Idle Compact, cache warmer
+
+**Compaction line**:
+The context size at or above which Cache Keeper compacts a thread with compacting switched on, once its turn has ended and just before its cache expires.
+_Avoid_: Threshold, trigger, N
+
+**Keep-warm**:
+A one-line turn Cache Keeper sends a thread whose turn has ended while it still waits on background work, child threads or a scheduled message, so its cache is warm when they report back.
+_Avoid_: Ping, heartbeat
+
+**Check-in**:
+A turn Cache Keeper sends a thread whose turn has ended about its own background command or subagent, after no output for a while or on a routine interval. It asks the agent to check the work, fix it if needed and carry on.
+_Avoid_: Nudge
+
+**Stalled task**:
+A background command or subagent with no new output or progress for the check-in wait.
+_Avoid_: Quiet task, stuck task
