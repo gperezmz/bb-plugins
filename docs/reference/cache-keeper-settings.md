@@ -45,7 +45,7 @@ Shown only on an idle thread that waits on no answer, and never with command tex
 
 The **Cache Keeper** entry in the sidebar lists the threads with compact when idle on (line, context, status), the threads waiting now (on what, and the next keep-warm), what was sent recently, and totals for the last 30 days: compactions and their cost, keep-warms and check-ins and theirs, and the cold rewrites avoided on first messages back. A return counts as avoided only when it came after the cache would have gone cold.
 
-Each entry in the recent list is one send, with its real cost once its turns have run, including the report turns it forced in the threads above; hovering the cost shows how it fell between threads. A compaction shows its estimate until its turn has run.
+Each entry in the recent list is one send, with its real cost once its turns have run, including the report turns it forced in the threads above; hovering the cost shows how it fell between threads. A compaction shows its estimate, since `/compact` writes no usage to the transcript, and a check-in sent past the cost stop shows the cold-write price.
 
 | Entry | Sent |
 |---|---|

@@ -102,7 +102,7 @@ export function Page() {
             <dd>{formatUsd(totals.avoidedUsd)} on first messages back</dd>
           </dl>
           <p className="mt-2 text-xs text-muted-foreground">
-            Costs are read from transcripts at list prices; a compaction shows an estimate until its turn has run.
+            Costs are read from transcripts at list prices; compactions are estimated, and a check-in past the cost stop shows a cold write.
           </p>
         </Section>
       </div>

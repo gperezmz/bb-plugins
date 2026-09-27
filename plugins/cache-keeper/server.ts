@@ -182,23 +182,31 @@ export default async function plugin(bb: BbPluginApi) {
   // A pass runs every 15 seconds, and at the moment the next send falls due.
   bb.background.service("keeper", {
     async start(signal) {
+      // Every 15 seconds a pass over every tree; in between, a pass over only the trees whose next send falls due.
+      let due = false;
       while (!signal.aborted) {
         try {
-          await engine.pass();
+          await engine.pass(due ? { due: true } : null);
         } catch (error) {
           bb.log.warn(`pass failed: ${message(error)}`);
         }
-        // A pass run for bb's thread.idle may bring the next send forward, so the wait is checked every second.
-        const pollUntil = Date.now() + PASS_MS;
+        due = false;
+        const pollAt = Date.now() + PASS_MS;
+        // A pass run for bb's thread.idle may bring the next send forward, so the wait is checked at least every second.
         while (!signal.aborted) {
+          const now = Date.now();
           const wake = engine.wakeAt();
-          const until = Math.min(pollUntil, wake === null ? Infinity : Math.max(wake, Date.now() + MIN_SLEEP_MS));
-          if (Date.now() >= until) break;
-          await sleep(Math.min(1_000, until - Date.now()), signal);
+          if (wake !== null && wake <= now) {
+            due = true;
+            break;
+          }
+          if (now >= pollAt) break;
+          await sleep(Math.max(MIN_SLEEP_MS, Math.min(1_000, pollAt - now, wake === null ? Infinity : wake - now)), signal);
         }
       }
     },
   });
+
   // Once a day, and at startup when the stored copy is older than that; a failure is retried hourly.
   bb.background.service("prices", {
     async start(signal) {

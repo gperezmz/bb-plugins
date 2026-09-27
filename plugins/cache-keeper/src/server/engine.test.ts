@@ -172,7 +172,7 @@ class Harness {
   }
 
   /** A turn in `id` from `at`, lasting 1 second, taking the requests given and replying; one request to the model at the turn's start. */
-  turn(id: string, at: number, requestIds: string[], reply: string) {
+  turn(id: string, at: number, requestIds: string[], reply: string, usage = true) {
     this.event(id, "turn/started", at, {});
     for (const r of requestIds) this.event(id, "turn/input/accepted", at, { clientRequestId: r });
     this.event(id, "item/completed", at + 500, { item: { type: "agentMessage", id: "m", text: reply } });
@@ -180,7 +180,8 @@ class Harness {
     const side = this.side(id);
     const context = side.facts.context ?? 100_000;
     const write = { cacheWrite5m: side.lifetime === "5m" ? 200 : 0, cacheWrite1h: side.lifetime === "1h" ? 200 : 0 };
-    side.requests.push({ at, model: "claude-opus-5-5", input: 3, output: 20, cacheRead: context, ...write });
+    // `/compact` writes no usage line to the transcript.
+    if (usage) side.requests.push({ at, model: "claude-opus-5-5", input: 3, output: 20, cacheRead: context, ...write });
     side.facts = { ...side.facts, lastRequestAt: at, requests: side.facts.requests + 1 };
     // bb draws attention to a top-level thread whose turn ends.
     if (this.get(id).parentThreadId === null) this.patch(id, { latestAttentionAt: at + S });
@@ -200,14 +201,16 @@ class Harness {
    * report reaches the parent 2 seconds later, batched per parent.
    */
   async deliver() {
-    const start = this.now;
     let ended = new Map<string, number>();
-    for (const s of this.sent.filter((x) => !x.ran)) {
-      s.ran = true;
-      const requestId = [...this.side(s.threadId).events].reverse().find((e) => e.type === "client/turn/requested")!;
-      this.turn(s.threadId, start, [(requestId.data as { requestId: string }).requestId], this.replies.get(s.threadId) ?? asked(s.text));
-      ended.set(s.threadId, start + S);
-    }
+    const runSent = (at: number) => {
+      for (const s of this.sent.filter((x) => !x.ran)) {
+        s.ran = true;
+        const requestId = [...this.side(s.threadId).events].reverse().find((e) => e.type === "client/turn/requested")!;
+        this.turn(s.threadId, at, [(requestId.data as { requestId: string }).requestId], this.replies.get(s.threadId) ?? asked(s.text), s.text !== COMPACT_MESSAGE);
+        ended.set(s.threadId, at + S);
+      }
+    };
+    runSent(this.now);
     while (ended.size > 0) {
       const byParent = new Map<string, { children: string[]; at: number }>();
       for (const [id, at] of ended) {
@@ -228,6 +231,8 @@ class Harness {
         this.turn(parent, at, [r], "Noted.");
         ended.set(parent, at + S);
       }
+      // A keep-warm the report's arrival set off runs beside the report's turn.
+      runSent(this.now);
     }
     this.now = Math.max(this.now, ...[...this.sides.values()].map((s) => s.events.at(-1)?.createdAt ?? 0)) + S;
     await this.engine.pass();
@@ -294,6 +299,11 @@ describe("compact when idle", () => {
     // The compaction's own turn stays inside the stretch, and nothing more is sent in it.
     await h.deliver();
     h.side("t1").facts = { ...h.side("t1").facts, lastCompaction: { at: h.now, preTokens: 300_000, postTokens: 10_000 } };
+    await h.engine.pass();
+    const entry = h.store.history(0).find((r) => r.kind === "compaction")!;
+    expect(entry.record.contextAfter).toBe(10_000);
+    // `/compact` leaves no usage in the transcript, so the entry keeps its estimate rather than $0.
+    expect(entry.record.usd).toBeCloseTo(300_000 * PRICE.read + 20_000 * PRICE.output, 10);
     h.now = T0 + 118 * MIN + 30 * S;
     await h.engine.pass();
     expect(h.sent).toHaveLength(1);
@@ -437,6 +447,40 @@ describe("keeping a thread tree warm", () => {
     expect((await h.engine.viewOf("c"))?.warmPlanned).toBe(false);
   });
 
+  it("sends a shallower leaf when the report from a deeper one reaches its level, so the parent takes one report turn", async () => {
+    h.threads = [
+      thread({ id: "p" }),
+      thread({ id: "c1", parentThreadId: "p" }),
+      thread({ id: "g", parentThreadId: "c1", activity: busy }),
+      thread({ id: "c2", parentThreadId: "p", activity: busy }),
+    ];
+    h.transcript("p", T0, 20_000, "1h");
+    h.transcript("c1", T0, 20_000, "1h");
+    h.transcript("g", T0, 20_000, "5m");
+    h.transcript("c2", T0, 20_000, "5m");
+    h.now = T0 + 4 * MIN - 120 * S;
+    await h.engine.pass();
+    expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
+    await h.deliver();
+    expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
+    expect(h.reportTurns("p")).toBe(1);
+    const entry = h.store.history(0).find((r) => r.kind === "keep-warm")!;
+    expect(entry.record.threads).toEqual(["g", "c2"]);
+    expect(entry.threadId).toBe("p");
+  });
+
+  it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes", async () => {
+    h.threads = [thread({ id: "p" }), thread({ id: "c1", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c1", activity: busy }), thread({ id: "c2", parentThreadId: "p", activity: busy })];
+    for (const id of ["p", "c1"]) h.transcript(id, T0, 20_000, "1h");
+    for (const id of ["g", "c2"]) h.transcript(id, T0, 20_000, "5m");
+    h.now = T0 + 4 * MIN - 120 * S;
+    await h.engine.pass();
+    expect(h.engine.wakeAt()).toBe(h.now + 30 * S);
+    h.now += 30 * S;
+    await h.engine.pass({ due: true });
+    expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
+  });
+
   it("aligns three children so the parent takes one batched report turn per cycle", async () => {
     h.threads = [
       thread({ id: "p" }),
@@ -565,11 +609,25 @@ describe("read state", () => {
     expect(p.lastReadAt! < p.latestAttentionAt!).toBe(true);
   });
 
+  it("keeps a thread read when you read it during the turn, though the turn's end drew attention to it", async () => {
+    h.threads = [thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 })];
+    h.transcript("t", T0, 100_000, "5m");
+    h.now = T0 + 180 * S;
+    await h.engine.pass();
+    expect(h.sent).toHaveLength(1);
+    h.now += 500;
+    h.patch("t", { lastReadAt: h.now });
+    await h.deliver();
+    const t = h.get("t");
+    expect(t.lastReadAt! >= t.latestAttentionAt!).toBe(true);
+  });
+
   it("leaves the read state as you set it during the turn", async () => {
     h.threads = [thread({ id: "t", activity: busy })];
     h.transcript("t", T0, 100_000, "5m");
-    h.now = T0 + 150 * S;
+    h.now = T0 + 180 * S;
     await h.engine.pass();
+    expect(h.sent).toHaveLength(1);
     h.patch("t", { lastReadAt: null });
     await h.deliver();
     expect(h.get("t").lastReadAt).toBeNull();
@@ -593,6 +651,28 @@ describe("queued reports", () => {
     h.now += S;
     await h.engine.pass();
     expect(h.deleted).toEqual(["row1"]);
+  });
+
+  it("deletes a nothing-new row queued behind a real one, and keeps the real one", async () => {
+    h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.transcript("p", T0, 100_000, "1h");
+    h.transcript("c", T0, 100_000, "5m");
+    await h.engine.pass();
+    // The child's own turn, with news, queued as a report behind the question.
+    h.now = T0 + 20 * S;
+    h.typed("c", "deploy it");
+    const real: QueuedRow = { id: "real", sendAt: null, createdAt: h.now + 3 * S, failed: false, system: true, content: reportInput([{ id: "c", reply: "Done." }]) };
+    h.side("p").queued = [real];
+    h.now = T0 + 150 * S;
+    h.transcript("c", T0 + 21 * S, 100_000, "5m");
+    await h.run(T0 + 5 * MIN);
+    const keepWarm = h.side("c").events.filter((e) => e.type === "turn/completed").at(-1)!;
+    const quiet: QueuedRow = { ...real, id: "quiet", createdAt: keepWarm.createdAt + 2 * S, content: reportInput([{ id: "c", reply: h.lastReply("c") }]) };
+    h.side("p").events = h.side("p").events.filter((e) => e.createdAt < T0 + 20 * S);
+    h.side("p").queued = [real, quiet];
+    h.now += S;
+    await h.engine.pass();
+    expect(h.deleted).toEqual(["quiet"]);
   });
 });
 
@@ -619,6 +699,19 @@ describe("check-ins", () => {
     expect(h.sent[0]!.text).toContain('Background command b1 ("npm test") hasn\'t printed anything in 15 minutes.');
     expect(h.sent[0]!.text).toContain('reply with exactly "Checked b1, still running normally, nothing new. Nothing needed from you."');
     expect(h.store.history(0).find((r) => r.kind === "check-in")?.record.tasks?.map((t) => t.id)).toEqual(["b1"]);
+  });
+
+  it("shows a check-in past the cost stop at the cold-write price", async () => {
+    withTask();
+    h.outputs.set("b1", T0 + MIN);
+    h.store.update("t1", T0, (r) => ({ ...r, stretch: { startedAt: T0, compactedAt: null, compactSkipped: false, warmSkipped: false, chargedUsd: 1 } }));
+    h.now = T0 + 16 * MIN;
+    await h.engine.pass();
+    expect(h.sent).toHaveLength(1);
+    await h.deliver();
+    const entry = h.store.history(0).find((r) => r.kind === "check-in")!;
+    expect(entry.record.usd).toBeCloseTo(PRICE.write1h * 100_000, 10);
+    expect(entry.record.split!.t1).toBeGreaterThan(0);
   });
 
   it("sends no routine check-in, and folds a task running 30 minutes into the next keep-warm", async () => {

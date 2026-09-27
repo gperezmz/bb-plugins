@@ -74,9 +74,9 @@ sequenceDiagram
   Note over P: one report turn refreshes P's cache
 ```
 
-The tree keep-warm goes at the earliest deadline among the tree's waiting threads, less a lead of 60 seconds and 30 more for each level between the top-level thread and the deepest leaf in the send, so the reports reach the top before any cache there expires. It goes to every waiting leaf whose deadline would not wait for the next one, so after one cycle all the leaves go together. With 5-minute caches and one level, that is every 150 seconds; a 1-hour parent over a 5-minute child takes a report turn each time and no turn of its own.
+The tree keep-warm goes at the earliest deadline among the tree's waiting threads, less a lead of 60 seconds and 30 more for each level between the top-level thread and the deepest leaf in the send, so the reports reach the top before any cache there expires. It goes to every waiting leaf whose deadline would not wait for the next one, so after one cycle all the leaves go together. The deepest leaves go first; a shallower leaf goes when the report from below reaches its level, or 30 seconds a level later if none has, so that its turn and the report's run side by side and bb batches both into the parent. With 5-minute caches and one level, that is every 150 seconds; a 1-hour parent over a 5-minute child takes a report turn each time and no turn of its own.
 
-A thread whose cache no request refreshed by its own deadline, because a report came late or never, gets its own keep-warm then. A send or report still on its way holds the tree's next send until it lands.
+A thread whose cache no request refreshed by its own deadline, because a report came late or never, gets its own keep-warm then. A send or report still on its way holds the tree's next send until it lands. Sends go at their moment: between its passes over every tree, Cache Keeper wakes for the next send due and reads only the trees it concerns.
 
 A keep-warm is unconditional: it tells the agent there is nothing to check and asks for the **nothing-new reply** "Not finished yet, still waiting on … Nothing needed from you.", worded so that bb's "completed" report of it does not read as news to the parent.
 
@@ -92,11 +92,11 @@ Every Cache Keeper turn is charged at its real cost, read from the thread's tran
 
 A thread's keep-warms stop once that charge, plus the forecast of its next keep-warm and the turns it would force above, would pass its **cost stop**: one cold rewrite of its own context at its own cache lifetime's write price. The forecast is what its last keep-warm cost; before one is measured, it is a cache read of its context and of each waiting context above it. With a 1-hour parent over a 5-minute child of similar size, each child keep-warm costs about two reads against one 5-minute write of the child, so they stop within the child's first hour. A thread waiting only on a scheduled message due after the cost stop would be reached gets no keep-warms at all.
 
-Skip, and a thread's cost stop, apply to every thread below it for the rest of the wait. Check-ins on a stalled task go anyway: each thread owns its background work and only it can notice it stuck. Past the cost stop the cache is cold, so a check-in's charge there is a cold write.
+Skip, and a thread's cost stop, apply to every thread below it for the rest of the wait. Check-ins on a stalled task go anyway: each thread owns its background work and only it can notice it stuck. Past the cost stop the cache is cold, so the Cache Keeper page shows such a check-in at the cold-write price, while its real cost still counts towards the stretch.
 
 ## Read state
 
-bb marks a thread read when a plugin sends to it, and draws attention to a top-level thread whose turn ends. Left alone, every keep-warm would leave its tree unread and in Thread Glance's Needs attention. After a Cache Keeper turn whose replies, and the replies of every child turn it reports, are nothing-new replies, Cache Keeper puts the thread's read state back to what it was before the turn's first input: read stays read, unread stays unread. It leaves the state as you set it if you changed it meanwhile, and a turn that brought news stays as bb set it.
+bb marks a thread read when a plugin sends to it, and draws attention to a top-level thread whose turn ends. Left alone, every keep-warm would leave its tree unread and in Thread Glance's Needs attention. After a Cache Keeper turn whose replies, and the replies of every child turn it reports, are nothing-new replies, Cache Keeper puts the thread's read state back to what it was before the turn's first input: read stays read, unread stays unread. If you changed the read state meanwhile, it is left as you set it, even where the turn's end then drew bb's attention to the thread. A turn that brought news stays as bb set it.
 
 While a thread waits on your answer, bb queues its reports instead of delivering them. Queued report rows whose every line reports a turn that brought nothing new are deleted, and never make the thread count as waiting.
 

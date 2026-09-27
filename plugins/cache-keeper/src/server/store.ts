@@ -158,6 +158,8 @@ export interface HistoryRecord {
   threads?: string[];
   /** The tasks a keep-warm asked about. */
   folded?: string[];
+  /** A check-in sent past the cost stop: its cost is shown at the cold-write price whatever its turn is charged. */
+  coldWrite?: boolean;
   contextBefore?: number | null;
   contextAfter?: number | null;
   /** Check-in: the tasks it asked about. */
@@ -243,6 +245,11 @@ export class Store {
     this.patchHistory(id, patch);
   }
 
+  /** Files an entry under another thread: a keep-warm that grew to several threads is listed under its tree's top. */
+  retitleHistory(id: number, threadId: string): void {
+    this.db.prepare("UPDATE history SET thread_id = ? WHERE id = ?").run(threadId, id);
+  }
+
   // ---- sends ----
 
   addSend(send: Omit<SendRecord, "id" | "usd" | "measured">): number {
@@ -279,7 +286,7 @@ export class Store {
       split[incurredIn] = (split[incurredIn] ?? 0) + usd;
       // A compaction's estimate gives way to what was charged.
       const base = row.record.split === undefined ? 0 : (row.record.usd ?? 0);
-      this.patchHistory(send.historyId, { usd: base + usd, split });
+      this.patchHistory(send.historyId, row.record.coldWrite === true ? { split } : { usd: base + usd, split });
     }
     return next;
   }
