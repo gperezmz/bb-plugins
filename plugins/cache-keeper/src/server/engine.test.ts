@@ -187,6 +187,16 @@ class Harness {
     if (this.get(id).parentThreadId === null) this.patch(id, { latestAttentionAt: at + S });
   }
 
+  /** Starts the turn of the last message sent to `id`, leaving it running. */
+  startTurn(id: string) {
+    const s = this.sent.filter((x) => x.threadId === id).at(-1)!;
+    s.ran = true;
+    const request = [...this.side(id).events].reverse().find((e) => e.type === "client/turn/requested")!;
+    this.event(id, "turn/started", this.now, {});
+    this.event(id, "turn/input/accepted", this.now, { clientRequestId: (request.data as { requestId: string }).requestId });
+    this.patch(id, { status: "active" });
+  }
+
   /** A message you type, and its turn. */
   typed(id: string, text: string) {
     const r = this.request(id, this.now, [{ type: "text", text, mentions: [] }], "user");
@@ -469,6 +479,19 @@ describe("keeping a thread tree warm", () => {
     expect(entry.threadId).toBe("p");
   });
 
+  it("sends the parent nothing while its child's keep-warm turn is still running", async () => {
+    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.transcript("p", T0, 100_000, "5m");
+    h.transcript("c", T0 + 10 * S, 100_000, "5m");
+    h.now = T0 + 150 * S;
+    await h.engine.pass();
+    expect(h.sent.map((x) => x.threadId)).toEqual(["c"]);
+    // The keep-warm's turn starts and runs a minute; bb lists the child as working.
+    h.startTurn("c");
+    for (; h.now < T0 + 205 * S; h.now += 2 * S) await h.engine.pass();
+    expect(h.sent.map((x) => x.threadId)).toEqual(["c"]);
+  });
+
   it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c1", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c1", activity: busy }), thread({ id: "c2", parentThreadId: "p", activity: busy })];
     for (const id of ["p", "c1"]) h.transcript(id, T0, 20_000, "1h");
@@ -699,6 +722,19 @@ describe("check-ins", () => {
     expect(h.sent[0]!.text).toContain('Background command b1 ("npm test") hasn\'t printed anything in 15 minutes.');
     expect(h.sent[0]!.text).toContain('reply with exactly "Checked b1, still running normally, nothing new. Nothing needed from you."');
     expect(h.store.history(0).find((r) => r.kind === "check-in")?.record.tasks?.map((t) => t.id)).toEqual(["b1"]);
+  });
+
+  it("charges a check-in its own request, not that of your turn that ended just before it", async () => {
+    withTask();
+    h.outputs.set("b1", T0 + MIN);
+    h.now = T0 + 16 * MIN - 500;
+    h.typed("t1", "how is it going");
+    h.now = T0 + 16 * MIN + S;
+    await h.engine.pass();
+    expect(h.sent).toHaveLength(1);
+    await h.deliver();
+    const entry = h.store.history(0).find((r) => r.kind === "check-in")!;
+    expect(entry.record.usd).toBeCloseTo(3 * PRICE.input + 20 * PRICE.output + 100_000 * PRICE.read + 200 * PRICE.write1h, 10);
   });
 
   it("shows a check-in past the cost stop at the cold-write price", async () => {

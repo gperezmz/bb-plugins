@@ -382,7 +382,7 @@ export class Engine {
       plans.set(m.id, plan(this.keeperInput(o, record, now, settings)));
     }
 
-    const nodes = members.map((m) => this.treeNode(m, observed, settings));
+    const nodes = members.map((m) => this.treeNode(m, observed, settings, logs.get(m.id)));
     const tree = planTree(nodes, now);
     for (const [id, o] of observed) this.views.set(id, this.view(o, this.deps.store.get(id), plans.get(id)!, tree, settings));
 
@@ -507,7 +507,11 @@ export class Engine {
           requests = read?.requests ?? [];
           price = read?.price ?? null;
         }
-        const own = requestsIn(requests, turn.startedAt, turn.endedAt!);
+        // The transcript's clock may be a little off bb's, but a request is never the turn's before the one before ended, or after the next began.
+        const index = log.turns.indexOf(turn);
+        const from = Math.max(turn.startedAt - TURN_SLACK_MS, log.turns[index - 1]?.endedAt ?? -Infinity);
+        const to = Math.min(turn.endedAt! + TURN_SLACK_MS, log.turns[index + 1]?.startedAt ?? Infinity);
+        const own = requestsIn(requests, from, to, 0);
         // `/compact` writes no usage to the transcript: a turn with no request found is left at its estimate.
         const usd = price === null || own.length === 0 ? null : requestsUsd(own, price.price);
         if (turn.inputs.every((i) => i.kind === "report")) {
@@ -788,13 +792,21 @@ export class Engine {
     return last !== null && last.measured ? Math.max(last.usd, estimate) : estimate;
   }
 
-  private treeNode(m: ListedThread, observed: Map<string, Observed>, settings: KeeperSettings): TreeNode {
+  /**
+   * A thread as the tree planner reads it. A thread running a turn a Cache
+   * Keeper message or a report started counts as in flight whether or not
+   * this pass observed it: the cycle it belongs to has not landed yet.
+   */
+  private treeNode(m: ListedThread, observed: Map<string, Observed>, settings: KeeperSettings, log: TurnLog | undefined): TreeNode {
     const o = observed.get(m.id);
     const parentId = m.parentThreadId !== null && this.threads.has(m.parentThreadId) ? m.parentThreadId : null;
-    if (o === undefined) {
-      return { id: m.id, parentId, keepable: false, deadline: null, lifetimeMs: null, blocks: false, selfOff: false, inFlight: false, reportPending: false };
-    }
+    const running = log?.turns.at(-1);
+    const cycleTurn = running !== undefined && running.endedAt === null && running.inputs.some((i) => i.kind !== "other");
     const record = this.deps.store.get(m.id);
+    const inFlight = cycleTurn || (this.deps.store.has(m.id) && record.inFlight !== null);
+    if (o === undefined) {
+      return { id: m.id, parentId, keepable: false, deadline: null, lifetimeMs: null, blocks: false, selfOff: false, inFlight, reportPending: false };
+    }
     const stretch = record.stretch;
     const context = o.facts?.context ?? null;
     const forecast = this.forecast(m.id, observed);
@@ -807,7 +819,7 @@ export class Engine {
       lifetimeMs: o.lifetimeMs,
       blocks: stretch !== null && (stretch.warmSkipped || pastCostStop(charged, forecast, o.rates, context)),
       selfOff: scheduledBeyondStop({ items: o.items, chargedUsd: charged, forecastUsd: forecast, rates: o.rates, context, deadline: o.deadline, lifetimeMs: o.lifetimeMs }),
-      inFlight: record.inFlight !== null,
+      inFlight,
       reportPending: o.pendingReports.length > 0,
     };
   }
