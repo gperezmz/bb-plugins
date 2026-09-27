@@ -93,11 +93,11 @@ A one-line turn Cache Keeper sends a thread whose turn has ended while it still 
 _Avoid_: Ping, heartbeat
 
 **Family keep-warm**:
-The keep-warms Cache Keeper sends at the same moment to a waiting parent and its waiting children whose deadlines fall close together, so the children's reports reach the parent as one batched turn that keeps it warm.
+The keep-warms Cache Keeper sends at the same moment to the waiting threads at the bottom of a waiting tree, early enough that their reports climb to every thread above and keep it warm in one batched turn each.
 _Avoid_: Group ping, batch keep-warm
 
 **Check-in**:
-A turn Cache Keeper sends a thread whose turn has ended about its own background command or subagent, after no output for a while or on a routine interval. It asks the agent to check the work, fix it if needed and carry on.
+A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work, fix it if needed and carry on.
 _Avoid_: Nudge
 
 **Stalled task**:
@@ -125,5 +125,5 @@ A thread with a background command or subagent running, a queued or scheduled me
 _Avoid_: Blocked, on hold
 
 **Cost stop**:
-The point in an idle stretch past which Cache Keeper sends a thread no more keep-warms or routine check-ins: when their estimated cost, with the parent turns their reports cause that the parent did not need, reaches that of rewriting its context cold. Check-ins on a stalled task still go.
+The point in an idle stretch past which Cache Keeper sends a thread no more keep-warms: when their real cost, with its share of the turns their reports force in the threads above, would pass that of rewriting its context cold. Check-ins on a stalled task still go.
 _Avoid_: Budget, cap
