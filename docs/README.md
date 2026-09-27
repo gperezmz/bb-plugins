@@ -1,6 +1,6 @@
 # bb plugins
 
-Five plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Pocket Navigation**, draws bb's sidebar navigation as one row of icons and a New thread line on a phone, where bb's own takes six full-width rows. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Pocket Navigation**, draws bb's sidebar navigation as one row of icons and a New thread line on a phone, where bb's own takes six full-width rows. The sixth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -37,6 +37,11 @@ flowchart LR
   pn["Pocket Navigation"]
   ui -->|navigation entries and settings| pn
   pn -->|sidebar navigation on a phone| ui
+  ck["Cache Keeper"]
+  events -->|thread status and background work| ck
+  logs -->|cache lifetime and context| ck
+  ck -->|compactions, keep-warms, check-ins| events
+  ck -->|composer chip and banner, Cache Keeper page| ui
 ```
 
 The pages each plugin's behaviour rests on:
@@ -46,6 +51,7 @@ The pages each plugin's behaviour rests on:
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
+- [When Cache Keeper acts](explanation/cache-keeper-timing.md): the deadline, the compaction line, waiting and the cost stop.
 
 ## Map
 
@@ -67,6 +73,7 @@ The pages each plugin's behaviour rests on:
 - [Approve your team's commands](how-to/team-onboarding-approve-commands.md)
 - [Title threads with a local model](how-to/openai-inference-local-server.md)
 - [Switch the sidebar navigation between Pocket Navigation and bb's](how-to/pocket-navigation-switch-navigation.md)
+- [Compact a thread when it goes idle](how-to/cache-keeper-compact-a-thread.md)
 
 **Reference** lists every part, one entry each.
 
@@ -81,6 +88,8 @@ The pages each plugin's behaviour rests on:
 - [Team Onboarding: items, statuses and safe fixes](reference/team-onboarding-items.md)
 - [Team Onboarding: manifest](reference/team-onboarding-manifest.md)
 - [OpenAI-compatible inference: endpoints, settings and failures](reference/openai-inference-settings.md)
+- [Cache Keeper: settings, surfaces and messages](reference/cache-keeper-settings.md)
+- [Cache Keeper: `bb cache-keeper` and the agent tool](reference/cache-keeper-cli.md)
 
 **Explanation** says why things work the way they do.
 
@@ -89,3 +98,4 @@ The pages each plugin's behaviour rests on:
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
 - [How an AI task is sent](explanation/openai-inference-requests.md)
+- [When Cache Keeper acts](explanation/cache-keeper-timing.md)

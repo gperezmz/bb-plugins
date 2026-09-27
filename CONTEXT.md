@@ -97,5 +97,29 @@ A turn Cache Keeper sends a thread whose turn has ended about its own background
 _Avoid_: Nudge
 
 **Stalled task**:
-A background command or subagent with no new output or progress for the check-in wait.
+A background command or subagent with no new output or progress for the no-output wait.
 _Avoid_: Quiet task, stuck task
+
+**No-output wait**:
+How long a background command or subagent may go without output or progress before it is a stalled task: 10, 15 or 30 minutes, set in Cache Keeper's settings.
+_Avoid_: Check-in wait, stall timeout
+
+**Compact when idle**:
+Cache Keeper's per-thread switch that has a thread compacted at its deadline when its turn ends at or above its compaction line.
+_Avoid_: Auto-compact, idle compact
+
+**Deadline**:
+The moment Cache Keeper acts on a thread: its most recent request's time plus its cache lifetime, minus one minute.
+_Avoid_: Expiry, TTL, timer
+
+**Idle stretch**:
+A thread's time from turning idle until it next becomes active for anything other than a message Cache Keeper sent.
+_Avoid_: Idle period, idle session
+
+**Waiting**:
+A thread with a background command or subagent running, a queued or scheduled message, or a direct child thread still working or itself waiting.
+_Avoid_: Blocked, on hold
+
+**Cost stop**:
+The point in an idle stretch past which Cache Keeper sends a thread no more keep-warms or check-ins: when their estimated cost reaches that of rewriting its context cold.
+_Avoid_: Budget, cap
