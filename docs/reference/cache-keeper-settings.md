@@ -8,11 +8,12 @@ Under Settings → Plugins → Cache Keeper, or `bb plugin config cache-keeper`.
 
 | Setting | Key | Default | Meaning |
 |---|---|---|---|
-| Check in on background work | `checkIns` | on | Keep-warms and check-ins on every Claude Code thread. Off sends neither and shows no waiting banner or clock |
+| Keep caches warm while waiting | `keepWarm` | `Only threads switched on` | Which thread trees get keep-warms while their switch is untouched: `Every waiting thread`, `Only threads switched on` (none) or `Never`. Under `Never` no tree gets them, whatever its switch records. See [which trees are kept warm](../explanation/cache-keeper-timing.md#which-trees-are-kept-warm) |
+| Check in on stalled background work | `stalledCheckIns` | on | Check-ins on a stalled task, on every Claude Code thread, whatever its switch or the setting above says. Off sends none, and no keep-warm asks about a task running 30 minutes or more |
 | No-output wait | `noOutputWait` | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a background command or subagent gets a check-in |
 | Fetch current prices daily | `fetchPrices` | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
 
-Compact when idle has no setting: it is switched on per thread, from its chip, `bb cache-keeper on` or the agent tool, and stays on until switched off.
+Compact when idle has no setting: it is switched on per thread, from its chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect on the next pass, without a restart.
 
 ## In a thread
 
@@ -20,10 +21,10 @@ Only on Claude Code threads.
 
 | Surface | Shows |
 |---|---|
-| Composer chip | Compaction only: the icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence |
-| Chip popover | The switch; the line's sentence; a bar from 0 to the context window, filled to the context now, with a handle at the line (drag it between the ten settings, or click its size to type one such as `500k`); `now {context} · {status}`; the model, cache lifetime and calls per message the line rests on; a folded "Why {line}?" with the dollar figures. Where no size up to the window gives a line, the sentence says so (and whether a lower setting would give one, or none does, or the model has no price) and the fold is "Why never?", with the same figures at the whole window |
+| Composer chip | Compaction only: the icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings |
+| Chip popover | **Keep warm while waiting**, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never`. Then **Compact when idle**: its switch; the line's sentence; a bar from 0 to the context window, filled to the context now, with a handle at the line (drag it between the ten settings, or click its size to type one such as `500k`); `now {context} · {status}`; the model, cache lifetime and calls per message the line rests on; a folded "Why {line}?" with the dollar figures. Where no size up to the window gives a line, the sentence says so (and whether a lower setting would give one, or none does, or the model has no price) and the fold is "Why never?", with the same figures at the whole window |
 | Banner | One line above the composer, with no tooltip; see [the banner](#the-banner) |
-| Sidebar row | Cache Keeper's icon in place of the status glyph while a compaction is due; a clock while a keep-warm is planned for the thread or a thread below it |
+| Sidebar row | Cache Keeper's icon in place of the status glyph while a compaction is due; a clock while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
 
 **Compact now** compacts whatever the size, provided the thread is idle, waits on no answer and is not waiting.
 
@@ -35,15 +36,17 @@ Shown only on an idle thread that waits on no answer, and never with command tex
 |---|---|---|
 | A compaction is due | `Compacting in {n}m, before the cache goes cold` | **Skip**, **Compact now** |
 | After Skip on a compaction | `Skipped until this thread next runs` | **Undo** |
-| Waiting, and a keep-warm is planned for the thread or for a thread below it whose report will reach it | `Waiting on {counts}, keeping cache warm` | **Skip** |
-| Waiting, and the cost stop or a Skip above means none is planned | `Waiting on {counts}, letting cache go cold` | none |
-| After Skip on keep-warms | `Skipped for this wait` | **Undo** |
+| Waiting in a tree kept warm, and a keep-warm is planned for the thread or for a thread below it whose report will reach it | `Waiting on {counts}, keeping cache warm` | **Skip** |
+| Waiting in a tree kept warm, and none is planned: past the cost stop, after a Skip above, or with the cache already cold | `Waiting on {counts}, letting cache go cold` | none |
+| Waiting in a tree kept warm, after Skip on keep-warms | `Skipped for this wait` | **Undo** |
+| Waiting, with the tree top's switch off | `Waiting on {counts}, not keeping cache warm` | **Keep warm** |
+| Waiting, under `Never` | `Waiting on {counts}, keep-warms are off in Settings` | none |
 
-`{counts}` is `N thread(s)`, `N command(s)`, `N subagent(s)`, `N queued message(s)` and `N scheduled message(s)`, in that order, leaving out kinds with none, joined as "A", "A and B" or "A, B and C". Skip on keep-warms stops them for this thread and every thread below it until the wait ends; check-ins on a stalled task still go.
+`{counts}` is `N thread(s)`, `N command(s)`, `N subagent(s)`, `N queued message(s)` and `N scheduled message(s)`, in that order, leaving out kinds with none, joined as "A", "A and B" or "A, B and C". Skip on keep-warms stops them for this thread and every thread below it until the wait ends, and leaves the switch as it is; check-ins on a stalled task still go. **Keep warm** switches the tree top's switch on, from any thread in the tree, and the banner changes to `keeping cache warm`. Where the thread's cache went cold before you pressed it, keep-warms cannot warm it again: the banner reads `letting cache go cold` until the next request, whoever makes it, warms the cache, and keep-warms go from then on.
 
 ## The Cache Keeper page
 
-The **Cache Keeper** entry in the sidebar lists the threads with compact when idle on (line, context, status), the threads waiting now (on what, and the next keep-warm), what was sent recently, and totals for the last 30 days: compactions and their cost, keep-warms and check-ins and theirs, and the cold rewrites avoided on first messages back. A return counts as avoided only when it came after the cache would have gone cold.
+The **Cache Keeper** entry in the sidebar lists the threads with compact when idle on (line, context, status), every idle thread waiting now (on what, and the next keep-warm, or `off` where its tree is not kept warm), what was sent recently, and totals for the last 30 days: compactions and their cost, keep-warms and check-ins and theirs, and the cold rewrites avoided on first messages back. A return counts as avoided only when it came after the cache would have gone cold.
 
 Each entry in the recent list is one send, with its real cost once its turns have run, including the report turns it forced in the threads above; hovering the cost shows how it fell between threads. A compaction shows its estimate, since `/compact` writes no usage to the transcript, and a check-in sent past the cost stop shows the cold-write price.
 
@@ -102,4 +105,4 @@ If nothing is wrong, reply with exactly "Checked {task ids}, still running norma
 
 ## What it stores
 
-`<data dir>/plugins/cache-keeper/` holds, in SQLite: each thread's switch, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's turns in bb's event history, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, and the fetched price lists. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.
+`<data dir>/plugins/cache-keeper/` holds, in SQLite: each thread's switches, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's turns in bb's event history, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, and the fetched price lists. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.

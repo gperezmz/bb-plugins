@@ -8,7 +8,8 @@ flowchart TB
   question -->|yes| nothing["Nothing"]
   question -->|no| waiting{"Waiting on background work, a child thread,<br/>a report on its way or a queued message?"}
   waiting -->|yes| stalled["Check-in on a stalled task, at once"]
-  waiting -->|yes| warm["Keep-warm with its tree,<br/>until the cost stop or Skip"]
+  waiting -->|yes| kept{"Its tree kept warm?"}
+  kept -->|yes| warm["Keep-warm with its tree,<br/>until the cost stop or Skip"]
   waiting -->|no| on{"Compact when idle on,<br/>and the context at or over the line?"}
   on -->|yes| compact["/compact at the deadline,<br/>once per idle stretch"]
   on -->|no| nothing
@@ -59,6 +60,22 @@ When no context up to the model's window satisfies it, the line is "never". The 
 
 Prices come from LiteLLM's public list, then models.dev, then the LiteLLM list bundled with the plugin, fetched daily while [Fetch current prices daily](../reference/cache-keeper-settings.md) is on.
 
+## Which trees are kept warm
+
+**Keep warm while waiting** is a switch on each **tree top**: a Claude Code thread with no Claude Code thread above it. It covers the tree top and every Claude Code thread below it, including threads spawned after it was set. A tree whose root is not a Claude Code thread has one tree top per Claude Code branch, each switched on its own, since only Claude Code threads have the chip and get keep-warms.
+
+```mermaid
+flowchart TB
+  root["Root, not Claude Code"] --> a["Claude Code: tree top"]
+  root --> b["Not Claude Code"]
+  b --> c["Claude Code: tree top"]
+  a --> a1["Claude Code, covered by the first tree top"]
+```
+
+A tree top nobody has flipped follows the "Keep caches warm while waiting" [setting](../reference/cache-keeper-settings.md#settings): on under `Every waiting thread`, off under `Only threads switched on`, the default. Flipping it records on or off on the tree top, which decides from then on under either value, across restarts, until it is flipped again. Under `Never` no tree is kept warm whatever its tree top records, and switching back restores each record. The switch is set on the tree top rather than per thread because a tree is kept warm as one: a keep-warm below forces report turns in every thread above.
+
+A tree not kept warm gets no keep-warms, so nothing is charged to it but its check-ins, which go [as below](#check-ins) either way.
+
 ## Keeping a thread tree warm
 
 bb reports every turn a child thread ends to its parent, and the parent's turn on that report refreshes its cache, whoever started the child's turn. A keep-warm sent to a waiting thread at the bottom of a **thread tree** therefore keeps every waiting thread above it warm too. Cache Keeper sends keep-warms only to those leaves, all at once, as one **tree keep-warm**, so the reports climb and each thread above takes one batched report turn per cycle rather than one per child.
@@ -84,9 +101,9 @@ A keep-warm is unconditional: it tells the agent there is nothing to check and a
 
 ## Check-ins
 
-A background command or subagent that has printed or progressed nothing for the no-output wait is a **stalled task**. The thread that owns it, at any depth, gets a **check-in** within a few seconds, or as soon as its turn ends if it was working: a turn asking the agent to look at the task and fix it if it is stuck. Each further check-in on a task that stays stalled waits twice as long as the one before. A parent never checks in on its children's tasks: only the thread running a task can see it stuck.
+A background command or subagent that has printed or progressed nothing for the no-output wait is a **stalled task**. The thread that owns it, at any depth, gets a **check-in** within a few seconds, whether or not its tree is kept warm and whatever the keep-warm setting, or as soon as its turn ends if it was working: a turn asking the agent to look at the task and fix it if it is stuck. Each further check-in on a task that stays stalled waits twice as long as the one before. A parent never checks in on its children's tasks: only the thread running a task can see it stuck.
 
-A task that keeps printing gets no turn of its own. Once it has run 30 minutes, and every 30 minutes after, the thread's next keep-warm also asks the agent to look at it. Such a keep-warm, like a check-in, asks for the nothing-new reply "Checked {tasks}, still running normally, nothing new. Nothing needed from you.", which Cache Keeper recognises by its shape: it starts "Checked", names every task asked about and ends "nothing new. Nothing needed from you."
+A task that keeps printing gets no turn of its own. Once it has run 30 minutes, and every 30 minutes after, the thread's next keep-warm also asks the agent to look at it. With "Check in on stalled background work" off, no check-in goes, and no keep-warm asks about a task. Such a keep-warm, like a check-in, asks for the nothing-new reply "Checked {tasks}, still running normally, nothing new. Nothing needed from you.", which Cache Keeper recognises by its shape: it starts "Checked", names every task asked about and ends "nothing new. Nothing needed from you."
 
 ## The cost stop
 

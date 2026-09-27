@@ -3,7 +3,8 @@
 Keeps idle Claude Code threads in [bb](https://getbb.app) cheap to come back to. A thread's prompt cache lasts 5 minutes or 1 hour; come back after it expires and your first message rewrites the whole context into the cache and reads it again on every call after. Cache Keeper acts in the minute before that, and only once a thread's turn has ended.
 
 - **Compact when idle**, switched on per thread from the chip in its composer: a thread that stops at or above its compaction line is sent `/compact` just before its cache goes cold, so the compaction reads a warm cache and your next message starts from the summary.
-- **Keep-warms and check-ins**, on every Claude Code thread: a thread whose turn ends while it waits on a background command, a subagent, a child thread or a scheduled message is kept warm until it wakes, and a background task that stops printing gets a check-in asking the agent to fix it and carry on.
+- **Keep warm while waiting**, switched per thread tree from the chip on its topmost Claude Code thread, the banner or `bb cache-keeper keep-warm`: a thread in a tree switched on whose turn ends while it waits on a background command, a subagent, a child thread or a scheduled message is kept warm until it wakes. By default no tree is kept warm until you switch it on; a setting can keep every waiting thread warm, or none.
+- **Check-ins**, on every Claude Code thread by default, whatever its tree's switch: a background task that stops printing gets a check-in asking the agent to fix it and carry on.
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin cache-keeper

@@ -132,6 +132,10 @@ _Avoid_: Auto-compact, idle compact
 Cache Keeper's switch on the topmost Claude Code thread of a thread tree that has keep-warms sent to it and every thread below it while they wait. Until you flip it, it follows the "Keep caches warm while waiting" setting.
 _Avoid_: Keep-warm switch, warm toggle
 
+**Tree top**:
+A Claude Code thread with no Claude Code thread above it, where a thread tree's Keep warm while waiting switch sits; a tree whose root is not a Claude Code thread has one per Claude Code branch.
+_Avoid_: Top thread, branch top
+
 **Deadline**:
 The moment Cache Keeper acts on a thread: its most recent request's time plus its cache lifetime, minus one minute.
 _Avoid_: Expiry, TTL, timer
