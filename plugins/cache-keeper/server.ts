@@ -8,7 +8,7 @@ import { PriceBook } from "./src/core/pricing";
 import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
 import { TURN_EVENT_TYPES, type BbEvent } from "./src/core/turns";
-import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, type ListedThread, type QueuedRow, type TaskEvent } from "./src/server/engine";
+import { ClaudeOnlyError, DAY_MS, Engine, EVENTS_PAGE, NotReadyError, queuedRowOf, type ListedThread, type QueuedRow, type TaskEvent } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
 import { rpcContract, type Overview } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -77,22 +77,8 @@ export default async function plugin(bb: BbPluginApi) {
     },
     async queuedMessages(threadId): Promise<QueuedRow[]> {
       const listed = (await bb.sdk.threads.queuedMessages.list({ threadId })) as unknown;
-      const rows = (Array.isArray(listed) ? listed : ((listed as { messages?: unknown[] }).messages ?? [])) as {
-        id: string;
-        sendAt: number | null;
-        createdAt: number;
-        failureReason: string | null;
-        initiator: string;
-        content: unknown[];
-      }[];
-      return rows.map((r) => ({
-        id: r.id,
-        sendAt: r.sendAt,
-        createdAt: r.createdAt,
-        failed: r.failureReason !== null,
-        system: r.initiator === "system",
-        content: Array.isArray(r.content) ? r.content : [],
-      }));
+      const rows = Array.isArray(listed) ? listed : ((listed as { messages?: unknown[] }).messages ?? []);
+      return rows.map(queuedRowOf);
     },
     async deleteQueued(threadId, queuedMessageId) {
       await bb.sdk.threads.queuedMessages.delete({ threadId, queuedMessageId });

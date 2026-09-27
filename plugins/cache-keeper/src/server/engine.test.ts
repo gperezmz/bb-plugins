@@ -1,10 +1,11 @@
+import type { PluginBbSdk } from "@get-bb/plugin-sdk";
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { COMPACT_MESSAGE } from "../core/messages";
 import { PriceBook } from "../core/pricing";
 import { EMPTY_FACTS, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import type { BbEvent } from "../core/turns";
-import { ClaudeOnlyError, Engine, EVENTS_PAGE, NotReadyError, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
+import { ClaudeOnlyError, Engine, EVENTS_PAGE, NotReadyError, queuedRowOf, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
 import { MIGRATIONS, Store } from "./store";
 
 const S = 1_000;
@@ -44,6 +45,18 @@ const thread = (over: Partial<ListedThread> & { id: string }): ListedThread => (
   ...over,
 });
 
+/** The fields of bb's `client/turn/requested` event that say who sent a request and what it reports, from the SDK's `threadEventSchema`. */
+type Requested = Pick<
+  Extract<Awaited<ReturnType<PluginBbSdk["threads"]["events"]["list"]>>[number], { type: "client/turn/requested" }>["data"],
+  "initiator" | "input" | "systemMessageKind" | "systemMessageSubject"
+>;
+/** A row of bb's queue, in the fields Cache Keeper reads, from the SDK's `threadQueuedMessageSchema`. */
+type SdkQueuedRow = Pick<Awaited<ReturnType<PluginBbSdk["threads"]["queuedMessages"]["list"]>>[number], "id" | "sendAt" | "createdAt" | "failureReason" | "initiator" | "content">;
+
+/** A queued row as bb lists it, read the way the server reads it. */
+const queued = (over: Partial<SdkQueuedRow> & { id: string; createdAt: number }): QueuedRow =>
+  queuedRowOf({ sendAt: null, failureReason: null, initiator: "user", content: [], ...over } satisfies SdkQueuedRow);
+
 const busy = { activeBackgroundCommandCount: 1, activeBackgroundAgentCount: 0 };
 
 /** One thread's side of the fake bb: its events, its transcript and its queue. */
@@ -71,9 +84,12 @@ class Harness {
   outputs = new Map<string, number>();
   sent: { threadId: string; text: string; marker: unknown; ran: boolean }[] = [];
   deleted: string[] = [];
+  warnings: string[] = [];
   checkIns = true;
   failTasks = false;
   failEvents = false;
+  /** What bb puts on each report it delivers; a test changes it to drop a field. */
+  reportFields = (r: Requested): Requested => r;
   /** Replies by thread, overriding the one the message asked for. */
   replies = new Map<string, string>();
   db = new Database(":memory:");
@@ -123,7 +139,7 @@ class Harness {
         this.sent.push({ threadId, text, marker, ran: false });
         // bb takes a plugin's send as the user's, and marks the thread read.
         this.patch(threadId, { lastReadAt: this.now });
-        this.request(threadId, this.now, [{ type: "text", text, mentions: [] }], "user");
+        this.request(threadId, this.now, { initiator: "user", input: [{ type: "text", text, mentions: [] }] });
       },
       readState: async (id) => {
         const t = this.get(id);
@@ -132,7 +148,7 @@ class Harness {
       markRead: async (id) => this.patch(id, { lastReadAt: this.now }),
       markUnread: async (id) => this.patch(id, { lastReadAt: null }),
       publish: () => {},
-      log: { info: () => {}, warn: () => {} },
+      log: { info: () => {}, warn: (m) => this.warnings.push(m) },
     };
     return new Engine(deps);
   }
@@ -165,9 +181,9 @@ class Harness {
     this.side(id).events.push({ seq: ++this.seq, type, createdAt: at, data });
   }
 
-  private request(id: string, at: number, input: unknown[], initiator: string): string {
+  request(id: string, at: number, fields: Requested): string {
     const requestId = `creq_${++this.req}`;
-    this.event(id, "client/turn/requested", at, { requestId, initiator, input, target: { kind: "new-turn" } });
+    this.event(id, "client/turn/requested", at, { requestId, ...fields, target: { kind: "new-turn" } });
     return requestId;
   }
 
@@ -199,12 +215,12 @@ class Harness {
 
   /** bb's request of a report of `child` into `parent`, before the turn that takes it starts. */
   requestReport(parent: string, child: string) {
-    this.request(parent, this.now, reportInput([{ id: child, reply: this.lastReply(child) }]), "system");
+    this.request(parent, this.now, reportRequest([{ id: child, reply: this.lastReply(child) }]));
   }
 
   /** A message you type, and its turn. */
   typed(id: string, text: string) {
-    const r = this.request(id, this.now, [{ type: "text", text, mentions: [] }], "user");
+    const r = this.request(id, this.now, { initiator: "user", input: [{ type: "text", text, mentions: [] }] });
     this.patch(id, { lastReadAt: this.now });
     this.turn(id, this.now, [r], "Done.");
     this.side(id).facts = { ...this.side(id).facts, userMessages: this.side(id).facts.userMessages + 1 };
@@ -238,8 +254,7 @@ class Harness {
       }
       ended = new Map();
       for (const [parent, { children, at }] of byParent) {
-        const input = reportInput(children.map((c) => ({ id: c, reply: this.lastReply(c) })));
-        const r = this.request(parent, at, input, "system");
+        const r = this.request(parent, at, this.reportFields(reportRequest(children.map((c) => ({ id: c, reply: this.lastReply(c) })))));
         // bb tells plugins the parent turned active before its turn runs.
         this.now = at;
         await this.engine.onActive(parent);
@@ -273,22 +288,32 @@ class Harness {
   }
 }
 
-/** bb's report of child turns: one line with the reply, or a batch naming each. */
-function reportInput(children: { id: string; reply: string }[]): unknown[] {
+/** bb's report of child turns, as bb 0.44 requests it: one line with the reply, or a batch naming each. */
+function reportRequest(children: { id: string; reply: string }[]): Requested {
   if (children.length === 1) {
-    const mention = `@thread:${children[0]!.id}`;
-    return [{ type: "text", text: `[bb system]\n\n${mention} completed:\n\n${children[0]!.reply}`, mentions: [{ start: 13, end: 13 + mention.length, resource: { kind: "thread", threadId: children[0]!.id, label: children[0]!.id } }] }];
+    const c = children[0]!;
+    const mention = `@thread:${c.id}`;
+    return {
+      initiator: "system",
+      systemMessageKind: "child-completed",
+      systemMessageSubject: { kind: "thread", threadId: c.id, threadName: c.id },
+      input: [{ type: "text", text: `[bb system]\n\n${mention} completed:\n\n${c.reply}`, mentions: [{ start: 13, end: 13 + mention.length, resource: { kind: "thread", threadId: c.id, label: c.id } }] }],
+    };
   }
   let text = "[bb system]\n\nChild thread updates:\n\n";
-  const mentions: unknown[] = [];
+  const mentions: { start: number; end: number; resource: { kind: "thread"; threadId: string; label: string } }[] = [];
   children.forEach((c, i) => {
     text += i === 0 ? "- " : "\n- ";
     const mention = `@thread:${c.id}`;
     mentions.push({ start: text.length, end: text.length + mention.length, resource: { kind: "thread", threadId: c.id, label: c.id } });
     text += `${mention} completed.`;
   });
-  return [{ type: "text", text, mentions }];
+  return { initiator: "system", systemMessageKind: "child-outcome-batch", systemMessageSubject: { kind: "thread-batch", count: children.length }, input: [{ type: "text", text, mentions }] };
 }
+
+/** bb's queued report row, as it queues one behind a question: the report's text and mentions, and no kind. */
+const reportRow = (id: string, createdAt: number, children: { id: string; reply: string }[]) =>
+  queued({ id, createdAt, initiator: "system", content: reportRequest(children).input });
 
 let h: Harness;
 beforeEach(() => {
@@ -360,7 +385,7 @@ describe("compact when idle", () => {
     h.transcript("b", T0, 100_000, "5m");
     h.now = T0 + 240 * S;
     h.turn("a", h.now - 5 * S, [], "Finished the page.");
-    h.side("p").queued = [{ id: "row", sendAt: null, createdAt: h.now - 3 * S, failed: false, system: true, content: reportInput([{ id: "a", reply: "Finished the page." }]) }];
+    h.side("p").queued = [reportRow("row", h.now - 3 * S, [{ id: "a", reply: "Finished the page." }])];
     await h.engine.pass();
     expect(h.sent.map((x) => x.threadId)).toEqual(["b"]);
   });
@@ -404,7 +429,7 @@ describe("compact when idle", () => {
 
   it("compacts now under the line, but not while waiting", async () => {
     h.threads = [thread({ id: "t1" }), thread({ id: "t2", queuedWork: "waiting" })];
-    h.side("t2").queued = [{ id: "q1", sendAt: null, createdAt: T0, failed: false, system: false, content: [] }];
+    h.side("t2").queued = [queued({ id: "q1", createdAt: T0 })];
     h.transcript("t1", T0, 20_000);
     h.transcript("t2", T0, 20_000);
     await h.engine.compactNow("t1");
@@ -601,6 +626,22 @@ describe("keeping a thread tree warm", () => {
     expect(h.store.get("a").stretch!.chargedUsd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.p! / 2, 10);
   });
 
+  it("takes a report bb delivers without a kind as real, and logs it once", async () => {
+    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.transcript("p", T0, 100_000, "1h");
+    h.transcript("c", T0, 100_000, "5m");
+    h.reportFields = ({ systemMessageKind: _, ...r }) => r;
+    h.now = T0 + 240 * S;
+    await h.engine.pass();
+    const stretch = h.store.get("p").stretch!.startedAt;
+    await h.deliver();
+    await h.engine.pass();
+    expect(h.reportTurns("p")).toBe(1);
+    expect(h.warnings).toEqual([expect.stringMatching(/^request creq_\d+ into p: a system message mentioning a thread has no systemMessageKind/)]);
+    expect(h.store.get("p").stretch?.startedAt ?? null).not.toBe(stretch);
+    expect(h.store.get("p").keeperReports.turns).toBe(0);
+  });
+
   it("attributes the same way after a restart between the keep-warm and its report", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
     h.transcript("p", T0, 100_000, "1h");
@@ -690,13 +731,30 @@ describe("queued reports", () => {
     await h.deliver();
     // bb queued the report behind the question instead of delivering it.
     const report = h.side("p").events.filter((e) => e.type === "client/turn/requested").at(-1)!;
-    const row: QueuedRow = { id: "row1", sendAt: null, createdAt: h.now, failed: false, system: true, content: (report.data as { input: unknown[] }).input };
-    const news: QueuedRow = { ...row, id: "row2", content: reportInput([{ id: "x", reply: "done" }]) };
+    const row = queued({ id: "row1", createdAt: h.now, initiator: "system", content: (report.data as Requested).input });
+    const news = reportRow("row2", h.now, [{ id: "x", reply: "done" }]);
     h.side("p").events = h.side("p").events.slice(0, h.side("p").events.indexOf(report));
     h.side("p").queued = [row, news];
     h.now += S;
     await h.engine.pass();
     expect(h.deleted).toEqual(["row1"]);
+  });
+
+  it("never deletes a queued system row whose text does not start [bb system], whatever it mentions", async () => {
+    h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.transcript("p", T0, 100_000, "1h");
+    h.transcript("c", T0, 100_000, "5m");
+    h.now = T0 + 240 * S;
+    await h.engine.pass();
+    await h.deliver();
+    const report = h.side("p").events.filter((e) => e.type === "client/turn/requested").at(-1)!;
+    const [block] = (report.data as Requested).input as { type: "text"; text: string; mentions: unknown[] }[];
+    const reworded = queued({ id: "row1", createdAt: h.now, initiator: "system", content: [{ ...block!, text: block!.text.replace("[bb system]", "[bb]") }] as SdkQueuedRow["content"] });
+    h.side("p").events = h.side("p").events.slice(0, h.side("p").events.indexOf(report));
+    h.side("p").queued = [reworded];
+    h.now += S;
+    await h.engine.pass();
+    expect(h.deleted).toEqual([]);
   });
 
   it("deletes a nothing-new row queued behind a real one, and keeps the real one", async () => {
@@ -707,13 +765,13 @@ describe("queued reports", () => {
     // The child's own turn, with news, queued as a report behind the question.
     h.now = T0 + 20 * S;
     h.typed("c", "deploy it");
-    const real: QueuedRow = { id: "real", sendAt: null, createdAt: h.now + 3 * S, failed: false, system: true, content: reportInput([{ id: "c", reply: "Done." }]) };
+    const real = reportRow("real", h.now + 3 * S, [{ id: "c", reply: "Done." }]);
     h.side("p").queued = [real];
     h.now = T0 + 240 * S;
     h.transcript("c", T0 + 21 * S, 100_000, "5m");
     await h.run(T0 + 5 * MIN);
     const keepWarm = h.side("c").events.filter((e) => e.type === "turn/completed").at(-1)!;
-    const quiet: QueuedRow = { ...real, id: "quiet", createdAt: keepWarm.createdAt + 2 * S, content: reportInput([{ id: "c", reply: h.lastReply("c") }]) };
+    const quiet = reportRow("quiet", keepWarm.createdAt + 2 * S, [{ id: "c", reply: h.lastReply("c") }]);
     h.side("p").events = h.side("p").events.filter((e) => e.createdAt < T0 + 20 * S);
     h.side("p").queued = [real, quiet];
     h.now += S;
@@ -814,8 +872,8 @@ describe("waiting", () => {
   it("waits on a child whose queue holds a failed message beside a pending one", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", queuedWork: "failed" })];
     h.side("c").queued = [
-      { id: "q1", sendAt: null, createdAt: T0, failed: true, system: false, content: [] },
-      { id: "q2", sendAt: null, createdAt: T0, failed: false, system: false, content: [] },
+      queued({ id: "q1", createdAt: T0, failureReason: "delivery failed" }),
+      queued({ id: "q2", createdAt: T0 }),
     ];
     h.transcript("p", T0, 200_000);
     expect((await h.engine.viewOf("p"))?.waiting).toBe(true);

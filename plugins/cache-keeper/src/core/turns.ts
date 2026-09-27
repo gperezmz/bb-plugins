@@ -3,13 +3,20 @@
  * count as Cache Keeper's.
  *
  * bb writes a `client/turn/requested` event for every input it hands a
- * thread (its text, who sent it, and for a report the child threads it
- * names as mentions), then `turn/started`, one `turn/input/accepted` per
- * input the turn took, and `turn/completed`. A turn counts as Cache Keeper's
- * when every input it took is a message Cache Keeper sent, or a report of a
- * child's turn that itself counts as Cache Keeper's. Anything else, including
- * a turn with no input at all, or one a background task finished during
- * (Claude Code takes the finished task into the running turn), makes it real.
+ * thread (its text, who sent it, and for a report what kind of report it is
+ * and which child it is about), then `turn/started`, one
+ * `turn/input/accepted` per input the turn took, and `turn/completed`. A turn
+ * counts as Cache Keeper's when every input it took is a message Cache Keeper
+ * sent, or a report of a child's turn that itself counts as Cache Keeper's.
+ * Anything else, including a turn with no input at all, or one a background
+ * task finished during (Claude Code takes the finished task into the running
+ * turn), makes it real.
+ *
+ * A report is recognised by bb's `initiator` and `systemMessageKind` fields,
+ * never by its text, and each child it reports is judged by that child's own
+ * turn history, including how its turn ended. A queued report row carries no
+ * kind, so it is recognised by its `[bb system]` text and its mentions of the
+ * thread's children.
  *
  * bb 0.44 does not carry a send's `pluginSubmission` into its events, so a
  * send is recognised by its text: Cache Keeper's messages are fixed templates.
@@ -35,18 +42,25 @@ export const TURN_EVENT_TYPES = [
   "item/backgroundTask/completed",
 ] as const;
 
-/** One line of bb's report: a child's turn that ended, and whether it completed. */
+/** One child a report is about. */
 export interface ReportLine {
   childId: string;
-  completed: boolean;
+  /** Only on lines stored before reports were read by their kind: whether bb's text said the child's turn completed. */
+  completed?: boolean;
 }
+
+/** The kinds of bb's system messages that report a child's turn. */
+export const REPORT_KINDS = ["child-completed", "child-failed", "child-interrupted", "child-needs-attention", "child-outcome-batch"] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+/** bb's other system messages: they report no child's turn. */
+const OTHER_SYSTEM_KINDS = ["ownership-assigned", "ownership-removed", "tool-result-delivered", "unlabeled"];
 
 export type TurnInput =
   /** A message Cache Keeper sent. */
   | { kind: "sent"; text: string; at: number }
-  /** bb's report of child turns, requested at `at`. */
-  | { kind: "report"; lines: ReportLine[]; at: number }
-  /** Anything else: a message someone typed, another thread's, a report of a failure. */
+  /** bb's report of child turns, requested at `at`; `report` is absent on reports stored before it was read. */
+  | { kind: "report"; report?: ReportKind; lines: ReportLine[]; at: number }
+  /** Anything else: a message someone typed, another thread's, a notice that reports no child. */
   | { kind: "other" };
 
 export interface Turn {
@@ -83,36 +97,90 @@ const rec = (v: unknown): Json => (v !== null && typeof v === "object" && !Array
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
-/** The text and thread mentions of one input group. */
-function groupOf(blocks: unknown[]): { text: string; mentions: { at: number; threadId: string }[] } {
+/** The text of one input group and the threads it mentions. */
+function groupOf(blocks: unknown[]): { text: string; mentions: string[] } {
   let text = "";
-  const mentions: { at: number; threadId: string }[] = [];
+  const mentions: string[] = [];
   for (const block of blocks.map(rec)) {
     if (block.type !== "text") continue;
-    const offset = text.length;
     text += str(block.text) ?? "";
     for (const m of arr(block.mentions).map(rec)) {
       const resource = rec(m.resource);
       const threadId = str(resource.threadId);
-      if (resource.kind === "thread" && threadId !== null && typeof m.end === "number") mentions.push({ at: offset + m.end, threadId });
+      if (resource.kind === "thread" && threadId !== null && !mentions.includes(threadId)) mentions.push(threadId);
     }
   }
   return { text, mentions };
 }
 
-/** What one input group is (prompt blocks as bb records them): a Cache Keeper message, a report of child turns, or anything else. */
-export function classify(blocks: unknown[], at: number): TurnInput {
+/** What the fold knows of the thread whose history it reads. */
+export interface ThreadContext {
+  threadId: string;
+  /** Whether `id` is a child of this thread, one level down. */
+  isChild(id: string): boolean;
+  /** Told of each input the fold cannot read as bb's fields say it should be; the input counts as other. */
+  warn(message: string): void;
+}
+
+/** The fields of a `client/turn/requested` event that say who sent it and what it reports. */
+export interface RequestFields {
+  requestId: string;
+  initiator: string | null;
+  systemMessageKind: string | null;
+  /** The child a single report is about. */
+  subjectThreadId: string | null;
+}
+
+/**
+ * What one input group of a request is (prompt blocks as bb records them): a
+ * Cache Keeper message, a report of child turns, or anything else.
+ */
+export function classify(blocks: unknown[], at: number, request: RequestFields, thread: ThreadContext): TurnInput {
   const { text, mentions } = groupOf(blocks);
-  if (sentKind(text) !== null) return { kind: "sent", text: text.trim(), at };
-  // A report's text is bb's template; each child is a mention followed by its status.
-  if (text.startsWith("[bb system]") && mentions.length > 0) {
-    return { kind: "report", at, lines: mentions.map((m) => ({ childId: m.threadId, completed: text.startsWith(" completed", m.at) })) };
+  const where = `request ${request.requestId} into ${thread.threadId}`;
+  if (request.initiator === "system") {
+    const kind = request.systemMessageKind;
+    if (REPORT_KINDS.some((k) => k === kind)) {
+      const report = kind as ReportKind;
+      const children = report === "child-outcome-batch" ? mentions.filter((id) => thread.isChild(id)) : request.subjectThreadId === null ? [] : [request.subjectThreadId];
+      if (children.length === 0) {
+        thread.warn(`${where}: bb's ${report} report names no child thread; its turn counts as real`);
+        return { kind: "other" };
+      }
+      return { kind: "report", report, at, lines: children.map((childId) => ({ childId })) };
+    }
+    if (kind !== null && OTHER_SYSTEM_KINDS.includes(kind)) return { kind: "other" };
+    if (mentions.length > 0) {
+      thread.warn(`${where}: a system message mentioning a thread has ${kind === null ? "no systemMessageKind" : `the unknown systemMessageKind "${kind}"`}; it is not read as a report`);
+    }
+    return { kind: "other" };
   }
+  if (sentKind(text) !== null) return { kind: "sent", text: text.trim(), at };
   return { kind: "other" };
 }
 
+/** A queued row as `threads.queuedMessages.list` gives it, in the fields read here. */
+export interface QueuedReportRow {
+  createdAt: number;
+  failed: boolean;
+  /** bb queued it itself. */
+  system: boolean;
+  content: unknown[];
+}
+
+/**
+ * Whether a queued row is bb's report of child turns. bb's queued rows carry
+ * no `systemMessageKind`, so a report is told by its `[bb system]` text; it
+ * names each child of the thread it mentions, and no other thread.
+ */
+export function classifyQueued(row: QueuedReportRow, isChild: (id: string) => boolean): TurnInput {
+  const { text, mentions } = groupOf(row.content);
+  if (!row.system || row.failed || !text.startsWith("[bb system]") || mentions.length === 0) return { kind: "other" };
+  return { kind: "report", at: row.createdAt, lines: mentions.filter(isChild).map((childId) => ({ childId })) };
+}
+
 /** Folds events, oldest first, into the log. */
-export function foldTurns(log: TurnLog, events: readonly BbEvent[]): TurnLog {
+export function foldTurns(log: TurnLog, events: readonly BbEvent[], thread: ThreadContext): TurnLog {
   const requests = { ...log.requests };
   const turns = log.turns.map((t) => ({ ...t, inputs: [...t.inputs] }));
   const delivered = [...log.delivered];
@@ -130,7 +198,14 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[]): TurnLog {
         const requestId = str(data.requestId);
         if (requestId === null) break;
         const groups = arr(data.inputGroups).length > 0 ? arr(data.inputGroups).map(arr) : [arr(data.input)];
-        const inputs = groups.map((g) => classify(g, e.createdAt));
+        const subject = rec(data.systemMessageSubject);
+        const fields: RequestFields = {
+          requestId,
+          initiator: str(data.initiator),
+          systemMessageKind: str(data.systemMessageKind),
+          subjectThreadId: subject.kind === "thread" ? str(subject.threadId) : null,
+        };
+        const inputs = groups.map((g) => classify(g, e.createdAt, fields, thread));
         requests[requestId] = { at: e.createdAt, inputs };
         for (const input of inputs) if (input.kind === "report") for (const line of input.lines) delivered.push({ childId: line.childId, at: e.createdAt });
         break;
@@ -203,19 +278,26 @@ export function reportedTurns(parent: TurnLog | null, child: TurnLog | null, chi
 /** Report lines deeper than this are taken as real: bb's trees are never this deep. */
 const MAX_DEPTH = 32;
 
+/** Reports whose kind alone says the child's turn did not end as asked: the turn that takes one is real. */
+const REAL_REPORTS: readonly (ReportKind | undefined)[] = ["child-failed", "child-interrupted", "child-needs-attention"];
+
 /**
- * Whether every report line of the turn holds by `test` for each child turn
- * it may stand for. A line that cannot be traced, or reports a failure, does
- * not: an unknown line is taken as news.
+ * Whether a report line holds by `test`: every child turn it may stand for
+ * completed and passes. A line of a failure, one that cannot be traced, or
+ * one stored as not completed does not: an unknown line is taken as news.
  */
+export function lineHolds(parent: TurnLog | null, child: TurnLog | null, line: ReportLine, at: number, test: (t: Turn) => boolean): boolean {
+  if (line.completed === false) return false;
+  const candidates = reportedTurns(parent, child, line.childId, at);
+  return candidates.length > 0 && candidates.every((t) => t.status === "completed" && test(t));
+}
+
+/** Whether every report line of the turn holds by `test`. */
 function linesHold(threadId: string, turn: Turn, lookup: LogLookup, test: (childId: string, t: Turn) => boolean): boolean {
   return turn.inputs.every((input) => {
     if (input.kind !== "report") return true;
-    return input.lines.every((line) => {
-      if (!line.completed) return false;
-      const candidates = reportedTurns(lookup(threadId), lookup(line.childId), line.childId, input.at);
-      return candidates.length > 0 && candidates.every((t) => test(line.childId, t));
-    });
+    if (REAL_REPORTS.includes(input.report)) return false;
+    return input.lines.every((line) => lineHolds(lookup(threadId), lookup(line.childId), line, input.at, (t) => test(line.childId, t)));
   });
 }
 
