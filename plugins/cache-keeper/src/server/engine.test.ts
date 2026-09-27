@@ -202,7 +202,7 @@ describe("keep-warms and check-ins", () => {
     h.transcript("p", T0, 200_000);
     h.now = T0 + 59 * MIN;
     await h.engine.pass();
-    expect(h.sent).toEqual([{ threadId: "p", text: 'Still waiting on child thread c ("Build the page"). Nothing to do yet, just reply "OK".' }]);
+    expect(h.sent).toEqual([{ threadId: "p", text: 'Still waiting on child thread c ("Build the page"). There\'s no need to check anything. Reply with exactly "Not finished yet, still waiting on child thread c ("Build the page"). Nothing needed from you."' }]);
 
     // The keep-warm's turn keeps the stretch; Skip then stops further ones.
     h.engine.onActive("p");

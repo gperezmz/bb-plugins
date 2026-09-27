@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkInText, COMPACT_MESSAGE, cut, duration, joinAnd, keepWarmText } from "./messages";
+import { checkInText, COMPACT_MESSAGE, cut, duration, isKeeperMessage, isNothingNewReply, joinAnd, keepWarmText, sentKind, type CheckInTask } from "./messages";
 import { isWaiting, waitingChildren, type WaitThread } from "./waiting";
 
 const clock = (ms: number) => new Date(ms).toISOString().slice(11, 16);
@@ -29,7 +29,7 @@ describe("messages", () => {
     expect(duration(75 * 60_000)).toBe("1 h 15 min");
   });
 
-  it("lists what a thread waits on in kind order, oldest first", () => {
+  it("lists what a thread waits on in kind order, oldest first, and asks for the not-finished reply", () => {
     const text = keepWarmText(
       [
         { kind: "queued", createdAt: 1 },
@@ -39,23 +39,61 @@ describe("messages", () => {
         { kind: "child", id: "thr_a", title: "First child", startedAt: 3 },
         { kind: "command", id: "b1", description: "npm test", startedAt: 9 },
       ],
+      [],
       clock,
     );
+    const items =
+      'background command b1 ("npm test"), background subagent a1 ("Explore"), child thread thr_a ("First child"), child thread thr_b ("Second child"), a scheduled message due at 14:30 and a queued message';
     expect(text).toBe(
-      'Still waiting on background command b1 ("npm test"), background subagent a1 ("Explore"), child thread thr_a ("First child"), child thread thr_b ("Second child"), a scheduled message due at 14:30 and a queued message. Nothing to do yet, just reply "OK".',
+      `Still waiting on ${items}. There's no need to check anything. Reply with exactly "Not finished yet, still waiting on ${items}. Nothing needed from you."`,
     );
+    expect(text).not.toMatch(/Cache Keeper/);
+    expect(sentKind(text)).toBe("keep-warm");
   });
 
-  it("writes one paragraph per task and the closing line", () => {
-    const text = checkInText([
-      { kind: "subagent", reason: "routine", id: "a1", description: "Explore", startedAt: 1, silentMs: 0, runningMs: 30 * 60_000, lastTool: "Grep" },
-      { kind: "command", reason: "stalled", id: "b1", description: "npm test", startedAt: 2, silentMs: 15 * 60_000, runningMs: 0, outputFile: "/tmp/b1.output" },
-    ]);
-    expect(text.split("\n\n")).toEqual([
+  const stalled: CheckInTask = { kind: "command", reason: "stalled", id: "b1", description: "npm test", startedAt: 2, silentMs: 15 * 60_000, runningMs: 0, outputFile: "/tmp/b1.output" };
+  const long: CheckInTask = { kind: "subagent", reason: "routine", id: "a1", description: "Explore", startedAt: 1, silentMs: 0, runningMs: 30 * 60_000, lastTool: "Grep" };
+
+  it("writes a check-in as one paragraph per task and the Checked reply naming each", () => {
+    const text = checkInText([{ ...stalled, id: "c1xx", startedAt: 3 }, stalled]);
+    const parts = text.split("\n\n");
+    expect(parts[0]).toBe(
       `Background command b1 ("npm test") hasn't printed anything in 15 minutes. Can you check it's still moving? Its output is in /tmp/b1.output. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`,
+    );
+    expect(parts[2]).toBe(
+      `If nothing is wrong, reply with exactly "Checked b1 and c1xx, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.`,
+    );
+    expect(sentKind(text)).toBe("check-in");
+  });
+
+  it("folds a long-running task into the keep-warm and asks for the Checked reply instead", () => {
+    const text = keepWarmText([{ kind: "subagent", id: "a1", description: "Explore", startedAt: 1 }], [long], clock);
+    expect(text.split("\n\n")).toEqual([
+      'Still waiting on background subagent a1 ("Explore").',
       `Background subagent a1 ("Explore") has been running 30 minutes; its last tool was Grep. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`,
-      "Tell me in a line what you found. Don't wait for me either way.",
+      `If nothing is wrong, reply with exactly "Checked a1, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.`,
     ]);
+    expect(sentKind(text)).toBe("keep-warm");
+  });
+
+  it("recognises the nothing-new replies by shape", () => {
+    const keepWarm = keepWarmText([{ kind: "child", id: "thr_a", title: "A", startedAt: 0 }], [], clock);
+    expect(isNothingNewReply(keepWarm, 'Not finished yet, still waiting on child thread thr_a ("A"). Nothing needed from you.')).toBe(true);
+    expect(isNothingNewReply(keepWarm, "OK")).toBe(false);
+    expect(isNothingNewReply(keepWarm, null)).toBe(false);
+
+    const checkIn = checkInText([stalled, { ...stalled, id: "c1xx", startedAt: 3 }]);
+    expect(isNothingNewReply(checkIn, "Checked b1 and c1xx, still running normally, nothing new. Nothing needed from you.")).toBe(true);
+    expect(isNothingNewReply(checkIn, "Checked b1 and c1xx: both fine, nothing new. Nothing needed from you.")).toBe(true);
+    expect(isNothingNewReply(checkIn, "Checked b1, nothing new. Nothing needed from you.")).toBe(false);
+    expect(isNothingNewReply(checkIn, "Checked b1 and c1xx. c1xx was stuck, so I restarted it.")).toBe(false);
+    expect(isNothingNewReply(COMPACT_MESSAGE, null)).toBe(true);
+  });
+
+  it("recognises the merged version's messages and nothing else", () => {
+    expect(isKeeperMessage('Still waiting on child thread c ("x"). Nothing to do yet, just reply "OK".')).toBe(true);
+    expect(isKeeperMessage("Please check b1.\n\nTell me in a line what you found. Don't wait for me either way.")).toBe(true);
+    expect(sentKind("Still waiting on my coffee.")).toBeNull();
   });
 });
 

@@ -61,14 +61,30 @@ export function itemsText(items: readonly WaitItem[], clock: ClockFormat = local
   return joinAnd(orderItems(items).map((item) => entry(item, clock)));
 }
 
-export function keepWarmText(items: readonly WaitItem[], clock: ClockFormat = localClock): string {
-  return `Still waiting on ${itemsText(items, clock)}. ${KEEP_WARM_END}`;
-}
-
-/** One task due a check-in. */
+/** One task a message asks the agent to look at: stalled, or folded into a keep-warm after 30 minutes of running. */
 export type CheckInTask =
   | { kind: "command"; reason: CheckInReason; id: string; description: string; startedAt: number; silentMs: number; runningMs: number; outputFile: string }
   | { kind: "subagent"; reason: CheckInReason; id: string; description: string; startedAt: number; silentMs: number; runningMs: number; lastTool: string };
+
+/** The reply a message asks for when nothing is wrong: the keep-warm's, or the check-in's naming every task. */
+export function notFinishedReply(items: readonly WaitItem[], clock: ClockFormat = localClock): string {
+  return `Not finished yet, still waiting on ${itemsText(items, clock)}. ${NOTHING_NEEDED}`;
+}
+
+export function checkedReply(taskIds: readonly string[]): string {
+  return `Checked ${joinAnd(taskIds)}, still running normally, nothing new. ${NOTHING_NEEDED}`;
+}
+
+/**
+ * A keep-warm: unconditional, with no need to check anything, unless tasks
+ * running 30 minutes or more are folded in, when it asks for a look at each.
+ */
+export function keepWarmText(items: readonly WaitItem[], folded: readonly CheckInTask[] = [], clock: ClockFormat = localClock): string {
+  const waiting = `Still waiting on ${itemsText(items, clock)}.`;
+  if (folded.length === 0) return `${waiting} There's no need to check anything. Reply with exactly "${notFinishedReply(items, clock)}"`;
+  const ordered = orderTasks(folded);
+  return [waiting, ...ordered.map(paragraph), checkedEnd(ordered)].join("\n\n");
+}
 
 function paragraph(task: CheckInTask): string {
   const name = `${task.id} ("${cut(task.description)}")`;
@@ -82,17 +98,57 @@ function paragraph(task: CheckInTask): string {
     : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${task.lastTool}. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`;
 }
 
-/** One paragraph per due task, commands before subagents and oldest first, then the closing line. */
+/** Commands before subagents, oldest first. */
+const orderTasks = (tasks: readonly CheckInTask[]) => [...tasks].sort((a, b) => (a.kind === b.kind ? a.startedAt - b.startedAt : a.kind === "command" ? -1 : 1));
+
+const checkedEnd = (tasks: readonly CheckInTask[]) => `If nothing is wrong, reply with exactly "${checkedReply(tasks.map((t) => t.id))}" ${CHECK_IN_TAIL}`;
+
+/** A check-in on stalled tasks: one paragraph each, then the reply it asks for. */
 export function checkInText(tasks: readonly CheckInTask[]): string {
-  const ordered = [...tasks].sort((a, b) => (a.kind === b.kind ? a.startedAt - b.startedAt : a.kind === "command" ? -1 : 1));
-  return [...ordered.map(paragraph), CHECK_IN_END].join("\n\n");
+  const ordered = orderTasks(tasks);
+  return [...ordered.map(paragraph), checkedEnd(ordered)].join("\n\n");
 }
 
-const KEEP_WARM_END = 'Nothing to do yet, just reply "OK".';
-const CHECK_IN_END = "Tell me in a line what you found. Don't wait for me either way.";
+const NOTHING_NEEDED = "Nothing needed from you.";
+const CHECK_IN_TAIL = "Otherwise tell me in a line what you found and what you did. Don't wait for me either way.";
+/** The endings of the merged version's messages, still recognised in older transcripts and events. */
+const OLD_KEEP_WARM_END = 'Nothing to do yet, just reply "OK".';
+const OLD_CHECK_IN_END = "Tell me in a line what you found. Don't wait for me either way.";
+
+export type SentKind = "keep-warm" | "check-in" | "compact";
+
+/** Which of Cache Keeper's messages a text is, or null for anything else. */
+export function sentKind(text: string): SentKind | null {
+  const t = text.trim();
+  if (t === COMPACT_MESSAGE) return "compact";
+  if (t.startsWith("Still waiting on ") && (t.endsWith(OLD_KEEP_WARM_END) || t.endsWith(`${NOTHING_NEEDED}"`) || t.endsWith(CHECK_IN_TAIL))) return "keep-warm";
+  if (t.endsWith(CHECK_IN_TAIL) || t.endsWith(OLD_CHECK_IN_END)) return "check-in";
+  return null;
+}
 
 /** Whether a message's text is a keep-warm or check-in Cache Keeper sent. */
 export function isKeeperMessage(text: string): boolean {
-  const t = text.trim();
-  return (t.startsWith("Still waiting on ") && t.endsWith(KEEP_WARM_END)) || t.endsWith(CHECK_IN_END);
+  const kind = sentKind(text);
+  return kind === "keep-warm" || kind === "check-in";
+}
+
+const unquote = (text: string) => text.trim().replace(/^["'`]+|["'`]+$/g, "").trim();
+
+/**
+ * Whether `reply` is the nothing-new reply `sent` asked for. A "Checked"
+ * reply is recognised by its shape: it starts "Checked", names every task
+ * the message asked about and ends "nothing new. Nothing needed from you.".
+ * A compaction has no reply to judge.
+ */
+export function isNothingNewReply(sent: string, reply: string | null): boolean {
+  const kind = sentKind(sent);
+  if (kind === "compact") return true;
+  if (kind === null || reply === null) return false;
+  const r = unquote(reply);
+  const asked = /reply with exactly "Checked (.+?), still running normally, nothing new\./.exec(sent);
+  if (asked !== null) {
+    const ids = asked[1]!.split(/, | and /);
+    return r.startsWith("Checked") && /nothing new\. Nothing needed from you\.$/.test(r) && ids.every((id) => r.includes(id));
+  }
+  return r.startsWith("Not finished yet, still waiting on ") && r.endsWith(`. ${NOTHING_NEEDED}`);
 }
