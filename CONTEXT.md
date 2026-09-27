@@ -93,8 +93,20 @@ The context size at or above which Cache Keeper compacts a thread with compactin
 _Avoid_: Threshold, trigger, N
 
 **Keep-warm**:
-A one-line turn Cache Keeper sends a thread whose turn has ended while it still waits on background work, child threads or a scheduled message, so its cache is warm when they report back.
+A turn Cache Keeper sends a thread whose turn has ended while it still waits on background work, child threads or a scheduled message, so its cache, and through its report every cache above it, is warm when they report back.
 _Avoid_: Ping, heartbeat
+
+**Report**:
+bb's message into a parent thread that turns of its child threads ended, naming each child and, for a single child, quoting its last reply.
+_Avoid_: Notification, completion message, child update
+
+**Cache Keeper turn**:
+A turn whose every input is a message Cache Keeper sent or a report of a Cache Keeper turn; any other input makes it a real turn.
+_Avoid_: Synthetic turn, quiet turn, plugin turn
+
+**Nothing-new reply**:
+The fixed line a keep-warm or check-in asks the agent to reply with when nothing is wrong, starting "Not finished yet" or "Checked" and ending "Nothing needed from you".
+_Avoid_: OK reply, quiet reply
 
 **Tree keep-warm**:
 The keep-warms Cache Keeper sends at the same moment to the waiting threads at the bottom of a thread tree, early enough that their reports climb to every thread above and keep it warm in one batched turn each.
