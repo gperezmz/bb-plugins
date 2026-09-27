@@ -8,7 +8,8 @@
  * input the turn took, and `turn/completed`. A turn counts as Cache Keeper's
  * when every input it took is a message Cache Keeper sent, or a report of a
  * child's turn that itself counts as Cache Keeper's. Anything else, including
- * a turn with no input at all (a background task finishing), makes it real.
+ * a turn with no input at all, or one a background task finished during
+ * (Claude Code takes the finished task into the running turn), makes it real.
  *
  * bb 0.44 does not carry a send's `pluginSubmission` into its events, so a
  * send is recognised by its text: Cache Keeper's messages are fixed templates.
@@ -24,7 +25,15 @@ export interface BbEvent {
 }
 
 /** The event types the fold reads. */
-export const TURN_EVENT_TYPES = ["client/turn/requested", "client/turn/rejected", "turn/started", "turn/input/accepted", "turn/completed", "item/completed"] as const;
+export const TURN_EVENT_TYPES = [
+  "client/turn/requested",
+  "client/turn/rejected",
+  "turn/started",
+  "turn/input/accepted",
+  "turn/completed",
+  "item/completed",
+  "item/backgroundTask/completed",
+] as const;
 
 /** One line of bb's report: a child's turn that ended, and whether it completed. */
 export interface ReportLine {
@@ -146,6 +155,12 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[]): TurnLog {
         // A request read before the log's first event is unknown, and unknown is real.
         turn.inputs.push(...(request?.inputs ?? [{ kind: "other" as const }]));
         if (requestId !== null) delete requests[requestId];
+        break;
+      }
+      case "item/backgroundTask/completed": {
+        // Claude Code hands a finished task to the running turn, which then takes it as an input of its own.
+        const turn = open();
+        if (turn !== null) turn.inputs.push({ kind: "other" });
         break;
       }
       case "item/completed": {

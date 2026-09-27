@@ -509,17 +509,20 @@ describe("keeping a thread tree warm", () => {
     expect(h.sent).toEqual([]);
   });
 
-  it("sends a shallower leaf 30 seconds a level after the deeper one when no report comes, or at its deadline if sooner", async () => {
+  it("holds a shallower leaf due at the same deadline until the report from below reaches its level, 30 s at most", async () => {
     h.threads = [thread({ id: "p" }), thread({ id: "c1", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c1", activity: busy }), thread({ id: "c2", parentThreadId: "p", activity: busy })];
     for (const id of ["p", "c1"]) h.transcript(id, T0, 20_000, "1h");
+    // Aligned: both leaves' deadlines fall at 4 min.
     h.transcript("g", T0, 20_000, "5m");
-    h.transcript("c2", T0 + 20 * S, 20_000, "5m");
+    h.transcript("c2", T0, 20_000, "5m");
     h.now = T0 + 4 * MIN;
     await h.engine.pass();
     expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
-    // c2's deadline, 20 s on, comes before 30 s a level.
-    expect(h.engine.wakeAt()).toBe(h.now + 20 * S);
-    h.now += 20 * S;
+    expect(h.engine.wakeAt()).toBe(h.now + 30 * S);
+    h.now += 5 * S;
+    await h.engine.pass({ due: true });
+    expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
+    h.now = T0 + 4 * MIN + 30 * S;
     await h.engine.pass({ due: true });
     expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
   });

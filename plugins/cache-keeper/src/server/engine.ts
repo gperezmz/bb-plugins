@@ -1142,8 +1142,15 @@ interface Cycle {
   historyId: number;
 }
 
-/** A shallower leaf no report reached goes 30 s a level after the deepest, and never past its own deadline. */
-const stagedFallback = (cycle: Cycle, p: Cycle["pending"][number]) => Math.min(cycle.at + (cycle.deepest - p.depth) * LEAD_PER_LEVEL_MS, p.deadline ?? Infinity);
+/**
+ * A shallower leaf no report reached goes 30 s a level after the deepest, and
+ * never more than 30 s past its own deadline: the cache is warm for 60.
+ */
+const stagedFallback = (cycle: Cycle, p: Cycle["pending"][number]) =>
+  Math.min(cycle.at + (cycle.deepest - p.depth) * LEAD_PER_LEVEL_MS, (p.deadline ?? Infinity) + STAGED_GRACE_MS);
+
+/** How far past its own deadline a staged leaf may wait for the report from below; the deadline leaves a minute. */
+const STAGED_GRACE_MS = 30_000;
 
 /** bb counts a background task before its events are read; the banner takes whichever count is higher. */
 function withBbCounts(counts: WaitCounts, thread: ListedThread): WaitCounts {

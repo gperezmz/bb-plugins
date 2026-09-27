@@ -131,6 +131,14 @@ describe("turn attribution", () => {
     expect(isKeeperTurn("p", onTime.turns[1]!, lookup2)).toBe(true);
   });
 
+  it("makes a keep-warm turn real when a background task finishes during it", () => {
+    const h = new History().turn(0, text(KEEP_WARM), NOT_FINISHED);
+    // bb records the task finishing while the turn runs; Claude Code takes it into the same turn.
+    h.events.splice(3, 0, { seq: 0, type: "item/backgroundTask/completed", createdAt: 300, data: { item: { type: "backgroundTask", familyId: "b1" } } });
+    h.events.forEach((e, i) => (e.seq = i + 1));
+    expect(isKeeperTurn("t", h.log().turns[0]!, () => null)).toBe(false);
+  });
+
   it("does not take a check-in whose reply found something as nothing new", () => {
     const sent = checkInText([{ kind: "command", reason: "stalled", id: "b1", description: "x", startedAt: 0, silentMs: 0, runningMs: 0, outputFile: "/o" }]);
     const found = new History().turn(0, text(sent), "b1 was stuck on a prompt; I answered it.").log();
