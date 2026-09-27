@@ -21,17 +21,19 @@ import type { PriceBook } from "../core/pricing";
 import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
 import { LEAD_PER_LEVEL_MS, planTree, topOf, type TreeNode, type TreePlan } from "../core/tree";
 import {
-  classify,
+  classifyQueued,
+  reportLines,
   emptyTurnLog,
   foldTurns,
   isKeeperTurn,
   broughtNothingNew,
+  lineHolds,
   originsOf,
-  reportedTurns,
   reportPending,
   REPORT_WAIT_MS,
   type BbEvent,
   type Turn,
+  type QueuedReportRow,
   type TurnLog,
 } from "../core/turns";
 import { countItems, type ThreadView, type WaitCounts } from "../core/view";
@@ -67,14 +69,22 @@ export interface TaskEvent {
 }
 
 /** A queued row as `threads.queuedMessages.list` gives it. */
-export interface QueuedRow {
+export interface QueuedRow extends QueuedReportRow {
   id: string;
   sendAt: number | null;
-  createdAt: number;
-  failed: boolean;
-  /** bb queued it itself, as a report of child turns or another notice. */
-  system: boolean;
-  content: unknown[];
+}
+
+/** A queued row from bb's `threads.queuedMessages.list`, as Cache Keeper reads it. */
+export function queuedRowOf(raw: unknown): QueuedRow {
+  const r = raw as { id: string; sendAt: number | null; createdAt: number; failureReason: string | null; initiator: string; content: unknown };
+  return {
+    id: r.id,
+    sendAt: r.sendAt,
+    createdAt: r.createdAt,
+    failed: r.failureReason !== null,
+    system: r.initiator === "system",
+    content: Array.isArray(r.content) ? r.content : [],
+  };
 }
 
 export interface TranscriptRead {
@@ -176,6 +186,8 @@ export class Engine {
   private queuedScope: PassScope | null = null;
   /** Tree keep-warms under way whose shallower leaves wait for the reports from deeper ones to reach their level. */
   private cycles = new Map<string, Cycle>();
+  /** Warnings already logged about inputs bb's fields left unreadable, so each is logged once. */
+  private warned = new Set<string>();
 
   constructor(private readonly deps: EngineDeps) {}
 
@@ -460,6 +472,11 @@ export class Engine {
     }
   }
 
+  /** Whether a thread is a child of `threadId`, one level down, as bb last listed them. */
+  private isChildOf(threadId: string): (id: string) => boolean {
+    return (id) => this.threads.get(id)?.parentThreadId === threadId;
+  }
+
   /** Brings a thread's turn log up to date from bb's events. */
   private async readTurns(threadId: string): Promise<TurnLog> {
     let log = this.deps.store.turnLog(threadId);
@@ -467,7 +484,15 @@ export class Engine {
     const before = log.afterSeq;
     for (let page = 0; page < 100; page++) {
       const events = await this.deps.turnEvents(threadId, log.afterSeq);
-      log = foldTurns(log, events);
+      log = foldTurns(log, events, {
+        threadId,
+        isChild: this.isChildOf(threadId),
+        warn: (message) => {
+          if (this.warned.has(message)) return;
+          this.warned.add(message);
+          this.deps.log.warn(message);
+        },
+      });
       if (events.length < EVENTS_PAGE) break;
     }
     if (log.afterSeq !== before || this.deps.store.turnLog(threadId) === null) this.deps.store.putTurnLog(threadId, log);
@@ -568,36 +593,26 @@ export class Engine {
   private async deleteNothingNewReports(claude: ListedThread[], logs: Map<string, TurnLog>): Promise<void> {
     for (const m of claude) {
       if (!m.hasPendingInteraction) continue;
-      const rows = this.queuedRows.get(m.id) ?? [];
+      const rows = (this.queuedRows.get(m.id) ?? []).map((row) => ({ row, lines: reportLines(classifyQueued(row, this.isChildOf(m.id))) }));
       // Each queued row reports the child turns since the row before it, so the rows count as delivered here.
-      const queuedLines = rows.flatMap((row) => {
-        const input = row.system && !row.failed ? classify(row.content, row.createdAt) : null;
-        return input?.kind === "report" ? input.lines.map((l) => ({ childId: l.childId, at: row.createdAt })) : [];
-      });
+      const queuedLines = rows.flatMap(({ row, lines }) => lines.map((l) => ({ childId: l.childId, at: row.createdAt })));
       const withQueue = { ...logs.get(m.id)!, delivered: [...logs.get(m.id)!.delivered, ...queuedLines] };
       const lookup = (id: string) => (id === m.id ? withQueue : (logs.get(id) ?? null));
-      const nothingNew = rows.filter((row) => {
-        if (row.failed || !row.system) return false;
-        const input = classify(row.content, row.createdAt);
-        if (input.kind !== "report") return false;
-        return input.lines.every((line) => {
-          const turns = line.completed ? reportedTurns(lookup(m.id), lookup(line.childId), line.childId, row.createdAt) : [];
-          return turns.length > 0 && turns.every((t) => broughtNothingNew(line.childId, t, lookup));
-        });
-      });
+      const nothingNew = rows.filter(
+        ({ row, lines }) => lines.length > 0 && lines.every((line) => lineHolds(lookup(m.id), lookup(line.childId), line, row.createdAt, (t) => broughtNothingNew(line.childId, t, lookup))),
+      );
       if (nothingNew.length === 0) continue;
-      this.nothingNewRows.set(m.id, new Set(nothingNew.map((r) => r.id)));
+      this.nothingNewRows.set(m.id, new Set(nothingNew.map(({ row }) => row.id)));
       this.queuedCounts.set(m.id, Math.max(0, (this.queuedCounts.get(m.id) ?? 0) - nothingNew.length));
       const log = logs.get(m.id)!;
       const delivered = [...log.delivered];
-      for (const row of nothingNew) {
+      for (const { row, lines } of nothingNew) {
         try {
           await this.deps.deleteQueued(m.id, row.id);
         } catch (error) {
           this.deps.log.warn(`could not delete a report row that brought nothing new from ${m.id}: ${error instanceof Error ? error.message : String(error)}`);
         }
-        const input = classify(row.content, row.createdAt);
-        if (input.kind === "report") for (const line of input.lines) delivered.push({ childId: line.childId, at: row.createdAt });
+        for (const line of lines) delivered.push({ childId: line.childId, at: row.createdAt });
       }
       const next = { ...log, delivered };
       logs.set(m.id, next);
@@ -660,10 +675,7 @@ export class Engine {
     for (const child of children) items.push({ kind: "child", id: child.id, title: child.title, startedAt: child.createdAt });
     // A report bb queued behind a question has arrived; it waits in the queue, not on the way.
     const queuedReports = new Set(
-      (this.queuedRows.get(thread.id) ?? []).flatMap((r) => {
-        const input = r.system ? classify(r.content, r.createdAt) : null;
-        return input?.kind === "report" ? input.lines.map((l) => l.childId) : [];
-      }),
+      (this.queuedRows.get(thread.id) ?? []).flatMap((r) => reportLines(classifyQueued(r, this.isChildOf(thread.id))).map((l) => l.childId)),
     );
     const pendingReports = members
       .filter((c) => c.parentThreadId === thread.id && !queuedReports.has(c.id) && reportPending(logs.get(thread.id) ?? null, c.id, logs.get(c.id) ?? null, now))
