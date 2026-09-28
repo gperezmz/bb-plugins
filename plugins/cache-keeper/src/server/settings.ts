@@ -7,7 +7,6 @@ import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import type { KeepWarmSetting } from "../core/switch";
 import type { Store } from "./store";
 
-export const WAIT_OPTIONS = ["10 min", "15 min", "30 min"] as const;
 export const WAIT_MINUTES = [10, 15, 30] as const;
 
 /** The "Keep caches warm while waiting" choices, as Settings shows them, and what each parses to. */
@@ -20,12 +19,13 @@ export const KEEP_WARM_OPTIONS: Record<string, KeepWarmSetting> = {
 /**
  * The four settings as bb declared them up to 0.2.0. Declaring them is what
  * reads their values, and also what makes bb draw them in one box, so they
- * are declared only on the load that copies them.
+ * are declared only on the load that copies them. Their labels are bb's old
+ * ones, which bb shows for that one load.
  */
 export const DECLARED_SETTINGS = {
   keepWarm: { type: "select", label: "Keep caches warm while waiting", options: Object.keys(KEEP_WARM_OPTIONS), default: "Only threads switched on" },
   stalledCheckIns: { type: "boolean", label: "Check in on stalled background work", default: false },
-  noOutputWait: { type: "select", label: "No-output wait", options: [...WAIT_OPTIONS], default: "15 min" },
+  noOutputWait: { type: "select", label: "No-output wait", options: WAIT_MINUTES.map((m) => `${m} min`), default: "15 min" },
   fetchPrices: { type: "boolean", label: "Fetch current prices daily", default: true },
 } satisfies PluginSettingDescriptors;
 
@@ -44,19 +44,19 @@ export function parseDeclared(values: Record<string, unknown>): KeeperSettings {
   return {
     keepWarm: (typeof values.keepWarm === "string" ? KEEP_WARM_OPTIONS[values.keepWarm] : undefined) ?? DEFAULT_SETTINGS.keepWarm,
     checkIns: values.stalledCheckIns === true,
-    waitMs: ((WAIT_MINUTES as readonly number[]).includes(wait) ? wait : 15) * 60_000,
+    waitMs: (WAIT_MINUTES as readonly number[]).includes(wait) ? wait * 60_000 : DEFAULT_SETTINGS.waitMs,
     fetchPrices: values.fetchPrices !== false,
   };
 }
 
-const KEEP_WARM_VALUES: readonly KeepWarmSetting[] = ["every", "switched", "never"];
+export const KEEP_WARM_VALUES = ["every", "switched", "never"] as const satisfies readonly KeepWarmSetting[];
 const isWaitMs = (ms: unknown) => typeof ms === "number" && (WAIT_MINUTES as readonly number[]).includes(ms / 60_000);
 
 /** Stored settings, each field that is not a value it can take put back to its default. */
 export function normalizeSettings(stored: Partial<Record<keyof KeeperSettings, unknown>> | null): KeeperSettings {
   const s = stored ?? {};
   return {
-    keepWarm: KEEP_WARM_VALUES.includes(s.keepWarm as KeepWarmSetting) ? (s.keepWarm as KeepWarmSetting) : DEFAULT_SETTINGS.keepWarm,
+    keepWarm: (KEEP_WARM_VALUES as readonly unknown[]).includes(s.keepWarm) ? (s.keepWarm as KeepWarmSetting) : DEFAULT_SETTINGS.keepWarm,
     checkIns: typeof s.checkIns === "boolean" ? s.checkIns : DEFAULT_SETTINGS.checkIns,
     waitMs: isWaitMs(s.waitMs) ? (s.waitMs as number) : DEFAULT_SETTINGS.waitMs,
     fetchPrices: typeof s.fetchPrices === "boolean" ? s.fetchPrices : DEFAULT_SETTINGS.fetchPrices,

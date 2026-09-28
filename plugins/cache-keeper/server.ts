@@ -50,13 +50,13 @@ export default async function plugin(bb: BbPluginApi) {
   // Declaring the settings bb held is the only way to read them, and makes bb
   // draw them in one box until the plugin next loads: so they are declared
   // only while not yet copied, and the plugin reloads itself once after.
-  const stored = new Settings(store);
-  const reloadAfterCopy = !stored.copied();
+  const settingsStore = new Settings(store);
+  const reloadAfterCopy = !settingsStore.copied();
   if (reloadAfterCopy) {
     const declared = bb.settings.define(DECLARED_SETTINGS);
-    await stored.copyDeclared(() => declared.get(), clock.now(), (m) => bb.log.warn(m));
+    await settingsStore.copyDeclared(() => declared.get(), clock.now(), (m) => bb.log.warn(m));
   }
-  let settings: KeeperSettings = stored.get();
+  let settings: KeeperSettings = settingsStore.get();
   const host = bb.hosts.experimental_client({ contract: hostContract });
   const agentTools = new AgentTools(store);
 
@@ -168,7 +168,7 @@ export default async function plugin(bb: BbPluginApi) {
   /** Stores a change to the settings and puts it in effect at once. */
   const setSettings = (patch: Partial<KeeperSettings>): KeeperSettings => {
     const prev = settings;
-    settings = stored.set(patch);
+    settings = settingsStore.set(patch);
     book = null;
     if (settings.fetchPrices && !prev.fetchPrices) void refreshPrices();
     engine.clockMoved();

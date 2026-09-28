@@ -3,7 +3,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { RowGlyph, ThreadView } from "../core/view";
 import { AGENT_TOOLS, type AgentToolKey, type AgentToolRow } from "./agent-tools";
-import type { KeeperSettings } from "./settings";
+import { KEEP_WARM_VALUES, WAIT_MINUTES, type KeeperSettings } from "./settings";
 import type { HistoryRow } from "./store";
 
 const threadId = z.string().regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id");
@@ -80,9 +80,9 @@ export const rpcContract = defineRpcContract({
   setSettings: {
     input: z
       .object({
-        keepWarm: z.enum(["every", "switched", "never"]),
+        keepWarm: z.enum(KEEP_WARM_VALUES),
         checkIns: z.boolean(),
-        waitMs: z.union([z.literal(10 * 60_000), z.literal(15 * 60_000), z.literal(30 * 60_000)]),
+        waitMs: z.union(WAIT_MINUTES.map((m) => z.literal(m * 60_000))),
         fetchPrices: z.boolean(),
       })
       .partial()

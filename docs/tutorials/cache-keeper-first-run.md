@@ -79,7 +79,7 @@ bb cache-keeper keep-warm on thr_…
 
 ## 7. Look at Agent tools
 
-Open Settings → Plugins → Cache Keeper. Below the settings, the **Agent tools** section has one row, **Compact when idle**, off. While it is off, no agent can switch Compact when idle on for its own thread. Leave it off for now; [the reference](../reference/cache-keeper-settings.md#agent-tools) says what switching it on does.
+Open Settings → Plugins → Cache Keeper. Below the **Waiting threads**, **Stalled tasks** and **Prices** sections, the **Agent tools** section has one row, **Compact when idle**, off. While it is off, no agent can switch Compact when idle on for its own thread. Leave it off for now; [the reference](../reference/cache-keeper-settings.md#agent-tools) says what switching it on does.
 
 ## 8. Find what happened
 
