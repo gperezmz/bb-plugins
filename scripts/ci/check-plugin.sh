@@ -32,7 +32,7 @@ case $mode in
   check)
     run npm ci --no-audit --no-fund
     # A plugin whose tests run in a browser pins Playwright; the setup action
-    # caches what this downloads.
+    # reads the same pin and caches what this downloads.
     if [[ $(npm pkg get devDependencies.playwright) != "{}" ]]; then
       run npx playwright install chromium --only-shell
     fi

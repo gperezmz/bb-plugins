@@ -18,9 +18,17 @@ runs:
         node-version: 24
         cache: npm
         cache-dependency-path: plugins/${{ inputs.plugin }}/package-lock.json
-    # Playwright's Chromium, for plugins whose tests run in a browser; keyed
-    # on the lockfile, which pins the Playwright that picks the build.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    # Playwright's Chromium, for plugins whose tests run in a browser: those
+    # pin Playwright, as scripts/ci/check-plugin.sh also reads. Keyed on the
+    # lockfile, which pins the Playwright that picks the build.
+    - name: Find browser tests
+      id: browser
+      shell: bash
+      env:
+        PLUGIN: ${{ inputs.plugin }}
+      run: echo "playwright=$(jq -r '.devDependencies.playwright // empty' "plugins/$PLUGIN/package.json")" >> "$GITHUB_OUTPUT"
+    - if: steps.browser.outputs.playwright != ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ inputs.plugin }}-${{ hashFiles(format('plugins/{0}/package-lock.json', inputs.plugin)) }}
