@@ -2,8 +2,8 @@
 
 For a long Claude Code thread you will come back to later. Cache Keeper then compacts it a minute before its prompt cache expires, whenever its turn ends at or above the line.
 
-1. In the thread, click the Cache Keeper chip at the right of the composer's action row, and turn on **Compact when idle**. The chip now reads `≥ {line}`, or `no line` until bb reports the thread's context window, which it does once the thread's first turn ends.
-2. Move the line: drag the handle on the context bar, or click the size on it and type one, such as `500k`. The handle stops only at the thread's ten settings; a higher one compacts only bigger threads. **Why {line}?** shows what compacting costs at that size and what it saves on your first message back.
+1. In the thread, click the Cache Keeper composer chip at the right of the composer's action row, and turn on **Compact when idle**. The composer chip now reads `≥ {line}`, or `no line` until bb reports the thread's context window, which it does once the thread's first turn ends; until then the popover has no context bar.
+2. Move the line: drag the handle on the context bar, or click the size on it and type one, such as `500k`. The handle stops only at the thread's ten settings; a higher one compacts only bigger threads. **Details**, below the status line, shows what compacting costs at that size and what it saves on your first message back.
 
 Or from a terminal:
 

@@ -61,6 +61,7 @@ The pages each plugin's behaviour rests on:
 - [Thread Usage: first run](tutorials/thread-usage-first-run.md)
 - [Team Onboarding: first run and a first manifest](tutorials/team-onboarding-first-run.md)
 - [OpenAI-compatible inference: first run](tutorials/openai-inference-first-run.md)
+- [Cache Keeper: first run](tutorials/cache-keeper-first-run.md)
 
 **How-to guides** do one job you already know you need.
 

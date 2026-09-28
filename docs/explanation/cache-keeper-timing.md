@@ -30,7 +30,7 @@ Cache Keeper runs on bb's events. It keeps what it knows of each thread in memor
 
 The saved positions survive a restart of bb, the daemon or the plugin. A reinstall keeps them too, but [switches everything off](../reference/cache-keeper-settings.md#after-a-reinstall). After a restart Cache Keeper lists bb's threads once, catches up only the threads bb updated since it last looked (less a minute's margin), each from its saved position, and sets its timer from the facts it stored. No transcript is read from its start again unless it became another file, or a new Claude Code session (bb starts one on `/clear`), whose transcript is read from then on and whose old facts no longer count.
 
-A surface asking for a thread (the chip, the banner, `status`) is answered from memory; a thread it has never read is read alone. A machine that does not answer within 10 seconds holds only the threads it runs.
+A surface asking for a thread (the composer chip, the banner, `status`) is answered from memory; a thread it has never read is read alone. A machine that does not answer within 10 seconds holds only the threads it runs.
 
 ## The deadline
 
@@ -71,13 +71,13 @@ The **compaction line** for setting N is the smallest C with
 | P | The thread's size after its last compaction; 40,000 tokens when it has none |
 | N | The setting, 1 to 10: how many times over the first message back must repay compacting |
 
-The window is the one bb reports for the thread, which it learns at the end of the thread's first turn; there is no default, so until bb reports it the thread has no lines, and `--above` is refused. The model's listed maximum is not used: a thread can run below it. When no context up to the window satisfies it, the line is "never". When a thread's model changes and its window with it, a setting whose line no longer fits shows as "never" and is kept. The popover shows the line as a size rather than N: you drag between the ten sizes it gives, or type one and it snaps. A thread switched on for the first time starts at the setting you chose last on any thread, or 2. The line counts only your first message back, with no guess at when you return: a thread you leave for a week and one you leave for an hour pay the same rewrite.
+The window is the one bb reports for the thread, which it learns at the end of the thread's first turn; there is no default, so until bb reports it the thread has no lines, and `--above` is refused. The model's listed maximum is not used: a thread can run below it. When no context up to the window satisfies it, the line is "never". When a thread's model changes and its window with it, a setting whose line no longer fits shows as "never" and is kept. The composer chip's popover shows the line as a size rather than N: you drag between the ten sizes it gives, or type one and it snaps. A thread switched on for the first time starts at the setting you chose last on any thread, or 2. The line counts only your first message back, with no guess at when you return: a thread you leave for a week and one you leave for an hour pay the same rewrite.
 
 Prices come from LiteLLM's public list, then models.dev, then the LiteLLM list bundled with the plugin, fetched daily while [Fetch current prices daily](../reference/cache-keeper-settings.md) is on.
 
 ## Which trees are kept warm
 
-**Keep warm while waiting** is a switch on each **tree top**: a Claude Code thread with no Claude Code thread above it. It covers the tree top and every Claude Code thread below it, including threads spawned after it was set. A tree whose root is not a Claude Code thread has one tree top per Claude Code branch, each switched on its own, since only Claude Code threads have the chip and get keep-warms. An archived or deleted thread ends its tree, as it does for tree keep-warms: archive a tree top and each Claude Code thread below it that has no other Claude Code thread above it becomes a tree top of its own, with its switch untouched.
+**Keep warm while waiting** is a switch on each **tree top**: a Claude Code thread with no Claude Code thread above it. It covers the tree top and every Claude Code thread below it, including threads spawned after it was set. A tree whose root is not a Claude Code thread has one tree top per Claude Code branch, each switched on its own, since only Claude Code threads have the composer chip and get keep-warms. An archived or deleted thread ends its tree, as it does for tree keep-warms: archive a tree top and each Claude Code thread below it that has no other Claude Code thread above it becomes a tree top of its own, with its switch untouched.
 
 ```mermaid
 flowchart TB
