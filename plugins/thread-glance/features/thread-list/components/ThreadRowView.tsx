@@ -16,6 +16,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
+import { isOffDefaultBranch } from "../model/branches";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
@@ -218,9 +219,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     controller.setEditingId(thread.id);
   };
 
-  const defaultBranch = row.depth === 0 ? controller.defaultBranchOf(thread) : undefined;
-  const branch = thread.environment?.branchName ?? null;
-  const showPullRequest = row.depth === 0 && branch !== null && defaultBranch !== undefined && branch !== defaultBranch;
+  const showPullRequest = row.depth === 0 && isOffDefaultBranch(thread.environment?.branchName ?? null, controller.defaultBranchOf(thread));
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -602,10 +601,10 @@ function SecondLine({
   const thread = row.info.thread;
   const environment = thread.environment;
   const parts: React.ReactNode[] = [];
-  // The branch earns the line only when it isn't the project's default:
-  // "main" on every row said nothing.
+  // The branch earns the line only when it is known not to be the
+  // project's default: "main" on every row said nothing.
   const branch = environment?.branchName ?? null;
-  if (branch !== null && branch !== defaultBranch) {
+  if (isOffDefaultBranch(branch, defaultBranch)) {
     parts.push(
       <span key="branch" className="inline-flex min-w-0 items-center gap-0.5">
         <Icon name={environment?.isWorktree ? ICONS.worktree : ICONS.branch} aria-hidden className="size-3 shrink-0" />

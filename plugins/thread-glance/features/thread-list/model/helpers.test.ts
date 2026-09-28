@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapBbPreferences, coercePreferences, defaultPreferences, parsePreference, parseStoredPreference } from "@/shared/preferences";
+import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
 import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
@@ -146,6 +147,21 @@ describe("windowed nav contract", () => {
   });
   it("chunks keep order", () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+});
+
+describe("default branch", () => {
+  it("asks the default source's machine, else the first source's, else none", () => {
+    expect(defaultSourceHostId([{ hostId: "a", isDefault: false }, { hostId: "b", isDefault: true }])).toBe("b");
+    expect(defaultSourceHostId([{ hostId: "a", isDefault: false }])).toBe("a");
+    expect(defaultSourceHostId([])).toBeNull();
+  });
+  it("knows a branch differs only once the default branch is known", () => {
+    expect(isOffDefaultBranch("feature", "main")).toBe(true);
+    expect(isOffDefaultBranch("main", "main")).toBe(false);
+    expect(isOffDefaultBranch("feature", undefined)).toBe(false);
+    expect(isOffDefaultBranch("feature", null)).toBe(false);
+    expect(isOffDefaultBranch(null, "main")).toBe(false);
   });
 });
 

@@ -68,7 +68,10 @@ function render() {
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       sdk: {
         threads: { defaultExecutionOptions: async () => null } as never,
-        projects: { branches: async () => ({ defaultBranch: "main" }) } as never,
+        projects: {
+          get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
+          branches: async () => ({ defaultBranch: "main" }),
+        } as never,
         providers: { models: async () => ({ models: [] }) } as never,
       },
     },

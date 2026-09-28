@@ -45,6 +45,7 @@ import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
 import { ConfirmDialog, CustomizeDialog, DetailsDialog, MoveDialog, NewSectionDialog, type CustomizeItem } from "./Dialogs";
 import { useNotes } from "../data/useNotes";
+import { useDefaultBranches } from "../data/useDefaultBranches";
 import { moveTargets } from "../model/move";
 import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
@@ -132,8 +133,6 @@ function ThreadListBody({
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [dropStates, setDropStates] = useState<DropStates>(() => new Map());
   const [dropGroupId, setDropGroupId] = useState<string | null>(null);
-  const [defaultBranches, setDefaultBranches] = useState<ReadonlyMap<string, string | null>>(() => new Map());
-  const branchRequests = useRef(new Set<string>());
   const models = useRef(new Map<string, Promise<ModelInfo | null>>());
 
   const ready = sidebar.status === "ready";
@@ -194,21 +193,12 @@ function ThreadListBody({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
 
-  // Each project's default branch, fetched once per session.
-  useEffect(() => {
-    if (forest === null) return;
-    for (const tree of forest.trees) {
-      const thread = tree.root.thread;
-      const projectId = thread.projectId;
-      if (thread.environment?.branchName == null || thread.host === null) continue;
-      if (branchRequests.current.has(projectId)) continue;
-      branchRequests.current.add(projectId);
-      sdk.projects.branches({ projectId, hostId: thread.host.id, limit: "1" }).then(
-        (result) => setDefaultBranches((current) => new Map(current).set(projectId, result.defaultBranch)),
-        () => setDefaultBranches((current) => new Map(current).set(projectId, null)),
-      );
-    }
-  }, [forest, sdk]);
+  // Projects with a thread on a branch: the rest need no default branch.
+  const branchedProjectIds = useMemo(
+    () => [...new Set(threads.flatMap((thread) => (thread.environment?.branchName ? [thread.projectId] : [])))],
+    [threads],
+  );
+  const defaultBranches = useDefaultBranches(branchedProjectIds);
 
   const marks = useMemo(() => assignProviderMarks(providers), [providers]);
   // One display per harness, built once: rows compare it by identity.

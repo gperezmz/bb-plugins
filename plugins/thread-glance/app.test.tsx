@@ -82,7 +82,10 @@ function render(
     },
     sdk: {
       threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
-      projects: { branches: async () => ({ defaultBranch: "main" }) } as never,
+      projects: {
+        get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
+        branches: async () => ({ defaultBranch: "main" }),
+      } as never,
       providers: { models: async () => ({ models: [] }) } as never,
     },
     ...options.extra,
@@ -309,6 +312,38 @@ describe("Thread Glance slot", () => {
     render(threads);
     await screen.findByRole("link", { name: /Open Busy/ });
     expect(row().textContent).toBe(comfortable);
+  });
+
+  it("finds the default branch through the project's default source, and draws no branch line until it knows it", async () => {
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    const asked: string[] = [];
+    let answer: (value: { defaultBranch: string }) => void = () => undefined;
+    const threads = [
+      makeThread({ id: "a", title: "Trunk", host: { id: "host_2", name: "work" }, environment: { branchName: "main" } }),
+      makeThread({ id: "b", title: "Topic", host: { id: "host_2", name: "work" }, environment: { branchName: "fix/login" } }),
+    ];
+    render(threads, {
+      extra: {
+        sdk: {
+          threads: { defaultExecutionOptions: async () => null } as never,
+          providers: { models: async () => ({ models: [] }) } as never,
+          projects: {
+            get: async () => ({ sources: [{ hostId: "host_2", isDefault: false }, { hostId: "host_1", isDefault: true }] }),
+            branches: ({ hostId }: { hostId: string }) => {
+              asked.push(hostId);
+              return new Promise((resolve) => (answer = resolve));
+            },
+          } as never,
+        },
+      },
+    });
+    const row = async (name: RegExp) => (await screen.findByRole("link", { name })).parentElement!;
+    await waitFor(() => expect(asked).toEqual(["host_1"]));
+    expect((await row(/Open Topic/)).textContent).not.toContain("fix/login");
+    expect((await row(/Open Trunk/)).textContent).not.toContain("main");
+    await act(async () => answer({ defaultBranch: "main" }));
+    await waitFor(async () => expect((await row(/Open Topic/)).textContent).toContain("fix/login"));
+    expect((await row(/Open Trunk/)).textContent).not.toContain("main");
   });
 
   it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {
