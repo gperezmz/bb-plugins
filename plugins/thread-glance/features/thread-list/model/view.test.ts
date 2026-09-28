@@ -360,7 +360,7 @@ describe("folding a tree by what needs attention", () => {
   });
   it("folds an archived child, whatever it carries", () => {
     const archived = withState({ w0: { isArchived: true, runtimeStatus: "waiting-for-host" } });
-    const prefs = { threadLifecycles: ["active", "archived"] as ("active" | "archived")[] };
+    const prefs = { showArchived: true };
     expect(rows({ threads: archived, prefs })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
   });
   it("counts a hidden grandchild only when it needs attention", () => {

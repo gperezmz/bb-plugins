@@ -2,7 +2,7 @@
 import { experimental_Icon as Icon, type ExperimentalSidebarFooterDisclosureProps } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
-import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "../model/settings";
+import { childAttentionFor, countsEveryChild, sortArrow, sortFieldPatch } from "../model/settings";
 import { effectiveSortField } from "../model/sort";
 import { useClientPreferences } from "../data/useClientPreferences";
 import { usePreferences } from "../data/usePreferences";
@@ -183,18 +183,6 @@ function SettingsPanel({
         />
       </Line>
       <Heading>Show</Heading>
-      <Line label="Threads">
-        <Segmented
-          label="Threads"
-          options={[
-            ["active", "Active"],
-            ["archived", "Archived"],
-            ["both", "Both"],
-          ]}
-          current={threadsShown(prefs.threadLifecycles)}
-          onSelect={(value) => onPrefs({ threadLifecycles: lifecyclesFor(value) })}
-        />
-      </Line>
       <Toggle
         label="Needs attention counts every child"
         description="Every unread or failed child thread; otherwise only those blocked on you."

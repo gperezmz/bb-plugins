@@ -136,11 +136,13 @@ describe("preferences", () => {
     await bb.storage.kv.set("preference:foldOlder", false);
     await bb.storage.kv.set("preference:workingFirst", true);
     await bb.storage.kv.set("preference:showPullRequests", false);
+    await bb.storage.kv.set("preference:threadLifecycles", ["active", "archived"]);
     const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
       preferences: Record<string, unknown>;
     };
     expect(preferences).toEqual(defaultPreferences());
     expect(preferences.settleAfter).toBe("1d");
+    expect(preferences.showArchived).toBe(false);
   });
 });
 
@@ -507,7 +509,7 @@ describe("bb thread-glance prefs", () => {
     expect(JSON.parse(tree.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
     expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
 
-    for (const removed of ["workingFirst", "foldOlder", "showPullRequests"]) {
+    for (const removed of ["workingFirst", "foldOlder", "showPullRequests", "threadLifecycles"]) {
       const result = await harness.behavior.runCli(["prefs", "set", removed, "true", "--json"]);
       expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
     }

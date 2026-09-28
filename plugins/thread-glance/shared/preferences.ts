@@ -9,7 +9,6 @@ const idListSchema = z.array(idSchema).max(MAX_ITEMS);
 export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
 export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
 export const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
-export const lifecycleSchema = z.enum(["active", "archived"]);
 export const harnessIconSchema = z.enum(["muted", "colour"]);
 export const settleAfterSchema = z.enum(["12h", "1d", "3d", "1w", "never"]);
 export const childAttentionSchema = z.enum(["blocked", "everything"]);
@@ -22,7 +21,6 @@ const hiddenGroupsSchema = z
 export type OrganizationMode = z.infer<typeof organizationModeSchema>;
 export type SortField = z.infer<typeof sortFieldSchema>;
 export type SortDirection = z.infer<typeof sortDirectionSchema>;
-export type Lifecycle = z.infer<typeof lifecycleSchema>;
 export type HarnessIcon = z.infer<typeof harnessIconSchema>;
 export type ChildAttention = z.infer<typeof childAttentionSchema>;
 export type SettleAfter = z.infer<typeof settleAfterSchema>;
@@ -46,14 +44,10 @@ function define<T>(
 
 /** Server-side preferences, shared across windows and devices. */
 export const PREFERENCES = {
-  threadLifecycles: define(
-    z
-      .array(lifecycleSchema)
-      .min(1)
-      .max(2)
-      .refine((values) => new Set(values).size === values.length, "Lifecycles must be unique"),
-    ["active"] as Lifecycle[],
-    "Threads shown: [\"active\"], [\"archived\"] or both. At least one is required.",
+  showArchived: define(
+    z.boolean(),
+    false,
+    "Show archived threads: whether every group also lists archived threads, as each group's menu toggles.",
   ),
   organizationMode: define(
     organizationModeSchema,

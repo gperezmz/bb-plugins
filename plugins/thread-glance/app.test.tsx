@@ -241,7 +241,6 @@ describe("Thread Glance slot", () => {
       ["Sort by", ["Updated", "Created", "A–Z"]],
       ["Density", ["Compact", "Comfortable"]],
       ["Harness icon", ["Muted", "Colour"]],
-      ["Threads", ["Active", "Archived", "Both"]],
     ]);
     const checkboxes = within(panel)
       .getAllByRole("checkbox")
@@ -252,12 +251,12 @@ describe("Thread Glance slot", () => {
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
-    expect(within(panel).getAllByRole("radio")).toHaveLength(13);
+    expect(within(panel).getAllByRole("radio")).toHaveLength(10);
     expect(within(panel).getAllByRole("button")).toHaveLength(1);
-    expect(panel.querySelectorAll("button")).toHaveLength(13 + 2 + 1);
+    expect(panel.querySelectorAll("button")).toHaveLength(10 + 2 + 1);
   });
 
-  it("reverses every group with the ↓/↑ button, and saves Threads choices as lifecycles", async () => {
+  it("reverses every group with the ↓/↑ button", async () => {
     const setPreference = vi.fn(({ key, value }: { key: string; value: unknown }) => ({ key, value }));
     const threads = [
       makeThread({ id: "a1", title: "A old", createdAt: T0, latestAttentionAt: T0 }),
@@ -274,12 +273,7 @@ describe("Thread Glance slot", () => {
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new", "Open B old", "Open B new"]));
     expect(within(panel).getByRole("button", { name: /Sort order: Oldest first/ }).textContent).toBe("↑");
-    const threadsGroup = within(panel).getByRole("radiogroup", { name: "Threads" });
-    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Archived" }));
-    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Both" }));
-    await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "threadLifecycles", value: ["active", "archived"] }));
-    expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" });
-    expect(within(threadsGroup).getByRole("radio", { name: "Both" }).getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" }));
   });
 
   it("keeps a change made in the panel when the list hears the old value before the write goes out", async () => {
@@ -444,6 +438,23 @@ describe("Thread Glance slot", () => {
       expect(screen.getByRole("link", { name: /Open Old/ })).toBeTruthy();
       expect(slot.inspection.rpcCalls).toContainEqual(
         expect.objectContaining({ method: "setPreference", input: { key: "openSettledFolds", value: ["project:proj_a"] } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("saves Show archived threads from a group's menu as showArchived, for every group", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const slot = render([makeThread({ id: "t" })]);
+      fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, ctrlKey: false });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Show archived threads" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(slot.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: { key: "showArchived", value: true } }),
       );
     } finally {
       vi.useRealTimers();

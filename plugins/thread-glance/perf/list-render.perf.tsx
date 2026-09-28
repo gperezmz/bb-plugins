@@ -197,13 +197,13 @@ function median(values: number[]): number {
 const SCENARIOS: Record<string, Partial<Preferences>> = {
   // Every thread drawn: archived shown, nothing collapsed or folded.
   "all-expanded": {
-    threadLifecycles: ["active", "archived"],
+    showArchived: true,
     collapsedSections: [],
     collapsedProjects: [],
   },
   // A typical folded layout, archived shown.
   "folded-archived": {
-    threadLifecycles: ["active", "archived"],
+    showArchived: true,
     organizationMode: "project",
     collapsedSections: ["threads"],
     collapsedProjects: [],

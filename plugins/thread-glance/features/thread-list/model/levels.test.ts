@@ -146,7 +146,7 @@ describe("a grandchild never shows without its parent (property)", () => {
           expandedChildren: pick(),
           expandedOlder: pick(),
           childAttention: next() < 0.5 ? "blocked" : "everything",
-          threadLifecycles: ["active", "archived"],
+          showArchived: true,
         },
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });

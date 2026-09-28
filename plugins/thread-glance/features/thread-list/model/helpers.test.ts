@@ -204,7 +204,7 @@ describe("preferences", () => {
     expect(parsePreference("harnessIcon", "hidden").success).toBe(false);
   });
   it("does not import a removed setting from bb", () => {
-    expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, organizationMode: "machine" })).toEqual({
+    expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, threadLifecycles: ["active", "archived"], organizationMode: "machine" })).toEqual({
       organizationMode: "machine",
     });
   });

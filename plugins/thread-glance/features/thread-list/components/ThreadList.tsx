@@ -111,7 +111,7 @@ function ThreadListBody({
 }: PluginThreadListProps & { attempt: number; onRetry(): void }) {
   const { prefs, hydrated, update } = usePreferences();
   const [client] = useClientPreferences();
-  const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.threadLifecycles });
+  const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.showArchived ? ["active", "archived"] : ["active"] });
   const actions = useThreadActions();
   const sdk = useSdk();
   const { providers } = useProviders();
@@ -428,7 +428,7 @@ function ThreadListBody({
       ? null
       : groupIdForRoot(tree.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
   }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
-  const showArchived = prefs.threadLifecycles.includes("archived");
+  const showArchived = prefs.showArchived;
 
   const groupController: GroupController | null = useMemo(() => {
     if (!built) return null;
@@ -462,10 +462,7 @@ function ThreadListBody({
       compact: isCompactViewport,
       activeGroupId,
       showArchived,
-      onToggleArchived: () =>
-        update({
-          threadLifecycles: latest.current.prefs.threadLifecycles.includes("archived") ? ["active"] : ["active", "archived"],
-        }),
+      onToggleArchived: () => update({ showArchived: !latest.current.prefs.showArchived }),
       canCreateSections: prefs.organizationMode === "chronological",
       onToggleCollapse: (group) => {
         const { prefs, forest } = latest.current;
