@@ -223,3 +223,9 @@ _Avoid_: Baseline, blind floor
 **Drive harness**:
 The throwaway bb, fake Anthropic API and scripts committed with Cache Keeper that drive it against real Claude Code threads on a clock the harness can move forward.
 _Avoid_: Test bb, e2e rig
+
+### UI Tweaks
+
+**UI Tweaks**:
+The plugin that adds appearance settings bb lacks, starting with transcript text size and transcript width.
+_Avoid_: Appearance plugin, theme
