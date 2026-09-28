@@ -58,7 +58,7 @@ export function watchThreadViews(warn: (message: string) => void): () => void {
   const timers = new Set<ReturnType<typeof setTimeout>>();
   let stopped = false;
 
-  const later = (delay: number) => {
+  const scanIn = (delay: number) => {
     const timer = setTimeout(() => {
       timers.delete(timer);
       scan();
@@ -67,6 +67,7 @@ export function watchThreadViews(warn: (message: string) => void): () => void {
   };
 
   const scan = () => {
+    pending = false;
     if (stopped) return;
     const now = Date.now();
     let rootVariables: Record<string, string> | null = null;
@@ -75,7 +76,7 @@ export function watchThreadViews(warn: (message: string) => void): () => void {
       const seen = firstSeen.get(view);
       if (seen === undefined) {
         firstSeen.set(view, now);
-        later(GRACE_MS);
+        scanIn(GRACE_MS);
         continue;
       }
       if (now - seen < GRACE_MS) continue;
@@ -91,12 +92,7 @@ export function watchThreadViews(warn: (message: string) => void): () => void {
   const observer = new MutationObserver(() => {
     if (pending) return;
     pending = true;
-    const timer = setTimeout(() => {
-      timers.delete(timer);
-      pending = false;
-      scan();
-    }, SCAN_DELAY_MS);
-    timers.add(timer);
+    scanIn(SCAN_DELAY_MS);
   });
   observer.observe(document.body, { childList: true, subtree: true });
   scan();

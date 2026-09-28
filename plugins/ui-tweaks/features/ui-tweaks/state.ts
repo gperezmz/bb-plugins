@@ -1,7 +1,7 @@
 // The window's copy of the saved tweaks: `TweaksSync` fills it from the
 // server, and the content script and the settings rows read it. Null until
 // the first read answers.
-import type { Tweaks } from "@/shared/tweaks";
+import { sameTweaks, type Tweaks } from "@/shared/tweaks";
 
 type Listener = (tweaks: Tweaks | null) => void;
 
@@ -18,7 +18,7 @@ export function createTweakState(): TweakState {
   return {
     get: () => current,
     set(tweaks) {
-      if (current?.textSize === tweaks.textSize && current.width === tweaks.width) return;
+      if (current && sameTweaks(current, tweaks)) return;
       current = tweaks;
       for (const listener of listeners) listener(current);
     },

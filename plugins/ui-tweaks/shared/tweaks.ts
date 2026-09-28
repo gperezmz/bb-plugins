@@ -15,6 +15,12 @@ export type TweakKey = keyof Tweaks;
 
 const CHOICES: { [K in TweakKey]: readonly Tweaks[K][] } = { textSize: TEXT_SIZES, width: WIDTHS };
 
+export const TWEAK_KEYS = Object.keys(CHOICES) as TweakKey[];
+
+export function sameTweaks(a: Tweaks, b: Tweaks): boolean {
+  return TWEAK_KEYS.every((key) => a[key] === b[key]);
+}
+
 /** The choice a stored or received value names, or undefined when it names none. */
 export function parseChoice<K extends TweakKey>(key: K, value: unknown): Tweaks[K] | undefined {
   return (CHOICES[key] as readonly unknown[]).includes(value) ? (value as Tweaks[K]) : undefined;

@@ -26,17 +26,20 @@ export const COMPOSER: Target = {
 
 export const VIEW_TARGETS: readonly Target[] = [COLUMN, COMPOSER];
 
-/**
- * bb's text size variables, set at the root. The first one missing counts
- * as a missing target, since the text size tweak works through them.
- */
+/** bb's text size variables, set at the root, that the text size tweak scales. */
 export const TEXT_VARIABLES = ["--text-2xs", "--text-xs", "--text-sm", "--text-base", "--text-lg", "--text-xl", "--text-2xl"] as const;
 
-export const TEXT_SM_VARIABLE = "the text size variable --text-sm at :root";
+/** The warning's name for --text-sm, the one text variable that counts as a target. */
+export const TEXT_SM_TARGET = "the text size variable --text-sm at :root";
+
+/** Whether the root holds --text-sm, without which no thread view has all its targets. */
+export function hasTextTarget(rootVariables: Readonly<Record<string, string>>): boolean {
+  return Boolean(rootVariables["--text-sm"]);
+}
 
 /** Names of the targets a thread view lacks, in a fixed order. */
 export function missingTargets(view: ParentNode, rootVariables: Readonly<Record<string, string>>): string[] {
   const missing = VIEW_TARGETS.filter((target) => view.querySelector(target.selector) === null).map((target) => target.name);
-  if (!rootVariables["--text-sm"]) missing.push(TEXT_SM_VARIABLE);
+  if (!hasTextTarget(rootVariables)) missing.push(TEXT_SM_TARGET);
   return missing;
 }

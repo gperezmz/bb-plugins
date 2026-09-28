@@ -1,6 +1,7 @@
 // A row of segments, one chosen, drawn with the classes of bb's own segmented
 // control (the Reasoning picker in the model menu).
 import { useRef, type KeyboardEvent } from "react";
+import { steppedSegment } from "../model/segments";
 
 export interface Segment<T extends string> {
   value: T;
@@ -23,10 +24,9 @@ export function SegmentedControl<T extends string>({
   const chosen = segments.findIndex((segment) => segment.value === value);
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
-    if (step === undefined) return;
+    const next = steppedSegment(event.key, chosen, segments.length);
+    if (next === null) return;
     event.preventDefault();
-    const next = (Math.max(chosen, 0) + step + segments.length) % segments.length;
     onChange(segments[next]!.value);
     buttons.current[next]?.focus();
   };

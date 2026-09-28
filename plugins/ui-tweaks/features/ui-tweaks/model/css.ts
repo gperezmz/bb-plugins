@@ -1,6 +1,6 @@
 // The stylesheet the content script puts in the page for a pair of tweaks.
 import { TEXT_SCALE, WIDTH_PX, type Tweaks } from "@/shared/tweaks";
-import { COLUMN, COMPOSER, TEXT_VARIABLES, THREAD_VIEW } from "./targets";
+import { COLUMN, COMPOSER, hasTextTarget, TEXT_VARIABLES, THREAD_VIEW } from "./targets";
 
 /** bb's phone viewport, the media query its own text sizes switch on. */
 export const PHONE_QUERY = "(width <= 767px) and (pointer: coarse)";
@@ -32,7 +32,7 @@ const FIXED_FONT_SIZES: readonly [string, string][] = [
  *   phone. A variable that is absent is left alone.
  */
 export function tweaksCss(tweaks: Tweaks, rootVariables: Readonly<Record<string, string>>): string {
-  if (!rootVariables["--text-sm"]) return "";
+  if (!hasTextTarget(rootVariables)) return "";
   const rules: string[] = [];
   const scale = TEXT_SCALE[tweaks.textSize];
   if (scale !== 1) {

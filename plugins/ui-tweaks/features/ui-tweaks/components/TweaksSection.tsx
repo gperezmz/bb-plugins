@@ -1,5 +1,5 @@
-// The plugin's page under Tools: one row per tweak, laid out like a row of
-// bb's Settings → Appearance.
+// The plugin's settings, under Settings → Plugins → UI Tweaks: one row per
+// tweak, laid out like a row of bb's Settings → Appearance.
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { TextSize, Tweaks, Width } from "@/shared/tweaks";
 import { useTweaksRpc } from "../api";

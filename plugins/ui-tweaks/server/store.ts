@@ -2,11 +2,9 @@
 // they survive a bb restart and a plugin update. A missing or unreadable row
 // reads as Medium.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { DEFAULT_TWEAKS, TWEAKS_CHANNEL, parseChoice, type TweakKey, type Tweaks } from "../shared/tweaks";
+import { DEFAULT_TWEAKS, TWEAK_KEYS, TWEAKS_CHANNEL, parseChoice, type TweakKey, type Tweaks } from "../shared/tweaks";
 
-const KEYS: readonly TweakKey[] = ["textSize", "width"];
-
-export function kvKey(key: TweakKey): string {
+function kvKey(key: TweakKey): string {
   return `tweak:${key}`;
 }
 
@@ -23,7 +21,7 @@ export function createTweakStore(bb: Pick<BbPluginApi, "storage" | "realtime">):
 
   async function read(): Promise<Tweaks> {
     const tweaks = { ...DEFAULT_TWEAKS };
-    for (const key of KEYS) {
+    for (const key of TWEAK_KEYS) {
       const choice = parseChoice(key, await kv.get(kvKey(key)));
       if (choice !== undefined) Object.assign(tweaks, { [key]: choice });
     }
@@ -34,7 +32,7 @@ export function createTweakStore(bb: Pick<BbPluginApi, "storage" | "realtime">):
     read,
     async write(patch) {
       // The RPC contract has validated the patch.
-      for (const key of KEYS) {
+      for (const key of TWEAK_KEYS) {
         if (patch[key] !== undefined) await kv.set(kvKey(key), patch[key]);
       }
       const tweaks = await read();
@@ -42,7 +40,7 @@ export function createTweakStore(bb: Pick<BbPluginApi, "storage" | "realtime">):
       return tweaks;
     },
     async clear() {
-      for (const key of KEYS) await kv.delete(kvKey(key));
+      for (const key of TWEAK_KEYS) await kv.delete(kvKey(key));
     },
   };
 }
