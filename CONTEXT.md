@@ -129,7 +129,7 @@ Cache Keeper's per-thread switch that has a thread compacted at its deadline whe
 _Avoid_: Auto-compact, idle compact
 
 **Composer chip**:
-Cache Keeper's button in a Claude Code thread's composer, showing Compact when idle's state, whose popover holds the thread's switches.
+Cache Keeper's button in a Claude Code thread's composer, showing Compact when idle's state; its popover holds the thread's switches.
 _Avoid_: Chip
 
 **Keep warm while waiting**:
