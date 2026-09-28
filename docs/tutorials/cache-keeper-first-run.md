@@ -59,12 +59,17 @@ Click **Details**. It holds:
 In a thread of your project, send:
 
 ```text
-Spawn one child thread that runs `sleep 7200` in the background and waits for it, then wait for the child.
+Spawn one child thread that runs `sleep 1800` in the background and waits for it, then wait for the child.
 ```
 
-Click the parent's composer chip and turn on **Keep warm while waiting**. The switch sits on the tree top, the topmost Claude Code thread, and covers every thread below it. Open the child and click its composer chip: its switch is greyed out, with "Set on {parent's title}" under it, which opens the parent.
+Once both have ended their turns, click the parent's composer chip and turn on **Keep warm while waiting**. The switch sits on the tree top, the topmost Claude Code thread, and covers every thread below it. Open the child and click its composer chip: its switch is greyed out, with "Set on {parent's title}" under it, which opens the parent.
 
-While the two wait, the banner above each composer reads `Waiting on …, keeping cache warm`. Cache Keeper sends each a keep-warm a minute before its cache would expire: 5 minutes or an hour after its last request, by the cache lifetime its **Details** show. The two-hour command keeps them waiting past either.
+Both show straight away that the tree is kept warm:
+
+- the banner above each composer reads `Waiting on …, keeping cache warm`;
+- hovering either composer chip ends "While it waits, its cache is kept warm."
+
+The first keep-warm goes a minute before a thread's cache would go cold: about 4 minutes after its last request on a 5-minute cache, about 59 minutes after on a 1-hour cache. The popover's **Details** shows which lifetime the thread has. The keep-warm appears in the thread as a message from you, and on the Cache Keeper page's recent list. You needn't wait for it to carry on.
 
 The same from a terminal, with the parent's id (`thr_…`) from its URL:
 
