@@ -66,17 +66,17 @@ The fold is worked out as if no thread were open, so the children shown stay the
 
 ## Settled threads
 
-A **settled thread** is a quiet thread that does not need attention, is not pinned and has no open pull request, and that either has a pull request that merged or closed, or has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when only the pull request counts. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
+A **settled thread** is a quiet thread that does not need attention, is not pinned, and has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when nothing settles. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
 
 A tree settles as one unit: it goes behind its group's settled fold only when every thread in it is settled, and a child never leaves its tree for the fold. Archived threads, shown with **Show archived threads**, take the same test. Pinned threads never settle, so Pinned has no fold.
 
 ```mermaid
 flowchart LR
-  live["In its group"] -->|"every thread in the tree settled: a pull request merged or closed, or Settle after passed"| fold["Behind the settled fold"]
+  live["In its group"] -->|"every thread in the tree settled: Settle after passed"| fold["Behind the settled fold"]
   fold -->|"any activity: a message sent, a run started, something needing attention"| live
 ```
 
-Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes, its pull request merges or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. To know whether a pull request is open, Thread Glance asks bb for it on every quiet thread whose branch is not its project's default branch; the thread stays out of the fold until bb answers. There is no manual settle: bb's archive already takes a thread out of the list.
+Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. A thread's pull request plays no part: a merged one does not settle it sooner, and an open one does not keep it out. bb's thread list already carries a thread's last finish, so a thread is in or out of the fold from the first paint, and does not move when the pull request badges or the branch line fill in. There is no manual settle: bb's archive already takes a thread out of the list.
 
 When the thread you have open is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
 
