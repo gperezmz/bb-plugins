@@ -42,7 +42,7 @@ Choosing a **Sort by** field starts it in its own direction: newest first for da
 | `collapsedThreadSections` | `[]` | `section:<id>` keys whose group is collapsed |
 | `collapsedMachines` | `[]` | Machine ids whose group is collapsed |
 | `collapsedEnvironments` | `[]` | Environment ids whose folder row is collapsed |
-| `expandedOlder` | `[]` | Parent thread ids whose `N more child threads` row you opened |
+| `expandedOlder` | `[]` | Parent thread ids whose `N more child threads` row you opened, once that tree's children chip was open |
 | `openSettledFolds` | `[]` | Group ids whose [settled fold](thread-glance-states.md#the-settled-fold) you opened |
 | `expandedChildren` | `[]` | Parent thread ids whose chip you opened |
 

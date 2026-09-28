@@ -55,7 +55,7 @@ Each item has a status on each machine:
 | `unknown` | The machine is offline, or the check could not run | Dimmed, with when the machine was last seen |
 | `skipped` | Not in scope on this machine | Not counted |
 
-An item's own status is the worst over the machines in scope that are online; `unknown` and `skipped` never make it fail. A machine offline for more than 7 days becomes `skipped`, and offers **Forget this machine**.
+An item's own status is the worst over the machines in scope that are online; `unknown` and `skipped` never make it fail. A machine offline for more than 7 days becomes `skipped`. The checklist then lists it above the groups, with **Forget this machine**.
 
 The sidebar badge counts required items that are `todo`, `broken` or `needs-approval`. It shows a dot when only updates remain, and a check mark when every required item is `ok`.
 

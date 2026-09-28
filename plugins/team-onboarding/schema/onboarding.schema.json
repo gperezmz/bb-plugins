@@ -552,7 +552,10 @@
         "properties": {
           "name": {
             "type": "string",
-            "pattern": "^[A-Z_][A-Z0-9_]*$"
+            "pattern": "^[A-Z_][A-Z0-9_]*$",
+            "not": {
+              "pattern": "^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GIT_CONFIG_.*)$"
+            }
           },
           "note": {
             "type": "string"

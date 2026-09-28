@@ -54,7 +54,7 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `collapsedEnvironments` | Environment ids of collapsed folder rows | `[]` |
 | `settleAfter` | Settle after: how long a quiet thread goes without activity before its tree can settle into the group's "Settled (N)" fold: `12h`, `1d`, `3d`, `1w` or `never` (then only a merged or closed pull request settles it) | `1d` |
 | `openSettledFolds` | Group ids whose settled fold is open | `[]` |
-| `expandedOlder` | Parent thread ids whose "N more child threads" row is open | `[]` |
+| `expandedOlder` | Parent thread ids whose "N more child threads" row is open, once that tree's children chip is open | `[]` |
 | `expandedChildren` | Parent thread ids whose chip is open | `[]` |
 | `childAttention` | Needs attention counts every child. Which child threads need attention (collapsed groups, the need-you filter, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |
 | `harnessIcon` | How rows that draw a harness logo draw it: `muted` (monochrome) or `colour` (the provider's tint). A row draws one only where its harness differs from bb's default (a root) or its parent thread's (a child) | `muted` |

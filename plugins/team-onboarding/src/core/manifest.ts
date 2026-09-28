@@ -231,11 +231,18 @@ const toolSchema = z
     }
   });
 
+/** Environment variable names the env form refuses: they would override bb's built-in git. */
+export const REFUSED_ENV = /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GIT_CONFIG_.*)$/;
+
 const envSchema = z
   .object({
     name: z
       .string()
-      .regex(/^[A-Z_][A-Z0-9_]*$/, "env names are UPPER_SNAKE_CASE"),
+      .regex(/^[A-Z_][A-Z0-9_]*$/, "env names are UPPER_SNAKE_CASE")
+      .refine((name) => !REFUSED_ENV.test(name), {
+        error: (issue) =>
+          `${String(issue.input)} would override bb's built-in git on every machine: the env form refuses GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN and every name starting GIT_CONFIG_, so the item could never be completed`,
+      }),
     note: z.string().optional(),
     required: z.boolean().optional(),
   })
@@ -463,5 +470,10 @@ export function formatIssue(issue: ManifestIssue): string {
 
 /** The emitted JSON Schema for editors. */
 export function manifestJsonSchema(): unknown {
-  return z.toJSONSchema(manifestSchema, { io: "input", unrepresentable: "any" });
+  const schema = z.toJSONSchema(manifestSchema, { io: "input", unrepresentable: "any" }) as unknown as {
+    properties: { env: { items: { properties: { name: Record<string, unknown> } } } };
+  };
+  // The parser's check is not JSON Schema, so state the refused names here for editors.
+  schema.properties.env.items.properties.name.not = { pattern: REFUSED_ENV.source };
+  return schema;
 }

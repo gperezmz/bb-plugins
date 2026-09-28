@@ -105,7 +105,7 @@ The plugin that draws bb's sidebar navigation on a phone as a New thread line ab
 _Avoid_: Compact navigation, mobile nav, nav strip plugin
 
 **Icon row**:
-Pocket Navigation's line below the New thread line: an icon button for every entry bb's settings show other than New thread and search, then "…" when any entry is hidden.
+Pocket Navigation's line below the New thread line: an icon button for every entry bb's settings show other than New thread and search, then "…", which lists every hidden entry and opens Customize sidebar.
 _Avoid_: Icon strip, toolbar, nav bar
 
 **New thread line**:

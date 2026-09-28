@@ -109,7 +109,7 @@ export const PREFERENCES = {
   expandedOlder: define(
     idListSchema,
     [] as string[],
-    "Parent thread ids whose N more child threads fold the user opened.",
+    "Parent thread ids whose \"N more child threads\" row the user opened, once that tree's children chip was open.",
   ),
   openSettledFolds: define(
     idListSchema,

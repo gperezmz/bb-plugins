@@ -8,7 +8,7 @@ import { pruneApprovals } from "../core/approval.js";
 import { fixesFor, type FixContext } from "../core/fixes.js";
 import { GITHUB_KNOWN_HOSTS } from "../core/github-keys.js";
 import { allCommands, deriveItems } from "../core/items.js";
-import { parseManifest, formatIssue, type Manifest } from "../core/manifest.js";
+import { parseManifest, formatIssue, REFUSED_ENV, type Manifest } from "../core/manifest.js";
 import type { Facts } from "../core/model.js";
 import type { Fix, FixKind, ItemDef, ItemResult } from "../core/model.js";
 import { CATEGORY_TEXT, LOGIN_NOTE_TEXT, redactSecrets, type LoginNote } from "../core/redact.js";
@@ -53,9 +53,6 @@ export interface ManifestFileInfo {
   /** Validation errors with their line, or why the file can't be read. */
   issues: string[];
 }
-
-/** Environment variable names the env form refuses: they would override bb's built-in git. */
-export const REFUSED_ENV = /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GIT_CONFIG_.*)$/;
 
 const WATCH_INTERVAL_MS = 5_000;
 const WATCH_LIMIT_MS = 15 * 60_000;
