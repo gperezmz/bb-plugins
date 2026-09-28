@@ -479,7 +479,6 @@ function buildAttention(
   const compare = makeComparator({
     field: context.prefs.chronologicalSort,
     direction: "default",
-    workingFirst: context.prefs.workingFirst,
   });
   const slotOf = (tree: ThreadTree): SectionTree =>
     context.held !== null && tree.root.thread.id === context.heldRootId ? context.held : tree;
@@ -543,7 +542,7 @@ function buildGroup(
 
   let visible = sorted;
   let older: OlderRow | null = null;
-  const foldable = !isPinned && context.prefs.foldOlder;
+  const foldable = !isPinned;
   if (foldable) {
     // The fold reads `quietIgnoringOpen`, as if no thread were open. The open tree
     // joins afterwards when it sits behind the fold, and takes no other row's place.
@@ -610,7 +609,6 @@ export function buildListView(inputs: ViewInputs): ListView {
     compare: makeComparator({
       field: prefs.chronologicalSort,
       direction: prefs.sortDirection,
-      workingFirst: prefs.workingFirst,
     }),
     expandedChildren: new Set(prefs.expandedChildren),
     expandedOlder: new Set(prefs.expandedOlder),

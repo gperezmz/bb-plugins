@@ -153,14 +153,12 @@ function SettingsPanel({
           {arrow.glyph}
         </button>
       </Line>
-      <Toggle label="Working threads first" checked={prefs.workingFirst} onChange={(value) => onPrefs({ workingFirst: value })} />
       <Toggle
         label="Worktrees as folders"
         description="Threads sharing a worktree fold into one row"
         checked={prefs.environmentGrouping}
         onChange={(value) => onPrefs({ environmentGrouping: value })}
       />
-      <Toggle label="Collapse older threads" checked={prefs.foldOlder} onChange={(value) => onPrefs({ foldOlder: value })} />
       <Heading>Rows</Heading>
       <Line label="Density">
         <Segmented
@@ -179,13 +177,11 @@ function SettingsPanel({
           options={[
             ["muted", "Muted"],
             ["colour", "Colour"],
-            ["hidden", "Hidden"],
           ]}
           current={prefs.harnessIcon}
           onSelect={(value) => onPrefs({ harnessIcon: value })}
         />
       </Line>
-      <Toggle label="Pull request badge" checked={prefs.showPullRequests} onChange={(value) => onPrefs({ showPullRequests: value })} />
       <Heading>Show</Heading>
       <Line label="Threads">
         <Segmented

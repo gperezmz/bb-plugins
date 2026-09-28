@@ -199,7 +199,7 @@ function ThreadListBody({
 
   // Each project's default branch, fetched once per session.
   useEffect(() => {
-    if (!prefs.showPullRequests || forest === null) return;
+    if (forest === null) return;
     for (const tree of forest.trees) {
       const thread = tree.root.thread;
       const projectId = thread.projectId;
@@ -211,7 +211,7 @@ function ThreadListBody({
         () => setDefaultBranches((current) => new Map(current).set(projectId, null)),
       );
     }
-  }, [prefs.showPullRequests, forest, sdk]);
+  }, [forest, sdk]);
 
   const marks = useMemo(() => assignProviderMarks(providers), [providers]);
   // One display per harness, built once: rows compare it by identity.
@@ -349,7 +349,6 @@ function ThreadListBody({
       compact: isCompactViewport,
       comfortable: client.density === "comfortable",
       setEditingId,
-      showPullRequests: prefs.showPullRequests,
       harnessIcon: prefs.harnessIcon,
       defaultBranchOf: (thread) =>
         defaultBranches.has(thread.projectId) ? defaultBranches.get(thread.projectId) ?? null : undefined,
@@ -396,7 +395,6 @@ function ThreadListBody({
     built,
     isCompactViewport,
     client.density,
-    prefs.showPullRequests,
     prefs.harnessIcon,
     prefs.organizationMode,
     defaultBranches,
@@ -821,7 +819,7 @@ function ThreadListBody({
             <ThreadDetails
               info={details}
               controller={rowController}
-              showPullRequest={prefs.showPullRequests}
+              showPullRequest
               actions={{
                 open: () => {
                   setDetailsId(null);

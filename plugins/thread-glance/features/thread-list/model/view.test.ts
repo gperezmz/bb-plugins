@@ -173,11 +173,6 @@ describe("scenario 5: a project with 60 old threads", () => {
     expect(ids).toHaveLength(61);
     expect(ids.at(-1)).toBe("older:55");
   });
-  it("fold older off shows everything", () => {
-    const ids = rowIds(viewOf({ threads: old, prefs: { foldOlder: false } }), "project:proj_a");
-    expect(ids).toHaveLength(60);
-    expect(ids.some((id) => id.startsWith("older"))).toBe(false);
-  });
   it("keeps the 5 newest quiet roots whatever the order", () => {
     const newest = ["o55", "o56", "o57", "o58", "o59"];
     const ids = (prefs: Scenario["prefs"]) => rowIds(viewOf({ threads: old, prefs }), "project:proj_a");
@@ -603,12 +598,9 @@ describe("sort", () => {
     expect(ids({ chronologicalSort: "alpha" })).toEqual(["b", "a"]);
     expect(ids({ chronologicalSort: "none", sortDirection: "ascending" })).toEqual(["a", "b"]);
   });
-  it("working first puts active roots on top only when enabled", () => {
+  it("a working root keeps its place in the sort", () => {
     const busy = [...threads, makeThread({ id: "w", latestAttentionAt: T0 - 100, ...working })];
-    const ids = (workingFirst: boolean) =>
-      rowIds(viewOf({ threads: busy, prefs: { workingFirst } }), "project:proj_a").filter((id) => id !== "c");
-    expect(ids(false)).toEqual(["b", "a", "w"]);
-    expect(ids(true)).toEqual(["w", "b", "a"]);
+    expect(rowIds(viewOf({ threads: busy }), "project:proj_a").filter((id) => id !== "c")).toEqual(["b", "a", "w"]);
   });
   it("Pinned orders by pinSortKey, then pinnedAt", () => {
     const pinned = [

@@ -284,24 +284,21 @@ describe("Thread Glance slot", () => {
       ["Group by", ["Project", "Custom", "Machine"]],
       ["Sort by", ["Updated", "Created", "A–Z"]],
       ["Density", ["Compact", "Comfortable"]],
-      ["Harness icon", ["Muted", "Colour", "Hidden"]],
+      ["Harness icon", ["Muted", "Colour"]],
       ["Threads", ["Active", "Archived", "Both"]],
     ]);
     const checkboxes = within(panel)
       .getAllByRole("checkbox")
       .map((box) => [box.textContent, box.getAttribute("aria-checked")]);
     expect(checkboxes).toEqual([
-      ["Working threads first", "false"],
       ["Worktrees as foldersThreads sharing a worktree fold into one row", "false"],
-      ["Collapse older threads", "true"],
-      ["Pull request badge", "true"],
       ["Needs attention counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
-    expect(within(panel).getAllByRole("radio")).toHaveLength(14);
+    expect(within(panel).getAllByRole("radio")).toHaveLength(13);
     expect(within(panel).getAllByRole("button")).toHaveLength(1);
-    expect(panel.querySelectorAll("button")).toHaveLength(14 + 5 + 1);
+    expect(panel.querySelectorAll("button")).toHaveLength(13 + 2 + 1);
   });
 
   it("reverses every group with the ↓/↑ button, and saves Threads choices as lifecycles", async () => {

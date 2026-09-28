@@ -219,10 +219,9 @@ export const ThreadRowView = memo(function ThreadRowView({
     controller.setEditingId(thread.id);
   };
 
-  const defaultBranch = controller.showPullRequests && row.depth === 0 ? controller.defaultBranchOf(thread) : undefined;
+  const defaultBranch = row.depth === 0 ? controller.defaultBranchOf(thread) : undefined;
   const branch = thread.environment?.branchName ?? null;
-  const showPullRequest =
-    controller.showPullRequests && row.depth === 0 && branch !== null && defaultBranch !== undefined && branch !== defaultBranch;
+  const showPullRequest = row.depth === 0 && branch !== null && defaultBranch !== undefined && branch !== defaultBranch;
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -459,11 +458,9 @@ export const ThreadRowView = memo(function ThreadRowView({
         >
           {chip.count}
           {chip.flag !== null ? <FlagGlyph flag={chip.flag} className="size-3" /> : null}
-          {controller.harnessIcon !== "hidden"
-            ? chip.providerIds.map((providerId) => (
-                <ProviderBadge key={providerId} display={controller.provider(providerId)} className="size-3 [&_*]:size-3" />
-              ))
-            : null}
+          {chip.providerIds.map((providerId) => (
+            <ProviderBadge key={providerId} display={controller.provider(providerId)} className="size-3 [&_*]:size-3" />
+          ))}
           <Icon
             name={ICONS.expand}
             aria-hidden

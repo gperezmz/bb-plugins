@@ -109,16 +109,38 @@ describe("preferences", () => {
 
   it("reads an invalid stored value as the default and warns", async () => {
     const { bb, harness } = await load();
-    await bb.storage.kv.set(preferenceKvKey("foldOlder"), "yes");
+    await bb.storage.kv.set(preferenceKvKey("settleAfter"), "2d");
     const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
-      preferences: { foldOlder: boolean };
+      preferences: { settleAfter: string };
     };
-    expect(preferences.foldOlder).toBe(true);
+    expect(preferences.settleAfter).toBe("1d");
     expect(
       harness.inspection.logEntries.some(
-        (entry) => entry.level === "warn" && entry.message.includes("foldOlder"),
+        (entry) => entry.level === "warn" && entry.message.includes("settleAfter"),
       ),
     ).toBe(true);
+  });
+
+  it("reads a stored Hidden harness icon as Muted, without a warning", async () => {
+    const { bb, harness } = await load();
+    await bb.storage.kv.set(preferenceKvKey("harnessIcon"), "hidden");
+    const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: { harnessIcon: string };
+    };
+    expect(preferences.harnessIcon).toBe("muted");
+    expect(harness.inspection.logEntries.some((entry) => entry.level === "warn")).toBe(false);
+  });
+
+  it("ignores values saved under removed settings, and a saved foldOlder leaves Settle after at 1d", async () => {
+    const { bb, harness } = await load();
+    await bb.storage.kv.set("preference:foldOlder", false);
+    await bb.storage.kv.set("preference:workingFirst", true);
+    await bb.storage.kv.set("preference:showPullRequests", false);
+    const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
+      preferences: Record<string, unknown>;
+    };
+    expect(preferences).toEqual(defaultPreferences());
+    expect(preferences.settleAfter).toBe("1d");
   });
 });
 
@@ -161,9 +183,9 @@ describe("importPreferences", () => {
     const second = await load();
     expect(
       await second.harness.behavior.callRpc("importPreferences", {
-        bbMirror: { preferences: { workingFirst: true } },
+        bbMirror: { preferences: { environmentGrouping: true } },
       }),
-    ).toMatchObject({ source: "local-storage", keys: ["workingFirst"] });
+    ).toMatchObject({ source: "local-storage", keys: ["environmentGrouping"] });
   });
 
   it("falls back to bb's CLI when there is no mirror", async () => {
@@ -463,6 +485,11 @@ describe("bb thread-glance prefs", () => {
     ]);
     expect(setList.exitCode).toBe(0);
 
+    for (const period of ["12h", "1d", "3d", "1w", "never"]) {
+      const settle = await harness.behavior.runCli(["prefs", "set", "settleAfter", period]);
+      expect(settle).toMatchObject({ exitCode: 0, stdout: `settleAfter = "${period}"` });
+    }
+
     const reset = await harness.behavior.runCli(["prefs", "reset", "organizationMode"]);
     expect(reset.stdout).toBe('organizationMode = "project"');
   });
@@ -479,6 +506,14 @@ describe("bb thread-glance prefs", () => {
     const tree = await harness.behavior.runCli(["prefs", "set", "nesting", "tree", "--json"]);
     expect(JSON.parse(tree.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
     expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
+
+    for (const removed of ["workingFirst", "foldOlder", "showPullRequests"]) {
+      const result = await harness.behavior.runCli(["prefs", "set", removed, "true", "--json"]);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
+    }
+
+    const hidden = await harness.behavior.runCli(["prefs", "set", "harnessIcon", "hidden", "--json"]);
+    expect(JSON.parse(hidden.stdout)).toMatchObject({ ok: false, error: { code: "invalid_preference_value" } });
 
     const invalid = await harness.behavior.runCli(["prefs", "set", "organizationMode", "sideways", "--json"]);
     expect(invalid.exitCode).not.toBe(0);

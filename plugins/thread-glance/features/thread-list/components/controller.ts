@@ -21,7 +21,6 @@ export interface RowController {
   compact: boolean;
   comfortable: boolean;
   setEditingId(id: string | null): void;
-  showPullRequests: boolean;
   harnessIcon: HarnessIcon;
   /** Undefined while unknown; the lookup starts on first ask. */
   defaultBranchOf(thread: PluginSidebarThread): string | null | undefined;

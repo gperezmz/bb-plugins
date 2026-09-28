@@ -26,7 +26,6 @@ export function ProviderBadge({
   mode?: HarnessIcon;
   className?: string;
 }) {
-  if (mode === "hidden") return null;
   const muted = mode === "muted";
   if (display.provider !== null) {
     // Without its tint the logo draws as a currentColor mask.

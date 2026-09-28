@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBbPreferences, coercePreferences, defaultPreferences } from "@/shared/preferences";
+import { mapBbPreferences, coercePreferences, defaultPreferences, parsePreference, parseStoredPreference } from "@/shared/preferences";
 import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
@@ -166,20 +166,31 @@ describe("preferences", () => {
   it("defaults follow the spec", () => {
     expect(defaultPreferences()).toMatchObject({
       organizationMode: "project",
-      foldOlder: true,
-      workingFirst: false,
       environmentGrouping: false,
-      showPullRequests: true,
+      settleAfter: "1d",
+      harnessIcon: "muted",
+      openSettledFolds: [],
     });
   });
   it("a bad mirror value falls back per key", () => {
-    expect(coercePreferences({ organizationMode: "machine", foldOlder: "yes" })).toMatchObject({ organizationMode: "machine", foldOlder: true });
+    expect(coercePreferences({ organizationMode: "machine", settleAfter: "2d" })).toMatchObject({ organizationMode: "machine", settleAfter: "1d" });
   });
-  it("reads a saved tree nesting as the folded layout, without an error", () => {
-    const prefs = coercePreferences({ nesting: "tree", collapsedChildren: ["p"], foldOlder: false });
-    expect(prefs).not.toHaveProperty("nesting");
-    expect(prefs).not.toHaveProperty("collapsedChildren");
-    expect(prefs.foldOlder).toBe(false);
+  it("drops removed settings, and a saved foldOlder leaves Settle after at its default", () => {
+    const prefs = coercePreferences({ nesting: "tree", collapsedChildren: ["p"], foldOlder: false, workingFirst: true, showPullRequests: false });
+    for (const key of ["nesting", "collapsedChildren", "foldOlder", "workingFirst", "showPullRequests"]) {
+      expect(prefs).not.toHaveProperty(key);
+    }
+    expect(prefs.settleAfter).toBe("1d");
+  });
+  it("reads a stored Hidden harness icon as Muted, and refuses to save it", () => {
+    expect(coercePreferences({ harnessIcon: "hidden" }).harnessIcon).toBe("muted");
+    expect(parseStoredPreference("harnessIcon", "hidden")).toEqual({ success: true, value: "muted" });
+    expect(parsePreference("harnessIcon", "hidden").success).toBe(false);
+  });
+  it("does not import a removed setting from bb", () => {
+    expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, organizationMode: "machine" })).toEqual({
+      organizationMode: "machine",
+    });
   });
 });
 

@@ -198,7 +198,6 @@ const SCENARIOS: Record<string, Partial<Preferences>> = {
   // Every thread drawn: archived shown, nothing collapsed or folded.
   "all-expanded": {
     threadLifecycles: ["active", "archived"],
-    foldOlder: false,
     collapsedSections: [],
     collapsedProjects: [],
   },
@@ -206,7 +205,6 @@ const SCENARIOS: Record<string, Partial<Preferences>> = {
   "folded-archived": {
     threadLifecycles: ["active", "archived"],
     organizationMode: "project",
-    foldOlder: true,
     collapsedSections: ["threads"],
     collapsedProjects: [],
     expandedChildren: [],
