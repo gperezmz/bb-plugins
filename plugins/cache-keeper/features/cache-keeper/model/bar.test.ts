@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, statusLine, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
+import { bannerOf, chipIcon, chipSentence, chipText, countsText, entryText, nextWarmText, statusLine, statusText, warmControl, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { lines, view } from "./view.test.helpers";
 import { costText, formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
@@ -61,47 +61,110 @@ describe("the chip", () => {
   });
 });
 
+describe("the chip's icon", () => {
+  const waiting = (over: Partial<ThreadView> = {}) => view({ waiting: true, warmPlanned: true, ...over });
+
+  it("is the timer whenever the thread is not waiting, and while a compaction is due", () => {
+    const states: Partial<ThreadView>[] = [
+      { compactOn: false },
+      {},
+      { line: null },
+      { compactionDue: true },
+      { compactSkipped: true },
+      { hasPendingInteraction: true },
+      { hasPendingInteraction: true, waiting: true, warmPlanned: true },
+      { status: "active", waiting: true, keptWarm: false },
+      { compactionDue: true, waiting: true, keptWarm: false },
+      { keptWarm: false, warmSetting: "never" },
+    ];
+    for (const over of states) expect(chipIcon(view(over))).toBe("timer");
+  });
+
+  it("is the flame while the thread waits and a keep-warm is planned", () => {
+    expect(chipIcon(waiting())).toBe("flame");
+  });
+
+  it("is the crossed-out flame while the thread waits and its cache is not kept warm, whatever the reason", () => {
+    const reasons: Partial<ThreadView>[] = [
+      { keptWarm: false, warmPlanned: false },
+      { warmSkipped: true, warmPlanned: false },
+      { warmNoPrice: true, warmPlanned: false },
+      { warmPlanned: false },
+      { keptWarm: false, warmPlanned: false, warmSetting: "never" },
+    ];
+    for (const over of reasons) expect(chipIcon(waiting(over))).toBe("crossed-out-flame");
+  });
+});
+
+describe("the chip's hover sentence while the thread waits", () => {
+  const waiting = (over: Partial<ThreadView> = {}) => view({ waiting: true, warmPlanned: true, ...over });
+  const tail = (v: ThreadView) => chipSentence(v, 0).replace(/^.*cold\. /, "");
+
+  it("says the cache is kept warm, as today", () => {
+    expect(tail(waiting())).toBe("While it waits, its cache is kept warm.");
+  });
+
+  it("names why the cache is not kept warm, one wording per reason", () => {
+    expect(tail(waiting({ keptWarm: false, warmPlanned: false }))).toBe("While it waits, its cache is not kept warm: Keep warm while waiting is off for this tree.");
+    expect(tail(waiting({ warmSkipped: true, warmPlanned: false }))).toBe("While it waits, its cache is not kept warm: skipped for this wait.");
+    expect(tail(waiting({ warmNoPrice: true, warmPlanned: false }))).toBe("While it waits, its cache is not kept warm: this model has no price.");
+    expect(tail(waiting({ warmPlanned: false }))).toBe("While it waits, its cache is not kept warm: another keep-warm would cost more than a cold start.");
+    expect(tail(waiting({ keptWarm: false, warmPlanned: false, warmSetting: "never" }))).toBe(
+      'While it waits, its cache is not kept warm: "Keep caches warm while waiting" is set to Never in Settings.',
+    );
+  });
+
+  it("is main's sentence while the thread is not waiting idle", () => {
+    expect(tail(view({ status: "active", waiting: true, keptWarm: false }))).toBe("While it waits, its cache is not kept warm.");
+    expect(chipSentence(view({ hasPendingInteraction: true, waiting: true, warmSetting: "never", keptWarm: false }), 0)).toBe(
+      "Compact when idle is paused while this thread waits on your answer. Keep-warms are off in Settings.",
+    );
+  });
+});
+
+describe("the popover's keep-warm control", () => {
+  const waiting = (over: Partial<ThreadView> = {}) => view({ waiting: true, warmPlanned: true, ...over });
+
+  it("offers Skip this wait while the thread waits and is kept warm, and Undo after a skip", () => {
+    expect(warmControl(waiting())).toBe("skip-warm");
+    expect(warmControl(waiting({ warmSkipped: true, warmPlanned: false }))).toBe("undo-warm");
+  });
+
+  it("offers Keep warm below a tree top whose tree is not switched on, and never under Never or on the tree top", () => {
+    expect(warmControl(waiting({ keptWarm: false, warmPlanned: false }))).toBe("keep-warm");
+    expect(warmControl(waiting({ keptWarm: false, warmPlanned: false, threadId: "thr_1" }))).toBeNull();
+    expect(warmControl(waiting({ keptWarm: false, warmPlanned: false, warmSetting: "never" }))).toBeNull();
+  });
+
+  it("offers nothing past the cost stop, without a price, or while the thread is not waiting idle", () => {
+    expect(warmControl(waiting({ warmPlanned: false }))).toBeNull();
+    expect(warmControl(waiting({ warmNoPrice: true, warmPlanned: false }))).toBeNull();
+    expect(warmControl(view())).toBeNull();
+    expect(warmControl(waiting({ status: "active" }))).toBeNull();
+  });
+});
+
 describe("the banner", () => {
   const waiting = (over: Partial<ThreadView> = {}) => view({ waiting: true, counts: { threads: 2, commands: 1, subagents: 0, queued: 0, scheduled: 0 }, ...over });
 
-  it("says in one line what is about to happen, with its buttons", () => {
+  it("shows around a compaction, with its buttons", () => {
     expect(bannerOf(view({ compactionDue: true }), 0)).toEqual({ text: "Compacting in 10m, before the cache goes cold", actions: ["skip-compaction", "compact-now"] });
     expect(bannerOf(view({ compactSkipped: true }), 0)).toEqual({ text: "Skipped until this thread next runs", actions: ["undo-compaction"] });
-    expect(bannerOf(waiting({ warmPlanned: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keeping cache warm", actions: ["skip-warm"] });
-    expect(bannerOf(waiting(), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, letting cache go cold", actions: [] });
-    expect(bannerOf(waiting({ warmSkipped: true }), 0)).toEqual({ text: "Skipped for this wait", actions: ["undo-warm"] });
-    expect(bannerOf(waiting({ warmNoPrice: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, not keeping cache warm: this model has no price", actions: [] });
   });
 
-  it("says a waiting tree is not kept warm, with Keep warm, when its switch is off", () => {
-    for (const warmSetting of ["every", "switched"] as const) {
-      expect(bannerOf(waiting({ keptWarm: false, warmSetting }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, not keeping cache warm", actions: ["keep-warm"] });
-    }
-  });
-
-  it("says keep-warms are off in Settings under Never, with no button, whatever was skipped or planned", () => {
-    for (const over of [{}, { warmSkipped: true }, { warmPlanned: true }]) {
-      expect(bannerOf(waiting({ keptWarm: false, warmSetting: "never", ...over }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keep-warms are off in Settings", actions: [] });
+  it("shows nothing while a thread waits, under any setting and whatever was skipped", () => {
+    for (const warmSetting of ["every", "switched", "never"] as const) {
+      for (const over of [{}, { warmPlanned: true }, { keptWarm: false }, { warmSkipped: true }, { warmNoPrice: true }, { compactSkipped: true }]) {
+        expect(bannerOf(waiting({ warmSetting, ...over }), 0)).toBeNull();
+      }
     }
   });
 
   it("shows nothing when there is nothing to say", () => {
     expect(bannerOf(view(), 0)).toBeNull();
     expect(bannerOf(view({ keptWarm: false }), 0)).toBeNull();
-    expect(bannerOf(waiting({ warmPlanned: true, status: "active" }), 0)).toBeNull();
+    expect(bannerOf(view({ compactionDue: true, status: "active" }), 0)).toBeNull();
     expect(bannerOf(view({ compactionDue: true, hasPendingInteraction: true }), 0)).toBeNull();
-  });
-
-  it("never uses Cache Keeper's own words but for the setting's", () => {
-    const texts = [
-      bannerOf(waiting({ warmPlanned: true }), 0),
-      bannerOf(waiting(), 0),
-      bannerOf(waiting({ keptWarm: false }), 0),
-      bannerOf(waiting({ warmSkipped: true }), 0),
-      bannerOf(view({ compactionDue: true }), 0),
-      bannerOf(view({ compactSkipped: true }), 0),
-    ].map((b) => b!.text);
-    for (const t of texts) expect(t).not.toMatch(/keep-warm|check-in|family|tree|report|cost stop/i);
   });
 });
 

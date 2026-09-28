@@ -110,9 +110,59 @@ export function chipText(view: ThreadView, now: number): string {
   return view.line === null ? "no line" : `≥ ${formatSize(view.line)}`;
 }
 
-/** The chip's hover sentence: its compaction sentence, then whether the thread is kept warm while it waits. */
+/** The chip's hover sentence: its compaction sentence, then whether the thread is kept warm while it waits, and why not. */
 export function chipSentence(view: ThreadView, now: number): string {
   return `${compactSentence(view, now)} ${warmSentence(view)}`;
+}
+
+/**
+ * Whether the thread waits the way keep-warms care about: its turn has
+ * ended, it waits on no answer, no compaction is due, and it waits on
+ * background work, child threads or a scheduled message.
+ */
+export function waitsIdle(view: ThreadView): boolean {
+  return view.eligible && view.status === "idle" && !view.hasPendingInteraction && !view.compactionDue && view.waiting;
+}
+
+/** Why a thread that waits idle is not kept warm. */
+export type NotWarm = "never" | "switched-off" | "skipped" | "no-price" | "cost-stop";
+
+/** Why a thread that waits idle is not kept warm, or null when it is kept warm or does not wait idle. */
+export function notWarmReason(view: ThreadView): NotWarm | null {
+  if (!waitsIdle(view)) return null;
+  if (view.warmSetting === "never") return "never";
+  if (!view.keptWarm) return "switched-off";
+  if (view.warmSkipped) return "skipped";
+  if (view.warmNoPrice) return "no-price";
+  // Past the cost stop, or a cache already cold when its tree was switched on.
+  return view.warmPlanned ? null : "cost-stop";
+}
+
+/** The composer chip's icon. */
+export type ChipIcon = "timer" | "flame" | "crossed-out-flame";
+
+/** The timer unless the thread waits idle; then the flame while it is kept warm, and the crossed-out flame while it is not. */
+export function chipIcon(view: ThreadView): ChipIcon {
+  if (!waitsIdle(view)) return "timer";
+  return notWarmReason(view) === null ? "flame" : "crossed-out-flame";
+}
+
+/** The keep-warm control the popover offers beside its switch, or null. */
+export type WarmControl = "skip-warm" | "undo-warm" | "keep-warm";
+
+export function warmControl(view: ThreadView): WarmControl | null {
+  if (!waitsIdle(view)) return null;
+  switch (notWarmReason(view)) {
+    case null:
+      return "skip-warm";
+    case "skipped":
+      return "undo-warm";
+    case "switched-off":
+      // On a tree top the switch itself does this.
+      return view.treeTop.threadId === view.threadId ? null : "keep-warm";
+    default:
+      return null;
+  }
 }
 
 /** Whether the popover's Keep warm while waiting switch can be flipped: on a tree top, unless the setting is Never. */
@@ -124,8 +174,19 @@ export function nextWarmText(view: ThreadView, now: number): string {
   return view.nextWarmAt === null ? "–" : `in ${minutesTo(view.nextWarmAt, now)}m`;
 }
 
-/** Whether a thread is kept warm while it waits, in a sentence. */
+const NOT_WARM: Record<NotWarm, string> = {
+  never: '"Keep caches warm while waiting" is set to Never in Settings',
+  "switched-off": "Keep warm while waiting is off for this tree",
+  skipped: "skipped for this wait",
+  "no-price": "this model has no price",
+  "cost-stop": "another keep-warm would cost more than a cold start",
+};
+
+/** Whether a thread is kept warm while it waits, in a sentence; while it waits idle and is not, why. */
 export function warmSentence(view: ThreadView): string {
+  const reason = notWarmReason(view);
+  if (reason !== null) return `While it waits, its cache is not kept warm: ${NOT_WARM[reason]}.`;
+  if (waitsIdle(view)) return "While it waits, its cache is kept warm.";
   if (view.warmSetting === "never") return "Keep-warms are off in Settings.";
   return view.keptWarm ? "While it waits, its cache is kept warm." : "While it waits, its cache is not kept warm.";
 }
@@ -184,9 +245,9 @@ export function countsText(counts: WaitCounts): string {
   return parts.length === 0 ? "background work" : joinAnd(parts);
 }
 
-export type BannerAction = "skip-compaction" | "compact-now" | "undo-compaction" | "skip-warm" | "undo-warm" | "keep-warm";
+export type BannerAction = "skip-compaction" | "compact-now" | "undo-compaction";
 
-/** The one line above the composer, and its buttons; null for none. */
+/** The one line above the composer, and its buttons: only while a compaction is due, or after one was skipped. Null for none. */
 export function bannerOf(view: ThreadView, now: number): { text: string; actions: BannerAction[] } | null {
   if (!view.eligible || view.status !== "idle" || view.hasPendingInteraction) return null;
   if (view.compactionDue && view.deadline !== null) {
@@ -195,15 +256,7 @@ export function bannerOf(view: ThreadView, now: number): { text: string; actions
   if (view.compactOn && view.compactSkipped && view.compactedAt === null && !view.waiting) {
     return { text: "Skipped until this thread next runs", actions: ["undo-compaction"] };
   }
-  if (!view.waiting) return null;
-  const on = `Waiting on ${countsText(view.counts)}`;
-  if (view.warmSetting === "never") return { text: `${on}, keep-warms are off in Settings`, actions: [] };
-  if (!view.keptWarm) return { text: `${on}, not keeping cache warm`, actions: ["keep-warm"] };
-  if (view.warmSkipped) return { text: "Skipped for this wait", actions: ["undo-warm"] };
-  if (view.warmNoPrice) return { text: `${on}, not keeping cache warm: this model has no price`, actions: [] };
-  if (view.warmPlanned) return { text: `${on}, keeping cache warm`, actions: ["skip-warm"] };
-  // Past the cost stop, or a cache already cold when its tree was switched on.
-  return { text: `${on}, letting cache go cold`, actions: [] };
+  return null;
 }
 
 /** A sidebar row showing a Cache Keeper glyph, and which. */
