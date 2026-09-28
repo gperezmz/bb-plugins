@@ -119,6 +119,10 @@ export interface Scenario {
   notes?: Record<string, import("@/shared/contract").ThreadNotes>;
   now?: number;
   startedAt?: Record<string, number>;
+  /** When this list saw each thread go idle, and the server's idleAt stamps. */
+  idleSince?: Record<string, number>;
+  idleAt?: Record<string, number>;
+  stampsLoaded?: boolean;
   /** Project id → default branch; "main" for every project when absent. */
   defaultBranches?: Record<string, string | null>;
   /** bb's primary machine; "host_1", the fixtures' own, when absent. */
@@ -141,6 +145,9 @@ export function forestOf(scenario: Scenario): Forest {
     notes: scenario.notes ?? {},
     childAttention: scenario.prefs?.childAttention,
     now: scenario.now ?? T0 + 60_000,
+    idleSince: scenario.idleSince,
+    idleAt: scenario.idleAt,
+    stampsLoaded: scenario.stampsLoaded,
   });
 }
 

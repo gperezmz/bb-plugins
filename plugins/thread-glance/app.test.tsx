@@ -54,7 +54,7 @@ function rpc(
     resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
     importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
     listStamps: () => ({
-      stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, ...stamps },
+      stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {}, ...stamps },
     }),
     markSeen: () => ({ at: Date.now() }),
     clearSeen: () => ({ ok: true as const }),
@@ -1160,6 +1160,31 @@ describe("the open thread is never unread", () => {
 });
 
 describe("a child's failure while its parent is idle", () => {
+  it("after a reload, waits 5 seconds from the parent going idle as another window recorded it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const wentIdle = Date.now() - 1_600;
+      render(
+        [
+          makeThread({ id: "m", title: "Parent" }),
+          makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, status: "error", latestAttentionAt: wentIdle - 7_000, lastReadAt: T0 }),
+        ],
+        { stamps: { idleAt: { m: wentIdle } } },
+      );
+      await screen.findByRole("link", { name: /^Open Parent —/ });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(screen.getByRole("button", { name: "1 need you" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reaches the need-you filter 5 seconds after it happens, with nothing else in the list changing", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

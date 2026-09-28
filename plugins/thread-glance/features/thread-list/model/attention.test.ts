@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
+import { countNeedYou } from "./view";
 import { isOrphanedFailure, isParentIdle, attentionFlagsOf, orphanedAt, ORPHAN_WAIT_MS, revealsOn, trackIdle } from "./attention";
 import type { Flag } from "./state";
 import type { ThreadRow } from "./view";
@@ -58,6 +59,9 @@ describe("the wait before a failure counts as orphaned", () => {
     expect(orphanedAt(failed, flags("unread-failed"), parent)).toBe(T0 + 6_000);
     expect(orphanedAt(failed, flags("unread-failed"), { ...idleParent, idleSince: T0 })).toBe(T0 + 5_010);
   });
+  it("counts nothing while the parent's idle moment is unknown", () => {
+    expect(orphanedAt(failed, flags("unread-failed"), { ...idleParent, idleSince: null })).toBeNull();
+  });
   it("never counts it while the parent is busy, whatever the time", () => {
     expect(orphanedAt(failed, flags("unread-failed"), { ...idleParent, state: { kind: "working" } })).toBeNull();
   });
@@ -74,6 +78,13 @@ describe("when a thread last became idle", () => {
     const done = trackIdle(running, [idle], T0 + 2);
     expect(done.idleSince).toEqual({ p: T0 + 2 });
     expect(trackIdle(done, [idle], T0 + 3).idleSince).toEqual({ p: T0 + 2 });
+  });
+  it("names the threads each step saw go idle, once, for the server to record", () => {
+    const first = trackIdle(null, [idle], T0);
+    expect(first.wentIdle).toEqual([]);
+    const done = trackIdle(trackIdle(first, [busy], T0 + 1), [idle], T0 + 2);
+    expect(done.wentIdle).toEqual(["p"]);
+    expect(trackIdle(done, [idle], T0 + 3).wentIdle).toEqual([]);
   });
   it("treats background work and a queued message as busy, and drops a thread that is gone", () => {
     for (const thread of [
@@ -341,5 +352,37 @@ describe("a child's failure reaches the need-you filter and the counters after t
 
   it("counts it at once when every child counts, as before", () => {
     expect(at(failedAt + 1, { prefs: { childAttention: "everything" } }).needYouCount).toBe(1);
+  });
+});
+
+describe("the parent's idle moment across a reload", () => {
+  const threads = [
+    makeThread({ id: "m" }),
+    makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1, ...failedUnread }),
+  ];
+  const failedAt = failedUnread.latestAttentionAt;
+  const idleAt = failedAt + 7_000;
+
+  it("counts 5 seconds from the idle moment another window stamped, when this list never saw it", () => {
+    const at = (now: number) => forestOf({ threads, now, idleAt: { m: idleAt } });
+    expect(countNeedYou(at(idleAt + 1_600))).toBe(0);
+    expect(at(idleAt + 1_600).nextOrphanAt).toBe(idleAt + 5_000);
+    expect(countNeedYou(at(idleAt + 5_000))).toBe(1);
+  });
+
+  it("takes the later of the stamped moment and the one this list saw", () => {
+    expect(forestOf({ threads, now: failedAt, idleAt: { m: idleAt }, idleSince: { m: idleAt + 2_000 } }).nextOrphanAt).toBe(idleAt + 7_000);
+    expect(forestOf({ threads, now: failedAt, idleAt: { m: idleAt + 2_000 }, idleSince: { m: idleAt } }).nextOrphanAt).toBe(idleAt + 7_000);
+  });
+
+  it("counts no orphaned failure until the stamps have loaded, then counts it", () => {
+    const later = failedAt + 60_000;
+    expect(countNeedYou(forestOf({ threads, now: later, stampsLoaded: false }))).toBe(0);
+    expect(forestOf({ threads, now: later, stampsLoaded: false }).nextOrphanAt).toBeNull();
+    expect(countNeedYou(forestOf({ threads, now: later, stampsLoaded: true }))).toBe(1);
+  });
+
+  it("falls back to the failure when no window saw the parent go idle", () => {
+    expect(forestOf({ threads, now: failedAt }).nextOrphanAt).toBe(failedAt + 5_000);
   });
 });

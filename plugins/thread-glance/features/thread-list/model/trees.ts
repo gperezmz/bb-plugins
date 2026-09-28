@@ -116,8 +116,12 @@ export interface ForestInputs extends ThreadContext {
   notes?: Readonly<Record<string, ThreadNotes>>;
   /** Which children can need attention; `blocked` when absent. */
   childAttention?: ChildAttention;
-  /** When the list last saw each thread go from busy to idle (see `trackIdle`). */
+  /** When this list last saw each thread go from busy to idle (see `trackIdle`). */
   idleSince?: Readonly<Record<string, number>>;
+  /** The server's `idleAt` stamps: when any window last saw each thread go idle. */
+  idleAt?: Readonly<Record<string, number>>;
+  /** False until the stamps have loaded: no failure counts as orphaned before then. */
+  stampsLoaded?: boolean;
 }
 
 function isPinned(thread: PluginSidebarThread): boolean {
@@ -150,6 +154,18 @@ export function attachParent(
   }
   if (!thread.isHidden && isPinned(thread) && !pinnedAncestor) return null;
   return attach;
+}
+
+/**
+ * When a thread last went idle, as this list or any window saw it; null while
+ * the stamps that may hold it have not loaded.
+ */
+function idleSinceOf(id: string, inputs: ForestInputs): number | null | undefined {
+  if (inputs.stampsLoaded === false) return null;
+  const seen = inputs.idleSince?.[id];
+  const stamped = inputs.idleAt?.[id];
+  if (seen === undefined) return stamped;
+  return stamped === undefined ? seen : Math.max(seen, stamped);
 }
 
 export function buildForest(inputs: ForestInputs): Forest {
@@ -191,7 +207,7 @@ export function buildForest(inputs: ForestInputs): Forest {
         : orphanedAt(info.thread, info.flags, {
             ...parent,
             finishedAt: inputs.finishedAt[parent.thread.id],
-            idleSince: inputs.idleSince?.[parent.thread.id],
+            idleSince: idleSinceOf(parent.thread.id, inputs),
           });
     if (orphaned !== null && orphaned > inputs.now) nextOrphanAt = Math.min(nextOrphanAt ?? orphaned, orphaned);
     info.attentionFlags = attentionFlagsOf(info.flags, {

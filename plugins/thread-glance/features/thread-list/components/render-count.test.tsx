@@ -58,7 +58,7 @@ function render() {
         setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
         resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
         importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-        listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {} } }),
+        listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
         markSeen: () => ({ at: Date.now() }),
         clearSeen: () => ({ ok: true as const }),
         listScheduled: () => ({ status: "ready" as const, scheduled: {} }),

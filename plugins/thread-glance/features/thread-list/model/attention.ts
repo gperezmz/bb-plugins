@@ -30,8 +30,11 @@ export interface ParentThread {
   state: Pick<ThreadState, "kind">;
   /** When the plugin server last saw the parent thread finish a turn, if it did. */
   finishedAt?: number;
-  /** When the list last saw the parent thread go from busy to idle, if it did. */
-  idleSince?: number;
+  /**
+   * When a window last saw the parent thread go from busy to idle, if one did;
+   * null while that is not yet known, and no failure under it counts.
+   */
+  idleSince?: number | null;
 }
 
 /** A parent thread is idle when it is not working, setting up, running background work or holding a queued message. */
@@ -65,7 +68,7 @@ export function orphanedAt(
   parent: ParentThread,
 ): number | null {
   if (!flags.has("unread-failed") && !flags.has("queue-failed")) return null;
-  if (!isParentIdle(parent)) return null;
+  if (!isParentIdle(parent) || parent.idleSince === null) return null;
   const parentActiveAt = Math.max(parent.thread.latestAttentionAt, parent.finishedAt ?? 0);
   const failedAt = failureTime(thread, flags);
   if (parentActiveAt > failedAt) return null;
@@ -87,6 +90,8 @@ export function isOrphanedFailure(
 export interface IdleTracker {
   busy: ReadonlySet<string>;
   idleSince: Readonly<Record<string, number>>;
+  /** The threads this step saw go idle, for the server's `idleAt`. */
+  wentIdle: readonly string[];
 }
 
 function isBusyThread(thread: PluginSidebarThread): boolean {
@@ -96,19 +101,25 @@ function isBusyThread(thread: PluginSidebarThread): boolean {
 
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
- * idle now went idle at `at`. A thread first seen idle has no time, and the
- * orphaned-failure wait counts from the failure alone.
+ * idle now went idle at `at`. A thread first seen idle has no time here; the
+ * server's `idleAt` holds what an earlier window saw.
  */
 export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
   const busy = new Set<string>();
   const idleSince: Record<string, number> = {};
+  const wentIdle: string[] = [];
   for (const thread of threads) {
     const id = thread.id;
-    if (isBusyThread(thread)) busy.add(id);
-    else if (previous?.busy.has(id)) idleSince[id] = at;
-    else if (previous?.idleSince[id] !== undefined) idleSince[id] = previous.idleSince[id];
+    if (isBusyThread(thread)) {
+      busy.add(id);
+    } else if (previous?.busy.has(id)) {
+      idleSince[id] = at;
+      wentIdle.push(id);
+    } else if (previous?.idleSince[id] !== undefined) {
+      idleSince[id] = previous.idleSince[id];
+    }
   }
-  return { busy, idleSince };
+  return { busy, idleSince, wentIdle };
 }
 
 /**

@@ -123,6 +123,7 @@ async function render(width: number) {
           ),
           pendingAt: Object.fromEntries(CASES.map((c) => [c.id, Date.now() - 59 * 60_000])),
           seenAt: {},
+          idleAt: {},
         },
       }),
       markSeen: () => ({ at: Date.now() }),

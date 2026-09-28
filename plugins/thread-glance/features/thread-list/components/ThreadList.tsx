@@ -130,7 +130,7 @@ function ThreadListBody({
     () => new Set(splitLayout?.panes.flatMap((pane) => (pane.threadId === null ? [] : [pane.threadId])) ?? []),
     [splitLayout],
   );
-  const { stamps, markSeen, clearSeen } = useStamps();
+  const { stamps, loaded: stampsLoaded, markSeen, markIdle, clearSeen } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
   // When the next child's failure becomes orphaned. The forest knows it, but
@@ -158,7 +158,7 @@ function ThreadListBody({
   const ready = sidebar.status === "ready";
   const threads = sidebar.threads;
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
-  const idleSince = useIdleSince(threads);
+  const idleSince = useIdleSince(threads, markIdle);
 
   const forest = useMemo(
     () =>
@@ -175,9 +175,11 @@ function ThreadListBody({
             notes,
             childAttention: prefs.childAttention,
             idleSince,
+            idleAt: stamps.idleAt,
+            stampsLoaded,
           })
         : null,
-    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention, idleSince],
+    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, stamps.idleAt, stampsLoaded, draftIds, scheduled, now, notes, prefs.childAttention, idleSince],
   );
   const nextOrphanAt = forest?.nextOrphanAt ?? null;
   if (nextOrphanAt !== orphanDeadline) setOrphanDeadline(nextOrphanAt);

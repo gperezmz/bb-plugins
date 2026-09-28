@@ -1,12 +1,12 @@
 // Per-thread timestamps: one kv row per thread, `stamp:<threadId>`,
-// holding whichever of the four kinds it has. Rows are read into memory once
+// holding whichever of the kinds it has. Rows are read into memory once
 // and written through, so listing does not read every row per call.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CHANNELS, type StampKind, type StampSignal, type Stamps } from "../shared/contract";
 import { createSerialQueue } from "./serial";
 
 export const STAMP_KEY_PREFIX = "stamp:";
-export const STAMP_KINDS: readonly StampKind[] = ["startedAt", "finishedAt", "pendingAt", "seenAt"];
+export const STAMP_KINDS: readonly StampKind[] = ["startedAt", "finishedAt", "pendingAt", "seenAt", "idleAt"];
 
 export type ThreadStamps = Partial<Record<StampKind, number>>;
 
@@ -30,6 +30,12 @@ export interface StampStore {
   list(): Promise<Stamps>;
   /** Sets `kind` to `at` for each thread and publishes one signal. */
   stamp(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
+  /**
+   * Sets `kind` to `at` for each thread whose stored value is earlier or
+   * absent, and publishes one signal for those. A later value is kept, so
+   * several windows reporting one moment cannot move it back.
+   */
+  advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
   /** Deletes `kind` for each thread and publishes one signal with `value: null`. */
   clear(kind: StampKind, threadIds: readonly string[]): Promise<void>;
   /** Deletes every stamp of each thread. Publishes nothing. */
@@ -89,7 +95,7 @@ export function createStampStore(
   return {
     list: () =>
       serial(async () => {
-        const result: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {} };
+        const result: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
         for (const [threadId, stamps] of await load()) {
           for (const kind of STAMP_KINDS) {
             const value = stamps[kind];
@@ -106,6 +112,18 @@ export function createStampStore(
           await save(rows, threadId, { ...rows.get(threadId), [kind]: at });
         }
         publish({ kind, threadIds: [...threadIds], value: at });
+      }),
+    advance: (kind, threadIds, at) =>
+      serial(async () => {
+        const rows = await load();
+        const moved: string[] = [];
+        for (const threadId of new Set(threadIds)) {
+          const current = rows.get(threadId);
+          if ((current?.[kind] ?? -Infinity) >= at) continue;
+          await save(rows, threadId, { ...current, [kind]: at });
+          moved.push(threadId);
+        }
+        if (moved.length > 0) publish({ kind, threadIds: moved, value: at });
       }),
     clear: (kind, threadIds) =>
       serial(async () => {
