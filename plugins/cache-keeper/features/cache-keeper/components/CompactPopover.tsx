@@ -13,6 +13,7 @@ import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
 import { BannerButton } from "./BannerButton";
 import { ContextBar } from "./ContextBar";
+import { Switch } from "./Switch";
 
 export function CompactPopover({ view, now, onChange }: { view: ThreadView; now: number; onChange: (next: ThreadView | null) => void }) {
   const rpc = useKeeperRpc();
@@ -89,23 +90,6 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
       </details>
       {error !== null && <p className="text-xs text-destructive">{error}</p>}
     </div>
-  );
-}
-
-/** A button rather than a native checkbox: bb's composer reverts a checkbox toggled inside it. */
-function Switch({ checked, disabled = false, labelledBy, onClick }: { checked: boolean; disabled?: boolean; labelledBy: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-labelledby={labelledBy}
-      disabled={disabled}
-      onClick={onClick}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "bg-primary" : "bg-muted"}`}
-    >
-      <span className={`absolute left-0 top-0.5 size-4 rounded-full bg-background shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
-    </button>
   );
 }
 
