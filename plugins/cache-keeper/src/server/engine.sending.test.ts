@@ -35,6 +35,15 @@ describe("spend", () => {
     }
   });
 
+  it("holds no keep-warm for lack of a price while the thread's model is not read yet", async () => {
+    h.thread({ id: "t", activity: busy });
+    await h.start();
+    const view = (await h.engine.viewOf("t"))!;
+    expect(view.waiting).toBe(true);
+    expect([view.model, view.lifetime, view.priceOrigin]).toEqual([null, null, null]);
+    expect(view.warmNoPrice).toBe(false);
+  });
+
   it("charges a keep-warm whose cost cannot be measured its forecast, so the cost stop still comes", async () => {
     h.thread({ id: "t", activity: busy });
     h.transcript("t", T0, 100_000, "5m");

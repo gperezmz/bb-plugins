@@ -5,8 +5,11 @@ import type { ResetNotice } from "./reinstall";
 
 const SOURCES: Record<string, string> = { litellm: "LiteLLM", "models.dev": "models.dev", bundled: "bundled" };
 
-/** The price source as `status` names it. */
-export const priceSource = (origin: string | null) => (origin === null ? "none: the model has no price" : (SOURCES[origin] ?? origin));
+/** The price source as `status` names it; where there is none, whether that is because the thread's model is not read yet or because no price list has it. */
+export const priceSource = (v: Pick<ThreadView, "priceOrigin" | "model">) => {
+  if (v.priceOrigin !== null) return SOURCES[v.priceOrigin] ?? v.priceOrigin;
+  return v.model === null ? "none yet: model not read" : "none: the model has no price";
+};
 
 const decisionText = (v: ThreadView) => {
   if (v.decision === null) return "none yet";
@@ -23,7 +26,7 @@ export function describe(v: ThreadView, now: number, priceError: string | null):
     `  status: ${v.transcriptUnreadable !== null ? "transcript unreadable" : statusText(v, now)}`,
     `  last decision: ${decisionText(v)}`,
     `  keep-warms: ${v.warmNoPrice ? "held: this model has no price" : v.keptWarm ? "on for its tree" : "off for its tree"}`,
-    `  price source: ${priceSource(v.priceOrigin)}`,
+    `  price source: ${priceSource(v)}`,
     `  rests on: ${v.model ?? "unknown model"}, ${v.lifetime === null ? "unknown" : v.lifetime === "5m" ? "5-minute" : "1-hour"} cache, ${v.callsPerMessage.toFixed(1)} calls per message${v.callsMeasured ? "" : " (default)"}, ${formatSize(v.postCompaction)} after compacting${v.postMeasured ? "" : " (default)"}`,
   ];
   if (v.transcriptUnreadable !== null) lines.push(`  transcript unreadable: ${v.transcriptUnreadable}`);
@@ -35,7 +38,7 @@ export function statusJson(v: ThreadView, now: number, priceError: string | null
   return {
     ...v,
     statusText: v.transcriptUnreadable !== null ? "transcript unreadable" : statusText(v, now),
-    priceSource: priceSource(v.priceOrigin),
+    priceSource: priceSource(v),
     lastPriceFetchError: priceError,
     ...(reset === null ? {} : { reset }),
   };
