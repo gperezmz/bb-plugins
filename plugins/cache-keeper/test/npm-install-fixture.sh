@@ -40,7 +40,7 @@ fi
 echo "Check-ins are off on a fresh install"
 
 help=$(bb cache-keeper --help)
-if ! grep -qE '^\s+compact-now\b' <<< "$help" || grep -qE '^\s+now\b' <<< "$help"; then
+if ! grep -qE '^\s+bb cache-keeper compact-now\s' <<< "$help" || grep -qE '^\s+bb cache-keeper now\s' <<< "$help"; then
   echo "::error::bb cache-keeper --help does not list compact-now alone:" >&2
   echo "$help" >&2
   exit 1
