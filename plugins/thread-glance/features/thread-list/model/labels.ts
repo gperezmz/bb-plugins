@@ -19,6 +19,7 @@ export function rowAriaLabel(
 ): string {
   const parts = [stateText(row, options.pluginLabel), options.providerName];
   if (row.parentTitle !== null && row.depth > 0) parts.push(`child of ${row.parentTitle}`);
+  if (row.childDot !== null) parts.push(`child threads: ${FLAG_GLYPHS[row.childDot].label}`);
   if (row.crossGroupLabel !== null) parts.push(row.crossGroupLabel.toLowerCase());
   if (row.hiddenBadge) parts.push("hidden thread");
   if (row.info.unread && row.info.state.kind !== "unread") parts.push("unread");
@@ -26,10 +27,9 @@ export function rowAriaLabel(
   return `Open ${row.info.thread.displayTitle} — ${parts.join("; ")}`;
 }
 
-export function chipLabel(title: string, count: number, flag: Flag | null, expanded: boolean): string {
+export function chipLabel(title: string, count: number, expanded: boolean): string {
   const noun = count === 1 ? "child thread" : "child threads";
-  const detail = flag === null ? "" : `, ${FLAG_GLYPHS[flag].label}`;
-  return `${expanded ? "Collapse" : "Show"} ${count} ${noun} of ${title}${detail}`;
+  return `${expanded ? "Collapse" : "Show"} ${count} ${noun} of ${title}`;
 }
 
 /** The text and accessible name of an open tree's fold row. */

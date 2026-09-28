@@ -169,7 +169,7 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2].map((n) => makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working })),
     ]);
-    const chip = await screen.findByRole("button", { name: /child threads of Parent, working/ });
+    const chip = await screen.findByRole("button", { name: "Show 2 child threads of Parent" });
     expect(chip.getAttribute("aria-expanded")).toBe("false");
     expect(chip.textContent).toContain("2");
     expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull();
@@ -341,14 +341,21 @@ describe("Thread Glance slot", () => {
     expect((await row(/Open Trunk/)).textContent).not.toContain("main");
   });
 
-  it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {
+  it("draws a muted chip with a count and chevron only, a child dot on the parent's own glyph, and unread in the accent", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
-      makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working }),
+      makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working, providerId: "codex" }),
       makeThread({ id: "u", title: "Fresh", ...finishedUnread }),
     ]);
-    const chip = await screen.findByRole("button", { name: /child thread of Parent/ });
-    expect(chip.getAttribute("data-tone")).toBe("working");
+    const chip = await screen.findByRole("button", { name: "Show 1 child thread of Parent" });
+    expect(chip.textContent).toBe("1");
+    expect(chip.className).not.toMatch(/(^|\s)border(\s|-)/);
+    expect(chip.className).not.toMatch(/(^|\s)bg-/);
+    expect(within(chip).queryByRole("img")).toBeNull();
+    const parent = await screen.findByRole("link", { name: /Open Parent — Idle;.*child threads: working/ });
+    const column = parent.nextElementSibling as HTMLElement;
+    expect(column.querySelector("[data-child-dot]")?.getAttribute("data-child-dot")).toBe("working");
+    expect(column.querySelector("[data-child-dot]")?.className).toContain("--timeline-accent");
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
   });

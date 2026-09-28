@@ -6,7 +6,7 @@ import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText, settledRowText } from "./labels";
 import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
-import { chipTone } from "./state";
+import { dotTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
 import type { OlderRow } from "./view";
 import { chunk, windowedNavValue } from "./windowing";
@@ -218,15 +218,14 @@ describe("row indent", () => {
   });
 });
 
-describe("child chip tone", () => {
-  it("is amber for waits-on-you, red for failures, blue for working, neutral otherwise", () => {
-    expect(chipTone("waits-on-you")).toBe("attention");
-    expect(chipTone("unread-failed")).toBe("destructive");
-    expect(chipTone("queue-failed")).toBe("destructive");
-    expect(chipTone("working")).toBe("working");
-    expect(chipTone("offline")).toBe("neutral");
-    expect(chipTone("unread")).toBe("neutral");
-    expect(chipTone(null)).toBe("neutral");
+describe("child dot tone", () => {
+  it("takes each state's colour: attention for waits on you and offline, red for failures, the accent for working and unread", () => {
+    expect(dotTone("waits-on-you")).toBe("attention");
+    expect(dotTone("unread-failed")).toBe("destructive");
+    expect(dotTone("queue-failed")).toBe("destructive");
+    expect(dotTone("offline")).toBe("attention");
+    expect(dotTone("working")).toBe("working");
+    expect(dotTone("unread")).toBe("unread");
   });
 });
 

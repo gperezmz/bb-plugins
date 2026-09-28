@@ -3,6 +3,7 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   computeState,
+  dotFlagsOf,
   hiddenThreadFlags,
   isQuietThread,
   isUnread,
@@ -28,6 +29,8 @@ export interface ThreadInfo {
   unread: boolean;
   /** Own flags; for hidden threads only waits-on-you and unread-failed. */
   flags: ReadonlySet<Flag>;
+  /** What it adds to the child dot of the threads above it (see `dotFlagsOf`). */
+  dotFlags: ReadonlySet<Flag>;
   /**
    * The flags of this thread that make it need attention, for collapsed
    * groups, the counters, the need-you filter and auto-reveal: a child counts
@@ -52,14 +55,18 @@ export interface ThreadInfo {
   note: RowNote | null;
 }
 
-/** What a thread's descendants add up to, for its chip and for folding. */
+/** What a thread's descendants add up to, for its chip, its child dot and folding. */
 export interface Subtree {
   /** Descendants, depth-first in creation order, hidden ones included. */
   descendants: ThreadInfo[];
   /** Union of the descendants' Needs attention flags and working, archived ones left out. */
   flags: ReadonlySet<Flag>;
-  /** Visible descendants: the chip's number. */
+  /** Union of the descendants' `dotFlags`, archived ones left out: the child dot. */
+  dotFlags: ReadonlySet<Flag>;
+  /** Visible descendants at any depth. */
   visibleCount: number;
+  /** Visible direct children: the chip's number. */
+  childCount: number;
   /** Every visible descendant is quiet, as if no thread were open, so the subtree adds nothing to see when folded. */
   quietIgnoringOpen: boolean;
 }
@@ -160,6 +167,7 @@ export function buildForest(inputs: ForestInputs): Forest {
       state,
       unread,
       flags: thread.isHidden ? hiddenThreadFlags(flags) : flags,
+      dotFlags: dotFlagsOf(flags, thread.isHidden),
       attentionFlags: new Set<Flag>(),
       quiet: isQuietThread(state, unread, isActive),
       quietIgnoringOpen: false,
@@ -208,7 +216,9 @@ export function buildForest(inputs: ForestInputs): Forest {
     if (cached !== undefined) return cached;
     const descendants: ThreadInfo[] = [];
     const flags = new Set<Flag>();
+    const dotFlags = new Set<Flag>();
     let visibleCount = 0;
+    let childCount = 0;
     let quietIgnoringOpen = true;
     path.add(id);
     for (const childId of children.get(id) ?? []) {
@@ -219,15 +229,20 @@ export function buildForest(inputs: ForestInputs): Forest {
       if (!child.thread.isArchived) {
         for (const flag of child.attentionFlags) flags.add(flag);
         if (child.flags.has("working")) flags.add("working");
+        for (const flag of child.dotFlags) dotFlags.add(flag);
       }
       for (const flag of below.flags) flags.add(flag);
+      for (const flag of below.dotFlags) dotFlags.add(flag);
       if (child.thread.isHidden ? child.attentionFlags.size > 0 : !child.quietIgnoringOpen) quietIgnoringOpen = false;
-      if (!child.thread.isHidden) visibleCount += 1;
+      if (!child.thread.isHidden) {
+        visibleCount += 1;
+        childCount += 1;
+      }
       visibleCount += below.visibleCount;
       if (!below.quietIgnoringOpen) quietIgnoringOpen = false;
     }
     path.delete(id);
-    const subtree: Subtree = { descendants, flags, visibleCount, quietIgnoringOpen };
+    const subtree: Subtree = { descendants, flags, dotFlags, visibleCount, childCount, quietIgnoringOpen };
     subtrees.set(id, subtree);
     return subtree;
   };

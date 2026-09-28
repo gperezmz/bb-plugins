@@ -20,12 +20,12 @@ import { isOffDefaultBranch } from "../model/branches";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
-import { chipTone, pluginStatusWins } from "../model/state";
+import { pluginStatusWins } from "../model/state";
 import { trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { CHIP_TONE_CLASS, FlagGlyph, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
+import { ChildDot, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -363,7 +363,10 @@ export const ThreadRowView = memo(function ThreadRowView({
         }}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
-      <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">{stateSlot}</span>
+      <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
+        {stateSlot}
+        {row.childDot !== null ? <ChildDot flag={row.childDot} /> : null}
+      </span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
         <span
@@ -438,8 +441,8 @@ export const ThreadRowView = memo(function ThreadRowView({
         <button
           type="button"
           aria-expanded={chip.expanded}
-          aria-label={chipLabel(thread.displayTitle, chip.count, chip.flag, chip.expanded)}
-          title={chipLabel(thread.displayTitle, chip.count, chip.flag, chip.expanded)}
+          aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+          title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -447,18 +450,12 @@ export const ThreadRowView = memo(function ThreadRowView({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
-          data-tone={chipTone(chip.flag)}
           className={cn(
-            "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-            CHIP_TONE_CLASS[chipTone(chip.flag)],
+            "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
             dimmed && QUIET_TEXT,
           )}
         >
           {chip.count}
-          {chip.flag !== null ? <FlagGlyph flag={chip.flag} className="size-3" /> : null}
-          {chip.providerIds.map((providerId) => (
-            <ProviderBadge key={providerId} display={controller.provider(providerId)} className="size-3 [&_*]:size-3" />
-          ))}
           <Icon
             name={ICONS.expand}
             aria-hidden

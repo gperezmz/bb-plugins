@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { isOrphanedFailure, isParentIdle, attentionFlagsOf, revealsOn } from "./attention";
-import { chipTone, type Flag } from "./state";
+import type { Flag } from "./state";
 import type { ThreadRow } from "./view";
 
 const flags = (...list: Flag[]) => new Set<Flag>(list);
@@ -198,22 +198,22 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     expect(group(stamped, "project:proj_a").counters.failed).toBe(0);
   });
 
-  it("tints a chip in a group for work, and a tree whose child waits or failed orphaned needs attention", () => {
+  it("needs attention for a child that waits or failed orphaned, whatever the child dot says", () => {
     const view = (children: ReturnType<typeof makeThread>[], m = parent({ lastReadAt: T0 + 50 })) => viewOf({ threads: [m, ...children] });
-    const tone = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) => {
-      const row = threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!;
-      return chipTone(row.chip?.flag ?? null);
-    };
+    const dot = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) =>
+      threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!.childDot;
     const child = (overrides: object) => makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1, ...overrides });
     const m = parent({ lastReadAt: T0 + 50 });
     expect(attentionRootIds({ threads: [m, child({ hasPendingInteraction: true })] })).toEqual(["m"]);
     expect(attentionRootIds({ threads: [m, child({ ...failedUnread })] })).toEqual(["m"]);
-    expect(tone([child({ ...failedUnread })], parent({ ...working }))).toBe("neutral");
-    expect(tone([child({ ...working })])).toBe("working");
-    expect(tone([child({ ...finishedUnread })])).toBe("neutral");
+    // A failure the busy parent may still deal with needs no attention, and still shows on the dot.
+    expect(attentionRootIds({ threads: [parent({ ...working }), child({ ...failedUnread })] })).toEqual([]);
+    expect(dot([child({ ...failedUnread })], parent({ ...working }))).toBe("unread-failed");
+    expect(dot([child({ ...working })])).toBe("working");
+    expect(dot([child({ ...finishedUnread })])).toBe("unread");
   });
 
-  it("puts the chip on a child that has children, with its own tone", () => {
+  it("puts the chip and the child dot on a child that has children", () => {
     const threads = [
       parent({ lastReadAt: T0 + 50 }),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
@@ -221,7 +221,8 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     ];
     const rows = threadRows(viewOf({ threads, prefs: { expandedChildren: ["m"] } }));
     const child = rows.find((row) => row.info.thread.id === "c")!;
-    expect(child.chip).toMatchObject({ count: 1, flag: "working", expanded: false });
+    expect(child.chip).toEqual({ count: 1, expanded: false });
+    expect(child.childDot).toBe("working");
     // Its children wait for its chip, or for an auto-reveal.
     expect(rows.map((row) => row.info.thread.id)).toEqual(["m", "c"]);
     const revealed = viewOf({ threads, prefs: { expandedChildren: ["m"] }, targets: new Map([["g", "reveal" as const]]) });

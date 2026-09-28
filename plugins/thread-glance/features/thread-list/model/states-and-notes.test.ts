@@ -137,22 +137,6 @@ describe("trees that need attention", () => {
   });
 });
 
-describe("chip harnesses", () => {
-  it("lists child harnesses that differ from the parent's", () => {
-    const view = viewOf({
-      threads: [
-        makeThread({ id: "p" }),
-        makeThread({ id: "a", parentThreadId: "p", providerId: "codex" }),
-        makeThread({ id: "b", parentThreadId: "p", providerId: "pi" }),
-        makeThread({ id: "c", parentThreadId: "p" }),
-        makeThread({ id: "d", parentThreadId: "p", providerId: "codex" }),
-      ],
-    });
-    const root = view.groups[0]!.rows[0] as ThreadRow;
-    expect(root.chip?.providerIds).toEqual(["codex", "pi"]);
-  });
-});
-
 describe("header counters", () => {
   const counters = { waitsOnYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
   it("keep what needs action; working only when collapsed; unread only on More", () => {
