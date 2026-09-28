@@ -102,6 +102,57 @@ describe("parseManifest env names", () => {
   });
 });
 
+describe("parseManifest lines", () => {
+  const header = ["schema: 1", "team: { name: T }"];
+  const issuesAt = (...text: string[]) => {
+    const result = parseManifest(text.join("\n"));
+    expect(result.ok).toBe(false);
+    return result.ok ? [] : result.issues.map(({ line, message }) => ({ line, message }));
+  };
+
+  it("puts an unknown top-level field on its own line", () => {
+    expect(issuesAt(...header, "colour: blue")).toEqual([{ line: 3, message: 'unknown field "colour"' }]);
+  });
+
+  it("puts an unknown nested field on its own line, not its parent's", () => {
+    expect(issuesAt("schema: 1", "team:", "  name: T", "  colour: blue")).toEqual([{ line: 4, message: 'unknown field "colour"' }]);
+    expect(issuesAt(...header, "env:", "  - name: OK", "    note: n", "    colour: blue")).toEqual([
+      { line: 6, message: 'unknown field "colour"' },
+    ]);
+  });
+
+  it("puts an unknown field with a numeric key on its own line", () => {
+    expect(issuesAt(...header, "", "5: blue")).toEqual([{ line: 4, message: 'unknown field "5"' }]);
+  });
+
+  it("gives every unknown field its own issue and line", () => {
+    expect(issuesAt("schema: 1", "team:", "  name: T", "  a: 1", "", "  b: 2")).toEqual([
+      { line: 4, message: 'unknown field "a"' },
+      { line: 6, message: 'unknown field "b"' },
+    ]);
+  });
+
+  it("puts a refused env name on the line of its name", () => {
+    const [issue, ...rest] = issuesAt(...header, "env:", "  - note: hi", "    name: GH_TOKEN");
+    expect(rest).toEqual([]);
+    expect(issue!.line).toBe(5);
+    expect(issue!.message).toContain("GH_TOKEN would override");
+  });
+
+  it("puts a malformed value on the line of its field", () => {
+    expect(issuesAt(...header, "tools:", "  - id: a", "    check: { bin: a }", "    min: banana")[0]!.line).toBe(6);
+  });
+
+  it("puts a wrong-shaped block value on the line of its field, not its first child", () => {
+    expect(issuesAt(...header, "machines:", "  a: 1")[0]!.line).toBe(3);
+    expect(issuesAt("schema: 1", "team:", "  - a")[0]!.line).toBe(2);
+  });
+
+  it("puts an item missing a field on the line of the item", () => {
+    expect(issuesAt(...header, "", "env:", "  - note: x")[0]!.line).toBe(5);
+  });
+});
+
 describe("manifestJsonSchema", () => {
   it("matches the committed schema/onboarding.schema.json", () => {
     const committed = JSON.parse(readFileSync(new URL("../../schema/onboarding.schema.json", import.meta.url), "utf8"));
