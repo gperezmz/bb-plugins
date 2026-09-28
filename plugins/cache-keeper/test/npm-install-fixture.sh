@@ -3,9 +3,10 @@
 # scripts/ci/npm-install-check.sh). The throwaway bb has no Claude Code
 # thread, so this checks what it can reach without one: bb serves an app
 # bundle it calls compatible that registers the composer chip and banner, the
-# sidebar script and the nav page; bb holds the plugin's four settings; its
-# CLI answers from the server with nothing switched on; and it refuses to
-# switch on, or keep warm, a thread that does not exist.
+# sidebar script, the nav page and the Agent tools settings section; bb holds
+# the plugin's four settings, with check-ins off; its CLI answers from the
+# server with nothing switched on, names compact-now and no `now`; and it
+# refuses to switch on, or keep warm, a thread that does not exist.
 set -euo pipefail
 
 app=$(bb plugin list --json | jq -c --arg id "$PLUGIN_ID" '.plugins[] | select(.id == $id) | .app')
@@ -14,13 +15,13 @@ if [[ $(jq -r '.hasApp and .bundle.compatible' <<< "$app") != true ]]; then
   exit 1
 fi
 curl -fsS -o "$FIXTURE_DIR/app.js" "$BB_SERVER_URL$(jq -r .bundle.jsUrl <<< "$app")"
-for registration in 'composer.customize(' 'contentScripts.register(' 'slots.navPanel(' 'id:"cache-keeper"'; do
+for registration in 'composer.customize(' 'contentScripts.register(' 'slots.navPanel(' 'slots.settingsSection(' 'id:"cache-keeper"' 'id:"agent-tools"'; do
   if ! grep -qF "$registration" "$FIXTURE_DIR/app.js"; then
     echo "::error::the app bundle bb serves lacks $registration" >&2
     exit 1
   fi
 done
-echo "The app bundle registers the composer chip and banner, the sidebar script and the nav page"
+echo "The app bundle registers the composer chip and banner, the sidebar script, the nav page and the Agent tools section"
 
 config=$(bb plugin config "$PLUGIN_ID" --json)
 keys=$(jq -c '[(.settings // .values // .) | keys[]] | sort' <<< "$config")
@@ -30,6 +31,21 @@ if [[ $keys != '["fetchPrices","keepWarm","noOutputWait","stalledCheckIns"]' ]];
   exit 1
 fi
 echo "bb holds the four settings"
+
+check_ins=$(jq -r '(.values // .settings // .).stalledCheckIns' <<< "$config")
+if [[ $check_ins != false ]]; then
+  echo "::error::$PLUGIN_ID's \"Check in on stalled background work\" is $check_ins on a fresh install, not off" >&2
+  exit 1
+fi
+echo "Check-ins are off on a fresh install"
+
+help=$(bb cache-keeper --help)
+if ! grep -qE '^\s+compact-now\b' <<< "$help" || grep -qE '^\s+now\b' <<< "$help"; then
+  echo "::error::bb cache-keeper --help does not list compact-now alone:" >&2
+  echo "$help" >&2
+  exit 1
+fi
+echo "bb cache-keeper --help lists compact-now and no now"
 
 status=$(bb cache-keeper status)
 if ! grep -qF "No thread has compact-when-idle on." <<< "$status" || ! grep -qF "Last 30 days:" <<< "$status"; then

@@ -9,11 +9,15 @@ Under Settings → Plugins → Cache Keeper, or `bb plugin config cache-keeper`.
 | Setting | Key | Default | Meaning |
 |---|---|---|---|
 | Keep caches warm while waiting | `keepWarm` | `Only threads switched on` | Which thread trees get keep-warms while their switch is untouched: `Every waiting thread`, `Only threads switched on` (none) or `Never`. Under `Never` no tree gets them, whatever its switch records. See [which trees are kept warm](../explanation/cache-keeper-timing.md#which-trees-are-kept-warm) |
-| Check in on stalled background work | `stalledCheckIns` | on | Check-ins on a stalled task, on every Claude Code thread, whatever its switch or the setting above says. Off sends none, and no keep-warm asks about a task running 30 minutes or more |
+| Check in on stalled background work | `stalledCheckIns` | off | Check-ins on a stalled task, on every Claude Code thread, whatever its switch or the setting above says. Off, as on a fresh install, sends none, and no keep-warm asks about a task running 30 minutes or more |
 | No-output wait | `noOutputWait` | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a background command or subagent gets a check-in |
 | Fetch current prices daily | `fetchPrices` | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
 
-Compact when idle has no setting: it is switched on per thread, from its chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect on the next pass, without a restart.
+Compact when idle has no setting: it is switched on per thread, from its chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
+
+### Agent tools
+
+Below the settings, a section headed **Agent tools** has a row with a switch for each agent tool Cache Keeper registers. Today that is one row, **Compact when idle**, for [`cache_keeper_compact_when_idle`](cache-keeper-cli.md#the-cache_keeper_compact_when_idle-agent-tool). Every row is off on a fresh install. A thread is offered a tool only while its row is on, and a change reaches a thread when its Claude Code session next starts or resumes; a session already running keeps the tools it started with, and a call to a tool whose row is now off is refused.
 
 ## In a thread
 
@@ -39,6 +43,7 @@ Shown only on an idle thread that waits on no answer, and never with command tex
 | Waiting in a tree kept warm, and a keep-warm is planned for the thread or for a thread below it whose report will reach it | `Waiting on {counts}, keeping cache warm` | **Skip** |
 | Waiting in a tree kept warm, and none is planned: past the cost stop, after a Skip above, or with the cache already cold | `Waiting on {counts}, letting cache go cold` | none |
 | Waiting in a tree kept warm, after Skip on keep-warms | `Skipped for this wait` | **Undo** |
+| Waiting in a tree kept warm, and the model has no price, or a price with no cache read or cache write rate, or one of 0 | `Waiting on {counts}, not keeping cache warm: this model has no price` | none |
 | Waiting, with the tree top's switch off | `Waiting on {counts}, not keeping cache warm` | **Keep warm** |
 | Waiting, under `Never` | `Waiting on {counts}, keep-warms are off in Settings` | none |
 
@@ -48,7 +53,7 @@ Shown only on an idle thread that waits on no answer, and never with command tex
 
 The **Cache Keeper** entry in the sidebar lists the threads with compact when idle on (line, context, status), every idle thread waiting now (on what, and the next keep-warm, or `off` where its tree is not kept warm), what was sent recently, and totals for the last 30 days: compactions and their cost, keep-warms and check-ins and theirs, and the cold rewrites avoided on first messages back. A return counts as avoided only when it came after the cache would have gone cold.
 
-Each entry in the recent list is one send, with its real cost once its turns have run, including the report turns it forced in the threads above; hovering the cost shows how it fell between threads. A compaction shows its estimate, since `/compact` writes no usage to the transcript, and a check-in sent past the cost stop shows the cold-write price.
+Each entry in the recent list is one send, with its real cost once its turns have run, including the report turns it forced in the threads above; hovering the cost shows how it fell between threads. Until then, and for good where its turn's cost cannot be read from the transcript, a keep-warm or check-in shows its forecast marked as an estimate, `≈$0.12`, and hovering says so; no sent keep-warm shows $0. A compaction shows its estimate, since `/compact` writes no usage to the transcript, and a check-in sent past the cost stop shows the cold-write price. A send bb refused or that failed is not listed.
 
 | Entry | Sent |
 |---|---|
@@ -86,23 +91,25 @@ A keep-warm that folds in tasks running 30 minutes or more is `Still waiting on 
 | Scheduled message | `a scheduled message due at {HH:MM}` |
 | Queued message | `a queued message` |
 
-`{id}` is bb's task id for a background task and the thread id for a child. Descriptions and titles are cut to 60 characters.
+`{id}` is bb's task id for a background task and the thread id for a child. Text that comes from outside Cache Keeper (task ids and descriptions, thread titles, tool names) is cut to 60 characters, and has quotes, backslashes and line breaks escaped as `\"`, `\\` and `\n`.
 
 **Check-in**: one stalled paragraph per task due, commands before subagents, then
 
 ```text
-If nothing is wrong, reply with exactly "Checked {task ids}, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.
+A task that's quiet on purpose, such as a server or a watcher, is fine to leave running. If nothing is wrong, reply with exactly "Checked {task ids}, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found. Don't wait for me either way.
 ```
 
-`{task ids}` joins every task asked about as "A", "A and B" or "A, B and C". Durations read "{n} minutes" under an hour and "{h} h {m} min" from an hour on. No message names Cache Keeper, and each carries Cache Keeper's `pluginSubmission` marker.
+`{task ids}` joins every task asked about as "A", "A and B" or "A, B and C". Durations read "{n} minutes" under an hour and "{h} h {m} min" from an hour on. No message names Cache Keeper or tells the agent to stop, kill or restart anything, and each carries Cache Keeper's `pluginSubmission`.
 
 | Task | When | Paragraph |
 |---|---|---|
-| Command | Stalled | `Background command {id} ("{description}") hasn't printed anything in {quiet}. Can you check it's still moving? Its output is in {outputFile}. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.` |
-| Command | Folded into a keep-warm | `Background command {id} ("{description}") has been running {running} and is still printing. Have a look at the latest output in {outputFile} for repeated errors or retries. If it's looping, stop it, fix it and carry on. If it's fine, leave it running.` |
-| Subagent | Stalled | `Background subagent {id} ("{description}") hasn't made progress in {quiet}; its last tool was {lastTool}. Can you check on it? If it's stuck, stop it, then fix the problem or do that part yourself and keep going. If it's fine, leave it.` |
-| Subagent | Folded into a keep-warm | `Background subagent {id} ("{description}") has been running {running}; its last tool was {lastTool}. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.` |
+| Command | Stalled | `Background command {id} ("{description}") hasn't printed anything in {quiet}. Can you check on it? Its output is in {outputFile}.` |
+| Command | Folded into a keep-warm | `Background command {id} ("{description}") has been running {running} and is still printing. Have a look at the latest output in {outputFile} for repeated errors or retries.` |
+| Subagent | Stalled | `Background subagent {id} ("{description}") hasn't made progress in {quiet}; its last tool was {lastTool}. Can you check on it?` |
+| Subagent | Folded into a keep-warm | `Background subagent {id} ("{description}") has been running {running}; its last tool was {lastTool}. Can you check it's on track?` |
 
 ## What it stores
 
-`<data dir>/plugins/cache-keeper/` holds, in SQLite: each thread's switches, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's turns in bb's event history, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, and the fetched price lists. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.
+`<data dir>/plugins/cache-keeper/data.db` holds, in SQLite: each thread's switches, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's transcript and turns in bb's event history, its last decision, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, the Agent tools rows, and the fetched price lists. A thread's row is at most about 600 bytes, and its turn log at most 8 KB.
+
+It tidies itself: a thread bb deletes loses its rows; a thread bb archives loses its turn log and keeps its switches, which it still has when unarchived; history and sends older than 90 days are pruned nightly, and the database, created with `auto_vacuum = incremental`, gives the freed pages back after each prune. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.
