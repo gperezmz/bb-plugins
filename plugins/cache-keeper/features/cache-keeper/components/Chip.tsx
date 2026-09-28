@@ -52,7 +52,7 @@ function ThreadChip({ threadId }: { threadId: string }) {
             buttonVariants({ variant: "ghost", size: null }),
             COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
             "gap-1.5 text-[13px] text-foreground",
-            view.compactionDue && "text-primary",
+            view.compactionDue && "text-primary data-[state=open]:text-primary",
           )}
         >
           <Icon name={TIMER_ICON} fallback="Archive" className="size-4" aria-hidden />
