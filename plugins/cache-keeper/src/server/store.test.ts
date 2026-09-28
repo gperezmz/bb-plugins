@@ -26,6 +26,9 @@ describe("the stored 0.1.0 shape", () => {
     const row = fixture("threads-row.json") as { thread_id: string; compact_on: number; record: string; updated_at: number };
     db.prepare("INSERT INTO threads (thread_id, compact_on, record, updated_at) VALUES (?, ?, ?, ?)").run(row.thread_id, row.compact_on, row.record, row.updated_at);
     expect(store.get(row.thread_id)).toEqual(fixture("threads-record.json"));
+    // The row is as 0.1.0 writes it: storing the record again gives the same row.
+    store.put("again", fixture("threads-record.json") as ThreadRecord, 1);
+    expect((db.prepare("SELECT record FROM threads WHERE thread_id = 'again'").get() as { record: string }).record).toBe(row.record);
 
     const log = fixture("turn-logs-row.json") as { thread_id: string; record: string };
     db.prepare("INSERT INTO turn_logs (thread_id, record) VALUES (?, ?)").run(log.thread_id, log.record);
