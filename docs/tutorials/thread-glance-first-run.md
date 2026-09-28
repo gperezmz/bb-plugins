@@ -40,9 +40,9 @@ Click the chip. The child's row opens under the parent, indented one step, its t
 
 ## 4. Let it finish
 
-The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and a small blue dot on the ring's corner, the child dot, says a child is working.
+The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and its chip turns blue and leads with a small spinner: a child is working.
 
-When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's child dot stays blue, now for unread, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
+When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's chip swaps its spinner for a small blue dot, now for unread, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
 
 When the parent finishes, its row shows the dot and a bold title.
 
@@ -56,4 +56,4 @@ Click `1 need you`. The list narrows to that one tree under its project's header
 
 Click the sliders button at the right of the list header. Under **List**, set **Settle after** to **12h**. Trees that have gone half a day without activity join each group's `Settled (N)` divider at its end; click a divider to see what it holds. Set it back to **1d**, and click the sliders button again to close the panel.
 
-You have installed Thread Glance, read its rows, chips and child dots, and used the need-you filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
+You have installed Thread Glance, read its rows and chips, and used the need-you filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.

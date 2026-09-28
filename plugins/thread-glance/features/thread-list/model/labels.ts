@@ -1,6 +1,6 @@
 // Accessible names: everything a tooltip says is in the aria-label.
-import type { OlderRow, SettledRow, ThreadRow } from "./view";
-import { FLAG_GLYPHS, type Flag } from "./state";
+import type { Chip, OlderRow, SettledRow, ThreadRow } from "./view";
+import type { Flag } from "./state";
 import { formatDateTime } from "./details";
 import type { OrganizationMode } from "@/shared/preferences";
 
@@ -20,7 +20,6 @@ export function rowAriaLabel(
 ): string {
   const parts = [stateText(row, options.pluginLabel), options.providerName];
   if (row.parentTitle !== null && row.depth > 0) parts.push(`child of ${row.parentTitle}`);
-  if (row.childDot !== null) parts.push(`child threads: ${FLAG_GLYPHS[row.childDot].label}`);
   if (row.crossGroupLabel !== null) parts.push(row.crossGroupLabel.toLowerCase());
   if (row.hiddenBadge) parts.push("hidden thread");
   if (row.info.unread && row.info.state.kind !== "unread") parts.push("unread");
@@ -28,9 +27,24 @@ export function rowAriaLabel(
   return `Open ${row.info.thread.displayTitle} — ${parts.join("; ")}`;
 }
 
-export function chipLabel(title: string, count: number, expanded: boolean): string {
-  const noun = count === 1 ? "child thread" : "child threads";
-  return `${expanded ? "Collapse" : "Show"} ${count} ${noun} of ${title}`;
+/** What a children chip's state says, uncounted: the state can come from any depth, the count only from direct children. */
+const CHIP_STATE_TEXT: Readonly<Record<Flag, string>> = {
+  "waits-on-you": "waiting on you below",
+  "unread-failed": "failed below",
+  "queue-failed": "queued message failed below",
+  offline: "machine offline below",
+  working: "working below",
+  unread: "unread below",
+};
+
+/**
+ * "Show 2 child threads of Release, working below"; with no visible child,
+ * "Show hidden child threads of Release, waiting on you below".
+ */
+export function chipLabel(title: string, chip: Chip): string {
+  const children = chip.count === 0 ? "hidden child threads" : `${chip.count} ${chip.count === 1 ? "child thread" : "child threads"}`;
+  const state = chip.flag === null ? "" : `, ${CHIP_STATE_TEXT[chip.flag]}`;
+  return `${chip.expanded ? "Collapse" : "Show"} ${children} of ${title}${state}`;
 }
 
 /** The text and accessible name of an open tree's fold row. */

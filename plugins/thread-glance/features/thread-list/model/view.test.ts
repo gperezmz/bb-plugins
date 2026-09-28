@@ -59,8 +59,8 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
     const { view } = render({ threads }, null, new Map());
     expect(attentionRootIds({ threads })).toEqual(["m"]);
     const root = threadRow(view, "m");
-    expect(root.chip).toEqual({ count: 5, expanded: false });
-    expect(root.childDot).toBe("waits-on-you");
+    expect(root.chip).toEqual({ count: 5, expanded: false, flag: "waits-on-you" });
+    expect(root.chip?.flag).toBe("waits-on-you");
     expect(root.info.state.kind).toBe("idle");
     expect(threadRow(view, "c3")).toMatchObject({ depth: 1 });
     expect(rowIds(view, "project:proj_a")).toEqual(["other", "m", "c3", "older:4"]);
@@ -115,7 +115,7 @@ describe("scenario 2: child failed while its parent finished", () => {
     const read = threads.map((t) => ({ ...t, lastReadAt: T0 + 20 }));
     const view = viewOf({ threads: read, prefs: { expandedChildren: ["p"] } });
     expect(group(view, "project:proj_a").counters).toMatchObject({ failed: 0, unread: 0 });
-    expect(threadRow(view, "p").childDot).toBeNull();
+    expect(threadRow(view, "p").chip?.flag ?? null).toBeNull();
     const child = threadRow(view, "c");
     expect(child.info).toMatchObject({ unread: false, state: { kind: "failed", glyph: { icon: "CircleX" } } });
   });
@@ -152,10 +152,10 @@ describe("scenario 6: pinned thread while its child is active", () => {
     makeThread({ id: "c", parentThreadId: "p", ...working }),
     makeThread({ id: "c2", parentThreadId: "p" }),
   ];
-  it("Pinned shows the chip, a working child dot, and counts working 1", () => {
+  it("Pinned shows the chip with a working state, and counts working 1", () => {
     const view = viewOf({ threads });
-    expect(threadRow(view, "p").chip).toEqual({ count: 2, expanded: false });
-    expect(threadRow(view, "p").childDot).toBe("working");
+    expect(threadRow(view, "p").chip).toEqual({ count: 2, expanded: false, flag: "working" });
+    expect(threadRow(view, "p").chip?.flag ?? null).toBe("working");
     expect(group(view, "pinned").counters.working).toBe(1);
     expect(view.groups.find((g) => g.descriptor.id === "project:proj_a")?.rows ?? []).toEqual([]);
   });
@@ -408,8 +408,8 @@ describe("hidden threads", () => {
     const calm = viewOf({ threads: threads.filter((t) => t.id !== "hb"), prefs: { expandedChildren: ["p"] } });
     expect(rowIds(calm, "project:proj_a")).toEqual(["p", "w"]);
     expect(threadRow(calm, "w").nested).toBe(false);
-    expect(threadRow(calm, "p").chip).toEqual({ count: 1, expanded: true });
-    expect(threadRow(calm, "p").childDot).toBeNull();
+    expect(threadRow(calm, "p").chip).toEqual({ count: 1, expanded: true, flag: null });
+    expect(threadRow(calm, "p").chip?.flag ?? null).toBeNull();
   });
   it("hidden working threads don't count", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "h", parentThreadId: "p", isHidden: true, ...working })];
@@ -536,12 +536,12 @@ describe("transitions", () => {
     expect(rowIds(view, "project:proj_a")).toEqual(["p"]);
     expect(targets.get("c")).toBe("open");
   });
-  it("a finished child opens nothing, and puts an unread child dot on its parent", () => {
+  it("a finished child opens nothing, and puts unread on its parent's chip", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
     const { view, targets } = render({ threads, finishedAt: { c: T0 + 5 } }, null, new Map());
     expect(targets.has("c")).toBe(false);
-    expect(threadRow(view, "p").chip).toEqual({ count: 1, expanded: false });
-    expect(threadRow(view, "p").childDot).toBe("unread");
+    expect(threadRow(view, "p").chip).toEqual({ count: 1, expanded: false, flag: "unread" });
+    expect(threadRow(view, "p").chip?.flag ?? null).toBe("unread");
   });
 });
 

@@ -7,6 +7,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
 import manifest from "./package.json";
 import {
+  failedUnread,
   finishedUnread,
   makeThread,
   PROJECTS,
@@ -174,7 +175,7 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2].map((n) => makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working })),
     ]);
-    const chip = await screen.findByRole("button", { name: "Show 2 child threads of Parent" });
+    const chip = await screen.findByRole("button", { name: "Show 2 child threads of Parent, working below" });
     expect(chip.getAttribute("aria-expanded")).toBe("false");
     expect(chip.textContent).toContain("2");
     expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull();
@@ -364,21 +365,19 @@ describe("Thread Glance slot", () => {
     expect((await row(/Open Trunk/)).textContent).not.toContain("main");
   });
 
-  it("draws a muted chip with a count and chevron only, a child dot on the parent's own glyph, and unread in the accent", async () => {
+  it("draws a muted chip with a count and chevron only while its children are quiet, and nothing of theirs on the parent's glyph", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
-      makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working, providerId: "codex" }),
+      makeThread({ id: "c", title: "Quiet child", parentThreadId: "m", createdAt: T0 + 1, providerId: "codex" }),
       makeThread({ id: "u", title: "Fresh", ...finishedUnread }),
     ]);
     const chip = await screen.findByRole("button", { name: "Show 1 child thread of Parent" });
     expect(chip.textContent).toBe("1");
+    expect(chip.className).not.toMatch(/text-attention|text-destructive|--timeline-accent/);
     expect(chip.className).not.toMatch(/(^|\s)border(\s|-)/);
     expect(chip.className).not.toMatch(/(^|\s)bg-/);
-    expect(within(chip).queryByRole("img")).toBeNull();
-    const parent = await screen.findByRole("link", { name: /Open Parent — Idle;.*child threads: working/ });
-    const column = parent.nextElementSibling as HTMLElement;
-    expect(column.querySelector("[data-child-dot]")?.getAttribute("data-child-dot")).toBe("working");
-    expect(column.querySelector("[data-child-dot]")?.className).toContain("--timeline-accent");
+    const parent = await screen.findByRole("link", { name: "Open Parent — Idle; Claude Code" });
+    expect((parent.nextElementSibling as HTMLElement).children).toHaveLength(1);
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
   });
@@ -902,5 +901,186 @@ describe("row hover card", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the glyph is the thread, the children chip is its children", () => {
+  type Overrides = Omit<Parameters<typeof makeThread>[0], "id">;
+  const parent = (overrides: Overrides = {}) => makeThread({ id: "p", title: "Parent", ...overrides });
+  const child = (id: string, overrides: Overrides = {}, parentId = "p") =>
+    makeThread({ id, title: `Child ${id}`, parentThreadId: parentId, createdAt: T0 + id.length, ...overrides });
+
+  const STATES: [string, Overrides][] = [
+    ["idle", {}],
+    ["working", working],
+    ["unread", finishedUnread],
+    ["waits on you", { hasPendingInteraction: true }],
+    ["failed", failedUnread],
+  ];
+  // What the chip shows for a child in each state: its glyph, the chip's colour and the label's words.
+  const CHIP: Record<string, { icon: string; tone: string; words: string } | null> = {
+    idle: null,
+    working: { icon: "Loading", tone: "--timeline-accent", words: "working below" },
+    unread: { icon: "dot", tone: "--timeline-accent", words: "unread below" },
+    "waits on you": { icon: "CircleQuestion", tone: "text-attention", words: "waiting on you below" },
+    failed: { icon: "CircleX", tone: "text-destructive", words: "failed below" },
+  };
+
+  /** What a person reads off the parent's row. */
+  async function parentRow() {
+    const link = await screen.findByRole("link", { name: /^Open Parent — / });
+    const chip = within(link.parentElement!).queryByRole("button", { name: /child threads? of Parent/ });
+    // The state glyph comes before the count; with none, the count leads.
+    const lead = chip?.firstChild instanceof HTMLElement ? chip.firstChild : null;
+    return {
+      label: link.getAttribute("aria-label"),
+      column: (link.nextElementSibling as HTMLElement).outerHTML,
+      chip,
+      chipIcon: lead === null ? null : (lead.getAttribute("data-icon") ?? (lead.className.includes("rounded-full") ? "dot" : null)),
+    };
+  }
+
+  for (const [own, ownOverrides] of STATES) {
+    for (const [kid, kidOverrides] of STATES) {
+      for (const expanded of [false, true]) {
+        it(`parent ${own}, child ${kid}, ${expanded ? "open" : "collapsed"}`, async () => {
+          render([parent(ownOverrides)]);
+          const alone = await parentRow();
+          cleanup();
+          render([parent(ownOverrides), child("c", kidOverrides)], { prefs: expanded ? { expandedChildren: ["p"] } : {} });
+          const seen = await parentRow();
+          // The Status column and the row's label are the parent's own, as with no children.
+          expect(seen.column).toBe(alone.column);
+          expect(seen.label).toBe(alone.label);
+          const shown = CHIP[kid]!;
+          const verb = expanded ? "Collapse" : "Show";
+          expect(seen.chip!.getAttribute("aria-label")).toBe(`${verb} 1 child thread of Parent${shown ? `, ${shown.words}` : ""}`);
+          expect(seen.chipIcon).toBe(shown?.icon ?? null);
+          if (shown) expect(seen.chip!.className).toContain(shown.tone);
+          else expect(seen.chip!.className).not.toMatch(/text-attention|text-destructive|--timeline-accent/);
+          expect(seen.chip!.textContent).toBe("1");
+        });
+      }
+    }
+  }
+
+  it("shows a grandchild waiting on you under a quiet child", async () => {
+    render([parent(), child("c"), child("gg", { hasPendingInteraction: true }, "c")]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("CircleQuestion");
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, waiting on you below");
+  });
+
+  it("leaves a hidden child working off the chip", async () => {
+    render([parent(), child("c"), child("hh", { ...working, isHidden: true })]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBeNull();
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent");
+  });
+
+  it("shows a hidden child waiting on you with no number when no child is visible", async () => {
+    render([parent(), child("hh", { hasPendingInteraction: true, isHidden: true })]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("CircleQuestion");
+    expect(seen.chip!.textContent).toBe("");
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show hidden child threads of Parent, waiting on you below");
+  });
+
+  it("keeps a chip with no number for a hidden child's failure that needs no attention", async () => {
+    render([parent(working), child("hh", { queuedWork: "failed", isHidden: true })]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("AlertTriangle");
+    expect(seen.chip!.className).toContain("text-destructive");
+    expect(seen.chip!.textContent).toBe("");
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show hidden child threads of Parent, queued message failed below");
+  });
+
+  it("shows a queued message failure and an offline machine below with their own glyphs", async () => {
+    render([parent(), child("c", { queuedWork: "failed" })]);
+    expect((await parentRow()).chipIcon).toBe("AlertTriangle");
+    cleanup();
+    render([parent(), child("c", { status: "active", runtimeStatus: "waiting-for-host" })]);
+    const offline = await parentRow();
+    expect(offline.chipIcon).toBe("CloudOff");
+    expect(offline.chip!.className).toContain("text-attention");
+    expect(offline.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, machine offline below");
+  });
+
+  // Every other own state, beside a working child: the glyph and row label are the parent's alone.
+  const future = Date.now() + 86_400_000;
+  const OTHER_STATES: [string, Overrides, object][] = [
+    ["Queued message failed to send", { queuedWork: "failed" }, {}],
+    ["Machine offline", { status: "active", runtimeStatus: "waiting-for-host" }, {}],
+    ["Background agent running", { activity: { backgroundAgents: 1 } }, {}],
+    ["Scheduled message", { queuedWork: "waiting" }, { rpc: { ...rpc(), listScheduled: () => ({ status: "ready" as const, scheduled: { p: future } }) } }],
+    ["Message waiting to send", { queuedWork: "waiting" }, {}],
+    ["Unsubmitted draft", {}, { sidebarDraftThreadIds: ["p"] }],
+  ];
+  for (const [own, overrides, extra] of OTHER_STATES) {
+    it(`parent in "${own}" draws the same glyph and label with a working child`, async () => {
+      render([parent(overrides)], { extra });
+      const alone = await parentRow();
+      expect(alone.label).toMatch(new RegExp(`^Open Parent — ${own}[;,]`));
+      cleanup();
+      render([parent(overrides), child("c", working)], { extra });
+      const seen = await parentRow();
+      expect(seen.column).toBe(alone.column);
+      expect(seen.label).toBe(alone.label);
+      expect(seen.chipIcon).toBe("Loading");
+    });
+  }
+
+  it("keeps a plugin row status set on the parent as the parent's own", async () => {
+    const extra = { sidebarRowStatuses: { p: { icon: "Fire", label: "Keeping the cache warm", tone: "running" } } };
+    render([parent()], { extra });
+    const alone = await parentRow();
+    cleanup();
+    render([parent(), child("c", finishedUnread)], { extra });
+    const seen = await parentRow();
+    expect(seen.column).toBe(alone.column);
+    expect(seen.label).toBe(alone.label);
+    expect(seen.column).toContain('data-icon="Fire"');
+    expect(seen.chipIcon).toBe("dot");
+  });
+
+  it("shows the most urgent of children in different states", async () => {
+    render([parent(), child("a", finishedUnread), child("bb", working), child("ccc", failedUnread)]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("CircleX");
+    expect(seen.chip!.className).toContain("text-destructive");
+  });
+
+  it("shows an unread child's filled dot, not the Cache Keeper status set on that child", async () => {
+    const extra = { sidebarRowStatuses: { c: { icon: "Fire", label: "Keeping the cache warm", tone: "running" } } };
+    render([parent(), child("c", finishedUnread)], { extra });
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("dot");
+    expect(seen.chip!.querySelector('[data-icon="Fire"]')).toBeNull();
+    expect(seen.label).toBe("Open Parent — Idle; Claude Code");
+  });
+
+  it("shows the plain question mark for two children waiting on you in different ways", async () => {
+    const notes = { a: { pending: { kind: "approval", text: "Run it?" } }, bb: { pending: { kind: "plan", text: "Review the plan" } } };
+    render([parent(), child("a", { hasPendingInteraction: true }), child("bb", { hasPendingInteraction: true })], { notes });
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("CircleQuestion");
+  });
+
+  it("does not count descendants waiting in the label when there are more of them than direct children", async () => {
+    render([
+      parent(),
+      child("c"),
+      child("g1", { hasPendingInteraction: true }, "c"),
+      child("g2", { hasPendingInteraction: true }, "c"),
+      child("g3", { hasPendingInteraction: true }, "c"),
+    ]);
+    const seen = await parentRow();
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, waiting on you below");
+  });
+
+  it("keeps the chip's spinner still under reduced motion", async () => {
+    render([parent(), child("c", working)]);
+    const seen = await parentRow();
+    expect(seen.chip!.firstElementChild!.className).toContain("motion-reduce:animate-none");
   });
 });

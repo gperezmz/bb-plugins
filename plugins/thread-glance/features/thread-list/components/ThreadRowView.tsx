@@ -19,12 +19,12 @@ import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
-import { pluginStatusWins } from "../model/state";
+import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { ChildDot, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
+import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -368,7 +368,6 @@ export const ThreadRowView = memo(function ThreadRowView({
       />
       <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
         {stateSlot}
-        {row.childDot !== null ? <ChildDot flag={row.childDot} /> : null}
       </span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
@@ -517,8 +516,8 @@ export const ThreadRowView = memo(function ThreadRowView({
             <button
               type="button"
               aria-expanded={chip.expanded}
-              aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
-              title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+              aria-label={chipLabel(thread.displayTitle, chip)}
+              title={chipLabel(thread.displayTitle, chip)}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -527,11 +526,14 @@ export const ThreadRowView = memo(function ThreadRowView({
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               className={cn(
-                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                dimmed && QUIET_TEXT,
+                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                chip.flag === null
+                  ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
+                  : TONE_CLASS[chipTone(chip.flag)],
               )}
             >
-              {chip.count}
+              {chip.flag !== null ? <ChipStateGlyph flag={chip.flag} /> : null}
+              {chip.count > 0 ? chip.count : null}
               <Icon
                 name={ICONS.expand}
                 aria-hidden

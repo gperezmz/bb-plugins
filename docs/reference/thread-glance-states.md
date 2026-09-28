@@ -16,26 +16,11 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
 | 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Faint grey |
 
-A parent thread's glyph shows its own state: an idle parent whose children are working shows the idle ring. What its children are doing is its [child dot](#the-child-dot).
+A parent thread's glyph is chosen exactly as for a thread with no children, from its own state only, open or collapsed: an idle parent whose children are working shows the idle ring. What its children are doing is on its [children chip](#the-children-chip).
 
 A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, open or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
-
-## The child dot
-
-A parent thread with a descendant, at any depth, in one of these states carries a small dot at the lower right of its own glyph, in the colour of the first of them found among its descendants:
-
-| # | Descendant state | Dot |
-|---|---|---|
-| 1 | Waits on you | Amber |
-| 2 | Failed, and not read since | Red |
-| 3 | Queued message failed | Red |
-| 4 | Machine offline | Amber |
-| 5 | Working | Blue |
-| 6 | Unread | Blue |
-
-A parent with no descendant in any of these has no dot. Archived descendants are left out. A hidden thread has no row of its own, so it adds only waits on you, failed, queued message failed and offline. The row's screen-reader label names the dot's state, for example "child threads: working".
 
 ## The second line
 
@@ -90,7 +75,26 @@ The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#thre
 
 ## The children chip
 
-A parent thread carries a muted chip just before its time: the number of its direct children and a chevron that opens and closes them. Hidden children are not counted; archived children are counted while archived threads are shown. Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
+A parent thread carries a chip just before its time: the number of its direct children and a chevron that opens and closes them. Hidden children are not counted; archived children are counted while archived threads are shown.
+
+When a descendant, at any depth, is in one of these states, the chip leads with the glyph of the first of them found, smaller than a row's glyph, and its number and chevron take that glyph's colour. Otherwise the number and chevron are muted.
+
+| # | Descendant state | Glyph on the chip | Colour |
+|---|---|---|---|
+| 1 | Waits on you | Question mark, whatever the descendant waits on; its own row shows which | Amber |
+| 2 | Failed, and not read since | Circle with a cross | Red |
+| 3 | Queued message failed | Warning triangle | Red |
+| 4 | Machine offline | Cloud with a slash | Amber |
+| 5 | Working | Spinner, still under reduced motion | Blue |
+| 6 | Unread | Filled dot | Blue |
+
+Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline.
+
+A parent whose only children are hidden keeps its chip while one of them shows a state, drawn with the state's glyph and the chevron but no number.
+
+The chip looks the same whether the tree is open or closed. Another plugin's row status stays on the thread it is set on and never reaches a chip.
+
+The chip's screen-reader label gives the number and names the state without counting it, for example "Show 2 child threads of Release, working below", since the number counts direct children and the state can come from any depth. With no number, it reads "Show hidden child threads of Release, waiting on you below". Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
 
 ## The settled fold
 

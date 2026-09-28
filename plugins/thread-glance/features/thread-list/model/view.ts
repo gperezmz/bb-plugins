@@ -29,12 +29,18 @@ import type { RowNote } from "./notes";
 /** How many quiet children stay in an expanded tree. */
 export const KEEP_QUIET_CHILDREN = 3;
 
-/** The children chip: the muted count of a parent's direct children, and its chevron. */
+/** The children chip: the count of a parent's direct children and its chevron, after the state of its descendants. */
 export interface Chip {
-  /** Direct children opening it shows, hidden ones left out. */
+  /** Direct children opening it shows, hidden ones left out; 0 draws no number. */
   count: number;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
+  /**
+   * The most urgent state among the descendants at any depth, open or
+   * collapsed, or null for none: its glyph leads the chip and colours it, and
+   * keeps that colour through dimming and hover.
+   */
+  flag: Flag | null;
 }
 
 export interface ThreadRow {
@@ -53,11 +59,6 @@ export interface ThreadRow {
    * default, a child whose harness is not its parent thread's.
    */
   harness: boolean;
-  /**
-   * The child dot on the status glyph: the most urgent state among the
-   * thread's descendants at any depth, or null for none.
-   */
-  childDot: Flag | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
   /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
@@ -267,7 +268,6 @@ function threadRow(
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
     harness: drawsHarness(context, info),
-    childDot: mostUrgent(subtreeOf(context, info.thread.id).dotFlags),
     bold: info.unread,
     treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
     note: info.note,
@@ -405,11 +405,13 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Tr
   return rows;
 }
 
-/** The children chip of a parent, or null when opening it would show nothing. */
+/** The children chip of a parent, or null when it would show nothing. */
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
-  const count = subtreeOf(context, info.thread.id).childCount;
-  if (count === 0 && eligibleChildren(context, info.thread.id).length === 0) return null;
-  return { count, expanded };
+  const { childCount: count, chipFlags } = subtreeOf(context, info.thread.id);
+  const flag = mostUrgent(chipFlags);
+  // A hidden child's failure that needs no attention has no row, yet the chip still shows it.
+  if (count === 0 && flag === null && eligibleChildren(context, info.thread.id).length === 0) return null;
+  return { count, expanded, flag };
 }
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */
