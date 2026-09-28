@@ -17,11 +17,12 @@ export interface ResetNotice {
 
 export async function resetAfterReinstall(deps: {
   store: Store;
-  engine: { resetSwitches(): number };
+  engine: { flush(): void; resetSwitches(): number };
   agentTools: AgentTools;
   now: number;
   setCheckIns(on: boolean): Promise<unknown>;
 }): Promise<ResetNotice | null> {
+  deps.engine.flush();
   if (deps.store.isEmpty()) return null;
   const threads = deps.engine.resetSwitches();
   deps.agentTools.allOff();

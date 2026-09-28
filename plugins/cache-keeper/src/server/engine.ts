@@ -281,13 +281,47 @@ export class Engine {
     return false;
   }
 
-  /** Changes the record as it stands now and stores it: never await between reading what `change` needs and this call. */
+  /**
+   * Changes the record as it stands now: never await between reading what
+   * `change` needs and this call. Records and turn logs changed in one turn of
+   * the event loop are written together, in one transaction, at its end.
+   */
   private patch(threadId: string, change: (record: ThreadRecord) => ThreadRecord): ThreadRecord {
     const next = change(this.record(threadId));
     this.unstored.delete(threadId);
     this.records.set(threadId, next);
-    this.deps.store.put(threadId, next, this.now());
+    this.dirtyRecords.add(threadId);
+    this.scheduleFlush();
     return next;
+  }
+
+  private readonly dirtyRecords = new Set<string>();
+  private readonly dirtyLogs = new Set<string>();
+  private flushQueued = false;
+
+  private scheduleFlush(): void {
+    if (this.flushQueued) return;
+    this.flushQueued = true;
+    setImmediate(() => this.flush());
+  }
+
+  /** Writes every changed record and turn log in one transaction. */
+  flush(): void {
+    this.flushQueued = false;
+    if (this.dirtyRecords.size === 0 && this.dirtyLogs.size === 0) return;
+    const now = this.now();
+    this.deps.store.transaction(() => {
+      for (const id of this.dirtyRecords) {
+        const r = this.records.get(id);
+        if (r !== undefined) this.deps.store.put(id, r, now);
+      }
+      for (const id of this.dirtyLogs) {
+        const log = this.logs.get(id);
+        if (log !== undefined) this.deps.store.putTurnLog(id, log);
+      }
+    });
+    this.dirtyRecords.clear();
+    this.dirtyLogs.clear();
   }
 
   private turnLog(threadId: string): TurnLog | null {
@@ -300,7 +334,8 @@ export class Engine {
 
   private putTurnLog(threadId: string, log: TurnLog): void {
     this.logs.set(threadId, log);
-    this.deps.store.putTurnLog(threadId, log);
+    this.dirtyLogs.add(threadId);
+    this.scheduleFlush();
   }
 
   /** The stored last setting, read once: the engine is its only writer. Undefined until read. */
@@ -407,6 +442,7 @@ export class Engine {
 
   stop(): void {
     this.scheduler.stop();
+    this.flush();
   }
 
   /** When the timer is next due for `key` (`tree:<top>`, `reconcile` or `keepalive`), or null. */
@@ -590,6 +626,7 @@ export class Engine {
   private onArchived(threadId: string): void {
     this.forgetStretch(threadId);
     this.logs.delete(threadId);
+    this.dirtyLogs.delete(threadId);
     this.deps.store.deleteTurnLog(threadId);
     if (this.stored(threadId)) this.markArchived(threadId, true);
   }
@@ -622,6 +659,8 @@ export class Engine {
     this.viewedAt.delete(threadId);
     this.hostDown.delete(threadId);
     this.scheduler.set(`tree:${threadId}`, null);
+    this.dirtyRecords.delete(threadId);
+    this.dirtyLogs.delete(threadId);
     this.deps.store.delete(threadId);
     this.markArchived(threadId, false);
   }
@@ -629,7 +668,7 @@ export class Engine {
   /** The drive harness moved the clock: the timer is set again from the new time. */
   clockMoved(): void {
     this.scheduler.reset();
-    for (const top of this.watchedTops()) this.replan(top);
+    for (const top of this.watchedTops()) this.planNow(top);
   }
 
   // ---- learning a thread ----
@@ -666,8 +705,7 @@ export class Engine {
       const t = this.index.get(threadId);
       if (t === undefined || !this.index.isLive(threadId)) return;
       const claude = t.providerId === "claude-code";
-      // A report climbs through every thread under a Claude Code one, whatever its harness.
-      if (!claude && this.claudeAbove(threadId) === null) return;
+      if (!this.needsEvents(threadId)) return;
       await this.readEvents(threadId);
       if (claude) {
         // bb's events do not say whether a thread waits on your answer; a thread first seen through them is asked once.
@@ -698,6 +736,27 @@ export class Engine {
     this.index.apply({ id: threadId, pending: list.length > 0 }, t.missing);
   }
 
+  /**
+   * Whether a thread's events are worth reading at its turn's end: it is
+   * stored or its deadline matters; its background tasks could get a
+   * check-in or make it wait in a tree kept warm; or a thread below it is
+   * stored, so a report climbing through it may be Cache Keeper's. Any
+   * other turn is nobody's to charge and changes nothing Cache Keeper does.
+   */
+  private needsEvents(threadId: string): boolean {
+    if (this.stored(threadId)) return true;
+    if (this.index.isClaude(threadId)) {
+      const settings = this.deps.settings();
+      if (this.watched(threadId) || settings.checkIns || this.isKeptWarm(threadId, settings)) return true;
+    } else if (this.claudeAbove(threadId) === null) return false;
+    const below = [...this.index.childrenOf(threadId)];
+    for (let i = 0; i < below.length && i < 1_000; i++) {
+      if (this.stored(below[i]!)) return true;
+      below.push(...this.index.childrenOf(below[i]!));
+    }
+    return false;
+  }
+
   private claudeAbove(threadId: string): string | null {
     const seen = new Set<string>();
     for (let p = this.index.get(threadId)?.parentId ?? null; p !== null && !seen.has(p); p = this.index.get(p)?.parentId ?? null) {
@@ -710,6 +769,7 @@ export class Engine {
   /** Reads the thread's new events: its turns, its background tasks, and a new Claude Code session. */
   private async readEvents(threadId: string): Promise<void> {
     let log = this.turnLog(threadId);
+    const fresh = log === null;
     if (log === null) {
       this.counters.bbCalls++;
       log = emptyTurnLog(Math.max(0, (await this.deps.latestEventSeq(threadId)) - FIRST_READ_EVENTS));
@@ -739,7 +799,7 @@ export class Engine {
       }
       if (raw.length < EVENTS_PAGE) break;
     }
-    if (log.afterSeq !== before || this.deps.store.turnLog(threadId) === null) this.putTurnLog(threadId, log);
+    if (log.afterSeq !== before || fresh) this.putTurnLog(threadId, log);
     if (!claude) return;
     const known = this.index.get(threadId)!;
     // bb's counts come from its last list; a task seen finishing since takes one off, until the next list says.
@@ -895,6 +955,7 @@ export class Engine {
       if (usd !== null) share = usd / sends.length;
       else if (own && !send.measured) share = send.forecastUsd;
       else continue;
+      this.sends.delete(send.id);
       this.deps.store.chargeSend(send.id, threadId, share, own, usd === null);
       this.chargeStretch(send.threadId, send.stretchStartedAt, share);
     }
@@ -983,11 +1044,10 @@ export class Engine {
    * turn ends, which would otherwise undo your marking it read.
    */
   private async putBack(threadId: string, before: ReadBefore): Promise<void> {
-    this.counters.bbCalls++;
-    const raw = await this.deps.getThread(threadId).catch(() => null);
-    const read = raw === null ? null : readThread(raw, false);
-    if (read === null) return;
-    const state = { lastReadAt: read.patch.lastReadAt ?? null, latestAttentionAt: read.patch.latestAttentionAt ?? null };
+    // bb's thread.idle for the turn carried the read state as the turn left it.
+    const t = this.index.get(threadId);
+    if (t === undefined) return;
+    const state = { lastReadAt: t.lastReadAt, latestAttentionAt: t.latestAttentionAt };
     let action: "read" | "unread" | null = null;
     if (state.lastReadAt !== before.lastReadAt) {
       if (state.lastReadAt !== null && !isRead(state)) action = "read";
@@ -1019,6 +1079,7 @@ export class Engine {
     const send = this.deps.store.getSend(inFlight.sendId);
     this.patch(threadId, (r) => ({ ...r, inFlight: null }));
     if (send === null || send.measured || send.kind === "compact") return;
+    this.sends.delete(send.id);
     this.deps.store.chargeSend(send.id, threadId, send.forecastUsd, true, true);
     this.chargeStretch(threadId, send.stretchStartedAt, send.forecastUsd);
   }
@@ -1135,10 +1196,23 @@ export class Engine {
     return keptWarm(settings.keepWarm, top === null ? null : this.record(top).keepWarm);
   }
 
+  /** Each thread's last keep-warm as the forecast reads it, kept until it is charged. */
+  private readonly sends = new Map<number, { usd: number; measured: boolean } | null>();
+
+  private lastSend(id: number): { usd: number; measured: boolean } | null {
+    let send = this.sends.get(id);
+    if (send === undefined) {
+      const stored = this.deps.store.getSend(id);
+      send = stored === null ? null : { usd: stored.usd, measured: stored.measured };
+      this.sends.set(id, send);
+    }
+    return send;
+  }
+
   /** What the next keep-warm to a thread is expected to cost, with the turns it forces above. */
   private forecast(threadId: string, observed: Map<string, Observed>): number {
     const record = this.record(threadId);
-    const last = record.lastSendId === null ? null : this.deps.store.getSend(record.lastSendId);
+    const last = record.lastSendId === null ? null : this.lastSend(record.lastSendId);
     const chain: Observed[] = [];
     for (let id: string | null = threadId, d = 0; id !== null && d < 64; id = this.index.liveParentOf(id), d++) {
       const o = observed.get(id);
@@ -1302,11 +1376,31 @@ export class Engine {
   }
 
   /**
+   * Plans a tree at the end of this turn of the event loop: the several
+   * events one turn's end brings plan it once.
+   */
+  replan(top: string): void {
+    this.toPlan.add(top);
+    if (this.planQueued) return;
+    this.planQueued = true;
+    setImmediate(() => {
+      this.planQueued = false;
+      const tops = [...this.toPlan];
+      this.toPlan.clear();
+      for (const t of tops) this.planNow(t);
+    });
+  }
+
+  private readonly toPlan = new Set<string>();
+  private planQueued = false;
+
+  /**
    * Plans a tree and sets its timer; anything due now is acted on. Views
    * that changed are published. Threads whose deadline came to matter
    * without their transcript read are learnt.
    */
-  replan(top: string): void {
+  private planNow(top: string): void {
+    this.toPlan.delete(top);
     if (!this.started || !this.index.isLive(top)) {
       this.scheduler.set(`tree:${top}`, null);
       return;
@@ -1818,15 +1912,15 @@ export class Engine {
   private buildView(threadId: string): ThreadView | null {
     if (!this.index.isLive(threadId)) return null;
     const top = this.index.topOf(threadId);
-    this.replan(top);
+    this.planNow(top);
     return this.views.get(threadId) ?? null;
   }
 
   /** The views of every thread with compact when idle on, from memory. */
   switchedOn(): ThreadView[] {
     const out: ThreadView[] = [];
-    for (const id of this.deps.store.compactOnIds()) {
-      if (!this.index.isLive(id)) continue;
+    for (const [id, r] of this.records) {
+      if (!r.compactOn || !this.index.isLive(id)) continue;
       const view = this.views.get(id) ?? this.buildView(id);
       if (view !== null) out.push(view);
     }
@@ -1981,6 +2075,7 @@ export class Engine {
    * top's recorded Keep warm while waiting off, every Skip cleared.
    */
   resetSwitches(): number {
+    this.flush();
     let changed = 0;
     this.deps.store.transaction(() => {
       for (const { threadId, record: r } of this.deps.store.all()) {
@@ -1991,6 +2086,7 @@ export class Engine {
         this.patch(threadId, (rec) => ({ ...rec, compactOn: false, keepWarm: rec.keepWarm === null ? null : false, stretch }));
       }
     });
+    this.flush();
     for (const top of this.watchedTops()) this.replan(top);
     return changed;
   }

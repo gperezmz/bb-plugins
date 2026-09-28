@@ -225,12 +225,32 @@ async function cliRun(argv) {
 }
 const tick = () => new Promise((resolve) => setTimeout(resolve, 2));
 
-/** Waits until the engine has done everything due: its timer's work and every call it queued. "drive now" awaits the engine's queued work. */
+/** The server's engine, caught as it starts; its clock is the drive clock the "drive" commands move. */
+let engine = null;
+
+/**
+ * Waits until the engine has done everything due: its timer's work and every
+ * call it queued. By default the harness waits on the engine and moves its
+ * clock directly, as "drive now" and "drive advance" do, rather than through
+ * the plugin's CLI, whose parsing on every simulated second is harness
+ * plumbing the plugin never does in use; `config.viaCli` goes through the CLI.
+ */
 async function barrier() {
   for (let i = 0; i < 3; i++) {
     await tick();
-    await cliRun(["drive", "now"]);
+    if (config.viaCli) await cliRun(["drive", "now"]);
+    else if (engine !== null) await engine.idle();
   }
+}
+
+/** Moves the plugin's clock `ms` forward, as "drive advance" does. */
+async function advance(ms) {
+  if (config.viaCli || target === "noop") {
+    if (config.viaCli) await cliRun(["drive", "advance", `${ms}ms`]);
+    return;
+  }
+  engine.deps.clock.advance(ms);
+  engine.clockMoved();
 }
 
 let started = null;
@@ -247,6 +267,11 @@ let profiler = null;
 function instrument() {
   const Engine = globalThis.__cacheKeeperBench?.Engine;
   if (Engine === undefined) throw new Error("the bundle does not expose the engine; build it with bench/build.mjs");
+  const start = Engine.prototype.start;
+  Engine.prototype.start = function () {
+    engine = this;
+    return start.call(this);
+  };
   const clockMoved = Engine.prototype.clockMoved;
   Engine.prototype.clockMoved = function () {
     const c0 = cpuMs();
@@ -345,7 +370,7 @@ const ops = {
       for (const fn of handlers.events.get(name) ?? []) await fn(payload);
     }
     counts.eventsMs += threadCpuMs() - c0;
-    if (ms > 0) await cliRun(["drive", "advance", `${ms}ms`]);
+    if (ms > 0) await advance(ms);
     await barrier();
     return null;
   },

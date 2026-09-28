@@ -127,8 +127,23 @@ export async function readTranscript(
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/**
+ * Whether a line can say anything about the cache: a request's usage, a
+ * compaction, or a message typed as the user. A tool result, however long,
+ * says nothing, and most of a transcript's bytes are tool results, so they
+ * are left unparsed.
+ */
+export function worthParsing(line: string): boolean {
+  if (line.includes('"usage"') || line.includes('"compact_boundary"')) return true;
+  if (line.includes('"tool_result"')) return false;
+  return /"type"\s*:\s*"user"/.test(line);
+}
+
 function feed(fold: TranscriptFold, line: string): "parsed" | "broken" | "skipped" {
-  if (line.trim() === "") return "skipped";
+  const trimmed = line.trim();
+  if (trimmed === "") return "skipped";
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return "broken";
+  if (!worthParsing(line)) return "skipped";
   try {
     const value: unknown = JSON.parse(line);
     if (value === null || typeof value !== "object" || Array.isArray(value)) return "skipped";

@@ -60,27 +60,27 @@ describe("the agent tool", () => {
 
   it("is refused while its Agent tools row is off, and changes nothing", async () => {
     expect(await call()).toMatchObject({ on: false, error: expect.stringMatching(/switched off in Settings/) });
-    expect(h.store.get("t").compactOn).toBe(false);
+    expect(h.engine.record("t").compactOn).toBe(false);
   });
 
   it("switches compact when idle on for the calling thread, snapping above to the nearest line", async () => {
     deps.agentTools.set("compactWhenIdle", true);
     expect(await call("300k")).toMatchObject({ on: true, line: "329k" });
-    expect(h.store.get("t").setting).toBe(5);
+    expect(h.engine.record("t").setting).toBe(5);
   });
 
   it("refuses a size that is not one, one above the highest line, and any while the window is unknown", async () => {
     deps.agentTools.set("compactWhenIdle", true);
     expect(await call("lots")).toMatchObject({ on: false, error: expect.stringMatching(/not a size/) });
     expect(await call("990k")).toMatchObject({ on: false, error: expect.stringMatching(/above this thread's highest line, 840k, in its 1M window/) });
-    expect(h.store.get("t").compactOn).toBe(false);
+    expect(h.engine.record("t").compactOn).toBe(false);
 
     h.thread({ id: "fresh" });
     h.side("fresh").window = null;
     h.transcript("fresh", T0, 50_000);
     const refused = JSON.parse(await compactWhenIdle(deps, "fresh", "300k")) as { on: boolean; error: string };
     expect(refused).toMatchObject({ on: false, error: expect.stringMatching(/window isn't known yet.*first turn ends/) });
-    expect(h.store.has("fresh") && h.store.get("fresh").compactOn).toBe(false);
+    expect(h.engine.record("fresh").compactOn).toBe(false);
   });
 
   it("refuses on a thread that is not Claude Code", async () => {
@@ -100,9 +100,9 @@ describe("a reinstall", () => {
     let checkIns: boolean | null = null;
     const notice = await resetAfterReinstall({ store: h.store, engine: h.engine, agentTools: deps.agentTools, now: T0 + MIN, setCheckIns: async (on) => (checkIns = on) });
     expect(notice).toEqual({ at: T0 + MIN, threads: 2 });
-    expect(h.store.get("t").compactOn).toBe(false);
-    expect(h.store.get("w").keepWarm).toBe(false);
-    expect(h.store.get("w").stretch?.warmSkipped).toBe(false);
+    expect(h.engine.record("t").compactOn).toBe(false);
+    expect(h.engine.record("w").keepWarm).toBe(false);
+    expect(h.engine.record("w").stretch?.warmSkipped).toBe(false);
     expect(deps.agentTools.offered()).toEqual([]);
     expect(checkIns).toBe(false);
     expect(h.store.getMeta(RESET_META)).toEqual(notice);

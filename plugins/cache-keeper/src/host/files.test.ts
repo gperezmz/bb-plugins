@@ -2,7 +2,7 @@ import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { commandActivity, lastToolIn, readTranscript, subagentActivity, type Roots } from "./files";
+import { commandActivity, lastToolIn, readTranscript, subagentActivity, worthParsing, type Roots } from "./files";
 
 const SESSION = "7dfc9da6-b6a9-4955-9df9-530b2c0ccda6";
 const SLUG = "-work-repo";
@@ -96,5 +96,16 @@ describe("task activity", () => {
     );
     expect(await subagentActivity(r, SLUG, SESSION, "a1")).toMatchObject({ id: "a1", lastTool: "Read" });
     expect(lastToolIn('{"cut":')).toBeNull();
+  });
+});
+
+describe("worthParsing", () => {
+  it("parses requests, compactions and typed messages, and leaves tool results and other lines alone", () => {
+    expect(worthParsing(request(0, "a", 1))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "system", subtype: "compact_boundary", compactMetadata: { postTokens: 1 } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: "please continue" } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: 'a message about "tool_result" blocks' } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "x".repeat(10_000) }] } }))).toBe(false);
+    expect(worthParsing(JSON.stringify({ type: "attachment", attachment: { type: "file" } }))).toBe(false);
   });
 });

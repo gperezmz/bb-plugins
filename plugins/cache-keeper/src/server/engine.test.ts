@@ -173,7 +173,7 @@ describe("keeping a thread tree warm", () => {
     expect(toChild.length).toBeGreaterThan(3);
     expect(h.reportTurns("p")).toBe(toChild.length);
     // Those report turns are not your messages in the parent's calls per message.
-    expect(h.store.get("p").keeperReports).toEqual({ turns: toChild.length, requests: toChild.length });
+    expect(h.engine.record("p").keeperReports).toEqual({ turns: toChild.length, requests: toChild.length });
     // Each keep-warm went at the child's deadline: every 240 seconds, a cache lifetime less the minute's margin.
     const times = h.sides.get("c")!.requests.map((r) => r.at);
     for (let i = 2; i < times.length; i++) expect(Math.abs(times[i]! - times[i - 1]! - 240 * S)).toBeLessThanOrEqual(5 * S);
@@ -192,7 +192,7 @@ describe("keeping a thread tree warm", () => {
     const lastAt = h.sides.get("c")!.requests.at(-1)!.at;
     expect(lastAt).toBeLessThan(T0 + 60 * MIN);
     // Each keep-warm cost a read of the child's context and of the parent's, charged to the child.
-    const charged = h.store.get("c").stretch!.chargedUsd;
+    const charged = h.engine.record("c").stretch!.chargedUsd;
     expect(charged).toBeLessThanOrEqual(PRICE.write5m * 100_000);
     expect(charged).toBeGreaterThan(PRICE.write5m * 100_000 * 0.7);
     expect((await h.engine.viewOf("c"))?.warmPlanned).toBe(false);
@@ -316,12 +316,12 @@ describe("keeping a thread tree warm", () => {
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
     await h.start();
-    const stretch = h.store.get("p").stretch!.startedAt;
+    const stretch = h.engine.record("p").stretch!.startedAt;
     await h.advance(T0 + 10 * MIN);
-    expect(h.store.get("p").stretch?.startedAt).toBe(stretch);
-    expect(h.store.get("c").stretch?.chargedUsd).toBeGreaterThan(0);
+    expect(h.engine.record("p").stretch?.startedAt).toBe(stretch);
+    expect(h.engine.record("c").stretch?.chargedUsd).toBeGreaterThan(0);
     await h.typed("c", "also update the docs");
-    expect(h.store.get("c").stretch?.chargedUsd ?? 0).toBe(0);
+    expect(h.engine.record("c").stretch?.chargedUsd ?? 0).toBe(0);
   });
 
   it("charges a batched report turn split equally between the children it reports", async () => {
@@ -340,7 +340,7 @@ describe("keeping a thread tree warm", () => {
     expect(entry.record.split!.a).toBeCloseTo(read(10_000) + 200 * PRICE.write5m, 10);
     expect(entry.record.usd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.b! + entry.record.split!.p!, 10);
     expect(entry.record.estimated).toBe(false);
-    expect(h.store.get("a").stretch!.chargedUsd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.p! / 2, 10);
+    expect(h.engine.record("a").stretch!.chargedUsd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.p! / 2, 10);
   });
 
   it("takes a report bb delivers without a kind as real, and logs it once", async () => {
@@ -350,12 +350,12 @@ describe("keeping a thread tree warm", () => {
     h.transcript("c", T0, 100_000, "5m");
     h.reportFields = ({ systemMessageKind: _, ...r }) => r;
     await h.start();
-    const stretch = h.store.get("p").stretch!.startedAt;
+    const stretch = h.engine.record("p").stretch!.startedAt;
     await h.advance(T0 + 240 * S);
     expect(h.reportTurns("p")).toBe(1);
     expect(h.warnings).toEqual([expect.stringMatching(/^request creq_\d+ into p: a system message mentioning a thread has no systemMessageKind/)]);
-    expect(h.store.get("p").stretch?.startedAt ?? null).not.toBe(stretch);
-    expect(h.store.get("p").keeperReports.turns).toBe(0);
+    expect(h.engine.record("p").stretch?.startedAt ?? null).not.toBe(stretch);
+    expect(h.engine.record("p").keeperReports.turns).toBe(0);
   });
 
   it("attributes the same way after a restart between the keep-warm and its report", async () => {
@@ -366,11 +366,11 @@ describe("keeping a thread tree warm", () => {
     await h.start();
     await h.advance(T0 + 240 * S, false);
     expect(h.sent).toHaveLength(1);
-    const stretch = h.store.get("p").stretch!.startedAt;
+    const stretch = h.engine.record("p").stretch!.startedAt;
     await h.restart();
     await h.deliver();
-    expect(h.store.get("p").stretch?.startedAt).toBe(stretch);
-    expect(h.store.get("c").stretch!.chargedUsd).toBeGreaterThan(0);
+    expect(h.engine.record("p").stretch?.startedAt).toBe(stretch);
+    expect(h.engine.record("c").stretch!.chargedUsd).toBeGreaterThan(0);
   });
 });
 
@@ -448,8 +448,8 @@ describe("keep warm while waiting", () => {
     expect((await h.engine.viewOf("g"))?.treeTop).toEqual({ threadId: "p", title: "p" });
     const result = await h.engine.setKeepWarm("g", true);
     expect(result).toMatchObject({ treeTop: { threadId: "p" }, keptWarm: true, never: false });
-    expect(h.store.get("p").keepWarm).toBe(true);
-    expect(h.store.get("g").keepWarm).toBeNull();
+    expect(h.engine.record("p").keepWarm).toBe(true);
+    expect(h.engine.record("g").keepWarm).toBeNull();
     expect(await h.engine.viewOf("g")).toMatchObject({ keptWarm: true, warmPlanned: true });
     await h.advance(T0 + 15 * MIN);
     expect(warmed().filter((id) => id === "g").length).toBeGreaterThanOrEqual(2);
