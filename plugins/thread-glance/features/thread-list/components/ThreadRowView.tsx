@@ -301,7 +301,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   const menuShowing = menuOpen || contextOpen;
   // A pressed shortcut's pill takes the machine's place, as it takes the time's.
   const showMachine = row.machine !== null && shortcut === null;
-  const swapShown = row.harness || showMachine;
+  const badgesShown = row.harness || showMachine;
   const actionsShown = !compact && shortcut === null;
   // Desktop: on hover the harness and machine fade out for Mark read and
   // Archive, and the time for "…". Compact: nothing fades.
@@ -444,13 +444,13 @@ export const ThreadRowView = memo(function ThreadRowView({
           <PullRequestBadge threadId={thread.id} />
         </span>
       ) : null}
-      {!editing && (swapShown || actionsShown) ? (
+      {!editing && (badgesShown || actionsShown) ? (
         // One cell: the harness and machine at rest, Mark read and Archive
         // on hover. The actions take no width at rest, so no title is
         // shorter for them; on hover the title gives up only what they
         // need beyond the badges they replace.
         <span className="relative -ml-1.5 grid shrink-0 items-center">
-          {swapShown ? (
+          {badgesShown ? (
             <span className={cn("flex items-center gap-1.5 pl-1.5 [grid-area:1/1] transition-opacity", shortcut === null && fadeClass)}>
               {row.harness ? (
                 <span className="pointer-events-none relative inline-flex shrink-0">
