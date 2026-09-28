@@ -7,7 +7,7 @@ bb's sidebar navigation for [bb](https://getbb.app), made small on a phone. Wher
 [ ⏻ ][ ⟳ ][ ▥ ][ $ ][ … ]            every other visible entry, in bb's order
 ```
 
-It follows the order and visibility you set in bb's own Customize sidebar, and changes neither: an entry you hide there sits behind "…", which also opens Customize sidebar.
+It follows the order and visibility you set in bb's own Customize sidebar, and changes neither: an entry you hide there sits behind "…". On a phone, "…" is always at the end of the icon row and opens Customize sidebar, whether or not anything is hidden.
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin pocket-navigation
