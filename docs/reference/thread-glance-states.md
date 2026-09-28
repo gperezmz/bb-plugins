@@ -66,7 +66,7 @@ Left to right, from the title to the row's end. On hover the children chip stays
 | At rest | The title, then the hidden badge on a hidden child, or the [pull request badge](#the-pull-request-badge) on a root | The [harness logo and machine name](#the-harness-logo-and-the-machine-name), where the row shows them | On a parent thread only | The time |
 | On hover | Shortened where the actions need the room | **Mark read**, on a root whose tree holds something unread, and **Archive**, in place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
 
-A row without children has no chip and no space kept for one.
+A row without children has no children chip and no space kept for one.
 
 On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
 

@@ -67,7 +67,7 @@ The faint "Settled (N)" divider at the end of a group that holds its settled thr
 _Avoid_: Older fold, N older, more row
 
 **Trailing slot**:
-The last column of a Thread Glance row, one width on every row, holding the time at rest and the "…" menu button on hover.
+The last column of a Thread Glance row, holding the time at rest and the "…" menu button on hover. It is as wide on every row as the "…" button or the widest time up to 99 weeks, whichever is wider.
 _Avoid_: Last slot, time slot, time column
 
 **Status column**:
