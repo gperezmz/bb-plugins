@@ -223,6 +223,8 @@ const isRead = (s: { lastReadAt: number | null; latestAttentionAt: number | null
   s.lastReadAt !== null && (s.latestAttentionAt === null || s.lastReadAt >= s.latestAttentionAt);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const working = (t: Known) => t.status !== "idle" && t.status !== "error";
+/** Its turn has ended: bb leaves a thread whose turn failed in `error`, and it is idle for all Cache Keeper does. */
+const settled = (status: string) => status === "idle" || status === "error";
 
 export class Engine {
   readonly index = new ThreadIndex();
@@ -418,7 +420,7 @@ export class Engine {
     for (const t of listed) {
       if (!this.index.isClaude(t.id) || !this.index.isLive(t.id)) continue;
       const changed = since !== null && t.updatedAt > since;
-      if (changed && (this.stored(t.id) || t.status === "idle")) touched.add(t.id);
+      if (changed && (this.stored(t.id) || settled(t.status))) touched.add(t.id);
     }
     // Stored threads bb no longer lists were archived or deleted while the plugin was down.
     const archived = new Set(this.deps.store.getMeta<string[]>(ARCHIVED_META) ?? []);
@@ -704,7 +706,7 @@ export class Engine {
     const r = this.record(threadId);
     if (r.compactOn || r.inFlight !== null || r.readBefore !== null || Object.keys(r.tasks).length > 0 || r.stretch?.compactedAt != null) return true;
     if (this.now() - (this.viewedAt.get(threadId) ?? -Infinity) < VIEWED_MS) return true;
-    return t.status === "idle" && this.waiting(threadId, new Map());
+    return settled(t.status) && this.waiting(threadId, new Map());
   }
 
   /**
@@ -1048,7 +1050,7 @@ export class Engine {
       return;
     }
     const t = this.index.get(threadId);
-    if (t === undefined || t.status !== "idle" || turns.some((turn) => turn.endedAt === null)) return;
+    if (t === undefined || !settled(t.status) || turns.some((turn) => turn.endedAt === null)) return;
     clear();
     const lookup = (id: string) => this.turnLog(id);
     if (!turns.every((turn) => broughtNothingNew(threadId, turn, lookup))) return;
@@ -1083,10 +1085,10 @@ export class Engine {
     const t = this.index.get(threadId);
     const now = this.now();
     const r = this.record(threadId);
-    const startStretch = t?.status === "idle" && r.stretch === null;
+    const startStretch = t !== undefined && settled(t.status) && r.stretch === null;
     const giveUp = r.inFlight !== null && now - r.inFlight.at >= IN_FLIGHT_MS;
     if (giveUp) this.giveUp(threadId);
-    if (startStretch || !this.stored(threadId)) this.patch(threadId, (rec) => (rec.stretch !== null || t?.status !== "idle" ? rec : { ...rec, stretch: newIdleStretch(now) }));
+    if (startStretch || !this.stored(threadId)) this.patch(threadId, (rec) => (rec.stretch !== null || t === undefined || !settled(t.status) ? rec : { ...rec, stretch: newIdleStretch(now) }));
   }
 
   /** A send whose turn never came: charged at its forecast, so it still counts towards the cost stop. */
@@ -1188,7 +1190,7 @@ export class Engine {
     return {
       now,
       claudeCode: o.thread.providerId === "claude-code",
-      status: o.thread.status,
+      status: settled(o.thread.status) ? "idle" : o.thread.status,
       hasPendingInteraction: o.thread.pending !== false,
       waiting: o.waiting,
       tasks: Object.entries(o.record.tasks).map(([id, t]) => ({ kind: t.kind, id, clock: t.clock })),
@@ -1275,7 +1277,7 @@ export class Engine {
     return {
       id,
       parentId,
-      keepable: this.isKeptWarm(id, settings) && o.thread.status === "idle" && o.thread.pending === false && o.waiting && stretch !== null && o.thread.missing.length === 0,
+      keepable: this.isKeptWarm(id, settings) && settled(o.thread.status) && o.thread.pending === false && o.waiting && stretch !== null && o.thread.missing.length === 0,
       deadline: o.deadline,
       lifetimeMs: o.lifetimeMs,
       blocks: stretch !== null && hold !== null && hold !== "pending-interaction" && hold !== "host-offline" && hold !== "missing-field",
@@ -1295,7 +1297,7 @@ export class Engine {
       threadId: thread.id,
       title: thread.title,
       eligible: thread.providerId === "claude-code",
-      status: thread.status,
+      status: settled(thread.status) ? "idle" : thread.status,
       hasPendingInteraction: thread.pending !== false,
       compactOn: record.compactOn,
       setting,
@@ -1316,7 +1318,7 @@ export class Engine {
       compactionDue: decided.compactionDue,
       compactSkipped: record.stretch?.compactSkipped ?? false,
       compactedAt: record.stretch?.compactedAt ?? null,
-      canCompactNow: thread.status === "idle" && thread.pending === false && !o.waiting && facts !== null,
+      canCompactNow: settled(thread.status) && thread.pending === false && !o.waiting && facts !== null,
       waiting: o.waiting,
       keptWarm: this.isKeptWarm(thread.id, settings),
       warmSetting: settings.keepWarm,
@@ -1358,14 +1360,14 @@ export class Engine {
       }
       if (this.record(id).inFlight !== null && now - this.record(id).inFlight!.at >= IN_FLIGHT_MS) this.giveUp(id);
       // A thread bb lists as idle, with something for Cache Keeper, is in an idle stretch.
-      if (this.index.get(id)!.status === "idle" && this.record(id).stretch === null) this.patch(id, (r) => (r.stretch !== null ? r : { ...r, stretch: newIdleStretch(now) }));
+      if (settled(this.index.get(id)!.status) && this.record(id).stretch === null) this.patch(id, (r) => (r.stretch !== null ? r : { ...r, stretch: newIdleStretch(now) }));
       const o = this.observe(id, memo);
       observed.set(id, o);
       const p = plan(this.keeperInput(o, now, settings));
       plans.set(id, p);
       if (p.wakeAt !== null) wakes.push(p.wakeAt);
       // A compaction held back is still logged at its deadline.
-      if (o.record.compactOn && !o.waiting && o.deadline !== null && o.deadline > now && o.thread.status === "idle") wakes.push(o.deadline);
+      if (o.record.compactOn && !o.waiting && o.deadline !== null && o.deadline > now && settled(o.thread.status)) wakes.push(o.deadline);
       if (this.hostDown.has(id) || o.record.transcript?.unreadable != null) {
         if (o.deadline !== null && o.deadline > now) wakes.push(o.deadline);
       }
@@ -1430,7 +1432,7 @@ export class Engine {
     const changed = [...before].filter(([id, was]) => JSON.stringify(this.views.get(id) ?? null) !== was).map(([id]) => id);
     if (changed.length > 0) this.deps.publish(changed);
     for (const [id, o] of observed) {
-      if (o.record.transcript?.cursor != null || o.thread.status !== "idle" || this.learning.has(id)) continue;
+      if (o.record.transcript?.cursor != null || !settled(o.thread.status) || this.learning.has(id)) continue;
       if (now - (this.unlearnt.get(id) ?? -Infinity) < RECONCILE_MS) continue;
       this.learning.add(id);
       void this.learn(id, "watched").finally(() => {
@@ -1463,7 +1465,7 @@ export class Engine {
   /** Whether a send held back falls due now, to be logged. */
   private heldDue(observed: Map<string, Observed>, now: number): boolean {
     for (const o of observed.values()) {
-      if (o.deadline !== null && now >= o.deadline && now < o.deadline + CACHE_MARGIN_MS && o.thread.status === "idle") return true;
+      if (o.deadline !== null && now >= o.deadline && now < o.deadline + CACHE_MARGIN_MS && settled(o.thread.status)) return true;
     }
     return false;
   }
@@ -1581,7 +1583,7 @@ export class Engine {
   /** Logs each send due now that a rule holds back, once per due time. */
   private logHeld(observed: Map<string, Observed>, plans: Map<string, KeeperPlan>, now: number, settings: KeeperSettings): void {
     for (const [id, o] of observed) {
-      if (o.deadline === null || now < o.deadline || now >= o.deadline + CACHE_MARGIN_MS || o.thread.status !== "idle") continue;
+      if (o.deadline === null || now < o.deadline || now >= o.deadline + CACHE_MARGIN_MS || !settled(o.thread.status)) continue;
       const dueKey = `${o.deadline}`;
       if (o.waiting) {
         if (!this.isKeptWarm(id, settings)) continue;

@@ -1,6 +1,6 @@
 /**
  * The check made immediately before every automatic send, on the thread as
- * bb gives it afresh: still idle, not archived or deleted, a Claude Code
+ * bb gives it afresh: still idle (or failed, which bb calls error), not archived or deleted, a Claude Code
  * thread, with no pending interaction, and still switched on for what is
  * being sent. The first condition that fails is the reason nothing is sent.
  */
@@ -23,7 +23,8 @@ export function confirmSend(fresh: FreshThread | null, switchedOn: HoldReason | 
   if (fresh.missing.length > 0) return "missing-field";
   if (fresh.archived) return "archived";
   if (fresh.providerId !== "claude-code") return "not-claude-code";
-  if (fresh.status !== "idle") return "busy";
+  // bb leaves a thread whose last turn failed in `error`; its turn has ended all the same.
+  if (fresh.status !== "idle" && fresh.status !== "error") return "busy";
   if (fresh.pending === null) return "missing-field";
   if (fresh.pending) return "pending-interaction";
   return switchedOn;

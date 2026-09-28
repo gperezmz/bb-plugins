@@ -113,12 +113,25 @@ describe("bb's events", () => {
     await h.engine.setCompact("t", true);
     h.now = T0 + 10 * MIN;
     await h.ranTurn("t", [], "Overloaded.", { status: "failed" });
-    // bb lists a failed thread as error; its next turn is still sent to.
-    h.patch("t", { status: "idle" });
-    h.emit("idle", "t");
-    await h.settle();
+    // bb leaves the thread in error after a failed turn, and announces nothing more.
+    expect(h.get("t").status).toBe("error");
+    expect((await h.engine.viewOf("t"))?.compactionDue).toBe(true);
     await h.advance(T0 + 10 * MIN + 5 * MIN, false);
     expect(h.sent.map((s) => sentKind(s.text))).toEqual(["compact"]);
+  });
+
+  it("compacts a failed thread now, and keeps a failed thread in a tree kept warm warm", async () => {
+    h.thread({ id: "f" });
+    h.transcript("f", T0, 30_000, "1h");
+    h.thread({ id: "w", activity: busy });
+    h.transcript("w", T0, 100_000, "5m");
+    await h.start();
+    await h.ranTurn("f", [], "Overloaded.", { status: "failed" });
+    await h.ranTurn("w", [], "Overloaded.", { status: "failed" });
+    await h.engine.compactNow("f");
+    expect(h.sent.map((s) => [s.threadId, sentKind(s.text)])).toEqual([["f", "compact"]]);
+    await h.advance(T0 + 6 * MIN, false);
+    expect(h.sent.map((s) => [s.threadId, sentKind(s.text)])).toContainEqual(["w", "keep-warm"]);
   });
 
   it("fires within a second of the earliest due time, and not in between", async () => {
@@ -246,3 +259,4 @@ describe("a turn's end", () => {
     expect(h.engine.dueAt("tree:t")).toBe(T0 + 4 * MIN + 9 * S + 4 * MIN);
   });
 });
+
