@@ -1,6 +1,6 @@
 ---
 name: thread-glance
-description: "Reads and changes the Thread Glance sidebar's layout preferences with `bb thread-glance prefs`: grouping, sort, group order, hidden and collapsed groups, child-thread folding, which child threads Needs attention counts, harness icons. Use when asked to change how the Thread Glance sidebar lists, groups, sorts, hides, collapses or folds threads or draws their harness icon."
+description: "Reads and changes the Thread Glance sidebar's layout preferences with `bb thread-glance prefs`: grouping, sort, group order, hidden and collapsed groups, child-thread folding, when threads settle, archived threads, which child threads Needs attention counts, harness icons. Use when asked to change how the Thread Glance sidebar lists, groups, sorts, hides, collapses, folds or settles threads or draws their harness icon."
 ---
 
 # Thread Glance preferences
@@ -20,7 +20,7 @@ bb thread-glance prefs reset <key> [--json]
 
 ```sh
 bb thread-glance prefs set sortDirection ascending
-bb thread-glance prefs set threadLifecycles '["active","archived"]'
+bb thread-glance prefs set settleAfter 3d
 bb thread-glance prefs set hiddenGroups '["threads","project:<project-id>"]'
 ```
 
@@ -38,7 +38,7 @@ and `bb environment list`; a thread id is a `thr_…` id.
 
 | Key | Values | Default |
 | --- | --- | --- |
-| `threadLifecycles` | `active`, `archived`, or both; at least one | `["active"]` |
+| `showArchived` | `true` lists archived threads in every group | `false` |
 | `organizationMode` | `project`, `chronological` (custom sections) or `machine` | `project` |
 | `environmentGrouping` | `true` folds sibling threads sharing a worktree into a folder row | `false` |
 | `chronologicalSort` | `updated`, `created` or `alpha`; `none` reads as `updated` | `updated` |
@@ -52,17 +52,16 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `collapsedThreadSections` | Custom section keys, `section:<id>` | `[]` |
 | `collapsedMachines` | Machine ids | `[]` |
 | `collapsedEnvironments` | Environment ids of collapsed folder rows | `[]` |
-| `foldOlder` | Collapse older threads: `true` folds a group's quiet top-level threads past its 5 newest behind an "N older" row | `true` |
-| `workingFirst` | `true` sorts working threads first under `updated` | `false` |
-| `expandedOlder` | Group ids and parent thread ids whose "N older" or "N more child threads" row is open | `[]` |
+| `settleAfter` | Settle after: how long a quiet thread goes without activity before its tree can settle into the group's "Settled (N)" fold: `12h`, `1d`, `3d`, `1w` or `never` (then only a merged or closed pull request settles it) | `1d` |
+| `openSettledFolds` | Group ids whose settled fold is open | `[]` |
+| `expandedOlder` | Parent thread ids whose "N more child threads" row is open | `[]` |
 | `expandedChildren` | Parent thread ids whose chip is open | `[]` |
-| `showPullRequests` | `true` shows a pull request badge on rows | `true` |
-| `childAttention` | Needs attention counts every child. Which child threads need attention (the Needs attention section, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |
-| `harnessIcon` | How rows draw the harness logo: `muted` (monochrome), `colour` (the provider's tint) or `hidden` | `muted` |
+| `childAttention` | Needs attention counts every child. Which child threads need attention (collapsed groups, the need-you filter, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |
+| `harnessIcon` | How rows that draw a harness logo draw it: `muted` (monochrome) or `colour` (the provider's tint). A row draws one only where its harness differs from bb's default (a root) or its parent thread's (a child) | `muted` |
 
-Row density is kept per browser, and the CLI cannot read or change it. No
-preference filters the list: trees that need attention always move into the
-Needs attention section.
+Row density and the need-you filter are kept per browser window, and the CLI
+cannot read or change them. A tree that needs attention always stays in its
+group, drawn even when the group is collapsed.
 
 Sections themselves and the section a thread is in are bb core state: use
 `bb thread section` and `bb thread update`.

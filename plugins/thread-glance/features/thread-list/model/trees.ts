@@ -19,7 +19,7 @@ import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ChildAttention } from "@/shared/preferences";
 
-/** States that keep a child out of its tree's older fold with `childAttention` `blocked`: working, setting up, background work. */
+/** States that keep a child out of an open tree's "N more child threads" fold with `childAttention` `blocked`: working, setting up, background work. */
 const RUNNING: ReadonlySet<StateKind> = new Set<StateKind>(["working", "background"]);
 
 /** Everything the list knows about one thread. */
