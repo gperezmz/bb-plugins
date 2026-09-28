@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { formatIssue, manifestJsonSchema, parseManifest } from "./manifest.js";
+import { formatIssue, manifestJsonSchema, parseManifest, REFUSED_ENV } from "./manifest.js";
 
 const example = readFileSync(new URL("../../examples/onboarding.yaml", import.meta.url), "utf8");
 
@@ -78,10 +78,13 @@ describe("parseManifest", () => {
   });
 });
 
+const REFUSED_NAMES = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL"];
+const FINE_NAMES = ["TRACKER_API_KEY", "GH_TOKEN_EXTRA", "MY_GITHUB_TOKEN", "GIT_CONFIGURED", "GIT_AUTHOR_NAME"];
+
 describe("parseManifest env names", () => {
   const withEnv = (name: string) => ["schema: 1", "team: { name: T }", "env:", `  - name: ${name}`].join("\n");
 
-  it.each(["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL"])(
+  it.each(REFUSED_NAMES)(
     "rejects an env item named %s, naming the item and the rule",
     (name) => {
       const result = parseManifest(withEnv(name));
@@ -94,7 +97,7 @@ describe("parseManifest env names", () => {
     },
   );
 
-  it.each(["TRACKER_API_KEY", "GH_TOKEN_EXTRA", "MY_GITHUB_TOKEN", "GIT_CONFIGURED", "GIT_AUTHOR_NAME"])("accepts an env item named %s", (name) => {
+  it.each(FINE_NAMES)("accepts an env item named %s", (name) => {
     expect(parseManifest(withEnv(name)).ok).toBe(true);
   });
 });
@@ -104,5 +107,15 @@ describe("manifestJsonSchema", () => {
     const committed = JSON.parse(readFileSync(new URL("../../schema/onboarding.schema.json", import.meta.url), "utf8"));
     const { $id: _id, title: _title, ...rest } = committed;
     expect(rest).toEqual(JSON.parse(JSON.stringify(manifestJsonSchema())));
+  });
+
+  it("refuses the same env names as REFUSED_ENV", () => {
+    const schema = JSON.parse(JSON.stringify(manifestJsonSchema())) as {
+      properties: { env: { items: { properties: { name: { not?: { pattern: string } } } } } };
+    };
+    const refused = new RegExp(schema.properties.env.items.properties.name.not!.pattern);
+    for (const name of [...REFUSED_NAMES, ...FINE_NAMES]) expect(refused.test(name), name).toBe(REFUSED_ENV.test(name));
+    for (const name of REFUSED_NAMES) expect(refused.test(name), name).toBe(true);
+    for (const name of FINE_NAMES) expect(refused.test(name), name).toBe(false);
   });
 });

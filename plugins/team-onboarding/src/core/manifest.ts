@@ -470,5 +470,10 @@ export function formatIssue(issue: ManifestIssue): string {
 
 /** The emitted JSON Schema for editors. */
 export function manifestJsonSchema(): unknown {
-  return z.toJSONSchema(manifestSchema, { io: "input", unrepresentable: "any" });
+  const schema = z.toJSONSchema(manifestSchema, { io: "input", unrepresentable: "any" }) as {
+    properties: { env: { items: { properties: { name: Record<string, unknown> } } } };
+  };
+  // The parser's check is not JSON Schema, so state the refused names here for editors.
+  schema.properties.env.items.properties.name.not = { pattern: REFUSED_ENV.source };
+  return schema;
 }
