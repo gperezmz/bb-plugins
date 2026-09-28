@@ -5,7 +5,7 @@ import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { Counters } from "../model/counters";
 import type { RowNote } from "../model/notes";
-import { dotTone, FLAG_GLYPHS, type DotTone, type Flag, type Glyph, type Tone } from "../model/state";
+import { FLAG_GLYPHS, type Flag, type Glyph, type Tone } from "../model/state";
 
 export const TONE_CLASS: Record<Tone, string> = {
   attention: "text-attention",
@@ -18,28 +18,17 @@ export const TONE_CLASS: Record<Tone, string> = {
   none: "",
 };
 
-// The child dot's colours: the tone of the state it stands for, and the
-// unread dot's accent for unread.
-const DOT_TONE_CLASS: Record<DotTone, string> = {
-  attention: "bg-attention",
-  destructive: "bg-destructive",
-  working: "bg-[var(--timeline-accent)]",
-  unread: "bg-[var(--timeline-accent)]",
-};
-
 /**
- * The child dot on a parent's status glyph, at its lower right corner. A
- * ring of the sidebar's colour keeps it apart from the glyph under it.
+ * The child dot at the lower right corner of a parent's glyph: grey, saying
+ * the glyph shows a state from inside the tree rather than the parent's own.
+ * A ring of the sidebar's colour keeps it apart from the glyph under it.
  */
-export function ChildDot({ flag }: { flag: Flag }) {
+export function ChildDot() {
   return (
     <span
       aria-hidden
-      data-child-dot={flag}
-      className={cn(
-        "pointer-events-none absolute -right-0.5 -bottom-0.5 size-[7px] rounded-full ring-[1.5px] ring-sidebar",
-        DOT_TONE_CLASS[dotTone(flag)],
-      )}
+      data-child-dot=""
+      className="pointer-events-none absolute -right-0.5 -bottom-0.5 size-[6px] rounded-full bg-muted-foreground ring-[1.5px] ring-sidebar"
     />
   );
 }

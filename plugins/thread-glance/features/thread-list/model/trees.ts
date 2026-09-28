@@ -29,7 +29,7 @@ export interface ThreadInfo {
   unread: boolean;
   /** Own flags; for hidden threads only waits-on-you and unread-failed. */
   flags: ReadonlySet<Flag>;
-  /** What it adds to the child dot of the threads above it (see `dotFlagsOf`). */
+  /** What it adds to the glyph of a collapsed parent above it (see `dotFlagsOf`). */
   dotFlags: ReadonlySet<Flag>;
   /**
    * The flags of this thread that make it need attention, for collapsed
@@ -55,14 +55,16 @@ export interface ThreadInfo {
   note: RowNote | null;
 }
 
-/** What a thread's descendants add up to, for its chip, its child dot and folding. */
+/** What a thread's descendants add up to, for its chip, its glyph and folding. */
 export interface Subtree {
   /** Descendants, depth-first in creation order, hidden ones included. */
   descendants: ThreadInfo[];
   /** Union of the descendants' Needs attention flags and working, archived ones left out. */
   flags: ReadonlySet<Flag>;
-  /** Union of the descendants' `dotFlags`, archived ones left out: the child dot. */
+  /** Union of the descendants' `dotFlags`, archived ones left out: what a collapsed parent's glyph can show. */
   dotFlags: ReadonlySet<Flag>;
+  /** Unread descendants at any depth, archived and hidden ones left out: the chip's unread colour. */
+  unreadCount: number;
   /** Visible descendants at any depth. */
   visibleCount: number;
   /** Visible direct children: the chip's number. */
@@ -219,6 +221,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     const dotFlags = new Set<Flag>();
     let visibleCount = 0;
     let childCount = 0;
+    let unreadCount = 0;
     let quietIgnoringOpen = true;
     path.add(id);
     for (const childId of children.get(id) ?? []) {
@@ -239,10 +242,12 @@ export function buildForest(inputs: ForestInputs): Forest {
         childCount += 1;
       }
       visibleCount += below.visibleCount;
+      if (child.unread && !child.thread.isArchived && !child.thread.isHidden) unreadCount += 1;
+      unreadCount += below.unreadCount;
       if (!below.quietIgnoringOpen) quietIgnoringOpen = false;
     }
     path.delete(id);
-    const subtree: Subtree = { descendants, flags, dotFlags, visibleCount, childCount, quietIgnoringOpen };
+    const subtree: Subtree = { descendants, flags, dotFlags, unreadCount, visibleCount, childCount, quietIgnoringOpen };
     subtrees.set(id, subtree);
     return subtree;
   };

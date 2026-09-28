@@ -364,7 +364,7 @@ describe("Thread Glance slot", () => {
     expect((await row(/Open Trunk/)).textContent).not.toContain("main");
   });
 
-  it("draws a muted chip with a count and chevron only, a child dot on the parent's own glyph, and unread in the accent", async () => {
+  it("draws a muted chip with a count and chevron only, a grey child dot on a glyph taken from the tree, and unread in the accent", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working, providerId: "codex" }),
@@ -375,10 +375,10 @@ describe("Thread Glance slot", () => {
     expect(chip.className).not.toMatch(/(^|\s)border(\s|-)/);
     expect(chip.className).not.toMatch(/(^|\s)bg-/);
     expect(within(chip).queryByRole("img")).toBeNull();
-    const parent = await screen.findByRole("link", { name: /Open Parent — Idle;.*child threads: working/ });
+    const parent = await screen.findByRole("link", { name: /Open Parent — Working, in child threads; idle;/ });
     const column = parent.nextElementSibling as HTMLElement;
-    expect(column.querySelector("[data-child-dot]")?.getAttribute("data-child-dot")).toBe("working");
-    expect(column.querySelector("[data-child-dot]")?.className).toContain("--timeline-accent");
+    expect(column.querySelector("[data-child-dot]")?.className).toContain("bg-muted-foreground");
+    expect(column.querySelector("[data-child-dot]")?.className).not.toContain("--timeline-accent");
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
   });

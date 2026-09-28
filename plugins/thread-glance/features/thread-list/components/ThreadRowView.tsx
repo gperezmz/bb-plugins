@@ -15,11 +15,11 @@ import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { chipLabel, rowAriaLabel } from "../model/labels";
+import { chipLabel, rowAriaLabel, stateText } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
-import { pluginStatusWins } from "../model/state";
+import { pluginStatusWins, treeState } from "../model/state";
 import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
@@ -154,7 +154,11 @@ export const ThreadRowView = memo(function ThreadRowView({
   );
 
   const provider = controller.provider(thread.providerId);
-  const showPlugin = pluginStatusWins(info.state, rowStatus);
+  // The glyph shows the tree's state where it outranks the thread's own; a
+  // plugin row status is judged against that, and hides the child dot.
+  const shownState = row.treeFlag === null ? info.state : treeState(row.treeFlag);
+  const glyphLabel = row.treeFlag === null ? info.state.label : stateText(row, null);
+  const showPlugin = pluginStatusWins(shownState, rowStatus);
   const label = rowAriaLabel(row, {
     providerName: provider.name,
     pluginLabel: showPlugin ? rowStatus!.label : null,
@@ -225,8 +229,8 @@ export const ThreadRowView = memo(function ThreadRowView({
   ) : showPlugin ? (
     <PluginStatusGlyph status={rowStatus!} />
   ) : (
-    <span title={info.state.label} className="inline-flex">
-      <GlyphIcon glyph={info.state.glyph} label={info.state.label} />
+    <span title={glyphLabel} className="inline-flex">
+      <GlyphIcon glyph={shownState.glyph} label={glyphLabel} />
     </span>
   );
 
@@ -368,7 +372,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       />
       <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
         {stateSlot}
-        {row.childDot !== null ? <ChildDot flag={row.childDot} /> : null}
+        {row.treeFlag !== null && !showPlugin && !miniMap ? <ChildDot /> : null}
       </span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
@@ -517,8 +521,8 @@ export const ThreadRowView = memo(function ThreadRowView({
             <button
               type="button"
               aria-expanded={chip.expanded}
-              aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
-              title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+              aria-label={chipLabel(thread.displayTitle, chip)}
+              title={chipLabel(thread.displayTitle, chip)}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -531,7 +535,9 @@ export const ThreadRowView = memo(function ThreadRowView({
                 dimmed && QUIET_TEXT,
               )}
             >
-              {chip.count}
+              <span data-chip-unread={chip.unread > 0 ? "" : undefined} className={cn(chip.unread > 0 && "text-[var(--timeline-accent)]")}>
+                {chip.count}
+              </span>
               <Icon
                 name={ICONS.expand}
                 aria-hidden

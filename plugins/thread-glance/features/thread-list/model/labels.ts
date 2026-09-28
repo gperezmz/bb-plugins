@@ -1,16 +1,22 @@
 // Accessible names: everything a tooltip says is in the aria-label.
-import type { OlderRow, SettledRow, ThreadRow } from "./view";
-import { FLAG_GLYPHS, type Flag } from "./state";
+import type { Chip, OlderRow, SettledRow, ThreadRow } from "./view";
+import { treeState } from "./state";
 import { formatDateTime } from "./details";
 import type { OrganizationMode } from "@/shared/preferences";
 
+/**
+ * The row's state: its own, or a state from inside its tree and then its own,
+ * "Working, in child threads; unread". A plugin row status's label replaces
+ * whichever the glyph would show.
+ */
 export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   const state = row.info.state;
-  const base = pluginLabel ?? state.label;
+  let own = pluginLabel ?? state.label;
   if (state.kind === "scheduled" && state.sendAt !== null) {
-    return `${base}, sends ${formatDateTime(state.sendAt)}`;
+    own = `${own}, sends ${formatDateTime(state.sendAt)}`;
   }
-  return base;
+  if (pluginLabel !== null || row.treeFlag === null) return own;
+  return `${treeState(row.treeFlag).label}, in child threads; ${own.charAt(0).toLowerCase()}${own.slice(1)}`;
 }
 
 /** "Open Fix login — Working; Claude Code; child of Release; unread". */
@@ -20,7 +26,6 @@ export function rowAriaLabel(
 ): string {
   const parts = [stateText(row, options.pluginLabel), options.providerName];
   if (row.parentTitle !== null && row.depth > 0) parts.push(`child of ${row.parentTitle}`);
-  if (row.childDot !== null) parts.push(`child threads: ${FLAG_GLYPHS[row.childDot].label}`);
   if (row.crossGroupLabel !== null) parts.push(row.crossGroupLabel.toLowerCase());
   if (row.hiddenBadge) parts.push("hidden thread");
   if (row.info.unread && row.info.state.kind !== "unread") parts.push("unread");
@@ -28,9 +33,11 @@ export function rowAriaLabel(
   return `Open ${row.info.thread.displayTitle} — ${parts.join("; ")}`;
 }
 
-export function chipLabel(title: string, count: number, expanded: boolean): string {
-  const noun = count === 1 ? "child thread" : "child threads";
-  return `${expanded ? "Collapse" : "Show"} ${count} ${noun} of ${title}`;
+/** "Show 2 child threads of Release, 1 unread in the tree". */
+export function chipLabel(title: string, chip: Chip): string {
+  const noun = chip.count === 1 ? "child thread" : "child threads";
+  const unread = chip.unread > 0 ? `, ${chip.unread} unread in the tree` : "";
+  return `${chip.expanded ? "Collapse" : "Show"} ${chip.count} ${noun} of ${title}${unread}`;
 }
 
 /** The text and accessible name of an open tree's fold row. */

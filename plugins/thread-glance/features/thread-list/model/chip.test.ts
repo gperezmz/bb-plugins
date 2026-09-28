@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, makeThread, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import type { OlderRow, ThreadRow } from "./view";
+import { treeState, type StateKind } from "./state";
 
 function rowsOf(scenario: Scenario) {
   return viewOf(scenario).groups.find((group) => group.descriptor.id === "project:proj_a")!.rows;
@@ -16,17 +17,43 @@ const child = (id: string, overrides: Omit<Parameters<typeof makeThread>[0], "id
   makeThread({ id, parentThreadId: parentId, createdAt: T0 + id.length, ...overrides });
 
 describe("a parent's status glyph", () => {
-  it("shows the parent's own state: an idle parent with working children is idle, not a spinner", () => {
-    const scenario = { threads: [parent, child("c", working)] };
-    expect(row(scenario, "p").info.state.kind).toBe("idle");
-    expect(row(scenario, "p").info.state.glyph.spin).toBe(false);
-    const busy = { threads: [{ ...parent, ...working }, child("c")] };
-    expect(row(busy, "p").info.state.kind).toBe("working");
+  // The six states a collapsed parent's glyph can take from its tree, most urgent first.
+  const RANKED: [StateKind, Omit<Parameters<typeof makeThread>[0], "id">][] = [
+    ["waits-on-you", { hasPendingInteraction: true }],
+    ["failed", failedUnread],
+    ["queue-failed", { queuedWork: "failed" }],
+    ["offline", { status: "active", runtimeStatus: "waiting-for-host" }],
+    ["working", working],
+    ["unread", finishedUnread],
+  ];
+  const shownKind = (shown: ThreadRow) => (shown.treeFlag === null ? shown.info.state.kind : treeState(shown.treeFlag).kind);
+
+  for (const [ownRank, [own, ownOverrides]] of RANKED.entries()) {
+    for (const [childRank, [kid, kidOverrides]] of RANKED.entries()) {
+      it(`collapsed, parent ${own} and child ${kid}: shows ${childRank < ownRank ? kid : own}`, () => {
+        const shown = row({ threads: [makeThread({ id: "p", ...ownOverrides }), child("c", kidOverrides)] }, "p");
+        expect(shown.info.state.kind).toBe(own);
+        expect(shownKind(shown)).toBe(childRank < ownRank ? kid : own);
+        expect(shown.treeFlag !== null).toBe(childRank < ownRank);
+      });
+    }
+  }
+
+  it("ranks the tree's state against the parent's own by the states table, so background work outranks an unread child and a draft does not", () => {
+    const unreadChild = child("c", finishedUnread);
+    expect(row({ threads: [makeThread({ id: "p", activity: { backgroundAgents: 1 } }), unreadChild] }, "p").treeFlag).toBeNull();
+    expect(row({ threads: [parent, unreadChild], draftIds: ["p"] }, "p").treeFlag).toBe("unread");
+  });
+
+  it("is the parent's own state while expanded", () => {
+    const shown = row({ threads: [parent, child("c", working)], prefs: { expandedChildren: ["p"] } }, "p");
+    expect(shown.treeFlag).toBeNull();
+    expect(shown.info.state.kind).toBe("idle");
   });
 });
 
-describe("the child dot", () => {
-  const dot = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").childDot;
+describe("the states a collapsed parent takes from its tree", () => {
+  const dot = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").treeFlag;
 
   it("takes the first of waits on you, failed, queued message failed, offline, working, unread among the descendants", () => {
     const every = [
@@ -49,12 +76,12 @@ describe("the child dot", () => {
     expect(dot(child("c"))).toBeNull();
     expect(dot(child("c", { status: "error" }))).toBeNull();
     expect(dot(child("c", { queuedWork: "waiting" }))).toBeNull();
-    expect(row({ threads: [parent] }, "p").childDot).toBeNull();
+    expect(row({ threads: [parent] }, "p").treeFlag).toBeNull();
   });
 
   it("reads descendants at any depth", () => {
     expect(dot(child("c"), child("g", { hasPendingInteraction: true }, "c"))).toBe("waits-on-you");
-    expect(row({ threads: [parent, child("c"), child("g", working, "c")], prefs: { expandedChildren: ["p"] } }, "c").childDot).toBe("working");
+    expect(row({ threads: [parent, child("c"), child("g", working, "c")], prefs: { expandedChildren: ["p"] } }, "c").treeFlag).toBe("working");
   });
 
   it("leaves archived descendants out", () => {
@@ -87,8 +114,8 @@ describe("the children chip", () => {
   ];
 
   it("counts the direct children, hidden ones left out, not every descendant", () => {
-    expect(row({ threads }, "p").chip).toEqual({ count: 5, expanded: false });
-    expect(row({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } }, "a").chip).toEqual({ count: 2, expanded: false });
+    expect(row({ threads }, "p").chip).toEqual({ count: 5, expanded: false, unread: 0 });
+    expect(row({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } }, "a").chip).toEqual({ count: 2, expanded: false, unread: 0 });
   });
 
   it("opens onto its direct children only, whose rows and N more child threads add up to its number", () => {
@@ -114,8 +141,21 @@ describe("the children chip", () => {
     expect(row({ threads: archived.slice(0, 2) }, "p").chip?.count).toBe(1);
   });
 
-  it("carries no state, tint or harness of its children", () => {
+  it("carries no state, tint or harness of its children beyond how many are unread", () => {
     const chip = row({ threads: [parent, child("c", { hasPendingInteraction: true, providerId: "codex" })] }, "p").chip!;
-    expect(Object.keys(chip).sort()).toEqual(["count", "expanded"]);
+    expect(chip).toEqual({ count: 1, expanded: false, unread: 0 });
+  });
+
+  it("counts unread descendants at any depth, archived and hidden ones left out, whether open or closed", () => {
+    const threads = [
+      parent,
+      child("c", finishedUnread),
+      child("g", finishedUnread, "c"),
+      child("z", { ...finishedUnread, isArchived: true, archivedAt: T0 }),
+      child("h", { ...finishedUnread, isHidden: true }),
+    ];
+    expect(row({ threads, prefs: { showArchived: true } }, "p").chip).toMatchObject({ count: 2, unread: 2 });
+    expect(row({ threads, prefs: { showArchived: true, expandedChildren: ["p"] } }, "p").chip).toMatchObject({ expanded: true, unread: 2 });
+    expect(row({ threads: [parent, child("c"), child("h", { ...finishedUnread, isHidden: true })] }, "p").chip?.unread).toBe(0);
   });
 });

@@ -22,7 +22,7 @@ import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counte
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
 import { isOffDefaultBranch } from "./branches";
-import { mostUrgent, type Flag } from "./state";
+import { mostUrgent, treeFlagOver, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
 
@@ -35,6 +35,8 @@ export interface Chip {
   count: number;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
+  /** Unread descendants at any depth, archived and hidden ones left out: the number turns the unread accent while above 0. */
+  unread: number;
 }
 
 export interface ThreadRow {
@@ -54,10 +56,12 @@ export interface ThreadRow {
    */
   harness: boolean;
   /**
-   * The child dot on the status glyph: the most urgent state among the
-   * thread's descendants at any depth, or null for none.
+   * The state from inside the tree that the glyph shows in place of the
+   * thread's own, with the child dot, or null when it shows its own. A
+   * collapsed parent takes the most urgent state among its descendants at any
+   * depth when it outranks its own; an expanded one shows its own.
    */
-  childDot: Flag | null;
+  treeFlag: Flag | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
   /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
@@ -267,7 +271,7 @@ function threadRow(
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
     harness: drawsHarness(context, info),
-    childDot: mostUrgent(subtreeOf(context, info.thread.id).dotFlags),
+    treeFlag: options.chip?.expanded ? null : treeFlagOver(info.state, subtreeOf(context, info.thread.id).dotFlags),
     bold: info.unread,
     treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
     note: info.note,
@@ -407,9 +411,9 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Tr
 
 /** The children chip of a parent, or null when opening it would show nothing. */
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
-  const count = subtreeOf(context, info.thread.id).childCount;
+  const { childCount: count, unreadCount: unread } = subtreeOf(context, info.thread.id);
   if (count === 0 && eligibleChildren(context, info.thread.id).length === 0) return null;
-  return { count, expanded };
+  return { count, expanded, unread };
 }
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */

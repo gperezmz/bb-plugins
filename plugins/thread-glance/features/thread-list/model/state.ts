@@ -271,11 +271,11 @@ export function hiddenThreadFlags(flags: ReadonlySet<Flag>): Set<Flag> {
   return kept;
 }
 
-/** Flags a hidden thread adds to its parent's child dot: what asks for you or failed, and offline. */
+/** Flags a hidden thread adds to the parents above it: what asks for you or failed, and offline. */
 const HIDDEN_DOT_FLAGS: ReadonlySet<Flag> = new Set<Flag>(["waits-on-you", "unread-failed", "queue-failed", "offline"]);
 
 /**
- * The flags a thread adds to the child dot of the threads above it. A
+ * The flags a thread adds to the glyph of a collapsed parent above it. A
  * hidden thread adds only waits-on-you, failed, queued message failed and
  * offline; which trees need attention reads `hiddenThreadFlags` instead,
  * so this leaves it unchanged.
@@ -289,24 +289,6 @@ export function mostUrgent(flags: ReadonlySet<Flag>): Flag | null {
   return FLAG_ORDER.find((flag) => flags.has(flag)) ?? null;
 }
 
-/** The colour of a child dot, by the most urgent state among the descendants. */
-export type DotTone = "attention" | "destructive" | "working" | "unread";
-
-export function dotTone(flag: Flag): DotTone {
-  switch (flag) {
-    case "waits-on-you":
-    case "offline":
-      return "attention";
-    case "unread-failed":
-    case "queue-failed":
-      return "destructive";
-    case "working":
-      return "working";
-    case "unread":
-      return "unread";
-  }
-}
-
 export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {
   "waits-on-you": { ...glyph("CircleQuestion", "attention"), label: "needs your input" },
   "unread-failed": { ...glyph("CircleX", "destructive"), label: "failed" },
@@ -315,6 +297,47 @@ export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {
   working: { ...glyph("Loading", "working", true), label: "working" },
   unread: { ...glyph("dot", "none"), label: "unread" },
 };
+
+/** States in the order `computeState` tries them: the states table's order, most urgent first. */
+const STATE_ORDER: readonly StateKind[] = [
+  "waits-on-you",
+  "failed",
+  "queue-failed",
+  "offline",
+  "working",
+  "background",
+  "scheduled",
+  "queued",
+  "unread",
+  "draft",
+  "idle",
+];
+
+const FLAG_KIND: Readonly<Record<Flag, StateKind>> = {
+  "waits-on-you": "waits-on-you",
+  "unread-failed": "failed",
+  "queue-failed": "queue-failed",
+  offline: "offline",
+  working: "working",
+  unread: "unread",
+};
+
+/**
+ * The state from inside a tree that a parent's glyph shows in place of its
+ * own: the most urgent of `flags` when it ranks above the parent's own state
+ * in the states table, or null when the parent's own state stands.
+ */
+export function treeFlagOver(own: Pick<ThreadState, "kind">, flags: ReadonlySet<Flag>): Flag | null {
+  const flag = mostUrgent(flags);
+  if (flag === null) return null;
+  return STATE_ORDER.indexOf(FLAG_KIND[flag]) < STATE_ORDER.indexOf(own.kind) ? flag : null;
+}
+
+/** The glyph and label a parent shows for a state from inside its tree. */
+export function treeState(flag: Flag): ThreadState {
+  const { label, ...shown } = FLAG_GLYPHS[flag];
+  return { kind: FLAG_KIND[flag], label: label.charAt(0).toUpperCase() + label.slice(1), glyph: shown, sendAt: null };
+}
 
 /** A thread is quiet when idle, a draft, or failed and read, and read. */
 export function isQuietThread(
