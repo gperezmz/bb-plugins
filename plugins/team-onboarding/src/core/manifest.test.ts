@@ -103,50 +103,53 @@ describe("parseManifest env names", () => {
 });
 
 describe("parseManifest lines", () => {
-  const lines = (...text: string[]) => {
+  const header = ["schema: 1", "team: { name: T }"];
+  const issuesAt = (...text: string[]) => {
     const result = parseManifest(text.join("\n"));
     expect(result.ok).toBe(false);
-    return result.ok ? [] : result.issues.map((issue) => [issue.line, issue.message] as const);
+    return result.ok ? [] : result.issues.map(({ line, message }) => ({ line, message }));
   };
 
   it("puts an unknown top-level field on its own line", () => {
-    expect(lines("schema: 1", "team: { name: T }", "colour: blue")).toEqual([[3, 'unknown field "colour"']]);
+    expect(issuesAt(...header, "colour: blue")).toEqual([{ line: 3, message: 'unknown field "colour"' }]);
   });
 
   it("puts an unknown nested field on its own line, not its parent's", () => {
-    expect(lines("schema: 1", "team:", "  name: T", "  colour: blue")).toEqual([[4, 'unknown field "colour"']]);
-    expect(lines("schema: 1", "team: { name: T }", "env:", "  - name: OK", "    note: n", "    colour: blue")).toEqual([
-      [6, 'unknown field "colour"'],
+    expect(issuesAt("schema: 1", "team:", "  name: T", "  colour: blue")).toEqual([{ line: 4, message: 'unknown field "colour"' }]);
+    expect(issuesAt(...header, "env:", "  - name: OK", "    note: n", "    colour: blue")).toEqual([
+      { line: 6, message: 'unknown field "colour"' },
     ]);
   });
 
+  it("puts an unknown field with a numeric key on its own line", () => {
+    expect(issuesAt(...header, "", "5: blue")).toEqual([{ line: 4, message: 'unknown field "5"' }]);
+  });
+
   it("gives every unknown field its own issue and line", () => {
-    expect(lines("schema: 1", "team:", "  name: T", "  a: 1", "", "  b: 2")).toEqual([
-      [4, 'unknown field "a"'],
-      [6, 'unknown field "b"'],
+    expect(issuesAt("schema: 1", "team:", "  name: T", "  a: 1", "", "  b: 2")).toEqual([
+      { line: 4, message: 'unknown field "a"' },
+      { line: 6, message: 'unknown field "b"' },
     ]);
   });
 
   it("puts a refused env name on the line of its name", () => {
-    const result = lines("schema: 1", "team: { name: T }", "env:", "  - note: hi", "    name: GH_TOKEN");
-    expect(result).toHaveLength(1);
-    expect(result[0]![0]).toBe(5);
-    expect(result[0]![1]).toContain("GH_TOKEN would override");
+    const [issue, ...rest] = issuesAt(...header, "env:", "  - note: hi", "    name: GH_TOKEN");
+    expect(rest).toEqual([]);
+    expect(issue!.line).toBe(5);
+    expect(issue!.message).toContain("GH_TOKEN would override");
   });
 
   it("puts a malformed value on the line of its field", () => {
-    expect(
-      lines("schema: 1", "team: { name: T }", "tools:", "  - id: a", "    check: { bin: a }", "    min: banana")[0]![0],
-    ).toBe(6);
+    expect(issuesAt(...header, "tools:", "  - id: a", "    check: { bin: a }", "    min: banana")[0]!.line).toBe(6);
   });
 
   it("puts a wrong-shaped block value on the line of its field, not its first child", () => {
-    expect(lines("schema: 1", "team: { name: T }", "machines:", "  a: 1")[0]![0]).toBe(3);
-    expect(lines("schema: 1", "team:", "  - a")[0]![0]).toBe(2);
+    expect(issuesAt(...header, "machines:", "  a: 1")[0]!.line).toBe(3);
+    expect(issuesAt("schema: 1", "team:", "  - a")[0]!.line).toBe(2);
   });
 
   it("puts an item missing a field on the line of the item", () => {
-    expect(lines("schema: 1", "team: { name: T }", "", "env:", "  - note: x")[0]![0]).toBe(5);
+    expect(issuesAt(...header, "", "env:", "  - note: x")[0]!.line).toBe(5);
   });
 });
 

@@ -383,7 +383,7 @@ export function parseManifest(text: string): ManifestParseResult {
       // One issue per unknown field, so each names the line its own field is on.
       if (issue.code === "unrecognized_keys") {
         return issue.keys.map((key) => ({
-          message: `unknown field "${key}"`,
+          message: unknownFieldMessage(key),
           path: formatPath(path),
           line: lineOf(doc.contents, [...path, key], lineCounter),
         }));
@@ -398,6 +398,10 @@ export function parseManifest(text: string): ManifestParseResult {
     })
     .slice(0, 50);
   return { ok: false, issues };
+}
+
+function unknownFieldMessage(key: string): string {
+  return `unknown field "${key}"`;
 }
 
 function describeIssue(
@@ -451,7 +455,7 @@ function lineOf(
   for (const segment of path) {
     if (isMap(node)) {
       const pair = node.items.find(
-        (item) => (item.key as { value?: unknown } | null)?.value === segment,
+        (item) => String((item.key as { value?: unknown } | null)?.value) === String(segment),
       );
       if (pair === undefined) break;
       best = rangeLine(pair.key as Node, lineCounter) ?? best;
