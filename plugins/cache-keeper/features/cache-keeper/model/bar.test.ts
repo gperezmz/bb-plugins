@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
-import { formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
+import { costText, formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
 
@@ -167,6 +167,13 @@ describe("page entries", () => {
     expect(entryText("keep-warm", { threads: ["a", "b", "c"], folded: ["b0vq"] })).toBe("Kept warm, 3 threads, checked b0vq");
     expect(entryText("check-in", { tasks: [{ id: "b0vq" }, { id: "c1xx" }] })).toBe("Checked b0vq and c1xx");
     expect(entryText("compaction", { contextBefore: 300_000, contextAfter: 12_000 })).toBe("Compacted 300k → 12k");
+  });
+
+  it("marks a keep-warm or check-in shown at its forecast as an estimate, and never a compaction", () => {
+    expect(costText(0.1234, true, "keep-warm")).toEqual({ text: "≈$0.12", estimate: true });
+    expect(costText(0.1234, false, "keep-warm")).toEqual({ text: "$0.12", estimate: false });
+    expect(costText(0.5, true, "compaction")).toEqual({ text: "$0.50", estimate: false });
+    expect(costText(null, true, "check-in")).toEqual({ text: "–", estimate: false });
   });
 
   it("says how an entry's cost was split between threads", () => {
