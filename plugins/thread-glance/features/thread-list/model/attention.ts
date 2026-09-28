@@ -97,7 +97,7 @@ function isBusyThread(thread: PluginSidebarThread): boolean {
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
  * idle now went idle at `at`. A thread first seen idle has no time, and the
- * orphaned-failure test falls back to its last finish.
+ * orphaned-failure wait counts from the failure alone.
  */
 export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
   const busy = new Set<string>();
