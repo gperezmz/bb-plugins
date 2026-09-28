@@ -1,7 +1,8 @@
 /**
- * The header chip: an icon-only coin, shown once the tree has
- * a turn record. Hover or focus shows the headline, the token bar and the
- * descendant count; clicking opens the Usage tab for this pane's thread.
+ * The header chip: the coin in an outlined button drawn like bb's editor
+ * picker beside it, shown once the tree has a turn record. Hover or focus
+ * shows the headline, the token bar and the descendant count; clicking opens
+ * the Usage tab for this pane's thread.
  */
 import { useEffect, useRef, useState } from "react";
 import { useBbNavigate, useSettings } from "@get-bb/plugin-sdk/app";
@@ -11,6 +12,7 @@ import { formatCount, formatTokens, formatUsd } from "../core/format";
 import { figureTokenCount } from "../core/figure-math";
 import { CoinIcon, TokenBar, touches, useLive, useUsageRpc, USAGE_ACTION_ID } from "./common";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { CONTROL_HOVER_TRANSITION } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 
 export function HeaderChip({
@@ -87,7 +89,11 @@ export function ChipButton({ threadId, chip, showAmount }: { threadId: string; c
             if (leftSinceClick.current) suppressed.current = false;
           }}
           className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            // The editor picker's box: bb's outline button with the header's
+            // height, a faint border and no shadow.
+            "inline-flex h-7 items-center gap-1 rounded-md border border-border/70 bg-transparent px-1.5 shadow-none max-md:pointer-coarse:h-9",
+            CONTROL_HOVER_TRANSITION,
+            "text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             chip.attention && "text-warning hover:text-warning",
           )}
         >
