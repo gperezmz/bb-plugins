@@ -599,9 +599,9 @@ export default async function plugin(bb: BbPluginApi) {
               type: "duration",
               defaultUnit: "d",
               default: 7 * DAY_MS,
-              description: "Thread trees active within this window, e.g. 7d or 30d (default 7d)",
+              description: "Thread trees active within this window, e.g. 7d or 30d",
             },
-            limit: { type: "integer", min: 1, max: 200, default: 20, description: "How many thread trees (1–200, default 20)" },
+            limit: { type: "integer", min: 1, max: 200, default: 20, description: "How many thread trees (1–200)" },
             json: { type: "boolean", description: "Emit machine-readable JSON" },
           },
           async run(input) {
