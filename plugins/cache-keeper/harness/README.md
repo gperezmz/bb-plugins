@@ -55,14 +55,14 @@ The clock covers everything the plugin times: the server, its timer, deadlines, 
 
 ## The drives
 
-Each drive makes its own Claude Code threads with `bb thread spawn` and `bb thread tell`, moves the clock with `bb cache-keeper drive advance`, and checks the result from bb's own records: the thread's event history (`/api/v1/threads/<id>/events`), `bb cache-keeper status --json`, `bb plugin config`, `bb thread output` and the plugin's RPC. It sets the settings it relies on, archives its threads when it ends, prints each check, and ends with `PASS <drive> <seconds>s` or `FAIL`. It fails when it takes 2 minutes or more of wall time.
+Each drive makes its own Claude Code threads with `bb thread spawn` and `bb thread tell`, moves the clock with `bb cache-keeper drive advance`, and checks the result from bb's own records: the thread's event history (`/api/v1/threads/<id>/events`), `bb cache-keeper status --json`, `bb thread output` and the plugin's RPC. It sets the settings it relies on, archives its threads when it ends, prints each check, and ends with `PASS <drive> <seconds>s` or `FAIL`. It fails when it takes 2 minutes or more of wall time.
 
 | Drive | What it reaches and checks |
 | --- | --- |
 | `compaction.sh` | A thread above its compaction line, switched on: no `/compact` 30 s before its deadline, one within 2 s of it. |
 | `tree-keep-warm.sh` | A tree top waiting on a child that waits on a background command, kept warm: the child gets a keep-warm at its deadline and none before, replies with the nothing-new reply, and its report refreshes the top, which gets no keep-warm of its own. |
 | `cost-stop.sh` | An 800k-token thread, kept warm, whose keep-warm turns each write 30% of its context: after a few keep-warms none is planned, the next deadline's is held back with "cost stop" in `status` and the log, and none goes after it. |
-| `check-in.sh` | "Check in on stalled background work" on, 10-minute wait: no check-in at 9.5 minutes of silence, one at 10, naming the task and saying a task quiet on purpose is fine to leave running, answered with the nothing-new reply; the next one 20 minutes after the first. |
+| `check-in.sh` | "Check on stalled tasks" on, 10-minute wait: no check-in at 9.5 minutes of silence, one at 10, naming the task and saying a task quiet on purpose is fine to leave running, answered with the nothing-new reply; the next one 20 minutes after the first. |
 | `skip-undo.sh` | Skip and Undo as the banner and the chip's popover press them: a skipped compaction is held with "skipped" and the Skip ends when the thread runs again; skipped and undone, it is sent. The same for a keep-warm. |
 | `reinstall.sh` | With every switch on and Skips pressed, the plugin is uninstalled and installed again: every switch is off, check-ins are off in bb's settings, and the first line of `status` says so until a switch is flipped. |
 | `archived-quiet.sh` | After the others: no thread they archived got a Cache Keeper message afterwards. |

@@ -160,6 +160,10 @@ _Avoid_: Nudge
 A background command or subagent with no new output or progress for the no-output wait.
 _Avoid_: Quiet task, stuck task
 
+**Check on stalled tasks**:
+Cache Keeper's setting, off until switched on, that sends a check-in about every stalled task on every Claude Code thread; it sits in the Stalled tasks section of its settings page.
+_Avoid_: Check in on stalled background work, check-ins setting
+
 **No-output wait**:
 How long a background command or subagent may go without output or progress before it is a stalled task: 10, 15 or 30 minutes, set in Cache Keeper's settings.
 _Avoid_: Check-in wait, stall timeout

@@ -15,8 +15,8 @@ Open any Claude Code thread. At the right of the composer's action row there is 
 Nothing yet. Cache Keeper sends nothing to any thread until you switch something on:
 
 - **Compact when idle** is off on every thread; the composer chip shows its icon alone.
-- **Keep warm while waiting** is off on every thread tree, since Settings → Plugins → Cache Keeper → **Keep caches warm while waiting** starts at `Only threads switched on`.
-- **Check in on stalled background work**, on the same settings page, is off, so no thread gets a check-in about a background task that stopped printing until you switch it on there.
+- **Keep warm while waiting** is off on every thread tree, since **Keep caches warm while waiting**, in the **Waiting threads** section of Settings → Plugins → Cache Keeper, starts at `Only threads switched on`.
+- **Check on stalled tasks**, in the **Stalled tasks** section of the same page, is off, so no thread gets a check-in about a background task that stopped printing until you switch it on there.
 
 ## 3. Switch Compact when idle on for one thread
 
