@@ -11,6 +11,15 @@ describe("Cache Keeper's icons", () => {
     expect(icons.flame).toBe("./icons/flame.svg");
   });
 
+  it("registers the crossed-out flame beside the flame, drawn as the flame with one diagonal stroke across it", () => {
+    expect(icons["crossed-out-flame"]).toBe("./icons/crossed-out-flame.svg");
+    const paths = (path: string) => {
+      const svg = readFileSync(join(import.meta.dirname, "..", path), "utf8");
+      return [...new DOMParser().parseFromString(svg, "image/svg+xml").documentElement.querySelectorAll("path")].map((p) => p.getAttribute("d"));
+    };
+    expect(paths(icons["crossed-out-flame"]!)).toEqual([...paths(icons.flame!), "M3 3l18 18"]);
+  });
+
   it("brands the plugin with the timer", () => {
     expect(pkg.bb.branding.icon).toBe("./icons/timer.svg");
     expect(icons["cache-keeper"]).toBe("./icons/timer.svg");
