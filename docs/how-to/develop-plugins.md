@@ -97,6 +97,7 @@ git config core.hooksPath .githooks
 | Script | When to run it |
 |---|---|
 | `npm run prices` | To refresh the price list bundled in `prices/`, the same one Thread Usage bundles. The plugin fetches current prices daily while Fetch current prices daily is on; the bundled list is its last fallback. |
+| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against real Claude Code threads on a throwaway bb with the plugin installed from your checkout, on a clock the harness moves forward, so a compaction, a tree keep-warm, the cost stop, a check-in, Skip and Undo and a reinstall are each reached in under 2 minutes. It needs Linux, `node`, `jq`, `curl`, `git`, `rsync`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/cache-keeper/harness/README.md) has the drives, the fake Anthropic API and the ports. |
 
 ## Third-party notices
 
