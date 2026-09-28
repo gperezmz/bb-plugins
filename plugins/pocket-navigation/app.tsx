@@ -6,7 +6,7 @@ export default definePluginApp((app) => {
   app.slots.experimental_sidebarNavigation({
     id: "pocket-navigation",
     title: "Pocket Navigation",
-    description: "On a phone, one row of icons and a New thread line; elsewhere, bb's own navigation.",
+    description: "On a phone, a New thread line above one row of icons; elsewhere, bb's own navigation.",
     component: PocketNavigation,
   });
 });

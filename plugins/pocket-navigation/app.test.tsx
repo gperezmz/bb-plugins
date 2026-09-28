@@ -99,11 +99,16 @@ describe("Pocket Navigation", async () => {
     expect(screen.queryByRole("navigation", { name: "Sidebar navigation" })).toBeNull();
   });
 
-  it("draws the icon row in bb's order, then the New thread line with search at its right", () => {
+  it("draws the New thread line with search at its right, then the icon row in bb's order", () => {
     render([PLUGINS, NEW_THREAD, AUTOMATIONS, SEARCH, USAGE, THREAD_USAGE]);
     expect(screen.queryByText("bb's own navigation")).toBeNull();
-    expect(buttonNames()).toEqual(["Plugins", "Automations", "Usage", "Thread usage", "New thread", "Search"]);
+    expect(buttonNames()).toEqual(["New thread", "Search", "Plugins", "Automations", "Usage", "Thread usage"]);
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+  });
+
+  it("draws the New thread line first where bb's order puts New thread and search last", () => {
+    render([PLUGINS, USAGE, hidden(AUTOMATIONS), SEARCH, NEW_THREAD]);
+    expect(buttonNames()).toEqual(["New thread", "Search", "Plugins", "Usage", "More sidebar navigation"]);
   });
 
   it("gives each icon its entry's label as its name and activates that entry", () => {
@@ -122,7 +127,7 @@ describe("Pocket Navigation", async () => {
 
   it("lists every hidden entry behind …, in bb's order, then Customize sidebar", async () => {
     const slot = render([hidden(USAGE), NEW_THREAD, hidden(SEARCH), PLUGINS, hidden(AUTOMATIONS)]);
-    expect(buttonNames()).toEqual(["Plugins", "More sidebar navigation", "New thread"]);
+    expect(buttonNames()).toEqual(["New thread", "Plugins", "More sidebar navigation"]);
     const menu = (await openOverflow());
     expect(menu.map((entry) => entry.textContent)).toEqual(["Usage", "Search", "Automations", "Customize sidebar"]);
     fireEvent.click(menu[1]);
@@ -135,9 +140,9 @@ describe("Pocket Navigation", async () => {
     expect(slot.inspection.sidebarNavigationCalls.map((call) => call.method)).toEqual(["openCustomize"]);
   });
 
-  it("puts a hidden New thread behind … and leaves search alone on its line", async () => {
+  it("puts a hidden New thread behind … and leaves search alone on the New thread line", async () => {
     render([hidden(NEW_THREAD), SEARCH, PLUGINS]);
-    expect(buttonNames()).toEqual(["Plugins", "More sidebar navigation", "Search"]);
+    expect(buttonNames()).toEqual(["Search", "Plugins", "More sidebar navigation"]);
     expect((await openOverflow()).map((entry) => entry.textContent)).toEqual(["New thread", "Customize sidebar"]);
   });
 

@@ -8,14 +8,14 @@
   },
   "bb": {
     "name": "Pocket Navigation",
-    "description": "On a phone, draws bb's sidebar navigation as one row of icons and a New thread line.",
+    "description": "On a phone, draws bb's sidebar navigation as a New thread line above one row of icons.",
     "branding": {
       "icon": "PanelLeft"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
   },
-  "description": "On a phone, draws bb's sidebar navigation as one row of icons and a New thread line.",
+  "description": "On a phone, draws bb's sidebar navigation as a New thread line above one row of icons.",
   "license": "MIT",
   "repository": {
     "type": "git",

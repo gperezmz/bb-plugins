@@ -1,10 +1,10 @@
 # Pocket Navigation
 
-bb's sidebar navigation for [bb](https://getbb.app), made small on a phone. Where bb draws six full-width rows (New thread, Plugins, Automations, Usage, Thread usage, More), Pocket Navigation draws one row of icons with a New thread line below it, and search at the right of that line. Everywhere else it draws bb's own navigation, unchanged.
+bb's sidebar navigation for [bb](https://getbb.app), made small on a phone. Where bb draws six full-width rows (New thread, Plugins, Automations, Usage, Thread usage, More), Pocket Navigation draws a New thread line, with search at its right end, above one row of icons. Everywhere else it draws bb's own navigation, unchanged.
 
 ```text
-[ ⏻ ][ ⟳ ][ ▥ ][ $ ][ … ]            every other visible entry, in bb's order
 [ ⊕  New thread               ][ 🔍 ]  search only when it is shown
+[ ⏻ ][ ⟳ ][ ▥ ][ $ ][ … ]            every other visible entry, in bb's order
 ```
 
 It follows the order and visibility you set in bb's own Customize sidebar, and changes neither: an entry you hide there sits behind "…", which also opens Customize sidebar.
