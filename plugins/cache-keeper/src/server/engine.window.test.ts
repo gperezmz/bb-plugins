@@ -58,6 +58,16 @@ describe("the log of decisions", () => {
     expect(h.infos.some((m) => /^t: keep-warm due \(keep-warm:\d+\) held back: skipped$/.test(m))).toBe(true);
     expect(h.infos.every((m) => !m.includes("Still waiting") && !m.includes("Not finished"))).toBe(true);
   });
+
+  it("moves the last decision's time on with each like decision", async () => {
+    h.thread({ id: "t", activity: busy });
+    h.transcript("t", T0, 100_000, "5m");
+    await h.start();
+    await h.advance(T0 + 9 * MIN);
+    const sends = h.sent.map((s) => s.at);
+    expect(sends.length).toBeGreaterThanOrEqual(2);
+    expect(h.store.get("t").decision).toMatchObject({ what: "keep-warm", reason: null, at: sends.at(-1) });
+  });
 });
 
 describe("an unreadable transcript", () => {

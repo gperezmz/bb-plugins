@@ -314,7 +314,8 @@ export class Engine {
       this.deps.log.info(reason === null ? `${threadId}: sending ${what} (${dueKey})` : `${threadId}: ${what} due (${dueKey}) held back: ${reasonText(reason)}`);
     }
     const last = this.record(threadId).decision;
-    if (last?.what === what && last.reason === reason) return;
+    if (last?.what === what && last.reason === reason && this.decisionKeys.get(threadId) === dueKey) return;
+    this.decisionKeys.set(threadId, dueKey);
     if (!this.stored(threadId) && reason !== null) return;
     const decision: Decision = { at: this.now(), what, reason };
     this.patch(threadId, (r) => ({ ...r, decision }));
@@ -1309,6 +1310,9 @@ export class Engine {
     }
     this.scheduleKeepAlive();
   }
+
+  /** The due time of each thread's last decision, so a like decision for a later one still moves its time. */
+  private readonly decisionKeys = new Map<string, string>();
 
   /** Threads whose ended turn is being read. */
   private readonly turnEnding = new Set<string>();
