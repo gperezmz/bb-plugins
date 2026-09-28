@@ -32,7 +32,7 @@ afterEach(() => {
   sdk.values = {};
 });
 
-const chip = (over: Partial<ChipView> = {}): ChipView => ({
+const chipView = (over: Partial<ChipView> = {}): ChipView => ({
   visible: true,
   chip: "$1.23",
   headline: { primary: "$1.23", primaryKind: "usd", detail: "estimate", secondary: null, unpricedNote: null, chip: "$1.23", billing: "api" },
@@ -46,7 +46,7 @@ const chip = (over: Partial<ChipView> = {}): ChipView => ({
   ...over,
 } as ChipView);
 
-async function show(view: ChipView, { showAmount = false, compact = false } = {}) {
+async function renderChip(view: ChipView, { showAmount = false, compact = false } = {}) {
   sdk.chip = view;
   sdk.values = { showAmount };
   await act(async () => {
@@ -56,37 +56,37 @@ async function show(view: ChipView, { showAmount = false, compact = false } = {}
 
 describe("the header chip", () => {
   it("shows the coin only by default", async () => {
-    await show(chip());
+    await renderChip(chipView());
     const button = screen.getByRole("button", { name: "Usage: $1.23 with 2 child threads" });
     expect(button.textContent).toBe("");
     expect(screen.getByTestId("coin")).toBeTruthy();
   });
 
   it("shows the tree total after the coin with showAmount on", async () => {
-    await show(chip(), { showAmount: true });
+    await renderChip(chipView(), { showAmount: true });
     const button = screen.getByRole("button", { name: /^Usage:/ });
     expect(button.textContent).toBe("$1.23");
     expect(button.firstElementChild).toBe(screen.getByTestId("coin"));
   });
 
   it("shows the coin only on a compact viewport even with showAmount on", async () => {
-    await show(chip(), { showAmount: true, compact: true });
+    await renderChip(chipView(), { showAmount: true, compact: true });
     expect(screen.getByRole("button", { name: /^Usage:/ }).textContent).toBe("");
   });
 
   it("opens the Usage tab for its pane's thread when clicked", async () => {
-    await show(chip());
+    await renderChip(chipView());
     fireEvent.click(screen.getByRole("button", { name: /^Usage:/ }));
     expect(sdk.openThreadPanel).toHaveBeenCalledWith({ actionId: "usage", params: { threadId: "thr_a" } });
   });
 
   it("draws nothing before the tree has a turn record", async () => {
-    await show(chip({ visible: false }));
+    await renderChip(chipView({ visible: false }));
     expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("shows a budget toast the server hands this window", async () => {
-    await show(chip({ toast: { amount: 5, total: "$5.10", title: "Build", rootThreadId: "thr_a" } }));
+    await renderChip(chipView({ toast: { amount: 5, total: "$5.10", title: "Build", rootThreadId: "thr_a" } }));
     expect(sdk.warning).toHaveBeenCalledWith("“Build” crossed $5.00", { description: "Now $5.10. Nothing was stopped." });
   });
 });
