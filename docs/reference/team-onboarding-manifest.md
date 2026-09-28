@@ -161,7 +161,7 @@ Tool checks run on every machine without approval, so `args` must be a version f
 | `note` | none | Shown beside the form, e.g. where to get the value |
 | `required` | `true` | |
 
-Names only: the engineer types the value into a masked form, and it is stored as a bb machine variable, which every agent on every machine can read. The form refuses `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GIT_CONFIG_*`, because they override bb's built-in git.
+Names only: the engineer types the value into a masked form, and it is stored as a bb machine variable, which every agent on every machine can read. `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and every name starting `GIT_CONFIG_` are refused, because they override bb's built-in git. The form will not set them, so a manifest with an `env` entry of one of those names is invalid, and the error names the entry. The whole manifest is rejected, on `manifest validate` and on load, not only that entry. The JSON Schema marks the same names, so an editor flags them as you type.
 
 ## `checks`
 

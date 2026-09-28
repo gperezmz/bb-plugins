@@ -1268,7 +1268,7 @@ describe("environment and privacy", () => {
   // Acceptance 25.
   it("refuses GH_TOKEN and sets listed variables", async () => {
     world = makeWorld();
-    writeManifest(world, ["env: [{ name: TRACKER_API_KEY }, { name: GH_TOKEN }]"]);
+    writeManifest(world, ["env: [{ name: TRACKER_API_KEY }]"]);
     const { harness } = await boot(world);
     await check(harness);
     await expect(act(harness, { action: "setEnv", name: "GH_TOKEN", value: "x" })).rejects.toThrow(/^400 .*built-in git/);
@@ -1277,6 +1277,18 @@ describe("environment and privacy", () => {
     expect(world.machineEnv).toEqual([{ name: "TRACKER_API_KEY" }]);
     expect(JSON.stringify(harness.inspection.logEntries)).not.toContain("secret-value");
   });
+
+  it.each(["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL"])(
+    "the env form refuses %s",
+    async (name) => {
+      world = makeWorld();
+      writeManifest(world, ["env: [{ name: TRACKER_API_KEY }]"]);
+      const { harness } = await boot(world);
+      await check(harness);
+      await expect(act(harness, { action: "setEnv", name, value: "x" })).rejects.toThrow(/^400 .*built-in git/);
+      expect(world.machineEnv).toEqual([]);
+    },
+  );
 
   // Acceptances 12 and 20.
   it("stores and logs categories, never repository URLs or organisation names", async () => {
