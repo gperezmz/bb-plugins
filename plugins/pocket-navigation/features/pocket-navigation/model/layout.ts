@@ -11,7 +11,7 @@ export interface PocketLayout<Item extends LayoutItem> {
   newThread: Item | null;
   /** Search, when visible. */
   search: Item | null;
-  /** Every hidden item, in bb's order; "…" is drawn only when it has one. */
+  /** Every hidden item, in bb's order, listed in "…" above Customize sidebar. */
   overflow: Item[];
 }
 

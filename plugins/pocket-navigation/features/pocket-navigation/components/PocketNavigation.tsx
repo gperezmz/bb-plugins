@@ -86,9 +86,7 @@ function PhoneNavigation() {
               <IconButton key={item.id} item={item} isActive={isActive(item)} {...itemProps(item)} />
             ))}
           </div>
-          {overflow.length > 0 ? (
-            <Overflow items={overflow} isActive={isActive} onActivate={activate} onCustomize={actions.openCustomize} />
-          ) : null}
+          <Overflow items={overflow} isActive={isActive} onActivate={activate} onCustomize={actions.openCustomize} />
         </div>
       </nav>
       <div aria-hidden="true" className="mx-2 my-2 shrink-0 border-t border-sidebar-border/25" />
@@ -128,7 +126,11 @@ interface OverflowProps {
   onCustomize(): void;
 }
 
-/** "…": every hidden item, then bb's Customize sidebar, as bb's own More lists them. */
+/**
+ * "…": every hidden item, then bb's Customize sidebar, as bb's own More lists
+ * them. Drawn with nothing hidden too, since it is a phone's only way to
+ * Customize sidebar.
+ */
 function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
   return (
     <DropdownMenu>
@@ -161,7 +163,7 @@ function Overflow({ items, isActive, onActivate, onCustomize }: OverflowProps) {
             <span aria-current={isActive(item) ? "page" : undefined}>{item.label}</span>
           </DropdownMenuItem>
         ))}
-        <DropdownMenuSeparator />
+        {items.length > 0 ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem onSelect={onCustomize}>
           <Icon name="FilterHorizontal" aria-hidden="true" />
           Customize sidebar

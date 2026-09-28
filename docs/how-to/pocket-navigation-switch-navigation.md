@@ -12,11 +12,11 @@ bb settings ui set sidebar.navigationProvider pocket-navigation/pocket-navigatio
 
 ## Choose what the phone shows
 
-Pocket Navigation follows the order and visibility of bb's own **Customize sidebar**, and changes neither. It opens from the end of "…" on a phone, and from bb's own More on a wider screen.
+Pocket Navigation follows the order and visibility of bb's own **Customize sidebar**, and changes neither. On a phone, open it from the last item in "…" at the end of the icon row, which is there whether or not anything is hidden. On a wider screen, open it from bb's own More.
 
 - An entry you hide there moves behind "…", New thread and search included.
 - The icon row and "…" list entries in the order you set there.
-- With nothing hidden, the icon row has no "…", so Customize sidebar opens only from bb's own More on a wider screen.
+- With nothing hidden, "…" holds only Customize sidebar.
 
 ## Switch back to bb's navigation
 
