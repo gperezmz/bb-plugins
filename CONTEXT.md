@@ -43,12 +43,8 @@ A child thread's failure that its parent thread went idle without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
-The muted count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them.
-_Avoid_: Chip, Pill, children badge
-
-**Child dot**:
-The dot on a parent thread's status glyph in the colour of the most urgent state among its children.
-_Avoid_: Pip, badge, indicator
+The count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them, led by the glyph of the most urgent state among its descendants.
+_Avoid_: Chip, Pill, children badge, child dot
 
 **Quiet thread**:
 A thread that is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.

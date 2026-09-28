@@ -31,13 +31,13 @@ flowchart TD
 
 Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle parent thread that has not run since is an **orphaned failure**: nobody is going to pick it up. A parent thread that is running is usually already handling the failure, so counting it would raise a flag for work already in hand.
 
-A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [child dot](../reference/thread-glance-states.md#the-child-dot) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
+A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [children chip](../reference/thread-glance-states.md#the-children-chip) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
 
 The setting **Needs attention counts every child** makes a child count exactly as a root does: every failed or finished-unread child needs attention too. The same setting decides which children a tree's fold keeps out, below.
 
 ## Needs attention is a state, not a place
 
-A tree that needs attention stays in its own group (project, custom section, machine, Pinned or Threads), in the place its sort gives it. Rows never move between places because something changed state: what needs attention is told by the row's glyph, its line, the parent's child dot and the group's counters.
+A tree that needs attention stays in its own group (project, custom section, machine, Pinned or Threads), in the place its sort gives it. Rows never move between places because something changed state: what needs attention is told by the row's glyph, its line, the parent's children chip and the group's counters.
 
 A collapsed group still draws, under its header, every tree in it that needs attention, and nothing else. Collapsing a group hides what you have dealt with, never what waits on you.
 
@@ -47,7 +47,7 @@ The list header's `N need you` counts the trees that need attention across the w
 
 ## Trees and folding
 
-A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a [children chip](../reference/thread-glance-states.md#the-children-chip) on that row. The chip counts the root's direct children, and the [child dot](../reference/thread-glance-states.md#the-child-dot) on the root's glyph shows the most urgent thing anywhere below it, so a closed tree still says what it holds.
+A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a [children chip](../reference/thread-glance-states.md#the-children-chip) on that row. The chip counts the root's direct children and leads with the glyph of the most urgent state anywhere below it, so a closed tree still says what it holds.
 
 Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
