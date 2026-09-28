@@ -53,7 +53,7 @@ import { countItems, type ThreadView, type WaitCounts } from "../core/view";
 import type { TaskKind, WaitItem } from "../core/waiting";
 import { Scheduler, type Timers } from "./scheduler";
 import type { KeeperSettings } from "./settings";
-import type { Decision, ReadBefore, Store, TaskRecord, ThreadRecord } from "./store";
+import { normalizeRecord, type Decision, type ReadBefore, type Store, type TaskRecord, type ThreadRecord } from "./store";
 import { readThread, ThreadIndex, type Known } from "./threads";
 
 /** Every event type the engine reads from a thread's history, in one call per turn end. */
@@ -259,18 +259,32 @@ export class Engine {
   record(threadId: string): ThreadRecord {
     const cached = this.records.get(threadId);
     if (cached !== undefined) return cached;
-    const stored = this.deps.store.has(threadId) ? this.deps.store.get(threadId) : null;
-    if (stored !== null) this.records.set(threadId, stored);
-    return stored ?? this.deps.store.get(threadId);
+    if (!this.stored(threadId)) return normalizeRecord({});
+    const stored = this.deps.store.get(threadId);
+    this.records.set(threadId, stored);
+    return stored;
   }
 
+  /**
+   * Threads found with no stored row. Every row is written through `patch`,
+   * which keeps it in `records`, so SQLite is asked once; once `start` has
+   * loaded every row, not at all.
+   */
+  private readonly unstored = new Set<string>();
+  private everyRowLoaded = false;
+
   private stored(threadId: string): boolean {
-    return this.records.has(threadId) || this.deps.store.has(threadId);
+    if (this.records.has(threadId)) return true;
+    if (this.everyRowLoaded || this.unstored.has(threadId)) return false;
+    if (this.deps.store.has(threadId)) return true;
+    this.unstored.add(threadId);
+    return false;
   }
 
   /** Changes the record as it stands now and stores it: never await between reading what `change` needs and this call. */
   private patch(threadId: string, change: (record: ThreadRecord) => ThreadRecord): ThreadRecord {
     const next = change(this.record(threadId));
+    this.unstored.delete(threadId);
     this.records.set(threadId, next);
     this.deps.store.put(threadId, next, this.now());
     return next;
@@ -289,9 +303,18 @@ export class Engine {
     this.deps.store.putTurnLog(threadId, log);
   }
 
+  /** The stored last setting, read once: the engine is its only writer. Undefined until read. */
+  private storedLastSetting: number | null | undefined = undefined;
+
   /** The setting a thread switched on for the first time starts at. */
   lastSetting(): number {
-    return this.deps.store.getMeta<number>(LAST_SETTING_META) ?? DEFAULT_SETTING;
+    if (this.storedLastSetting === undefined) this.storedLastSetting = this.deps.store.getMeta<number>(LAST_SETTING_META);
+    return this.storedLastSetting ?? DEFAULT_SETTING;
+  }
+
+  private setLastSetting(setting: number): void {
+    this.deps.store.setMeta(LAST_SETTING_META, setting);
+    this.storedLastSetting = setting;
   }
 
   // ---- logging ----
@@ -350,6 +373,7 @@ export class Engine {
    */
   async start(): Promise<void> {
     for (const { threadId, record } of this.deps.store.all()) this.records.set(threadId, record);
+    this.everyRowLoaded = true;
     const watermark = this.deps.store.getMeta<number>(WATERMARK_META);
     const listed = await this.list();
     const since = watermark === null ? null : watermark - WATERMARK_MARGIN_MS;
@@ -1861,15 +1885,15 @@ export class Engine {
     await this.requireClaude(threadId);
     const last = this.lastSetting();
     this.patch(threadId, (r) => ({ ...r, compactOn: on, setting: setting ?? r.setting ?? last }));
-    if (setting !== undefined) this.deps.store.setMeta(LAST_SETTING_META, setting);
-    else if (on && this.deps.store.getMeta(LAST_SETTING_META) === null) this.deps.store.setMeta(LAST_SETTING_META, last);
+    if (setting !== undefined) this.setLastSetting(setting);
+    else if (on && this.deps.store.getMeta(LAST_SETTING_META) === null) this.setLastSetting(last);
     return this.refresh(threadId);
   }
 
   async setSetting(threadId: string, setting: number): Promise<ThreadView | null> {
     await this.requireClaude(threadId);
     this.patch(threadId, (r) => ({ ...r, setting }));
-    this.deps.store.setMeta(LAST_SETTING_META, setting);
+    this.setLastSetting(setting);
     return this.refresh(threadId);
   }
 
@@ -1959,9 +1983,8 @@ export class Engine {
   resetSwitches(): number {
     let changed = 0;
     this.deps.store.transaction(() => {
-      for (const { threadId } of this.deps.store.all()) {
-        this.records.delete(threadId);
-        const r = this.record(threadId);
+      for (const { threadId, record: r } of this.deps.store.all()) {
+        this.records.set(threadId, r);
         const stretch = r.stretch === null ? null : { ...r.stretch, compactSkipped: false, warmSkipped: false };
         if (!r.compactOn && r.keepWarm !== true && JSON.stringify(stretch) === JSON.stringify(r.stretch)) continue;
         changed++;

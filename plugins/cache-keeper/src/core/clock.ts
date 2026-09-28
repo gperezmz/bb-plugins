@@ -12,8 +12,21 @@ export interface Jump {
   offset: number;
 }
 
+/** Per list of jumps (only ever appended to): its length when read, its latest `at`, and its last offset. */
+const ends = new WeakMap<readonly Jump[], { length: number; latest: number; offset: number }>();
+
 /** How far ahead of the wall the clock read at wall time `wall`. */
 export function offsetAt(jumps: readonly Jump[], wall: number): number {
+  if (jumps.length === 0) return 0;
+  // Most times read come after every jump, so the list's last offset applies without a walk.
+  let end = ends.get(jumps);
+  if (end === undefined || end.length !== jumps.length) {
+    let latest = end !== undefined && end.length < jumps.length ? end.latest : -Infinity;
+    for (let i = end !== undefined && end.length < jumps.length ? end.length : 0; i < jumps.length; i++) latest = Math.max(latest, jumps[i]!.at);
+    end = { length: jumps.length, latest, offset: jumps[jumps.length - 1]!.offset };
+    ends.set(jumps, end);
+  }
+  if (wall >= end.latest) return end.offset;
   let offset = 0;
   for (const jump of jumps) {
     if (jump.at > wall) break;
