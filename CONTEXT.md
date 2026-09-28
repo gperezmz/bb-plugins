@@ -23,16 +23,16 @@ _Avoid_: Scenario, smoke config
 ### Thread Glance
 
 **Needs attention**:
-The section at the top of Thread Glance's list that holds every thread tree with a thread only you can move forward. In code it is `attention`, bb's own word.
-_Avoid_: Needs you, inbox, attention filter
+The state of a thread tree with a thread only you can move forward, which keeps the tree showing in its group when the group is collapsed. In code it is `attention`, bb's own word.
+_Avoid_: Needs you, inbox, attention section
 
-**Attended**:
-A thread tree in Needs attention that you opened and that has nothing left needing attention; it keeps its place until none of its threads is open.
-_Avoid_: Held, read
+**List header**:
+Thread Glance's row above its groups: the grouping's name, the need-you filter, Mark all read and the settings button.
+_Avoid_: Toolbar, title row, thread navigation
 
-**Home group**:
-The group a thread tree is listed in when it is not in Needs attention: its project, custom section, machine, Pinned or Threads.
-_Avoid_: Source group, original group
+**Need-you filter**:
+The list header's "N need you" badge, which shows only the thread trees that need attention while it is on.
+_Avoid_: Attention filter, inbox view
 
 **Parent thread**:
 The thread that spawned a child thread.
@@ -43,16 +43,28 @@ A child thread's failure that its parent thread went idle without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
-The count badge beside a parent thread's title that opens and closes its children.
+The muted count of a parent thread's direct children beside its title, with the chevron that opens and closes them.
 _Avoid_: Chip, Pill, children badge
+
+**Child dot**:
+The dot on a parent thread's status glyph in the colour of the most urgent state among its children.
+_Avoid_: Pip, badge, indicator
 
 **Quiet thread**:
 A thread that is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
-_Avoid_: Settled, idle thread
+_Avoid_: Idle thread
 
-**Older fold**:
-The "N older" row that holds a group's quiet threads past its newest ones.
-_Avoid_: More row, older threads
+**Settled thread**:
+A quiet thread with no open pull request whose pull request merged or closed, or that has had no activity for the Settle after period. It is worked out afresh each time, so any activity unsettles it.
+_Avoid_: Older thread, done thread, archived thread
+
+**Settle after**:
+Thread Glance's setting for how long a thread goes without activity before it settles: 12 hours, 1 day, 3 days, 1 week or Never, 1 day by default.
+_Avoid_: Auto-settle days, inactivity threshold
+
+**Settled fold**:
+The faint "Settled (N)" divider at the end of a group that holds its settled threads.
+_Avoid_: Older fold, N older, more row
 
 **Status column**:
 The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
