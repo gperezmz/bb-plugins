@@ -1,4 +1,4 @@
-/** Cache Keeper's four settings and their parsed form. */
+/** Cache Keeper's four declared settings and their parsed form. The Agent tools section's switches are stored by the plugin. */
 import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import type { KeepWarmSetting } from "../core/switch";
 
@@ -24,8 +24,8 @@ export const SETTINGS = {
     type: "boolean",
     label: "Check in on stalled background work",
     description:
-      "On every Claude Code thread, whatever its tree's Keep warm while waiting switch says: when a background command or subagent has produced no output or progress for the no-output wait, ask the agent to check it. Off also stops keep-warms asking about tasks running 30 minutes or more.",
-    default: true,
+      "On every Claude Code thread, whatever its tree's Keep warm while waiting switch says: when a background command or subagent has produced no output or progress for the no-output wait, ask the agent to check it and report what it finds. Off also stops keep-warms asking about tasks running 30 minutes or more.",
+    default: false,
   },
   noOutputWait: {
     type: "select",
@@ -53,7 +53,7 @@ export function parseSettings(values: Record<string, unknown>): KeeperSettings {
   const wait = typeof values.noOutputWait === "string" ? Number.parseInt(values.noOutputWait, 10) : NaN;
   return {
     keepWarm: (typeof values.keepWarm === "string" ? KEEP_WARM_OPTIONS[values.keepWarm] : undefined) ?? "switched",
-    checkIns: values.stalledCheckIns !== false,
+    checkIns: values.stalledCheckIns === true,
     waitMs: ([10, 15, 30].includes(wait) ? wait : 15) * 60_000,
     fetchPrices: values.fetchPrices !== false,
   };

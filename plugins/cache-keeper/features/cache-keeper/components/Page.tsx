@@ -9,7 +9,7 @@ import { formatSize } from "@/src/core/line";
 import { ago, countsText, entryText, nextWarmText, statusText, type ThreadView } from "@/src/core/view";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useKeeperRpc, useLive, useNow } from "../api";
-import { formatUsd, splitText } from "../model/bar";
+import { costText, formatUsd, splitText } from "../model/bar";
 
 export function Page() {
   const rpc = useKeeperRpc();
@@ -78,7 +78,7 @@ export function Page() {
                   </td>
                   <td className="py-1.5 pr-3">{entryText(h.kind as "compaction" | "keep-warm" | "check-in", h.record)}</td>
                   <td className="py-1.5 tabular-nums">
-                    <Cost usd={h.record.usd} split={splitText(h.record.split, (id) => data.titles[id] ?? id)} />
+                    <Cost cost={costText(h.record.usd, h.record.estimated, h.kind)} split={splitText(h.record.split, (id) => data.titles[id] ?? id)} />
                   </td>
                 </tr>
               ))}
@@ -108,10 +108,11 @@ export function Page() {
   );
 }
 
-/** An entry's cost, and on hover how it fell between threads. */
-function Cost({ usd, split }: { usd: number | null; split: string | null }) {
-  const text = usd === null ? "–" : formatUsd(usd);
-  if (split === null) return <>{text}</>;
+/** An entry's cost, and on hover how it fell between threads, or that it is an estimate. */
+function Cost({ cost, split }: { cost: { text: string; estimate: boolean }; split: string | null }) {
+  const { text } = cost;
+  const hover = cost.estimate ? ESTIMATE_HOVER : split;
+  if (hover === null) return <>{text}</>;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -119,10 +120,12 @@ function Cost({ usd, split }: { usd: number | null; split: string | null }) {
           {text}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{split}</TooltipContent>
+      <TooltipContent>{hover}</TooltipContent>
     </Tooltip>
   );
 }
+
+export const ESTIMATE_HOVER = "Estimate: this turn's cost couldn't be read from the transcript";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

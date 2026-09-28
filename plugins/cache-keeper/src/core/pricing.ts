@@ -4,7 +4,8 @@
  *
  * Rates are USD per token, as in LiteLLM's price map. Lookup order is
  * LiteLLM's fetched list, then models.dev, then the LiteLLM list bundled with
- * the plugin.
+ * the plugin. A fetched entry with any rate of 0 is taken as a list's mistake
+ * rather than a free model, and the model is looked up in the next list.
  */
 
 /** Per-token rates for one model. Absent rates are unknown, not zero. */
@@ -97,24 +98,27 @@ export interface PriceBookInput {
   bundled: Record<string, LiteLlmPriceEntry>;
 }
 
+/** Whether any rate a price carries is 0. */
+export const hasZeroRate = (price: ModelPrice) => [price.input, price.output, price.cacheRead, price.cacheWrite, price.cacheWrite1h].some((rate) => rate === 0);
+
 /** Looks up prices in LiteLLM's list, then models.dev, then the bundled list. */
 export class PriceBook {
   private readonly layers: [PriceOrigin, Map<string, ModelPrice>][];
   private readonly cache = new Map<string, ResolvedPrice | null>();
 
   constructor(input: PriceBookInput) {
-    const table = (entries: Record<string, LiteLlmPriceEntry> | null | undefined) => {
+    const table = (entries: Record<string, LiteLlmPriceEntry> | null | undefined, fetched: boolean) => {
       const map = new Map<string, ModelPrice>();
       for (const [name, entry] of Object.entries(entries ?? {})) {
         const price = fromLiteLlmEntry(entry);
-        if (price !== null) map.set(name.toLowerCase(), price);
+        if (price !== null && !(fetched && hasZeroRate(price))) map.set(name.toLowerCase(), price);
       }
       return map;
     };
     this.layers = [
-      ["litellm", table(input.litellm)],
-      ["models.dev", table(input.modelsDev)],
-      ["bundled", table(input.bundled)],
+      ["litellm", table(input.litellm, true)],
+      ["models.dev", table(input.modelsDev, true)],
+      ["bundled", table(input.bundled, false)],
     ];
   }
 

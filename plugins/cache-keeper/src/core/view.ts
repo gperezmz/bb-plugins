@@ -23,7 +23,10 @@ export interface ThreadView {
   lines: (number | null)[];
   line: number | null;
   context: number | null;
+  /** The context window bb reported for the thread; 0 until it reports one. */
   window: number;
+  /** Whether bb has reported the thread's window. Until it has, the thread has no lines. */
+  windowKnown: boolean;
   model: string | null;
   lifetime: CacheLifetime | null;
   callsPerMessage: number;
@@ -49,7 +52,13 @@ export interface ThreadView {
   warmPlanned: boolean;
   warmSkipped: boolean;
   nextWarmAt: number | null;
+  /** Keep-warms are held because the model has no usable price: no cache read or cache write rate, or one of 0. */
+  warmNoPrice: boolean;
   counts: WaitCounts;
+  /** What Cache Keeper last decided for the thread, and why nothing went if nothing did. */
+  decision: { at: number; what: string; reason: string | null } | null;
+  /** Why the thread's transcript could not be read or parsed; null when it could. */
+  transcriptUnreadable: string | null;
 }
 
 export interface WaitCounts {
@@ -194,6 +203,7 @@ export function bannerOf(view: ThreadView, now: number): { text: string; actions
   if (view.warmSetting === "never") return { text: `${on}, keep-warms are off in Settings`, actions: [] };
   if (!view.keptWarm) return { text: `${on}, not keeping cache warm`, actions: ["keep-warm"] };
   if (view.warmSkipped) return { text: "Skipped for this wait", actions: ["undo-warm"] };
+  if (view.warmNoPrice) return { text: `${on}, not keeping cache warm: this model has no price`, actions: [] };
   if (view.warmPlanned) return { text: `${on}, keeping cache warm`, actions: ["skip-warm"] };
   // Past the cost stop, or a cache already cold when its tree was switched on.
   return { text: `${on}, letting cache go cold`, actions: [] };

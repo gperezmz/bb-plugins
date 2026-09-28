@@ -1,0 +1,6 @@
+{
+  "thread_id": "thr_fixture00",
+  "compact_on": 1,
+  "record": "{\"compactOn\":true,\"keepWarm\":false,\"setting\":4,\"stretch\":{\"startedAt\":1790503200000,\"compactedAt\":null,\"compactSkipped\":true,\"warmSkipped\":true,\"chargedUsd\":0.123456789},\"inFlight\":{\"kind\":\"keep-warm\",\"at\":1790506000000,\"sendId\":17},\"tasks\":{\"b1x2\":{\"kind\":\"command\",\"description\":\"npm test -- --watch\",\"clock\":{\"startedAt\":1790503000000,\"lastActivityAt\":1790503500000,\"lastCheckInAt\":1790504400000,\"stalledStreak\":2}}},\"eventsAfterSeq\":5100,\"compaction\":{\"historyId\":9,\"at\":1790400000000,\"contextBefore\":412000,\"contextAfter\":18000,\"w\":1e-05,\"lifetimeMs\":3600000},\"readBefore\":{\"read\":true,\"lastReadAt\":1790506000500,\"since\":1790506000000},\"accountedSeq\":5123,\"lastSendId\":17,\"keeperReports\":{\"turns\":3,\"requests\":4}}",
+  "updated_at": 1790506740000
+}

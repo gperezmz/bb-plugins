@@ -34,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "build": "bb plugin build",
     "prices": "node scripts/update-prices.mjs",
-    "notices": "node scripts/third-party-notices.mjs"
+    "notices": "node scripts/third-party-notices.mjs",
+    "bench": "node bench/run.mjs"
   },
   "files": [
     "dist",

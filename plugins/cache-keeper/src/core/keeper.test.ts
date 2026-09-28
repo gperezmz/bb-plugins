@@ -78,7 +78,8 @@ describe("the cost stop", () => {
     const stop = rates.w * 300_000;
     expect(pastCostStop(stop - 0.2, 0.1, rates, 300_000)).toBe(false);
     expect(pastCostStop(stop - 0.05, 0.1, rates, 300_000)).toBe(true);
-    expect(pastCostStop(100, 1, null, 300_000)).toBe(false);
+    expect(pastCostStop(0, 0, null, 300_000)).toBe(true);
+    expect(pastCostStop(0, 0, rates, null)).toBe(true);
   });
 
   it("skips keep-warms for a scheduled message due after the cost stop", () => {

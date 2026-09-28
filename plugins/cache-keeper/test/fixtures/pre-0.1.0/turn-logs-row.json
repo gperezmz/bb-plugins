@@ -1,0 +1,4 @@
+{
+  "thread_id": "thr_fixture00",
+  "record": "{\"afterSeq\":5140,\"requests\":{},\"turns\":[{\"startSeq\":5123,\"startedAt\":1790506001000,\"endedAt\":1790506004000,\"status\":\"completed\",\"inputs\":[{\"kind\":\"sent\",\"text\":\"Still waiting on background command b1x2 (\\\"npm test -- --watch\\\"). There's no need to check anything. Reply with exactly \\\"Not finished yet, still waiting on background command b1x2 (\\\"npm test -- --watch\\\"). Nothing needed from you.\\\"\",\"at\":1790506000000}],\"reply\":\"Not finished yet, still waiting on background command b1x2 (\\\"npm test -- --watch\\\"). Nothing needed from you.\"}],\"delivered\":[{\"childId\":\"thr_child\",\"at\":1790506002000}]}"
+}

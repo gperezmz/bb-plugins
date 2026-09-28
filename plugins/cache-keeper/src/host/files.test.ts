@@ -1,8 +1,8 @@
-import { appendFile, mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { commandActivity, lastToolIn, subagentActivity, TranscriptReader, type Roots } from "./files";
+import { commandActivity, lastToolIn, readTranscript, subagentActivity, worthParsing, type Roots } from "./files";
 
 const SESSION = "7dfc9da6-b6a9-4955-9df9-530b2c0ccda6";
 const SLUG = "-work-repo";
@@ -20,29 +20,59 @@ const request = (min: number, id: string, write1h: number) =>
     message: { id, model: "claude-opus-5-5", usage: { input_tokens: 1, cache_creation: { ephemeral_1h_input_tokens: write1h } } },
   })}\n`;
 
-describe("TranscriptReader", () => {
-  it("finds the session under its working directory's slug and reads what is appended", async () => {
+describe("readTranscript", () => {
+  async function transcript(text: string) {
     const r = await roots();
     const dir = join(r.projects[0]!, SLUG);
     await mkdir(dir, { recursive: true });
     const path = join(dir, `${SESSION}.jsonl`);
-    await writeFile(path, request(0, "a", 100));
-    const reader = new TranscriptReader(r);
-    const first = await reader.read(SESSION, null);
-    expect(first).toMatchObject({ found: true, cwdSlug: SLUG, facts: { requests: 1, context: 101, lifetime: "1h" } });
+    await writeFile(path, text);
+    return { r, path };
+  }
+
+  it("finds the session under its working directory's slug and reads on from where the last read stopped", async () => {
+    const { r, path } = await transcript(request(0, "a", 100));
+    const first = await readTranscript(r, SESSION, null);
+    expect(first).toMatchObject({ found: true, cwdSlug: SLUG, facts: { requests: 1, context: 101, lifetime: "1h" }, unreadable: null });
+    expect(first.bytesRead).toBe(request(0, "a", 100).length);
 
     // A line still being written is left for the next read.
     const next = request(1, "b", 300);
     await appendFile(path, next.slice(0, 40));
-    expect((await reader.read(SESSION, null)).facts.requests).toBe(1);
+    const partial = await readTranscript(r, SESSION, first.cursor);
+    expect(partial.facts.requests).toBe(1);
+    expect(partial.bytesRead).toBe(0);
     await appendFile(path, next.slice(40));
-    const second = await reader.read(SESSION, Date.UTC(2026, 0, 1, 0, 1));
+    // The cursor alone carries the read on, as after a restart of the daemon or the plugin.
+    const second = await readTranscript(r, SESSION, JSON.parse(JSON.stringify(partial.cursor)));
     expect(second.facts).toMatchObject({ requests: 2, context: 301 });
-    expect(second.requests).toHaveLength(1);
+    expect(second.bytesRead).toBe(next.length);
+    expect(second.requests.map((q) => q.cacheWrite1h)).toEqual([300]);
+  });
+
+  it("reads from the start a file that was replaced or cut short", async () => {
+    const { r, path } = await transcript(request(0, "a", 100) + request(1, "b", 200));
+    const first = await readTranscript(r, SESSION, null);
+    await rm(path);
+    await writeFile(path, request(2, "c", 50));
+    const replaced = await readTranscript(r, SESSION, first.cursor);
+    expect(replaced.facts).toMatchObject({ requests: 1, context: 51 });
+    expect(replaced.bytesRead).toBe(request(2, "c", 50).length);
+  });
+
+  it("puts line times on the plugin's clock", async () => {
+    const { r } = await transcript(request(0, "a", 100));
+    const read = await readTranscript(r, SESSION, null, (wall) => wall + 60_000);
+    expect(read.facts.lastRequestAt).toBe(Date.UTC(2026, 0, 1, 0, 0) + 60_000);
+  });
+
+  it("says a transcript no line of which parses is unreadable", async () => {
+    const { r } = await transcript("not json\nnor this\n");
+    expect((await readTranscript(r, SESSION, null)).unreadable).toMatch(/parses/);
   });
 
   it("reports a session it cannot find", async () => {
-    expect(await new TranscriptReader(await roots()).read(SESSION, null)).toMatchObject({ found: false, cwdSlug: null });
+    expect(await readTranscript(await roots(), SESSION, null)).toMatchObject({ found: false, cwdSlug: null, cursor: null });
   });
 });
 
@@ -66,5 +96,16 @@ describe("task activity", () => {
     );
     expect(await subagentActivity(r, SLUG, SESSION, "a1")).toMatchObject({ id: "a1", lastTool: "Read" });
     expect(lastToolIn('{"cut":')).toBeNull();
+  });
+});
+
+describe("worthParsing", () => {
+  it("parses requests, compactions and typed messages, and leaves tool results and other lines alone", () => {
+    expect(worthParsing(request(0, "a", 1))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "system", subtype: "compact_boundary", compactMetadata: { postTokens: 1 } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: "please continue" } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: 'a message about "tool_result" blocks' } }))).toBe(true);
+    expect(worthParsing(JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: "x".repeat(10_000) }] } }))).toBe(false);
+    expect(worthParsing(JSON.stringify({ type: "attachment", attachment: { type: "file" } }))).toBe(false);
   });
 });

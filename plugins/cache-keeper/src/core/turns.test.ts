@@ -1,7 +1,8 @@
 import type { PluginBbSdk } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import { checkInText, keepWarmText } from "./messages";
-import { classifyQueued, emptyTurnLog, foldTurns, isKeeperTurn, broughtNothingNew, originsOf, reportPending, type BbEvent, type ThreadContext, type Turn, type TurnLog } from "./turns";
+import { textHash } from "./messages";
+import { capTurnLog, normalizeTurnLog, TURN_LOG_BYTES, classifyQueued, emptyTurnLog, foldTurns, isKeeperTurn, broughtNothingNew, originsOf, reportPending, type BbEvent, type ThreadContext, type Turn, type TurnLog } from "./turns";
 
 const clock = () => "14:30";
 const KEEP_WARM = keepWarmText([{ kind: "command", id: "b1", description: "deploy", startedAt: 0 }], [], clock);
@@ -96,7 +97,7 @@ describe("turn attribution", () => {
     expect(isKeeperTurn("parent", parent.turns[0]!, lookup)).toBe(false);
     expect(isKeeperTurn("parent", parent.turns[1]!, lookup)).toBe(true);
     expect(broughtNothingNew("parent", parent.turns[1]!, lookup)).toBe(true);
-    expect(originsOf("p", parent.turns[1]!, lookup)).toEqual([{ threadId: "c", at: 300_000, text: KEEP_WARM }]);
+    expect(originsOf("p", parent.turns[1]!, lookup)).toEqual([{ threadId: "c", at: 300_000, hash: textHash(KEEP_WARM.trim()) }]);
   });
 
   it("follows reports up any number of levels", () => {
@@ -259,7 +260,7 @@ describe("recognising bb's reports", () => {
 
   it("still recognises Cache Keeper's own message by its text, whoever bb says sent it", () => {
     const { turn } = parentOf({ initiator: "system", input: text(KEEP_WARM) });
-    expect(turn.inputs).toEqual([{ kind: "sent", text: KEEP_WARM.trim(), at: 3_000 }]);
+    expect(turn.inputs).toEqual([{ kind: "sent", hash: textHash(KEEP_WARM.trim()), expects: { kind: "not-finished" }, at: 3_000 }]);
   });
 
   it("warns once for each input of a request that has several", () => {
@@ -335,5 +336,36 @@ describe("reports on their way", () => {
     expect(reportPending(emptyTurnLog(), "c", child, ended + 120_000)).toBe(false);
     const parent = new History().turn(ended + 2_000, report([{ id: "c" }]), "ok").log();
     expect(reportPending(parent, "c", child, ended + 3_000)).toBe(false);
+  });
+});
+
+describe("the stored turn log", () => {
+  it("never exceeds 8 KB, however long the replies and however many the turns", () => {
+    const h = new History();
+    for (let i = 0; i < 60; i++) h.turn(i * 10_000, text(`message ${i} ${"x".repeat(3_000)}`), `reply ${"y".repeat(20_000)}`);
+    const log = h.log();
+    expect(Buffer.byteLength(JSON.stringify(log))).toBeLessThanOrEqual(TURN_LOG_BYTES);
+    expect(log.turns.every((t) => (t.reply?.length ?? 0) <= 120)).toBe(true);
+    expect(log.turns.at(-1)?.startedAt).toBe(590_100);
+  });
+
+  it("settles a turn's nothing-new verdict as it ends, so a cut reply still counts", () => {
+    const log = new History().turn(0, text(KEEP_WARM), NOT_FINISHED).log();
+    expect(log.turns[0]!.repliedNothingNew).toBe(true);
+    expect(log.turns[0]!.reply!.length).toBeLessThanOrEqual(120);
+    expect(broughtNothingNew("c", log.turns[0]!, () => log)).toBe(true);
+  });
+
+  it("reads a log stored with each send's text as the same turns", () => {
+    const stored = {
+      afterSeq: 9,
+      requests: {},
+      delivered: [],
+      turns: [{ startSeq: 1, startedAt: 0, endedAt: 1_000, status: "completed", reply: NOT_FINISHED, inputs: [{ kind: "sent", text: KEEP_WARM, at: 0 }] }],
+    } as unknown as Partial<TurnLog>;
+    const log = normalizeTurnLog(stored);
+    expect(log.turns[0]!.inputs).toEqual([{ kind: "sent", hash: textHash(KEEP_WARM.trim()), expects: { kind: "not-finished" }, at: 0 }]);
+    expect(broughtNothingNew("c", log.turns[0]!, () => log)).toBe(true);
+    expect(capTurnLog(log)).toBe(log);
   });
 });

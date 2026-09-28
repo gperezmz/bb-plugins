@@ -101,3 +101,12 @@ describe("top-level thread", () => {
     expect(topOf("x", (id) => parents[id])).toBe("y");
   });
 });
+
+describe("a top whose deadline passes with its leaf's", () => {
+  it("waits for the leaf's report rather than taking a keep-warm of its own in the same pass", () => {
+    const top = { id: "p", parentId: null, keepable: true, deadline: 102_100, lifetimeMs: 300_000, blocks: false, selfOff: false, inFlight: false, reportPending: false };
+    const leaf = { ...top, id: "c", parentId: "p", deadline: 100_000 };
+    const plan = planTree([top, leaf], 103_000);
+    expect(plan.due).toEqual([{ id: "c", tree: true }]);
+  });
+});

@@ -42,3 +42,14 @@ export function splitText(split: Record<string, number> | undefined, titleOf: (t
   if (parts.length === 0) return null;
   return parts.map(([id, usd]) => `${titleOf(id)} ${formatUsd(usd)}`).join(", ");
 }
+
+/**
+ * A page entry's cost as the page shows it: a keep-warm or check-in whose
+ * turn could not be measured shows its forecast, marked `≈`. A compaction's
+ * estimate is not marked; the page's footnote says compactions are estimated.
+ */
+export function costText(usd: number | null, estimated: boolean | undefined, kind: string): { text: string; estimate: boolean } {
+  if (usd === null) return { text: "–", estimate: false };
+  const estimate = kind !== "compaction" && estimated === true;
+  return { text: estimate ? `≈${formatUsd(usd)}` : formatUsd(usd), estimate };
+}

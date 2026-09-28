@@ -16,8 +16,27 @@ const CUT = 60;
 
 /** Cuts text to 60 characters, the last one "…". */
 export function cut(text: string): string {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length <= CUT ? oneLine : `${oneLine.slice(0, CUT - 1)}…`;
+  const trimmed = text.trim();
+  return trimmed.length <= CUT ? trimmed : `${trimmed.slice(0, CUT - 1)}…`;
+}
+
+/**
+ * Text from outside the plugin (a task id or description, a thread title, a
+ * tool name) as a message quotes it: cut to 60 characters, then with
+ * backslashes, quotes and line breaks escaped, so it cannot end the quote it
+ * sits in or start a line of its own.
+ */
+export function outside(text: string): string {
+  return escaped(cut(text));
+}
+
+/**
+ * A path from outside the plugin (a background command's output file) as a
+ * message quotes it: escaped as `outside` does, but not cut, since a cut path
+ * points nowhere.
+ */
+export function escaped(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, "\\n").replace(/\t/g, " ");
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -44,11 +63,11 @@ export const localClock: ClockFormat = (ms) => {
 function entry(item: WaitItem, clock: ClockFormat): string {
   switch (item.kind) {
     case "command":
-      return `background command ${item.id} ("${cut(item.description)}")`;
+      return `background command ${outside(item.id)} ("${outside(item.description)}")`;
     case "subagent":
-      return `background subagent ${item.id} ("${cut(item.description)}")`;
+      return `background subagent ${outside(item.id)} ("${outside(item.description)}")`;
     case "child":
-      return `child thread ${item.id} ("${cut(item.title)}")`;
+      return `child thread ${outside(item.id)} ("${outside(item.title)}")`;
     case "scheduled":
       return `a scheduled message due at ${clock(item.dueAt)}`;
     case "queued":
@@ -72,7 +91,7 @@ export function notFinishedReply(items: readonly WaitItem[], clock: ClockFormat 
 }
 
 export function checkedReply(taskIds: readonly string[]): string {
-  return `Checked ${joinAnd(taskIds)}, still running normally, nothing new. ${NOTHING_NEEDED}`;
+  return `Checked ${joinAnd(taskIds.map(outside))}, still running normally, nothing new. ${NOTHING_NEEDED}`;
 }
 
 /**
@@ -87,21 +106,22 @@ export function keepWarmText(items: readonly WaitItem[], folded: readonly CheckI
 }
 
 function paragraph(task: CheckInTask): string {
-  const name = `${task.id} ("${cut(task.description)}")`;
+  const name = `${outside(task.id)} ("${outside(task.description)}")`;
   if (task.kind === "command") {
     return task.reason === "stalled"
-      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check it's still moving? Its output is in ${task.outputFile}. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`
-      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${task.outputFile} for repeated errors or retries. If it's looping, stop it, fix it and carry on. If it's fine, leave it running.`;
+      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check on it? Its output is in ${escaped(task.outputFile)}.`
+      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${escaped(task.outputFile)} for repeated errors or retries.`;
   }
   return task.reason === "stalled"
-    ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${task.lastTool}. Can you check on it? If it's stuck, stop it, then fix the problem or do that part yourself and keep going. If it's fine, leave it.`
-    : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${task.lastTool}. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`;
+    ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${outside(task.lastTool)}. Can you check on it?`
+    : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${outside(task.lastTool)}. Can you check it's on track?`;
 }
 
 /** Commands before subagents, oldest first. */
 const orderTasks = (tasks: readonly CheckInTask[]) => [...tasks].sort((a, b) => (a.kind === b.kind ? a.startedAt - b.startedAt : a.kind === "command" ? -1 : 1));
 
-const checkedEnd = (tasks: readonly CheckInTask[]) => `If nothing is wrong, reply with exactly "${checkedReply(tasks.map((t) => t.id))}" ${CHECK_IN_TAIL}`;
+const checkedEnd = (tasks: readonly CheckInTask[]) =>
+  `${QUIET_ON_PURPOSE} If nothing is wrong, reply with exactly "${checkedReply(tasks.map((t) => t.id))}" ${CHECK_IN_TAIL}`;
 
 /** A check-in on stalled tasks: one paragraph each, then the reply it asks for. */
 export function checkInText(tasks: readonly CheckInTask[]): string {
@@ -110,10 +130,14 @@ export function checkInText(tasks: readonly CheckInTask[]): string {
 }
 
 const NOTHING_NEEDED = "Nothing needed from you.";
-const CHECK_IN_TAIL = "Otherwise tell me in a line what you found and what you did. Don't wait for me either way.";
-/** The endings of the merged version's messages, still recognised in older transcripts and events. */
+const QUIET_ON_PURPOSE = "A task that's quiet on purpose, such as a server or a watcher, is fine to leave running.";
+const CHECK_IN_TAIL = "Otherwise tell me in a line what you found. Don't wait for me either way.";
+/** The endings of earlier versions' messages, still recognised in older transcripts and events. */
 const OLD_KEEP_WARM_END = 'Nothing to do yet, just reply "OK".';
-const OLD_CHECK_IN_END = "Tell me in a line what you found. Don't wait for me either way.";
+const OLD_CHECK_IN_ENDS = [
+  "Otherwise tell me in a line what you found and what you did. Don't wait for me either way.",
+  "Tell me in a line what you found. Don't wait for me either way.",
+];
 
 export type SentKind = "keep-warm" | "check-in" | "compact";
 
@@ -121,8 +145,9 @@ export type SentKind = "keep-warm" | "check-in" | "compact";
 export function sentKind(text: string): SentKind | null {
   const t = text.trim();
   if (t === COMPACT_MESSAGE) return "compact";
-  if (t.startsWith("Still waiting on ") && (t.endsWith(OLD_KEEP_WARM_END) || t.endsWith(`${NOTHING_NEEDED}"`) || t.endsWith(CHECK_IN_TAIL))) return "keep-warm";
-  if (t.endsWith(CHECK_IN_TAIL) || t.endsWith(OLD_CHECK_IN_END)) return "check-in";
+  const checkInEnd = t.endsWith(CHECK_IN_TAIL) || OLD_CHECK_IN_ENDS.some((end) => t.endsWith(end));
+  if (t.startsWith("Still waiting on ") && (t.endsWith(OLD_KEEP_WARM_END) || t.endsWith(`${NOTHING_NEEDED}"`) || checkInEnd)) return "keep-warm";
+  if (checkInEnd) return "check-in";
   return null;
 }
 
@@ -134,21 +159,50 @@ export function isKeeperMessage(text: string): boolean {
 
 const unquote = (text: string) => text.trim().replace(/^["'`]+|["'`]+$/g, "").trim();
 
-/**
- * Whether `reply` is the nothing-new reply `sent` asked for. A "Checked"
- * reply is recognised by its shape: it starts "Checked", names every task
- * the message asked about and ends "nothing new. Nothing needed from you.".
- * A compaction has no reply to judge.
- */
-export function isNothingNewReply(sent: string, reply: string | null): boolean {
+/** The nothing-new reply a message asks for: none for a compaction, a "Not finished yet" one, or a "Checked" one naming these tasks. */
+export type Expectation = { kind: "compact" } | { kind: "not-finished" } | { kind: "checked"; ids: string[] };
+
+/** What reply `sent`, a message of Cache Keeper's, asks for when nothing is wrong; null for any other text. */
+export function expectationOf(sent: string): Expectation | null {
   const kind = sentKind(sent);
-  if (kind === "compact") return true;
-  if (kind === null || reply === null) return false;
-  const r = unquote(reply);
+  if (kind === null) return null;
+  if (kind === "compact") return { kind: "compact" };
   const asked = /reply with exactly "Checked (.+?), still running normally, nothing new\./.exec(sent);
-  if (asked !== null) {
-    const ids = asked[1]!.split(/, | and /);
-    return r.startsWith("Checked") && /nothing new\. Nothing needed from you\.$/.test(r) && ids.every((id) => r.includes(id));
-  }
+  return asked === null ? { kind: "not-finished" } : { kind: "checked", ids: asked[1]!.split(/, | and /) };
+}
+
+/**
+ * Whether `reply` meets what a message asked for. A "Checked" reply is
+ * recognised by its shape: it starts "Checked", names every task the message
+ * asked about and ends "nothing new. Nothing needed from you.". A compaction
+ * has no reply to judge.
+ */
+export function meetsExpectation(expected: Expectation, reply: string | null): boolean {
+  if (expected.kind === "compact") return true;
+  if (reply === null) return false;
+  const r = unquote(reply);
+  if (expected.kind === "checked") return r.startsWith("Checked") && /nothing new\. Nothing needed from you\.$/.test(r) && expected.ids.every((id) => r.includes(id));
   return r.startsWith("Not finished yet, still waiting on ") && r.endsWith(`. ${NOTHING_NEEDED}`);
+}
+
+/** Whether `reply` is the nothing-new reply `sent` asked for. */
+export function isNothingNewReply(sent: string, reply: string | null): boolean {
+  const expected = expectationOf(sent);
+  return expected !== null && meetsExpectation(expected, reply);
+}
+
+/**
+ * A short fingerprint of a message's text, by which a send is found again
+ * from bb's record of it without storing the text: two 32-bit FNV-1a hashes
+ * with different seeds, as 16 hex digits.
+ */
+export function textHash(text: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193);
+    b = Math.imul(b ^ c, 0x01000193) ^ (b >>> 15);
+  }
+  return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
 }

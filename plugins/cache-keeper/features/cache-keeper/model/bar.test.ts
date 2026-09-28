@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
-import { formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
+import { costText, formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
 
@@ -44,6 +44,7 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   line: 150_000,
   context: 300_000,
   window: 1_000_000,
+  windowKnown: true,
   model: "claude-opus-5-5",
   lifetime: "1h",
   callsPerMessage: 3,
@@ -64,7 +65,10 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   warmPlanned: false,
   warmSkipped: false,
   nextWarmAt: null,
+  warmNoPrice: false,
   counts: { threads: 0, commands: 0, subagents: 0, queued: 0, scheduled: 0 },
+  decision: null,
+  transcriptUnreadable: null,
   ...over,
 });
 
@@ -105,6 +109,7 @@ describe("the banner", () => {
     expect(bannerOf(waiting({ warmPlanned: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keeping cache warm", actions: ["skip-warm"] });
     expect(bannerOf(waiting(), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, letting cache go cold", actions: [] });
     expect(bannerOf(waiting({ warmSkipped: true }), 0)).toEqual({ text: "Skipped for this wait", actions: ["undo-warm"] });
+    expect(bannerOf(waiting({ warmNoPrice: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, not keeping cache warm: this model has no price", actions: [] });
   });
 
   it("says a waiting tree is not kept warm, with Keep warm, when its switch is off", () => {
@@ -162,6 +167,13 @@ describe("page entries", () => {
     expect(entryText("keep-warm", { threads: ["a", "b", "c"], folded: ["b0vq"] })).toBe("Kept warm, 3 threads, checked b0vq");
     expect(entryText("check-in", { tasks: [{ id: "b0vq" }, { id: "c1xx" }] })).toBe("Checked b0vq and c1xx");
     expect(entryText("compaction", { contextBefore: 300_000, contextAfter: 12_000 })).toBe("Compacted 300k → 12k");
+  });
+
+  it("marks a keep-warm or check-in shown at its forecast as an estimate, and never a compaction", () => {
+    expect(costText(0.1234, true, "keep-warm")).toEqual({ text: "≈$0.12", estimate: true });
+    expect(costText(0.1234, false, "keep-warm")).toEqual({ text: "$0.12", estimate: false });
+    expect(costText(0.5, true, "compaction")).toEqual({ text: "$0.50", estimate: false });
+    expect(costText(null, true, "check-in")).toEqual({ text: "–", estimate: false });
   });
 
   it("says how an entry's cost was split between threads", () => {

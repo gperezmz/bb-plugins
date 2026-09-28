@@ -101,10 +101,6 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
   const send = leaves.filter((n) => dues.get(n.id)! < next);
   // A send, or a report, still on its way is part of the last cycle.
   const holding = nodes.some((n) => n.inFlight || n.reportPending);
-  // A thread with a send or report on its way below it waits a little past its deadline for the report.
-  const climbing = (n: TreeNode) => n.reportPending || nodes.some((d) => (d.inFlight || d.reportPending) && ancestors(d).includes(n));
-  const ownAt = (n: TreeNode) => (climbing(n) ? n.deadline! + REPORT_GRACE_MS : n.deadline!);
-
   const sending = new Set<string>();
   if (!holding && now >= sendAt) {
     for (const n of send) {
@@ -113,6 +109,9 @@ export function planTree(nodes: readonly TreeNode[], now: number): TreePlan {
       sending.add(n.id);
     }
   }
+  // A thread with a send or report on its way below it, or a leaf being sent now, waits a little past its deadline for the report.
+  const climbing = (n: TreeNode) => n.reportPending || nodes.some((d) => (d.inFlight || d.reportPending || sending.has(d.id)) && ancestors(d).includes(n));
+  const ownAt = (n: TreeNode) => (climbing(n) ? n.deadline! + REPORT_GRACE_MS : n.deadline!);
   for (const n of candidates) {
     if (sending.has(n.id) || n.inFlight) continue;
     if (now >= ownAt(n)) due.push({ id: n.id, tree: false });

@@ -113,7 +113,7 @@ The keep-warms Cache Keeper sends at the same moment to the waiting threads at t
 _Avoid_: Family keep-warm, group ping, batch keep-warm
 
 **Check-in**:
-A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work, fix it if needed and carry on.
+A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work and report what it finds.
 _Avoid_: Nudge
 
 **Stalled task**:
@@ -149,5 +149,21 @@ A thread with a background command or subagent running, a queued or scheduled me
 _Avoid_: Blocked, on hold
 
 **Cost stop**:
-The point in an idle stretch past which Cache Keeper sends a thread no more keep-warms: when their real cost, with its share of the turns their reports force in the threads above, would pass that of rewriting its context cold. Check-ins on a stalled task still go.
+The point in an idle stretch past which Cache Keeper sends a thread no more keep-warms: when their cost, with its share of the turns their reports force in the threads above and each unmeasured one at its forecast, would pass that of rewriting its context cold. A thread with no price counts as past it.
 _Avoid_: Budget, cap
+
+**Agent tools**:
+The section of Cache Keeper's settings with one switch per agent tool it registers, each off until switched on, deciding which tools a thread's agent is offered.
+_Avoid_: Tool permissions, agent settings
+
+**Reconciliation check**:
+Cache Keeper's listing of every bb thread every 5 minutes, which corrects what a missed event left wrong; the only work it does over every thread.
+_Avoid_: Pass, poll
+
+**Fair floor**:
+The blind design's prototype measured on the same machine with Cache Keeper's own transport to bb and validation of bb's and the host's replies; the benchmark's targets are twice it.
+_Avoid_: Baseline, blind floor
+
+**Drive harness**:
+The throwaway bb, fake Anthropic API and scripts committed with Cache Keeper that drive it against real Claude Code threads on a clock the harness can move forward.
+_Avoid_: Test bb, e2e rig

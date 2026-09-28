@@ -51,6 +51,18 @@ export function cacheRatesOf(price: ModelPrice): { write5m: number; write1h: num
   };
 }
 
+/**
+ * The rates a keep-warm is charged at, or null when the price leaves out, or
+ * gives 0 for, the cache read or the cache write at the thread's lifetime:
+ * without both, what a keep-warm costs and where its cost stop falls are
+ * unknown, so none is sent.
+ */
+export function warmRatesOf(price: ModelPrice, lifetime: CacheLifetime): Rates | null {
+  const write = lifetime === "5m" ? price.cacheWrite : price.cacheWrite1h;
+  if (!(price.cacheRead! > 0) || !(write! > 0)) return null;
+  return { w: write!, r: price.cacheRead!, o: price.output };
+}
+
 /** A compaction reads the context warm and writes a summary: r·C + o·S. */
 export const compactionUsd = (rates: Rates, context: number) => rates.r * context + rates.o * SUMMARY_TOKENS;
 
