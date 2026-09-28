@@ -66,7 +66,7 @@ Once both have ended their turns, click the parent's composer chip and turn on *
 
 Both show straight away that the tree is kept warm:
 
-- the banner above each composer reads `Waiting on …, keeping cache warm`;
+- each composer chip shows the flame in place of the timer;
 - hovering either composer chip ends "While it waits, its cache is kept warm."
 
 The first keep-warm goes a minute before a thread's cache would go cold: about 4 minutes after its last request on a 5-minute cache, about 59 minutes after on a 1-hour cache. The popover's **Details** shows which lifetime the thread has. The keep-warm appears in the thread as a message from you, and on the Cache Keeper page's recent list. You needn't wait for it to carry on.

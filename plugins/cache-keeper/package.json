@@ -1,6 +1,6 @@
 {
   "name": "@gperezmz/bb-plugin-cache-keeper",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "bb": ">=0.44",
@@ -13,7 +13,8 @@
       "icon": "./icons/timer.svg",
       "experimental_icons": {
         "cache-keeper": "./icons/timer.svg",
-        "flame": "./icons/flame.svg"
+        "flame": "./icons/flame.svg",
+        "crossed-out-flame": "./icons/crossed-out-flame.svg"
       }
     },
     "server": "./server.ts",

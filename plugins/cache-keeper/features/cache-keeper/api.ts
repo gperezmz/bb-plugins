@@ -10,6 +10,7 @@ import type { RpcContract } from "@/src/server/rpc";
 export const PLUGIN_ID = "cache-keeper";
 export const TIMER_ICON = `${PLUGIN_ID}/cache-keeper`;
 export const FLAME_ICON = `${PLUGIN_ID}/flame`;
+export const CROSSED_OUT_FLAME_ICON = `${PLUGIN_ID}/crossed-out-flame`;
 
 export function useKeeperRpc() {
   return useRpc<RpcContract>();

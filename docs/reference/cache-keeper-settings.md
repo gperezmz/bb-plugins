@@ -13,7 +13,7 @@ Under Settings → Plugins → Cache Keeper, or `bb plugin config cache-keeper`.
 | No-output wait | `noOutputWait` | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a background command or subagent gets a check-in |
 | Fetch current prices daily | `fetchPrices` | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
 
-Compact when idle has no setting: it is switched on per thread, from its composer chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the composer chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
+Compact when idle has no setting: it is switched on per thread, from its composer chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the composer chip's popover (its switch on the tree top, its **Keep warm** on a thread below) or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
 
 ### Agent tools
 
@@ -25,9 +25,9 @@ Only on Claude Code threads.
 
 | Surface | Shows |
 |---|---|
-| Composer chip | Compaction only: the timer icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
+| Composer chip | Its text is compaction's: nothing when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Its icon is the timer, or, while the thread is [waiting with its turn ended](#while-a-thread-waits-with-its-turn-ended), the flame or the crossed-out flame. Hovering gives the full sentence, then whether the thread is kept warm while it waits. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
 | Composer chip's popover | See [the popover](#the-composer-chips-popover) |
-| Banner | One line above the composer, with no tooltip; see [the banner](#the-banner) |
+| Banner | One line above the composer, with no tooltip, only around a compaction; see [the banner](#the-banner) |
 | Sidebar row | The timer icon in place of the status glyph while a compaction is due; the flame while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
 
 **Compact now** compacts whatever the size, provided the thread is idle, waits on no answer and is not waiting.
@@ -38,29 +38,40 @@ From the top:
 
 | Block | Shows |
 |---|---|
-| **Keep warm while waiting** | Its switch, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never` |
+| **Keep warm while waiting** | Its switch, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never`. Under it, while the thread is [waiting with its turn ended](#while-a-thread-waits-with-its-turn-ended): **Skip this wait** while it is kept warm; `Skipped for this wait` and **Undo** after a skip; **Keep warm** on a thread below its tree top while its tree is not switched on, except under `Never` |
 | **Compact when idle** | Its switch |
 | Context bar | A bar from 0 to the context window, filled to the context now, with the compaction line on its handle. Drag the handle between the ten settings, step it with the arrow keys, or click its size to type one such as `500k` and press Enter. Hidden while bb has not reported the thread's window |
 | Status line | `Now {context} · {status}`, each side starting with a capital: `Working`, `Waiting on your answer`, `Compacting in {m}m`, `Compacted {time} ago`, `Skipped until this thread next runs`, `Waiting on background work`, `Idle, no line`, `Idle, under the line` or `Idle`. `{context}` is `unknown` until the transcript has been read |
 | **Details** | Closed when the popover opens; one click opens it. The model, cache lifetime and calls per message the line rests on, then "Why {line}?" with the dollar figures at the line, or, where no size up to the window gives one, "Why never?" with the same figures at the whole window and whether a lower setting would give a line. The figures are left out while the window is unknown or the model has no price |
 | Error | Only while the last action from the popover has failed: what went wrong |
 
+### While a thread waits with its turn ended
+
+The composer chip shows keep-warms only once a waiting thread's turn has ended, while it waits on no answer and no compaction is due, since keep-warms go only then. Otherwise, a waiting thread still working included, it shows the timer.
+
+| When | Chip's icon | Hover sentence ends | Popover offers |
+|---|---|---|---|
+| A keep-warm is planned for the thread or for a thread below it whose report will reach it | Flame | `While it waits, its cache is kept warm.` | **Skip this wait** |
+| `Never` | Crossed-out flame | `While it waits, its cache is not kept warm: "Keep caches warm while waiting" is set to Never in Settings.` | nothing |
+| The tree top's switch is off | Crossed-out flame | `… not kept warm: Keep warm while waiting is off for this tree.` | **Keep warm**, on a thread below its tree top |
+| After Skip this wait | Crossed-out flame | `… not kept warm: skipped for this wait.` | **Undo** |
+| The model has no price, or a price with no cache read or cache write rate, or one of 0 | Crossed-out flame | `… not kept warm: this model has no price.` | nothing |
+| None is planned: past the cost stop, after a Skip above, or with the cache already cold | Crossed-out flame | `… not kept warm: another keep-warm would cost more than a cold start.` | nothing |
+
+Where more than one row holds, the first one listed wins. Skip this wait stops keep-warms for this thread and every thread below it until the wait ends, and leaves the switch as it is; check-ins on a stalled task still go. **Keep warm** switches the tree top's switch on. Where the thread's cache went cold before you pressed it, keep-warms cannot warm it again: the chip shows the crossed-out flame until the next request, whoever makes it, warms the cache, and keep-warms go from then on.
+
+The sidebar never shows the crossed-out flame.
+
 ### The banner
 
-Shown only on an idle thread that waits on no answer, and never with command text or descriptions.
+Shown only on an idle thread that waits on no answer, and in only two states. It is drawn as bb draws its own status banners: the timer icon, the text in bb's muted colour, and text buttons. An action that fails shows its error on a line under the text.
 
 | When | Text | Buttons |
 |---|---|---|
 | A compaction is due | `Compacting in {n}m, before the cache goes cold` | **Skip**, **Compact now** |
-| After Skip on a compaction | `Skipped until this thread next runs` | **Undo** |
-| Waiting in a tree kept warm, and a keep-warm is planned for the thread or for a thread below it whose report will reach it | `Waiting on {counts}, keeping cache warm` | **Skip** |
-| Waiting in a tree kept warm, and none is planned: past the cost stop, after a Skip above, or with the cache already cold | `Waiting on {counts}, letting cache go cold` | none |
-| Waiting in a tree kept warm, after Skip on keep-warms | `Skipped for this wait` | **Undo** |
-| Waiting in a tree kept warm, and the model has no price, or a price with no cache read or cache write rate, or one of 0 | `Waiting on {counts}, not keeping cache warm: this model has no price` | none |
-| Waiting, with the tree top's switch off | `Waiting on {counts}, not keeping cache warm` | **Keep warm** |
-| Waiting, under `Never` | `Waiting on {counts}, keep-warms are off in Settings` | none |
+| After Skip on a compaction, while the thread is not waiting | `Skipped until this thread next runs` | **Undo** |
 
-`{counts}` is `N thread(s)`, `N command(s)`, `N subagent(s)`, `N queued message(s)` and `N scheduled message(s)`, in that order, leaving out kinds with none, joined as "A", "A and B" or "A, B and C". Skip on keep-warms stops them for this thread and every thread below it until the wait ends, and leaves the switch as it is; check-ins on a stalled task still go. **Keep warm** switches the tree top's switch on, from any thread in the tree, and the banner changes to `keeping cache warm`. Where the thread's cache went cold before you pressed it, keep-warms cannot warm it again: the banner reads `letting cache go cold` until the next request, whoever makes it, warms the cache, and keep-warms go from then on.
+A waiting thread shows no banner, under any "Keep caches warm while waiting" setting; the composer chip says whether it is kept warm.
 
 ## The Cache Keeper page
 

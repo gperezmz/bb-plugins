@@ -1,11 +1,13 @@
 /**
- * The banner above the composer: one line saying what Cache Keeper is about
- * to do, with the buttons that change it. Its text comes from `bannerOf`;
- * details are on the Cache Keeper page.
+ * The banner above the composer, drawn as bb draws its own status banners:
+ * shown only while a compaction is due or after one was skipped, with the
+ * buttons that change it. Its text comes from `bannerOf`; keep-warms are on
+ * the composer chip.
  */
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { bannerOf, type BannerAction } from "@/src/core/view";
-import { Button } from "@/components/ui/button";
-import { touches, useAction, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
+import { TIMER_ICON, touches, useAction, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
+import { BannerButton } from "./BannerButton";
 
 export function Banner() {
   const threadId = useComposerThreadId();
@@ -17,9 +19,6 @@ const LABELS: Record<BannerAction, string> = {
   "skip-compaction": "Skip",
   "compact-now": "Compact now",
   "undo-compaction": "Undo",
-  "skip-warm": "Skip",
-  "undo-warm": "Undo",
-  "keep-warm": "Keep warm",
 };
 
 function ThreadBanner({ threadId }: { threadId: string }) {
@@ -38,25 +37,23 @@ function ThreadBanner({ threadId }: { threadId: string }) {
         return rpc.call("skip", { threadId, what: "compaction", undo: true });
       case "compact-now":
         return rpc.call("compactNow", { threadId });
-      case "skip-warm":
-        return rpc.call("skip", { threadId, what: "warm", undo: false });
-      case "undo-warm":
-        return rpc.call("skip", { threadId, what: "warm", undo: true });
-      case "keep-warm":
-        return rpc.call("setKeepWarm", { threadId, on: true });
     }
   };
+  // The error line takes the row's bottom padding and gives it back below
+  // itself, so the banner grows by that line alone; its left inset is the
+  // icon and the gap, lining it up with the text.
   return (
-    <div role="status" className="flex flex-col gap-1 px-3 py-1.5 text-xs">
-      <div className="flex items-center gap-2">
+    <div role="status" className="px-3 text-xs text-muted-foreground">
+      <div className="flex min-h-8 items-center gap-1.5 py-1">
+        <Icon name={TIMER_ICON} fallback="Archive" className="size-3.5 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{banner.text}</span>
         {banner.actions.map((action) => (
-          <Button key={action} size="sm" variant={action === "compact-now" ? "outline" : "ghost"} onClick={() => void act(call(action))}>
+          <BannerButton key={action} strong={action === "compact-now"} onClick={() => void act(call(action))}>
             {LABELS[action]}
-          </Button>
+          </BannerButton>
         ))}
       </div>
-      {error !== null && <p className="text-destructive">{error}</p>}
+      {error !== null && <p className="-mt-1 pb-1 pl-5 text-destructive">{error}</p>}
     </div>
   );
 }
