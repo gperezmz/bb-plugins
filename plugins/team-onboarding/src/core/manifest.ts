@@ -374,17 +374,29 @@ export function parseManifest(text: string): ManifestParseResult {
   const data: unknown = doc.toJS({ maxAliasCount: 50 });
   const parsed = manifestSchema.safeParse(data);
   if (parsed.success) return { ok: true, manifest: parsed.data };
-  const issues = parsed.error.issues.slice(0, 50).map((issue) => {
-    const path = issue.path.filter(
-      (segment): segment is string | number =>
-        typeof segment === "string" || typeof segment === "number",
-    );
-    return {
-      message: describeIssue(issue, data, path),
-      path: formatPath(path),
-      line: lineOf(doc.contents, path, lineCounter),
-    };
-  });
+  const issues = parsed.error.issues
+    .flatMap((issue): ManifestIssue[] => {
+      const path = issue.path.filter(
+        (segment): segment is string | number =>
+          typeof segment === "string" || typeof segment === "number",
+      );
+      // One issue per unknown field, so each names the line its own field is on.
+      if (issue.code === "unrecognized_keys") {
+        return issue.keys.map((key) => ({
+          message: `unknown field "${key}"`,
+          path: formatPath(path),
+          line: lineOf(doc.contents, [...path, key], lineCounter),
+        }));
+      }
+      return [
+        {
+          message: describeIssue(issue, data, path),
+          path: formatPath(path),
+          line: lineOf(doc.contents, path, lineCounter),
+        },
+      ];
+    })
+    .slice(0, 50);
   return { ok: false, issues };
 }
 
@@ -401,9 +413,6 @@ function describeIssue(
         ? (parent as Record<string | number, unknown>)[key]
         : undefined;
     return `unknown ${String(key)} ${JSON.stringify(got)}`;
-  }
-  if (issue.code === "unrecognized_keys") {
-    return `unknown field${issue.keys.length > 1 ? "s" : ""} ${issue.keys.map((k) => `"${k}"`).join(", ")}`;
   }
   if (issue.code === "invalid_type" && path[path.length - 1] === "check") {
     return "check must be { bin, args, pattern }, not a shell string";
@@ -428,7 +437,10 @@ function formatPath(path: (string | number)[]): string {
     .join("");
 }
 
-/** The 1-based line of the deepest YAML node on `path` that exists. */
+/**
+ * The 1-based line of the deepest YAML node on `path` that exists: a field's
+ * own key rather than where its value starts, and a list item's first line.
+ */
 function lineOf(
   root: unknown,
   path: (string | number)[],
@@ -444,7 +456,6 @@ function lineOf(
       if (pair === undefined) break;
       best = rangeLine(pair.key as Node, lineCounter) ?? best;
       node = pair.value as Node | null;
-      best = rangeLine(node, lineCounter) ?? best;
     } else if (isSeq(node) && typeof segment === "number") {
       node = (node.items[segment] as Node | undefined) ?? null;
       if (node === null) break;
