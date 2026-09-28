@@ -95,6 +95,20 @@ export function requestOf(line: Json): (TranscriptRequest & { key: string }) | n
   };
 }
 
+/**
+ * Where a fold stands between reads, so the next read carries on from the
+ * byte it stopped at instead of from the start. It holds the facts and the
+ * little the fold needs to read on, not the requests themselves.
+ */
+export interface FoldState {
+  facts: TranscriptFacts;
+  lastKey: string | null;
+  /** Null before the first request or compaction. */
+  contextAt: number | null;
+  keeperTurn: boolean;
+  awaitingRequest: boolean;
+}
+
 /** Incremental fold over a transcript's lines. */
 export class TranscriptFold {
   private facts: TranscriptFacts = { ...EMPTY_FACTS };
@@ -110,12 +124,39 @@ export class TranscriptFold {
    */
   private awaitingRequest = false;
 
-  constructor(private readonly keepRecent = 200) {}
+  /**
+   * `toClock` puts a line's wall time on the plugin's clock; `from` carries
+   * on from where an earlier fold stood.
+   */
+  constructor(
+    private readonly keepRecent = 200,
+    private readonly toClock: (wall: number) => number = (wall) => wall,
+    from: FoldState | null = null,
+  ) {
+    if (from !== null) {
+      this.facts = { ...from.facts, lastCompaction: from.facts.lastCompaction === null ? null : { ...from.facts.lastCompaction } };
+      this.lastKey = from.lastKey;
+      this.contextAt = from.contextAt ?? -Infinity;
+      this.keeperTurn = from.keeperTurn;
+      this.awaitingRequest = from.awaitingRequest;
+    }
+  }
+
+  state(): FoldState {
+    return {
+      facts: this.result(),
+      lastKey: this.lastKey,
+      contextAt: Number.isFinite(this.contextAt) ? this.contextAt : null,
+      keeperTurn: this.keeperTurn,
+      awaitingRequest: this.awaitingRequest,
+    };
+  }
 
   add(line: Json): void {
     if (line.type === "system" && line.subtype === "compact_boundary") {
       const meta = rec(line.compactMetadata);
-      const at = toMs(line.timestamp);
+      const wall = toMs(line.timestamp);
+      const at = wall === null ? null : this.toClock(wall);
       const post = num(meta.postTokens);
       if (at !== null && post > 0) {
         this.facts.lastCompaction = { at, preTokens: typeof meta.preTokens === "number" ? meta.preTokens : null, postTokens: post };
@@ -132,8 +173,9 @@ export class TranscriptFold {
       this.awaitingRequest = !this.keeperTurn;
       return;
     }
-    const request = requestOf(line);
-    if (request === null) return;
+    const read = requestOf(line);
+    if (read === null) return;
+    const request = { ...read, at: this.toClock(read.at) };
     if (request.key !== this.lastKey) {
       if (this.awaitingRequest) {
         this.facts.userMessages += 1;

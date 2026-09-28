@@ -33,13 +33,36 @@ export const factsSchema = z
   })
   .strict();
 
+const cwdSlug = z.string().min(1).max(4096).refine((s) => !s.includes("/") && s !== "." && s !== "..");
+
+/** The plugin clock's jumps, so the host reads file and line times on the same clock; empty on wall time. */
+const jumps = z.array(z.object({ at: z.number(), offset: z.number() }).strict()).max(10_000);
+
+export const cursorSchema = z
+  .object({
+    cwdSlug,
+    ino: z.number(),
+    offset: z.number().int().min(0),
+    fold: z
+      .object({
+        facts: factsSchema,
+        lastKey: z.string().nullable(),
+        contextAt: z.number().nullable(),
+        keeperTurn: z.boolean(),
+        awaitingRequest: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const hostContract = defineRpcContract({
   transcript: {
     input: z
       .object({
         sessionId,
-        /** Also return the requests at or after this time. */
-        requestsSince: z.number().nullable(),
+        /** Where the last read stopped; null reads from the start. */
+        cursor: cursorSchema.nullable(),
+        jumps,
       })
       .strict(),
     output: z
@@ -47,8 +70,12 @@ export const hostContract = defineRpcContract({
         found: z.boolean(),
         /** The project directory's name: Claude Code's slug of the session's working directory. */
         cwdSlug: z.string().nullable(),
+        cursor: cursorSchema.nullable(),
         facts: factsSchema,
+        /** The requests in the bytes this call read. */
         requests: z.array(requestSchema),
+        bytesRead: z.number(),
+        unreadable: z.string().nullable(),
       })
       .strict(),
   },
@@ -56,9 +83,10 @@ export const hostContract = defineRpcContract({
     input: z
       .object({
         sessionId,
-        cwdSlug: z.string().min(1).max(4096).refine((s) => !s.includes("/") && s !== "." && s !== ".."),
+        cwdSlug,
         commands: z.array(taskId).max(64),
         subagents: z.array(taskId).max(64),
+        jumps,
       })
       .strict(),
     output: z
@@ -67,5 +95,10 @@ export const hostContract = defineRpcContract({
         subagents: z.array(z.object({ id: z.string(), lastTool: z.string().nullable(), changedAt: z.number().nullable() }).strict()),
       })
       .strict(),
+  },
+  /** Keeps the worker alive for `ms` more, replacing any earlier lease, while a deadline or stall check is pending on this machine. */
+  retain: {
+    input: z.object({ ms: z.number().int().min(0).max(60 * 60_000) }).strict(),
+    output: z.object({ until: z.number() }).strict(),
   },
 });

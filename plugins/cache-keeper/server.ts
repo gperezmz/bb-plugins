@@ -122,8 +122,11 @@ export default async function plugin(bb: BbPluginApi) {
       const rows = (await bb.sdk.threads.events.list({ threadId, order: "desc", limit: "1" })) as unknown as { seq: number | string }[];
       return rows.length === 0 ? 0 : Number(rows[0]!.seq);
     },
-    transcript: (hostId, sessionId, requestsSince) => host.call("transcript", { sessionId, requestsSince }, { hostId, timeoutMs: HOST_TIMEOUT_MS }),
-    tasks: (hostId, input) => host.call("tasks", input, { hostId, timeoutMs: HOST_TIMEOUT_MS }),
+    async transcript(hostId, sessionId, requestsSince) {
+      const read = await host.call("transcript", { sessionId, cursor: null, jumps: [] }, { hostId, timeoutMs: HOST_TIMEOUT_MS });
+      return { ...read, requests: requestsSince === null ? [] : read.requests.filter((r) => r.at >= requestsSince) };
+    },
+    tasks: (hostId, input) => host.call("tasks", { ...input, jumps: [] }, { hostId, timeoutMs: HOST_TIMEOUT_MS }),
     async send(threadId, text, marker) {
       await bb.sdk.threads.send({
         threadId,
