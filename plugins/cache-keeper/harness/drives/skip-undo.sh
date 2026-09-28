@@ -11,8 +11,8 @@
 # history of the threads and `bb cache-keeper status --json`.
 source "$(dirname "$0")/lib.sh"
 drive skip-undo
-config keepWarm "Only threads switched on"
-config stalledCheckIns false
+config '{"keepWarm":"switched"}'
+config '{"checkIns":false}'
 skip() { rpc skip "{\"threadId\":\"$1\",\"what\":\"$2\",\"undo\":$3}" > /dev/null; }
 
 t=$(spawn "drive: skip compaction" "Hello")

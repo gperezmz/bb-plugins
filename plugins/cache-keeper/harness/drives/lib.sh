@@ -140,8 +140,9 @@ rpc() {
   rm -f "$input"
 }
 
-# config <key> <value>: sets one of Cache Keeper's settings.
-config() { bb plugin config cache-keeper set "$1" "$2" > /dev/null; }
+# config <json>: changes Cache Keeper's settings as its settings page does,
+# e.g. config '{"checkIns":true}'.
+config() { rpc setSettings "$1" > /dev/null; }
 
 # eq <actual> <expected>: equality, printing both when they differ.
 eq() {

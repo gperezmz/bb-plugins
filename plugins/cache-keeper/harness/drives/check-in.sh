@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# A check-in after the no-output wait: with "Check in on stalled background
-# work" on and a 10-minute wait, a thread whose background command prints
+# A check-in after the no-output wait: with "Check on stalled tasks" on and
+# a 10-minute wait, a thread whose background command prints
 # nothing gets no check-in at 9.5 minutes and one at 10; the next waits twice
 # as long, 20 minutes. The check-in asks the agent to check the task and
 # says a task quiet on purpose is fine; the agent's nothing-new reply is the
@@ -8,10 +8,10 @@
 # `bb thread output` and `bb cache-keeper status --json`.
 source "$(dirname "$0")/lib.sh"
 drive check-in
-config keepWarm "Only threads switched on"
-config noOutputWait "10 min"
-config stalledCheckIns true
-check "bb holds the settings" eq "$(bb plugin config cache-keeper | grep -cE '^(stalledCheckIns = true|noOutputWait = "10 min")')" 2
+config '{"keepWarm":"switched"}'
+config '{"waitMs":600000}'
+config '{"checkIns":true}'
+check "the plugin holds the settings" eq "$(rpc settings | jq -c '[.checkIns, .waitMs]')" '[true,600000]'
 offset=$(clock_offset)
 
 t=$(spawn "drive: check-in" "Start the deploy. [fake: background]")
@@ -47,5 +47,5 @@ check "a second check-in 20 minutes on, twice the wait" wait_sent "$t" "$CHECK_I
 # `status` keeps the time of the first of a run of like decisions, so bb's record times this one.
 check "bb recorded it within 3 s of twice the wait" within $(($(sent_at "$t" "$CHECK_IN" 2) - first - 1200000)) 0 3000
 
-config stalledCheckIns false
+config '{"checkIns":false}'
 finish
