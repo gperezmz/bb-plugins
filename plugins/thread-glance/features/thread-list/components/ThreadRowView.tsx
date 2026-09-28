@@ -19,12 +19,12 @@ import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
-import { pluginStatusWins } from "../model/state";
+import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { ChipStateGlyph, chipToneClass, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
+import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -527,14 +527,13 @@ export const ThreadRowView = memo(function ThreadRowView({
               onKeyDown={(event) => event.stopPropagation()}
               className={cn(
                 "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                // A state keeps its colour through dimming and hover.
-                chip.state === null
+                chip.flag === null
                   ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
-                  : chipToneClass(chip.state),
+                  : TONE_CLASS[chipTone(chip.flag)],
               )}
             >
-              {chip.state !== null ? <ChipStateGlyph flag={chip.state} /> : null}
-              {chip.count}
+              {chip.flag !== null ? <ChipStateGlyph flag={chip.flag} /> : null}
+              {chip.count > 0 ? chip.count : null}
               <Icon
                 name={ICONS.expand}
                 aria-hidden

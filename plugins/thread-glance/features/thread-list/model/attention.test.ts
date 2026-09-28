@@ -201,7 +201,7 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
   it("needs attention for a child that waits or failed orphaned, whatever the chip shows", () => {
     const view = (children: ReturnType<typeof makeThread>[], m = parent({ lastReadAt: T0 + 50 })) => viewOf({ threads: [m, ...children] });
     const chipState = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) =>
-      threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!.chip?.state ?? null;
+      threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!.chip?.flag ?? null;
     const child = (overrides: object) => makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1, ...overrides });
     const m = parent({ lastReadAt: T0 + 50 });
     expect(attentionRootIds({ threads: [m, child({ hasPendingInteraction: true })] })).toEqual(["m"]);
@@ -221,8 +221,8 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     ];
     const rows = threadRows(viewOf({ threads, prefs: { expandedChildren: ["m"] } }));
     const child = rows.find((row) => row.info.thread.id === "c")!;
-    expect(child.chip).toEqual({ count: 1, expanded: false, state: "working" });
-    expect(child.chip?.state).toBe("working");
+    expect(child.chip).toEqual({ count: 1, expanded: false, flag: "working" });
+    expect(child.chip?.flag).toBe("working");
     // Its children wait for its chip, or for an auto-reveal.
     expect(rows.map((row) => row.info.thread.id)).toEqual(["m", "c"]);
     const revealed = viewOf({ threads, prefs: { expandedChildren: ["m"] }, targets: new Map([["g", "reveal" as const]]) });

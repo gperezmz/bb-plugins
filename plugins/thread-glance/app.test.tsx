@@ -978,11 +978,69 @@ describe("the glyph is the thread, the children chip is its children", () => {
     expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent");
   });
 
-  it("shows a hidden child waiting on you", async () => {
+  it("shows a hidden child waiting on you with no number when no child is visible", async () => {
     render([parent(), child("hh", { hasPendingInteraction: true, isHidden: true })]);
     const seen = await parentRow();
     expect(seen.chipIcon).toBe("CircleQuestion");
-    expect(seen.chip!.getAttribute("aria-label")).toBe("Show 0 child threads of Parent, waiting on you below");
+    expect(seen.chip!.textContent).toBe("");
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show hidden child threads of Parent, waiting on you below");
+  });
+
+  it("keeps a chip with no number for a hidden child's failure that needs no attention", async () => {
+    render([parent(working), child("hh", { queuedWork: "failed", isHidden: true })]);
+    const seen = await parentRow();
+    expect(seen.chipIcon).toBe("AlertTriangle");
+    expect(seen.chip!.className).toContain("text-destructive");
+    expect(seen.chip!.textContent).toBe("");
+    expect(seen.chip!.getAttribute("aria-label")).toBe("Show hidden child threads of Parent, queued message failed below");
+  });
+
+  it("shows a queued message failure and an offline machine below with their own glyphs", async () => {
+    render([parent(), child("c", { queuedWork: "failed" })]);
+    expect((await parentRow()).chipIcon).toBe("AlertTriangle");
+    cleanup();
+    render([parent(), child("c", { status: "active", runtimeStatus: "waiting-for-host" })]);
+    const offline = await parentRow();
+    expect(offline.chipIcon).toBe("CloudOff");
+    expect(offline.chip!.className).toContain("text-attention");
+    expect(offline.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, machine offline below");
+  });
+
+  // Every other own state, beside a working child: the glyph and row label are the parent's alone.
+  const future = Date.now() + 86_400_000;
+  const OTHER_STATES: [string, Overrides, object][] = [
+    ["Queued message failed to send", { queuedWork: "failed" }, {}],
+    ["Machine offline", { status: "active", runtimeStatus: "waiting-for-host" }, {}],
+    ["Background agent running", { activity: { backgroundAgents: 1 } }, {}],
+    ["Scheduled message", { queuedWork: "waiting" }, { rpc: { ...rpc(), listScheduled: () => ({ status: "ready" as const, scheduled: { p: future } }) } }],
+    ["Message waiting to send", { queuedWork: "waiting" }, {}],
+    ["Unsubmitted draft", {}, { sidebarDraftThreadIds: ["p"] }],
+  ];
+  for (const [own, overrides, extra] of OTHER_STATES) {
+    it(`parent in "${own}" draws the same glyph and label with a working child`, async () => {
+      render([parent(overrides)], { extra });
+      const alone = await parentRow();
+      expect(alone.label).toMatch(new RegExp(`^Open Parent — ${own}[;,]`));
+      cleanup();
+      render([parent(overrides), child("c", working)], { extra });
+      const seen = await parentRow();
+      expect(seen.column).toBe(alone.column);
+      expect(seen.label).toBe(alone.label);
+      expect(seen.chipIcon).toBe("Loading");
+    });
+  }
+
+  it("keeps a plugin row status set on the parent as the parent's own", async () => {
+    const extra = { sidebarRowStatuses: { p: { icon: "Fire", label: "Keeping the cache warm", tone: "running" } } };
+    render([parent()], { extra });
+    const alone = await parentRow();
+    cleanup();
+    render([parent(), child("c", finishedUnread)], { extra });
+    const seen = await parentRow();
+    expect(seen.column).toBe(alone.column);
+    expect(seen.label).toBe(alone.label);
+    expect(seen.column).toContain('data-icon="Fire"');
+    expect(seen.chipIcon).toBe("dot");
   });
 
   it("shows the most urgent of children in different states", async () => {

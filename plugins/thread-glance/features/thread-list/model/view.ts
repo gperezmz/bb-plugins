@@ -31,15 +31,16 @@ export const KEEP_QUIET_CHILDREN = 3;
 
 /** The children chip: the count of a parent's direct children and its chevron, after the state of its descendants. */
 export interface Chip {
-  /** Direct children opening it shows, hidden ones left out. */
+  /** Direct children opening it shows, hidden ones left out; 0 draws no number. */
   count: number;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
   /**
    * The most urgent state among the descendants at any depth, open or
-   * collapsed, or null for none: its glyph leads the chip and colours it.
+   * collapsed, or null for none: its glyph leads the chip and colours it, and
+   * keeps that colour through dimming and hover.
    */
-  state: Flag | null;
+  flag: Flag | null;
 }
 
 export interface ThreadRow {
@@ -404,13 +405,13 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Tr
   return rows;
 }
 
-/** The children chip of a parent, or null when opening it would show nothing and it has no state to show. */
+/** The children chip of a parent, or null when it would show nothing. */
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
   const { childCount: count, chipFlags } = subtreeOf(context, info.thread.id);
-  const state = mostUrgent(chipFlags);
+  const flag = mostUrgent(chipFlags);
   // A hidden child's failure that needs no attention has no row, yet the chip still shows it.
-  if (count === 0 && state === null && eligibleChildren(context, info.thread.id).length === 0) return null;
-  return { count, expanded, state };
+  if (count === 0 && flag === null && eligibleChildren(context, info.thread.id).length === 0) return null;
+  return { count, expanded, flag };
 }
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */

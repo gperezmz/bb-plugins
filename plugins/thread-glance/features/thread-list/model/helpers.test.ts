@@ -231,13 +231,13 @@ describe("row indent", () => {
 });
 
 describe("children chip tone", () => {
-  it("takes each state's colour: attention for waits on you and offline, red for failures, the accent for working and unread", () => {
+  it("takes each state glyph's tone, and the accent for unread", () => {
     expect(chipTone("waits-on-you")).toBe("attention");
     expect(chipTone("unread-failed")).toBe("destructive");
     expect(chipTone("queue-failed")).toBe("destructive");
     expect(chipTone("offline")).toBe("attention");
     expect(chipTone("working")).toBe("working");
-    expect(chipTone("unread")).toBe("unread");
+    expect(chipTone("unread")).toBe("working");
   });
 });
 

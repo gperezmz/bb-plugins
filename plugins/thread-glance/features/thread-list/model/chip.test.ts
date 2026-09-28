@@ -26,7 +26,7 @@ describe("a parent's status glyph", () => {
 });
 
 describe("the children chip's state", () => {
-  const chipState = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").chip?.state ?? null;
+  const chipState = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").chip?.flag ?? null;
 
   it("takes the first of waits on you, failed, queued message failed, offline, working, unread among the descendants", () => {
     const every = [
@@ -49,12 +49,12 @@ describe("the children chip's state", () => {
     expect(chipState(child("c"))).toBeNull();
     expect(chipState(child("c", { status: "error" }))).toBeNull();
     expect(chipState(child("c", { queuedWork: "waiting" }))).toBeNull();
-    expect(row({ threads: [parent] }, "p").chip?.state ?? null).toBeNull();
+    expect(row({ threads: [parent] }, "p").chip?.flag ?? null).toBeNull();
   });
 
   it("reads descendants at any depth", () => {
     expect(chipState(child("c"), child("g", { hasPendingInteraction: true }, "c"))).toBe("waits-on-you");
-    expect(row({ threads: [parent, child("c"), child("g", working, "c")], prefs: { expandedChildren: ["p"] } }, "c").chip?.state ?? null).toBe("working");
+    expect(row({ threads: [parent, child("c"), child("g", working, "c")], prefs: { expandedChildren: ["p"] } }, "c").chip?.flag ?? null).toBe("working");
   });
 
   it("leaves archived descendants out", () => {
@@ -87,8 +87,8 @@ describe("the children chip", () => {
   ];
 
   it("counts the direct children, hidden ones left out, not every descendant", () => {
-    expect(row({ threads }, "p").chip).toEqual({ count: 5, expanded: false, state: null });
-    expect(row({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } }, "a").chip).toEqual({ count: 2, expanded: false, state: null });
+    expect(row({ threads }, "p").chip).toEqual({ count: 5, expanded: false, flag: null });
+    expect(row({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } }, "a").chip).toEqual({ count: 2, expanded: false, flag: null });
   });
 
   it("opens onto its direct children only, whose rows and N more child threads add up to its number", () => {
@@ -116,6 +116,6 @@ describe("the children chip", () => {
 
   it("carries its children's most urgent state, and no tint or harness of theirs", () => {
     const chip = row({ threads: [parent, child("c", { hasPendingInteraction: true, providerId: "codex" })] }, "p").chip!;
-    expect(chip).toEqual({ count: 1, expanded: false, state: "waits-on-you" });
+    expect(chip).toEqual({ count: 1, expanded: false, flag: "waits-on-you" });
   });
 });

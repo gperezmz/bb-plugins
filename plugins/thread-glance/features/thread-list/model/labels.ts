@@ -37,11 +37,14 @@ const CHIP_STATE_TEXT: Readonly<Record<Flag, string>> = {
   unread: "unread below",
 };
 
-/** "Show 2 child threads of Release, working below". */
+/**
+ * "Show 2 child threads of Release, working below"; with no visible child,
+ * "Show hidden child threads of Release, waiting on you below".
+ */
 export function chipLabel(title: string, chip: Chip): string {
-  const noun = chip.count === 1 ? "child thread" : "child threads";
-  const state = chip.state === null ? "" : `, ${CHIP_STATE_TEXT[chip.state]}`;
-  return `${chip.expanded ? "Collapse" : "Show"} ${chip.count} ${noun} of ${title}${state}`;
+  const children = chip.count === 0 ? "hidden child threads" : `${chip.count} ${chip.count === 1 ? "child thread" : "child threads"}`;
+  const state = chip.flag === null ? "" : `, ${CHIP_STATE_TEXT[chip.flag]}`;
+  return `${chip.expanded ? "Collapse" : "Show"} ${children} of ${title}${state}`;
 }
 
 /** The text and accessible name of an open tree's fold row. */

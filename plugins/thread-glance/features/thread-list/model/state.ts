@@ -289,22 +289,10 @@ export function mostUrgent(flags: ReadonlySet<Flag>): Flag | null {
   return FLAG_ORDER.find((flag) => flags.has(flag)) ?? null;
 }
 
-/** The colour of a children chip's glyph, count and chevron, by the state it shows. */
-export type ChipTone = "attention" | "destructive" | "working" | "unread";
-
-export function chipTone(flag: Flag): ChipTone {
-  switch (flag) {
-    case "waits-on-you":
-    case "offline":
-      return "attention";
-    case "unread-failed":
-    case "queue-failed":
-      return "destructive";
-    case "working":
-      return "working";
-    case "unread":
-      return "unread";
-  }
+/** The tone a children chip takes for a state: its glyph's, and the unread dot's accent for unread. */
+export function chipTone(flag: Flag): Tone {
+  const tone = FLAG_GLYPHS[flag].tone;
+  return tone === "none" ? "working" : tone;
 }
 
 export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {

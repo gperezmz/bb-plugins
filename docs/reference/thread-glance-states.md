@@ -88,7 +88,13 @@ When a descendant, at any depth, is in one of these states, the chip leads with 
 | 5 | Working | Spinner, still under reduced motion | Blue |
 | 6 | Unread | Filled dot | Blue |
 
-Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline; a parent whose only descendants are hidden keeps a chip, numbered 0, while one of them shows a state. The chip looks the same whether the tree is open or closed. Another plugin's row status stays on the thread it is set on and never reaches a chip. The chip's screen-reader label gives the number and names the state without counting it, for example "Show 2 child threads of Release, working below", since the number counts direct children and the state can come from any depth. Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
+Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline.
+
+A parent whose only children are hidden keeps its chip while one of them shows a state, drawn with the state's glyph and the chevron but no number.
+
+The chip looks the same whether the tree is open or closed. Another plugin's row status stays on the thread it is set on and never reaches a chip.
+
+The chip's screen-reader label gives the number and names the state without counting it, for example "Show 2 child threads of Release, working below", since the number counts direct children and the state can come from any depth. With no number, it reads "Show hidden child threads of Release, waiting on you below". Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
 
 ## The settled fold
 
