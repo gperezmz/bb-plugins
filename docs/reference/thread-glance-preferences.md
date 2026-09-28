@@ -47,7 +47,7 @@ Choosing a **Sort by** field starts it in its own direction: newest first for da
 | `collapsedThreadSections` | `[]` | `section:<id>` keys whose group is collapsed |
 | `collapsedMachines` | `[]` | Machine ids whose group is collapsed |
 | `collapsedEnvironments` | `[]` | Environment ids whose folder row is collapsed |
-| `expandedOlder` | `[]` | Group ids and parent thread ids whose `N older` or `N more child threads` row you opened |
+| `expandedOlder` | `[]` | Group ids and parent thread ids whose fold you opened: a group's `N older` row, or the `N more child threads` row of a tree whose children chip is already open |
 | `expandedChildren` | `[]` | Parent thread ids whose chip you opened |
 
 A stored value that does not fit its key is ignored and the default used. The `nesting` and `collapsedChildren` keys are gone: a saved `nesting: "tree"` is no longer read, so the list draws children behind chips, and `bb thread-glance prefs set nesting tree` fails with `unknown_preference`.
