@@ -132,7 +132,7 @@ wait_sent() {
 }
 
 # rpc <method> [json input]: calls one of Cache Keeper's RPC methods, as its
-# banner and Settings do, and prints the answer.
+# chip, banner and Settings do, and prints the answer.
 rpc() {
   local input=$run/tmp/rpc-input.$$.json
   printf '%s' "${2:-null}" > "$input"

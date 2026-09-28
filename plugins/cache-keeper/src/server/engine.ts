@@ -2192,7 +2192,7 @@ const stagedFallback = (cycle: StagedKeepWarm, p: StagedKeepWarm["pending"][numb
 /** How far past its own deadline a staged leaf may wait for the report from below; the deadline leaves a minute. */
 const STAGED_GRACE_MS = 30_000;
 
-/** bb counts a background task before its events are read; the banner takes whichever count is higher. */
+/** bb counts a background task before its events are read; the page takes whichever count is higher. */
 function withBbCounts(counts: WaitCounts, thread: Known): WaitCounts {
   return { ...counts, commands: Math.max(counts.commands, thread.commands), subagents: Math.max(counts.subagents, thread.agents) };
 }

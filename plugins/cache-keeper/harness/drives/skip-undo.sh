@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Skip and Undo, as the banner presses them (the plugin's `skip` RPC):
+# Skip and Undo, as the banner and the chip's popover press them (the
+# plugin's `skip` RPC):
 #   a compaction skipped is not sent at its deadline, with "skipped" as the
 #   reason, and the Skip ends when the thread next runs; one skipped and
 #   undone is sent at its deadline;
