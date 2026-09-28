@@ -150,21 +150,50 @@ export function isKeeperMessage(text: string): boolean {
 
 const unquote = (text: string) => text.trim().replace(/^["'`]+|["'`]+$/g, "").trim();
 
-/**
- * Whether `reply` is the nothing-new reply `sent` asked for. A "Checked"
- * reply is recognised by its shape: it starts "Checked", names every task
- * the message asked about and ends "nothing new. Nothing needed from you.".
- * A compaction has no reply to judge.
- */
-export function isNothingNewReply(sent: string, reply: string | null): boolean {
+/** The nothing-new reply a message asks for: none for a compaction, a "Not finished yet" one, or a "Checked" one naming these tasks. */
+export type Expectation = { kind: "compact" } | { kind: "not-finished" } | { kind: "checked"; ids: string[] };
+
+/** What reply `sent`, a message of Cache Keeper's, asks for when nothing is wrong; null for any other text. */
+export function expectationOf(sent: string): Expectation | null {
   const kind = sentKind(sent);
-  if (kind === "compact") return true;
-  if (kind === null || reply === null) return false;
-  const r = unquote(reply);
+  if (kind === null) return null;
+  if (kind === "compact") return { kind: "compact" };
   const asked = /reply with exactly "Checked (.+?), still running normally, nothing new\./.exec(sent);
-  if (asked !== null) {
-    const ids = asked[1]!.split(/, | and /);
-    return r.startsWith("Checked") && /nothing new\. Nothing needed from you\.$/.test(r) && ids.every((id) => r.includes(id));
-  }
+  return asked === null ? { kind: "not-finished" } : { kind: "checked", ids: asked[1]!.split(/, | and /) };
+}
+
+/**
+ * Whether `reply` meets what a message asked for. A "Checked" reply is
+ * recognised by its shape: it starts "Checked", names every task the message
+ * asked about and ends "nothing new. Nothing needed from you.". A compaction
+ * has no reply to judge.
+ */
+export function meetsExpectation(expected: Expectation, reply: string | null): boolean {
+  if (expected.kind === "compact") return true;
+  if (reply === null) return false;
+  const r = unquote(reply);
+  if (expected.kind === "checked") return r.startsWith("Checked") && /nothing new\. Nothing needed from you\.$/.test(r) && expected.ids.every((id) => r.includes(id));
   return r.startsWith("Not finished yet, still waiting on ") && r.endsWith(`. ${NOTHING_NEEDED}`);
+}
+
+/** Whether `reply` is the nothing-new reply `sent` asked for. */
+export function isNothingNewReply(sent: string, reply: string | null): boolean {
+  const expected = expectationOf(sent);
+  return expected !== null && meetsExpectation(expected, reply);
+}
+
+/**
+ * A short fingerprint of a message's text, by which a send is found again
+ * from bb's record of it without storing the text: two 32-bit FNV-1a hashes
+ * with different seeds, as 16 hex digits.
+ */
+export function textHash(text: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193);
+    b = Math.imul(b ^ c, 0x01000193) ^ (b >>> 15);
+  }
+  return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
 }

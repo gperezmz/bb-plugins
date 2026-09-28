@@ -604,7 +604,7 @@ export class Engine {
   /** Charges a Cache Keeper turn in `threadId` to the messages behind it, and to the stretches they were sent in. */
   private charge(threadId: string, turn: Turn, usd: number, lookup: (id: string) => TurnLog | null): void {
     const sends = originsOf(threadId, turn, lookup)
-      .map((ref) => this.deps.store.findSend(ref.threadId, ref.text, ref.at))
+      .map((ref) => this.deps.store.findSend(ref.threadId, ref.hash, ref.at))
       .filter((s) => s !== null);
     if (sends.length === 0) return;
     const share = usd / sends.length;

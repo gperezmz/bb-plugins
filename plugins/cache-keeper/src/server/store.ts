@@ -6,8 +6,8 @@
  */
 import type { CheckInReason, TaskClock } from "../core/checkins";
 import { newIdleStretch, type IdleStretch } from "../core/keeper";
-import type { SentKind } from "../core/messages";
-import { emptyTurnLog, type TurnLog } from "../core/turns";
+import { textHash, type SentKind } from "../core/messages";
+import { emptyTurnLog, normalizeTurnLog, type TurnLog } from "../core/turns";
 import type { TaskKind } from "../core/waiting";
 
 /** The subset of better-sqlite3's Database the store uses. */
@@ -268,12 +268,12 @@ export class Store {
     return row === undefined ? null : sendOf(row);
   }
 
-  /** The send to `threadId` with `text` that bb recorded as a request at `requestedAt`: the latest one made just before. */
-  findSend(threadId: string, text: string, requestedAt: number): SendRecord | null {
+  /** The send to `threadId` whose text has hash `hash` that bb recorded as a request at `requestedAt`: the latest one made just before. */
+  findSend(threadId: string, hash: string, requestedAt: number): SendRecord | null {
     const rows = this.db
       .prepare("SELECT id, thread_id, at, history_id, record FROM sends WHERE thread_id = ? AND at BETWEEN ? AND ? ORDER BY at DESC")
       .all(threadId, requestedAt - 10 * 60_000, requestedAt + 5_000) as SendRow[];
-    return rows.map(sendOf).find((s) => s.text === text) ?? null;
+    return rows.map(sendOf).find((s) => textHash(s.text.trim()) === hash) ?? null;
   }
 
   /** Adds `usd` of a turn in `incurredIn` to a send, and to its history row's total and split. */
@@ -298,7 +298,7 @@ export class Store {
 
   turnLog(threadId: string): TurnLog | null {
     const row = this.db.prepare("SELECT record FROM turn_logs WHERE thread_id = ?").get(threadId) as { record: string } | undefined;
-    return row === undefined ? null : { ...emptyTurnLog(), ...parse<Partial<TurnLog>>(row.record, {}) };
+    return row === undefined ? null : normalizeTurnLog({ ...emptyTurnLog(), ...parse<Partial<TurnLog>>(row.record, {}) });
   }
 
   putTurnLog(threadId: string, log: TurnLog): void {

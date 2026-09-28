@@ -20,8 +20,11 @@
  *
  * bb 0.44 does not carry a send's `pluginSubmission` into its events, so a
  * send is recognised by its text: Cache Keeper's messages are fixed templates.
+ * The log keeps a send's hash and the reply it asked for, not its text, and a
+ * turn's reply only as far as it needs: whether the turn brought nothing new is
+ * settled as the turn ends. A stored log never exceeds 8 KB.
  */
-import { isNothingNewReply, sentKind } from "./messages";
+import { expectationOf, meetsExpectation, textHash, type Expectation } from "./messages";
 
 /** An event as `threads.events.list` gives it. */
 export interface BbEvent {
@@ -56,8 +59,8 @@ export type ReportKind = (typeof REPORT_KINDS)[number];
 const OTHER_SYSTEM_KINDS = ["ownership-assigned", "ownership-removed", "tool-result-delivered", "unlabeled"] as const;
 
 export type TurnInput =
-  /** A message Cache Keeper sent. */
-  | { kind: "sent"; text: string; at: number }
+  /** A message Cache Keeper sent: its text's hash, and the reply it asked for when nothing is wrong. */
+  | { kind: "sent"; hash: string; expects: Expectation; at: number }
   /** bb's report of child turns, requested at `at`; `report` is absent on reports stored before it was read. */
   | { kind: "report"; report?: ReportKind; lines: ReportLine[]; at: number }
   /** Anything else: a message someone typed, another thread's, a notice that reports no child. */
@@ -70,8 +73,10 @@ export interface Turn {
   /** bb's end status: completed, failed or interrupted; null while running. */
   status: string | null;
   inputs: TurnInput[];
-  /** The last agent message of the turn. */
+  /** The start of the turn's last agent message, cut to `REPLY_CHARS`; kept only until the turn ends. */
   reply: string | null;
+  /** Settled as the turn ends: it completed and every message of Cache Keeper's it took got the nothing-new reply it asked for. */
+  repliedNothingNew?: boolean;
 }
 
 /** What the fold keeps of a thread's history between reads; stored, so a restart reads on from it. */
@@ -87,8 +92,14 @@ export interface TurnLog {
 
 export const emptyTurnLog = (afterSeq = 0): TurnLog => ({ afterSeq, requests: {}, turns: [], delivered: [] });
 
-const KEEP_TURNS = 40;
-const KEEP_DELIVERED = 100;
+const KEEP_TURNS = 16;
+const KEEP_DELIVERED = 40;
+/** The longest reply a nothing-new check reads: longer than any nothing-new reply for a thread waiting on 64 things. */
+const REPLY_CHARS = 8_000;
+/** How much of an ended turn's reply is kept once its nothing-new verdict is settled. */
+const ENDED_REPLY_CHARS = 120;
+/** The most a stored log may take, in bytes of JSON. */
+export const TURN_LOG_BYTES = 8 * 1024;
 /** A request no turn took within this long never will. */
 const REQUEST_MS = 60 * 60_000;
 
@@ -151,7 +162,8 @@ export function classify(blocks: unknown[], at: number, request: RequestFields, 
     }
     return { kind: "report", report, at, lines: children.map((childId) => ({ childId })) };
   }
-  if (sentKind(text) !== null) return { kind: "sent", text: text.trim(), at };
+  const expects = expectationOf(text);
+  if (expects !== null) return { kind: "sent", hash: textHash(text.trim()), expects, at };
   if (system && mentions.length > 0 && !OTHER_SYSTEM_KINDS.some((k) => k === kind)) {
     thread.warn(`${logPrefix}: a system message mentioning a thread has ${kind === null ? "no systemMessageKind" : `the unknown systemMessageKind "${kind}"`}; it is not read as a report`);
   }
@@ -220,7 +232,7 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[], thread: Thre
       case "turn/started": {
         const running = open();
         // A turn bb never saw end is closed where the next begins.
-        if (running !== null) running.endedAt = e.createdAt;
+        if (running !== null) close(running, e.createdAt, null);
         turns.push({ startSeq: e.seq, startedAt: e.createdAt, endedAt: null, status: null, inputs: [], reply: null });
         break;
       }
@@ -243,21 +255,66 @@ export function foldTurns(log: TurnLog, events: readonly BbEvent[], thread: Thre
       case "item/completed": {
         const turn = open();
         const item = rec(data.item);
-        if (turn !== null && item.type === "agentMessage") turn.reply = str(item.text);
+        const text = str(item.text);
+        if (turn !== null && item.type === "agentMessage") turn.reply = text === null ? null : text.slice(0, REPLY_CHARS);
         break;
       }
       case "turn/completed": {
         const turn = open();
         if (turn === null) break;
-        turn.endedAt = e.createdAt;
-        turn.status = str(data.status) ?? "completed";
+        close(turn, e.createdAt, str(data.status) ?? "completed");
         break;
       }
     }
   }
   const newest = events.length > 0 ? events[events.length - 1]!.createdAt : 0;
   for (const [id, r] of Object.entries(requests)) if (newest - r.at > REQUEST_MS) delete requests[id];
-  return { afterSeq, requests, turns: turns.slice(-KEEP_TURNS), delivered: delivered.slice(-KEEP_DELIVERED) };
+  return capTurnLog({ afterSeq, requests, turns: turns.slice(-KEEP_TURNS), delivered: delivered.slice(-KEEP_DELIVERED) });
+}
+
+/** Ends a turn: settles whether its replies were the nothing-new ones asked for, and keeps only the start of its reply. */
+function close(turn: Turn, at: number, status: string | null): void {
+  turn.endedAt = at;
+  turn.status = status;
+  turn.repliedNothingNew = status === "completed" && turn.inputs.every((i) => i.kind !== "sent" || meetsExpectation(i.expects, turn.reply));
+  turn.reply = turn.reply === null ? null : turn.reply.slice(0, ENDED_REPLY_CHARS);
+}
+
+const bytes = (log: TurnLog) => Buffer.byteLength(JSON.stringify(log), "utf8");
+
+/** Drops the oldest turns, deliveries and requests until the log fits in `TURN_LOG_BYTES`; the running turn is kept to the last. */
+export function capTurnLog(log: TurnLog): TurnLog {
+  if (bytes(log) <= TURN_LOG_BYTES) return log;
+  const next: TurnLog = { ...log, requests: { ...log.requests }, turns: [...log.turns], delivered: [...log.delivered] };
+  while (bytes(next) > TURN_LOG_BYTES) {
+    const oldestRequest = Object.entries(next.requests).sort((a, b) => a[1].at - b[1].at)[0];
+    if (next.delivered.length > next.turns.length) next.delivered.shift();
+    else if (next.turns.length > 1) next.turns.shift();
+    else if (oldestRequest !== undefined) delete next.requests[oldestRequest[0]];
+    else if (next.delivered.length > 0) next.delivered.shift();
+    else if (next.turns.length === 1) next.turns[0] = { ...next.turns[0]!, reply: null, inputs: next.turns[0]!.inputs.slice(0, 8) };
+    else break;
+  }
+  return next;
+}
+
+/**
+ * A log as stored, brought to the current shape. Logs stored before sends were
+ * kept by hash carry each send's text; their ended turns are settled here.
+ */
+export function normalizeTurnLog(stored: Partial<TurnLog>): TurnLog {
+  const input = (i: TurnInput & { text?: string }): TurnInput => {
+    if (i.kind !== "sent" || typeof i.text !== "string") return i;
+    const expects = expectationOf(i.text);
+    return expects === null ? { kind: "other" } : { kind: "sent", hash: textHash(i.text.trim()), expects, at: i.at };
+  };
+  const turns = (stored.turns ?? []).map((t) => {
+    const next: Turn = { ...t, inputs: t.inputs.map(input) };
+    if (next.endedAt !== null && next.repliedNothingNew === undefined) close(next, next.endedAt, next.status);
+    return next;
+  });
+  const requests = Object.fromEntries(Object.entries(stored.requests ?? {}).map(([id, r]) => [id, { ...r, inputs: r.inputs.map(input) }]));
+  return capTurnLog({ afterSeq: stored.afterSeq ?? 0, requests, turns, delivered: stored.delivered ?? [] });
 }
 
 /** Reads other threads' logs; null for a thread whose history was not read. */
@@ -316,15 +373,16 @@ export function isKeeperTurn(threadId: string, turn: Turn, lookup: LogLookup, de
  */
 export function broughtNothingNew(threadId: string, turn: Turn, lookup: LogLookup, depth = 0): boolean {
   if (turn.status !== "completed" || turn.inputs.length === 0 || depth > MAX_DEPTH || turn.inputs.some((i) => i.kind === "other")) return false;
-  if (!turn.inputs.every((i) => i.kind !== "sent" || isNothingNewReply(i.text, turn.reply))) return false;
+  const replied = turn.repliedNothingNew ?? turn.inputs.every((i) => i.kind !== "sent" || meetsExpectation(i.expects, turn.reply));
+  if (!replied) return false;
   return linesHold(threadId, turn, lookup, (childId, t) => broughtNothingNew(childId, t, lookup, depth + 1));
 }
 
-/** A Cache Keeper message a turn traces back to: sent to `threadId`, requested at `at`. */
+/** A Cache Keeper message a turn traces back to: sent to `threadId`, requested at `at`, by its text's hash. */
 export interface SentRef {
   threadId: string;
   at: number;
-  text: string;
+  hash: string;
 }
 
 /**
@@ -338,7 +396,7 @@ export function originsOf(threadId: string, turn: Turn, lookup: LogLookup, depth
     if (!out.some((o) => o.threadId === ref.threadId && o.at === ref.at)) out.push(ref);
   };
   for (const input of turn.inputs) {
-    if (input.kind === "sent") add({ threadId, at: input.at, text: input.text });
+    if (input.kind === "sent") add({ threadId, at: input.at, hash: input.hash });
     else if (input.kind === "report") {
       for (const line of input.lines) {
         for (const child of reportedTurns(lookup(threadId), lookup(line.childId), line.childId, input.at)) {
