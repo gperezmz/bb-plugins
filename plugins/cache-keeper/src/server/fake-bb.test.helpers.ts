@@ -70,6 +70,8 @@ export interface Side {
   /** The transcript file's identity: a new one is read from the start. */
   ino: number;
   window: number | null;
+  /** Set to say the transcript cannot be read or parsed. */
+  unreadable?: string;
 }
 
 /** The fields of bb's `client/turn/requested` event that say who sent a request and what it reports. */
@@ -211,7 +213,7 @@ export class FakeBb {
           facts: side.facts,
           requests,
           bytesRead: requests.length * 1_000,
-          unreadable: null,
+          unreadable: side.unreadable ?? null,
         };
       },
       tasks: async (hostId, input) => {
