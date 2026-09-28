@@ -454,7 +454,7 @@ export class Engine {
         was.agents !== t.agents;
       if (!moved) continue;
       if (t.archived && was?.archived !== true) this.onArchived(t.id);
-      if (was !== undefined && working(was) && !working(t)) void this.learn(t.id, "turn end");
+      if (was !== undefined && working(was) && !working(t)) this.turnEnd(t.id);
       tops.add(this.index.topOf(t.id));
       if (was?.parentId != null) tops.add(this.index.topOf(was.parentId));
     }
@@ -511,7 +511,7 @@ export class Engine {
         break;
       case "idle":
       case "failed":
-        void this.learn(id, "turn end");
+        this.turnEnd(id);
         break;
       case "archived":
         this.onArchived(id);
@@ -608,6 +608,18 @@ export class Engine {
   }
 
   // ---- learning a thread ----
+
+  /**
+   * A thread's turn ended: nothing is sent to it until the turn is read, since
+   * what the engine knew of it is from before the turn.
+   */
+  private turnEnd(threadId: string): void {
+    this.turnEnding.add(threadId);
+    void this.learn(threadId, "turn end").finally(() => {
+      this.turnEnding.delete(threadId);
+      if (this.index.isLive(threadId)) this.replan(this.index.topOf(threadId));
+    });
+  }
 
   /** Whether the thread's deadline matters now, so its transcript is worth reading. */
   private watched(threadId: string): boolean {
@@ -1298,6 +1310,9 @@ export class Engine {
     this.scheduleKeepAlive();
   }
 
+  /** Threads whose ended turn is being read. */
+  private readonly turnEnding = new Set<string>();
+
   /** Trees with an act queued that has not started: a second is not queued behind it. */
   private readonly actQueued = new Set<string>();
 
@@ -1373,7 +1388,7 @@ export class Engine {
       // Own rules first: a check-in or compaction refreshes the cache a keep-warm would.
       for (const [id, p] of plans) {
         const o = observed.get(id)!;
-        if (p.action === null || o.record.inFlight !== null || (this.retryAt.get(id) ?? 0) > now) continue;
+        if (p.action === null || o.record.inFlight !== null || (this.retryAt.get(id) ?? 0) > now || this.turnEnding.has(id)) continue;
         acted.add(id);
         if (p.action.kind === "compact") own.push(this.sendCompact(o, false).then(() => {}));
         else {
@@ -1381,7 +1396,7 @@ export class Engine {
           own.push(this.checkInIfStalled(id, pastStop));
         }
       }
-      const sendable = (id: string) => !acted.has(id) && observed.has(id) && this.record(id).inFlight === null && (this.retryAt.get(id) ?? 0) <= now;
+      const sendable = (id: string) => !acted.has(id) && observed.has(id) && this.record(id).inFlight === null && (this.retryAt.get(id) ?? 0) <= now && !this.turnEnding.has(id);
 
       // A tree keep-warm goes to its deepest leaves first. A shallower leaf goes when the report from below reaches
       // its level, so that its turn and the report's run side by side and bb batches both reports into the parent.

@@ -224,3 +224,25 @@ describe("the host keep-alive", () => {
     expect(at[0]! - T0).toBeLessThanOrEqual(5 * MIN);
   });
 });
+
+describe("a turn's end", () => {
+  it("sends nothing on what was known before the turn: a keep-warm due by the old deadline waits for the turn to be read", async () => {
+    h.thread({ id: "t", activity: busy });
+    h.transcript("t", T0, 100_000, "5m");
+    await h.start();
+    // You type at 3:50; the turn ends at 4:10, inside the old deadline's minute.
+    h.now = T0 + 3 * MIN + 50 * S;
+    h.patch("t", { status: "active" });
+    h.emit("active", "t");
+    await h.settle();
+    h.now = T0 + 4 * MIN + 10 * S;
+    const r = h.request("t", h.now - 20 * S, { initiator: "user", input: [{ type: "text", text: "look again", mentions: [] }] });
+    h.turn("t", h.now - S, [r], "Looked.");
+    h.patch("t", { status: "idle" });
+    h.emit("idle", "t");
+    await h.settle();
+    expect(h.sent).toEqual([]);
+    // The new deadline is the turn's request plus the lifetime, less a minute.
+    expect(h.engine.dueAt("tree:t")).toBe(T0 + 4 * MIN + 9 * S + 4 * MIN);
+  });
+});
