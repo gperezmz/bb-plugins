@@ -363,6 +363,43 @@ describe("Onboarding page", () => {
   });
 });
 
+describe("forgetting a long-offline machine", () => {
+  const laptop = (longOffline: boolean, online = false) => ({
+    id: "h2",
+    name: "laptop",
+    isServer: false,
+    online,
+    lastSeenAt: new Date(Date.now() - (longOffline ? 10 : 2) * 24 * 3600_000).toISOString(),
+    hostEntry: true,
+    longOffline,
+  });
+  const stateWith = (machine: ReturnType<typeof laptop>) => {
+    const skipped = (hostId: string) => ({ itemId: "tool:gh", hostId, status: "skipped", category: "long-offline", checkedAt: null, detail: "", facts: {} });
+    return makeState({
+      machines: [{ id: "h1", name: "server", isServer: true, online: true, lastSeenAt: null, hostEntry: true, longOffline: false }, machine],
+      items: [{ ...row("tool:gh", "tools", "skipped"), results: [skipped("h1"), skipped("h2")] } as ItemState],
+      nextStep: null,
+    });
+  };
+
+  it("offers Forget this machine when every result is skipped, and posts the forget", async () => {
+    const posted = stubActions();
+    const slot = renderSlot(panel(), { subPath: "" }, { rpc: { state: () => stateWith(laptop(true)) } as never });
+    fireEvent.click(await slot.findByRole("button", { name: "Forget this machine" }));
+    expect(slot.getByText(/has been offline for over a week/)).toBeTruthy();
+    expect(posted.map((entry) => entry.body)).toEqual([{ action: "forgetMachine", hostId: "h2" }]);
+  });
+
+  it("does not offer it for an online machine or one offline under the threshold", async () => {
+    for (const machine of [laptop(false, true), laptop(false)]) {
+      const slot = renderSlot(panel(), { subPath: "" }, { rpc: { state: () => stateWith(machine) } as never });
+      expect(await slot.findByText(/Your machines:/)).toBeTruthy();
+      expect(slot.queryByRole("button", { name: "Forget this machine" })).toBeNull();
+      slot.lifecycle.unmount();
+    }
+  });
+});
+
 describe("badge and home section", () => {
   const summary = (badge: OnboardingSummary["badge"], homeLine: string): OnboardingSummary => ({
     badge,

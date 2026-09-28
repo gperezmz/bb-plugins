@@ -44,12 +44,36 @@ export function Checklist({ state }: { state: OnboardingState }) {
   ];
   return (
     <div className="space-y-3">
+      <LongOfflineMachines machines={state.machines} />
       {sections
         .filter((section) => section.items.length > 0)
         .map((section) => (
           <GroupSection key={section.key} group={section.key} items={section.items} state={state} />
         ))}
     </div>
+  );
+}
+
+/**
+ * Machines offline long enough to forget. Their results are all `skipped`, so
+ * no item row lists them; this is where they can be forgotten.
+ */
+function LongOfflineMachines({ machines }: { machines: Machines }) {
+  const gone = machines.filter((machine) => machine.longOffline);
+  if (gone.length === 0) return null;
+  return (
+    <section aria-label="Machines offline for over a week" className="divide-y divide-border rounded-lg border border-border bg-card">
+      {gone.map((machine) => (
+        <div key={machine.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            <span className="font-medium text-foreground">{machine.name}</span> has been offline for over a week.
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => void postAction({ action: "forgetMachine", hostId: machine.id }).catch((c) => toast.error(errorText(c)))}>
+            Forget this machine
+          </Button>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -291,11 +315,6 @@ function ItemDetails({ item, state }: { item: ItemState; state: OnboardingState 
                 <Button size="sm" variant="ghost" onClick={() => void showDetails(result.hostId)}>
                   Show details
                 </Button>
-                {machine?.longOffline ? (
-                  <Button size="sm" variant="ghost" onClick={() => void postAction({ action: "forgetMachine", hostId: result.hostId }).catch((c) => toast.error(errorText(c)))}>
-                    Forget this machine
-                  </Button>
-                ) : null}
               </div>
               {details?.hostId === result.hostId ? (
                 <div className="mt-2 space-y-1">
