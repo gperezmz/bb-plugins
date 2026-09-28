@@ -753,8 +753,9 @@ export class Engine {
   /**
    * Whether a thread's events are worth reading at its turn's end: it is
    * stored or its deadline matters; its background tasks could get a
-   * check-in or make it wait in a tree kept warm; or a thread below it is
-   * stored, so a report climbing through it may be Cache Keeper's. Any
+   * check-in, make it wait in a tree kept warm, or make a stored or watched
+   * thread above it wait; or a thread below it is stored, so a report
+   * climbing through it may be Cache Keeper's. Any
    * other turn is nobody's to charge and changes nothing Cache Keeper does.
    */
   private needsEvents(threadId: string): boolean {
@@ -763,6 +764,12 @@ export class Engine {
       const settings = this.deps.settings();
       if (this.watched(threadId) || settings.checkIns || this.isKeptWarm(threadId, settings)) return true;
     } else if (this.claudeAbove(threadId) === null) return false;
+    // A thread above it that is stored or watched waits on its work.
+    const seen = new Set<string>();
+    for (let p = this.index.liveParentOf(threadId); p !== null && !seen.has(p); p = this.index.liveParentOf(p)) {
+      seen.add(p);
+      if (this.stored(p) || this.watched(p)) return true;
+    }
     const below = [...this.index.childrenOf(threadId)];
     for (let i = 0; i < below.length && i < 1_000; i++) {
       if (this.stored(below[i]!)) return true;
@@ -1426,7 +1433,7 @@ export class Engine {
     }
     const before = new Map<string, string>();
     for (const id of this.index.treeOf(top)) before.set(id, JSON.stringify(this.views.get(id) ?? null));
-    const { observed, plans, tree, wake } = this.planOf(top);
+    const { observed, plans, tree, wake, members } = this.planOf(top);
     const now = this.now();
     this.scheduler.set(`tree:${top}`, wake);
     const changed = [...before].filter(([id, was]) => JSON.stringify(this.views.get(id) ?? null) !== was).map(([id]) => id);
@@ -1438,6 +1445,17 @@ export class Engine {
       void this.learn(id, "watched").finally(() => {
         this.learning.delete(id);
         if (this.record(id).transcript?.cursor == null) this.unlearnt.set(id, this.now());
+      });
+    }
+    // A thread whose events came to matter after its turn ended (its tree was switched on, a thread above it
+    // came to matter) is read now: its background work may make the threads above it wait.
+    for (const id of members) {
+      if (observed.has(id) || this.logs.has(id) || this.learning.has(id) || !settled(this.index.get(id)!.status)) continue;
+      if (now - (this.unlearnt.get(id) ?? -Infinity) < RECONCILE_MS || !this.needsEvents(id)) continue;
+      this.learning.add(id);
+      void this.learn(id, "watched").finally(() => {
+        this.learning.delete(id);
+        if (!this.logs.has(id)) this.unlearnt.set(id, this.now());
       });
     }
     const due = [...plans.values()].some((p) => p.action !== null) || tree.due.length > 0 || this.stagedKeepWarms.has(top) || this.heldDue(observed, now);

@@ -260,3 +260,24 @@ describe("a turn's end", () => {
   });
 });
 
+describe("a child's background work", () => {
+  it("is read once its tree is switched on after its turn ended, so the parent waits at once", async () => {
+    h.keepWarm = "switched";
+    h.checkIns = false;
+    h.thread({ id: "p" });
+    h.transcript("p", T0, 100_000, "1h");
+    await h.start();
+    h.thread({ id: "c", parentThreadId: "p", status: "active", createdAt: T0 + MIN });
+    h.emit("created", "c");
+    h.transcript("c", T0 + MIN, 50_000, "5m");
+    h.task("c", "b1", "command", T0 + MIN);
+    h.now = T0 + MIN;
+    await h.ranTurn("c", [], "Started the build.");
+    // The tree is switched on only after the child's turn ended, and nobody looks at the child.
+    await h.engine.setKeepWarm("p", true);
+    await h.settle();
+    const top = (await h.engine.viewOf("p"))!;
+    expect(top.waiting).toBe(true);
+    expect(top.counts.threads).toBe(1);
+  });
+});
