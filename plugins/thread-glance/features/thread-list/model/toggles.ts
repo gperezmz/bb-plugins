@@ -82,7 +82,7 @@ export function markAllReadPlan(
   const seen: string[] = [];
   for (const tree of trees) {
     for (const info of [tree.root, ...tree.descendants]) {
-      if (!info.unread || info.thread.isArchived) continue;
+      if (!info.unread) continue;
       read.push(info.thread.id);
       if (isDoneUnseen(info.thread, context)) seen.push(info.thread.id);
     }

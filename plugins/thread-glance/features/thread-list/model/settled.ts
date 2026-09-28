@@ -79,12 +79,10 @@ export function lastActivityAt(
  * A settled thread: quiet as if no thread were open, not needing attention,
  * not pinned, with no open pull request, and either its pull request merged
  * or closed or its own last activity is older than the Settle after period.
- * A hidden thread takes the same test, since its tree is not done while it
- * works; an archived one is done and settled.
+ * Hidden and archived threads take the same test.
  */
 export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean {
   const thread = info.thread;
-  if (thread.isArchived) return true;
   if (!mightSettle(info)) return false;
   const pullRequest = inputs.pullRequestOf(thread);
   if (pullRequest === "unknown" || pullRequest === "open" || pullRequest === "draft") return false;
@@ -100,12 +98,8 @@ function mightSettle(info: ThreadInfo): boolean {
   return isQuietThread(info.state, info.unread, false) && info.attentionFlags.size === 0;
 }
 
-/**
- * A tree settles as one unit: when every thread in it is settled. A tree
- * whose root is archived is left where archived threads are shown.
- */
+/** A tree settles as one unit: when every thread in it is settled. */
 export function isSettledTree(tree: Pick<ThreadTree, "root" | "descendants">, inputs: SettleInputs): boolean {
-  if (tree.root.thread.isArchived) return false;
   return isSettledThread(tree.root, inputs) && tree.descendants.every((info) => isSettledThread(info, inputs));
 }
 
@@ -121,7 +115,7 @@ export function pullRequestLookupIds(
   const ids: string[] = [];
   for (const info of infos) {
     const thread = info.thread;
-    if (thread.isArchived || !mightSettle(info)) continue;
+    if (!mightSettle(info)) continue;
     if (needsPullRequestLookup(thread.environment?.branchName ?? null, defaultBranchOf(thread))) ids.push(thread.id);
   }
   return ids;

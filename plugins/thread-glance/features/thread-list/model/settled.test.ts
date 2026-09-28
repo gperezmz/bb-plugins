@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences } from "@/shared/preferences";
-import { failedUnread, forestOf, makeThread, rowIds, settleOf, T0, viewOf, working, type Scenario } from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, settleOf, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import {
   isSettledThread,
   isSettledTree,
@@ -10,7 +10,7 @@ import {
   pullRequestLookupIds,
   SETTLE_AFTER_MS,
 } from "./settled";
-import { toggleSettled } from "./toggles";
+import { markAllReadPlan, markReadPlanFor, toggleSettled } from "./toggles";
 import type { SettledRow } from "./view";
 
 const HOUR = 60 * 60 * 1000;
@@ -126,10 +126,14 @@ describe("a settled tree", () => {
     expect(treeSettled({ threads: tree({ latestAttentionAt: T0 + DAY, lastReadAt: T0 + DAY }), now: LATER })).toBe(false);
   });
 
-  it("settles with an archived child, and never when its root is archived", () => {
-    expect(treeSettled({ threads: tree({ isArchived: true, ...working }), now: LATER })).toBe(true);
-    const archivedRoot = [makeThread({ id: "p", isArchived: true, archivedAt: T0 })];
-    expect(treeSettled({ threads: archivedRoot, now: LATER })).toBe(false);
+  it("takes archived threads, shown with Show archived threads, through the same test", () => {
+    const archived = { isArchived: true, archivedAt: T0 };
+    expect(treeSettled({ threads: tree(archived), now: LATER })).toBe(true);
+    expect(treeSettled({ threads: tree({ ...archived, ...working }), now: LATER })).toBe(false);
+    expect(treeSettled({ threads: [makeThread({ id: "p", ...archived })], now: LATER })).toBe(true);
+    const closed = [makeThread({ id: "p", ...archived, environment: { branchName: "f" } })];
+    expect(treeSettled({ threads: closed, pullRequests: { p: "closed" } })).toBe(true);
+    expect(treeSettled({ threads: [makeThread({ id: "p", ...archived, ...finishedUnread })], now: LATER })).toBe(false);
   });
 
   it("takes a hidden child through the same test as any other", () => {
@@ -227,5 +231,22 @@ describe("the settled fold", () => {
     expect(toggleSettled({ ...closed, expanded: true }, { ...prefs, openSettledFolds: ["other", "project:proj_a"] }).patch).toEqual({
       openSettledFolds: ["other"],
     });
+  });
+});
+
+describe("Mark read over a tree", () => {
+  it("covers every unread thread drawn in it, an archived one shown with Show archived threads included", () => {
+    const threads = [
+      makeThread({ id: "p" }),
+      makeThread({ id: "a", parentThreadId: "p", createdAt: T0 + 1, isArchived: true, archivedAt: T0, ...finishedUnread }),
+      makeThread({ id: "b", parentThreadId: "p", createdAt: T0 + 2, ...finishedUnread }),
+    ];
+    const forest = forestOf({ threads });
+    const context = { activeThreadId: null, finishedAt: {}, seenAt: {} };
+    expect(markReadPlanFor("p", forest, context).read.sort()).toEqual(["a", "b"]);
+    expect(markAllReadPlan(forest.trees, context).read.sort()).toEqual(["a", "b"]);
+    const onlyArchived = threads.filter((thread) => thread.id !== "b");
+    const row = viewOf({ threads: onlyArchived, prefs: { showArchived: true } }).groups[0]!.rows[0]!;
+    expect(row.type === "thread" && row.treeUnread).toBe(true);
   });
 });

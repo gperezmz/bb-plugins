@@ -68,7 +68,7 @@ The fold is worked out as if no thread were open, so the children shown stay the
 
 A **settled thread** is a quiet thread that does not need attention, is not pinned and has no open pull request, and that either has a pull request that merged or closed, or has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when only the pull request counts. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
 
-A tree settles as one unit: it goes behind its group's settled fold only when every thread in it is settled, and a child never leaves its tree for the fold. An archived root never settles; archived children count as settled. Pinned threads never settle, so Pinned has no fold.
+A tree settles as one unit: it goes behind its group's settled fold only when every thread in it is settled, and a child never leaves its tree for the fold. Archived threads, shown with **Show archived threads**, take the same test. Pinned threads never settle, so Pinned has no fold.
 
 ```mermaid
 flowchart LR
