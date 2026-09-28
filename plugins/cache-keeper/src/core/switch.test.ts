@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSettings, SETTINGS } from "../server/settings";
+import { DECLARED_SETTINGS, DEFAULT_SETTINGS, parseDeclared } from "../server/settings";
 import { keptWarm, treeTopOf, treeTopsBelow } from "./switch";
 
 describe("keptWarm", () => {
@@ -51,17 +51,18 @@ describe("tree tops", () => {
 
 describe("settings", () => {
   it("default to keep-warms only on trees switched on, and check-ins off", () => {
-    expect(parseSettings({})).toMatchObject({ keepWarm: "switched", checkIns: false });
-    expect(SETTINGS.stalledCheckIns.default).toBe(false);
+    expect(DEFAULT_SETTINGS).toMatchObject({ keepWarm: "switched", checkIns: false });
+    expect(parseDeclared({})).toEqual(DEFAULT_SETTINGS);
+    expect(DECLARED_SETTINGS.stalledCheckIns.default).toBe(false);
   });
 
   it("read the three keep-warm choices and the check-in checkbox", () => {
-    expect(parseSettings({ keepWarm: "Every waiting thread" }).keepWarm).toBe("every");
-    expect(parseSettings({ keepWarm: "Only threads switched on" }).keepWarm).toBe("switched");
-    expect(parseSettings({ keepWarm: "Never" }).keepWarm).toBe("never");
-    expect(parseSettings({ stalledCheckIns: false }).checkIns).toBe(false);
-    expect(parseSettings({ stalledCheckIns: true }).checkIns).toBe(true);
+    expect(parseDeclared({ keepWarm: "Every waiting thread" }).keepWarm).toBe("every");
+    expect(parseDeclared({ keepWarm: "Only threads switched on" }).keepWarm).toBe("switched");
+    expect(parseDeclared({ keepWarm: "Never" }).keepWarm).toBe("never");
+    expect(parseDeclared({ stalledCheckIns: false }).checkIns).toBe(false);
+    expect(parseDeclared({ stalledCheckIns: true }).checkIns).toBe(true);
     // The old checkbox is not carried over.
-    expect(parseSettings({ checkIns: true }).checkIns).toBe(false);
+    expect(parseDeclared({ checkIns: true }).checkIns).toBe(false);
   });
 });

@@ -53,7 +53,7 @@ The documentation starts at [docs/README.md](docs/README.md): tutorials for a fi
 | [team-onboarding](plugins/team-onboarding) | A live setup checklist from your team's manifest: GitHub over HTTPS or SSH, agent logins, skills, plugins and tools, checked and fixed on every machine. |
 | [openai-inference](plugins/openai-inference) | Thread titles and commit messages from a LiteLLM gateway or a local OpenAI-compatible server, in place of bb's built-in Codex service. |
 | [pocket-navigation](plugins/pocket-navigation) | bb's sidebar navigation on a phone as a New thread line above one row of icons, in bb's own order and visibility. |
-| [cache-keeper](plugins/cache-keeper) | Compacts idle Claude Code threads just before their prompt cache goes cold, keeps threads waiting on background work warm, and checks on stalled background work, each only where you switch it on. |
+| [cache-keeper](plugins/cache-keeper) | Compacts idle Claude Code threads just before their prompt cache goes cold, keeps threads waiting on background work warm, and checks on stalled tasks, each only where you switch it on. |
 
 ## Install
 

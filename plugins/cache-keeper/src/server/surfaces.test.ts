@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { AgentTools } from "./agent-tools";
 import { busy, FakeBb, MIN, T0 } from "./fake-bb.test.helpers";
 import { resetAfterReinstall, RESET_META } from "./reinstall";
+import { DEFAULT_SETTINGS, Settings } from "./settings";
 import { compactWhenIdle, rpcHandlers, type SurfaceDeps } from "./surfaces";
 
 let h: FakeBb;
@@ -14,7 +15,8 @@ beforeEach(async () => {
   h.thread({ id: "pi", providerId: "pi" });
   h.transcript("t", T0, 300_000);
   await h.start();
-  deps = { engine: h.engine, store: h.store, agentTools: new AgentTools(h.store), now: () => h.now, flipped: () => flips++ };
+  const settings = new Settings(h.store);
+  deps = { engine: h.engine, store: h.store, agentTools: new AgentTools(h.store), now: () => h.now, settings: () => settings.get(), setSettings: (patch) => settings.set(patch), flipped: () => flips++ };
 });
 
 describe("the RPC handlers", () => {
@@ -52,6 +54,17 @@ describe("the RPC handlers", () => {
     expect(deps.agentTools.offered()).toEqual([]);
     expect(await rpc.setAgentTool({ name: "compactWhenIdle", on: true })).toMatchObject([{ on: true }]);
     expect(deps.agentTools.offered()).toEqual(["cache_keeper_compact_when_idle"]);
+  });
+
+  it("read the four settings, today's defaults on a fresh install, and change any of them, a change to check-ins alone counting as a flip", async () => {
+    const rpc = rpcHandlers(deps);
+    expect(await rpc.settings()).toEqual({ keepWarm: "switched", checkIns: false, waitMs: 15 * MIN, fetchPrices: true });
+    expect(await rpc.setSettings({ keepWarm: "never", waitMs: 30 * MIN, fetchPrices: false })).toEqual({ keepWarm: "never", checkIns: false, waitMs: 30 * MIN, fetchPrices: false });
+    expect(flips).toBe(0);
+    expect(await rpc.setSettings({ checkIns: true })).toMatchObject({ keepWarm: "never", checkIns: true });
+    expect(flips).toBe(1);
+    // Stored: a later load reads them back.
+    expect(new Settings(h.store).get()).toEqual({ keepWarm: "never", checkIns: true, waitMs: 30 * MIN, fetchPrices: false });
   });
 });
 
@@ -97,22 +110,25 @@ describe("a reinstall", () => {
     await h.engine.setKeepWarm("w", true);
     await h.engine.skip("w", "warm", false);
     deps.agentTools.set("compactWhenIdle", true);
-    let checkIns: boolean | null = null;
-    const notice = await resetAfterReinstall({ store: h.store, engine: h.engine, agentTools: deps.agentTools, now: T0 + MIN, setCheckIns: async (on) => (checkIns = on) });
+    deps.setSettings({ keepWarm: "every", checkIns: true, waitMs: 30 * MIN, fetchPrices: false });
+    const notice = await resetAfterReinstall({ store: h.store, engine: h.engine, agentTools: deps.agentTools, now: T0 + MIN, resetSettings: () => deps.setSettings(DEFAULT_SETTINGS) });
     expect(notice).toEqual({ at: T0 + MIN, threads: 2 });
     expect(h.engine.record("t").compactOn).toBe(false);
     expect(h.engine.record("w").keepWarm).toBe(false);
     expect(h.engine.record("w").stretch?.warmSkipped).toBe(false);
     expect(deps.agentTools.offered()).toEqual([]);
-    expect(checkIns).toBe(false);
+    expect(deps.settings()).toEqual(DEFAULT_SETTINGS);
+    expect(new Settings(h.store).get()).toEqual(DEFAULT_SETTINGS);
     expect(h.store.getMeta(RESET_META)).toEqual(notice);
     await rpcHandlers({ ...deps, flipped: () => h.store.deleteMeta(RESET_META) }).setCompact({ threadId: "t", on: true });
     expect(h.store.getMeta(RESET_META)).toBeNull();
   });
 
-  it("does nothing on a first install", async () => {
+  it("does nothing on a first install but put the settings at their defaults", async () => {
     const fresh = new FakeBb();
-    const notice = await resetAfterReinstall({ store: fresh.store, engine: fresh.engine, agentTools: new AgentTools(fresh.store), now: T0, setCheckIns: async () => {} });
+    let reset = 0;
+    const notice = await resetAfterReinstall({ store: fresh.store, engine: fresh.engine, agentTools: new AgentTools(fresh.store), now: T0, resetSettings: () => reset++ });
     expect(notice).toBeNull();
+    expect(reset).toBe(1);
   });
 });

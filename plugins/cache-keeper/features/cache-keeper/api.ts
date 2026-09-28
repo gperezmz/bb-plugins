@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useComposer, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
 import { CHANGED, type RowGlyph, type ThreadView } from "@/src/core/view";
 import type { RpcContract } from "@/src/server/rpc";
+import type { KeeperSettings } from "@/src/server/settings";
 
 export const PLUGIN_ID = "cache-keeper";
 export const TIMER_ICON = `${PLUGIN_ID}/cache-keeper`;
@@ -60,6 +61,22 @@ export function useLive<T>(
     if (relevant(payload)) reload();
   });
   return { data, error, reload, setData };
+}
+
+/** The four settings, and a change to any of them, keeping its error to show. */
+export function useKeeperSettings() {
+  const rpc = useKeeperRpc();
+  const live = useLive(() => rpc.call("settings", null), [rpc]);
+  const [error, setError] = useState<string | null>(null);
+  const change = (patch: Partial<KeeperSettings>) =>
+    rpc.call("setSettings", patch).then(
+      (next) => {
+        setError(null);
+        live.setData(next);
+      },
+      (cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)),
+    );
+  return { settings: live.data, error: live.error ?? error, change };
 }
 
 /** The current time, ticking every `ms`, for countdowns. */

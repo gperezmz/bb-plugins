@@ -8,6 +8,7 @@ import { rowStatus, type RowGlyph } from "../core/view";
 import type { AgentTools } from "./agent-tools";
 import { ClaudeOnlyError, DAY_MS, NoTreeTopError, NotReadyError, type Engine } from "./engine";
 import type { Overview, RpcContract } from "./rpc";
+import type { KeeperSettings } from "./settings";
 import type { Store } from "./store";
 
 export interface SurfaceDeps {
@@ -15,6 +16,9 @@ export interface SurfaceDeps {
   store: Store;
   agentTools: AgentTools;
   now(): number;
+  settings(): KeeperSettings;
+  /** Stores a change to the settings and puts it in effect; answers with all four. */
+  setSettings(patch: Partial<KeeperSettings>): KeeperSettings;
   /** A switch was flipped: the reinstall notice in `status` has done its job. */
   flipped(): void;
 }
@@ -27,7 +31,7 @@ const rpcError = (error: unknown): never => {
 
 type Handlers = { [K in keyof RpcContract]: (input: never) => Promise<unknown> };
 
-export function rpcHandlers({ engine, store, agentTools, now, flipped }: SurfaceDeps) {
+export function rpcHandlers({ engine, store, agentTools, now, settings, setSettings, flipped }: SurfaceDeps) {
   const switched = <T>(work: Promise<T>) => work.then((r) => (flipped(), r));
   const overview = async (): Promise<Overview> => {
     const recent = store.history(now() - 30 * DAY_MS, 50, ["compaction", "keep-warm", "check-in"]).map((h) => ({ ...h, title: engine.titleOf(h.threadId) }));
@@ -62,6 +66,13 @@ export function rpcHandlers({ engine, store, agentTools, now, flipped }: Surface
       agentTools.set(name, on);
       flipped();
       return agentTools.rows();
+    },
+    settings: async () => settings(),
+    setSettings: async (patch: Partial<KeeperSettings>) => {
+      const before = settings().checkIns;
+      const next = setSettings(patch);
+      if (next.checkIns !== before) flipped();
+      return next;
     },
   } satisfies Handlers;
 }

@@ -94,7 +94,8 @@ tb bb plugin install "path:$run/plugin/cache-keeper" --yes > "$run/install.log" 
 status=$(tb bb plugin list --json | jq -r '.plugins[] | select(.id == "cache-keeper") | .status')
 [[ $status == running ]] || fail "the plugin's status is '$status', not running"
 # The bundled price list: the drives fetch nothing from the network.
-tb bb plugin config cache-keeper set fetchPrices false > /dev/null
+printf '%s' '{"fetchPrices":false}' > "$run/tmp/prices.json"
+tb bb plugin rpc call cache-keeper setSettings --input-file "$run/tmp/prices.json" > /dev/null || fail "could not switch off fetching prices"
 tb bb cache-keeper drive now > /dev/null || fail "the plugin has no drive commands: CACHE_KEEPER_DRIVE_CLOCK did not reach it"
 
 cat > "$run/env.sh" <<ENV

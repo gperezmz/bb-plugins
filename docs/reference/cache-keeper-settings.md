@@ -4,20 +4,22 @@ Source: [`src/server/settings.ts`](../../plugins/cache-keeper/src/server/setting
 
 ## Settings
 
-Under Settings → Plugins → Cache Keeper, or `bb plugin config cache-keeper`.
+Under Settings → Plugins → Cache Keeper, in sections Cache Keeper draws itself, in this order: **Waiting threads**, **Stalled tasks**, **Prices**, then [Agent tools](#agent-tools). Each section has a title and a line saying what it covers.
 
-| Setting | Key | Default | Meaning |
+| Section | Setting | Default | Meaning |
 |---|---|---|---|
-| Keep caches warm while waiting | `keepWarm` | `Only threads switched on` | Which thread trees get keep-warms while their switch is untouched: `Every waiting thread`, `Only threads switched on` (none) or `Never`. Under `Never` no tree gets them, whatever its switch records. See [which trees are kept warm](../explanation/cache-keeper-timing.md#which-trees-are-kept-warm) |
-| Check in on stalled background work | `stalledCheckIns` | off | Check-ins on a stalled task, on every Claude Code thread, whatever its switch or the setting above says. Off, as on a fresh install, sends none, and no keep-warm asks about a task running 30 minutes or more |
-| No-output wait | `noOutputWait` | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a background command or subagent gets a check-in |
-| Fetch current prices daily | `fetchPrices` | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
+| Waiting threads | Keep caches warm while waiting | `Only threads switched on` | Which thread trees get keep-warms while their switch is untouched: `Every waiting thread`, `Only threads switched on` (none) or `Never`. Under `Never` no tree gets them, whatever its switch records. See [which trees are kept warm](../explanation/cache-keeper-timing.md#which-trees-are-kept-warm) |
+| Stalled tasks | Check on stalled tasks | off | Check-ins on a stalled task, on every Claude Code thread, whatever its switch or the setting above says. Off, as on a fresh install, sends none, and no keep-warm asks about a task running 30 minutes or more |
+| Stalled tasks | No-output wait | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a task counts as stalled and gets a check-in. Each further check-in waits twice as long |
+| Prices | Fetch current prices daily | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
 
-Compact when idle has no setting: it is switched on per thread, from its composer chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the composer chip's popover (its switch on the tree top, its **Keep warm** on a thread below) or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
+Compact when idle has no setting: it is switched on per thread, from its composer chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the composer chip's popover (its switch on the tree top, its **Keep warm** on a thread below) or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart, and is kept in Cache Keeper's `data.db`, so it survives a restart and an update. bb does not hold these settings, so `bb plugin config cache-keeper` does not list them.
+
+Up to 0.2.0, bb held the four settings and drew them in one Configuration box. The first load after upgrading copies their values into `data.db`, the defaults for any it cannot read, and then reloads the plugin once, on its own, so the old box goes. The copy is recorded before the reload, so it and the reload happen once per install, even when either fails.
 
 ### Agent tools
 
-Below the settings, a section headed **Agent tools** has a row with a switch for each agent tool Cache Keeper registers. Today that is one row, **Compact when idle**, for [`cache_keeper_compact_when_idle`](cache-keeper-cli.md#the-cache_keeper_compact_when_idle-agent-tool). Every row is off on a fresh install. A thread is offered a tool only while its row is on, and a change reaches a thread when its Claude Code session next starts or resumes; a session already running keeps the tools it started with, and a call to a tool whose row is now off is refused.
+Below the settings' sections, a section headed **Agent tools** has a row with a switch for each agent tool Cache Keeper registers. Today that is one row, **Compact when idle**, for [`cache_keeper_compact_when_idle`](cache-keeper-cli.md#the-cache_keeper_compact_when_idle-agent-tool). Every row is off on a fresh install. A thread is offered a tool only while its row is on, and a change reaches a thread when its Claude Code session next starts or resumes; a session already running keeps the tools it started with, and a call to a tool whose row is now off is refused.
 
 ## In a thread
 
@@ -134,10 +136,10 @@ A task that's quiet on purpose, such as a server or a watcher, is fine to leave 
 
 ## What it stores
 
-`<data dir>/plugins/cache-keeper/data.db` holds, in SQLite: each thread's switches, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's transcript and turns in bb's event history, its last decision, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, the Agent tools rows, and the fetched price lists. A thread's row is at most about 600 bytes, and its turn log at most 8 KB.
+`<data dir>/plugins/cache-keeper/data.db` holds, in SQLite: each thread's switches, setting, idle stretch and charges, the background tasks it watches, how far it has read each thread's transcript and turns in bb's event history, its last decision, the read state to put back after a Cache Keeper turn, 90 days of what it sent and what that cost, the Agent tools rows, the four settings, and the fetched price lists. A thread's row is at most about 600 bytes, and its turn log at most 8 KB.
 
 It tidies itself: a thread bb deletes loses its rows; a thread bb archives loses its turn log and keeps its switches, which it still has when unarchived; history and sends older than 90 days are pruned nightly, and the database, created with `auto_vacuum = incremental`, gives the freed pages back after each prune. The host entry reads Claude Code's transcripts and the `claude-<uid>/…/tasks/<id>.output` files under `$TMPDIR` or `/tmp` on each machine, and writes nothing there.
 
 ### After a reinstall
 
-`bb plugin uninstall` clears the settings and keeps `data.db`. On its first load after being installed again, Cache Keeper switches off every thread's Compact when idle and every tree top's recorded Keep warm while waiting, clears every Skip, and switches off every Agent tools row and "Check in on stalled background work", so nothing is spent unasked. The first line of `bb cache-keeper status` says so until a switch, a Skip or Undo, a line, an Agent tools row or the check-ins setting is next changed. A first install finds `data.db` empty and changes nothing.
+`bb plugin uninstall` keeps `data.db`. On its first load after being installed again, Cache Keeper switches off every thread's Compact when idle and every tree top's recorded Keep warm while waiting, clears every Skip, switches off every Agent tools row, and puts the four settings back to their defaults, "Check on stalled tasks" off among them, so nothing is spent unasked. The first line of `bb cache-keeper status` says so until a switch, a Skip or Undo, a line, an Agent tools row or "Check on stalled tasks" is next changed. A first install finds `data.db` empty and changes nothing. An update is not an install, so it changes none of these.

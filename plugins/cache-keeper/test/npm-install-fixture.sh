@@ -3,9 +3,10 @@
 # scripts/ci/npm-install-check.sh). The throwaway bb has no Claude Code
 # thread, so this checks what it can reach without one: bb serves an app
 # bundle it calls compatible that registers the composer chip and banner, the
-# sidebar script, the nav page and the Agent tools settings section; bb
-# serves the timer, the flame and the crossed-out flame as the plugin's
-# icons; bb holds the plugin's four settings, with check-ins off; its CLI
+# sidebar script, the nav page and the four settings sections; bb serves the
+# timer, the flame and the crossed-out flame as the plugin's icons; the
+# plugin holds its four settings at their defaults, and once it has reloaded
+# itself after copying them, bb holds none of them; its CLI
 # answers from the server with nothing switched on, names compact-now and no
 # `now`; and it refuses to switch on, or keep warm, a thread that does not
 # exist.
@@ -17,13 +18,13 @@ if [[ $(jq -r '.hasApp and .bundle.compatible' <<< "$app") != true ]]; then
   exit 1
 fi
 curl -fsS -o "$FIXTURE_DIR/app.js" "$BB_SERVER_URL$(jq -r .bundle.jsUrl <<< "$app")"
-for registration in 'composer.customize(' 'contentScripts.register(' 'slots.navPanel(' 'slots.settingsSection(' 'id:"cache-keeper"' 'id:"agent-tools"'; do
+for registration in 'composer.customize(' 'contentScripts.register(' 'slots.navPanel(' 'slots.settingsSection(' 'id:"cache-keeper"' 'id:"waiting-threads"' 'id:"stalled-tasks"' 'id:"prices"' 'id:"agent-tools"'; do
   if ! grep -qF "$registration" "$FIXTURE_DIR/app.js"; then
     echo "::error::the app bundle bb serves lacks $registration" >&2
     exit 1
   fi
 done
-echo "The app bundle registers the composer chip and banner, the sidebar script, the nav page and the Agent tools section"
+echo "The app bundle registers the composer chip and banner, the sidebar script, the nav page and the four settings sections"
 
 icons=$(bb plugin list --json | jq -c --arg id "$PLUGIN_ID" '.plugins[] | select(.id == $id) | .icons')
 for name in cache-keeper flame crossed-out-flame; do
@@ -39,21 +40,21 @@ for name in cache-keeper flame crossed-out-flame; do
 done
 echo "bb serves the timer, the flame and the crossed-out flame"
 
-config=$(bb plugin config "$PLUGIN_ID" --json)
-keys=$(jq -c '[(.settings // .values // .) | keys[]] | sort' <<< "$config")
-if [[ $keys != '["fetchPrices","keepWarm","noOutputWait","stalledCheckIns"]' ]]; then
-  echo "::error::$PLUGIN_ID's settings are $keys, not the four it declares" >&2
-  echo "$config" >&2
+settings=$(bb plugin rpc call "$PLUGIN_ID" settings --json)
+if [[ $(jq -c . <<< "$settings") != '{"keepWarm":"switched","checkIns":false,"waitMs":900000,"fetchPrices":true}' ]]; then
+  echo "::error::$PLUGIN_ID's settings on a fresh install are not today's defaults: $settings" >&2
   exit 1
 fi
-echo "bb holds the four settings"
+echo "The plugin holds the four settings at their defaults, check-ins off"
 
-check_ins=$(jq -r '(.values // .settings // .).stalledCheckIns' <<< "$config")
-if [[ $check_ins != false ]]; then
-  echo "::error::$PLUGIN_ID's \"Check in on stalled background work\" is $check_ins on a fresh install, not off" >&2
+# The first load declared the settings bb held, to copy them, and reloaded the
+# plugin; every load since declares none, so bb draws no Configuration box.
+keys=$(bb plugin config "$PLUGIN_ID" --json | jq -c '[(.schema // {}) | keys[]]')
+if [[ $keys != '[]' ]]; then
+  echo "::error::bb still holds declared settings for $PLUGIN_ID: $keys" >&2
   exit 1
 fi
-echo "Check-ins are off on a fresh install"
+echo "bb holds no declared settings for it"
 
 help=$(bb cache-keeper --help)
 if ! grep -qE '^\s+bb cache-keeper compact-now\s' <<< "$help" || grep -qE '^\s+bb cache-keeper now\s' <<< "$help"; then

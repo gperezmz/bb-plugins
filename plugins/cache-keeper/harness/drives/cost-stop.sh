@@ -9,8 +9,8 @@
 # --json`.
 source "$(dirname "$0")/lib.sh"
 drive cost-stop
-config keepWarm "Only threads switched on"
-config stalledCheckIns false
+config '{"keepWarm":"switched"}'
+config '{"checkIns":false}'
 
 t=$(spawn "drive: cost stop" "Start the deploy. [fake: background] [fake: context=800000] [fake: warmWrite=0.3]")
 say "thread $t"

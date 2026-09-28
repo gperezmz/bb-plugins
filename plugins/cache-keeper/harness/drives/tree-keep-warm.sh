@@ -7,8 +7,8 @@
 # `bb cache-keeper status --json`.
 source "$(dirname "$0")/lib.sh"
 drive tree-keep-warm
-config keepWarm "Only threads switched on"
-config stalledCheckIns false
+config '{"keepWarm":"switched"}'
+config '{"checkIns":false}'
 
 top=$(spawn "drive: tree top" "Hello")
 child=$(spawn "drive: tree child" "Start the deploy. [fake: background]" "$top")

@@ -5,8 +5,8 @@
 # status --json`.
 source "$(dirname "$0")/lib.sh"
 drive compaction
-config keepWarm "Only threads switched on"
-config stalledCheckIns false
+config '{"keepWarm":"switched"}'
+config '{"checkIns":false}'
 
 t=$(spawn "drive: compaction" "Hello")
 say "thread $t"
