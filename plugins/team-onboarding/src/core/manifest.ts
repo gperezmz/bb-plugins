@@ -241,7 +241,7 @@ const envSchema = z
       .regex(/^[A-Z_][A-Z0-9_]*$/, "env names are UPPER_SNAKE_CASE")
       .refine((name) => !REFUSED_ENV.test(name), {
         error: (issue) =>
-          `${String(issue.input)} would override bb's built-in git on every machine, so the env form refuses it and the item could never be completed`,
+          `${String(issue.input)} would override bb's built-in git on every machine: the env form refuses GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN and every name starting GIT_CONFIG_, so the item could never be completed`,
       }),
     note: z.string().optional(),
     required: z.boolean().optional(),

@@ -90,6 +90,7 @@ describe("parseManifest env names", () => {
       const issue = result.issues[0]!;
       expect(issue.line).toBe(4);
       expect(formatIssue(issue)).toContain(`${name} would override bb's built-in git`);
+      expect(formatIssue(issue)).toContain("GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN and every name starting GIT_CONFIG_");
     },
   );
 
