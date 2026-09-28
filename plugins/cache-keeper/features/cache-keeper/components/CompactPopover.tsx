@@ -64,7 +64,7 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
             {view.model ?? "Model not read yet"} · {lifetime} · {view.callsPerMessage.toFixed(1)} calls per message
             {view.callsMeasured ? "" : " (default)"}
           </p>
-          {view.windowKnown && view.rates !== null && (view.line !== null ? <Why view={view} line={line} /> : <WhyNever view={view} />)}
+          <Figures view={view} line={line} />
         </div>
       </details>
       {error !== null && <p className="text-xs text-destructive">{error}</p>}
@@ -89,6 +89,14 @@ function Switch({ checked, disabled = false, labelledBy, onClick }: { checked: b
   );
 }
 
+/** The dollar figures: at the line, at the whole window where there is none, and none without a window or a price. */
+function Figures({ view, line }: { view: ThreadView; line: string }) {
+  const reason = noLineReason(view);
+  if (reason === null) return <Why view={view} line={line} />;
+  if (reason === "no-setting" || reason === "this-setting") return <WhyNever view={view} reason={reason} />;
+  return null;
+}
+
 function Why({ view, line }: { view: ThreadView; line: string }) {
   const rates = view.rates!;
   const at = lineWhy(rates, view.callsPerMessage, view.postCompaction, view.line!);
@@ -110,7 +118,7 @@ function Why({ view, line }: { view: ThreadView; line: string }) {
 }
 
 /** "Why never?": the same figures at the whole window, where even the most compacting can save falls short. */
-function WhyNever({ view }: { view: ThreadView }) {
+function WhyNever({ view, reason }: { view: ThreadView; reason: "no-setting" | "this-setting" }) {
   const window = formatSize(view.window);
   const at = lineWhy(view.rates!, view.callsPerMessage, view.postCompaction, view.window);
   return (
@@ -121,7 +129,7 @@ function WhyNever({ view }: { view: ThreadView }) {
         message back after the cache goes cold would save {formatUsd(at.savedUsd)} by it.
       </p>
       <p>
-        {noLineReason(view) === "no-setting"
+        {reason === "no-setting"
           ? "That saving is less than compacting costs, so no setting gives this thread a line."
           : "That saving does not repay compacting as many times over as the handle asks, at any size this thread can reach. A lower setting gives a line."}
       </p>

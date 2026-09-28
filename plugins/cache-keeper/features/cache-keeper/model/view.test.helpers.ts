@@ -1,0 +1,45 @@
+/** A thread's view for the chip, popover and banner tests: idle, switched on, with a line at 150k and 300k of context. */
+import type { ThreadView } from "@/src/core/view";
+
+/** Lines for the ten settings: the first four have one. */
+export const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
+
+export const view = (over: Partial<ThreadView> = {}): ThreadView => ({
+  threadId: "thr_a",
+  title: "a",
+  eligible: true,
+  status: "idle",
+  hasPendingInteraction: false,
+  compactOn: true,
+  setting: 2,
+  lines,
+  line: 150_000,
+  context: 300_000,
+  window: 1_000_000,
+  windowKnown: true,
+  model: "claude-opus-5-5",
+  lifetime: "1h",
+  callsPerMessage: 3,
+  callsMeasured: true,
+  postCompaction: 40_000,
+  postMeasured: false,
+  priceOrigin: "bundled",
+  rates: { w: 1, r: 1, o: 1 },
+  deadline: 10 * 60_000,
+  compactionDue: false,
+  compactSkipped: false,
+  compactedAt: null,
+  canCompactNow: true,
+  waiting: false,
+  keptWarm: true,
+  warmSetting: "switched",
+  treeTop: { threadId: "thr_1", title: "Build the page" },
+  warmPlanned: false,
+  warmSkipped: false,
+  nextWarmAt: null,
+  warmNoPrice: false,
+  counts: { threads: 0, commands: 0, subagents: 0, queued: 0, scheduled: 0 },
+  decision: null,
+  transcriptUnreadable: null,
+  ...over,
+});
