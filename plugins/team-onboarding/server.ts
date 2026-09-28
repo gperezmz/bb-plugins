@@ -272,6 +272,11 @@ function formatStatus(state: Awaited<ReturnType<Engine["state"]>>): string {
   return lines.join("\n");
 }
 
+/** How both JSON outputs name a machine: its host id, and its name in Settings → Machines. */
+function machineKeys(machines: { id: string; name: string }[], hostId: string) {
+  return { machineId: hostId, machineName: machines.find((machine) => machine.id === hostId)?.name ?? hostId };
+}
+
 async function invokingHost(bb: BbPluginApi, machine: string | undefined, threadId: string | undefined, engine: Engine) {
   const machines = engine.currentMachines.length > 0 ? engine.currentMachines : await engine.refreshMachines();
   if (machine !== undefined) {
@@ -319,8 +324,8 @@ function registerCli(bb: BbPluginApi, engine: Engine) {
                     title: item.title,
                     required: item.required,
                     status: item.status,
-                    results: item.results.map((r) => ({ machine: r.hostId, status: r.status, category: r.category, detail: r.detail })),
-                    safeFixes: item.fixes.flatMap((f) => f.fixes.filter((fix) => fix.safe).map((fix) => ({ machine: f.hostId, kind: fix.kind, label: fix.label }))),
+                    results: item.results.map((r) => ({ ...machineKeys(state.machines, r.hostId), status: r.status, category: r.category, detail: r.detail })),
+                    safeFixes: item.fixes.flatMap((f) => f.fixes.filter((fix) => fix.safe).map((fix) => ({ ...machineKeys(state.machines, f.hostId), kind: fix.kind, label: fix.label }))),
                   })),
                 }),
               };
@@ -395,7 +400,7 @@ function registerCli(bb: BbPluginApi, engine: Engine) {
                   }),
               );
             if (input.options.json === true) {
-              return { exitCode: 0, stdout: JSON.stringify({ machine: machine.name, ran: outcome.results, manual }) };
+              return { exitCode: 0, stdout: JSON.stringify({ machineId: machine.id, machineName: machine.name, ran: outcome.results, manual }) };
             }
             const lines = [`Machine ${machine.name}`];
             for (const result of outcome.results) {
