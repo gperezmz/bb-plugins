@@ -90,6 +90,12 @@ describe("messages", () => {
     expect(isNothingNewReply(earlier, "It was stuck, so I restarted it.")).toBe(false);
   });
 
+  it("escapes an output file's path without cutting it", () => {
+    const path = `/tmp/claude-1000/${"d".repeat(80)}/tasks/b"1\n.output`;
+    const text = checkInText([{ ...stalled, outputFile: path }]);
+    expect(text).toContain(`Its output is in /tmp/claude-1000/${"d".repeat(80)}/tasks/b\\"1\\n.output.`);
+  });
+
   it("quotes outside text cut to 60 characters, with quotes and line breaks escaped", () => {
     const text = keepWarmText([{ kind: "command", id: "b1", description: 'say "hi"\nthen \\ exit', startedAt: 0 }], [], clock);
     expect(text).toContain('background command b1 ("say \\"hi\\"\\nthen \\\\ exit")');

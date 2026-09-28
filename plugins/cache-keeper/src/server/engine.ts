@@ -1742,8 +1742,9 @@ export class Engine {
         const routine = Object.entries(record.tasks)
           .filter(([, t]) => checkIns && foldDue(t.clock, now, waitMs))
           .map(([taskId]) => ({ id: taskId, reason: "routine" as const }));
-        if (!(await this.prepare(planned))) return;
+        // The machine is asked first: the check before a send is its last step.
         const folded = routine.length === 0 ? [] : await this.checkInTasks(o, routine, now);
+        if (!(await this.prepare(planned))) return;
         const forecastUsd = this.forecast(id, observed);
         const text = keepWarmText(o.items, folded);
         const historyFor = () => {
@@ -1779,9 +1780,10 @@ export class Engine {
     const id = o.thread.id;
     const clocks = taskIds.map((t) => `${t}@${stalledDueAt(this.record(id).tasks[t]?.clock ?? { startedAt: 0, lastActivityAt: 0, lastCheckInAt: null, stalledStreak: 0 }, this.deps.settings().waitMs)}`);
     const planned: Planned = { id, kind: "check-in", dueKey: `check-in:${clocks.join(",")}` };
-    if (!(await this.prepare(planned))) return;
+    // The machine is asked first: the check before a send is its last step.
     const tasks = await this.checkInTasks(o, taskIds.map((t) => ({ id: t, reason: "stalled" as const })), now);
     if (tasks.length === 0) return;
+    if (!(await this.prepare(planned))) return;
     const context = o.facts?.context ?? null;
     const rates = o.warmRates ?? o.rates;
     const cold = pastStop && rates !== null && context !== null;

@@ -115,6 +115,7 @@ export class FakeBb {
   /** Run before bb answers a `threads.get` or a transcript read: a test changes things there. */
   onGet: ((threadId: string) => void) | null = null;
   onTranscript: ((threadId: string) => void) | null = null;
+  onTasks: ((sessionId: string) => void) | null = null;
   /** What bb puts on each report it delivers; a test changes it to drop a field. */
   reportFields = (r: Requested): Requested => r;
   /** Fields to leave out of every list row and get. */
@@ -218,6 +219,7 @@ export class FakeBb {
       },
       tasks: async (hostId, input) => {
         this.calls.tasks++;
+        this.onTasks?.(input.sessionId);
         if (this.down.has(hostId)) throw new Error(`host ${hostId} timed out`);
         return {
           commands: input.commands.map((id) => ({ id, outputFile: `/tmp/claude-1000/-work/${input.sessionId}/tasks/${id}.output`, changedAt: this.outputs.get(id) ?? null })),

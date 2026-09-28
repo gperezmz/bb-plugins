@@ -207,6 +207,30 @@ describe("a switch flipped while the engine awaits bb or a host", () => {
   }
 });
 
+describe("the check before a send comes after the machine is asked", () => {
+  it("sends no check-in when Skip is pressed, or the thread archived, while its task files are read", async () => {
+    for (const change of ["checkIns", "archive"] as const) {
+      h = new FakeBb();
+      h.thread({ id: "k", activity: busy });
+      h.transcript("k", T0, 100_000, "1h");
+      h.task("k", "b1", "command", T0);
+      h.outputs.set("b1", T0);
+      await h.start();
+      await h.engine.setKeepWarm("k", false);
+      let reads = 0;
+      h.onTasks = () => {
+        // The first read is the stall check's own; the next is the check-in's.
+        if (++reads !== 2) return;
+        if (change === "checkIns") h.checkIns = false;
+        else h.patch("k", { archivedAt: h.now });
+      };
+      await h.advance(T0 + 16 * MIN, false);
+      expect(h.sent).toEqual([]);
+      expect(held().map((r) => r.record.reason)).toEqual([change === "checkIns" ? "switched-off" : "archived"]);
+    }
+  });
+});
+
 describe("a host that does not answer", () => {
   it("holds only the threads on it: a thread on another host in the same tree is served within a second of its due time", async () => {
     h.thread({ id: "p" });

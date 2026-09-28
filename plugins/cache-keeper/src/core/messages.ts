@@ -27,7 +27,16 @@ export function cut(text: string): string {
  * sits in or start a line of its own.
  */
 export function outside(text: string): string {
-  return cut(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, "\\n").replace(/\t/g, " ");
+  return escaped(cut(text));
+}
+
+/**
+ * A path from outside the plugin (a background command's output file) as a
+ * message quotes it: escaped as `outside` does, but not cut, since a cut path
+ * points nowhere.
+ */
+export function escaped(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, "\\n").replace(/\t/g, " ");
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -100,8 +109,8 @@ function paragraph(task: CheckInTask): string {
   const name = `${outside(task.id)} ("${outside(task.description)}")`;
   if (task.kind === "command") {
     return task.reason === "stalled"
-      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check on it? Its output is in ${task.outputFile}.`
-      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${task.outputFile} for repeated errors or retries.`;
+      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check on it? Its output is in ${escaped(task.outputFile)}.`
+      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${escaped(task.outputFile)} for repeated errors or retries.`;
   }
   return task.reason === "stalled"
     ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${outside(task.lastTool)}. Can you check on it?`
