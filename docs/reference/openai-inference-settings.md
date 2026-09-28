@@ -1,12 +1,12 @@
 # OpenAI-compatible inference: endpoints, settings and failures
 
-Source: [`server.ts`](../../plugins/openai-inference/server.ts) for the settings and services, [`src/endpoints.ts`](../../plugins/openai-inference/src/endpoints.ts) for how the Endpoints are read and when one is not ready, [`src/complete.ts`](../../plugins/openai-inference/src/complete.ts) for the failure messages.
+Source: [`server.ts`](../../plugins/openai-inference/server.ts) for the settings and services, [`src/endpoints.ts`](../../plugins/openai-inference/src/endpoints.ts) for how the Endpoints are read and when one is not ready, [`src/complete.ts`](../../plugins/openai-inference/src/complete.ts) and [`src/handlers.ts`](../../plugins/openai-inference/src/handlers.ts) for the failure messages.
 
 ## Endpoints
 
 An **Endpoint** is one entry in the `endpoints` setting: an OpenAI-compatible server, a LiteLLM gateway or a local server alike, with an id, a base URL, the model it answers with and an optional key. Each Endpoint is one AI service with its Endpoint's id, offered for the `thread-title` and `commit-message` AI tasks and not for `voice`. To use two models on one server, list the server twice under two ids.
 
-`bb settings ai-services` lists every Endpoint as `OpenAI-compatible endpoint at <url>`, with the url as written in the settings, references unexpanded.
+`bb settings ai-services` lists every Endpoint as `OpenAI-compatible endpoint at <url>`, with the url as written in the settings, references unexpanded. bb refuses a name longer than 64 characters, so a long url is cut and ends in `…`.
 
 Every Endpoint is listed, including one that cannot answer. That one is marked not ready, with the reason:
 
@@ -14,8 +14,9 @@ Every Endpoint is listed, including one that cannot answer. That one is marked n
 |---|---|
 | The Endpoint has no `model`, as in a setting saved before 0.2.0 | The Endpoint needs a model: add "model" to it in the endpoints setting. |
 | A `${NAME}` in the `url`, or in the key in effect, is unset or empty in bb's environment on the primary machine | Not set in bb's environment: followed by every such variable |
+| bb has no primary machine, or the plugin's host entry on it cannot be called | No primary machine is connected, or the error of the failed call |
 
-Both messages appear together when both apply. Not ready is decided from the settings and bb's environment alone: the server is never called to find out.
+The first two messages appear together when both apply. Not ready is decided from the settings and bb's environment alone: the server is never called to find out. A service that does not answer bb's status check within 2 seconds is marked not ready with `Not responding`.
 
 ### Selecting an Endpoint
 
@@ -59,7 +60,7 @@ For example, a local server with a literal key in `keys`, and a gateway whose UR
 
 | Field | Rules |
 |---|---|
-| `id` | Lowercase letters, digits and dashes, once in the list. bb also refuses an id of one character and the ids `automatic` and `off`; the other Endpoints are still offered, and `bb plugin logs openai-inference` names the one refused |
+| `id` | Lowercase letters, digits and dashes, once in the list. bb also refuses an id of one character or of more than 64, and the ids `automatic` and `off`; the other Endpoints are still offered, and `bb plugin logs openai-inference` names the one refused |
 | `url` | An `http://` or `https://` URL ending where `/chat/completions` starts, or text holding `${NAME}` references, whole (`${GATEWAY_URL}`) or embedded (`https://${GATEWAY_HOST}/v1`). A trailing `/` is ignored |
 | `model` | Required: the name the server lists at `GET <url>/models`, sent as the request's `model`. Saving the list without one is refused with a message that `"model" is required` |
 | `key` | Only a `${NAME}` reference. A literal key goes in `keys`, which the settings page keeps secret; the page refuses a literal key here and says so |
@@ -80,17 +81,18 @@ A `${NAME}` is expanded by the plugin's host entry, in bb's daemon on the primar
 
 ## Failures
 
-A request that fails rejects with a message that names the Endpoint by its id; bb reports it for the AI task. bb closes the request to the server when it gives up on it, which it does after 5 seconds for a thread title or a commit message.
+A request that fails rejects with a message that names the Endpoint by its id. bb reports it for the AI task after the service's name, as `OpenAI-compatible endpoint at <url>: <message>`. bb closes the request to the server when it gives up on it, which it does after 5 seconds for a thread title or a commit message.
 
 | Message | When |
 |---|---|
-| `Endpoint "<id>" answered HTTP <status>: <detail>` | The server answered with a non-2xx status. `<detail>` is the server's own error message, cut to about 300 characters: 401 or 403 for a missing, wrong or expired key, 404 for a wrong URL, 400 for an unknown model, 429 for a rate limit, 422 for a LiteLLM budget that is spent |
+| `Endpoint "<id>" answered HTTP <status>: <detail>` | The server answered with a non-2xx status. `<detail>` is the server's own error message, cut to about 300 characters: 401 or 403 for a missing, wrong or expired key, 404 for a wrong URL, 429 for a rate limit, and 400 or 422 for an unknown model or, from LiteLLM, a spent budget |
 | `Could not reach Endpoint "<id>": <reason>` | The connection failed |
 | `Endpoint "<id>" answered with something that is not JSON.` | The answer is not a chat completion |
 | `Endpoint "<id>" answered without message content.` | The completion has no message content, or it is empty |
 | `Endpoint "<id>" broke off its answer: <reason>` | The connection closed before the answer was complete |
-| `bb cancelled the request to Endpoint "<id>".` | bb aborted the request, for one that took longer than it allows |
 | `Endpoint "<id>" cannot answer: <reason>` | The Endpoint stopped being ready between bb's status read and the request, for the [reasons above](#endpoints) |
+
+bb writes its own message when it gives up on a request: `OpenAI-compatible endpoint at <url> timed out after 5000ms` when the time limit passes, and `The request was cancelled` when the request is cancelled. It also writes `<service name> returned an empty reply` when nothing is left of the content once bb has taken out think blocks, quotes, labels and all but the first line, which is what a model that spends its 256 tokens thinking leaves. The plugin only closes the request.
 
 No message holds a key or an expanded `${NAME}` value. A key, a variable's value and the host of one that is a URL are replaced by their `${NAME}`, and a literal key by `<key>`.
 

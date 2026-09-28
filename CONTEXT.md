@@ -42,12 +42,12 @@ _Avoid_: Manager, owner
 A child thread's failure that its parent thread went idle without handling.
 _Avoid_: Unhandled failure, stuck child
 
-**Chip**:
+**Children chip**:
 The count badge beside a parent thread's title that opens and closes its children.
-_Avoid_: Pill, children badge
+_Avoid_: Chip, Pill, children badge
 
 **Quiet thread**:
-A thread that is not running, does not need attention and is not the one open.
+A thread that is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 _Avoid_: Settled, idle thread
 
 **Older fold**:
@@ -58,10 +58,38 @@ _Avoid_: More row, older threads
 The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
 _Avoid_: Glyph slot, indent, gutter
 
+### Thread Usage
+
+**Header chip**:
+Thread Usage's coin in a thread's header, whose hover card shows the thread tree's cost and whose click opens its Usage tab.
+_Avoid_: Chip, Usage chip, coin button
+
+### Team Onboarding
+
+**Item**:
+One line of Team Onboarding's checklist: a check, zero or more fixes, and the machines it applies to. Some items are built in; the rest come from the team's manifest.
+_Avoid_: Checklist entry, requirement
+
+**Safe fix**:
+A fix that is idempotent, needs no input, and runs no code the engineer has not approved. Only safe fixes run from the CLI, from **Fix all safe items**, or through `bb plugin rpc call`.
+_Avoid_: Auto-fix, quick fix
+
+**Approval**:
+The engineer's recorded consent, given only in the Onboarding page, to run a team command or install from a plugin or marketplace source the manifest names. It is stored per hash of the command or source, its item and its machine rule, so changing any of them needs approval again.
+_Avoid_: Trust, allowlist
+
+**Team command**:
+A command the manifest names for a machine to run: a check's `run` or `fix`, or a tool's `install`. It runs only once approved.
+_Avoid_: Custom command, shell command, approved command
+
+**Machine rule**:
+Which machines a manifest entry applies to: the server machine, every persistent machine, or a list of machine names, written `server`, `all` or the list. Every item has one, taken from its entry or else from the manifest's top-level machines field.
+_Avoid_: Scope, host rule, target
+
 ### Pocket Navigation
 
 **Pocket Navigation**:
-The plugin that draws bb's sidebar navigation as one row of icons and a New thread line on a phone.
+The plugin that draws bb's sidebar navigation on a phone as a New thread line above one row of icons.
 _Avoid_: Compact navigation, mobile nav, nav strip plugin
 
 **Icon row**:
@@ -130,7 +158,7 @@ _Avoid_: Auto-compact, idle compact
 
 **Composer chip**:
 Cache Keeper's button in a Claude Code thread's composer, showing Compact when idle's state; its popover holds the thread's switches.
-_Avoid_: Chip
+_Avoid_: Chip, Cache Keeper chip
 
 **Keep warm while waiting**:
 Cache Keeper's switch on the topmost Claude Code thread of a thread tree that has keep-warms sent to it and every thread below it while they wait. Until you flip it, it follows the "Keep caches warm while waiting" setting.

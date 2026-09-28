@@ -28,7 +28,7 @@ An estimate takes its price from the first of these that lists the model:
 | 5 | models.dev's public price list | Fetched daily; used for models LiteLLM's list lacks |
 | 6 | none | The turn is `unpriced` |
 
-The bracketed suffix harnesses add to a model name (`claude-opus-5-5[1m]`) is dropped before the lookup. When a turn falls back to another model, it is priced as the model that answered.
+The bracketed suffix harnesses add to a model name (`claude-opus-5-5[1m]`) is dropped before the lookup, and case is ignored. Each source is then tried under the name itself, without a provider prefix such as `anthropic/`, `bedrock/` or `openrouter/<vendor>/`, with a Vertex `@date` read as `-date`, and without a trailing `-YYYYMMDD` date. When a turn falls back to another model, it is priced as the model that answered.
 
 Prices with a long-context tier apply the tier only to requests the gateway or the harness logs report one by one. A turn known only from bb's events uses the base rate, and is marked approximate when its model has a tier.
 
@@ -42,10 +42,10 @@ Every estimate says how fresh its prices are:
 |---|---|
 | Fetched within 7 days | Estimated with public list prices, updated *time* ago |
 | Fetched more than 7 days ago | Estimated with public list prices, last updated *time* ago. They are more than a week old and may be out of date (refresh failing: *error*) |
-| Never fetched, setting on | Estimated with the price list bundled with the plugin (*date*); it has not been updated online yet, so prices may be out of date |
+| Never fetched, setting on | Estimated with the price list bundled with the plugin (*date*); it has not been updated online yet, so prices may be out of date (refresh failing: *error*) |
 | Setting off | Estimated with the price list bundled with the plugin (*date*). Online updates are off, so prices may be out of date |
 
-The tooltip on each model's cost in the Usage tab names the price source and when that list was fetched. `bb thread-usage show --json`, `bb thread-usage top --json` and the `thread_usage` tool carry `pricesUpdatedAt`: when LiteLLM's list was last fetched, as an ISO time, or `null` when it never was.
+The tooltip on each model's cost in the Usage tab names the price source and when that list was fetched. `bb thread-usage show --json`, `bb thread-usage top --json` and the `thread_usage` tool carry `pricesUpdatedAt`: when LiteLLM's list was last fetched, as an ISO time, or `null` when it never was or the setting is off.
 
 ## Attribution states
 
@@ -58,7 +58,7 @@ Whether the gateway can find a thread's requests. Checked in this order; the fir
 | `tagged` | At least one gateway row names this thread. It stays `tagged` once reached | Nothing; the headline is the gateway cost |
 | `account-pool` | bb's account-pool plugin routes the thread | Not via gateway: account pool |
 | `not-routed` | The harness's base URL points somewhere other than the gateway | Not via gateway: requests go to *host* |
-| `pending` | The thread has turns but no rows yet, and has been idle less than 60 s | Waiting for gateway spend… |
+| `pending` | The thread has turns but no rows yet, and is running or has been idle less than 60 s | Waiting for gateway spend… |
 | `untagged` | Idle 60 s with output tokens and no rows | Codex and pi: Requests are not tagged. Add this line to *harness* config, with the line. Claude Code: No gateway spend for this thread: its turns ran before tagging was on, or its requests bypass the gateway |
 | `no-usage` | No turns yet, or idle 60 s with no rows and no output tokens | Nothing |
 

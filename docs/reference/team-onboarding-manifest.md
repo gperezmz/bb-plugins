@@ -24,7 +24,7 @@ While the installed file is invalid, the checklist keeps the last good version f
 
 A **machine rule** is `server` (the [server machine](../explanation/how-the-plugins-fit-bb.md#where-each-part-runs)), `all` (every persistent machine; machines a provider creates and removes are left out), or a list of machine names as they appear in Settings → Machines.
 
-Every entry has an `id` (`env` entries a `name`). Ids are what the plugin stores and logs; repository URLs and organisation names are never stored outside the cached manifest. Ids of access, skills, marketplace, tool and check entries use lowercase letters, digits, `.`, `_` and `-`, at most 64 characters; provider and plugin ids are bb's own ids. Unknown fields and unknown `source` or `kind` values are errors.
+Every entry has an `id` (`env` entries a `name`). Ids are what the plugin stores and logs; repository URLs and organisation names are never stored outside the cached manifest. Ids of access, skills, marketplace, tool and check entries use lowercase letters, digits, `.`, `_` and `-`, at most 64 characters; provider and plugin ids are bb's own ids. Two entries of one kind cannot share an id. Unknown fields and unknown `source` or `kind` values are errors.
 
 Most entries take `required` (default `true`). Optional items appear under **Nice to have** and never count toward the sidebar badge.
 
@@ -49,7 +49,7 @@ Each `access` entry:
 | `required` | `true` | |
 | `machines` | the server; `github.machines` in `per-machine` mode | Where to check |
 
-Access results are categories: `ok`, `no-auth`, `no-access` (GitHub answers the same for "no such repository"), `sso-required`, `network`, `host-key`.
+Access results are categories: `ok`, `no-auth`, `no-access` (GitHub answers the same for "no such repository"), `sso-required`, `network`, `host-key`, `blocked` (the host resolves to this machine or a private network address).
 
 ## `ssh`
 
@@ -79,8 +79,8 @@ Team skills go into bb's own skill folder on the server machine, `<data dir>/ski
 
 | `source` | Fields | Installs |
 |---|---|---|
-| `git` | `url`; `ref` (default `main`; a branch is tracked, a tag or SHA pinned); `paths` (default `["skills/*"]`; `*` is one folder level, `**` any); `exclude` | Every folder with a `SKILL.md` that `paths` matches |
-| `apm` | `url`, `ref` and `path` (default `apm.yml`), or `package` (`owner/repo[/subpath][#ref]`) | The dependencies an `apm.yml` lists, or one APM package, resolved through git |
+| `git` | `url` (`https://`, `ssh://` or `git@<host>:` on a host that is neither this machine nor a private network address, or `file://` or an absolute path); `ref` (default `main`; a branch is tracked, a tag or SHA pinned); `paths` (default `["skills/*"]`; `*` is one folder level, `**` any); `exclude` | Every folder with a `SKILL.md` that `paths` matches |
+| `apm` | `url` (as for `git`), `ref` and `path` (default `apm.yml`), or `package` (`owner/repo[/subpath][#ref]`) | The dependencies an `apm.yml` lists, or one APM package, resolved through git |
 | `registry` | `registrySkillId` (`<source>/<skillId>`) | One skill from skills.sh |
 | `plugin` | `install`, a plugin source as in `plugins`; `id` is the plugin id | A bb plugin that bundles skills, after [approval](team-onboarding-items.md#approvals) |
 
@@ -132,13 +132,13 @@ Plugins and marketplaces live on the server. Each source waits for [approval](te
 | Field | Default | Meaning |
 |---|---|---|
 | `id` | required | Item id |
-| `title` | the id | Shown in the checklist |
+| `title` | `check.bin` | Shown in the checklist |
 | `check.bin` | required | A bare program name found on `PATH`, run without a shell |
 | `check.args` | `["--version"]` | A version flag; see below |
 | `check.pattern` | `(\d+\.\d+(?:\.\d+)?)` | Regular expression whose first group is the version |
 | `min` | none | Lowest version that passes: `2`, `2.60` or `2.60.1` |
 | `hint` | none | An `https:` link to install instructions |
-| `install` | none | A one-line **team command**, typed into a terminal after [approval](team-onboarding-items.md#approvals) |
+| `install` | none | A one-line [team command](team-onboarding-items.md#approvals), typed into a terminal after approval |
 | `required` | `true` | |
 | `machines` | top level | Where to check |
 
@@ -161,7 +161,7 @@ Tool checks run on every machine without approval, so `args` must be a version f
 | `note` | none | Shown beside the form, e.g. where to get the value |
 | `required` | `true` | |
 
-Names only: the engineer types the value into a masked form, and it is stored as a bb machine variable, which every agent on every machine can read. `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GIT_CONFIG_*` are refused because they override bb's built-in git.
+Names only: the engineer types the value into a masked form, and it is stored as a bb machine variable, which every agent on every machine can read. The form refuses `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `GIT_CONFIG_*`, because they override bb's built-in git.
 
 ## `checks`
 
@@ -184,4 +184,4 @@ checks:
     fix: { kind: terminal, command: "sudo systemctl start example-vpn" }
 ```
 
-`checks[].run`, `checks[].fix` and `tools[].install` are **team commands**: each runs only after [approval](team-onboarding-items.md#approvals), and a custom fix never runs in bulk.
+`checks[].run`, `checks[].fix` and `tools[].install` are [team commands](team-onboarding-items.md#approvals): each runs only after approval, and a custom fix never runs in bulk.

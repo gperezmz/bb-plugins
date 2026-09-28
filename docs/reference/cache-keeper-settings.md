@@ -40,7 +40,7 @@ From the top:
 |---|---|
 | **Keep warm while waiting** | Its switch, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never` |
 | **Compact when idle** | Its switch |
-| Context bar | A bar from 0 to the context window, filled to the context now, with the compaction line on its handle. Drag the handle between the ten settings, or click its size to type one such as `500k`. Hidden while bb has not reported the thread's window |
+| Context bar | A bar from 0 to the context window, filled to the context now, with the compaction line on its handle. Drag the handle between the ten settings, step it with the arrow keys, or click its size to type one such as `500k` and press Enter. Hidden while bb has not reported the thread's window |
 | Status line | `Now {context} · {status}`, each side starting with a capital: `Working`, `Waiting on your answer`, `Compacting in {m}m`, `Compacted {time} ago`, `Skipped until this thread next runs`, `Waiting on background work`, `Idle, no line`, `Idle, under the line` or `Idle`. `{context}` is `unknown` until the transcript has been read |
 | **Details** | Closed when the popover opens; one click opens it. The model, cache lifetime and calls per message the line rests on, then "Why {line}?" with the dollar figures at the line, or, where no size up to the window gives one, "Why never?" with the same figures at the whole window and whether a lower setting would give a line. The figures are left out while the window is unknown or the model has no price |
 | Error | Only while the last action from the popover has failed: what went wrong |
@@ -94,7 +94,7 @@ Still waiting on {items}. There's no need to check anything. Reply with exactly 
 
 A keep-warm that folds in tasks running 30 minutes or more is `Still waiting on {items}.`, then one routine paragraph per task (below), then the check-in's closing line.
 
-`{items}` lists background commands, then background subagents, then child threads, then queued and scheduled messages, oldest first within each, joined as "A", "A and B" or "A, B and C":
+`{items}` lists background commands, then background subagents, then child threads, then queued and scheduled messages, oldest first within each, joined as "A", "A and B" or "A, B and C"; it is `background work` while bb counts tasks Cache Keeper has not read yet:
 
 | Item | Entry |
 |---|---|
@@ -104,7 +104,7 @@ A keep-warm that folds in tasks running 30 minutes or more is `Still waiting on 
 | Scheduled message | `a scheduled message due at {HH:MM}` |
 | Queued message | `a queued message` |
 
-`{id}` is bb's task id for a background task and the thread id for a child. Text that comes from outside Cache Keeper (task ids and descriptions, thread titles, tool names) is cut to 60 characters, and has quotes, backslashes and line breaks escaped as `\"`, `\\` and `\n`.
+`{id}` is bb's task id for a background task and the thread id for a child. Text that comes from outside Cache Keeper (task ids and descriptions, thread titles, tool names) is cut to 60 characters, and has quotes, backslashes and line breaks escaped as `\"`, `\\` and `\n` and tabs turned into spaces. A background command's `{outputFile}` is escaped the same way but not cut.
 
 **Check-in**: one stalled paragraph per task due, commands before subagents, then
 

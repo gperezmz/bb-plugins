@@ -7,7 +7,7 @@ flowchart TB
   idle["Turn ends: the thread is idle"] --> question{"Waiting on your answer?"}
   question -->|yes| nothing["Nothing"]
   question -->|no| waiting{"Waiting on background work, a child thread,<br/>a report on its way or a queued message?"}
-  waiting -->|yes| stalled["Check-in on a stalled task, at once"]
+  waiting -->|yes| stalled["Check-in on a stalled task, at once,<br/>while check-ins are on"]
   waiting -->|yes| kept{"Its tree kept warm?"}
   kept -->|yes| warm["Keep-warm with its tree,<br/>until the cost stop or Skip"]
   waiting -->|no| on{"Compact when idle on,<br/>and the context at or over the line?"}
@@ -73,7 +73,7 @@ The **compaction line** for setting N is the smallest C with
 
 The window is the one bb reports for the thread, which it learns at the end of the thread's first turn; there is no default, so until bb reports it the thread has no lines, and `--above` is refused. The model's listed maximum is not used: a thread can run below it. When no context up to the window satisfies it, the line is "never". When a thread's model changes and its window with it, a setting whose line no longer fits shows as "never" and is kept. The composer chip's popover shows the line as a size rather than N: you drag between the ten sizes it gives, or type one and it snaps. A thread switched on for the first time starts at the setting you chose last on any thread, or 2. The line counts only your first message back, with no guess at when you return: a thread you leave for a week and one you leave for an hour pay the same rewrite.
 
-Prices come from LiteLLM's public list, then models.dev, then the LiteLLM list bundled with the plugin, fetched daily while [Fetch current prices daily](../reference/cache-keeper-settings.md) is on.
+Prices come from LiteLLM's public list, then models.dev, then the LiteLLM list bundled with the plugin, fetched daily while [Fetch current prices daily](../reference/cache-keeper-settings.md#settings) is on.
 
 ## Which trees are kept warm
 
@@ -116,7 +116,7 @@ A keep-warm is unconditional: it tells the agent there is nothing to check and a
 
 ## Check-ins
 
-Check-ins run only while "Check in on stalled background work" is on, which it is not on a fresh install; switched on, they go to every Claude Code thread. A background command or subagent that has printed or progressed nothing for the no-output wait is a **stalled task**. The thread that owns it, at any depth, gets a **check-in** at that moment, whether or not its tree is kept warm and whatever the keep-warm setting, or as soon as its turn ends if it was working: a turn asking the agent to check the task and report what it finds, and saying that a task quiet on purpose, such as a server or a watcher, is fine to leave running. It never tells the agent to stop, kill or restart anything. Just before it goes, Cache Keeper reads the task's latest output or progress, so a task that printed since is not asked about. Each further check-in on a task that stays stalled waits twice as long as the one before, and the spacing starts again only once the task prints or progresses again. A parent never checks in on its children's tasks: only the thread running a task can see it stuck.
+Check-ins run only while "Check in on stalled background work" is on, which it is not on a fresh install; switched on, they go to every Claude Code thread. A background command or subagent that has printed or progressed nothing for the no-output wait is a **stalled task**. The thread that owns it, at any depth, gets a **check-in** at that moment, whether or not its tree is kept warm and whatever the keep-warm setting, or as soon as its turn ends if it was working: a turn asking the agent to check the task and report what it finds, and saying that a task quiet on purpose, such as a server or a watcher, is fine to leave running. It never tells the agent to stop, kill or restart anything. Just before it goes, Cache Keeper reads the task's latest output or progress, so a task that printed since is not asked about. Each further check-in on a task that stays stalled waits twice as long as the one before, and the spacing starts again only once the task prints or progresses again. A parent never checks in on its children's tasks: only the thread running a task can see it stalled.
 
 A task that keeps printing gets no turn of its own. Once it has run 30 minutes, and every 30 minutes after, the thread's next keep-warm also asks the agent to look at it. With "Check in on stalled background work" off, no check-in goes, and no keep-warm asks about a task. Such a keep-warm, like a check-in, asks for the nothing-new reply "Checked {tasks}, still running normally, nothing new. Nothing needed from you.", which Cache Keeper recognises by its shape: it starts "Checked", names every task asked about and ends "nothing new. Nothing needed from you."
 
@@ -128,7 +128,7 @@ A thread's keep-warms stop once that charge, plus the forecast of its next keep-
 
 The cost stop fails closed. A thread whose model has no price, or whose price has no cache read or cache write rate at its cache lifetime, or one of 0, gets no keep-warm, and its banner and `status` say keep-warms are held because the model has no price. A fetched price of 0 is taken as the list's mistake, and the next list is used. A keep-warm whose turn's cost cannot be read from the transcript, or whose turn never came, is charged its forecast, so the cost stop comes however many turns go unmeasured.
 
-Skip, and a thread's cost stop, apply to every thread below it for the rest of the wait. Check-ins on a stalled task go anyway: each thread owns its background work and only it can notice it stuck. Past the cost stop the cache is cold, so the Cache Keeper page shows such a check-in at the cold-write price, while its real cost still counts towards the stretch.
+Skip, and a thread's cost stop, apply to every thread below it for the rest of the wait. Check-ins on a stalled task go anyway: each thread owns its background work and only it can notice it stalled. Past the cost stop the cache is cold, so the Cache Keeper page shows such a check-in at the cold-write price, while its real cost still counts towards the stretch.
 
 ## Read state
 
@@ -144,7 +144,7 @@ Every message is a fixed template, so the same state always sends the same words
 
 Immediately before every automatic send (a keep-warm, a check-in, or `/compact` at a thread's deadline), Cache Keeper reads the thread afresh from bb rather than from its memory, and sends only if it is still idle (bb leaves a thread whose last turn failed in `error`, which counts as idle), not archived and not deleted, a Claude Code thread, with no pending interaction, and still switched on for what is being sent: Compact when idle for `/compact`, its tree kept warm for a keep-warm, check-ins on for a check-in. Otherwise nothing is sent, and the reason goes in history.
 
-It sends with bb's `mode: "start"`, which bb refuses on a thread that has become busy: that counts as the thread becoming busy, and that due time is not tried again. Each send is claimed for its thread and due time before it goes, so two never both go, even after a restart during a send, or when a compaction at the deadline and **Compact now** fall due at once. A reply from bb or a machine that lacks a field Cache Keeper acts on counts as "don't act" for that thread; a missing pending interaction counts as one. A switch you flip while Cache Keeper waits on bb or a machine always holds.
+It sends with bb's `mode: "start"`, which bb refuses on a thread that has become busy: that counts as the thread becoming busy, and that due time is not tried again. A send that fails any other way gives up its claim and is logged as a warning, and Cache Keeper sends that thread nothing for a minute; whatever is still due after that minute goes then. Each send is claimed for its thread and due time before it goes, so two never both go, even after a restart during a send, or when a compaction at the deadline and **Compact now** fall due at once. A reply from bb or a machine that lacks a field Cache Keeper acts on counts as "don't act" for that thread; a missing pending interaction counts as one. A switch you flip while Cache Keeper waits on bb or a machine always holds.
 
 ## Why nothing was sent
 

@@ -10,7 +10,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 4 | Machine offline | The thread waits for its machine to come back | Cloud with a slash | Amber |
 | 5 | Working | Setting up, running, reconnecting or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon | Faint grey |
-| 7 | Scheduled | A queued message has a send time in the future | Calendar; the tooltip gives the time | Grey |
+| 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
 | 9 | Unread | The thread finished since you last read it | Filled dot | Blue |
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
@@ -34,7 +34,7 @@ A thread that waits on you or failed says why under its title. In the Needs atte
 | `Offline:` | The machine it waits for; Needs attention only | Amber |
 | `Finished:` | The start of its last reply; Needs attention only | Grey |
 
-The prefix stands alone when there is nothing to follow it. A thread with more than one reason shows the first in the table's order: waits on you, failed, offline, finished.
+In Needs attention, the prefix stands alone when there is nothing to follow it; elsewhere, a row with nothing to follow the prefix has no second line. A thread with more than one reason shows the first in the table's order: waits on you, failed, offline, finished.
 
 With **Comfortable** density, other rows use the second line for the branch (when it is not the project's default branch) and the machine (when threads run on more than one).
 
@@ -47,13 +47,13 @@ With **Comfortable** density, other rows use the second line for the branch (whe
 | A root in Needs attention | The name of its home group, muted |
 | Anything else | How long since it last finished: `now`, `5m`, `3h`, `2d`, `4w`, muted |
 
-A thread that started before Thread Glance was installed has no start time, and shows no timer until its next run.
+An archived row shows no time. A thread that started before Thread Glance was installed has no start time, and shows no timer until its next run.
 
 The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees) sits beside the time: the provider's logo, or a two-letter mark when the provider has none. The **Harness icon** preference draws it muted, in the provider's colour, or not at all.
 
-## The chip
+## The children chip
 
-A parent thread carries a chip with the number of its children and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three child harnesses that differ from the parent's show as small logos beside it.
+A parent thread carries a chip with the number of threads under it, at every depth, and the glyph of the most urgent thing among them, in this order: waits on you, failed, queued message failed, offline, working, unread. The chip is tinted amber for waits on you, red for a failure, blue for working, and neutral otherwise. Up to three harnesses under it that differ from the parent's show as small logos beside it, unless **Harness icon** is **Hidden**.
 
 Which children count toward the chip, and which show without opening it, is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md). A tree's root carries the same chip in the Needs attention section.
 

@@ -33,7 +33,7 @@ Spawn one child thread that lists the files in this repository, then wait for it
 
 While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a chip: `1` with a spinner, because its one child is working. The child has no row of its own at the top of the group. It sits behind that chip.
 
-Click the chip. The child's row opens under the parent, slightly indented, on a thin line that joins it to its parent.
+Click the chip. The child's row opens under the parent, indented one step, its title one size smaller.
 
 ## 4. Let it finish
 
@@ -43,9 +43,9 @@ When the parent finishes, its row shows the dot and a bold title.
 
 ## 5. See what needs attention
 
-When the parent finished unread, its tree moved into **Needs attention**, the section at the top of the list, and left its project's group. Your finished child did not bring it there: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
+While you have the parent open, its tree stays in its project's group. Open any thread outside the tree. The tree moves into **Needs attention**, the section at the top of the list, because its parent finished unread. Your finished child did not bring it there: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
 
-Open the parent. The tree stays in the section while you read it, in the same place, but its title is no longer bold and the section's count leaves it out: it is attended. Open a thread outside it, and the tree goes back to its project.
+Open the parent again. The tree stays in the section while you read it, in the same place, but its title is no longer bold and the section's count leaves it out: it is attended. Open a thread outside it, and the tree goes back to its project.
 
 ## 6. Change a setting
 

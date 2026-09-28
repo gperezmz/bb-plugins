@@ -23,7 +23,7 @@ The rates above are examples, not real prices.
 
 ## Save it
 
-Paste the JSON into Settings → Installed plugins → Thread Usage → **Price overrides and aliases**. Invalid JSON, or a price missing `input` or `output`, is refused with the reason.
+Paste the JSON into Settings → Installed plugins → Thread Usage → **Price overrides and aliases**. Invalid JSON, a key other than those above, a negative rate, or a price missing `input` or `output` is refused with the reason.
 
 From a shell, write it to a file and pass its contents:
 
