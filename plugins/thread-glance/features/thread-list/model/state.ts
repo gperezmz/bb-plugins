@@ -109,17 +109,30 @@ export function isOffline(thread: Pick<PluginSidebarThread, "status" | "runtimeS
 /** Per-thread facts the host payload doesn't carry. */
 export interface ThreadContext {
   activeThreadId: string | null;
+  /**
+   * Threads shown in a visible pane of the window besides the active one:
+   * bb's split panes. Absent, only the active thread is open.
+   */
+  openThreadIds?: ReadonlySet<string>;
   /** Stamps, from the plugin server. */
   finishedAt: Readonly<Record<string, number>>;
   seenAt: Readonly<Record<string, number>>;
 }
 
+/** Whether the thread is shown in a visible pane: the active one or another split pane. */
+export function isOpenThread(thread: Pick<PluginSidebarThread, "id">, context: ThreadContext): boolean {
+  return thread.id === context.activeThreadId || (context.openThreadIds?.has(thread.id) ?? false);
+}
+
 /**
  * bb's rule for every thread: unread when it has finished (idle or
  * error) since it was last read. Children are also unread when they finished
- * after you last looked at them (done-unseen).
+ * after you last looked at them (done-unseen). An open thread is never
+ * unread: bb marks it read moments after it finishes or fails, and counting
+ * it until then only flashes the need-you filter.
  */
 export function isUnread(thread: PluginSidebarThread, context: ThreadContext): boolean {
+  if (isOpenThread(thread, context)) return false;
   const status = normalizeStatus(thread);
   const lastRead = thread.lastReadAt ?? 0;
   if ((status === "idle" || status === "error") && lastRead < thread.latestAttentionAt) {
@@ -132,7 +145,7 @@ export function isUnread(thread: PluginSidebarThread, context: ThreadContext): b
 export function isDoneUnseen(thread: PluginSidebarThread, context: ThreadContext): boolean {
   if (thread.parentThreadId === null) return false;
   if (normalizeStatus(thread) !== "idle") return false;
-  if (thread.id === context.activeThreadId) return false;
+  if (isOpenThread(thread, context)) return false;
   const finished = context.finishedAt[thread.id];
   if (finished === undefined) return false;
   return finished > Math.max(thread.lastReadAt ?? 0, context.seenAt[thread.id] ?? 0);

@@ -3,7 +3,7 @@
 import type { Preferences } from "@/shared/preferences";
 import { ancestorsOf, type ThreadTree, type Forest } from "./trees";
 import { isGroupCollapsed, toggleGroupCollapse } from "./groups";
-import { isDoneUnseen } from "./state";
+import { isDoneUnseen, type ThreadContext } from "./state";
 import type { GroupView, OlderRow, SettledRow, ThreadRow } from "./view";
 
 export interface ToggleOutcome {
@@ -76,7 +76,7 @@ export interface MarkAllRead {
 /** Every unread thread in the trees, descendants included: Mark all read, and a root's Mark read for its tree. */
 export function markAllReadPlan(
   trees: readonly ThreadTree[],
-  context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },
+  context: ThreadContext,
 ): MarkAllRead {
   const read: string[] = [];
   const seen: string[] = [];
@@ -97,7 +97,7 @@ export function markAllReadPlan(
 export function markReadPlanFor(
   threadId: string,
   forest: Pick<Forest, "infos" | "treeOf">,
-  context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },
+  context: ThreadContext,
 ): MarkAllRead {
   const tree = forest.treeOf.get(threadId);
   if (tree !== undefined && tree.root.thread.id === threadId) return markAllReadPlan([tree], context);

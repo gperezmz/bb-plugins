@@ -20,6 +20,7 @@ import {
   experimental_useSidebarThreads as useSidebarThreads,
   useEnvironmentProviders,
   useSdk,
+  useSidebarSplitLayout,
   useSidebarThreadDraftIds,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
@@ -119,6 +120,12 @@ function ThreadListBody({
   const { providers } = useProviders();
   const { providers: environmentProviders } = useEnvironmentProviders();
   const draftIds = useSidebarThreadDraftIds();
+  const splitLayout = useSidebarSplitLayout();
+  // Every thread a split pane shows is open, not only the focused one.
+  const openThreadIds = useMemo(
+    () => new Set(splitLayout?.panes.flatMap((pane) => (pane.threadId === null ? [] : [pane.threadId])) ?? []),
+    [splitLayout],
+  );
   const { stamps, markSeen, clearSeen } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
@@ -150,6 +157,7 @@ function ThreadListBody({
         ? buildForest({
             threads,
             activeThreadId,
+            openThreadIds,
             finishedAt: stamps.finishedAt,
             seenAt: stamps.seenAt,
             draftIds,
@@ -159,7 +167,7 @@ function ThreadListBody({
             childAttention: prefs.childAttention,
           })
         : null,
-    [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
+    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
   // Projects with a thread on a branch: the rest need no default branch.
@@ -273,7 +281,7 @@ function ThreadListBody({
 
   const runMenuAction = useCallback(
     (action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null) => {
-      const context = { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt };
+      const context = { activeThreadId, openThreadIds, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt };
       const fail = (message: string) => (error: unknown) => toast.error(message, { description: describeError(error) });
       switch (action) {
         case "open-in-split":
@@ -326,7 +334,7 @@ function ThreadListBody({
           return;
       }
     },
-    [actions, activeThreadId, clearSeen, markSeen, onNavigate, sdk, stamps.finishedAt, stamps.seenAt],
+    [actions, activeThreadId, openThreadIds, clearSeen, markSeen, onNavigate, sdk, stamps.finishedAt, stamps.seenAt],
   );
   const runMenuActionRef = useRef(runMenuAction);
   useLayoutEffect(() => {
@@ -335,9 +343,9 @@ function ThreadListBody({
 
   // The committed state for the controllers' callbacks: they read it when
   // called, so the controllers themselves stay put while threads change.
-  const latest = useRef({ forest, view, prefs, byId, activeThreadId, stamps });
+  const latest = useRef({ forest, view, prefs, byId, activeThreadId, openThreadIds, stamps });
   useLayoutEffect(() => {
-    latest.current = { forest, view, prefs, byId, activeThreadId, stamps };
+    latest.current = { forest, view, prefs, byId, activeThreadId, openThreadIds, stamps };
   });
 
   const loadModel = useCallback(
@@ -451,8 +459,8 @@ function ThreadListBody({
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
   const markTreesRead = useCallback(
     (trees: readonly ThreadTree[], where: string) => {
-      const { activeThreadId, stamps } = latest.current;
-      const plan = markAllReadPlan(trees, { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
+      const { activeThreadId, openThreadIds, stamps } = latest.current;
+      const plan = markAllReadPlan(trees, { activeThreadId, openThreadIds, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
       const run = () => {
         if (plan.seen.length > 0) markSeen(plan.seen);
         for (const id of plan.read) actions.setRead(id, true).catch(() => undefined);

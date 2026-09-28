@@ -109,6 +109,8 @@ export interface Scenario {
   sections?: PluginSidebarSection[];
   prefs?: Partial<Preferences>;
   activeThreadId?: string | null;
+  /** Threads other split panes show. */
+  openThreadIds?: string[];
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -131,6 +133,7 @@ export function forestOf(scenario: Scenario): Forest {
   return buildForest({
     threads: scenario.threads,
     activeThreadId: scenario.activeThreadId ?? null,
+    openThreadIds: new Set(scenario.openThreadIds ?? []),
     finishedAt: scenario.finishedAt ?? {},
     seenAt: scenario.seenAt ?? {},
     scheduled: scenario.scheduled ?? {},

@@ -1085,3 +1085,49 @@ describe("the glyph is the thread, the children chip is its children", () => {
     expect(seen.chip!.firstElementChild!.className).toContain("motion-reduce:animate-none");
   });
 });
+
+describe("the open thread is never unread", () => {
+  // bb bumps latestAttentionAt when the thread finishes or fails and marks it
+  // read a moment later: these hold that moment still.
+  const cases = [
+    { name: "a root that just finished", mode: "blocked" as const, state: finishedUnread, child: false },
+    { name: "a root that just failed", mode: "blocked" as const, state: failedUnread, child: false },
+    { name: "a child that just finished, counting every child", mode: "everything" as const, state: finishedUnread, child: true },
+    { name: "a child that just failed, counting every child", mode: "everything" as const, state: failedUnread, child: true },
+  ];
+  const threadsFor = (c: (typeof cases)[number]) =>
+    c.child
+      ? [makeThread({ id: "m", title: "Parent" }), makeThread({ id: "v", title: "Viewed", parentThreadId: "m", createdAt: T0 + 1, ...c.state })]
+      : [makeThread({ id: "v", title: "Viewed", ...c.state })];
+
+  for (const c of cases) {
+    it(`draws no need-you filter and no unread row for ${c.name} while it is open`, async () => {
+      render(threadsFor(c), { prefs: { childAttention: c.mode }, props: { activeThreadId: "v" } });
+      const row = await screen.findByRole("link", { name: /^Open Viewed —/ });
+      expect(row.getAttribute("aria-label")).not.toMatch(/unread/i);
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+    });
+
+    it(`counts ${c.name} once it is not open`, async () => {
+      render(threadsFor(c), { prefs: { childAttention: c.mode } });
+      await screen.findByRole("button", { name: "1 need you" });
+    });
+  }
+
+  it("leaves a thread another split pane shows out of unread, as the focused one", async () => {
+    render([makeThread({ id: "v", title: "Viewed", ...finishedUnread }), makeThread({ id: "f", title: "Focused" })], {
+      props: { activeThreadId: "f" },
+      extra: {
+        sidebarSplitLayout: {
+          panes: [
+            { paneId: "p1", rect: { x: 0, y: 0, width: 0.5, height: 1 }, threadId: "f", isFocused: true },
+            { paneId: "p2", rect: { x: 0.5, y: 0, width: 0.5, height: 1 }, threadId: "v", isFocused: false },
+          ],
+        },
+      },
+    });
+    const row = await screen.findByRole("link", { name: /^Open Viewed —/ });
+    expect(row.getAttribute("aria-label")).not.toMatch(/unread/i);
+    expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+  });
+});
