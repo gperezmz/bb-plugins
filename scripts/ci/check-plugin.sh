@@ -4,7 +4,8 @@
 #
 #   scripts/ci/check-plugin.sh <plugin> [check|git-install|npm-install]
 #
-# check        npm ci, type-check, tests, build, then fails when a generator
+# check        npm ci, type-check, tests (in Chromium too, where the plugin
+#              has browser tests), build, then fails when a generator
 #              (third-party notices, and the manifest schema where the plugin
 #              has one) would change a committed file.
 # git-install  installs and builds the way bb does after cloning the
@@ -30,6 +31,11 @@ run() {
 case $mode in
   check)
     run npm ci --no-audit --no-fund
+    # A plugin whose tests run in a browser pins Playwright; the setup action
+    # caches what this downloads.
+    if [[ $(npm pkg get devDependencies.playwright) != "{}" ]]; then
+      run npx playwright install chromium --only-shell
+    fi
     run npx tsc --noEmit
     run npx vitest run
     run bb plugin build
