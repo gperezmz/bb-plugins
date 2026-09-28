@@ -7,6 +7,10 @@ import pkg from "../package.json";
 const icons = pkg.bb.branding.experimental_icons as Record<string, string>;
 
 describe("Cache Keeper's icons", () => {
+  it("registers the flame beside the timer", () => {
+    expect(icons.flame).toBe("./icons/flame.svg");
+  });
+
   it("brands the plugin with the timer", () => {
     expect(pkg.bb.branding.icon).toBe("./icons/timer.svg");
     expect(icons["cache-keeper"]).toBe("./icons/timer.svg");

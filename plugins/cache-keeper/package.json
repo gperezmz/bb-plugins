@@ -12,7 +12,8 @@
     "branding": {
       "icon": "./icons/timer.svg",
       "experimental_icons": {
-        "cache-keeper": "./icons/timer.svg"
+        "cache-keeper": "./icons/timer.svg",
+        "flame": "./icons/flame.svg"
       }
     },
     "server": "./server.ts",

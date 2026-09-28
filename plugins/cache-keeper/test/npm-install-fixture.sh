@@ -3,7 +3,8 @@
 # scripts/ci/npm-install-check.sh). The throwaway bb has no Claude Code
 # thread, so this checks what it can reach without one: bb serves an app
 # bundle it calls compatible that registers the composer chip and banner, the
-# sidebar script, the nav page and the Agent tools settings section; bb holds
+# sidebar script, the nav page and the Agent tools settings section; bb serves
+# the timer and the flame as the plugin's icons; bb holds
 # the plugin's four settings, with check-ins off; its CLI answers from the
 # server with nothing switched on, names compact-now and no `now`; and it
 # refuses to switch on, or keep warm, a thread that does not exist.
@@ -22,6 +23,20 @@ for registration in 'composer.customize(' 'contentScripts.register(' 'slots.navP
   fi
 done
 echo "The app bundle registers the composer chip and banner, the sidebar script, the nav page and the Agent tools section"
+
+icons=$(bb plugin list --json | jq -c --arg id "$PLUGIN_ID" '.plugins[] | select(.id == $id) | .icons')
+for name in cache-keeper flame; do
+  url=$(jq -r --arg name "$name" '.[$name] // empty' <<< "$icons")
+  if [[ -z $url ]]; then
+    echo "::error::bb registers no $name icon for $PLUGIN_ID: $icons" >&2
+    exit 1
+  fi
+  if ! curl -fsS "$BB_SERVER_URL$url" | grep -qF 'viewBox="0 0 24 24"'; then
+    echo "::error::bb does not serve $PLUGIN_ID's $name icon as an SVG at $url" >&2
+    exit 1
+  fi
+done
+echo "bb serves the timer and the flame"
 
 config=$(bb plugin config "$PLUGIN_ID" --json)
 keys=$(jq -c '[(.settings // .values // .) | keys[]] | sort' <<< "$config")
