@@ -105,3 +105,10 @@ export function stateSince(
   if (at === undefined) return null;
   return formatDuration(now - at);
 }
+
+/**
+ * The widest texts `trailingTime` gives up to 99 weeks, one per unit. The
+ * trailing slot is as wide as the widest of them, so times line up down the
+ * list; an older row widens its own.
+ */
+export const TRAILING_SLOT_SIZERS = ["now", "<1m", "59m", "23h", "6d", "99w"] as const;

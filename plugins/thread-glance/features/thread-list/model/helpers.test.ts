@@ -7,7 +7,7 @@ import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText, settledRowText } from "./labels";
 import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
 import { dotTone } from "./state";
-import { formatDuration, trailingTime } from "./time";
+import { formatDuration, TRAILING_SLOT_SIZERS, trailingTime } from "./time";
 import type { OlderRow } from "./view";
 import { chunk, windowedNavValue } from "./windowing";
 
@@ -91,6 +91,18 @@ describe("drop resolution (drag guards)", () => {
 });
 
 describe("time", () => {
+  it("sizes the trailing slot for every time text up to 99 weeks: each has a sizer of its unit and at least its length", () => {
+    const texts = new Set<string>(["<1m"]);
+    for (let minutes = 0; minutes < 100 * 7 * 24 * 60; minutes += 1) texts.add(formatDuration(minutes * 60e3));
+    for (const text of texts) {
+      const unit = text.replace(/\d/g, "");
+      const sizer = TRAILING_SLOT_SIZERS.find((candidate) => candidate.replace(/\d/g, "") === unit);
+      expect(sizer, text).toBeDefined();
+      expect(sizer!.length, text).toBeGreaterThanOrEqual(text.length);
+    }
+    expect(formatDuration(100 * 7 * 86400e3)).toBe("100w");
+  });
+
   it("formats ages", () => {
     expect([30e3, 5 * 60e3, 3 * 3600e3, 2 * 86400e3, 30 * 86400e3].map(formatDuration)).toEqual([
       "now",

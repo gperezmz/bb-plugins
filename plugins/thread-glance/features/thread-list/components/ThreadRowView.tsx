@@ -20,7 +20,7 @@ import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
 import { pluginStatusWins } from "../model/state";
-import { trailingTime } from "../model/time";
+import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
@@ -299,8 +299,12 @@ export const ThreadRowView = memo(function ThreadRowView({
   const twoLines = note !== null || row.branchLine !== null;
   const dimmed = row.dimmed && !editing;
   const menuShowing = menuOpen || contextOpen;
-  // Desktop: the actions cross-fade over the harness and age, as bb's
-  // trailing slot does. Compact: "…" always shows beside them.
+  // A pressed shortcut's pill takes the machine's place, as it takes the time's.
+  const showMachine = row.machine !== null && shortcut === null;
+  const swapShown = row.harness || showMachine;
+  const actionsShown = !compact && shortcut === null;
+  // Desktop: on hover the harness and machine fade out for Mark read and
+  // Archive, and the time for "…". Compact: nothing fades.
   const fadeClass = compact
     ? ""
     : menuShowing
@@ -440,141 +444,166 @@ export const ThreadRowView = memo(function ThreadRowView({
           <PullRequestBadge threadId={thread.id} />
         </span>
       ) : null}
-      {chip !== null && !editing ? (
-        <button
-          type="button"
-          aria-expanded={chip.expanded}
-          aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
-          title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            controller.onToggleChip(row);
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-          className={cn(
-            "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-            dimmed && QUIET_TEXT,
-          )}
-        >
-          {chip.count}
-          <Icon
-            name={ICONS.expand}
-            aria-hidden
-            className={cn("size-3 transition-transform duration-150", chip.expanded && "rotate-90")}
-          />
-        </button>
-      ) : null}
-      {!editing && row.harness ? (
-        <span
-          className={cn(
-            "pointer-events-none relative inline-flex shrink-0 transition-opacity",
-            // The hover actions take this slot too, as bb's trailing slot does.
-            shortcut === null && fadeClass,
-          )}
-        >
-          <ProviderBadge display={provider} mode={controller.harnessIcon} />
-        </span>
-      ) : null}
-      {!editing ? (
-        <span className="relative flex h-6 min-w-8 shrink-0 items-center justify-end gap-1">
-          {shortcut !== null ? (
-            <kbd aria-hidden className="pointer-events-none rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted-foreground">
-              {shortcut.label}
-            </kbd>
-          ) : (
-            <>
-              {row.machine !== null ? (
+      {!editing && (swapShown || actionsShown) ? (
+        // One cell: the harness and machine at rest, Mark read and Archive
+        // on hover. The actions take no width at rest, so no title is
+        // shorter for them; on hover the title gives up only what they
+        // need beyond the badges they replace.
+        <span className="relative -ml-1.5 grid shrink-0 items-center">
+          {swapShown ? (
+            <span className={cn("flex items-center gap-1.5 pl-1.5 [grid-area:1/1] transition-opacity", shortcut === null && fadeClass)}>
+              {row.harness ? (
+                <span className="pointer-events-none relative inline-flex shrink-0">
+                  <ProviderBadge display={provider} mode={controller.harnessIcon} />
+                </span>
+              ) : null}
+              {showMachine ? (
                 <span
                   title={`On ${row.machine}`}
                   aria-label={`On ${row.machine}`}
-                  className={cn("pointer-events-none max-w-20 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
+                  className="pointer-events-none max-w-20 truncate text-[11px] text-muted-foreground"
                 >
                   {row.machine}
                 </span>
               ) : null}
-              {time !== null ? (
+            </span>
+          ) : null}
+          {actionsShown ? (
+            <span
+              className={cn(
+                "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
+                menuShowing ? "flex" : "hidden group-hover/row:flex group-focus-within/row:flex",
+              )}
+            >
+              {row.treeUnread ? (
+                <button
+                  type="button"
+                  aria-label="Mark read"
+                  title="Mark read"
+                  className={ROW_ICON_BUTTON}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    controller.onMenuAction("mark-read", thread);
+                  }}
+                >
+                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label={archived ? "Unarchive thread" : "Archive thread"}
+                title={archived ? "Unarchive" : "Archive"}
+                className={ROW_ICON_BUTTON}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  controller.onMenuAction(archived ? "unarchive" : "archive", thread);
+                }}
+              >
+                <Icon name={archived ? ICONS.unarchive : ICONS.archive} aria-hidden className="size-4" />
+              </button>
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+      {!editing ? (
+        // The chip sits 4px before the trailing slot, whose width never
+        // changes, so hover never moves it.
+        <span className="relative flex shrink-0 items-center gap-1">
+          {chip !== null ? (
+            <button
+              type="button"
+              aria-expanded={chip.expanded}
+              aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+              title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                controller.onToggleChip(row);
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+              className={cn(
+                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                dimmed && QUIET_TEXT,
+              )}
+            >
+              {chip.count}
+              <Icon
+                name={ICONS.expand}
+                aria-hidden
+                className={cn("size-3 transition-transform duration-150", chip.expanded && "rotate-90")}
+              />
+            </button>
+          ) : null}
+          {/* The trailing slot: one grid cell, as wide as "…" or the widest
+              time, whichever is wider, holding the time at rest and "…" on hover. */}
+          <span data-trailing-slot="" className="relative grid h-6 shrink-0 items-center">
+            <span aria-hidden className="invisible w-6 [grid-area:1/1]" />
+            {TRAILING_SLOT_SIZERS.map((text) => (
+              <span key={text} aria-hidden className="invisible text-[11px] font-medium tabular-nums [grid-area:1/1]">
+                {text}
+              </span>
+            ))}
+            {shortcut !== null ? (
+              <kbd aria-hidden className="pointer-events-none justify-self-end rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted-foreground [grid-area:1/1]">
+                {shortcut.label}
+              </kbd>
+            ) : (
+              <>
+                {time !== null ? (
+                  <span
+                    title={time.label}
+                    aria-label={time.label}
+                    className={cn(
+                      "pointer-events-none justify-self-end text-[11px] tabular-nums transition-opacity [grid-area:1/1]",
+                      // A running timer reads as work, an age as history.
+                      time.kind === "timer" ? "font-medium text-[var(--timeline-accent)]" : "text-muted-foreground",
+                      fadeClass,
+                    )}
+                  >
+                    {time.text}
+                  </span>
+                ) : null}
                 <span
-                  title={time.label}
-                  aria-label={time.label}
                   className={cn(
-                    "pointer-events-none text-[11px] tabular-nums transition-opacity",
-                    // A running timer reads as work, an age as history.
-                    time.kind === "timer" ? "font-medium text-[var(--timeline-accent)]" : "text-muted-foreground",
-                    fadeClass,
+                    "flex items-center justify-self-end transition-opacity [grid-area:1/1]",
+                    compact
+                      ? "relative"
+                      : menuShowing
+                        ? "opacity-100"
+                        : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
                   )}
                 >
-                  {time.text}
+                  <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Thread actions"
+                        // Phones open the menu by long-press, as bb's lists do;
+                        // the button stays for keyboards and screen readers.
+                        className={compact ? "sr-only" : ROW_ICON_BUTTON}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Icon name={ICONS.more} aria-hidden className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <RowDropdownMenuContent
+                      items={menuItems}
+                      sections={controller.sections}
+                      currentSectionId={thread.sectionId}
+                      onAction={onMenuAction}
+                      onCloseAutoFocus={onMenuCloseAutoFocus}
+                    />
+                  </DropdownMenu>
                 </span>
-              ) : null}
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 transition-opacity",
-                  compact
-                    ? "relative"
-                    : menuShowing
-                      ? "absolute right-0 opacity-100"
-                      : "absolute right-0 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
-                )}
-              >
-                {!compact && row.treeUnread ? (
-                  <button
-                    type="button"
-                    aria-label="Mark read"
-                    title="Mark read"
-                    className={ROW_ICON_BUTTON}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      controller.onMenuAction("mark-read", thread);
-                    }}
-                  >
-                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-                  </button>
-                ) : null}
-                {!compact ? (
-                  <button
-                    type="button"
-                    aria-label={archived ? "Unarchive thread" : "Archive thread"}
-                    title={archived ? "Unarchive" : "Archive"}
-                    className={ROW_ICON_BUTTON}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      controller.onMenuAction(archived ? "unarchive" : "archive", thread);
-                    }}
-                  >
-                    <Icon name={archived ? ICONS.unarchive : ICONS.archive} aria-hidden className="size-4" />
-                  </button>
-                ) : null}
-                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="Thread actions"
-                      // Phones open the menu by long-press, as bb's lists do;
-                      // the button stays for keyboards and screen readers.
-                      className={compact ? "sr-only" : ROW_ICON_BUTTON}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <Icon name={ICONS.more} aria-hidden className="size-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <RowDropdownMenuContent
-                    items={menuItems}
-                    sections={controller.sections}
-                    currentSectionId={thread.sectionId}
-                    onAction={onMenuAction}
-                    onCloseAutoFocus={onMenuCloseAutoFocus}
-                  />
-                </DropdownMenu>
-              </span>
-            </>
-          )}
+              </>
+            )}
+          </span>
         </span>
       ) : null}
     </div>
