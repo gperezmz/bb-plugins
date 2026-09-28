@@ -33,7 +33,7 @@ export interface ThreadView {
   callsMeasured: boolean;
   postCompaction: number;
   postMeasured: boolean;
-  /** Where the prices came from; null when the model has none. */
+  /** Where the prices came from; null when the model has none, or is not read yet (`model` is null). */
   priceOrigin: string | null;
   rates: { w: number; r: number; o: number } | null;
   deadline: number | null;
