@@ -94,9 +94,9 @@ describe("time", () => {
   it("sizes the trailing slot for every time text up to 99 weeks: each has a sizer of its unit and at least its length", () => {
     const texts = new Set<string>(["<1m"]);
     for (let minutes = 0; minutes < 100 * 7 * 24 * 60; minutes += 1) texts.add(formatDuration(minutes * 60e3));
+    const unitOf = (text: string) => text.replace(/\d/g, "");
     for (const text of texts) {
-      const unit = text.replace(/\d/g, "");
-      const sizer = TRAILING_SLOT_SIZERS.find((candidate) => candidate.replace(/\d/g, "") === unit);
+      const sizer = TRAILING_SLOT_SIZERS.find((candidate) => unitOf(candidate) === unitOf(text));
       expect(sizer, text).toBeDefined();
       expect(sizer!.length, text).toBeGreaterThanOrEqual(text.length);
     }

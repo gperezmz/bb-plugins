@@ -49,28 +49,34 @@ interface Case {
 // not, and the harness badge and machine name each shown or not, on roots,
 // which carry the pull request badge on their title line. A hidden thread
 // gets a row only as a child that needs attention, and its own children
-// move up to the thread above it, so a row with the hidden badge has no chip
+// move up to the thread above it, so a row with the hidden badge has no children chip
 // and no Mark read: those rows vary the harness badge and machine name.
 const CASES: Case[] = [];
-const id = (c: Omit<Case, "id">) =>
+const caseId = (c: Omit<Case, "id">) =>
   `${c.kind === "root" ? "r" : "c"}${c.parent ? "p" : "n"}${c.unread ? "u" : "r"}${c.harness ? "h" : "x"}${c.machine ? "m" : "x"}`;
 for (const harness of [true, false])
   for (const machine of [true, false]) {
     for (const parent of [true, false])
       for (const unread of [true, false]) {
         const c = { kind: "root" as const, parent, unread, harness, machine };
-        CASES.push({ id: id(c), ...c });
+        CASES.push({ id: caseId(c), ...c });
       }
     const c = { kind: "hidden-child" as const, parent: false, unread: false, harness, machine };
-    CASES.push({ id: id(c), ...c });
+    CASES.push({ id: caseId(c), ...c });
   }
 
+// Hidden rows sit two levels down, where a row draws the ↳ marker.
 const HOLDER = "holder";
+const MIDDLE = "middle";
+// Roots finish this long ago, to show `now`, `59m`, `23h`, `6d` and `99w`;
+// hidden children wait on you for 59 minutes.
+const AGES = [30_000, 59 * 60_000, 23 * 3_600_000, 6 * 86_400_000, 99 * 7 * 86_400_000 + 3_600_000];
 const titleOf = (id: string) => `A long thread title that runs well past the sidebar's width before it ends ${id}`;
 
 function threads() {
   return [
     makeThread({ id: HOLDER, title: "Holder" }),
+    makeThread({ id: MIDDLE, title: "Middle", parentThreadId: HOLDER }),
     ...CASES.flatMap((c) => {
       const thread = makeThread({
         id: c.id,
@@ -80,7 +86,7 @@ function threads() {
         host: c.machine ? { id: "host_2", name: "work" } : { id: "host_1", name: "Laptop" },
         environment: { branchName: `fix/${c.id}` },
         // A hidden thread gets a row while it waits on you.
-        ...(c.kind === "hidden-child" ? { parentThreadId: HOLDER, isHidden: true, hasPendingInteraction: true } : {}),
+        ...(c.kind === "hidden-child" ? { parentThreadId: MIDDLE, isHidden: true, hasPendingInteraction: true } : {}),
       });
       return c.parent ? [thread, makeThread({ id: `${c.id}-child`, parentThreadId: c.id })] : [thread];
     }),
@@ -105,11 +111,12 @@ async function render(width: number) {
       setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
       resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
       importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-      // 59m: the widest minutes a wait shows.
       listStamps: () => ({
         stamps: {
           startedAt: {},
-          finishedAt: {},
+          finishedAt: Object.fromEntries(
+            CASES.filter((c) => c.kind === "root").map((c, index) => [c.id, Date.now() - AGES[index % AGES.length]!]),
+          ),
           pendingAt: Object.fromEntries(CASES.map((c) => [c.id, Date.now() - 59 * 60_000])),
           seenAt: {},
         },
@@ -150,6 +157,9 @@ async function render(width: number) {
 
 /** The parts of a row that can show, found by what a person reads on them. */
 const PARTS = {
+  status: () => ":scope > span:first-of-type",
+  nested: () => 'span[title^="Child of"]',
+  crossGroup: () => "[data-sidebar-thread-cross-project]",
   title: (c: Case) => `span[title="${titleOf(c.id)}"]`,
   hidden: () => '[aria-label="Hidden thread"]',
   pullRequest: () => '[aria-label^="Pull request #1234"]',
@@ -157,7 +167,7 @@ const PARTS = {
   machine: () => '[aria-label="On work"]',
   markRead: () => 'button[aria-label="Mark read"]',
   archive: () => 'button[aria-label="Archive thread"]',
-  chip: () => 'button[aria-label^="Show "], button[aria-label^="Collapse "]',
+  childrenChip: () => 'button[aria-label^="Show "], button[aria-label^="Collapse "]',
   time: () => '[aria-label^="Waiting on you"], [aria-label^="Finished"]',
   more: () => 'button[aria-label="Thread actions"]',
 } as const;
@@ -213,7 +223,17 @@ function expected(c: Case, hovered: boolean): Part[] {
       [...(c.unread && c.kind === "root" ? (["markRead"] as const) : []), "archive"]
     : [...(c.harness ? (["harness"] as const) : []), ...(c.machine ? (["machine"] as const) : [])];
   const badge: Part = c.kind === "root" ? "pullRequest" : "hidden";
-  return ["title", badge, ...middle, ...(c.parent ? (["chip"] as const) : []), hovered ? "more" : "time"];
+  const lead: Part[] = c.kind === "hidden-child" ? ["status", "nested"] : ["status"];
+  return [...lead, "title", badge, ...middle, ...(c.parent ? (["childrenChip"] as const) : []), hovered ? "more" : "time"];
+}
+
+/** The row shows what `expected` lists, in that order, with no two parts overlapping. */
+function expectRowEnd(c: Case, hovered: boolean) {
+  const boxes = visibleBoxes(c);
+  const label = hovered ? `${c.id} hovered` : c.id;
+  expect(boxes.map((box) => box.part).sort(), label).toEqual(expected(c, hovered).sort());
+  expectOrder(c, boxes, expected(c, hovered));
+  expectNoOverlap(c, boxes);
 }
 
 async function ready() {
@@ -227,21 +247,14 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
     await render(width);
     await ready();
     for (const c of CASES) {
-      const rest = visibleBoxes(c);
-      expect(rest.map((box) => box.part).sort(), c.id).toEqual(expected(c, false).sort());
-      expectOrder(c, rest, expected(c, false));
-      expectNoOverlap(c, rest);
-
+      expectRowEnd(c, false);
       await userEvent.hover(rowOf(c));
-      const hover = visibleBoxes(c);
-      expect(hover.map((box) => box.part).sort(), `${c.id} hovered`).toEqual(expected(c, true).sort());
-      expectOrder(c, hover, expected(c, true));
-      expectNoOverlap(c, hover);
+      expectRowEnd(c, true);
       await pointerAway();
     }
   });
 
-  it("keeps the chip still and clickable on hover, 4 px before a trailing slot every row shares", async () => {
+  it("keeps the children chip still and clickable on hover, 4 px before a trailing slot every row shares", async () => {
     await render(width);
     await ready();
     const slots = CASES.map((c) => rowOf(c).querySelector<HTMLElement>("[data-trailing-slot]")!.getBoundingClientRect());
@@ -257,17 +270,17 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
       const time = row.querySelector(PARTS.time())!.getBoundingClientRect();
       expect(time.right, `${c.id} time right-aligned`).toBeCloseTo(slot.right, 1);
       expect(time.width, `${c.id} time fits`).toBeLessThanOrEqual(slot.width);
-      const chip = row.querySelector<HTMLButtonElement>(PARTS.chip());
+      const chip = row.querySelector<HTMLButtonElement>(PARTS.childrenChip());
       if (!c.parent) {
         expect(chip, c.id).toBeNull();
         continue;
       }
       const rest = chip!.getBoundingClientRect();
-      expect(slot.left - rest.right, `${c.id} chip to slot`).toBeCloseTo(4, 1);
+      expect(slot.left - rest.right, `${c.id} children chip to slot`).toBeCloseTo(4, 1);
 
       await userEvent.hover(row);
       const hover = chip!.getBoundingClientRect();
-      expect([hover.left, hover.top, hover.width, hover.height], `${c.id} chip on hover`).toEqual([
+      expect([hover.left, hover.top, hover.width, hover.height], `${c.id} children chip on hover`).toEqual([
         rest.left,
         rest.top,
         rest.width,
@@ -276,12 +289,12 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
       const more = row.querySelector(PARTS.more())!.getBoundingClientRect();
       expect(more.right, `${c.id} "…" in the slot`).toBeCloseTo(slot.right, 1);
       const top = document.elementFromPoint(hover.left + hover.width / 2, hover.top + hover.height / 2);
-      expect(chip!.contains(top), `${c.id} chip on top`).toBe(true);
+      expect(chip!.contains(top), `${c.id} children chip on top`).toBe(true);
       await pointerAway();
     }
-    // A click on a hovered row's chip opens its children.
+    // A click on a hovered row's children chip opens its children.
     const parent = CASES.find((c) => c.parent)!;
-    const chip = rowOf(parent).querySelector<HTMLButtonElement>(PARTS.chip())!;
+    const chip = rowOf(parent).querySelector<HTMLButtonElement>(PARTS.childrenChip())!;
     await userEvent.hover(rowOf(parent));
     await userEvent.click(chip);
     await expect.poll(() => chip.getAttribute("aria-expanded")).toBe("true");
