@@ -408,6 +408,23 @@ describe("Thread Glance slot", () => {
     expect(within(comfortable).getByLabelText("On work")).toBeTruthy();
   });
 
+  it("keeps the pull request badge on the title line of a Comfortable row whose second line is a note", async () => {
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    render(
+      [makeThread({ id: "f", title: "Broke", status: "error", environment: { branchName: "fix/y" } })],
+      {
+        notes: { f: { failed: { kind: "failed", text: "timeout", at: T0 } } },
+        extra: { sidebarPullRequests: { f: { number: 9, title: "Y", url: "u", state: "open", attention: "none" } } },
+      },
+    );
+    const row = (await screen.findByRole("link", { name: /Open Broke/ })).parentElement!;
+    const badge = await within(row).findByLabelText(/Pull request #9/);
+    const title = within(row).getByTitle("Broke");
+    expect(badge.parentElement).toBe(title.parentElement);
+    expect(row.textContent).toContain("Failed: timeout");
+    expect(row.textContent).not.toContain("fix/y");
+  });
+
   it("draws a harness icon only where it differs, in the Muted or Colour style the panel picks", async () => {
     render([
       makeThread({ id: "d", title: "Default root" }),

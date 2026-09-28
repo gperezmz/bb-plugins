@@ -403,19 +403,23 @@ export const ThreadRowView = memo(function ThreadRowView({
             }}
           />
         ) : (
-          <span
-            title={thread.displayTitle}
-            className={cn(
-              "min-w-0 truncate",
-              row.bold ? "font-semibold" : "font-normal",
-              // Children sit a step below their parent.
-              row.depth > 0 && "text-xs",
-              // Quiet threads step back so live ones lead; hover brings them back.
-              dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
-            )}
-          >
-            {/* Plain text: mention pills lost the truncation fight. */}
-            {thread.displayTitle}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              title={thread.displayTitle}
+              className={cn(
+                "min-w-0 truncate",
+                row.bold ? "font-semibold" : "font-normal",
+                // Children sit a step below their parent.
+                row.depth > 0 && "text-xs",
+                // Quiet threads step back so live ones lead; hover brings them back.
+                dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
+              )}
+            >
+              {/* Plain text: mention pills lost the truncation fight. */}
+              {thread.displayTitle}
+            </span>
+            {/* On a two-line row the badge stays on the title's line, not centred beside both. */}
+            {row.pullRequest === "title" && twoLines ? <PullRequestBadge threadId={thread.id} /> : null}
           </span>
         )}
         {!editing && note !== null ? (
@@ -431,7 +435,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           <Icon name={ICONS.hidden} aria-hidden className="size-3.5" />
         </span>
       ) : null}
-      {row.pullRequest === "title" && !editing ? (
+      {row.pullRequest === "title" && !twoLines && !editing ? (
         <span className="pointer-events-none relative">
           <PullRequestBadge threadId={thread.id} />
         </span>
