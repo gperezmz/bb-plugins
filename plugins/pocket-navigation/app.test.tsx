@@ -102,8 +102,15 @@ describe("Pocket Navigation", async () => {
   it("draws the New thread line with search at its right, then the icon row in bb's order", () => {
     render([PLUGINS, NEW_THREAD, AUTOMATIONS, SEARCH, USAGE, THREAD_USAGE]);
     expect(screen.queryByText("bb's own navigation")).toBeNull();
-    expect(buttonNames()).toEqual(["New thread", "Search", "Plugins", "Automations", "Usage", "Thread usage"]);
-    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(buttonNames()).toEqual([
+      "New thread",
+      "Search",
+      "Plugins",
+      "Automations",
+      "Usage",
+      "Thread usage",
+      "More sidebar navigation",
+    ]);
   });
 
   it("draws the New thread line first where bb's order puts New thread and search last", () => {
@@ -120,9 +127,14 @@ describe("Pocket Navigation", async () => {
     expect(activated(slot)).toEqual(["usage/usage", "__bb__/extensions", "__bb__/new-thread", "__bb__/search-threads"]);
   });
 
-  it("has no … when nothing is hidden", () => {
-    render([NEW_THREAD, SEARCH, PLUGINS]);
-    expect(screen.queryByRole("button", { name: "More sidebar navigation" })).toBeNull();
+  it("offers only Customize sidebar behind … when nothing is hidden, and opens bb's customize editor from it", async () => {
+    const slot = render([NEW_THREAD, SEARCH, PLUGINS]);
+    expect(buttonNames()).toEqual(["New thread", "Search", "Plugins", "More sidebar navigation"]);
+    const menu = await openOverflow();
+    expect(menu.map((entry) => entry.textContent)).toEqual(["Customize sidebar"]);
+    expect(screen.queryByRole("separator")).toBeNull();
+    fireEvent.click(menu[0]);
+    expect(slot.inspection.sidebarNavigationCalls.map((call) => call.method)).toEqual(["openCustomize"]);
   });
 
   it("lists every hidden entry behind …, in bb's order, then Customize sidebar", async () => {
@@ -130,6 +142,7 @@ describe("Pocket Navigation", async () => {
     expect(buttonNames()).toEqual(["New thread", "Plugins", "More sidebar navigation"]);
     const menu = (await openOverflow());
     expect(menu.map((entry) => entry.textContent)).toEqual(["Usage", "Search", "Automations", "Customize sidebar"]);
+    expect(screen.getAllByRole("separator")).toHaveLength(1);
     fireEvent.click(menu[1]);
     expect(activated(slot)).toEqual(["__bb__/search-threads"]);
   });
