@@ -163,10 +163,12 @@ const GroupHeader = memo(function GroupHeader({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-48">
-                <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
-                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-                  Mark all read
-                </DropdownMenuItem>
+                {group.hasUnread ? (
+                  <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
+                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                    Mark all read
+                  </DropdownMenuItem>
+                ) : null}
                 {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
                   <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
                     <Icon name={ICONS.newThread} aria-hidden className="size-4" />

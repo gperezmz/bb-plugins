@@ -22,6 +22,8 @@ export interface ListHeaderProps {
   needYouCount: number;
   needYouOnly: boolean;
   onToggleNeedYou(): void;
+  /** A thread in the list is unread; Mark all read is not drawn otherwise. */
+  hasUnread: boolean;
   onMarkAllRead(): void;
   prefs: Preferences;
   client: ClientPreferences;
@@ -34,6 +36,7 @@ export const ListHeader = memo(function ListHeader({
   needYouCount,
   needYouOnly,
   onToggleNeedYou,
+  hasUnread,
   onMarkAllRead,
   prefs,
   client,
@@ -61,9 +64,11 @@ export const ListHeader = memo(function ListHeader({
           {needYouCount} need you
         </button>
       ) : null}
-      <button type="button" aria-label="Mark all read" title="Mark all read" className={ROW_ICON_BUTTON} onClick={onMarkAllRead}>
-        <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-      </button>
+      {hasUnread ? (
+        <button type="button" aria-label="Mark all read" title="Mark all read" className={ROW_ICON_BUTTON} onClick={onMarkAllRead}>
+          <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+        </button>
+      ) : null}
       <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
         <PopoverTrigger asChild>
           <button type="button" aria-label="Thread Glance settings" title="Settings" className={ROW_ICON_BUTTON}>

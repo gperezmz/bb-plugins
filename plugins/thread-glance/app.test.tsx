@@ -638,6 +638,33 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toHaveLength(21));
   });
 
+  it("draws Mark all read in the header only while something in the list is unread, live as that changes", async () => {
+    render([]);
+    await screen.findByText("No threads yet.");
+    expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull();
+    cleanup();
+    const threads = [makeThread({ id: "q", title: "Quiet" }), makeThread({ id: "u", title: "Unread", ...finishedUnread })];
+    const slot = render(threads);
+    expect(await screen.findByRole("button", { name: "Mark all read" })).toBeTruthy();
+    // Opening the one unread thread leaves nothing unread; leaving it, bb has not marked it read yet here.
+    const List = app.threadLists[0]!.component;
+    slot.lifecycle.rerender(<List {...props} activeThreadId="u" />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull());
+    slot.lifecycle.rerender(<List {...props} activeThreadId={null} />);
+    expect(await screen.findByRole("button", { name: "Mark all read" })).toBeTruthy();
+  });
+
+  it("offers Mark all read in a group's menu only while something in that group is unread", async () => {
+    render([makeThread({ id: "q", title: "Quiet" }), makeThread({ id: "u", title: "Unread", projectId: "proj_b", ...finishedUnread })]);
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, pointerType: "mouse" });
+    await screen.findByRole("menuitem", { name: "Customize list" });
+    expect(screen.queryByRole("menuitem", { name: "Mark all read" })).toBeNull();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Beta actions" }), { button: 0, pointerType: "mouse" });
+    expect(await screen.findByRole("menuitem", { name: "Mark all read" })).toBeTruthy();
+  });
+
   it("opens the settings panel under the header from the settings button, and closes it with the same button", async () => {
     render([makeThread({ id: "a" })]);
     const button = await screen.findByRole("button", { name: "Thread Glance settings" });

@@ -297,6 +297,15 @@ export function buildForest(inputs: ForestInputs): Forest {
   return { infos, children, trees, treeOf, subtrees };
 }
 
+/**
+ * Whether any thread in the trees is unread, descendants, hidden and
+ * archived threads included: the threads Mark all read marks, so it is
+ * offered only when this holds.
+ */
+export function anyUnread(trees: readonly ThreadTree[]): boolean {
+  return trees.some((tree) => tree.root.unread || tree.descendants.some((info) => info.unread));
+}
+
 /** Ids from `id` up to (not including) `stopAt`, nearest first. */
 export function ancestorsOf(
   id: string,

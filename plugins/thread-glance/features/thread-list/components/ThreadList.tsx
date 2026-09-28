@@ -465,9 +465,7 @@ function ThreadListBody({
         if (plan.seen.length > 0) markSeen(plan.seen);
         for (const id of plan.read) actions.setRead(id, true).catch(() => undefined);
       };
-      if (plan.read.length === 0) {
-        toast(`Nothing unread in ${where}`);
-      } else if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
+      if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
         setConfirm({
           title: `Mark ${plan.read.length} threads read?`,
           description: `Every unread thread in ${where}, child threads included, will be marked read.`,
@@ -717,6 +715,7 @@ function ThreadListBody({
           needYouCount={view.needYouCount}
           needYouOnly={needYouOn}
           onToggleNeedYou={onToggleNeedYou}
+          hasUnread={view.hasUnread}
           onMarkAllRead={onMarkListRead}
           prefs={prefs}
           client={client}

@@ -596,3 +596,53 @@ describe("brightness shows state, not depth", () => {
     expect(dimmed({ threads, activeThreadId: "c" }, "p")).toBe(false);
   });
 });
+
+describe("Mark all read is offered only when something is unread", () => {
+  const read = makeThread({ id: "r" });
+  const unreadRoot = makeThread({ id: "u", ...finishedUnread });
+  const withChild = (child: Partial<PluginSidebarThread>) => [
+    read,
+    makeThread({ id: "c", parentThreadId: "r", createdAt: T0 + 1, ...child }),
+  ];
+  const groupOf = (view: ReturnType<typeof viewOf>, id: string) =>
+    [...view.groups, ...view.more].find((group) => group.descriptor.id === id)!;
+
+  it("is absent from the list and every group when nothing is unread", () => {
+    const view = viewOf({ threads: [read] });
+    expect(view.hasUnread).toBe(false);
+    expect(groupOf(view, "project:proj_a").hasUnread).toBe(false);
+    expect(viewOf({ threads: [] }).hasUnread).toBe(false);
+  });
+
+  it("counts a root, and only in its own group", () => {
+    const view = viewOf({ threads: [read, { ...unreadRoot, projectId: "proj_b" }] });
+    expect(view.hasUnread).toBe(true);
+    expect(groupOf(view, "project:proj_b").hasUnread).toBe(true);
+    expect(groupOf(view, "project:proj_a").hasUnread).toBe(false);
+  });
+
+  it("counts a thread in a hidden group", () => {
+    const view = viewOf({ threads: [read, { ...unreadRoot, projectId: "proj_b" }], prefs: { hiddenGroups: ["project:proj_b"] } });
+    expect(view.hasUnread).toBe(true);
+    expect(groupOf(view, "project:proj_b").hasUnread).toBe(true);
+  });
+
+  it("counts a child thread, a done-but-unseen child and an archived thread shown with Show archived", () => {
+    expect(viewOf({ threads: withChild(finishedUnread) }).hasUnread).toBe(true);
+    expect(viewOf({ threads: withChild({}), finishedAt: { c: T0 + 10 } }).hasUnread).toBe(true);
+    expect(viewOf({ threads: withChild({}), finishedAt: { c: T0 + 10 }, seenAt: { c: T0 + 20 } }).hasUnread).toBe(false);
+    const archived = { ...unreadRoot, isArchived: true, archivedAt: T0 + 20 };
+    expect(viewOf({ threads: [read, archived], prefs: { showArchived: true } }).hasUnread).toBe(true);
+  });
+
+  it("does not count the open thread", () => {
+    expect(viewOf({ threads: [read, unreadRoot], activeThreadId: "u" }).hasUnread).toBe(false);
+    expect(viewOf({ threads: [read, unreadRoot], openThreadIds: ["u"] }).hasUnread).toBe(false);
+  });
+
+  it("is offered under the need-you filter as well", () => {
+    const view = viewOf({ threads: [makeThread({ id: "w", hasPendingInteraction: true }), unreadRoot], needYouOnly: true });
+    expect(view.hasUnread).toBe(true);
+    expect(groupOf(view, "project:proj_a").hasUnread).toBe(true);
+  });
+});
