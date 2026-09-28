@@ -52,19 +52,19 @@ Click **Details**. It holds:
 - the model, the cache lifetime and the calls per message the line rests on, `(default)` where Cache Keeper has not measured the thread yet;
 - **Why {line}?**: what compacting costs at the line, and what it saves on your first message back after the cache goes cold.
 
-A thread where no size up to its window repays compacting shows `Idle, no line`, and **Why never?** in place of **Why {line}?**.
+`Idle, no line` means the thread has no line: bb has not reported its window yet, or no size up to its window repays compacting. In the second case **Details** shows **Why never?** in place of **Why {line}?**.
 
 ## 6. Switch Keep warm while waiting on for a tree
 
 In a thread of your project, send:
 
 ```text
-Spawn one child thread that runs `sleep 600` in the background and waits for it, then wait for the child.
+Spawn one child thread that runs `sleep 7200` in the background and waits for it, then wait for the child.
 ```
 
 Click the parent's composer chip and turn on **Keep warm while waiting**. The switch sits on the tree top, the topmost Claude Code thread, and covers every thread below it. Open the child and click its composer chip: its switch is greyed out, with "Set on {parent's title}" under it, which opens the parent.
 
-While the two wait, the banner above each composer reads `Waiting on …, keeping cache warm`, and Cache Keeper sends each a keep-warm just before its cache goes cold.
+While the two wait, the banner above each composer reads `Waiting on …, keeping cache warm`. Cache Keeper sends each a keep-warm a minute before its cache would expire: 5 minutes or an hour after its last request, by the cache lifetime its **Details** show. The two-hour command keeps them waiting past either.
 
 The same from a terminal, with the parent's id (`thr_…`) from its URL:
 
@@ -74,11 +74,11 @@ bb cache-keeper keep-warm on thr_…
 
 ## 7. Look at Agent tools
 
-Open Settings → Plugins → Cache Keeper. Below the settings, the **Agent tools** section has one row, **Compact when idle**, off. While it is off, no agent can switch compact when idle on for its own thread. Leave it off for now; [the reference](../reference/cache-keeper-settings.md#agent-tools) says what switching it on does.
+Open Settings → Plugins → Cache Keeper. Below the settings, the **Agent tools** section has one row, **Compact when idle**, off. While it is off, no agent can switch Compact when idle on for its own thread. Leave it off for now; [the reference](../reference/cache-keeper-settings.md#agent-tools) says what switching it on does.
 
 ## 8. Find what happened
 
-Click **Cache Keeper** in the sidebar. The page lists the threads with Compact when idle on, the threads waiting now, what was sent recently, and totals for the last 30 days. The keep-warms from step 6 are in the recent list, each with its cost.
+Click **Cache Keeper** in the sidebar. The page lists the threads with Compact when idle on, the threads waiting now, what was sent recently, and totals for the last 30 days. Once the first keep-warm from step 6 has gone, it is in the recent list with its cost.
 
 In a terminal:
 
@@ -89,4 +89,4 @@ bb cache-keeper status thr_…
 
 The first lists every thread with Compact when idle on and the totals. The second shows one thread: its line, context and status, and what Cache Keeper last sent or held back, and why.
 
-You have installed Cache Keeper, switched each of its switches on where you wanted it, and found what it did. To switch compact when idle on from a terminal or let an agent do it, see [compact a thread when it goes idle](../how-to/cache-keeper-compact-a-thread.md).
+You have installed Cache Keeper, switched each of its switches on where you wanted it, and found what it did. To switch Compact when idle on from a terminal or let an agent do it, see [compact a thread when it goes idle](../how-to/cache-keeper-compact-a-thread.md).
