@@ -54,6 +54,7 @@ import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
 import { cancelPendingCards } from "./row-card";
+import { useInputModality } from "./input-modality";
 import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
@@ -115,6 +116,8 @@ function ThreadListBody({
   const [client, updateClient] = useClientPreferences();
   // The need-you filter is per window and starts off on every load.
   const [needYouOn, setNeedYouOn] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useInputModality(root);
   const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.showArchived ? ["active", "archived"] : ["active"] });
   const actions = useThreadActions();
   const sdk = useSdk();
@@ -717,7 +720,7 @@ function ThreadListBody({
 
   return (
     <ListLiveContext.Provider value={live}>
-      <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
+      <div ref={root} className="flex w-full min-w-0 flex-col px-1.5 pb-2">
         <ListHeader
           mode={prefs.organizationMode}
           needYouCount={view.needYouCount}

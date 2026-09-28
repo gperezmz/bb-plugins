@@ -309,7 +309,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     ? ""
     : menuShowing
       ? "opacity-0"
-      : "group-hover/row:opacity-0 group-focus-within/row:opacity-0";
+      : "group-hover/row:opacity-0 in-data-[input-modality=keyboard]:group-focus-within/row:opacity-0";
 
   const body = (
     <div
@@ -471,7 +471,7 @@ export const ThreadRowView = memo(function ThreadRowView({
             <span
               className={cn(
                 "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
-                menuShowing ? "flex" : "hidden group-hover/row:flex group-focus-within/row:flex",
+                menuShowing ? "flex" : "hidden group-hover/row:flex in-data-[input-modality=keyboard]:group-focus-within/row:flex",
               )}
             >
               {row.treeUnread ? (
@@ -577,7 +577,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                       ? "relative"
                       : menuShowing
                         ? "opacity-100"
-                        : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
+                        : "opacity-0 group-hover/row:opacity-100 in-data-[input-modality=keyboard]:group-focus-within/row:opacity-100",
                   )}
                 >
                   <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
