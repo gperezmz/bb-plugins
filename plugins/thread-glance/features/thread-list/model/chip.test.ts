@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, makeThread, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import type { OlderRow, ThreadRow } from "./view";
-import { treeState, type StateKind } from "./state";
+import { rowGlyph } from "./view";
+import type { StateKind } from "./state";
 
 function rowsOf(scenario: Scenario) {
   return viewOf(scenario).groups.find((group) => group.descriptor.id === "project:proj_a")!.rows;
@@ -26,18 +27,31 @@ describe("a parent's status glyph", () => {
     ["working", working],
     ["unread", finishedUnread],
   ];
-  const shownKind = (shown: ThreadRow) => (shown.treeFlag === null ? shown.info.state.kind : treeState(shown.treeFlag).kind);
+  // The glyph a thread in each state draws on its own row, read off an open tree.
+  const ownGlyph = (overrides: Omit<Parameters<typeof makeThread>[0], "id">) =>
+    row({ threads: [parent, child("c", overrides)], prefs: { expandedChildren: ["p"] } }, "c").info.state.glyph;
 
   for (const [ownRank, [own, ownOverrides]] of RANKED.entries()) {
     for (const [childRank, [kid, kidOverrides]] of RANKED.entries()) {
-      it(`collapsed, parent ${own} and child ${kid}: shows ${childRank < ownRank ? kid : own}`, () => {
+      const tree = childRank < ownRank;
+      it(`collapsed, parent ${own} and child ${kid}: shows ${tree ? kid : own}`, () => {
         const shown = row({ threads: [makeThread({ id: "p", ...ownOverrides }), child("c", kidOverrides)] }, "p");
+        const glyph = rowGlyph(shown, null);
         expect(shown.info.state.kind).toBe(own);
-        expect(shownKind(shown)).toBe(childRank < ownRank ? kid : own);
-        expect(shown.treeFlag !== null).toBe(childRank < ownRank);
+        expect(glyph.state.kind).toBe(tree ? kid : own);
+        expect(glyph.state.glyph).toEqual(ownGlyph(tree ? kidOverrides : ownOverrides));
+        expect(glyph.childDot).toBe(tree);
       });
     }
   }
+
+  it("shows what the waiting descendant asks for, as its own row does", () => {
+    const threads = [parent, child("c"), child("gg", { hasPendingInteraction: true }, "c")];
+    const notes = { gg: { pending: { kind: "approval", text: "Run the migration?" } } } as never;
+    const shown = rowGlyph(row({ threads, notes }, "p"), null);
+    expect(shown.state).toEqual(row({ threads, notes, prefs: { expandedChildren: ["p", "c"] } }, "gg").info.state);
+    expect(shown.state.label).toBe("Needs approval");
+  });
 
   it("ranks the tree's state against the parent's own by the states table, so background work outranks an unread child and a draft does not", () => {
     const unreadChild = child("c", finishedUnread);

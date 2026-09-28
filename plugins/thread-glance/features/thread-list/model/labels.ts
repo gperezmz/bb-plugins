@@ -1,6 +1,5 @@
 // Accessible names: everything a tooltip says is in the aria-label.
 import type { Chip, OlderRow, SettledRow, ThreadRow } from "./view";
-import { treeState } from "./state";
 import { formatDateTime } from "./details";
 import type { OrganizationMode } from "@/shared/preferences";
 
@@ -15,8 +14,8 @@ export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   if (state.kind === "scheduled" && state.sendAt !== null) {
     own = `${own}, sends ${formatDateTime(state.sendAt)}`;
   }
-  if (pluginLabel !== null || row.treeFlag === null) return own;
-  return `${treeState(row.treeFlag).label}, in child threads; ${own.charAt(0).toLowerCase()}${own.slice(1)}`;
+  if (pluginLabel !== null || row.treeState === null) return own;
+  return `${row.treeState.label}, in child threads; ${own.charAt(0).toLowerCase()}${own.slice(1)}`;
 }
 
 /** "Open Fix login — Working; Claude Code; child of Release; unread". */

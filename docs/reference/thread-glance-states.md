@@ -35,7 +35,7 @@ While a parent thread's chip is closed, its glyph shows the first of these state
 | 5 | Working |
 | 6 | Unread |
 
-Where the parent's own state comes first, or is the same state, or no descendant is in any of these, the glyph shows the parent's own state. So a parent that is running background work keeps its glyph over an unread child, and a parent with a draft shows the unread dot of an unread child. Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline.
+Where the parent's own state comes first, or is the same state, or no descendant is in any of these, the glyph shows the parent's own state. So a parent that is running background work keeps its glyph over an unread child, and a parent with a draft shows the unread dot of an unread child. A state from the tree is drawn with the glyph in the table above; waits on you takes the glyph of the first descendant waiting, so an approval shows the shield there too. Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline.
 
 When the glyph shows a state from the tree, a small grey dot, the child dot, sits at its lower right, set apart from the glyph by a ring of the sidebar's colour. It is grey whatever the state, so blue, amber and red on the glyph keep their meaning. With the parent's own state on the glyph there is no child dot.
 

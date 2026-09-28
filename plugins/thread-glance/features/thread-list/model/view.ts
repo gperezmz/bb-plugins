@@ -4,6 +4,7 @@ import type {
   PluginSidebarProject,
   PluginSidebarSection,
   PluginSidebarThread,
+  PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
 import { ancestorsOf, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
@@ -22,7 +23,8 @@ import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counte
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
 import { isOffDefaultBranch } from "./branches";
-import { mostUrgent, treeFlagOver, type Flag } from "./state";
+import { mostUrgent, pluginStatusWins, treeFlagOver, treeState, type Flag, type ThreadState } from "./state";
+import { stateText } from "./labels";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
 
@@ -35,8 +37,30 @@ export interface Chip {
   count: number;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
-  /** Unread descendants at any depth, archived and hidden ones left out: the number turns the unread accent while above 0. */
+  /** `Subtree.unreadCount`: the number turns the unread accent while above 0. */
   unread: number;
+}
+
+/** What a thread row's status column draws. */
+export interface RowGlyph {
+  /** The state the glyph shows: the thread's own, or the one from its tree. */
+  state: ThreadState;
+  label: string;
+  /** A plugin row status replaces the glyph. */
+  plugin: boolean;
+  childDot: boolean;
+}
+
+/** The row's glyph. A plugin row status is judged against the state shown, and hides the child dot. */
+export function rowGlyph(row: ThreadRow, rowStatus: PluginSidebarThreadRowStatus | null): RowGlyph {
+  const state = row.treeState ?? row.info.state;
+  const plugin = pluginStatusWins(state, rowStatus);
+  return {
+    state,
+    label: row.treeState === null ? state.label : stateText(row, null),
+    plugin,
+    childDot: row.treeState !== null && !plugin,
+  };
 }
 
 export interface ThreadRow {
@@ -62,6 +86,8 @@ export interface ThreadRow {
    * depth when it outranks its own; an expanded one shows its own.
    */
   treeFlag: Flag | null;
+  /** How the glyph draws `treeFlag`, or null with it. */
+  treeState: ThreadState | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
   /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
@@ -254,12 +280,28 @@ function machineOf(context: Context, info: ThreadInfo): string | null {
   return host.id === context.primaryHostId ? null : host.name || "Unknown machine";
 }
 
+/**
+ * How a parent's glyph draws a state from its tree. Waits on you shows what
+ * the first descendant waiting asks for, as that descendant's own row does;
+ * every other state takes its flag's glyph.
+ */
+function treeStateOf(context: Context, info: ThreadInfo, flag: Flag): ThreadState {
+  if (flag === "waits-on-you") {
+    const waiting = subtreeOf(context, info.thread.id).descendants.find(
+      (descendant) => !descendant.thread.isArchived && descendant.state.kind === "waits-on-you",
+    );
+    if (waiting !== undefined) return waiting.state;
+  }
+  return treeState(flag);
+}
+
 function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
   options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
+  const treeFlag = options.chip?.expanded ? null : treeFlagOver(info.state, subtreeOf(context, info.thread.id).glyphFlags);
   return {
     ...lines(context, info, options.depth),
     machine: machineOf(context, info),
@@ -271,7 +313,8 @@ function threadRow(
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
     harness: drawsHarness(context, info),
-    treeFlag: options.chip?.expanded ? null : treeFlagOver(info.state, subtreeOf(context, info.thread.id).dotFlags),
+    treeFlag,
+    treeState: treeFlag === null ? null : treeStateOf(context, info, treeFlag),
     bold: info.unread,
     treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
     note: info.note,

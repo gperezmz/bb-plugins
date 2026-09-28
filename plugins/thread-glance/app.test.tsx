@@ -1005,7 +1005,7 @@ describe("a parent's glyph, child dot and children chip", () => {
     {
       name: "parent idle, child's queued message failed",
       threads: [parent(), child("c", { queuedWork: "failed" })],
-      collapsed: fromTree("Queued message failed, in child threads; idle"),
+      collapsed: fromTree("Queued message failed to send, in child threads; idle"),
       expanded: own("Idle"),
       chip: { count: 1, unread: 0 },
       bold: false,
@@ -1075,6 +1075,19 @@ describe("a parent's glyph, child dot and children chip", () => {
       expect((link.nextElementSibling as HTMLElement).querySelector("[data-child-dot]")).not.toBeNull();
       expect(screen.queryByLabelText("Cache warm")).toBeNull();
     });
+
+    for (const [name, overrides, state] of [
+      ["working", working, "Working"],
+      ["failed", failedUnread, "Failed"],
+    ] as const) {
+      it(`never replaces ${name} from the tree, which keeps its grey child dot`, async () => {
+        render([parent(), child("c", overrides)], { extra });
+        const link = await screen.findByRole("link", { name: /^Open Parent — / });
+        expect(link.getAttribute("aria-label")).toBe(`Open Parent — ${state}, in child threads; idle; Claude Code`);
+        expect((link.nextElementSibling as HTMLElement).querySelector("[data-child-dot]")).not.toBeNull();
+        expect(screen.queryByLabelText("Cache warm")).toBeNull();
+      });
+    }
 
     it("replaces an unread state from the tree with no child dot, and the chip still shows the unread child", async () => {
       render([parent(), child("c", finishedUnread)], { extra });

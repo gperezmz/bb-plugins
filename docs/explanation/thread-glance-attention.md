@@ -31,7 +31,7 @@ flowchart TD
 
 Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle parent thread that has not run since is an **orphaned failure**: nobody is going to pick it up. A parent thread that is running is usually already handling the failure, so counting it would raise a flag for work already in hand.
 
-A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [children chip](../reference/thread-glance-states.md#the-children-chip) turns its number blue, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
+A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's glyph shows the unread dot with a grey [child dot](../reference/thread-glance-states.md#the-child-dot) while the parent's chip is closed and the parent has nothing more urgent, the parent's [children chip](../reference/thread-glance-states.md#the-children-chip) turns its number blue, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
 
 The setting **Needs attention counts every child** makes a child count exactly as a root does: every failed or finished-unread child needs attention too. The same setting decides which children a tree's fold keeps out, below.
 
