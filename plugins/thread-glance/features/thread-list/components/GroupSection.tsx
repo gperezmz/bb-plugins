@@ -21,6 +21,7 @@ import { EnvironmentRowView, OlderRowView, SettledRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
+import { HEADER_HOVER_HIDES, HEADER_HOVER_SHOWS } from "./input-modality";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
 
 export interface GroupController {
@@ -76,7 +77,7 @@ const GroupHeader = memo(function GroupHeader({
     ? ""
     : menuOpen
       ? "opacity-0"
-      : "group-hover/header:opacity-0 in-data-[input-modality=keyboard]:group-focus-within/header:opacity-0";
+      : HEADER_HOVER_HIDES;
   const actionsFade = compact
     ? ""
     : cn(
@@ -84,7 +85,7 @@ const GroupHeader = memo(function GroupHeader({
         dropActive ? "bg-sidebar-accent" : "bg-sidebar",
         menuOpen
           ? "opacity-100"
-          : "pointer-events-none opacity-0 group-hover/header:pointer-events-auto group-hover/header:opacity-100 in-data-[input-modality=keyboard]:group-focus-within/header:pointer-events-auto in-data-[input-modality=keyboard]:group-focus-within/header:opacity-100",
+          : HEADER_HOVER_SHOWS,
       );
   return (
     <div

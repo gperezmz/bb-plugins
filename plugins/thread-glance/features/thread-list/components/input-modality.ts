@@ -19,6 +19,21 @@ export function modalityOf(event: { type: string; key?: string; metaKey?: boolea
   return "keyboard";
 }
 
+// What a row or group header shows while hovered or holding keyboard focus,
+// as whole class strings so Tailwind finds each one in the source.
+
+/** A row part that fades out on hover, for the actions that take its place. */
+export const ROW_HOVER_HIDES = "group-hover/row:opacity-0 in-data-[input-modality=keyboard]:group-focus-within/row:opacity-0";
+/** A row part that fades in on hover. */
+export const ROW_HOVER_SHOWS = "opacity-0 group-hover/row:opacity-100 in-data-[input-modality=keyboard]:group-focus-within/row:opacity-100";
+/** A row part laid out only on hover, so it takes no width at rest. */
+export const ROW_HOVER_LAYS_OUT = "hidden group-hover/row:flex in-data-[input-modality=keyboard]:group-focus-within/row:flex";
+/** A group header part that fades out on hover. */
+export const HEADER_HOVER_HIDES = "group-hover/header:opacity-0 in-data-[input-modality=keyboard]:group-focus-within/header:opacity-0";
+/** A group header part that fades in on hover, and takes the pointer only then. */
+export const HEADER_HOVER_SHOWS =
+  "pointer-events-none opacity-0 group-hover/header:pointer-events-auto group-hover/header:opacity-100 in-data-[input-modality=keyboard]:group-focus-within/header:pointer-events-auto in-data-[input-modality=keyboard]:group-focus-within/header:opacity-100";
+
 /** Keeps `data-input-modality` on the element current for the whole document. */
 export function useInputModality(root: RefObject<HTMLElement | null>): void {
   useEffect(() => {
