@@ -76,7 +76,7 @@ flowchart LR
   fold -->|"any activity: a message sent, a run started, something needing attention"| live
 ```
 
-Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. A thread's pull request plays no part: a merged one does not settle it sooner, and an open one does not keep it out. bb's thread list already carries a thread's last finish, so a thread is in or out of the fold from the first paint, and does not move when the pull request badges or the branch line fill in. There is no manual settle: bb's archive already takes a thread out of the list.
+Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. A thread's pull request plays no part: a merged one does not settle it sooner, and an open one does not keep it out. So a thread is in or out of the fold from the first paint, and the pull request badges and branch lines filling in never move it. bb's thread list carries each thread's last finish, so the plugin's own record of when threads last started and finished, which arrives a moment later, rarely moves one either; a turn you stopped may be the exception. There is no manual settle: bb's archive already takes a thread out of the list.
 
 When the thread you have open is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
 
