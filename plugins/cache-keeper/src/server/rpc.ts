@@ -3,6 +3,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { RowGlyph, ThreadView } from "../core/view";
 import { AGENT_TOOLS, type AgentToolKey, type AgentToolRow } from "./agent-tools";
+import type { KeeperSettings } from "./settings";
 import type { HistoryRow } from "./store";
 
 const threadId = z.string().regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id");
@@ -69,6 +70,24 @@ export const rpcContract = defineRpcContract({
   setAgentTool: {
     input: z.object({ name: z.enum(Object.keys(AGENT_TOOLS) as [AgentToolKey, ...AgentToolKey[]]), on: z.boolean() }).strict(),
     output: z.custom<AgentToolRow[]>(Array.isArray),
+  },
+  /** The four settings the Waiting threads, Stalled tasks and Prices sections show. */
+  settings: {
+    input: z.null(),
+    output: z.custom<KeeperSettings>(isObject),
+  },
+  /** Changes any of the four; answers with all four. */
+  setSettings: {
+    input: z
+      .object({
+        keepWarm: z.enum(["every", "switched", "never"]),
+        checkIns: z.boolean(),
+        waitMs: z.union([z.literal(10 * 60_000), z.literal(15 * 60_000), z.literal(30 * 60_000)]),
+        fetchPrices: z.boolean(),
+      })
+      .partial()
+      .strict(),
+    output: z.custom<KeeperSettings>(isObject),
   },
 });
 

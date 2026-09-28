@@ -70,6 +70,10 @@ function ingest(threadId, type, createdAt, data) {
 }
 
 const sdk = {
+  // The one reload after copying the settings bb held, on a fresh data.db: the benchmark runs on.
+  "plugins.reload"() {
+    return { ok: true, plugins: [] };
+  },
   "threads.list"({ offset = 0, limit = 50 }) {
     return listRows.all(limit, offset).map((r) => JSON.parse(r.row));
   },

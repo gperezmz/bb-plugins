@@ -4,7 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { newIdleStretch } from "../core/keeper";
-import { parseSettings } from "./settings";
+import { parseDeclared } from "./settings";
 import { emptyRecord, ensureIncrementalVacuum, MIGRATIONS, Store, type ThreadRecord } from "./store";
 
 const fixture = (name: string, dir = "0.1.0") => JSON.parse(readFileSync(new URL(`../../test/fixtures/${dir}/${name}`, import.meta.url), "utf8")) as unknown;
@@ -34,7 +34,7 @@ describe("the stored 0.1.0 shape", () => {
     db.prepare("INSERT INTO turn_logs (thread_id, record) VALUES (?, ?)").run(log.thread_id, log.record);
     expect(store.turnLog(log.thread_id)).toEqual(fixture("turn-log.json"));
 
-    expect(parseSettings(fixture("settings.json") as Record<string, unknown>)).toEqual({ keepWarm: "every", checkIns: true, waitMs: 30 * 60_000, fetchPrices: false });
+    expect(parseDeclared(fixture("settings.json") as Record<string, unknown>)).toEqual({ keepWarm: "every", checkIns: true, waitMs: 30 * 60_000, fetchPrices: false });
   });
 
   it("loads the shape main stored before 0.1.0 with every field it acted on", () => {
@@ -52,7 +52,7 @@ describe("the stored 0.1.0 shape", () => {
     expect(read).toMatchObject({ afterSeq: 5140, delivered: [{ childId: "thr_child", at: 1790506002000 }] });
     expect(read.turns[0]).toMatchObject({ startSeq: 5123, status: "completed", repliedNothingNew: true, inputs: [{ kind: "sent", expects: { kind: "not-finished" }, at: 1790506000000 }] });
 
-    expect(parseSettings(fixture("settings.json", "pre-0.1.0") as Record<string, unknown>)).toEqual({ keepWarm: "switched", checkIns: true, waitMs: 15 * 60_000, fetchPrices: true });
+    expect(parseDeclared(fixture("settings.json", "pre-0.1.0") as Record<string, unknown>)).toEqual({ keepWarm: "switched", checkIns: true, waitMs: 15 * 60_000, fetchPrices: true });
   });
 
   it("stores and reads back a record unchanged, keeping an explicit Keep warm off apart from an untouched one", () => {

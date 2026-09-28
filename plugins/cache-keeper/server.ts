@@ -1,6 +1,6 @@
-// Cache Keeper's backend entry: wires bb's thread events, settings, storage
-// and host entry to the engine under src/server, and registers the RPC, the
-// CLI, the agent tool and the settings the Agent tools section switches.
+// Cache Keeper's backend entry: wires bb's thread events, storage and host
+// entry to the engine under src/server, copies the settings bb held up to
+// 0.2.0 once, and registers the RPC, the CLI and the agent tool.
 import { cliCommand, defineCli, PluginCliError, type BbPluginApi, type PluginCliContext } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DriveClock, onClock, wallClock, type Clock } from "./src/core/clock";
@@ -15,7 +15,7 @@ import { LITELLM_META, MODELS_DEV_META, refreshError, refreshPublicPrices, type 
 import { resetAfterReinstall, RESET_META, type ResetNotice } from "./src/server/reinstall";
 import { rpcContract } from "./src/server/rpc";
 import { compactWhenIdle, rpcHandlers } from "./src/server/surfaces";
-import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
+import { DECLARED_SETTINGS, DEFAULT_SETTINGS, Settings, type KeeperSettings } from "./src/server/settings";
 import { PINNED_SNAPSHOT } from "./src/server/snapshot";
 import { describe, statusJson } from "./src/server/status";
 import { ensureIncrementalVacuum, MIGRATIONS, Store, type Db } from "./src/server/store";
@@ -39,9 +39,6 @@ const httpStatus = (error: unknown) => {
 };
 
 export default async function plugin(bb: BbPluginApi) {
-  const settingsHandle = bb.settings.define(SETTINGS);
-  let settings: KeeperSettings = parseSettings(await settingsHandle.get());
-
   const drive = process.env[DRIVE_ENV] === "1" ? new DriveClock() : null;
   const clock: Clock = drive ?? wallClock();
 
@@ -49,6 +46,17 @@ export default async function plugin(bb: BbPluginApi) {
   ensureIncrementalVacuum(db);
   bb.storage.migrate(db as never, MIGRATIONS);
   const store = new Store(db);
+
+  // Declaring the settings bb held is the only way to read them, and makes bb
+  // draw them in one box until the plugin next loads: so they are declared
+  // only while not yet copied, and the plugin reloads itself once after.
+  const stored = new Settings(store);
+  const reloadAfterCopy = !stored.copied();
+  if (reloadAfterCopy) {
+    const declared = bb.settings.define(DECLARED_SETTINGS);
+    await stored.copyDeclared(() => declared.get(), clock.now(), (m) => bb.log.warn(m));
+  }
+  let settings: KeeperSettings = stored.get();
   const host = bb.hosts.experimental_client({ contract: hostContract });
   const agentTools = new AgentTools(store);
 
@@ -157,17 +165,19 @@ export default async function plugin(bb: BbPluginApi) {
   /** A switch was flipped: the reinstall notice in `status` has done its job. */
   const flipped = () => store.deleteMeta(RESET_META);
 
-  settingsHandle.onChange((next, prev) => {
-    settings = parseSettings(next);
+  /** Stores a change to the settings and puts it in effect at once. */
+  const setSettings = (patch: Partial<KeeperSettings>): KeeperSettings => {
+    const prev = settings;
+    settings = stored.set(patch);
     book = null;
-    if (next.stalledCheckIns !== prev.stalledCheckIns) flipped();
-    if (settings.fetchPrices && prev.fetchPrices === false) void refreshPrices();
+    if (settings.fetchPrices && !prev.fetchPrices) void refreshPrices();
     engine.clockMoved();
     publish([]);
-  });
+    return settings;
+  };
 
   bb.onInstall(async () => {
-    const notice = await resetAfterReinstall({ store, engine, agentTools, now: clock.now(), setCheckIns: (on) => settingsHandle.experimental_set({ stalledCheckIns: on }) });
+    const notice = await resetAfterReinstall({ store, engine, agentTools, now: clock.now(), resetSettings: () => setSettings(DEFAULT_SETTINGS) });
     if (notice !== null) bb.log.info(`reinstalled over stored state: switched off ${notice.threads} thread switch(es), every Skip, the Agent tools and check-ins`);
   });
 
@@ -202,6 +212,10 @@ export default async function plugin(bb: BbPluginApi) {
   // Nothing above awaits bb.sdk or a host: bb gives the factory 30 seconds.
   bb.background.service("keeper", {
     async start(signal) {
+      if (reloadAfterCopy) {
+        // Once: the copy is marked done before this, so the next load neither declares nor reloads.
+        void bb.sdk.plugins.reload({ pluginId: bb.pluginId }).catch((error) => bb.log.warn(`could not reload after copying the settings bb held: ${message(error)}`));
+      }
       await engine.start().catch((error) => bb.log.warn(`could not start: ${message(error)}`));
       await refreshPrices();
       await new Promise<void>((resolve) => (signal.aborted ? resolve() : signal.addEventListener("abort", () => resolve(), { once: true })));
@@ -214,7 +228,7 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // ---- RPC ----
-  const surfaces = { engine, store, agentTools, now: () => clock.now(), flipped };
+  const surfaces = { engine, store, agentTools, now: () => clock.now(), settings: () => settings, setSettings, flipped };
   bb.rpc.register(rpcContract, rpcHandlers(surfaces));
 
   // ---- CLI and agent tool ----
@@ -379,7 +393,7 @@ export default async function plugin(bb: BbPluginApi) {
       name: "cache-keeper",
       summary: "Compact idle Claude Code threads before their cache goes cold",
       description:
-        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line, status and Cache Keeper's last decision; switch keep warm while waiting on or off for a thread's tree. Run from inside a thread, the commands that change or send reach only threads in that thread's tree. Which trees are kept warm until switched is set by \"Keep caches warm while waiting\" in Settings (default: only threads switched on); check-ins on stalled background work run on every Claude Code thread while \"Check in on stalled background work\" is on (default: off).",
+        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line, status and Cache Keeper's last decision; switch keep warm while waiting on or off for a thread's tree. Run from inside a thread, the commands that change or send reach only threads in that thread's tree. Which trees are kept warm until switched is set by \"Keep caches warm while waiting\" in Settings (default: only threads switched on); check-ins on stalled tasks run on every Claude Code thread while \"Check on stalled tasks\" is on (default: off).",
       commands,
     }),
   );

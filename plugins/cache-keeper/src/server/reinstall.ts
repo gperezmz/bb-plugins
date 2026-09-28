@@ -1,8 +1,10 @@
 /**
- * What a first load after uninstalling and installing again does. bb clears
- * a plugin's settings on uninstall but keeps its `data.db`, so stored switches
- * would otherwise turn spending back on unasked. bb runs `onInstall` on every
- * install, a first one included; stored rows tell a reinstall apart.
+ * What a first load after uninstalling and installing again does. bb keeps a
+ * plugin's `data.db` on uninstall, so stored switches would otherwise turn
+ * spending back on unasked. bb runs `onInstall` on every install, a first one
+ * included, and on no update; stored rows tell a reinstall apart. The four
+ * settings go back to their defaults on every install, as they did while bb
+ * held them and cleared them on uninstall.
  */
 import type { AgentTools } from "./agent-tools";
 import type { Store } from "./store";
@@ -20,13 +22,13 @@ export async function resetAfterReinstall(deps: {
   engine: { flush(): void; resetSwitches(): number };
   agentTools: AgentTools;
   now: number;
-  setCheckIns(on: boolean): Promise<unknown>;
+  resetSettings(): void;
 }): Promise<ResetNotice | null> {
   deps.engine.flush();
+  deps.resetSettings();
   if (deps.store.isEmpty()) return null;
   const threads = deps.engine.resetSwitches();
   deps.agentTools.allOff();
-  await deps.setCheckIns(false).catch(() => {});
   const notice: ResetNotice = { at: deps.now, threads };
   deps.store.setMeta(RESET_META, notice);
   return notice;
