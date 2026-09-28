@@ -85,7 +85,7 @@ With a thread:
 | transcript unreadable | Why, when it cannot be read |
 | last price fetch error | The last error fetching a price list, when there is one |
 
-Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](cache-keeper-settings.md#after-a-reinstall), the first line says every switch was turned off, until a switch, a Skip or Undo, a line, an Agent tools row or the check-ins setting is next changed. `--json` carries the same fields: with a thread, the thread's view, `statusText`, `priceSource` (with the same texts), `lastPriceFetchError`, and `reset` after a reinstall; without one, `reset` (`null` when there was no reinstall), `threads` with those fields for each thread, and `totals`.
+Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](cache-keeper-settings.md#after-a-reinstall), the first line says every switch was turned off, until a switch, a Skip or Undo, a line, an Agent tools row or Check on stalled tasks is next changed. `--json` carries the same fields: with a thread, the thread's view, `statusText`, `priceSource` (with the same texts), `lastPriceFetchError`, and `reset` after a reinstall; without one, `reset` (`null` when there was no reinstall), `threads` with those fields for each thread, and `totals`.
 
 ## The `cache_keeper_compact_when_idle` agent tool
 

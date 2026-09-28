@@ -4,7 +4,7 @@ Keeps idle Claude Code threads in [bb](https://getbb.app) cheap to come back to.
 
 - **Compact when idle**, switched on per thread from its composer chip: a thread that stops at or above its compaction line is sent `/compact` just before its cache goes cold, so the compaction reads a warm cache and your next message starts from the summary.
 - **Keep warm while waiting**, switched per thread tree from the composer chip's popover (on its topmost Claude Code thread, or with **Keep warm** on a thread below it) or `bb cache-keeper keep-warm`: a thread in a tree switched on whose turn ends while it waits on a background command, a subagent, a child thread or a scheduled message is kept warm until it wakes. By default no tree is kept warm until you switch it on; a setting can keep every waiting thread warm, or none.
-- **Check-ins**, off until you switch them on in Settings, then on every Claude Code thread, whatever its tree's switch: a background task that stops printing gets a check-in asking the agent to check it and report what it finds.
+- **Check on stalled tasks**, off until you switch it on in the Stalled tasks section of Settings, then on every Claude Code thread, whatever its tree's switch: a background task that stops printing gets a check-in asking the agent to check it and report what it finds.
 
 In the sidebar, a thread's row shows the timer icon, Cache Keeper's own, while its compaction is due, and a flame while a keep-warm is planned for it or a thread below it.
 

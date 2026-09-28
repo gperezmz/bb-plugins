@@ -34,6 +34,8 @@ In a thread of your project, send:
 Spawn one child thread that lists the files in this repository, then wait for it and summarise what it found.
 ```
 
+Then open a different thread. A thread shown in a pane of bb's window is an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for), which is never unread, so the steps below need the parent out of view.
+
 While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a muted `1` and a chevron just before its time: its one child. The child has no row of its own at the top of the group. It sits behind that chip.
 
 Click the chip. The child's row opens under the parent, indented one step, its title one size smaller.
