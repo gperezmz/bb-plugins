@@ -152,7 +152,7 @@ describe("scenario 6: pinned thread while its child is active", () => {
     makeThread({ id: "c", parentThreadId: "p", ...working }),
     makeThread({ id: "c2", parentThreadId: "p" }),
   ];
-  it("Pinned shows the chip, a working child dot, and counts working 1", () => {
+  it("Pinned shows the chip with a working state, and counts working 1", () => {
     const view = viewOf({ threads });
     expect(threadRow(view, "p").chip).toEqual({ count: 2, expanded: false, state: "working" });
     expect(threadRow(view, "p").chip?.state ?? null).toBe("working");
@@ -536,7 +536,7 @@ describe("transitions", () => {
     expect(rowIds(view, "project:proj_a")).toEqual(["p"]);
     expect(targets.get("c")).toBe("open");
   });
-  it("a finished child opens nothing, and puts an unread child dot on its parent", () => {
+  it("a finished child opens nothing, and puts unread on its parent's chip", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
     const { view, targets } = render({ threads, finishedAt: { c: T0 + 5 } }, null, new Map());
     expect(targets.has("c")).toBe(false);

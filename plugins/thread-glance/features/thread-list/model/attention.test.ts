@@ -198,22 +198,22 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     expect(group(stamped, "project:proj_a").counters.failed).toBe(0);
   });
 
-  it("needs attention for a child that waits or failed orphaned, whatever the child dot says", () => {
+  it("needs attention for a child that waits or failed orphaned, whatever the chip shows", () => {
     const view = (children: ReturnType<typeof makeThread>[], m = parent({ lastReadAt: T0 + 50 })) => viewOf({ threads: [m, ...children] });
-    const dot = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) =>
+    const chipState = (children: ReturnType<typeof makeThread>[], m?: ReturnType<typeof makeThread>) =>
       threadRows(view(children, m)).find((r) => r.info.thread.id === "m")!.chip?.state ?? null;
     const child = (overrides: object) => makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1, ...overrides });
     const m = parent({ lastReadAt: T0 + 50 });
     expect(attentionRootIds({ threads: [m, child({ hasPendingInteraction: true })] })).toEqual(["m"]);
     expect(attentionRootIds({ threads: [m, child({ ...failedUnread })] })).toEqual(["m"]);
-    // A failure the busy parent may still deal with needs no attention, and still shows on the dot.
+    // A failure the busy parent may still deal with needs no attention, and still shows on the chip.
     expect(attentionRootIds({ threads: [parent({ ...working }), child({ ...failedUnread })] })).toEqual([]);
-    expect(dot([child({ ...failedUnread })], parent({ ...working }))).toBe("unread-failed");
-    expect(dot([child({ ...working })])).toBe("working");
-    expect(dot([child({ ...finishedUnread })])).toBe("unread");
+    expect(chipState([child({ ...failedUnread })], parent({ ...working }))).toBe("unread-failed");
+    expect(chipState([child({ ...working })])).toBe("working");
+    expect(chipState([child({ ...finishedUnread })])).toBe("unread");
   });
 
-  it("puts the chip and the child dot on a child that has children", () => {
+  it("puts the chip and its state on a child that has children", () => {
     const threads = [
       parent({ lastReadAt: T0 + 50 }),
       makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),

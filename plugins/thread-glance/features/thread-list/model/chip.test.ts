@@ -25,8 +25,8 @@ describe("a parent's status glyph", () => {
   });
 });
 
-describe("the child dot", () => {
-  const dot = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").chip?.state ?? null;
+describe("the children chip's state", () => {
+  const chipState = (...children: ReturnType<typeof makeThread>[]) => row({ threads: [parent, ...children] }, "p").chip?.state ?? null;
 
   it("takes the first of waits on you, failed, queued message failed, offline, working, unread among the descendants", () => {
     const every = [
@@ -37,38 +37,38 @@ describe("the child dot", () => {
       child("f", failedUnread),
       child("a", { hasPendingInteraction: true }),
     ];
-    expect(dot(...every)).toBe("waits-on-you");
-    expect(dot(...every.slice(0, 5))).toBe("unread-failed");
-    expect(dot(...every.slice(0, 4))).toBe("queue-failed");
-    expect(dot(...every.slice(0, 3))).toBe("offline");
-    expect(dot(...every.slice(0, 2))).toBe("working");
-    expect(dot(...every.slice(0, 1))).toBe("unread");
+    expect(chipState(...every)).toBe("waits-on-you");
+    expect(chipState(...every.slice(0, 5))).toBe("unread-failed");
+    expect(chipState(...every.slice(0, 4))).toBe("queue-failed");
+    expect(chipState(...every.slice(0, 3))).toBe("offline");
+    expect(chipState(...every.slice(0, 2))).toBe("working");
+    expect(chipState(...every.slice(0, 1))).toBe("unread");
   });
 
   it("is absent when no descendant is in any of those, a read failure included", () => {
-    expect(dot(child("c"))).toBeNull();
-    expect(dot(child("c", { status: "error" }))).toBeNull();
-    expect(dot(child("c", { queuedWork: "waiting" }))).toBeNull();
+    expect(chipState(child("c"))).toBeNull();
+    expect(chipState(child("c", { status: "error" }))).toBeNull();
+    expect(chipState(child("c", { queuedWork: "waiting" }))).toBeNull();
     expect(row({ threads: [parent] }, "p").chip?.state ?? null).toBeNull();
   });
 
   it("reads descendants at any depth", () => {
-    expect(dot(child("c"), child("g", { hasPendingInteraction: true }, "c"))).toBe("waits-on-you");
+    expect(chipState(child("c"), child("g", { hasPendingInteraction: true }, "c"))).toBe("waits-on-you");
     expect(row({ threads: [parent, child("c"), child("g", working, "c")], prefs: { expandedChildren: ["p"] } }, "c").chip?.state ?? null).toBe("working");
   });
 
   it("leaves archived descendants out", () => {
-    expect(dot(child("c", { ...working, isArchived: true, archivedAt: T0 }))).toBeNull();
+    expect(chipState(child("c", { ...working, isArchived: true, archivedAt: T0 }))).toBeNull();
   });
 
   it("takes only waits on you, failed, queued message failed and offline from a hidden descendant, and leaves what needs attention unchanged", () => {
     const hidden = (overrides: Omit<Parameters<typeof makeThread>[0], "id">) => child("h", { isHidden: true, ...overrides });
-    expect(dot(hidden(working))).toBeNull();
-    expect(dot(hidden(finishedUnread))).toBeNull();
-    expect(dot(hidden({ hasPendingInteraction: true }))).toBe("waits-on-you");
-    expect(dot(hidden(failedUnread))).toBe("unread-failed");
-    expect(dot(hidden({ queuedWork: "failed" }))).toBe("queue-failed");
-    expect(dot(hidden({ status: "active", runtimeStatus: "waiting-for-host" }))).toBe("offline");
+    expect(chipState(hidden(working))).toBeNull();
+    expect(chipState(hidden(finishedUnread))).toBeNull();
+    expect(chipState(hidden({ hasPendingInteraction: true }))).toBe("waits-on-you");
+    expect(chipState(hidden(failedUnread))).toBe("unread-failed");
+    expect(chipState(hidden({ queuedWork: "failed" }))).toBe("queue-failed");
+    expect(chipState(hidden({ status: "active", runtimeStatus: "waiting-for-host" }))).toBe("offline");
     // A hidden offline or queue-failed thread still makes nothing need attention, as before.
     expect(attentionRootIds({ threads: [parent, hidden({ status: "active", runtimeStatus: "waiting-for-host" })] })).toEqual([]);
     expect(attentionRootIds({ threads: [parent, hidden({ queuedWork: "failed" })] })).toEqual([]);
