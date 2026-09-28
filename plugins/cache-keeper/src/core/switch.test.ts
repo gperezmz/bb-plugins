@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSettings } from "../server/settings";
+import { parseSettings, SETTINGS } from "../server/settings";
 import { keptWarm, treeTopOf, treeTopsBelow } from "./switch";
 
 describe("keptWarm", () => {
@@ -50,8 +50,9 @@ describe("tree tops", () => {
 });
 
 describe("settings", () => {
-  it("default to keep-warms only on trees switched on, and check-ins on", () => {
-    expect(parseSettings({})).toMatchObject({ keepWarm: "switched", checkIns: true });
+  it("default to keep-warms only on trees switched on, and check-ins off", () => {
+    expect(parseSettings({})).toMatchObject({ keepWarm: "switched", checkIns: false });
+    expect(SETTINGS.stalledCheckIns.default).toBe(false);
   });
 
   it("read the three keep-warm choices and the check-in checkbox", () => {
@@ -59,7 +60,8 @@ describe("settings", () => {
     expect(parseSettings({ keepWarm: "Only threads switched on" }).keepWarm).toBe("switched");
     expect(parseSettings({ keepWarm: "Never" }).keepWarm).toBe("never");
     expect(parseSettings({ stalledCheckIns: false }).checkIns).toBe(false);
+    expect(parseSettings({ stalledCheckIns: true }).checkIns).toBe(true);
     // The old checkbox is not carried over.
-    expect(parseSettings({ checkIns: false }).checkIns).toBe(true);
+    expect(parseSettings({ checkIns: true }).checkIns).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { RowGlyph, ThreadView } from "../core/view";
+import { AGENT_TOOLS, type AgentToolKey, type AgentToolRow } from "./agent-tools";
 import type { HistoryRow } from "./store";
 
 const threadId = z.string().regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id");
@@ -59,6 +60,15 @@ export const rpcContract = defineRpcContract({
   overview: {
     input: z.null(),
     output: z.custom<Overview>(isObject),
+  },
+  /** The Agent tools section's rows. */
+  agentTools: {
+    input: z.null(),
+    output: z.custom<AgentToolRow[]>(Array.isArray),
+  },
+  setAgentTool: {
+    input: z.object({ name: z.enum(Object.keys(AGENT_TOOLS) as [AgentToolKey, ...AgentToolKey[]]), on: z.boolean() }).strict(),
+    output: z.custom<AgentToolRow[]>(Array.isArray),
   },
 });
 

@@ -1,18 +1,22 @@
 // Cache Keeper's backend entry: wires bb's thread events, settings, storage
 // and host entry to the engine under src/server, and registers the RPC, the
-// CLI and the agent tool.
+// CLI, the agent tool and the settings the Agent tools section switches.
 import { cliCommand, defineCli, PluginCliError, type BbPluginApi, type PluginCliContext } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { DriveClock, onClock, wallClock, type Clock } from "./src/core/clock";
-import { formatSize, parseSize, snapSetting } from "./src/core/line";
+import { formatSize, parseSize } from "./src/core/line";
 import { PriceBook } from "./src/core/pricing";
-import { CHANGED, rowStatus, statusText, type RowGlyph, type ThreadView } from "./src/core/view";
+import { CHANGED, type ThreadView } from "./src/core/view";
 import { hostContract } from "./src/host/contract";
+import { aboveSetting, AboveRefused } from "./src/core/above";
+import { AGENT_TOOLS, AgentTools } from "./src/server/agent-tools";
 import { ClaudeOnlyError, DAY_MS, Engine, EVENT_TYPES, EVENTS_PAGE, NoTreeTopError, NotReadyError, queuedRowOf, type QueuedRow } from "./src/server/engine";
-import { LITELLM_META, MODELS_DEV_META, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
-import { rpcContract, type Overview } from "./src/server/rpc";
+import { LITELLM_META, MODELS_DEV_META, refreshError, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
+import { rpcContract } from "./src/server/rpc";
+import { compactWhenIdle, rpcHandlers } from "./src/server/surfaces";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
 import { PINNED_SNAPSHOT } from "./src/server/snapshot";
+import { describe, statusJson } from "./src/server/status";
 import { ensureIncrementalVacuum, MIGRATIONS, Store, type Db } from "./src/server/store";
 import type { BbEvent } from "./src/core/turns";
 
@@ -45,6 +49,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.storage.migrate(db as never, MIGRATIONS);
   const store = new Store(db);
   const host = bb.hosts.experimental_client({ contract: hostContract });
+  const agentTools = new AgentTools(store);
 
   // ---- prices ----
   let book: PriceBook | null = null;
@@ -148,6 +153,9 @@ export default async function plugin(bb: BbPluginApi) {
     log: bb.log,
   });
 
+  /** A switch was flipped. */
+  const flipped = () => {};
+
   settingsHandle.onChange((next, prev) => {
     settings = parseSettings(next);
     book = null;
@@ -199,68 +207,24 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // ---- RPC ----
-  const overview = async (): Promise<Overview> => {
-    const views = engine.allViews();
-    const recent = store.history(clock.now() - 30 * DAY_MS, 50, ["compaction", "keep-warm", "check-in"]).map((h) => ({ ...h, title: engine.titleOf(h.threadId) }));
-    const titles: Record<string, string> = {};
-    for (const h of recent) for (const id of Object.keys(h.record.split ?? {})) titles[id] = engine.titleOf(id);
-    return {
-      switchedOn: engine.switchedOn(),
-      waiting: views.filter((v) => v.waiting && v.status === "idle"),
-      recent,
-      titles,
-      totals: engine.totals(30),
-    };
-  };
-
-  const rpcError = (error: unknown): never => {
-    if (error instanceof ClaudeOnlyError || error instanceof NotReadyError || error instanceof NoTreeTopError) throw new Error(error.message);
-    throw error;
-  };
-  bb.rpc.register(rpcContract, {
-    view: ({ threadId }) => engine.viewOf(threadId),
-    setCompact: ({ threadId, on, setting }) => engine.setCompact(threadId, on, setting).catch(rpcError),
-    setSetting: ({ threadId, setting }) => engine.setSetting(threadId, setting).catch(rpcError),
-    setKeepWarm: ({ threadId, on }) =>
-      engine
-        .setKeepWarm(threadId, on)
-        .then(() => engine.viewOf(threadId))
-        .catch(rpcError),
-    skip: ({ threadId, what, undo }) => engine.skip(threadId, what, undo),
-    compactNow: ({ threadId }) => engine.compactNow(threadId).catch(rpcError),
-    rowStatuses: async () =>
-      engine
-        .allViews()
-        .map((v) => ({ threadId: v.threadId, status: rowStatus(v) }))
-        .filter((r): r is RowGlyph => r.status !== null),
-    overview,
-  });
+  const surfaces = { engine, store, agentTools, now: () => clock.now(), flipped };
+  bb.rpc.register(rpcContract, rpcHandlers(surfaces));
 
   // ---- CLI and agent tool ----
-  const settingFor = async (threadId: string, above: string | undefined): Promise<number | undefined> => {
-    if (above === undefined) return undefined;
+  /** The setting `above` snaps to on the thread, or a refusal that changes nothing. */
+  const settingFor = async (threadId: string, above: string): Promise<number> => {
     const size = parseSize(above);
     if (size === null) throw new PluginCliError(`not a size: ${above}`, { code: "bad_size", hint: "Give tokens, e.g. 500k or 0.5m" });
     const view = await engine.viewOf(threadId);
-    // With no line known yet (no transcript or price), the thread keeps its setting.
-    if (view === null || view.lines.every((l) => l === null)) return undefined;
-    return snapSetting(size, view.lines);
+    if (view === null) throw new PluginCliError(`${threadId} is not a Claude Code thread bb lists`, { code: "not_claude_code" });
+    return aboveSetting(size, view);
   };
-
-  const describe = (v: ThreadView, now: number) =>
-    [
-      `${v.title} (${v.threadId})`,
-      `  compact when idle: ${v.compactOn ? "on" : "off"}`,
-      `  line: ${formatSize(v.line)}`,
-      `  context: ${v.context === null ? "unknown" : formatSize(v.context)}`,
-      `  status: ${statusText(v, now)}`,
-      `  rests on: ${v.model ?? "unknown model"}, ${v.lifetime === null ? "unknown" : v.lifetime === "5m" ? "5-minute" : "1-hour"} cache, ${v.callsPerMessage.toFixed(1)} calls per message${v.callsMeasured ? "" : " (default)"}, ${formatSize(v.postCompaction)} after compacting${v.postMeasured ? "" : " (default)"}`,
-    ].join("\n");
 
   const usd = (n: number) => `$${n.toFixed(2)}`;
 
   const toCliError = (error: unknown): never => {
     if (error instanceof PluginCliError) throw error;
+    if (error instanceof AboveRefused) throw new PluginCliError(error.message, { code: error.code });
     if (error instanceof ClaudeOnlyError) throw new PluginCliError(error.message, { code: "not_claude_code" });
     if (error instanceof NotReadyError) throw new PluginCliError(error.message, { code: "not_ready" });
     if (error instanceof NoTreeTopError) {
@@ -272,10 +236,20 @@ export default async function plugin(bb: BbPluginApi) {
     throw error;
   };
 
-  /** The thread given, or the current one; `command` names the subcommand in the hint when there is neither. */
+  /**
+   * The thread given, or the current one. Run from inside a thread, a command
+   * that changes or sends reaches only threads in the caller's own thread
+   * tree; from the user's own terminal, any thread.
+   */
   const target = async (input: { positionals: { thread?: string } }, ctx: PluginCliContext, command: string) => {
     const threadId = input.positionals.thread ?? ctx.threadId ?? null;
     if (threadId === null) throw new PluginCliError("no thread given", { code: "missing_thread", hint: `Pass a thread id: bb cache-keeper ${command} thr_…` });
+    if (ctx.threadId && ctx.threadId !== threadId && !(await engine.sameTree(ctx.threadId, threadId))) {
+      throw new PluginCliError(`${threadId} is not in your thread tree: run from a thread, bb cache-keeper ${command} acts only on threads in the calling thread's own tree`, {
+        code: "outside_tree",
+        hint: "Run it from the user's terminal to reach any thread",
+      });
+    }
     return threadId;
   };
 
@@ -285,10 +259,11 @@ export default async function plugin(bb: BbPluginApi) {
     cliCommand({
       summary: `Switch keep warm while waiting ${on ? "on" : "off"} for a thread's tree`,
       description:
-        "Records the choice on the thread's tree top, the highest Claude Code thread above it or the thread itself, and covers every thread below it. Under Never in Settings the choice is recorded for when the setting changes.",
+        "Records the choice on the thread's tree top, the highest Claude Code thread above it or the thread itself, and covers every thread below it. Under Never in Settings the choice is recorded for when the setting changes. Run from a thread, it acts only on threads in that thread's tree.",
       positionals: thread,
       async run(input, ctx) {
         const r = await engine.setKeepWarm(await target(input, ctx, `keep-warm ${on ? "on" : "off"}`), on).catch(toCliError);
+        flipped();
         const state = r.never ? `${on ? "on" : "off"}, but keep-warms are off in Settings` : r.keptWarm ? "on" : "off";
         return { exitCode: 0, stdout: `keep warm while waiting: ${state}\ntree top: ${r.treeTop.title} (${r.treeTop.threadId})` };
       },
@@ -297,48 +272,58 @@ export default async function plugin(bb: BbPluginApi) {
   const commands: Parameters<typeof defineCli>[0]["commands"] = {
     on: cliCommand({
       summary: "Switch compact-when-idle on for a thread",
+      description: "Run from a thread, it acts only on threads in that thread's tree.",
       positionals: thread,
-      options: { above: { type: "string", description: "Compaction line, e.g. 500k; snapped to the nearest setting" } },
+      options: { above: { type: "string", description: "Compaction line, e.g. 500k: snapped to the nearest of the thread's ten lines; refused while the thread's window is unknown or above its highest line" } },
       async run(input, ctx) {
         const threadId = await target(input, ctx, "on");
-        const view = await engine.setCompact(threadId, true, await settingFor(threadId, input.options.above).catch(toCliError)).catch(toCliError);
-        return { exitCode: 0, stdout: view === null ? "on" : `on, at ${formatSize(view.line)}` };
+        const setting = input.options.above === undefined ? undefined : await settingFor(threadId, input.options.above).catch(toCliError);
+        const view = await engine.setCompact(threadId, true, setting).catch(toCliError);
+        flipped();
+        if (view === null) return { exitCode: 0, stdout: "on" };
+        if (setting !== undefined) return { exitCode: 0, stdout: `on, line set to ${formatSize(view.line)} (setting ${view.setting} of 10)` };
+        return { exitCode: 0, stdout: view.windowKnown ? `on, at ${formatSize(view.line)}` : "on; no line until bb reports the thread's context window, once its first turn ends" };
       },
     }),
     off: cliCommand({
       summary: "Switch compact-when-idle off for a thread",
+      description: "Run from a thread, it acts only on threads in that thread's tree.",
       positionals: thread,
       async run(input, ctx) {
         await engine.setCompact(await target(input, ctx, "off"), false).catch(toCliError);
+        flipped();
         return { exitCode: 0, stdout: "off" };
       },
     }),
-    now: cliCommand({
-      summary: "Compact a thread now, whatever its size, if it is idle and not waiting",
+    "compact-now": cliCommand({
+      summary: "Compact a thread now, whatever its size or Compact when idle, if it is idle and not waiting",
+      description: "Run from a thread, it acts only on threads in that thread's tree.",
       positionals: thread,
       async run(input, ctx) {
-        await engine.compactNow(await target(input, ctx, "now")).catch(toCliError);
+        await engine.compactNow(await target(input, ctx, "compact-now")).catch(toCliError);
         return { exitCode: 0, stdout: "compacting" };
       },
     }),
     "keep-warm on": keepWarm(true),
     "keep-warm off": keepWarm(false),
     status: cliCommand({
-      summary: "Show a thread's line and status, or every switched-on thread and the 30-day totals",
+      summary: "Show a thread's line, status and Cache Keeper's last decision, or every switched-on thread and the 30-day totals",
       positionals: [{ name: "thread", description: "Thread id; without one, lists every thread with compact-when-idle on" }],
       options: { json: { type: "boolean", description: "Emit machine-readable JSON" } },
       async run(input) {
         const now = clock.now();
         const threadId = input.positionals.thread;
+        const priceError = refreshError(store);
         if (threadId !== undefined) {
           const view = await engine.viewOf(threadId);
           if (view === null) throw new PluginCliError(`${threadId} is not a Claude Code thread bb lists`, { code: "not_claude_code" });
-          return { exitCode: 0, stdout: input.options.json === true ? JSON.stringify({ ...view, statusText: statusText(view, now) }, null, 2) : describe(view, now) };
+          if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify(statusJson(view, now, priceError, null), null, 2) };
+          return { exitCode: 0, stdout: describe(view, now, priceError) };
         }
         const on = engine.switchedOn();
         const totals = engine.totals(30);
-        if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify({ threads: on, totals }, null, 2) };
-        const lines = on.length === 0 ? ["No thread has compact-when-idle on."] : on.map((v) => describe(v, now));
+        if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify({ threads: on.map((v) => statusJson(v, now, priceError, null)), totals }, null, 2) };
+        const lines = on.length === 0 ? ["No thread has compact-when-idle on."] : on.map((v) => describe(v, now, priceError));
         lines.push(
           "",
           "Last 30 days:",
@@ -379,26 +364,20 @@ export default async function plugin(bb: BbPluginApi) {
       name: "cache-keeper",
       summary: "Compact idle Claude Code threads before their cache goes cold",
       description:
-        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line and status; switch keep warm while waiting on or off for a thread's tree. Which trees are kept warm until switched is set by \"Keep caches warm while waiting\" in Settings (default: only threads switched on); check-ins on stalled background work run on every Claude Code thread while \"Check in on stalled background work\" is on (the default).",
+        "Switch compact-when-idle on or off for a thread, compact it now, or see its compaction line, status and Cache Keeper's last decision; switch keep warm while waiting on or off for a thread's tree. Run from inside a thread, the commands that change or send reach only threads in that thread's tree. Which trees are kept warm until switched is set by \"Keep caches warm while waiting\" in Settings (default: only threads switched on); check-ins on stalled background work run on every Claude Code thread while \"Check in on stalled background work\" is on (default: off).",
       commands,
     }),
   );
 
   bb.agents.registerTool({
-    name: "cache_keeper_compact_when_idle",
+    name: AGENT_TOOLS.compactWhenIdle.name,
     description:
-      "Switch Cache Keeper's compact-when-idle on for this thread: when its turn ends at or above the compaction line, it is compacted a minute before its prompt cache expires. Optionally set the line as a size such as 500k.",
+      "Switch Cache Keeper's compact-when-idle on for this thread: when its turn ends at or above the compaction line, it is compacted a minute before its prompt cache expires. Optionally set the line as a size such as 500k; it is refused while the thread's context window is unknown, or above its highest line.",
     presentation: { label: { pending: "Switching on compact when idle", completed: "Switched on compact when idle" } },
-    parameters: z.object({ above: z.string().optional().describe("Compaction line in tokens, e.g. 500k or 0.5m; snapped to the nearest setting") }).strict(),
-    async execute({ above }, { threadId }) {
-      try {
-        const view = await engine.setCompact(threadId, true, await settingFor(threadId, above));
-        return JSON.stringify({ on: true, line: formatSize(view?.line ?? null), context: view?.context ?? null });
-      } catch (error) {
-        return JSON.stringify({ on: false, error: message(error) });
-      }
-    },
+    parameters: z.object({ above: z.string().optional().describe("Compaction line in tokens, e.g. 500k or 0.5m; snapped to the nearest of the thread's ten lines") }).strict(),
+    execute: ({ above }, { threadId }) => compactWhenIdle(surfaces, threadId, above),
   });
+  bb.agents.configure(() => ({ tools: agentTools.offered(), skills: [] }));
 }
 
 /** "4m", "90s", "1h", "250ms", or a bare number of seconds, in milliseconds. */
