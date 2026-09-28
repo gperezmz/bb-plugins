@@ -73,7 +73,7 @@ export interface MarkAllRead {
   seen: string[];
 }
 
-/** Every unread thread in the trees, descendants included. */
+/** Every unread thread in the trees, descendants included: Mark all read, and a root's Mark read for its tree. */
 export function markAllReadPlan(
   trees: readonly ThreadTree[],
   context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },

@@ -174,7 +174,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       );
   const menuItems = rowMenuItems({
     thread,
-    unread: info.unread,
+    unread: row.depth === 0 ? row.treeUnread : info.unread,
     splitAvailable: split.isAvailable,
     isRoot: thread.parentThreadId === null,
     hasSections: controller.mode === "chronological" || controller.sections.length > 0,
@@ -514,6 +514,22 @@ export const ThreadRowView = memo(function ThreadRowView({
                       : "absolute right-0 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
                 )}
               >
+                {!compact && row.treeUnread ? (
+                  <button
+                    type="button"
+                    aria-label="Mark read"
+                    title="Mark read"
+                    className={ROW_ICON_BUTTON}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      controller.onMenuAction("mark-read", thread);
+                    }}
+                  >
+                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                  </button>
+                ) : null}
                 {!compact ? (
                   <button
                     type="button"

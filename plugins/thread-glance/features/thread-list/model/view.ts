@@ -60,6 +60,8 @@ export interface ThreadRow {
   childDot: Flag | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
+  /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
+  treeUnread: boolean;
   /** The line under the title: why it waits on you or failed, in both densities. */
   note: RowNote | null;
   /**
@@ -225,6 +227,11 @@ function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolea
   return info.quiet;
 }
 
+/** A thread Mark read acts on: unread and not archived. */
+function isUnreadInList(info: ThreadInfo): boolean {
+  return info.unread && !info.thread.isArchived;
+}
+
 /** A root draws its harness when it differs from bb's default; a child, when it differs from its parent thread's. */
 function drawsHarness(context: Context, info: ThreadInfo): boolean {
   const providerId = info.thread.providerId;
@@ -266,6 +273,7 @@ function threadRow(
     harness: drawsHarness(context, info),
     childDot: mostUrgent(subtreeOf(context, info.thread.id).dotFlags),
     bold: info.unread,
+    treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some(isUnreadInList),
     note: info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,

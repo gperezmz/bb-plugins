@@ -69,10 +69,11 @@ function render(
     props?: Partial<PluginThreadListProps>;
     extra?: object;
     notes?: Record<string, unknown>;
+    stamps?: Partial<Record<string, Record<string, number>>>;
   } = {},
 ) {
   return renderSlot(app.threadLists[0]!, { ...props, ...options.props }, {
-    rpc: rpc(options.prefs, {}, options.notes) as never,
+    rpc: rpc(options.prefs, options.stamps, options.notes) as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
     providers: {
       status: "ready",
@@ -440,6 +441,44 @@ describe("Thread Glance slot", () => {
     const unread = await column(/Open Fresh/);
     expect(within(unread).getByRole("img", { name: "Unread" })).toBeTruthy();
     expect(unread.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it("offers Mark read beside archive on a root whose tree holds something unread, and marks the whole tree read", async () => {
+    const slot = render([
+      makeThread({ id: "r", title: "Root" }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
+      makeThread({ id: "d", title: "Done child", parentThreadId: "r", createdAt: T0 + 2 }),
+      makeThread({ id: "q", title: "Calm" }),
+    ], { stamps: { finishedAt: { d: T0 + 50 } } });
+    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    const calm = (await screen.findByRole("link", { name: /Open Calm/ })).parentElement!;
+    expect(within(calm).queryByRole("button", { name: "Mark read" })).toBeNull();
+    const button = within(row).getByRole("button", { name: "Mark read" });
+    expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "d"]),
+    );
+    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
+  });
+
+  it("offers Mark read for the tree in a root's menu whenever something in it is unread", async () => {
+    const slot = render([
+      makeThread({ id: "r", title: "Root" }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
+    ]);
+    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", threadId: "c", read: true })),
+    );
+  });
+
+  it("draws no Mark read hover action on a phone", async () => {
+    render([makeThread({ id: "u", title: "Fresh", ...finishedUnread })], { props: { isCompactViewport: true } });
+    const row = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!;
+    expect(within(row).queryByRole("button", { name: "Mark read" })).toBeNull();
   });
 
   it("marks read through the host's action from the row menu", async () => {

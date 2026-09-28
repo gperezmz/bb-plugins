@@ -296,10 +296,19 @@ function ThreadListBody({
         case "copy-id":
           void copyText(thread.id, "Thread ID copied");
           return;
-        case "mark-read":
+        case "mark-read": {
+          // A root's Mark read covers its tree, children marked unread only here included.
+          const tree = latest.current.forest?.treeOf.get(thread.id);
+          if (tree !== undefined && tree.root.thread.id === thread.id) {
+            const plan = markAllReadPlan([tree], context);
+            if (plan.seen.length > 0) markSeen(plan.seen);
+            for (const id of plan.read) actions.setRead(id, true).catch(fail("Couldn't mark read"));
+            return;
+          }
           if (isDoneUnseen(thread, context)) markSeen([thread.id]);
           actions.setRead(thread.id, true).catch(fail("Couldn't mark read"));
           return;
+        }
         case "mark-unread":
           clearSeen([thread.id]);
           actions.setRead(thread.id, false).catch(fail("Couldn't mark unread"));
