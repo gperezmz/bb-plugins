@@ -160,6 +160,10 @@ _Avoid_: Tool permissions, agent settings
 Cache Keeper's listing of every bb thread every 5 minutes, which corrects what a missed event left wrong; the only work it does over every thread.
 _Avoid_: Pass, poll
 
+**Fair floor**:
+The blind design's prototype measured on the same machine with Cache Keeper's own transport to bb and validation of bb's and the host's replies; the benchmark's targets are twice it.
+_Avoid_: Baseline, blind floor
+
 **Drive harness**:
 The throwaway bb, fake Anthropic API and scripts committed with Cache Keeper that drive it against real Claude Code threads on a clock the harness can move forward.
 _Avoid_: Test bb, e2e rig
