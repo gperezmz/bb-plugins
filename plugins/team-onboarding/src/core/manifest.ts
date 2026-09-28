@@ -231,11 +231,18 @@ const toolSchema = z
     }
   });
 
+/** Environment variable names the env form refuses: they would override bb's built-in git. */
+export const REFUSED_ENV = /^(GH_TOKEN|GITHUB_TOKEN|GH_ENTERPRISE_TOKEN|GIT_CONFIG_.*)$/;
+
 const envSchema = z
   .object({
     name: z
       .string()
-      .regex(/^[A-Z_][A-Z0-9_]*$/, "env names are UPPER_SNAKE_CASE"),
+      .regex(/^[A-Z_][A-Z0-9_]*$/, "env names are UPPER_SNAKE_CASE")
+      .refine((name) => !REFUSED_ENV.test(name), {
+        error: (issue) =>
+          `${String(issue.input)} would override bb's built-in git on every machine, so the env form refuses it and the item could never be completed`,
+      }),
     note: z.string().optional(),
     required: z.boolean().optional(),
   })

@@ -78,6 +78,26 @@ describe("parseManifest", () => {
   });
 });
 
+describe("parseManifest env names", () => {
+  const withEnv = (name: string) => ["schema: 1", "team: { name: T }", "env:", `  - name: ${name}`].join("\n");
+
+  it.each(["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL"])(
+    "rejects an env item named %s, naming the item and the rule",
+    (name) => {
+      const result = parseManifest(withEnv(name));
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      const issue = result.issues[0]!;
+      expect(issue.line).toBe(4);
+      expect(formatIssue(issue)).toContain(`${name} would override bb's built-in git`);
+    },
+  );
+
+  it.each(["TRACKER_API_KEY", "GH_TOKEN_EXTRA", "MY_GITHUB_TOKEN", "GIT_CONFIGURED", "GIT_AUTHOR_NAME"])("accepts an env item named %s", (name) => {
+    expect(parseManifest(withEnv(name)).ok).toBe(true);
+  });
+});
+
 describe("manifestJsonSchema", () => {
   it("matches the committed schema/onboarding.schema.json", () => {
     const committed = JSON.parse(readFileSync(new URL("../../schema/onboarding.schema.json", import.meta.url), "utf8"));
