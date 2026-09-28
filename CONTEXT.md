@@ -235,7 +235,7 @@ The plugin that adds appearance settings bb lacks, starting with transcript text
 _Avoid_: Appearance plugin, theme
 
 **Tweak**:
-One of UI Tweaks' settings, shown as a row with a segmented control: transcript text size or transcript width. Medium is bb's own look for every tweak.
+One of UI Tweaks' settings, transcript text size or transcript width, together with the choice it holds, which is one segment of its row's segmented control. Medium is bb's own look for every tweak.
 _Avoid_: Setting override, adjustment
 
 **Thread view**:
