@@ -80,12 +80,12 @@ With a thread:
 | status | `working`, `waiting on your answer`, `compacting in {n}m`, `compacted {when}`, `skipped until this thread next runs`, `waiting on background work`, `idle, no line`, `idle, under the line` or `idle`, the first that holds; or `transcript unreadable` when the transcript cannot be read or parsed |
 | last decision | What Cache Keeper last sent or held back, when, and why it held it back: see [why nothing was sent](../explanation/cache-keeper-timing.md#why-nothing-was-sent) |
 | keep-warms | On or off for its tree, or held because the model has no price |
-| price source | `LiteLLM`, `models.dev` or `bundled`, or none |
+| price source | `LiteLLM`, `models.dev` or `bundled`; `none yet: model not read` before the thread's model has been read from its transcript; or `none: the model has no price` when it was read and no price list has it |
 | rests on | Model, cache lifetime, calls per message and size after compacting; `(default)` marks a value not yet measured |
 | transcript unreadable | Why, when it cannot be read |
 | last price fetch error | The last error fetching a price list, when there is one |
 
-Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](cache-keeper-settings.md#after-a-reinstall), the first line says every switch was turned off, until a switch, a Skip or Undo, a line, an Agent tools row or the check-ins setting is next changed. `--json` carries the same fields: the thread's view, `statusText`, `priceSource`, `lastPriceFetchError`, and `reset` after a reinstall.
+Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](cache-keeper-settings.md#after-a-reinstall), the first line says every switch was turned off, until a switch, a Skip or Undo, a line, an Agent tools row or the check-ins setting is next changed. `--json` carries the same fields: the thread's view, `statusText`, `priceSource` (with the same texts), `lastPriceFetchError`, and `reset` after a reinstall.
 
 ## The `cache_keeper_compact_when_idle` agent tool
 
