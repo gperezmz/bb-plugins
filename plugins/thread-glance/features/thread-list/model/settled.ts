@@ -79,12 +79,11 @@ export function lastActivityAt(
  * A settled thread: quiet as if no thread were open, not needing attention,
  * not pinned, with no open pull request, and either its pull request merged
  * or closed or its own last activity is older than the Settle after period.
- * A hidden thread has no row, so only needing attention holds it out; an
- * archived one is done and settled.
+ * A hidden thread takes the same test, since its tree is not done while it
+ * works; an archived one is done and settled.
  */
 export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean {
   const thread = info.thread;
-  if (thread.isHidden) return info.attentionFlags.size === 0;
   if (thread.isArchived) return true;
   if (!mightSettle(info)) return false;
   const pullRequest = inputs.pullRequestOf(thread);
@@ -122,7 +121,7 @@ export function pullRequestLookupIds(
   const ids: string[] = [];
   for (const info of infos) {
     const thread = info.thread;
-    if (thread.isHidden || thread.isArchived || !mightSettle(info)) continue;
+    if (thread.isArchived || !mightSettle(info)) continue;
     if (needsPullRequestLookup(thread.environment?.branchName ?? null, defaultBranchOf(thread))) ids.push(thread.id);
   }
   return ids;

@@ -91,12 +91,13 @@ describe("a settled thread", () => {
       makeThread({ id: "busy", environment: { branchName: "x" }, ...working }),
       makeThread({ id: "pinned", environment: { branchName: "x" }, pinnedAt: T0, isPinned: true }),
       makeThread({ id: "hidden", environment: { branchName: "x" }, isHidden: true, parentThreadId: "t" }),
+      makeThread({ id: "hidden-busy", environment: { branchName: "x" }, isHidden: true, parentThreadId: "t", ...working }),
       makeThread({ id: "unknown", projectId: "proj_b", environment: { branchName: "x" } }),
     ];
     const forest = forestOf({ threads });
     const defaults: Record<string, string | null | undefined> = { proj_a: "main", proj_b: undefined };
-    expect(pullRequestLookupIds(forest.infos.values(), (thread) => defaults[thread.projectId])).toEqual(["t"]);
-    expect(pullRequestLookupIds(forest.infos.values(), () => null)).toEqual(["t", "main", "unknown"]);
+    expect(pullRequestLookupIds(forest.infos.values(), (thread) => defaults[thread.projectId])).toEqual(["t", "hidden"]);
+    expect(pullRequestLookupIds(forest.infos.values(), () => null)).toEqual(["t", "main", "hidden", "unknown"]);
   });
 
   it("reads no pull request off a thread with no branch or on the default branch", () => {
@@ -131,9 +132,11 @@ describe("a settled tree", () => {
     expect(treeSettled({ threads: archivedRoot, now: LATER })).toBe(false);
   });
 
-  it("is held out by a hidden child only when it needs attention", () => {
-    expect(treeSettled({ threads: tree({ isHidden: true, ...working }), now: LATER })).toBe(true);
+  it("takes a hidden child through the same test as any other", () => {
+    expect(treeSettled({ threads: tree({ isHidden: true }), now: LATER })).toBe(true);
+    expect(treeSettled({ threads: tree({ isHidden: true, ...working }), now: LATER })).toBe(false);
     expect(treeSettled({ threads: tree({ isHidden: true, hasPendingInteraction: true }), now: LATER })).toBe(false);
+    expect(treeSettled({ threads: tree({ isHidden: true, environment: { branchName: "f" } }), pullRequests: { c: "open" }, now: LATER })).toBe(false);
   });
 });
 
