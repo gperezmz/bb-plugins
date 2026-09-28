@@ -1,0 +1,86 @@
+{
+  "compactOn": true,
+  "keepWarm": false,
+  "setting": 4,
+  "stretch": {
+    "startedAt": 1790503200000,
+    "compactedAt": 1790506740000,
+    "compactSkipped": true,
+    "warmSkipped": true,
+    "chargedUsd": 0.123456789,
+    "skippedAt": 1790503300000
+  },
+  "inFlight": {
+    "kind": "keep-warm",
+    "at": 1790506000000,
+    "sendId": 17
+  },
+  "tasks": {
+    "b1x2": {
+      "kind": "command",
+      "description": "npm test -- --watch",
+      "clock": {
+        "startedAt": 1790503000000,
+        "lastActivityAt": 1790503500000,
+        "lastCheckInAt": 1790504400000,
+        "stalledStreak": 2
+      }
+    }
+  },
+  "compaction": {
+    "historyId": 9,
+    "at": 1790506740000,
+    "contextBefore": 412000,
+    "contextAfter": 18000,
+    "w": 0.00001,
+    "lifetimeMs": 3600000
+  },
+  "readBefore": {
+    "read": true,
+    "lastReadAt": 1790506000500,
+    "since": 1790506000000
+  },
+  "accountedSeq": 5123,
+  "lastSendId": 17,
+  "keeperReports": {
+    "turns": 3,
+    "requests": 4
+  },
+  "transcript": {
+    "sessionId": "7dfc9da6-b6a9-4955-9df9-530b2c0ccda6",
+    "unreadable": "no line of the 2 read parses as JSON",
+    "cursor": {
+      "cwdSlug": "-home-user-src-acme-webapp",
+      "ino": 40961234,
+      "offset": 36700160,
+      "fold": {
+        "facts": {
+          "lastRequestAt": 1790506700000,
+          "lifetime": "1h",
+          "context": 412000,
+          "model": "claude-opus-5-5",
+          "requests": 812,
+          "userMessages": 97,
+          "lastCompaction": {
+            "at": 1790400000000,
+            "preTokens": 380000,
+            "postTokens": 21000
+          }
+        },
+        "lastKey": "4998e577e5f92635",
+        "contextAt": 1790506700000,
+        "keeperTurn": true,
+        "awaitingRequest": true
+      }
+    }
+  },
+  "window": {
+    "model": "claude-opus-5-5",
+    "tokens": 1000000
+  },
+  "decision": {
+    "at": 1790506740000,
+    "what": "compact",
+    "reason": "skipped"
+  }
+}

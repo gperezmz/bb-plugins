@@ -1,0 +1,4 @@
+{
+  "thread_id": "thr_fixture01",
+  "record": "{\"afterSeq\":5140,\"requests\":{\"creq_9\":{\"at\":1790506900000,\"inputs\":[{\"kind\":\"report\",\"report\":\"child-completed\",\"lines\":[{\"childId\":\"thr_child\"}],\"at\":1790506900000}]}},\"turns\":[{\"startSeq\":5123,\"startedAt\":1790506001000,\"endedAt\":1790506004000,\"status\":\"completed\",\"inputs\":[{\"kind\":\"sent\",\"hash\":\"4998e577e5f92635\",\"expects\":{\"kind\":\"not-finished\"},\"at\":1790506000000}],\"reply\":\"Not finished yet, still waiting on background command b1x2 (\\\"npm test -- --watch\\\").\",\"repliedNothingNew\":true},{\"startSeq\":5130,\"startedAt\":1790506100000,\"endedAt\":1790506110000,\"status\":\"failed\",\"inputs\":[{\"kind\":\"other\"}],\"reply\":null,\"repliedNothingNew\":false}],\"delivered\":[{\"childId\":\"thr_child\",\"at\":1790506002000}]}"
+}

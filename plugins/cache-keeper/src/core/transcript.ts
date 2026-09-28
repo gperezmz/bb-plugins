@@ -8,7 +8,7 @@
  * incremental: lines are fed in file order, as they are appended.
  */
 import type { CacheLifetime } from "./line";
-import { isKeeperMessage } from "./messages";
+import { isKeeperMessage, textHash } from "./messages";
 
 /** A request in the transcript, as the cost of a check-in reads it. */
 export interface TranscriptRequest {
@@ -102,6 +102,7 @@ export function requestOf(line: Json): (TranscriptRequest & { key: string }) | n
  */
 export interface FoldState {
   facts: TranscriptFacts;
+  /** The last request's id, as a hash: only compared with the next. */
   lastKey: string | null;
   /** Null before the first request or compaction. */
   contextAt: number | null;
@@ -188,13 +189,14 @@ export class TranscriptFold {
     const read = requestOf(line);
     if (read === null) return;
     const request = { ...read, at: this.toClock(read.at) };
-    if (request.key !== this.lastKey) {
+    const key = textHash(request.key);
+    if (key !== this.lastKey) {
       if (this.awaitingRequest) {
         this.facts.userMessages += 1;
         this.awaitingRequest = false;
       }
       if (!this.keeperTurn) this.facts.requests += 1;
-      this.lastKey = request.key;
+      this.lastKey = key;
       this.recent.push(request);
       if (this.recent.length > this.keepRecent) this.recent.shift();
     } else {

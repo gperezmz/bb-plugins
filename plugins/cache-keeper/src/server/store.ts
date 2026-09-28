@@ -14,7 +14,7 @@ import type { SentKind } from "../core/messages";
 import type { HoldReason } from "../core/reasons";
 import { emptyTurnLog, normalizeTurnLog, type TurnLog } from "../core/turns";
 import type { TaskKind } from "../core/waiting";
-import type { TranscriptCursor } from "../core/transcript";
+import { EMPTY_FACTS, type TranscriptCursor } from "../core/transcript";
 
 /** The subset of better-sqlite3's Database the store uses. */
 export interface Db {
@@ -164,16 +164,72 @@ export const emptyRecord = (): ThreadRecord => ({
 });
 
 /**
- * A record as stored, brought to the current shape: records from before
- * 0.1.0 kept `warmSpentUsd` and `eventsAfterSeq`, and no transcript cursor.
+ * A record as stored, brought to the current shape. The stored form leaves
+ * out every null, false and empty object (`storedForm`), which are put back
+ * here; records from before 0.1.0 also kept `warmSpentUsd` and
+ * `eventsAfterSeq`, and no transcript cursor.
  */
 export function normalizeRecord(stored: Partial<ThreadRecord> & Record<string, unknown>): ThreadRecord {
   const { eventsAfterSeq: _events, warmSpentUsd: _spent, ...known } = stored;
   const record = { ...emptyRecord(), ...known } as ThreadRecord;
-  if (record.stretch !== null) record.stretch = { ...newIdleStretch(record.stretch.startedAt), ...record.stretch, chargedUsd: record.stretch.chargedUsd ?? 0 };
-  if (record.inFlight !== null && typeof record.inFlight.sendId !== "number") record.inFlight = null;
-  if (record.transcript !== null && typeof record.transcript.sessionId !== "string") record.transcript = null;
+  record.keepWarm ??= null;
+  record.setting ??= null;
+  if (record.stretch != null) record.stretch = { ...newIdleStretch(record.stretch.startedAt), ...record.stretch, chargedUsd: record.stretch.chargedUsd ?? 0 };
+  else record.stretch = null;
+  if (record.stretch !== null) record.stretch.compactedAt ??= null;
+  if (record.inFlight == null || typeof record.inFlight.sendId !== "number") record.inFlight = null;
+  record.tasks = Object.fromEntries(
+    Object.entries(record.tasks ?? {}).map(([id, t]) => [id, { ...t, description: t.description ?? "", clock: Object.assign({ lastCheckInAt: null, stalledStreak: 0 }, t.clock) }]),
+  );
+  record.compaction = record.compaction == null ? null : Object.assign({ contextAfter: null, w: null, lifetimeMs: null }, record.compaction);
+  record.readBefore = record.readBefore == null ? null : Object.assign({ read: false, lastReadAt: null }, record.readBefore);
+  record.keeperReports = Object.assign({ turns: 0, requests: 0 }, record.keeperReports);
+  record.lastSendId ??= null;
+  record.window ??= null;
+  // The window is stored without its model when that is the transcript's.
+  if (record.window !== null && record.window.model === undefined) record.window.model = record.transcript?.cursor?.fold?.facts?.model ?? null;
+  record.decision = record.decision == null ? null : { ...record.decision, reason: record.decision.reason ?? null };
+  if (record.transcript == null || typeof record.transcript.sessionId !== "string") record.transcript = null;
+  else {
+    const t = record.transcript;
+    const fold = t.cursor?.fold;
+    record.transcript = {
+      sessionId: t.sessionId,
+      unreadable: t.unreadable ?? null,
+      cursor:
+        t.cursor == null || fold == null
+          ? null
+          : {
+              ...t.cursor,
+              fold: {
+                facts: { ...EMPTY_FACTS, ...fold.facts },
+                lastKey: fold.lastKey ?? null,
+                contextAt: fold.contextAt ?? null,
+                keeperTurn: fold.keeperTurn ?? false,
+                awaitingRequest: fold.awaitingRequest ?? false,
+              },
+            },
+    };
+  }
   return record;
+}
+
+/**
+ * A record as stored: every null, false and empty or all-zero object left out, and
+ * charges to a billionth of a dollar, so a typical thread's row stays under
+ * 600 B. `normalizeRecord` puts the defaults back.
+ */
+export function storedForm(record: ThreadRecord): string {
+  const model = record.transcript?.cursor?.fold.facts.model;
+  const window = record.window !== null && record.window.model !== null && record.window.model === model ? { tokens: record.window.tokens } : record.window;
+  return JSON.stringify({ ...record, window }, (key, value: unknown) => {
+    // Keep warm while waiting is on, off, or null when nobody flipped it: its false is kept.
+    if (key === "keepWarm" && value === false) return value;
+    if (value === null || value === false) return undefined;
+    if (typeof value === "number" && !Number.isInteger(value)) return Math.round(value * 1e9) / 1e9;
+    if (typeof value === "object" && !Array.isArray(value) && Object.values(value as object).every((v) => v === null || v === false || v === undefined || v === 0)) return undefined;
+    return value;
+  });
 }
 
 /** One message Cache Keeper sent, or is sending, to one thread. */
@@ -260,7 +316,7 @@ export class Store {
         `INSERT INTO threads (thread_id, compact_on, record, updated_at) VALUES (?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET compact_on = excluded.compact_on, record = excluded.record, updated_at = excluded.updated_at`,
       )
-      .run(threadId, record.compactOn ? 1 : 0, JSON.stringify(record), now);
+      .run(threadId, record.compactOn ? 1 : 0, storedForm(record), now);
   }
 
   /** Applies `change` to the record as stored now, and stores the result. Never await between reading a record and this call. */
@@ -369,7 +425,7 @@ export class Store {
     const { threadId, at, dueKey, ...rest } = send;
     const result = this.db
       .prepare("INSERT OR IGNORE INTO sends (thread_id, at, history_id, record, due_key) VALUES (?, ?, 0, ?, ?)")
-      .run(threadId, at, JSON.stringify({ ...rest, usd: 0, measured: false, sending: true }), dueKey) as { changes?: number; lastInsertRowid?: number | bigint };
+      .run(threadId, at, JSON.stringify({ ...rest, forecastUsd: Math.round(rest.forecastUsd * 1e9) / 1e9, usd: 0, sending: true }), dueKey) as { changes?: number; lastInsertRowid?: number | bigint };
     return result.changes === 0 ? null : Number(result.lastInsertRowid ?? 0);
   }
 
@@ -506,6 +562,6 @@ function sendOf(row: SendRow): SendRecord {
 
 /** The JSON a send's row keeps: what its columns do not. */
 function recordOf(send: SendRecord): string {
-  const { id: _id, threadId: _t, at: _a, historyId: _h, dueKey: _d, ...rest } = send;
-  return JSON.stringify(rest);
+  const { id: _id, threadId: _t, at: _a, historyId: _h, dueKey: _d, sending, measured, ...rest } = send;
+  return JSON.stringify({ ...rest, usd: Math.round(rest.usd * 1e9) / 1e9, forecastUsd: Math.round(rest.forecastUsd * 1e9) / 1e9, ...(measured ? { measured } : {}), ...(sending ? { sending } : {}) });
 }
