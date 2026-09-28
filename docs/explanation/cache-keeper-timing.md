@@ -7,7 +7,7 @@ flowchart TB
   idle["Turn ends: the thread is idle"] --> question{"Waiting on your answer?"}
   question -->|yes| nothing["Nothing"]
   question -->|no| waiting{"Waiting on background work, a child thread,<br/>a report on its way or a queued message?"}
-  waiting -->|yes| stalled["Check-in on a stalled task, at once,<br/>while check-ins are on"]
+  waiting -->|yes| stalled["Check-in on a stalled task, at once,<br/>while Check on stalled tasks is on"]
   waiting -->|yes| kept{"Its tree kept warm?"}
   kept -->|yes| warm["Keep-warm with its tree,<br/>until the cost stop or Skip"]
   waiting -->|no| on{"Compact when idle on,<br/>and the context at or over the line?"}
@@ -156,7 +156,7 @@ Each decision to send, and each time a send that fell due is held back, is writt
 | no price | The model has no price, or no usable cache rate |
 | thread busy | The thread is working, or bb refused the send as busy |
 | pending interaction | The thread waits on your answer |
-| switched off | Compact when idle, its tree's Keep warm while waiting, or check-ins are off |
+| switched off | Compact when idle, its tree's Keep warm while waiting, or Check on stalled tasks is off |
 | skipped | Skip was pressed |
 | Never | The thread's line is "never", or keep-warms are set to `Never` |
 | archived, deleted | bb archived or deleted the thread |

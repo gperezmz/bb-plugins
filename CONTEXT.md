@@ -46,8 +46,12 @@ _Avoid_: Unhandled failure, stuck child
 The count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them, led by the glyph of the most urgent state among its descendants.
 _Avoid_: Chip, Pill, children badge, child dot
 
+**Focused thread**:
+The thread in the pane of bb's window that has focus.
+_Avoid_: Active thread, current thread
+
 **Open thread**:
-A thread shown in any pane of bb's window, the focused one or another split pane. Thread Glance never counts it as unread.
+A thread shown in any pane of bb's window, the focused thread or one in another split pane. Thread Glance never counts it as unread.
 _Avoid_: Viewed thread, visible thread
 
 **Quiet thread**:
@@ -77,7 +81,7 @@ _Avoid_: Glyph slot, indent, gutter
 ### Thread Usage
 
 **Header chip**:
-Thread Usage's coin in a thread's header, whose hover card shows the thread tree's cost and whose click opens its Usage tab.
+Thread Usage's coin in an outlined button in a thread's header, beside bb's editor picker, whose hover card shows the thread tree's cost and whose click opens its Usage tab.
 _Avoid_: Chip, Usage chip, coin button
 
 ### Team Onboarding
