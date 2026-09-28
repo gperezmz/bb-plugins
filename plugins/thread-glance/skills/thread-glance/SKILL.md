@@ -54,7 +54,7 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `collapsedEnvironments` | Environment ids of collapsed folder rows | `[]` |
 | `foldOlder` | Collapse older threads: `true` folds a group's quiet top-level threads past its 5 newest behind an "N older" row | `true` |
 | `workingFirst` | `true` sorts working threads first under `updated` | `false` |
-| `expandedOlder` | Group ids and parent thread ids whose "N older" or "N more child threads" row is open | `[]` |
+| `expandedOlder` | Group ids and parent thread ids whose fold is open: a group's "N older" row, or the "N more child threads" row of a tree whose children chip is already open | `[]` |
 | `expandedChildren` | Parent thread ids whose chip is open | `[]` |
 | `showPullRequests` | `true` shows a pull request badge on rows | `true` |
 | `childAttention` | Needs attention counts every child. Which child threads need attention (the Needs attention section, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle since); `everything` also counts every failed or unread child | `blocked` |

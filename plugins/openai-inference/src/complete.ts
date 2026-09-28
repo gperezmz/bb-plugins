@@ -70,7 +70,7 @@ const isObject = (value: unknown): value is JsonObject =>
  *
  * Throws:
  *   Error: The server answered with an error, could not be reached, or its
- *     answer holds no message content; or bb aborted the request.
+ *     answer holds no message content.
  */
 export async function complete(prompt: string, endpoint: ExpandedEndpoint, options: CompleteOptions = {}): Promise<string> {
   const fetchImpl = options.fetch ?? fetch;
@@ -85,9 +85,6 @@ export async function complete(prompt: string, endpoint: ExpandedEndpoint, optio
       body: JSON.stringify(body),
       signal: options.signal,
     });
-  // A network error, unless bb aborted the request.
-  const failure = (message: string) =>
-    new Error(options.signal?.aborted ? `bb cancelled the request to Endpoint "${endpoint.id}".` : message);
   const learned = options.learned?.fields ?? [];
   let dropped = learned;
   let response: Response;
@@ -116,7 +113,7 @@ export async function complete(prompt: string, endpoint: ExpandedEndpoint, optio
     if (response.ok && dropped !== learned) options.learned?.save(dropped);
     if (!response.ok) error ??= await response.text();
   } catch (cause) {
-    throw failure(`Could not reach Endpoint "${endpoint.id}": ${redact(describe(cause))}`);
+    throw new Error(`Could not reach Endpoint "${endpoint.id}": ${redact(describe(cause))}`);
   }
   if (error !== undefined) {
     const detail = errorDetail(redact(error));
@@ -126,7 +123,7 @@ export async function complete(prompt: string, endpoint: ExpandedEndpoint, optio
   try {
     text = await response.text();
   } catch (cause) {
-    throw failure(`Endpoint "${endpoint.id}" broke off its answer: ${redact(describe(cause))}`);
+    throw new Error(`Endpoint "${endpoint.id}" broke off its answer: ${redact(describe(cause))}`);
   }
   return messageContent(text, endpoint.id);
 }

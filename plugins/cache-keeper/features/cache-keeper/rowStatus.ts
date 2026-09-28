@@ -1,6 +1,6 @@
 /**
  * The sidebar glyph: Cache Keeper's icon on a row while its compaction is
- * due, a clock while a keep-warm or check-in is due. A content script, so it
+ * due, a clock while a keep-warm is planned. A content script, so it
  * polls the server through `fetchRowStatuses` rather than using hooks.
  */
 import type { PluginContentScriptContext } from "@get-bb/plugin-sdk/app";

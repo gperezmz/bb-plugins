@@ -120,7 +120,7 @@ export const PREFERENCES = {
   expandedOlder: define(
     idListSchema,
     [] as string[],
-    "Group ids and parent thread ids whose N older fold the user opened.",
+    "Group ids and parent thread ids whose fold the user opened: a group's \"N older\" row, or the \"N more child threads\" row of a tree whose children chip is already open.",
   ),
   expandedChildren: define(
     idListSchema,
