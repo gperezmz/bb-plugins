@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, popoverSentence, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
+import { bannerOf, chipSentence, chipText, countsText, entryText, nextWarmText, statusLine, statusText, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { costText, formatUsd, fractionOf, settingAt, settingForText, splitText, stepSetting } from "./bar";
 
 const lines = [100_000, 150_000, 220_000, 400_000, null, null, null, null, null, null];
@@ -183,19 +183,31 @@ describe("page entries", () => {
   });
 });
 
-describe("the popover sentence", () => {
-  it("names the line, or says there is none and why", () => {
-    expect(popoverSentence(view())).toBe("When this thread stops at 150k or more, compact it just before its cache goes cold. Never while it's working.");
-    expect(popoverSentence(view({ line: null }))).toBe(
-      "No size up to this thread's 1M window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.",
-    );
-    expect(popoverSentence(view({ line: null, rates: null }))).toBe("With no price for this model yet, there is no line, so this thread is not compacted.");
-    const never = Array.from({ length: 10 }, () => null);
-    expect(popoverSentence(view({ line: null, lines: never }))).toBe(
-      "At no setting does compacting this thread repay itself: even at its whole 1M window, your first message back would save less than compacting costs. It is never compacted.",
-    );
+describe("the popover's status line", () => {
+  it("starts each side with a capital, whatever the status, and changes nothing after its first letter", () => {
+    const now = 3 * 60 * 60_000;
+    const statuses: [Partial<ThreadView>, string][] = [
+      [{ status: "active", context: null }, "Now unknown · Working"],
+      [{ hasPendingInteraction: true }, "Now 300k · Waiting on your answer"],
+      [{ compactionDue: true, deadline: now + 3 * 60_000 }, "Now 300k · Compacting in 3m"],
+      [{ compactedAt: now - 2 * 60 * 60_000 }, "Now 300k · Compacted 2h ago"],
+      [{ compactSkipped: true }, "Now 300k · Skipped until this thread next runs"],
+      [{ waiting: true }, "Now 300k · Waiting on background work"],
+      [{ line: null }, "Now 300k · Idle, no line"],
+      [{ line: 400_000 }, "Now 300k · Idle, under the line"],
+      [{}, "Now 300k · Idle"],
+    ];
+    for (const [over, line] of statuses) {
+      expect(statusLine(view(over), now)).toBe(line);
+      const [left, right] = line.split(" · ");
+      const lower = statusText(view(over), now);
+      expect(right).toBe(lower.charAt(0).toUpperCase() + lower.slice(1));
+      expect(left!.slice(1)).toBe(`ow ${over.context === null ? "unknown" : "300k"}`);
+    }
   });
+});
 
+describe("a thread with no line", () => {
   it("never says a thread with no line is under it, or shows ≥ never", () => {
     const never = Array.from({ length: 10 }, () => null);
     expect(statusText(view({ line: null }), 0)).toBe("idle, no line");
@@ -203,5 +215,16 @@ describe("the popover sentence", () => {
     expect(chipSentence(view({ line: null, rates: null }), 0)).toContain("no price yet");
     expect(chipSentence(view({ line: null, lines: never }), 0)).toContain("at any setting");
     expect(chipSentence(view({ line: null }), 0)).toContain("at this setting");
+  });
+
+  it("says, while the window is unknown, that the line is set once the first turn ends, and never that the model has no price", () => {
+    const unknown = { windowKnown: false, window: 0, line: null, lines: Array.from({ length: 10 }, () => null) };
+    for (const rates of [null, { w: 1, r: 1, o: 1 }]) {
+      expect(chipSentence(view({ ...unknown, rates }), 0)).toBe(
+        "Compact when idle is on. Its line is set once this thread's first turn ends. While it waits, its cache is kept warm.",
+      );
+    }
+    expect(chipText(view(unknown), 0)).toBe("no line");
+    expect(chipSentence(view({ ...unknown, compactOn: false }), 0)).toMatch(/^Compact when idle is off\. Click to switch it on/);
   });
 });

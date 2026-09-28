@@ -93,10 +93,11 @@ export function ago(at: number, now: number): string {
 }
 
 /** Why a thread has no line, or null when it has one. */
-export type NoLine = "no-price" | "no-setting" | "this-setting";
+export type NoLine = "window-unknown" | "no-price" | "no-setting" | "this-setting";
 
 export function noLineReason(view: ThreadView): NoLine | null {
   if (view.line !== null) return null;
+  if (!view.windowKnown) return "window-unknown";
   if (view.rates === null) return "no-price";
   return view.lines.some((l) => l !== null) ? "this-setting" : "no-setting";
 }
@@ -136,6 +137,8 @@ function compactSentence(view: ThreadView, now: number): string {
     return `Compacting in ${minutesTo(view.deadline, now)}m, just before the cache goes cold.`;
   }
   switch (noLineReason(view)) {
+    case "window-unknown":
+      return "Compact when idle is on. Its line is set once this thread's first turn ends.";
     case "no-price":
       return "Compact when idle is on, but this model has no price yet, so there is no line and the thread is not compacted.";
     case "no-setting":
@@ -147,21 +150,7 @@ function compactSentence(view: ThreadView, now: number): string {
   }
 }
 
-/** The popover's sentence under the switch; with no line, it says the thread is never compacted and why. */
-export function popoverSentence(view: ThreadView): string {
-  switch (noLineReason(view)) {
-    case "no-price":
-      return "With no price for this model yet, there is no line, so this thread is not compacted.";
-    case "no-setting":
-      return `At no setting does compacting this thread repay itself: even at its whole ${formatSize(view.window)} window, your first message back would save less than compacting costs. It is never compacted.`;
-    case "this-setting":
-      return `No size up to this thread's ${formatSize(view.window)} window repays compacting at this setting, so it is never compacted. Move the handle lower to set a line.`;
-    case null:
-      return `When this thread stops at ${formatSize(view.line)} or more, compact it just before its cache goes cold. Never while it's working.`;
-  }
-}
-
-/** The status half of the popover's `now {context} · {status}` line. */
+/** The status half of the popover's status line, lower case as the page and CLI show it. */
 export function statusText(view: ThreadView, now: number): string {
   if (view.status !== "idle") return "working";
   if (view.hasPendingInteraction) return "waiting on your answer";
@@ -173,6 +162,14 @@ export function statusText(view: ThreadView, now: number): string {
   if (view.context === null || view.context < view.line) return "idle, under the line";
   return "idle";
 }
+
+/** The popover's status line, "Now 312k · Idle, under the line": each side starts with a capital. */
+export function statusLine(view: ThreadView, now: number): string {
+  const context = view.context === null ? "unknown" : formatSize(view.context);
+  return `${capitalised(`now ${context}`)} · ${capitalised(statusText(view, now))}`;
+}
+
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
