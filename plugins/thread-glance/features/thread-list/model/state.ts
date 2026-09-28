@@ -271,17 +271,17 @@ export function hiddenThreadFlags(flags: ReadonlySet<Flag>): Set<Flag> {
   return kept;
 }
 
-/** Flags a hidden thread adds to the parents above it: what asks for you or failed, and offline. */
-const HIDDEN_GLYPH_FLAGS: ReadonlySet<Flag> = new Set<Flag>(["waits-on-you", "unread-failed", "queue-failed", "offline"]);
+/** Flags a hidden thread adds to the children chip above it: what asks for you or failed, and offline. */
+const HIDDEN_CHIP_FLAGS: ReadonlySet<Flag> = new Set<Flag>(["waits-on-you", "unread-failed", "queue-failed", "offline"]);
 
 /**
- * The flags a thread adds to the glyph of a collapsed parent above it. A
+ * The flags a thread adds to the children chip of the threads above it. A
  * hidden thread adds only waits-on-you, failed, queued message failed and
  * offline; which trees need attention reads `hiddenThreadFlags` instead,
  * so this leaves it unchanged.
  */
-export function glyphFlagsOf(flags: ReadonlySet<Flag>, isHidden: boolean): Set<Flag> {
-  return isHidden ? new Set([...flags].filter((flag) => HIDDEN_GLYPH_FLAGS.has(flag))) : new Set(flags);
+export function chipFlagsOf(flags: ReadonlySet<Flag>, isHidden: boolean): Set<Flag> {
+  return isHidden ? new Set([...flags].filter((flag) => HIDDEN_CHIP_FLAGS.has(flag))) : new Set(flags);
 }
 
 /** The most urgent flag, or null. */
@@ -289,55 +289,32 @@ export function mostUrgent(flags: ReadonlySet<Flag>): Flag | null {
   return FLAG_ORDER.find((flag) => flags.has(flag)) ?? null;
 }
 
+/** The colour of a children chip's glyph, count and chevron, by the state it shows. */
+export type ChipTone = "attention" | "destructive" | "working" | "unread";
+
+export function chipTone(flag: Flag): ChipTone {
+  switch (flag) {
+    case "waits-on-you":
+    case "offline":
+      return "attention";
+    case "unread-failed":
+    case "queue-failed":
+      return "destructive";
+    case "working":
+      return "working";
+    case "unread":
+      return "unread";
+  }
+}
+
 export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {
-  "waits-on-you": { ...glyph("CircleQuestion", "attention"), label: "Needs your input" },
-  "unread-failed": { ...glyph("CircleX", "destructive"), label: "Failed" },
-  "queue-failed": { ...glyph("AlertTriangle", "destructive"), label: "Queued message failed to send" },
-  offline: { ...glyph("CloudOff", "attention"), label: "Machine offline" },
-  working: { ...glyph("Loading", "working", true), label: "Working" },
-  unread: { ...glyph("dot", "none"), label: "Unread" },
+  "waits-on-you": { ...glyph("CircleQuestion", "attention"), label: "needs your input" },
+  "unread-failed": { ...glyph("CircleX", "destructive"), label: "failed" },
+  "queue-failed": { ...glyph("AlertTriangle", "destructive"), label: "queued message failed" },
+  offline: { ...glyph("CloudOff", "attention"), label: "machine offline" },
+  working: { ...glyph("Loading", "working", true), label: "working" },
+  unread: { ...glyph("dot", "none"), label: "unread" },
 };
-
-/** States in the order `computeState` tries them: the states table's order, most urgent first. */
-const STATE_ORDER: readonly StateKind[] = [
-  "waits-on-you",
-  "failed",
-  "queue-failed",
-  "offline",
-  "working",
-  "background",
-  "scheduled",
-  "queued",
-  "unread",
-  "draft",
-  "idle",
-];
-
-const FLAG_KIND: Readonly<Record<Flag, StateKind>> = {
-  "waits-on-you": "waits-on-you",
-  "unread-failed": "failed",
-  "queue-failed": "queue-failed",
-  offline: "offline",
-  working: "working",
-  unread: "unread",
-};
-
-/**
- * The state from inside a tree that a parent's glyph shows in place of its
- * own: the most urgent of `flags` when it ranks above the parent's own state
- * in the states table, or null when the parent's own state stands.
- */
-export function treeFlagOver(own: Pick<ThreadState, "kind">, flags: ReadonlySet<Flag>): Flag | null {
-  const flag = mostUrgent(flags);
-  if (flag === null) return null;
-  return STATE_ORDER.indexOf(FLAG_KIND[flag]) < STATE_ORDER.indexOf(own.kind) ? flag : null;
-}
-
-/** The glyph and label a parent shows for a state from inside its tree. */
-export function treeState(flag: Flag): ThreadState {
-  const { label, ...shown } = FLAG_GLYPHS[flag];
-  return { kind: FLAG_KIND[flag], label, glyph: shown, sendAt: null };
-}
 
 /** A thread is quiet when idle, a draft, or failed and read, and read. */
 export function isQuietThread(

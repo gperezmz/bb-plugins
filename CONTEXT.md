@@ -47,8 +47,8 @@ The muted count of a parent thread's direct children just before its trailing sl
 _Avoid_: Chip, Pill, children badge
 
 **Child dot**:
-The small grey dot on a parent's glyph when that glyph shows a state from inside its tree rather than the parent's own.
-_Avoid_: Pip, badge, indicator, hint dot
+The dot on a parent thread's status glyph in the colour of the most urgent state among its children.
+_Avoid_: Pip, badge, indicator
 
 **Quiet thread**:
 A thread that is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.

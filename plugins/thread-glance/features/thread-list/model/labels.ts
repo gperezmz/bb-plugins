@@ -1,21 +1,16 @@
 // Accessible names: everything a tooltip says is in the aria-label.
 import type { Chip, OlderRow, SettledRow, ThreadRow } from "./view";
+import type { Flag } from "./state";
 import { formatDateTime } from "./details";
 import type { OrganizationMode } from "@/shared/preferences";
 
-/**
- * The row's state: its own, or a state from inside its tree and then its own,
- * "Working, in child threads; unread". A plugin row status's label replaces
- * whichever the glyph would show.
- */
 export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   const state = row.info.state;
-  let own = pluginLabel ?? state.label;
+  const base = pluginLabel ?? state.label;
   if (state.kind === "scheduled" && state.sendAt !== null) {
-    own = `${own}, sends ${formatDateTime(state.sendAt)}`;
+    return `${base}, sends ${formatDateTime(state.sendAt)}`;
   }
-  if (pluginLabel !== null || row.treeState === null) return own;
-  return `${row.treeState.label}, in child threads; ${own.charAt(0).toLowerCase()}${own.slice(1)}`;
+  return base;
 }
 
 /** "Open Fix login — Working; Claude Code; child of Release; unread". */
@@ -32,11 +27,21 @@ export function rowAriaLabel(
   return `Open ${row.info.thread.displayTitle} — ${parts.join("; ")}`;
 }
 
-/** "Show 2 child threads of Release, 1 unread in the tree". */
+/** What a children chip's state says, uncounted: the state can come from any depth, the count only from direct children. */
+const CHIP_STATE_TEXT: Readonly<Record<Flag, string>> = {
+  "waits-on-you": "waiting on you below",
+  "unread-failed": "failed below",
+  "queue-failed": "queued message failed below",
+  offline: "machine offline below",
+  working: "working below",
+  unread: "unread below",
+};
+
+/** "Show 2 child threads of Release, working below". */
 export function chipLabel(title: string, chip: Chip): string {
   const noun = chip.count === 1 ? "child thread" : "child threads";
-  const unread = chip.unread > 0 ? `, ${chip.unread} unread in the tree` : "";
-  return `${chip.expanded ? "Collapse" : "Show"} ${chip.count} ${noun} of ${title}${unread}`;
+  const state = chip.state === null ? "" : `, ${CHIP_STATE_TEXT[chip.state]}`;
+  return `${chip.expanded ? "Collapse" : "Show"} ${chip.count} ${noun} of ${title}${state}`;
 }
 
 /** The text and accessible name of an open tree's fold row. */

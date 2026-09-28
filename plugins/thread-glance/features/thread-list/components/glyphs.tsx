@@ -1,11 +1,11 @@
-// State glyphs, the child dot and header counters. They draw what the model
+// State glyphs, the children chip's state glyph and header counters. They draw what the model
 // decided; tone and animation come from host token classes only.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { Counters } from "../model/counters";
 import type { RowNote } from "../model/notes";
-import { FLAG_GLYPHS, type Flag, type Glyph, type Tone } from "../model/state";
+import { chipTone, FLAG_GLYPHS, type ChipTone, type Flag, type Glyph, type Tone } from "../model/state";
 
 export const TONE_CLASS: Record<Tone, string> = {
   attention: "text-attention",
@@ -17,21 +17,6 @@ export const TONE_CLASS: Record<Tone, string> = {
   muted: "text-muted-foreground",
   none: "",
 };
-
-/**
- * The child dot at the lower right corner of a parent's glyph: grey, saying
- * the glyph shows a state from inside the tree rather than the parent's own.
- * A ring of the sidebar's colour keeps it apart from the glyph under it.
- */
-export function ChildDot() {
-  return (
-    <span
-      aria-hidden
-      data-child-dot=""
-      className="pointer-events-none absolute -right-0.5 -bottom-0.5 size-[6px] rounded-full bg-muted-foreground ring-[1.5px] ring-sidebar"
-    />
-  );
-}
 
 const SHINE = "animate-shine-icon motion-reduce:animate-none";
 const SPIN = "animate-spin motion-reduce:animate-none";
@@ -126,6 +111,24 @@ export function NoteLine({ note }: { note: RowNote }) {
 
 export function FlagGlyph({ flag, className }: { flag: Flag; className?: string }) {
   return <GlyphIcon glyph={FLAG_GLYPHS[flag]} className={className} />;
+}
+
+/** The colour of a children chip's count and chevron while it shows a state: the state glyph's own. */
+export const CHIP_TONE_CLASS: Record<ChipTone, string> = {
+  attention: "text-attention",
+  destructive: "text-destructive",
+  working: "text-[var(--timeline-accent)]",
+  unread: "text-[var(--timeline-accent)]",
+};
+
+export function chipToneClass(flag: Flag): string {
+  return CHIP_TONE_CLASS[chipTone(flag)];
+}
+
+/** The state glyph that leads a children chip, smaller than the Status column's; the chip's label names it. */
+export function ChipStateGlyph({ flag }: { flag: Flag }) {
+  if (FLAG_GLYPHS[flag].icon === "dot") return <UnreadDot className="size-[5px]" />;
+  return <FlagGlyph flag={flag} className="size-3" />;
 }
 
 const COUNTER_ITEMS: readonly {

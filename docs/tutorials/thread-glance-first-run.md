@@ -40,11 +40,9 @@ Click the chip. The child's row opens under the parent, indented one step, its t
 
 ## 4. Let it finish
 
-With its chip open, the parent's glyph shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring.
+The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and a small blue dot on the ring's corner, the child dot, says a child is working.
 
-Click the chip again to close it. The parent's glyph turns back to a spinner, now with a small grey dot on its corner, the child dot: the spinner is the child's, not the parent's.
-
-When the child finishes, the parent's glyph shows a blue dot for the unread child, still with the grey child dot, and the number on its chip turns blue. The parent's title stays regular weight, and its row does not turn urgent, because the parent is the one waiting for that result. Open the chip and the child's own row shows the blue dot: it finished and you have not looked at it.
+When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's child dot stays blue, now for unread, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
 
 When the parent finishes, its row shows the dot and a bold title.
 

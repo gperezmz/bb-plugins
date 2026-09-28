@@ -19,11 +19,12 @@ import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
+import { pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
-import { rowGlyph, type ThreadRow } from "../model/view";
+import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { ChildDot, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
+import { ChipStateGlyph, chipToneClass, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -153,8 +154,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   );
 
   const provider = controller.provider(thread.providerId);
-  const glyph = rowGlyph(row, rowStatus);
-  const showPlugin = glyph.plugin;
+  const showPlugin = pluginStatusWins(info.state, rowStatus);
   const label = rowAriaLabel(row, {
     providerName: provider.name,
     pluginLabel: showPlugin ? rowStatus!.label : null,
@@ -221,12 +221,12 @@ export const ThreadRowView = memo(function ThreadRowView({
   const showPullRequest = row.pullRequest !== null;
 
   const stateSlot = miniMap ? (
-    <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${glyph.label}`} working={info.flags.has("working")} />
+    <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
   ) : showPlugin ? (
     <PluginStatusGlyph status={rowStatus!} />
   ) : (
-    <span title={glyph.label} className="inline-flex">
-      <GlyphIcon glyph={glyph.state.glyph} label={glyph.label} />
+    <span title={info.state.label} className="inline-flex">
+      <GlyphIcon glyph={info.state.glyph} label={info.state.label} />
     </span>
   );
 
@@ -368,7 +368,6 @@ export const ThreadRowView = memo(function ThreadRowView({
       />
       <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
         {stateSlot}
-        {glyph.childDot ? <ChildDot /> : null}
       </span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
@@ -527,13 +526,15 @@ export const ThreadRowView = memo(function ThreadRowView({
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               className={cn(
-                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                dimmed && QUIET_TEXT,
+                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                // A state keeps its colour through dimming and hover.
+                chip.state === null
+                  ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
+                  : chipToneClass(chip.state),
               )}
             >
-              <span className={cn(chip.unread > 0 && "text-[var(--timeline-accent)]")}>
-                {chip.count}
-              </span>
+              {chip.state !== null ? <ChipStateGlyph flag={chip.state} /> : null}
+              {chip.count}
               <Icon
                 name={ICONS.expand}
                 aria-hidden

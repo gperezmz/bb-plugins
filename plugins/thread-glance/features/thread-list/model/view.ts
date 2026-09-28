@@ -4,7 +4,6 @@ import type {
   PluginSidebarProject,
   PluginSidebarSection,
   PluginSidebarThread,
-  PluginSidebarThreadRowStatus,
 } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
 import { ancestorsOf, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
@@ -23,44 +22,24 @@ import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counte
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
 import { isOffDefaultBranch } from "./branches";
-import { mostUrgent, pluginStatusWins, treeFlagOver, treeState, type Flag, type ThreadState } from "./state";
-import { stateText } from "./labels";
+import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
 
 /** How many quiet children stay in an expanded tree. */
 export const KEEP_QUIET_CHILDREN = 3;
 
-/** The children chip: the muted count of a parent's direct children, and its chevron. */
+/** The children chip: the count of a parent's direct children and its chevron, after the state of its descendants. */
 export interface Chip {
   /** Direct children opening it shows, hidden ones left out. */
   count: number;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
-  /** `Subtree.unreadCount`: the number turns the unread accent while above 0. */
-  unread: number;
-}
-
-/** What a thread row's status column draws. */
-export interface RowGlyph {
-  /** The state the glyph shows: the thread's own, or the one from its tree. */
-  state: ThreadState;
-  label: string;
-  /** A plugin row status replaces the glyph. */
-  plugin: boolean;
-  childDot: boolean;
-}
-
-/** The row's glyph. A plugin row status is judged against the state shown, and hides the child dot. */
-export function rowGlyph(row: ThreadRow, rowStatus: PluginSidebarThreadRowStatus | null): RowGlyph {
-  const state = row.treeState ?? row.info.state;
-  const plugin = pluginStatusWins(state, rowStatus);
-  return {
-    state,
-    label: row.treeState === null ? state.label : stateText(row, null),
-    plugin,
-    childDot: row.treeState !== null && !plugin,
-  };
+  /**
+   * The most urgent state among the descendants at any depth, open or
+   * collapsed, or null for none: its glyph leads the chip and colours it.
+   */
+  state: Flag | null;
 }
 
 export interface ThreadRow {
@@ -79,15 +58,6 @@ export interface ThreadRow {
    * default, a child whose harness is not its parent thread's.
    */
   harness: boolean;
-  /**
-   * The state from inside the tree that the glyph shows in place of the
-   * thread's own, with the child dot, or null when it shows its own. A
-   * collapsed parent takes the most urgent state among its descendants at any
-   * depth when it outranks its own; an expanded one shows its own.
-   */
-  treeFlag: Flag | null;
-  /** How the glyph draws `treeFlag`, or null with it. */
-  treeState: ThreadState | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
   /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
@@ -280,28 +250,12 @@ function machineOf(context: Context, info: ThreadInfo): string | null {
   return host.id === context.primaryHostId ? null : host.name || "Unknown machine";
 }
 
-/**
- * How a parent's glyph draws a state from its tree. Waits on you shows what
- * the first descendant waiting asks for, as that descendant's own row does;
- * every other state takes its flag's glyph.
- */
-function treeStateOf(context: Context, info: ThreadInfo, flag: Flag): ThreadState {
-  if (flag === "waits-on-you") {
-    const waiting = subtreeOf(context, info.thread.id).descendants.find(
-      (descendant) => !descendant.thread.isArchived && descendant.state.kind === "waits-on-you",
-    );
-    if (waiting !== undefined) return waiting.state;
-  }
-  return treeState(flag);
-}
-
 function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
   options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
-  const treeFlag = options.chip?.expanded ? null : treeFlagOver(info.state, subtreeOf(context, info.thread.id).glyphFlags);
   return {
     ...lines(context, info, options.depth),
     machine: machineOf(context, info),
@@ -313,8 +267,6 @@ function threadRow(
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
     harness: drawsHarness(context, info),
-    treeFlag,
-    treeState: treeFlag === null ? null : treeStateOf(context, info, treeFlag),
     bold: info.unread,
     treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
     note: info.note,
@@ -452,11 +404,13 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Tr
   return rows;
 }
 
-/** The children chip of a parent, or null when opening it would show nothing. */
+/** The children chip of a parent, or null when opening it would show nothing and it has no state to show. */
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
-  const { childCount: count, unreadCount: unread } = subtreeOf(context, info.thread.id);
-  if (count === 0 && eligibleChildren(context, info.thread.id).length === 0) return null;
-  return { count, expanded, unread };
+  const { childCount: count, chipFlags } = subtreeOf(context, info.thread.id);
+  const state = mostUrgent(chipFlags);
+  // A hidden child's failure that needs no attention has no row, yet the chip still shows it.
+  if (count === 0 && state === null && eligibleChildren(context, info.thread.id).length === 0) return null;
+  return { count, expanded, state };
 }
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */
