@@ -382,7 +382,21 @@ describe.skipIf(!SNAPSHOT)("list model cost over a real snapshot", () => {
           childAttention: preferences.childAttention,
         });
         const b = performance.now();
-        buildListView({ forest, threads, projects, sections: [], prefs: preferences, activeThreadId: null, targets: new Map(), needYouOnly: false, defaultProviderId: null, primaryHostId: null, comfortable: false, defaultBranchOf: () => undefined, settle: { now: Date.now(), settleAfter: preferences.settleAfter, startedAt: {}, finishedAt: {} } });
+        buildListView({
+          forest,
+          threads,
+          projects,
+          sections: [],
+          prefs: preferences,
+          activeThreadId: null,
+          targets: new Map(),
+          needYouOnly: false,
+          defaultProviderId: null,
+          primaryHostId: null,
+          comfortable: false,
+          defaultBranchOf: () => undefined,
+          settle: { now: Date.now(), settleAfter: preferences.settleAfter, startedAt: {}, finishedAt: {} },
+        });
         const c = performance.now();
         forestMs.push(b - a);
         viewMs.push(c - b);

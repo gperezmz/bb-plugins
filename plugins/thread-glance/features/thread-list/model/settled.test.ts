@@ -45,10 +45,9 @@ describe("a settled thread", () => {
     }
     const never = { settleAfter: "never" as const };
     expect(settled({ threads, prefs: never, now: T0 + 365 * DAY }, "t")).toBe(false);
-    expect(settled({ threads: [onBranch()], prefs: never, now: T0 + 365 * DAY }, "t")).toBe(false);
   });
 
-  it("settles by its activity alone, on a branch other than its project's default or while that is still being looked up", () => {
+  it("settles on a branch off its project's default as on any other, with that default found or still being looked up", () => {
     expect(settled({ threads: [onBranch()], now: LATER }, "t")).toBe(true);
     expect(settled({ threads: [onBranch()], defaultBranches: {}, now: LATER }, "t")).toBe(true);
     expect(settled({ threads: [onBranch()], now: T0 + DAY - 60_000 }, "t")).toBe(false);
