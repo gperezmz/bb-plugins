@@ -39,20 +39,20 @@ describe("the stored 0.1.0 shape", () => {
 
   it("loads the shape main stored before 0.1.0 with every field it acted on", () => {
     const { db, store } = open();
-    const row = fixture("threads-row.json", "main-d987b67") as { thread_id: string; compact_on: number; record: string; updated_at: number };
+    const row = fixture("threads-row.json", "pre-0.1.0") as { thread_id: string; compact_on: number; record: string; updated_at: number };
     db.prepare("INSERT INTO threads (thread_id, compact_on, record, updated_at) VALUES (?, ?, ?, ?)").run(row.thread_id, row.compact_on, row.record, row.updated_at);
     const { eventsAfterSeq: _position, ...stored } = JSON.parse(row.record) as Record<string, unknown>;
     // Every field but eventsAfterSeq, which the turn log's position replaces, is read back as stored.
     expect(store.get(row.thread_id)).toMatchObject(stored);
     expect(store.get(row.thread_id)).toMatchObject({ transcript: null, window: null, decision: null });
 
-    const log = fixture("turn-logs-row.json", "main-d987b67") as { thread_id: string; record: string };
+    const log = fixture("turn-logs-row.json", "pre-0.1.0") as { thread_id: string; record: string };
     db.prepare("INSERT INTO turn_logs (thread_id, record) VALUES (?, ?)").run(log.thread_id, log.record);
     const read = store.turnLog(log.thread_id)!;
     expect(read).toMatchObject({ afterSeq: 5140, delivered: [{ childId: "thr_child", at: 1790506002000 }] });
     expect(read.turns[0]).toMatchObject({ startSeq: 5123, status: "completed", repliedNothingNew: true, inputs: [{ kind: "sent", expects: { kind: "not-finished" }, at: 1790506000000 }] });
 
-    expect(parseSettings(fixture("settings.json", "main-d987b67") as Record<string, unknown>)).toEqual({ keepWarm: "switched", checkIns: true, waitMs: 15 * 60_000, fetchPrices: true });
+    expect(parseSettings(fixture("settings.json", "pre-0.1.0") as Record<string, unknown>)).toEqual({ keepWarm: "switched", checkIns: true, waitMs: 15 * 60_000, fetchPrices: true });
   });
 
   it("stores and reads back a record unchanged, keeping an explicit Keep warm off apart from an untouched one", () => {
