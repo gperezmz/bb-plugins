@@ -115,58 +115,59 @@ export function chipSentence(view: ThreadView, now: number): string {
   return `${compactSentence(view, now)} ${warmSentence(view)}`;
 }
 
-/**
- * Whether the thread waits the way keep-warms care about: its turn has
- * ended, it waits on no answer, no compaction is due, and it waits on
- * background work, child threads or a scheduled message.
- */
-export function waitsIdle(view: ThreadView): boolean {
-  return view.eligible && view.status === "idle" && !view.hasPendingInteraction && !view.compactionDue && view.waiting;
-}
-
-/** Why a thread that waits idle is not kept warm. */
+/** Why a thread waiting with its turn ended is not kept warm. */
 export type NotWarm = "never" | "switched-off" | "skipped" | "no-price" | "cost-stop";
 
-/** Why a thread that waits idle is not kept warm, or null when it is kept warm or does not wait idle. */
-export function notWarmReason(view: ThreadView): NotWarm | null {
-  if (!waitsIdle(view)) return null;
+/**
+ * Whether keep-warms apply to the thread, and whether it gets them:
+ * "not-waiting" unless its turn has ended, it waits on no answer, no
+ * compaction is due and it is waiting; then "warm" while a keep-warm is
+ * planned, or why not.
+ */
+export type WarmState = "not-waiting" | "warm" | NotWarm;
+
+export function warmState(view: ThreadView): WarmState {
+  if (!view.eligible || view.status !== "idle" || view.hasPendingInteraction || view.compactionDue || !view.waiting) return "not-waiting";
   if (view.warmSetting === "never") return "never";
   if (!view.keptWarm) return "switched-off";
   if (view.warmSkipped) return "skipped";
   if (view.warmNoPrice) return "no-price";
   // Past the cost stop, or a cache already cold when its tree was switched on.
-  return view.warmPlanned ? null : "cost-stop";
+  return view.warmPlanned ? "warm" : "cost-stop";
 }
 
 /** The composer chip's icon. */
 export type ChipIcon = "timer" | "flame" | "crossed-out-flame";
 
-/** The timer unless the thread waits idle; then the flame while it is kept warm, and the crossed-out flame while it is not. */
+/** The timer unless the thread waits with its turn ended; then the flame while it is kept warm, and the crossed-out flame while it is not. */
 export function chipIcon(view: ThreadView): ChipIcon {
-  if (!waitsIdle(view)) return "timer";
-  return notWarmReason(view) === null ? "flame" : "crossed-out-flame";
+  const state = warmState(view);
+  if (state === "not-waiting") return "timer";
+  return state === "warm" ? "flame" : "crossed-out-flame";
 }
 
-/** The keep-warm control the popover offers beside its switch, or null. */
+/** A keep-warm control the popover offers under its switch. */
 export type WarmControl = "skip-warm" | "undo-warm" | "keep-warm";
 
+/** The keep-warm control the popover offers under its switch, or null: Keep warm only below a tree top, where the switch is greyed. */
 export function warmControl(view: ThreadView): WarmControl | null {
-  if (!waitsIdle(view)) return null;
-  switch (notWarmReason(view)) {
-    case null:
+  switch (warmState(view)) {
+    case "warm":
       return "skip-warm";
     case "skipped":
       return "undo-warm";
     case "switched-off":
-      // On a tree top the switch itself does this.
-      return view.treeTop.threadId === view.threadId ? null : "keep-warm";
+      return isTreeTop(view) ? null : "keep-warm";
     default:
       return null;
   }
 }
 
+/** Whether the thread is its own tree top. */
+export const isTreeTop = (view: ThreadView) => view.treeTop.threadId === view.threadId;
+
 /** Whether the popover's Keep warm while waiting switch can be flipped: on a tree top, unless the setting is Never. */
-export const warmSwitchFlippable = (view: ThreadView) => view.treeTop.threadId === view.threadId && view.warmSetting !== "never";
+export const warmSwitchFlippable = (view: ThreadView) => isTreeTop(view) && view.warmSetting !== "never";
 
 /** The page's Next cell for a waiting thread: "off" where its tree is not kept warm. */
 export function nextWarmText(view: ThreadView, now: number): string {
@@ -182,13 +183,16 @@ const NOT_WARM: Record<NotWarm, string> = {
   "cost-stop": "another keep-warm would cost more than a cold start",
 };
 
-/** Whether a thread is kept warm while it waits, in a sentence; while it waits idle and is not, why. */
+/** Whether a thread is kept warm while it waits, in a sentence; while it waits with its turn ended and is not, why. */
 export function warmSentence(view: ThreadView): string {
-  const reason = notWarmReason(view);
-  if (reason !== null) return `While it waits, its cache is not kept warm: ${NOT_WARM[reason]}.`;
-  if (waitsIdle(view)) return "While it waits, its cache is kept warm.";
-  if (view.warmSetting === "never") return "Keep-warms are off in Settings.";
-  return view.keptWarm ? "While it waits, its cache is kept warm." : "While it waits, its cache is not kept warm.";
+  const state = warmState(view);
+  if (state === "not-waiting") {
+    if (view.warmSetting === "never") return "Keep-warms are off in Settings.";
+    if (!view.keptWarm) return "While it waits, its cache is not kept warm.";
+  } else if (state !== "warm") {
+    return `While it waits, its cache is not kept warm: ${NOT_WARM[state]}.`;
+  }
+  return "While it waits, its cache is kept warm.";
 }
 
 function compactSentence(view: ThreadView, now: number): string {

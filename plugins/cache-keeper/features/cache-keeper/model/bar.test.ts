@@ -166,6 +166,12 @@ describe("the banner", () => {
     expect(bannerOf(view({ compactionDue: true, status: "active" }), 0)).toBeNull();
     expect(bannerOf(view({ compactionDue: true, hasPendingInteraction: true }), 0)).toBeNull();
   });
+
+  it("never uses Cache Keeper's own words", () => {
+    for (const over of [{ compactionDue: true }, { compactSkipped: true }]) {
+      expect(bannerOf(view(over), 0)!.text).not.toMatch(/keep-warm|check-in|family|tree|report|cost stop/i);
+    }
+  });
 });
 
 describe("keep warm while waiting", () => {
