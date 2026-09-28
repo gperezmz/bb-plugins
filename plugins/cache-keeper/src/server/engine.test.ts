@@ -1,428 +1,131 @@
-import type { PluginBbSdk } from "@get-bb/plugin-sdk";
-import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { COMPACT_MESSAGE } from "../core/messages";
-import { PriceBook } from "../core/pricing";
-import type { KeepWarmSetting } from "../core/switch";
-import { EMPTY_FACTS, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
-import type { BbEvent } from "../core/turns";
-import { ClaudeOnlyError, Engine, EVENTS_PAGE, NoTreeTopError, NotReadyError, queuedRowOf, type EngineDeps, type ListedThread, type QueuedRow, type TaskEvent } from "./engine";
-import { MIGRATIONS, Store } from "./store";
+import { sentKind } from "../core/messages";
+import { ClaudeOnlyError, NoTreeTopError, NotReadyError } from "./engine";
+import { busy, FakeBb, MIN, PRICE, queued, reportRow, S, T0, type Requested, type Row } from "./fake-bb.test.helpers";
 
-const S = 1_000;
-const MIN = 60 * S;
-const HOUR = 60 * MIN;
-const T0 = Date.UTC(2026, 8, 27, 10, 0);
-
-// Opus 5.5 per token: the 1-hour line at setting 2 is ~139k.
-const PRICE = { input: 5e-6, output: 25e-6, read: 0.5e-6, write5m: 6.25e-6, write1h: 10e-6 };
-const prices = new PriceBook({
-  bundled: {
-    "claude-opus-5-5": {
-      input_cost_per_token: PRICE.input,
-      output_cost_per_token: PRICE.output,
-      cache_read_input_token_cost: PRICE.read,
-      cache_creation_input_token_cost: PRICE.write5m,
-      cache_creation_input_token_cost_above_1hr: PRICE.write1h,
-    },
-  },
-});
-
-const thread = (over: Partial<ListedThread> & { id: string }): ListedThread => ({
-  providerId: "claude-code",
-  status: "idle",
-  parentThreadId: null,
-  archivedAt: null,
-  deletedAt: null,
-  createdAt: T0,
-  title: over.id,
-  titleFallback: null,
-  hasPendingInteraction: false,
-  environmentHostId: "host_1",
-  queuedWork: "none",
-  activity: { activeBackgroundCommandCount: 0, activeBackgroundAgentCount: 0 },
-  lastReadAt: T0,
-  latestAttentionAt: T0,
-  ...over,
-});
-
-/** The fields of bb's `client/turn/requested` event that say who sent a request and what it reports, from the SDK's `threadEventSchema`. */
-type Requested = Pick<
-  Extract<Awaited<ReturnType<PluginBbSdk["threads"]["events"]["list"]>>[number], { type: "client/turn/requested" }>["data"],
-  "initiator" | "input" | "systemMessageKind" | "systemMessageSubject"
->;
-/** A row of bb's queue, in the fields Cache Keeper reads, from the SDK's `threadQueuedMessageSchema`. */
-type SdkQueuedRow = Pick<Awaited<ReturnType<PluginBbSdk["threads"]["queuedMessages"]["list"]>>[number], "id" | "sendAt" | "createdAt" | "failureReason" | "initiator" | "content">;
-
-/** A queued row as bb lists it, read the way the server reads it. */
-const queued = (over: Partial<SdkQueuedRow> & { id: string; createdAt: number }): QueuedRow =>
-  queuedRowOf({ sendAt: null, failureReason: null, initiator: "user", content: [], ...over } satisfies SdkQueuedRow);
-
-const busy = { activeBackgroundCommandCount: 1, activeBackgroundAgentCount: 0 };
-
-/** One thread's side of the fake bb: its events, its transcript and its queue. */
-interface Side {
-  events: BbEvent[];
-  facts: TranscriptFacts;
-  requests: TranscriptRequest[];
-  queued: QueuedRow[];
-  lifetime: "5m" | "1h";
-}
-
-/** A reply that says what the message asked for: the quoted reply when it asks for one exactly. */
-const asked = (text: string) => /reply with exactly "(.+)"/i.exec(text)?.[1] ?? "OK";
-
-/**
- * A fake bb that records turns the way bb 0.44 does: a request, the turn
- * taking it, the agent's reply, and 2 seconds after a child's turn ends, a
- * report of it in the parent, batched when several end together.
- */
-class Harness {
-  now = T0;
-  threads: ListedThread[] = [];
-  sides = new Map<string, Side>();
-  taskEvents = new Map<string, TaskEvent[]>();
-  outputs = new Map<string, number>();
-  sent: { threadId: string; text: string; marker: unknown; ran: boolean }[] = [];
-  deleted: string[] = [];
-  warnings: string[] = [];
-  checkIns = true;
-  /** Every waiting thread by default here, so the tests of how a tree is kept warm need no switch. */
-  keepWarm: KeepWarmSetting = "every";
-  failTasks = false;
-  failEvents = false;
-  /** What bb puts on each report it delivers; a test changes it to drop a field. */
-  reportFields = (r: Requested): Requested => r;
-  /** Replies by thread, overriding the one the message asked for. */
-  replies = new Map<string, string>();
-  db = new Database(":memory:");
-  store: Store;
-  engine: Engine;
-  private seq = 0;
-  private req = 0;
-
-  constructor() {
-    for (const m of MIGRATIONS) this.db.exec(m);
-    this.store = new Store(this.db);
-    this.engine = this.build();
-  }
-
-  build(): Engine {
-    const deps: EngineDeps = {
-      store: this.store,
-      now: () => this.now,
-      settings: () => ({ keepWarm: this.keepWarm, checkIns: this.checkIns, waitMs: 15 * MIN, fetchPrices: false }),
-      prices: () => prices,
-      listThreads: async () => this.threads.map((t) => ({ ...t })),
-      queuedMessages: async (id) => this.side(id).queued,
-      deleteQueued: async (id, rowId) => {
-        this.deleted.push(rowId);
-        this.side(id).queued = this.side(id).queued.filter((r) => r.id !== rowId);
-      },
-      contextWindow: async () => 1_000_000,
-      sessionId: async (id) => `session-${id}`,
-      taskEvents: async (id, after) => {
-        if (this.failEvents) throw new Error("HTTP 400: Thread event limit cannot exceed 100");
-        return (this.taskEvents.get(id) ?? []).filter((e) => e.seq > after);
-      },
-      turnEvents: async (id, after) => this.side(id).events.filter((e) => e.seq > after).slice(0, EVENTS_PAGE),
-      latestEventSeq: async (id) => this.side(id).events.at(-1)?.seq ?? 0,
-      transcript: async (_host, session, since) => {
-        const side = this.side(session.replace("session-", ""));
-        return { found: true, cwdSlug: "-work", facts: side.facts, requests: since === null ? [] : side.requests.filter((r) => r.at >= since) };
-      },
-      tasks: async (_host, input) => {
-        if (this.failTasks) throw new Error("machine offline");
-        return {
-          commands: input.commands.map((id) => ({ id, outputFile: `/tmp/claude-1000/-work/${input.sessionId}/tasks/${id}.output`, changedAt: this.outputs.get(id) ?? null })),
-          subagents: input.subagents.map((id) => ({ id, lastTool: "Grep", changedAt: null })),
-        };
-      },
-      send: async (threadId, text, marker) => {
-        this.sent.push({ threadId, text, marker, ran: false });
-        // bb takes a plugin's send as the user's, and marks the thread read.
-        this.patch(threadId, { lastReadAt: this.now });
-        this.request(threadId, this.now, { initiator: "user", input: [{ type: "text", text, mentions: [] }] });
-      },
-      readState: async (id) => {
-        const t = this.get(id);
-        return { lastReadAt: t.lastReadAt, latestAttentionAt: t.latestAttentionAt };
-      },
-      markRead: async (id) => this.patch(id, { lastReadAt: this.now }),
-      markUnread: async (id) => this.patch(id, { lastReadAt: null }),
-      publish: () => {},
-      log: { info: () => {}, warn: (m) => this.warnings.push(m) },
-    };
-    return new Engine(deps);
-  }
-
-  get(id: string) {
-    return this.threads.find((t) => t.id === id)!;
-  }
-
-  patch(id: string, over: Partial<ListedThread>) {
-    this.threads = this.threads.map((t) => (t.id === id ? { ...t, ...over } : t));
-  }
-
-  side(id: string): Side {
-    let side = this.sides.get(id);
-    if (side === undefined) {
-      side = { events: [], facts: { ...EMPTY_FACTS }, requests: [], queued: [], lifetime: "1h" };
-      this.sides.set(id, side);
-    }
-    return side;
-  }
-
-  /** A thread's transcript: its last request at `at` with `context` tokens on a cache of `lifetime`. */
-  transcript(id: string, at: number, context: number, lifetime: "5m" | "1h" = "1h", over: Partial<TranscriptFacts> = {}) {
-    const side = this.side(id);
-    side.lifetime = lifetime;
-    side.facts = { ...EMPTY_FACTS, lastRequestAt: at, lifetime, context, model: "claude-opus-5-5", requests: 30, userMessages: 10, ...over };
-  }
-
-  private event(id: string, type: string, at: number, data: unknown) {
-    this.side(id).events.push({ seq: ++this.seq, type, createdAt: at, data });
-  }
-
-  request(id: string, at: number, fields: Requested): string {
-    const requestId = `creq_${++this.req}`;
-    this.event(id, "client/turn/requested", at, { requestId, ...fields, target: { kind: "new-turn" } });
-    return requestId;
-  }
-
-  /** A turn in `id` from `at`, lasting 1 second, taking the requests given and replying; one request to the model at the turn's start. */
-  turn(id: string, at: number, requestIds: string[], reply: string, usage = true) {
-    this.event(id, "turn/started", at, {});
-    for (const r of requestIds) this.event(id, "turn/input/accepted", at, { clientRequestId: r });
-    this.event(id, "item/completed", at + 500, { item: { type: "agentMessage", id: "m", text: reply } });
-    this.event(id, "turn/completed", at + S, { status: "completed" });
-    const side = this.side(id);
-    const context = side.facts.context ?? 100_000;
-    const write = { cacheWrite5m: side.lifetime === "5m" ? 200 : 0, cacheWrite1h: side.lifetime === "1h" ? 200 : 0 };
-    // `/compact` writes no usage line to the transcript.
-    if (usage) side.requests.push({ at, model: "claude-opus-5-5", input: 3, output: 20, cacheRead: context, ...write });
-    side.facts = { ...side.facts, lastRequestAt: at, requests: side.facts.requests + 1 };
-    // bb draws attention to a top-level thread whose turn ends.
-    if (this.get(id).parentThreadId === null) this.patch(id, { latestAttentionAt: at + S });
-  }
-
-  /** Starts the turn of the last message sent to `id`, leaving it running. */
-  startTurn(id: string) {
-    const s = this.sent.filter((x) => x.threadId === id).at(-1)!;
-    s.ran = true;
-    const request = [...this.side(id).events].reverse().find((e) => e.type === "client/turn/requested")!;
-    this.event(id, "turn/started", this.now, {});
-    this.event(id, "turn/input/accepted", this.now, { clientRequestId: (request.data as { requestId: string }).requestId });
-    this.patch(id, { status: "active" });
-  }
-
-  /** bb's request of a report of `child` into `parent`, before the turn that takes it starts. */
-  requestReport(parent: string, child: string) {
-    this.request(parent, this.now, reportRequest([{ id: child, reply: this.lastReply(child) }]));
-  }
-
-  /** A message you type, and its turn. */
-  typed(id: string, text: string) {
-    const r = this.request(id, this.now, { initiator: "user", input: [{ type: "text", text, mentions: [] }] });
-    this.patch(id, { lastReadAt: this.now });
-    this.turn(id, this.now, [r], "Done.");
-    this.side(id).facts = { ...this.side(id).facts, userMessages: this.side(id).facts.userMessages + 1 };
-  }
-
-  /**
-   * Runs every message Cache Keeper sent that has not run, then bb's reports
-   * up the tree: each thread's turn ends a second after it starts, and its
-   * report reaches the parent 2 seconds later, batched per parent.
-   */
-  async deliver() {
-    let ended = new Map<string, number>();
-    const runSent = (at: number) => {
-      for (const s of this.sent.filter((x) => !x.ran)) {
-        s.ran = true;
-        const requestId = [...this.side(s.threadId).events].reverse().find((e) => e.type === "client/turn/requested")!;
-        this.turn(s.threadId, at, [(requestId.data as { requestId: string }).requestId], this.replies.get(s.threadId) ?? asked(s.text), s.text !== COMPACT_MESSAGE);
-        ended.set(s.threadId, at + S);
-      }
-    };
-    runSent(this.now);
-    while (ended.size > 0) {
-      const byParent = new Map<string, { children: string[]; at: number }>();
-      for (const [id, at] of ended) {
-        const parent = this.get(id).parentThreadId;
-        if (parent === null) continue;
-        const entry = byParent.get(parent) ?? { children: [], at: 0 };
-        entry.children.push(id);
-        entry.at = Math.max(entry.at, at + 2 * S);
-        byParent.set(parent, entry);
-      }
-      ended = new Map();
-      for (const [parent, { children, at }] of byParent) {
-        const r = this.request(parent, at, this.reportFields(reportRequest(children.map((c) => ({ id: c, reply: this.lastReply(c) })))));
-        // bb tells plugins the parent turned active before its turn runs.
-        this.now = at;
-        await this.engine.onActive(parent);
-        this.turn(parent, at, [r], "Noted.");
-        ended.set(parent, at + S);
-      }
-      // A keep-warm the report's arrival set off runs beside the report's turn.
-      runSent(this.now);
-    }
-    this.now = Math.max(this.now, ...[...this.sides.values()].map((s) => s.events.at(-1)?.createdAt ?? 0)) + S;
-    await this.engine.pass();
-  }
-
-  lastReply(id: string): string {
-    const e = [...this.side(id).events].reverse().find((x) => x.type === "item/completed");
-    return (e?.data as { item: { text: string } } | undefined)?.item.text ?? "";
-  }
-
-  /** Report turns in `id` so far. */
-  reportTurns(id: string) {
-    return this.side(id).events.filter((e) => e.type === "client/turn/requested" && (e.data as { initiator: string }).initiator === "system").length;
-  }
-
-  /** Steps the clock in `step` increments up to `until`, running a pass at each and delivering whatever was sent. */
-  async run(until: number, step = 5 * S) {
-    while (this.now < until) {
-      this.now += step;
-      await this.engine.pass();
-      if (this.sent.some((s) => !s.ran)) await this.deliver();
-    }
-  }
-}
-
-/** bb's report of child turns, as bb 0.44 requests it: one line with the reply, or a batch naming each. */
-function reportRequest(children: { id: string; reply: string }[]): Requested {
-  if (children.length === 1) {
-    const c = children[0]!;
-    const mention = `@thread:${c.id}`;
-    return {
-      initiator: "system",
-      systemMessageKind: "child-completed",
-      systemMessageSubject: { kind: "thread", threadId: c.id, threadName: c.id },
-      input: [{ type: "text", text: `[bb system]\n\n${mention} completed:\n\n${c.reply}`, mentions: [{ start: 13, end: 13 + mention.length, resource: { kind: "thread", threadId: c.id, label: c.id } }] }],
-    };
-  }
-  let text = "[bb system]\n\nChild thread updates:\n\n";
-  const mentions: { start: number; end: number; resource: { kind: "thread"; threadId: string; label: string } }[] = [];
-  children.forEach((c, i) => {
-    text += i === 0 ? "- " : "\n- ";
-    const mention = `@thread:${c.id}`;
-    mentions.push({ start: text.length, end: text.length + mention.length, resource: { kind: "thread", threadId: c.id, label: c.id } });
-    text += `${mention} completed.`;
-  });
-  return { initiator: "system", systemMessageKind: "child-outcome-batch", systemMessageSubject: { kind: "thread-batch", count: children.length }, input: [{ type: "text", text, mentions }] };
-}
-
-/** bb's queued report row, as it queues one behind a question: the report's text and mentions, and no kind. */
-const reportRow = (id: string, createdAt: number, children: { id: string; reply: string }[]) =>
-  queued({ id, createdAt, initiator: "system", content: reportRequest(children).input });
-
-let h: Harness;
+let h: FakeBb;
 beforeEach(() => {
-  h = new Harness();
+  h = new FakeBb();
 });
+
+const texts = () => h.sent.map((s) => s.text);
+const kinds = () => h.sent.map((s) => sentKind(s.text));
+/** Keep-warms sent so far, by thread. */
+const warmed = () => h.sent.filter((x) => sentKind(x.text) === "keep-warm").map((x) => x.threadId);
 
 describe("compact when idle", () => {
   it("compacts an idle thread over its line a minute before its cache expires, once per idle stretch", async () => {
-    h.threads = [thread({ id: "t1" })];
+    h.thread({ id: "t1" });
     h.transcript("t1", T0, 300_000);
+    await h.start();
     await h.engine.setCompact("t1", true);
+    await h.settle();
 
-    h.now = T0 + 30 * MIN;
-    await h.engine.pass();
+    await h.advance(T0 + 30 * MIN);
     expect(h.sent).toEqual([]);
     expect((await h.engine.viewOf("t1"))?.compactionDue).toBe(true);
+    expect(h.engine.dueAt("tree:t1")).toBe(T0 + 59 * MIN);
 
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
-    expect(h.sent.map((s) => s.text)).toEqual([COMPACT_MESSAGE]);
-    expect(h.sent[0]!.marker).toMatchObject({ kind: "compact" });
+    await h.advance(T0 + 59 * MIN, false);
+    expect(texts()).toEqual([COMPACT_MESSAGE]);
+    expect(h.sent[0]!.at).toBe(T0 + 59 * MIN);
 
     // The compaction's own turn stays inside the stretch, and nothing more is sent in it.
-    await h.deliver();
     h.side("t1").facts = { ...h.side("t1").facts, lastCompaction: { at: h.now, preTokens: 300_000, postTokens: 10_000 } };
-    await h.engine.pass();
+    await h.deliver();
     const entry = h.store.history(0).find((r) => r.kind === "compaction")!;
     expect(entry.record.contextAfter).toBe(10_000);
     // `/compact` leaves no usage in the transcript, so the entry keeps its estimate rather than $0.
     expect(entry.record.usd).toBeCloseTo(300_000 * PRICE.read + 20_000 * PRICE.output, 10);
-    h.now = T0 + 118 * MIN + 30 * S;
-    await h.engine.pass();
+    await h.advance(T0 + 125 * MIN);
     expect(h.sent).toHaveLength(1);
   });
 
   it("does nothing on a thread under its line, switched off, or waiting", async () => {
-    h.threads = [thread({ id: "under" }), thread({ id: "off" }), thread({ id: "busy", activity: busy })];
+    h.thread({ id: "under" });
+    h.thread({ id: "off" });
+    h.thread({ id: "busy", activity: busy });
     h.transcript("under", T0, 50_000);
     h.transcript("off", T0, 300_000);
     h.transcript("busy", T0, 300_000);
     h.keepWarm = "never";
+    await h.start();
     await h.engine.setCompact("under", true);
     await h.engine.setCompact("busy", true);
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    await h.advance(T0 + 70 * MIN);
     expect(h.sent).toEqual([]);
   });
 
   it("does not compact a parent between a child's turn ending and bb's report of it arriving", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p" })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p" });
     h.transcript("p", T0, 300_000);
     h.transcript("c", T0, 50_000);
+    await h.start();
     await h.engine.setCompact("p", true);
-    h.now = T0 + 59 * MIN;
+    h.now = T0 + 59 * MIN - 3 * S;
     // The child's turn has just ended; its report is not in yet.
-    h.turn("c", h.now - 2 * S, [], "Finished the page.");
-    await h.engine.pass();
-    expect(h.sent).toEqual([]);
+    await h.ranTurn("c", [], "Finished the page.");
     expect((await h.engine.viewOf("p"))?.waiting).toBe(true);
+    await h.advance(T0 + 59 * MIN + 30 * S);
+    expect(texts()).not.toContain(COMPACT_MESSAGE);
   });
 
   it("does not hold a tree for a report bb queued behind a question", async () => {
-    h.threads = [
-      thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }),
-      thread({ id: "a", parentThreadId: "p" }),
-      thread({ id: "b", parentThreadId: "p", activity: busy }),
-    ];
+    h.thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" });
+    h.thread({ id: "a", parentThreadId: "p" });
+    h.thread({ id: "b", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("b", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    h.turn("a", h.now - 5 * S, [], "Finished the page.");
-    h.side("p").queued = [reportRow("row", h.now - 3 * S, [{ id: "a", reply: "Finished the page." }])];
-    await h.engine.pass();
+    h.side("p").queued = [reportRow("row", T0 + 230 * S, [{ id: "a", reply: "Finished the page." }])];
+    await h.start();
+    h.now = T0 + 230 * S;
+    await h.ranTurn("a", [], "Finished the page.");
+    await h.advance(T0 + 240 * S, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["b"]);
   });
 
   it("does not send a compaction whose deadline passed while the server was down", async () => {
-    h.threads = [thread({ id: "t1" })];
+    h.thread({ id: "t1" });
     h.transcript("t1", T0, 300_000);
+    await h.start();
     await h.engine.setCompact("t1", true);
-    h.engine = h.build();
+    h.engine.stop();
     h.now = T0 + 61 * MIN;
-    await h.engine.pass();
+    await h.restart();
+    await h.advance(T0 + 70 * MIN);
     expect(h.sent).toEqual([]);
     expect((await h.engine.viewOf("t1"))?.compactOn).toBe(true);
   });
 
-  it("acts at the transcript's deadline after a restart", async () => {
-    h.threads = [thread({ id: "t1" })];
+  it("acts at the transcript's deadline after a restart, reading the transcript on from its stored cursor", async () => {
+    h.thread({ id: "t1" });
     h.transcript("t1", T0, 300_000);
+    await h.start();
     await h.engine.setCompact("t1", true);
-    h.engine = h.build();
-    h.now = T0 + 59 * MIN + 10 * S;
-    await h.engine.pass();
-    expect(h.sent.map((s) => s.text)).toEqual([COMPACT_MESSAGE]);
+    await h.settle();
+    h.now = T0 + 10 * MIN;
+    const reads = h.transcriptCursors.length;
+    await h.restart();
+    expect(h.transcriptCursors.slice(reads).every((c) => c !== null)).toBe(true);
+    await h.advance(T0 + 59 * MIN + 10 * S, false);
+    expect(texts()).toEqual([COMPACT_MESSAGE]);
   });
 
   it("refuses threads that are not Claude Code", async () => {
-    h.threads = [thread({ id: "pi", providerId: "pi" })];
+    h.thread({ id: "pi", providerId: "pi" });
+    await h.start();
     await expect(h.engine.setCompact("pi", true)).rejects.toBeInstanceOf(ClaudeOnlyError);
     expect(await h.engine.viewOf("pi")).toBeNull();
   });
 
   it("starts a thread at the setting last chosen, or 2", async () => {
-    h.threads = [thread({ id: "a" }), thread({ id: "b" }), thread({ id: "c" })];
-    for (const id of ["a", "b", "c"]) h.transcript(id, T0, 1);
+    for (const id of ["a", "b", "c"]) {
+      h.thread({ id });
+      h.transcript(id, T0, 1);
+    }
+    await h.start();
     expect((await h.engine.setCompact("a", true))?.setting).toBe(2);
     await h.engine.setSetting("a", 5);
     expect((await h.engine.setCompact("b", true))?.setting).toBe(5);
@@ -430,11 +133,13 @@ describe("compact when idle", () => {
     expect((await h.engine.viewOf("c"))?.setting).toBe(3);
   });
 
-  it("compacts now under the line, but not while waiting", async () => {
-    h.threads = [thread({ id: "t1" }), thread({ id: "t2", queuedWork: "waiting" })];
+  it("compacts now under the line, whatever Compact when idle says, but not while waiting", async () => {
+    h.thread({ id: "t1" });
+    h.thread({ id: "t2", queuedWork: "waiting" });
     h.side("t2").queued = [queued({ id: "q1", createdAt: T0 })];
     h.transcript("t1", T0, 20_000);
     h.transcript("t2", T0, 20_000);
+    await h.start();
     await h.engine.compactNow("t1");
     expect(h.sent.map((s) => s.threadId)).toEqual(["t1"]);
     await expect(h.engine.compactNow("t2")).rejects.toBeInstanceOf(NotReadyError);
@@ -443,24 +148,25 @@ describe("compact when idle", () => {
 
 describe("keeping a thread tree warm", () => {
   it("keeps a thread waiting on background work warm at its deadline with an unconditional keep-warm", async () => {
-    h.threads = [thread({ id: "t", activity: busy })];
+    h.thread({ id: "t", activity: busy });
     h.transcript("t", T0, 200_000);
-    h.now = T0 + 59 * MIN - 1 * S;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 59 * MIN - S, false);
     expect(h.sent).toEqual([]);
-    expect(h.engine.wakeAt()).toBe(T0 + 59 * MIN);
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    expect(h.engine.dueAt("tree:t")).toBe(T0 + 59 * MIN);
+    await h.advance(T0 + 59 * MIN, false);
     expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]!.at).toBe(T0 + 59 * MIN);
     expect(h.sent[0]!.text).toMatch(/^Still waiting on .*There's no need to check anything\. Reply with exactly "Not finished yet, still waiting on .*\. Nothing needed from you\."$/);
-    expect(h.sent[0]!.marker).toMatchObject({ kind: "keep-warm" });
   });
 
   it("sends only the child of a 1-hour parent over a 5-minute child, and the parent takes one report turn per keep-warm", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 20 * MIN);
+    await h.start();
+    await h.advance(T0 + 20 * MIN);
     const toParent = h.sent.filter((s) => s.threadId === "p");
     const toChild = h.sent.filter((s) => s.threadId === "c");
     expect(toParent).toEqual([]);
@@ -474,12 +180,14 @@ describe("keeping a thread tree warm", () => {
   });
 
   it("stops the child's keep-warms within its first hour under a 1-hour parent of similar size", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 70 * MIN, 10 * S);
+    await h.start();
+    await h.advance(T0 + 70 * MIN);
     const last = h.sent.filter((s) => s.threadId === "c").length;
-    await h.run(T0 + 90 * MIN, 10 * S);
+    await h.advance(T0 + 90 * MIN);
     expect(h.sent.filter((s) => s.threadId === "c").length).toBe(last);
     const lastAt = h.sides.get("c")!.requests.at(-1)!.at;
     expect(lastAt).toBeLessThan(T0 + 60 * MIN);
@@ -491,18 +199,16 @@ describe("keeping a thread tree warm", () => {
   });
 
   it("sends a shallower leaf when the report from a deeper one reaches its level, so the parent takes one report turn", async () => {
-    h.threads = [
-      thread({ id: "p" }),
-      thread({ id: "c1", parentThreadId: "p" }),
-      thread({ id: "g", parentThreadId: "c1", activity: busy }),
-      thread({ id: "c2", parentThreadId: "p", activity: busy }),
-    ];
+    h.thread({ id: "p" });
+    h.thread({ id: "c1", parentThreadId: "p" });
+    h.thread({ id: "g", parentThreadId: "c1", activity: busy });
+    h.thread({ id: "c2", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 20_000, "1h");
     h.transcript("c1", T0, 20_000, "1h");
     h.transcript("g", T0, 20_000, "5m");
     h.transcript("c2", T0, 20_000, "5m");
-    h.now = T0 + 4 * MIN;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 4 * MIN, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
     await h.deliver();
     expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
@@ -513,132 +219,139 @@ describe("keeping a thread tree warm", () => {
   });
 
   it("sends the parent nothing while its child's keep-warm turn is still running", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "5m");
     h.transcript("c", T0 + 10 * S, 100_000, "5m");
-    h.now = T0 + 150 * S;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 150 * S, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["c"]);
     // The keep-warm's turn starts and runs a minute; bb lists the child as working.
     h.startTurn("c");
-    for (; h.now < T0 + 205 * S; h.now += 2 * S) await h.engine.pass();
+    await h.advance(T0 + 205 * S, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["c"]);
   });
 
   it("starts no tree keep-warm between bb requesting a report and the turn that takes it", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "5m");
     h.transcript("c", T0 + 10 * S, 100_000, "5m");
+    await h.start();
+    h.now = T0 + 150 * S - 6 * S;
+    await h.ranTurn("c", [], "Not finished yet.");
     h.now = T0 + 150 * S - 3 * S;
-    h.turn("c", h.now - 2 * S, [], "Not finished yet.");
     h.requestReport("p", "c");
-    h.now = T0 + 150 * S;
-    await h.engine.pass();
+    await h.advance(T0 + 150 * S, false);
     expect(h.sent).toEqual([]);
   });
 
   it("holds a shallower leaf due at the same deadline until the report from below reaches its level, 30 s at most", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c1", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c1", activity: busy }), thread({ id: "c2", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c1", parentThreadId: "p" });
+    h.thread({ id: "g", parentThreadId: "c1", activity: busy });
+    h.thread({ id: "c2", parentThreadId: "p", activity: busy });
     for (const id of ["p", "c1"]) h.transcript(id, T0, 20_000, "1h");
     // Aligned: both leaves' deadlines fall at 4 min.
     h.transcript("g", T0, 20_000, "5m");
     h.transcript("c2", T0, 20_000, "5m");
-    h.now = T0 + 4 * MIN;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 4 * MIN, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
-    expect(h.engine.wakeAt()).toBe(h.now + 30 * S);
-    h.now += 5 * S;
-    await h.engine.pass({ due: true });
+    expect(h.engine.dueAt("tree:p")).toBe(T0 + 4 * MIN + 30 * S);
+    await h.advance(T0 + 4 * MIN + 29 * S, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["g"]);
-    h.now = T0 + 4 * MIN + 30 * S;
-    await h.engine.pass({ due: true });
+    await h.advance(T0 + 4 * MIN + 30 * S, false);
     expect(h.sent.map((x) => x.threadId)).toEqual(["g", "c2"]);
   });
 
   it("aligns three children so the parent takes one batched report turn per cycle", async () => {
-    h.threads = [
-      thread({ id: "p" }),
-      thread({ id: "a", parentThreadId: "p", activity: busy }),
-      thread({ id: "b", parentThreadId: "p", activity: busy }),
-      thread({ id: "c", parentThreadId: "p", activity: busy }),
-    ];
+    h.thread({ id: "p" });
+    for (const id of ["a", "b", "c"]) h.thread({ id, parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 20_000, "1h");
     h.transcript("a", T0, 20_000, "5m");
     h.transcript("b", T0 + 50 * S, 20_000, "5m");
     h.transcript("c", T0 + 100 * S, 20_000, "5m");
-    await h.run(T0 + 5 * MIN);
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
     const reportsBefore = h.reportTurns("p");
     const sentBefore = h.sent.length;
-    await h.run(T0 + 20 * MIN);
+    await h.advance(T0 + 20 * MIN);
     const sends = h.sent.slice(sentBefore);
     expect(sends.length).toBeGreaterThan(0);
     expect(sends.length % 3).toBe(0);
     expect(h.reportTurns("p") - reportsBefore).toBe(sends.length / 3);
     // One page entry per send moment, naming the three threads.
-    const entries = h.store.history(0).filter((r) => r.kind === "keep-warm" && r.at >= T0 + 5 * MIN);
+    const entries = h.store.history(0, 1000, ["keep-warm"]).filter((r) => r.at >= T0 + 5 * MIN);
     expect(entries.every((e) => e.record.threads?.length === 3)).toBe(true);
   });
 
   it("sends nothing below a thread you skipped, and nothing with the setting off or a pending interaction", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.engine.pass();
+    await h.start();
     await h.engine.skip("p", "warm", false);
-    await h.run(T0 + 10 * MIN);
+    await h.advance(T0 + 10 * MIN);
     expect(h.sent).toEqual([]);
     expect((await h.engine.viewOf("c"))?.warmPlanned).toBe(false);
 
     await h.engine.skip("p", "warm", true);
     h.keepWarm = "never";
-    await h.run(T0 + 12 * MIN);
+    h.engine.clockMoved();
+    await h.advance(T0 + 12 * MIN);
     h.keepWarm = "every";
     h.patch("c", { hasPendingInteraction: true });
+    h.emit("pending", "c");
     h.transcript("c", h.now, 100_000, "5m");
-    await h.run(h.now + 5 * MIN);
+    await h.ranTurn("c", [], "Asked you something.");
+    await h.advance(h.now + 5 * MIN);
     expect(h.sent).toEqual([]);
   });
 
   it("keeps the idle stretch through Cache Keeper's turns and their reports, and ends it on one you type", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.engine.pass();
+    await h.start();
     const stretch = h.store.get("p").stretch!.startedAt;
-    await h.run(T0 + 10 * MIN);
+    await h.advance(T0 + 10 * MIN);
     expect(h.store.get("p").stretch?.startedAt).toBe(stretch);
     expect(h.store.get("c").stretch?.chargedUsd).toBeGreaterThan(0);
-    h.typed("c", "also update the docs");
-    h.now += 2 * S;
-    await h.engine.pass();
+    await h.typed("c", "also update the docs");
     expect(h.store.get("c").stretch?.chargedUsd ?? 0).toBe(0);
   });
 
   it("charges a batched report turn split equally between the children it reports", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "a", parentThreadId: "p", activity: busy }), thread({ id: "b", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "a", parentThreadId: "p", activity: busy });
+    h.thread({ id: "b", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 40_000, "1h");
     h.transcript("a", T0, 10_000, "5m");
     h.transcript("b", T0, 10_000, "5m");
-    await h.run(T0 + 5 * MIN);
-    const entry = h.store.history(0).find((r) => r.kind === "keep-warm")!;
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
+    const entry = h.store.history(0, 1000, ["keep-warm"]).at(-1)!;
     expect(entry.record.threads).toEqual(["a", "b"]);
     const read = (tokens: number) => 3 * PRICE.input + 20 * PRICE.output + tokens * PRICE.read;
     expect(entry.record.split!.p).toBeCloseTo(read(40_000) + 200 * PRICE.write1h, 10);
     expect(entry.record.split!.a).toBeCloseTo(read(10_000) + 200 * PRICE.write5m, 10);
     expect(entry.record.usd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.b! + entry.record.split!.p!, 10);
+    expect(entry.record.estimated).toBe(false);
     expect(h.store.get("a").stretch!.chargedUsd).toBeCloseTo(entry.record.split!.a! + entry.record.split!.p! / 2, 10);
   });
 
   it("takes a report bb delivers without a kind as real, and logs it once", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
     h.reportFields = ({ systemMessageKind: _, ...r }) => r;
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
+    await h.start();
     const stretch = h.store.get("p").stretch!.startedAt;
-    await h.deliver();
-    await h.engine.pass();
+    await h.advance(T0 + 240 * S);
     expect(h.reportTurns("p")).toBe(1);
     expect(h.warnings).toEqual([expect.stringMatching(/^request creq_\d+ into p: a system message mentioning a thread has no systemMessageKind/)]);
     expect(h.store.get("p").stretch?.startedAt ?? null).not.toBe(stretch);
@@ -646,14 +359,15 @@ describe("keeping a thread tree warm", () => {
   });
 
   it("attributes the same way after a restart between the keep-warm and its report", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 240 * S, false);
     expect(h.sent).toHaveLength(1);
-    h.engine = h.build();
     const stretch = h.store.get("p").stretch!.startedAt;
+    await h.restart();
     await h.deliver();
     expect(h.store.get("p").stretch?.startedAt).toBe(stretch);
     expect(h.store.get("c").stretch!.chargedUsd).toBeGreaterThan(0);
@@ -661,20 +375,15 @@ describe("keeping a thread tree warm", () => {
 });
 
 describe("keep warm while waiting", () => {
-  /** Keep-warms sent so far, by thread. */
-  const warmed = () => h.sent.filter((x) => (x.marker as { kind: string }).kind === "keep-warm").map((x) => x.threadId);
-
   it("sends no keep-warm with the settings as installed and no switch flipped, and still checks in on a stalled task", async () => {
     h.keepWarm = "switched";
-    h.threads = [thread({ id: "t", activity: busy })];
+    h.thread({ id: "t", activity: busy });
     h.transcript("t", T0, 100_000);
-    h.taskEvents.set("t", [
-      { seq: 5, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
-    ]);
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    h.task("t", "b1", "command", T0);
+    await h.start();
+    await h.advance(T0 + 59 * MIN, false);
     expect(warmed()).toEqual([]);
-    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["check-in"]);
+    expect(new Set(kinds())).toEqual(new Set(["check-in"]));
     const view = (await h.engine.viewOf("t"))!;
     expect(view).toMatchObject({ keptWarm: false, warmPlanned: false, warmSetting: "switched", treeTop: { threadId: "t" } });
   });
@@ -684,11 +393,11 @@ describe("keep warm while waiting", () => {
       const expected = setting === "never" ? false : (flipped ?? untouched);
       it(`${expected ? "keeps" : "does not keep"} a waiting thread warm under ${setting} with its switch ${flipped === null ? "untouched" : flipped ? "flipped on" : "flipped off"}`, async () => {
         h.keepWarm = setting;
-        h.threads = [thread({ id: "t", activity: busy })];
+        h.thread({ id: "t", activity: busy });
         h.transcript("t", T0, 100_000);
+        await h.start();
         if (flipped !== null) await h.engine.setKeepWarm("t", flipped);
-        h.now = T0 + 59 * MIN;
-        await h.engine.pass();
+        await h.advance(T0 + 59 * MIN, false);
         expect(warmed()).toEqual(expected ? ["t"] : []);
         expect((await h.engine.viewOf("t"))?.keptWarm).toBe(expected);
       });
@@ -697,68 +406,70 @@ describe("keep warm while waiting", () => {
 
   it("follows a change of setting live on an untouched tree top, and keeps a flipped one's record through Never", async () => {
     h.keepWarm = "switched";
-    h.threads = [thread({ id: "a", activity: busy }), thread({ id: "b", activity: busy })];
+    h.thread({ id: "a", activity: busy });
+    h.thread({ id: "b", activity: busy });
+    await h.start();
     await h.engine.setKeepWarm("b", false);
     h.keepWarm = "every";
-    // A change of setting runs a pass, as server.ts does on bb's onChange.
-    await h.engine.pass();
+    // A change of setting replans, as server.ts does on bb's onChange.
+    h.engine.clockMoved();
     expect((await h.engine.viewOf("a"))?.keptWarm).toBe(true);
     expect((await h.engine.viewOf("b"))?.keptWarm).toBe(false);
     h.keepWarm = "never";
     await h.engine.setKeepWarm("b", true);
-    await h.engine.pass();
+    h.engine.clockMoved();
     expect((await h.engine.viewOf("b"))?.keptWarm).toBe(false);
     h.keepWarm = "switched";
-    await h.engine.pass();
+    h.engine.clockMoved();
     expect((await h.engine.viewOf("a"))?.keptWarm).toBe(false);
     expect((await h.engine.viewOf("b"))?.keptWarm).toBe(true);
   });
 
   it("keeps the switch through a restart", async () => {
     h.keepWarm = "switched";
-    h.threads = [thread({ id: "t", activity: busy })];
+    h.thread({ id: "t", activity: busy });
     h.transcript("t", T0, 100_000);
+    await h.start();
     await h.engine.setKeepWarm("t", true);
-    h.engine = h.build();
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    await h.restart();
+    await h.advance(T0 + 59 * MIN, false);
     expect(warmed()).toEqual(["t"]);
   });
 
   it("records Keep warm from a child on its Claude Code tree top, and keeps the whole tree warm", async () => {
     h.keepWarm = "switched";
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p" }), thread({ id: "g", parentThreadId: "c", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p" });
+    h.thread({ id: "g", parentThreadId: "c", activity: busy });
     for (const id of ["p", "c"]) h.transcript(id, T0, 20_000, "1h");
     h.transcript("g", T0, 20_000, "5m");
+    await h.start();
     h.now = T0 + 3 * MIN;
     expect((await h.engine.viewOf("g"))?.treeTop).toEqual({ threadId: "p", title: "p" });
     const result = await h.engine.setKeepWarm("g", true);
     expect(result).toMatchObject({ treeTop: { threadId: "p" }, keptWarm: true, never: false });
     expect(h.store.get("p").keepWarm).toBe(true);
     expect(h.store.get("g").keepWarm).toBeNull();
-    const view = (await h.engine.viewOf("g"))!;
-    expect(view).toMatchObject({ keptWarm: true, warmPlanned: true });
-    await h.run(T0 + 15 * MIN);
+    expect(await h.engine.viewOf("g")).toMatchObject({ keptWarm: true, warmPlanned: true });
+    await h.advance(T0 + 15 * MIN);
     expect(warmed().filter((id) => id === "g").length).toBeGreaterThanOrEqual(2);
 
     // Switched off again, the tree gets no more.
     await h.engine.setKeepWarm("p", false);
     const before = warmed().length;
-    await h.run(T0 + 30 * MIN);
+    await h.advance(T0 + 30 * MIN);
     expect(warmed().length).toBe(before);
   });
 
   it("switches each Claude Code branch under a root that is not Claude Code on its own", async () => {
     h.keepWarm = "switched";
-    h.threads = [
-      thread({ id: "root", providerId: "pi" }),
-      thread({ id: "a", parentThreadId: "root", activity: busy }),
-      thread({ id: "b", parentThreadId: "root", activity: busy }),
-    ];
+    h.thread({ id: "root", providerId: "pi" });
+    h.thread({ id: "a", parentThreadId: "root", activity: busy });
+    h.thread({ id: "b", parentThreadId: "root", activity: busy });
     for (const id of ["a", "b"]) h.transcript(id, T0, 20_000, "1h");
+    await h.start();
     await h.engine.setKeepWarm("a", true);
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    await h.advance(T0 + 59 * MIN, false);
     expect(warmed()).toEqual(["a"]);
     expect((await h.engine.viewOf("b"))?.treeTop.threadId).toBe("b");
     const refused = await h.engine.setKeepWarm("root", true).catch((e: unknown) => e);
@@ -769,108 +480,110 @@ describe("keep warm while waiting", () => {
 
   it("keeps a thread spawned under a switched-on tree top warm", async () => {
     h.keepWarm = "switched";
-    h.threads = [thread({ id: "p" })];
+    h.thread({ id: "p" });
     h.transcript("p", T0, 20_000, "1h");
+    await h.start();
     await h.engine.setKeepWarm("p", true);
-    h.threads.push(thread({ id: "late", parentThreadId: "p", activity: busy }));
-    h.transcript("late", T0, 20_000, "1h");
-    h.now = T0 + 59 * MIN;
-    await h.engine.pass();
+    h.thread({ id: "late", parentThreadId: "p", status: "active", createdAt: T0 + MIN });
+    h.emit("created", "late");
+    h.transcript("late", T0 + 2 * MIN, 20_000, "1h");
+    h.task("late", "b9", "command", T0 + 2 * MIN);
+    h.now = T0 + 2 * MIN;
+    await h.ranTurn("late", [], "Started the build.");
+    h.transcript("late", T0 + 2 * MIN, 20_000, "1h");
+    await h.advance(T0 + 62 * MIN, false);
     expect(warmed()).toContain("late");
   });
 
   it("checks in on a switched-off tree, and not at all with the checkbox off, where a keep-warm asks about no task", async () => {
-    const withTask = () => {
-      h.threads = [thread({ id: "t", activity: busy })];
+    const withTask = async () => {
+      h.thread({ id: "t", activity: busy });
       h.transcript("t", T0, 100_000);
-      h.taskEvents.set("t", [
-        { seq: 5, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
-      ]);
+      h.task("t", "b1", "command", T0);
+      await h.start();
     };
-    withTask();
-    h.keepWarm = "every";
+    await withTask();
     await h.engine.setKeepWarm("t", false);
-    h.now = T0 + 16 * MIN;
-    await h.engine.pass();
-    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["check-in"]);
+    await h.advance(T0 + 16 * MIN, false);
+    expect(kinds()).toEqual(["check-in"]);
 
-    h = new Harness();
-    withTask();
+    h = new FakeBb();
     h.checkIns = false;
-    h.keepWarm = "every";
     // Printing all along, so the 59-minute keep-warm would otherwise ask about it.
     h.outputs.set("b1", T0 + 58 * MIN);
-    for (const at of [T0 + 16 * MIN, T0 + 59 * MIN]) {
-      h.now = at;
-      await h.engine.pass();
-    }
-    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["keep-warm"]);
+    await withTask();
+    await h.advance(T0 + 59 * MIN, false);
+    expect(kinds()).toEqual(["keep-warm"]);
     expect(h.sent[0]!.text).not.toContain("has been running");
-    h.outputs.delete("b1");
-    h.now = T0 + 120 * MIN;
-    h.transcript("t", h.now - MIN, 100_000);
-    await h.engine.pass();
-    expect(h.sent.map((x) => (x.marker as { kind: string }).kind)).toEqual(["keep-warm"]);
   });
 });
 
 describe("read state", () => {
   it("puts a read thread back to read after a keep-warm that brought nothing new and the parent's report of it", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 5 * MIN);
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
     expect(h.reportTurns("p")).toBe(1);
     const p = h.get("p");
-    expect(p.lastReadAt! >= p.latestAttentionAt!).toBe(true);
+    expect(p.lastReadAt! >= p.latestAttentionAt).toBe(true);
+    // Putting it back writes a history row naming the thread.
+    expect(h.store.history(0, 100, ["held"]).some((r) => r.threadId === "p" && r.record.what === "read-state-restored")).toBe(true);
   });
 
   it("marks a child unread again when it was unread before the keep-warm", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy, lastReadAt: null })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy, lastReadAt: null });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    await h.run(T0 + 5 * MIN);
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
     expect(h.sent.map((s) => s.threadId)).toEqual(["c"]);
     expect(h.get("c").lastReadAt).toBeNull();
   });
 
   it("leaves an unread thread unread, though bb marked it read when the keep-warm arrived", async () => {
-    h.threads = [thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 })];
+    h.thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 });
     h.transcript("t", T0, 100_000, "5m");
-    await h.run(T0 + 5 * MIN);
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
     expect(h.sent).toHaveLength(1);
     const t = h.get("t");
-    expect(t.lastReadAt === null || t.lastReadAt < t.latestAttentionAt!).toBe(true);
+    expect(t.lastReadAt === null || t.lastReadAt < t.latestAttentionAt).toBe(true);
   });
 
   it("leaves unread a keep-warm whose reply is news, and the parent's report of it", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
     h.replies.set("c", "The deploy failed; I restarted it.");
-    await h.run(T0 + 5 * MIN);
+    await h.start();
+    await h.advance(T0 + 5 * MIN);
     const p = h.get("p");
-    expect(p.lastReadAt! < p.latestAttentionAt!).toBe(true);
+    expect(p.lastReadAt! < p.latestAttentionAt).toBe(true);
   });
 
   it("keeps a thread read when you read it during the turn, though the turn's end drew attention to it", async () => {
-    h.threads = [thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 })];
+    h.thread({ id: "t", activity: busy, lastReadAt: T0 - MIN, latestAttentionAt: T0 });
     h.transcript("t", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 240 * S, false);
     expect(h.sent).toHaveLength(1);
     h.now += 500;
     h.patch("t", { lastReadAt: h.now });
     await h.deliver();
     const t = h.get("t");
-    expect(t.lastReadAt! >= t.latestAttentionAt!).toBe(true);
+    expect(t.lastReadAt! >= t.latestAttentionAt).toBe(true);
   });
 
   it("leaves the read state as you set it during the turn", async () => {
-    h.threads = [thread({ id: "t", activity: busy })];
+    h.thread({ id: "t", activity: busy });
     h.transcript("t", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
+    await h.start();
+    await h.advance(T0 + 240 * S, false);
     expect(h.sent).toHaveLength(1);
     h.patch("t", { lastReadAt: null });
     await h.deliver();
@@ -879,160 +592,135 @@ describe("read state", () => {
 });
 
 describe("queued reports", () => {
+  /** Keeps `p`'s last report in its queue, as bb does behind a question, instead of delivering it. */
+  const queueLastReport = (id: string) => {
+    // bb announces the question again; in the fake, the report's turn ran before it was moved to the queue.
+    h.emit("pending", "p");
+    const report = h.side("p").events.filter((e) => e.type === "client/turn/requested").at(-1)!;
+    const row = queued({ id, createdAt: h.now, initiator: "system", content: (report.data as Requested).input });
+    h.side("p").events = h.side("p").events.slice(0, h.side("p").events.indexOf(report));
+    return row;
+  };
+
   it("deletes report rows that bring nothing new from a thread waiting on your answer, and does not wait on them", async () => {
-    h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
-    await h.deliver();
-    // bb queued the report behind the question instead of delivering it.
-    const report = h.side("p").events.filter((e) => e.type === "client/turn/requested").at(-1)!;
-    const row = queued({ id: "row1", createdAt: h.now, initiator: "system", content: (report.data as Requested).input });
-    const news = reportRow("row2", h.now, [{ id: "x", reply: "done" }]);
-    h.side("p").events = h.side("p").events.slice(0, h.side("p").events.indexOf(report));
-    h.side("p").queued = [row, news];
+    await h.start();
+    await h.advance(T0 + 240 * S);
+    const row = queueLastReport("row1");
     h.now += S;
-    await h.engine.pass();
+    await h.queueRow("p", { id: "row2", createdAt: h.now, initiator: "system", content: reportRow("row2", h.now, [{ id: "x", reply: "done" }]).content });
+    await h.queueRow("p", { id: "row1", createdAt: row.createdAt, initiator: "system", content: row.content });
     expect(h.deleted).toEqual(["row1"]);
+    expect(h.store.history(0, 100, ["held"]).some((r) => r.threadId === "p" && r.record.what === "report-row-deleted")).toBe(true);
   });
 
   it("never deletes a queued system row whose text does not start [bb system], whatever it mentions", async () => {
-    h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
+    h.thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" });
+    h.thread({ id: "c", parentThreadId: "p", activity: busy });
     h.transcript("p", T0, 100_000, "1h");
     h.transcript("c", T0, 100_000, "5m");
-    h.now = T0 + 240 * S;
-    await h.engine.pass();
-    await h.deliver();
-    const report = h.side("p").events.filter((e) => e.type === "client/turn/requested").at(-1)!;
-    const [block] = (report.data as Requested).input as { type: "text"; text: string; mentions: unknown[] }[];
-    const reworded = queued({ id: "row1", createdAt: h.now, initiator: "system", content: [{ ...block!, text: block!.text.replace("[bb system]", "[bb]") }] as SdkQueuedRow["content"] });
-    h.side("p").events = h.side("p").events.slice(0, h.side("p").events.indexOf(report));
-    h.side("p").queued = [reworded];
+    await h.start();
+    await h.advance(T0 + 240 * S);
+    const row = queueLastReport("row1");
+    const [block] = row.content as { type: "text"; text: string; mentions: unknown[] }[];
     h.now += S;
-    await h.engine.pass();
+    await h.queueRow("p", { id: "row1", createdAt: h.now, initiator: "system", content: [{ ...block!, text: block!.text.replace("[bb system]", "[bb]") }] });
     expect(h.deleted).toEqual([]);
-  });
-
-  it("deletes a nothing-new row queued behind a real one, and keeps the real one", async () => {
-    h.threads = [thread({ id: "p", hasPendingInteraction: true, queuedWork: "waiting" }), thread({ id: "c", parentThreadId: "p", activity: busy })];
-    h.transcript("p", T0, 100_000, "1h");
-    h.transcript("c", T0, 100_000, "5m");
-    await h.engine.pass();
-    // The child's own turn, with news, queued as a report behind the question.
-    h.now = T0 + 20 * S;
-    h.typed("c", "deploy it");
-    const real = reportRow("real", h.now + 3 * S, [{ id: "c", reply: "Done." }]);
-    h.side("p").queued = [real];
-    h.now = T0 + 240 * S;
-    h.transcript("c", T0 + 21 * S, 100_000, "5m");
-    await h.run(T0 + 5 * MIN);
-    const keepWarm = h.side("c").events.filter((e) => e.type === "turn/completed").at(-1)!;
-    const quiet = reportRow("quiet", keepWarm.createdAt + 2 * S, [{ id: "c", reply: h.lastReply("c") }]);
-    h.side("p").events = h.side("p").events.filter((e) => e.createdAt < T0 + 20 * S);
-    h.side("p").queued = [real, quiet];
-    h.now += S;
-    await h.engine.pass();
-    expect(h.deleted).toEqual(["quiet"]);
   });
 });
 
 describe("check-ins", () => {
-  const withTask = (over: Partial<ListedThread> = {}) => {
-    h.threads = [thread({ id: "t1", activity: busy, ...over })];
+  const withTask = async (over: Partial<Row> = {}) => {
+    h.thread({ id: "t1", activity: busy, ...over });
     h.transcript("t1", T0, 100_000);
-    h.taskEvents.set("t1", [
-      { seq: 5, type: "item/started", createdAt: T0, item: { type: "backgroundTask", familyId: "b1", taskType: "local_bash", description: "npm test", taskStatus: "running" } },
-    ]);
+    h.task("t1", "b1", "command", T0);
+    await h.start();
   };
 
   it("checks in on a background command as soon as it stalls, even after Skip, asking for the Checked reply", async () => {
-    withTask();
     h.outputs.set("b1", T0 + MIN);
-    h.now = T0 + 10 * MIN;
-    await h.engine.pass();
+    await withTask();
+    await h.advance(T0 + 10 * MIN, false);
     await h.engine.skip("t1", "warm", false);
     expect(h.sent).toEqual([]);
-    expect(h.engine.wakeAt()).toBe(T0 + 16 * MIN);
-    h.now = T0 + 16 * MIN;
-    await h.engine.pass();
+    await h.advance(T0 + 16 * MIN - S, false);
+    expect(h.sent).toEqual([]);
+    await h.advance(T0 + 16 * MIN, false);
     expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]!.at).toBe(T0 + 16 * MIN);
     expect(h.sent[0]!.text).toContain('Background command b1 ("npm test") hasn\'t printed anything in 15 minutes.');
     expect(h.sent[0]!.text).toContain('reply with exactly "Checked b1, still running normally, nothing new. Nothing needed from you."');
-    expect(h.store.history(0).find((r) => r.kind === "check-in")?.record.tasks?.map((t) => t.id)).toEqual(["b1"]);
+    expect(h.store.history(0, 100, ["check-in"])[0]?.record.tasks?.map((t) => t.id)).toEqual(["b1"]);
+  });
+
+  it("keeps today's spacing on one stalled task: the wait, then twice as long each time, until it prints again", async () => {
+    h.outputs.set("b1", T0);
+    await withTask();
+    await h.advance(T0 + 130 * MIN);
+    const at = h.sent.filter((s) => sentKind(s.text) === "check-in").map((s) => (s.at - T0) / MIN);
+    expect(at).toEqual([15, 45, 105]);
+    // It prints at 131 minutes, then goes quiet: the next check (due at 225) finds the spacing restarted.
+    h.outputs.set("b1", T0 + 131 * MIN);
+    await h.advance(T0 + 260 * MIN);
+    expect(h.sent.filter((s) => sentKind(s.text) === "check-in").map((s) => (s.at - T0) / MIN)).toEqual([15, 45, 105, 225, 255]);
+  });
+
+  it("sends no check-in with the setting off, as on a fresh install", async () => {
+    h.checkIns = false;
+    h.keepWarm = "switched";
+    await withTask();
+    await h.advance(T0 + 120 * MIN);
+    expect(h.sent).toEqual([]);
   });
 
   it("charges a check-in its own request, not that of your turn that ended just before it", async () => {
-    withTask();
     h.outputs.set("b1", T0 + MIN);
-    h.now = T0 + 16 * MIN - 500;
-    h.typed("t1", "how is it going");
-    h.now = T0 + 16 * MIN + S;
-    await h.engine.pass();
+    await withTask();
+    h.now = T0 + 16 * MIN - 2 * S;
+    await h.typed("t1", "how is it going");
+    await h.advance(T0 + 16 * MIN + S, false);
     expect(h.sent).toHaveLength(1);
     await h.deliver();
-    const entry = h.store.history(0).find((r) => r.kind === "check-in")!;
+    const entry = h.store.history(0, 100, ["check-in"])[0]!;
     expect(entry.record.usd).toBeCloseTo(3 * PRICE.input + 20 * PRICE.output + 100_000 * PRICE.read + 200 * PRICE.write1h, 10);
   });
 
-  it("shows a check-in past the cost stop at the cold-write price", async () => {
-    withTask();
-    h.outputs.set("b1", T0 + MIN);
-    h.store.update("t1", T0, (r) => ({ ...r, stretch: { startedAt: T0, compactedAt: null, compactSkipped: false, warmSkipped: false, chargedUsd: 1 } }));
-    h.now = T0 + 16 * MIN;
-    await h.engine.pass();
-    expect(h.sent).toHaveLength(1);
-    await h.deliver();
-    const entry = h.store.history(0).find((r) => r.kind === "check-in")!;
-    expect(entry.record.usd).toBeCloseTo(PRICE.write1h * 100_000, 10);
-    expect(entry.record.split!.t1).toBeGreaterThan(0);
-  });
-
   it("sends no routine check-in, and folds a task running 30 minutes into the next keep-warm", async () => {
-    withTask();
+    h.outputs.set("b1", T0 + 38 * MIN);
+    await withTask();
     // Printing all along: never stalled.
     h.transcript("t1", T0 + 35 * MIN, 100_000, "5m");
-    h.outputs.set("b1", T0 + 38 * MIN);
-    h.now = T0 + 39 * MIN;
-    await h.engine.pass();
+    h.now = T0 + 35 * MIN;
+    await h.ranTurn("t1", [], "Watching it.");
+    h.transcript("t1", T0 + 35 * MIN, 100_000, "5m");
+    h.engine.clockMoved();
+    await h.advance(T0 + 39 * MIN, false);
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.text).toMatch(/^Still waiting on background command b1/);
     expect(h.sent[0]!.text).toContain("has been running 39 minutes and is still printing");
     expect(h.sent[0]!.text).toContain('"Checked b1, still running normally, nothing new. Nothing needed from you."');
-    expect(h.store.history(0).find((r) => r.kind === "keep-warm")?.record.folded).toEqual(["b1"]);
+    expect(h.store.history(0, 100, ["keep-warm"])[0]?.record.folded).toEqual(["b1"]);
   });
 
   it("holds a check-in back when the machine's files cannot be read", async () => {
-    withTask();
-    h.failTasks = true;
-    h.now = T0 + 16 * MIN;
-    await h.engine.pass();
+    await withTask();
+    h.down.add("host_1");
+    await h.advance(T0 + 16 * MIN);
     expect(h.sent).toEqual([]);
-  });
-
-  it("drops a thread's view when a pass fails on it, and still lists it as switched on", async () => {
-    withTask();
-    h.transcript("t1", T0, 300_000);
-    await h.engine.setCompact("t1", true);
-    await h.engine.pass();
-    expect(h.engine.allViews().map((v) => v.threadId)).toEqual(["t1"]);
-    h.failEvents = true;
-    await h.engine.pass();
-    expect(h.engine.allViews()).toEqual([]);
-    h.failEvents = false;
-    expect((await h.engine.switchedOn()).map((v) => v.threadId)).toEqual(["t1"]);
-    expect((await h.engine.viewOf("t1"))?.counts.commands).toBe(1);
   });
 });
 
 describe("waiting", () => {
   it("waits on a child whose queue holds a failed message beside a pending one", async () => {
-    h.threads = [thread({ id: "p" }), thread({ id: "c", parentThreadId: "p", queuedWork: "failed" })];
-    h.side("c").queued = [
-      queued({ id: "q1", createdAt: T0, failureReason: "delivery failed" }),
-      queued({ id: "q2", createdAt: T0 }),
-    ];
+    h.thread({ id: "p" });
+    h.thread({ id: "c", parentThreadId: "p", queuedWork: "failed" });
+    h.side("c").queued = [queued({ id: "q1", createdAt: T0, failureReason: "delivery failed" }), queued({ id: "q2", createdAt: T0 })];
     h.transcript("p", T0, 200_000);
+    h.transcript("c", T0, 200_000);
+    await h.start();
     expect((await h.engine.viewOf("p"))?.waiting).toBe(true);
     expect((await h.engine.viewOf("c"))?.counts.queued).toBe(1);
   });

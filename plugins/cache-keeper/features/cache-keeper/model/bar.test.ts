@@ -44,6 +44,7 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   line: 150_000,
   context: 300_000,
   window: 1_000_000,
+  windowKnown: true,
   model: "claude-opus-5-5",
   lifetime: "1h",
   callsPerMessage: 3,
@@ -64,7 +65,10 @@ const view = (over: Partial<ThreadView> = {}): ThreadView => ({
   warmPlanned: false,
   warmSkipped: false,
   nextWarmAt: null,
+  warmNoPrice: false,
   counts: { threads: 0, commands: 0, subagents: 0, queued: 0, scheduled: 0 },
+  decision: null,
+  transcriptUnreadable: null,
   ...over,
 });
 
@@ -105,6 +109,7 @@ describe("the banner", () => {
     expect(bannerOf(waiting({ warmPlanned: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, keeping cache warm", actions: ["skip-warm"] });
     expect(bannerOf(waiting(), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, letting cache go cold", actions: [] });
     expect(bannerOf(waiting({ warmSkipped: true }), 0)).toEqual({ text: "Skipped for this wait", actions: ["undo-warm"] });
+    expect(bannerOf(waiting({ warmNoPrice: true }), 0)).toEqual({ text: "Waiting on 2 threads and 1 command, not keeping cache warm: this model has no price", actions: [] });
   });
 
   it("says a waiting tree is not kept warm, with Keep warm, when its switch is off", () => {

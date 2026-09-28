@@ -1,73 +1,63 @@
 /**
- * Cache Keeper's engine: watches Claude Code threads through bb, reads their
- * transcripts on the machine that runs them, and sends the compaction,
+ * Cache Keeper's engine: learns Claude Code threads from bb's events, reads
+ * their transcripts on the machine that runs them, and sends the compaction,
  * keep-warm or check-in the rules in `src/core` call for.
  *
- * It works one thread tree at a time. Each pass reads the turns every thread
- * in the tree took from bb's event history, works out which were Cache Keeper's
- * and what they cost, puts back the read state that turns bringing nothing new changed, then plans
- * the tree's keep-warms together and each thread's compaction and check-ins on
- * their own.
+ * It runs on bb's events. When a thread's turn ends, the engine reads the
+ * events bb added to it since the saved position (whose turns they were, the
+ * background tasks, a new session), charges Cache Keeper's turns, and reads
+ * the transcript on from its saved cursor if the thread's deadline matters.
+ * Then it plans the thread's tree and sets the one timer for whatever falls
+ * due first. Nothing walks every thread bb knows but the reconciliation
+ * check, every 5 minutes, which corrects what a missed event left wrong.
+ *
+ * Every automatic send is checked against the thread as bb gives it afresh,
+ * claimed for its due time so it never goes twice, and logged with the reason
+ * when it is held back. Every write to a thread's record is a synchronous
+ * change to the record as it stands, so a switch flipped while the engine
+ * awaits bb or a host is never undone.
  *
  * Everything bb, the host entry and the clock provide comes in through
  * `EngineDeps`, so a test drives it with fakes.
  */
-import { afterActivity, afterCheckIn, foldDue, type TaskClock } from "../core/checkins";
+import { afterActivity, afterCheckIn, foldDue, stalledDueAt, type TaskClock } from "../core/checkins";
+import type { Clock } from "../core/clock";
+import { confirmSend, type FreshThread } from "../core/confirm";
 import { estimateKeepWarmUsd, requestsIn, requestsUsd } from "../core/cost";
 import { costStopUsd, newIdleStretch, pastCostStop, plan, scheduledBeyondStop, type IdleStretch, type KeeperPlan } from "../core/keeper";
-import { compactionUsd, DEFAULT_CALLS_PER_MESSAGE, DEFAULT_POST_COMPACTION, DEFAULT_SETTING, linesFor, ratesOf, type Rates } from "../core/line";
-import { checkInText, COMPACT_MESSAGE, keepWarmText, type CheckInTask, type SentKind } from "../core/messages";
+import { compactionUsd, DEFAULT_CALLS_PER_MESSAGE, DEFAULT_POST_COMPACTION, DEFAULT_SETTING, linesFor, ratesOf, warmRatesOf, type Rates } from "../core/line";
+import { checkInText, COMPACT_MESSAGE, keepWarmText, textHash, type CheckInTask, type SentKind } from "../core/messages";
 import type { PriceBook } from "../core/pricing";
-import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { reasonText, type HoldReason } from "../core/reasons";
 import { keptWarm, treeTopOf, treeTopsBelow, type ThreadRef } from "../core/switch";
-import { LEAD_PER_LEVEL_MS, planTree, topOf, type TreeNode, type TreePlan } from "../core/tree";
+import { CACHE_MARGIN_MS, callsPerMessage, deadlineOf, lifetimeMs, type TranscriptCursor, type TranscriptFacts, type TranscriptRequest } from "../core/transcript";
+import { LEAD_PER_LEVEL_MS, planTree, type TreeNode, type TreePlan } from "../core/tree";
 import {
+  broughtNothingNew,
   classifyQueued,
-  reportLines,
   emptyTurnLog,
   foldTurns,
   isKeeperTurn,
-  broughtNothingNew,
   lineHolds,
   originsOf,
+  reportLines,
   reportPending,
   REPORT_WAIT_MS,
+  TURN_EVENT_TYPES,
   type BbEvent,
-  type Turn,
   type QueuedReportRow,
+  type Turn,
   type TurnLog,
 } from "../core/turns";
 import { countItems, type ThreadView, type WaitCounts } from "../core/view";
-import { hasOwnWork, waitingChildren, type TaskKind, type WaitItem, type WaitThread } from "../core/waiting";
+import type { TaskKind, WaitItem } from "../core/waiting";
+import { Scheduler, type Timers } from "./scheduler";
 import type { KeeperSettings } from "./settings";
-import type { ReadBefore, Store, TaskRecord, ThreadRecord } from "./store";
+import type { Decision, ReadBefore, Store, TaskRecord, ThreadRecord } from "./store";
+import { readThread, ThreadIndex, type Known } from "./threads";
 
-/** A thread as `threads.list` gives it. */
-export interface ListedThread {
-  id: string;
-  providerId: string;
-  status: string;
-  parentThreadId: string | null;
-  archivedAt: number | null;
-  deletedAt: number | null;
-  createdAt: number;
-  title: string | null;
-  titleFallback: string | null;
-  hasPendingInteraction: boolean;
-  environmentHostId: string | null;
-  queuedWork: string;
-  activity: { activeBackgroundCommandCount: number; activeBackgroundAgentCount: number };
-  lastReadAt: number | null;
-  latestAttentionAt: number | null;
-}
-
-/** A background-task event from bb. */
-export interface TaskEvent {
-  seq: number;
-  type: string;
-  createdAt: number;
-  item: { type?: string; familyId?: string; taskType?: string; description?: string; taskStatus?: string } | null;
-}
+/** Every event type the engine reads from a thread's history, in one call per turn end. */
+export const EVENT_TYPES = [...TURN_EVENT_TYPES, "item/started", "item/backgroundTask/progress", "thread/identity"] as const;
 
 /** A queued row as `threads.queuedMessages.list` gives it. */
 export interface QueuedRow extends QueuedReportRow {
@@ -75,14 +65,14 @@ export interface QueuedRow extends QueuedReportRow {
   sendAt: number | null;
 }
 
-/** A queued row from bb's `threads.queuedMessages.list`, as Cache Keeper reads it. */
+/** A queued row from bb, as Cache Keeper reads it. */
 export function queuedRowOf(raw: unknown): QueuedRow {
   const r = raw as { id: string; sendAt: number | null; createdAt: number; failureReason: string | null; initiator: string; content: unknown };
   return {
     id: r.id,
-    sendAt: r.sendAt,
+    sendAt: r.sendAt ?? null,
     createdAt: r.createdAt,
-    failed: r.failureReason !== null,
+    failed: r.failureReason != null,
     system: r.initiator === "system",
     content: Array.isArray(r.content) ? r.content : [],
   };
@@ -91,77 +81,79 @@ export function queuedRowOf(raw: unknown): QueuedRow {
 export interface TranscriptRead {
   found: boolean;
   cwdSlug: string | null;
+  cursor: TranscriptCursor | null;
   facts: TranscriptFacts;
   requests: TranscriptRequest[];
+  bytesRead: number;
+  unreadable: string | null;
 }
 
-export interface ReadState {
-  lastReadAt: number | null;
-  latestAttentionAt: number | null;
+export interface TaskActivity {
+  commands: { id: string; outputFile: string; changedAt: number | null }[];
+  subagents: { id: string; lastTool: string | null; changedAt: number | null }[];
 }
 
 export interface EngineDeps {
   store: Store;
-  now(): number;
+  clock: Clock;
+  timers?: Timers;
   settings(): KeeperSettings;
   prices(): PriceBook;
-  listThreads(): Promise<ListedThread[]>;
+  /** Every thread bb lists, hidden ones included, as raw rows: one paged listing. */
+  listThreads(): Promise<unknown[]>;
+  /** The thread as `threads.get` gives it; null when bb has no such thread. */
+  getThread(threadId: string): Promise<unknown | null>;
+  /** The machine running the thread, from `threads.get` with its environment. */
+  hostOf(threadId: string): Promise<string | null>;
+  /** The thread's pending interactions as bb lists them. */
+  pendingInteractions(threadId: string): Promise<unknown>;
   queuedMessages(threadId: string): Promise<QueuedRow[]>;
   deleteQueued(threadId: string, queuedMessageId: string): Promise<void>;
+  /** The context window bb reports for the thread; null until it reports one. */
   contextWindow(threadId: string): Promise<number | null>;
+  /** The Claude Code session id from bb's latest `thread/identity` event. */
   sessionId(threadId: string): Promise<string | null>;
-  taskEvents(threadId: string, afterSeq: number): Promise<TaskEvent[]>;
-  /** A page of the thread's turn events after `afterSeq`, oldest first. */
-  turnEvents(threadId: string, afterSeq: number): Promise<BbEvent[]>;
+  /** A page of the thread's events of `EVENT_TYPES` after `afterSeq`, oldest first; times are bb's. */
+  events(threadId: string, afterSeq: number): Promise<BbEvent[]>;
   /** The seq of the thread's newest event, 0 for none. */
   latestEventSeq(threadId: string): Promise<number>;
-  transcript(hostId: string, sessionId: string, requestsSince: number | null): Promise<TranscriptRead>;
-  tasks(
-    hostId: string,
-    input: { sessionId: string; cwdSlug: string; commands: string[]; subagents: string[] },
-  ): Promise<{ commands: { id: string; outputFile: string; changedAt: number | null }[]; subagents: { id: string; lastTool: string | null; changedAt: number | null }[] }>;
-  /** Sends as a new turn, with Cache Keeper's `pluginSubmission` marker. */
-  send(threadId: string, text: string, marker: { kind: SentKind; sendId: number }): Promise<void>;
-  readState(threadId: string): Promise<ReadState>;
+  transcript(hostId: string, sessionId: string, cursor: TranscriptCursor | null): Promise<TranscriptRead>;
+  tasks(hostId: string, input: { sessionId: string; cwdSlug: string; commands: string[]; subagents: string[] }): Promise<TaskActivity>;
+  /** Keeps the machine's host worker alive for `ms` more. */
+  retain(hostId: string, ms: number): Promise<void>;
+  /** Starts a turn with the message; "busy" when bb refuses because the thread is active. */
+  send(threadId: string, text: string): Promise<"sent" | "busy">;
   markRead(threadId: string): Promise<void>;
   markUnread(threadId: string): Promise<void>;
   publish(threadIds: string[]): void;
   log: { info(m: string): void; warn(m: string): void };
 }
 
-/** Everything read about one thread in one pass. */
-interface Observed {
-  thread: ListedThread;
-  waiting: boolean;
-  items: WaitItem[];
-  /** Children whose report is on its way. */
-  pendingReports: string[];
-  facts: TranscriptFacts | null;
-  cwdSlug: string | null;
-  sessionId: string | null;
-  window: number;
-  rates: Rates | null;
-  priceOrigin: string | null;
-  lines: (number | null)[];
-  callsPerMessage: number;
-  postCompaction: number;
-  deadline: number | null;
-  lifetimeMs: number | null;
-}
-
-const DEFAULT_WINDOW = 200_000;
-/** A send whose turn never ended is given up on after this long. */
-const IN_FLIGHT_MS = 10 * 60_000;
-export const DAY_MS = 86_400_000;
 /** The most events bb 0.44 returns for one `threads.events.list` call. */
 export const EVENTS_PAGE = 100;
+export const DAY_MS = 86_400_000;
 /** How far back a thread's history is read the first time: enough for its recent turns. */
 const FIRST_READ_EVENTS = 400;
+/** A send whose turn never ended is given up on after this long, and charged at its forecast. */
+const IN_FLIGHT_MS = 10 * 60_000;
 const LAST_SETTING_META = "lastSetting";
-/** How long a thread a surface showed keeps being read on every pass. */
+const WATERMARK_META = "watermark";
+/** Stored threads bb archived: a restart does not ask bb about them again. */
+const ARCHIVED_META = "archivedThreads";
+/** How long a thread a surface showed stays watched. */
 const VIEWED_MS = 10 * 60_000;
-/** Allowance between bb's clock and a transcript's when matching a report turn. */
+/** Allowance between bb's clock and a transcript's when matching a turn's requests. */
 const TURN_SLACK_MS = 5_000;
+/** The reconciliation check's interval, and how far either side of it it may fall. */
+export const RECONCILE_MS = 5 * 60_000;
+const RECONCILE_JITTER_MS = 30_000;
+/** A restart catches up threads bb updated since the watermark less this margin. */
+const WATERMARK_MARGIN_MS = 60_000;
+/** How often the host keep-alive renews its lease while something is pending on a machine, and for how long. */
+const KEEPALIVE_MS = 4 * 60_000;
+const LEASE_MS = 6 * 60_000;
+/** After a failed send, the due time is tried again no sooner than this. */
+const RETRY_MS = 60_000;
 
 export class ClaudeOnlyError extends Error {}
 export class NotReadyError extends Error {}
@@ -188,442 +180,683 @@ export interface KeepWarmResult {
   never: boolean;
 }
 
-const isRead = (s: ReadState) => s.lastReadAt !== null && (s.latestAttentionAt === null || s.lastReadAt >= s.latestAttentionAt);
+/** Everything the engine works out about one Claude Code thread at a moment, from memory alone. */
+interface Observed {
+  thread: Known;
+  record: ThreadRecord;
+  waiting: boolean;
+  items: WaitItem[];
+  /** Children whose report is on its way. */
+  pendingReports: string[];
+  facts: TranscriptFacts | null;
+  window: number | null;
+  /** The rates the compaction line rests on. */
+  rates: Rates | null;
+  /** The rates a keep-warm is charged at; null holds keep-warms. */
+  warmRates: Rates | null;
+  priceOrigin: string | null;
+  lines: (number | null)[];
+  callsPerMessage: number;
+  postCompaction: number;
+  deadline: number | null;
+  lifetimeMs: number | null;
+}
+
+/** A tree keep-warm whose shallower leaves have not been sent yet. */
+interface Cycle {
+  at: number;
+  deepest: number;
+  pending: { id: string; depth: number; deadline: number | null }[];
+  historyId: number | null;
+}
+
+/** A send about to go: what, to whom, and the due time it answers. */
+interface Planned {
+  id: string;
+  kind: SentKind;
+  dueKey: string;
+}
+
+const isRead = (s: { lastReadAt: number | null; latestAttentionAt: number | null }) =>
+  s.lastReadAt !== null && (s.latestAttentionAt === null || s.lastReadAt >= s.latestAttentionAt);
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const working = (t: Known) => t.status !== "idle" && t.status !== "error";
 
 export class Engine {
-  private threads = new Map<string, ListedThread>();
-  private views = new Map<string, ThreadView>();
-  private observed = new Map<string, Observed>();
-  private passing: Promise<void> | null = null;
-  private again = false;
-  private windows = new Map<string, number>();
-  /** Queued rows each thread counts as waiting on, where bb's flag alone does not say. */
-  private queuedCounts = new Map<string, number>();
-  private queuedRows = new Map<string, QueuedRow[]>();
+  readonly index = new ThreadIndex();
+  private readonly records = new Map<string, ThreadRecord>();
+  private readonly logs = new Map<string, TurnLog>();
+  /** The requests each thread's last transcript reads returned, for charging its Cache Keeper turns. */
+  private readonly recent = new Map<string, TranscriptRequest[]>();
+  private readonly queued = new Map<string, QueuedRow[]>();
   /** Queued report rows, by thread, that bring nothing new and are not waited on. */
-  private nothingNewRows = new Map<string, Set<string>>();
-  /** When a surface last asked for each thread; a thread stays read for a while after. */
-  private viewedAt = new Map<string, number>();
-  /** When something in each tree, by its top-level thread, next falls due. */
-  private treeWakes = new Map<string, number>();
-  private queuedScope: PassScope | null = null;
-  /** Tree keep-warms under way whose shallower leaves wait for the reports from deeper ones to reach their level. */
-  private cycles = new Map<string, Cycle>();
-  /** Warnings already logged about inputs bb's fields left unreadable, so each is logged once. */
-  private warned = new Set<string>();
+  private readonly nothingNewRows = new Map<string, Set<string>>();
+  private readonly views = new Map<string, ThreadView>();
+  private readonly viewedAt = new Map<string, number>();
+  private readonly cycles = new Map<string, Cycle>();
+  /** Threads whose host did not answer, and since when; nothing is sent to them until it does. */
+  private readonly hostDown = new Map<string, number>();
+  private readonly retryAt = new Map<string, number>();
+  /** Warnings and decisions already logged, so each is logged once. */
+  private readonly logged = new Set<string>();
+  private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly scheduler: Scheduler;
+  /** bb calls, host calls and transcript bytes read, for the benchmark. */
+  readonly counters = { bbCalls: 0, hostCalls: 0, bytesRead: 0, sends: 0 };
+  private started = false;
 
-  constructor(private readonly deps: EngineDeps) {}
+  constructor(private readonly deps: EngineDeps) {
+    this.scheduler = new Scheduler(deps.clock, (keys) => this.fire(keys), deps.timers);
+  }
+
+  private now(): number {
+    return this.deps.clock.now();
+  }
+
+  // ---- records ----
+
+  /** The thread's record, as stored or blank. */
+  record(threadId: string): ThreadRecord {
+    const cached = this.records.get(threadId);
+    if (cached !== undefined) return cached;
+    const stored = this.deps.store.has(threadId) ? this.deps.store.get(threadId) : null;
+    if (stored !== null) this.records.set(threadId, stored);
+    return stored ?? this.deps.store.get(threadId);
+  }
+
+  private stored(threadId: string): boolean {
+    return this.records.has(threadId) || this.deps.store.has(threadId);
+  }
+
+  /** Changes the record as it stands now and stores it: never await between reading what `change` needs and this call. */
+  private patch(threadId: string, change: (record: ThreadRecord) => ThreadRecord): ThreadRecord {
+    const next = change(this.record(threadId));
+    this.records.set(threadId, next);
+    this.deps.store.put(threadId, next, this.now());
+    return next;
+  }
+
+  private turnLog(threadId: string): TurnLog | null {
+    const cached = this.logs.get(threadId);
+    if (cached !== undefined) return cached;
+    const stored = this.deps.store.turnLog(threadId);
+    if (stored !== null) this.logs.set(threadId, stored);
+    return stored;
+  }
+
+  private putTurnLog(threadId: string, log: TurnLog): void {
+    this.logs.set(threadId, log);
+    this.deps.store.putTurnLog(threadId, log);
+  }
 
   /** The setting a thread switched on for the first time starts at. */
   lastSetting(): number {
     return this.deps.store.getMeta<number>(LAST_SETTING_META) ?? DEFAULT_SETTING;
   }
 
-  /** When the next send falls due, so the caller can run a pass for it then rather than on its next poll. */
-  wakeAt(): number | null {
-    return this.treeWakes.size === 0 ? null : Math.min(...this.treeWakes.values());
+  // ---- logging ----
+
+  private warnOnce(key: string, text: string): void {
+    if (this.logged.has(key)) return;
+    this.logged.add(key);
+    this.deps.log.warn(text);
   }
 
-  // ---- bb events ----
+  /**
+   * Records a decision on a due send: sent (`reason` null) or held back, and
+   * why. Logged once per thread, due time and reason; no message or transcript
+   * text is logged.
+   */
+  private decide(threadId: string, what: SentKind, dueKey: string, reason: HoldReason | null): void {
+    const key = `decision\0${threadId}\0${dueKey}\0${reason ?? "sent"}`;
+    if (!this.logged.has(key)) {
+      this.logged.add(key);
+      this.deps.log.info(reason === null ? `${threadId}: sending ${what} (${dueKey})` : `${threadId}: ${what} due (${dueKey}) held back: ${reasonText(reason)}`);
+    }
+    const last = this.record(threadId).decision;
+    if (last?.what === what && last.reason === reason) return;
+    if (!this.stored(threadId) && reason !== null) return;
+    const decision: Decision = { at: this.now(), what, reason };
+    this.patch(threadId, (r) => ({ ...r, decision }));
+  }
 
-  /** A thread turned idle: its tree's turns are read and accounted for, and whatever now falls due is sent. */
-  async onIdle(threadId: string): Promise<void> {
-    await this.pass({ threads: [threadId] });
+  // ---- serial work ----
+
+  /** Runs `work` after every earlier piece of work under `key`. */
+  private serial<T>(key: string, work: () => Promise<T>): Promise<T> {
+    const before = this.chains.get(key) ?? Promise.resolve();
+    const run = before.then(work, work);
+    const settled = run.catch(() => {});
+    this.chains.set(key, settled);
+    void settled.then(() => {
+      if (this.chains.get(key) === settled) this.chains.delete(key);
+    });
+    return run;
+  }
+
+  /** Resolves once every piece of work queued so far has finished; for tests and the benchmark. */
+  async idle(): Promise<void> {
+    for (let i = 0; i < 20 && this.chains.size > 0; i++) await Promise.all([...this.chains.values()]);
+  }
+
+  // ---- startup ----
+
+  /**
+   * Loads what was stored, lists bb's threads once, catches up the threads bb
+   * updated since the watermark from their saved positions, and sets the
+   * timer from the stored facts. Deadlines more than a minute past are not
+   * acted on.
+   */
+  async start(): Promise<void> {
+    for (const { threadId, record } of this.deps.store.all()) this.records.set(threadId, record);
+    const watermark = this.deps.store.getMeta<number>(WATERMARK_META);
+    const listed = await this.list();
+    const since = watermark === null ? null : watermark - WATERMARK_MARGIN_MS;
+    const touched = new Set<string>();
+    for (const t of listed) {
+      if (!this.index.isClaude(t.id) || !this.index.isLive(t.id)) continue;
+      const changed = since !== null && t.updatedAt > since;
+      if (changed && (this.stored(t.id) || t.status === "idle")) touched.add(t.id);
+    }
+    // Stored threads bb no longer lists were archived or deleted while the plugin was down.
+    const archived = new Set(this.deps.store.getMeta<string[]>(ARCHIVED_META) ?? []);
+    const unlisted = [...this.records.keys()].filter((id) => this.index.get(id) === undefined && !archived.has(id));
+    await Promise.all(
+      unlisted.map(async (id) => {
+        const fresh = await this.fresh(id).catch(() => undefined);
+        if (fresh === undefined) return;
+        if (fresh === null || fresh.deleted) this.onDeleted(id);
+        else this.onArchived(id);
+      }),
+    );
+    await Promise.all([...this.queuedThreads()].map((id) => this.refreshQueue(id)));
+    this.started = true;
+    for (const id of touched) void this.learn(id, "restart");
+    const tops = this.watchedTops();
+    // A tree with a thread working or with work of its own may have a Claude Code thread waiting in it.
+    for (const t of listed) if (this.index.isLive(t.id) && (working(t) || this.ownWork(t))) tops.add(this.index.topOf(t.id));
+    for (const top of tops) this.replan(top);
+    this.scheduleReconcile();
+    this.saveWatermark(listed);
+  }
+
+  stop(): void {
+    this.scheduler.stop();
+  }
+
+  /** When the timer is next due for `key` (`tree:<top>`, `reconcile` or `keepalive`), or null. */
+  dueAt(key: string): number | null {
+    return this.scheduler.get(key);
+  }
+
+  /** Lists bb's threads into the index; returns the threads listed. */
+  private async list(): Promise<Known[]> {
+    this.counters.bbCalls++;
+    const rows = await this.deps.listThreads();
+    const listed: Known[] = [];
+    for (const raw of rows) {
+      const read = readThread(raw, true);
+      if (read === null) continue;
+      if (read.missing.length > 0) this.warnOnce(`missing\0${read.patch.id}\0${read.missing.join(",")}`, `${read.patch.id}: bb's thread list lacks ${read.missing.join(", ")}; nothing is sent to it until a reply carries them`);
+      listed.push(this.index.apply(read.patch, read.missing));
+    }
+    return listed;
+  }
+
+  private saveWatermark(listed: Known[]): void {
+    let max = this.deps.store.getMeta<number>(WATERMARK_META) ?? 0;
+    for (const t of listed) if (t.updatedAt > max) max = t.updatedAt;
+    this.deps.store.setMeta(WATERMARK_META, max);
+  }
+
+  private queuedThreads(): Set<string> {
+    const out = new Set<string>();
+    for (const id of this.index.ids()) if (this.index.get(id)!.queuedWork !== "none" && this.index.isLive(id)) out.add(id);
+    return out;
+  }
+
+  /** The tops of every tree holding a thread with something stored or watched. */
+  private watchedTops(): Set<string> {
+    const tops = new Set<string>();
+    for (const id of this.records.keys()) if (this.index.isLive(id)) tops.add(this.index.topOf(id));
+    for (const id of this.viewedAt.keys()) if (this.index.isLive(id)) tops.add(this.index.topOf(id));
+    return tops;
+  }
+
+  // ---- reconciliation ----
+
+  private scheduleReconcile(): void {
+    const jitter = (Math.random() * 2 - 1) * RECONCILE_JITTER_MS;
+    this.scheduler.set("reconcile", this.now() + RECONCILE_MS + jitter);
+  }
+
+  /**
+   * Lists every thread once and corrects what a missed event left wrong: a
+   * thread that went idle, was archived, deleted or unarchived, got or lost a
+   * pending interaction or a queued row, without an event saying so.
+   */
+  async reconcile(): Promise<void> {
+    const before = new Map<string, Known>();
+    for (const id of this.index.ids()) before.set(id, { ...this.index.get(id)! });
+    const listed = await this.list();
+    const seen = new Set(listed.map((t) => t.id));
+    const tops = new Set<string>();
+    for (const t of listed) {
+      const was = before.get(t.id);
+      const moved =
+        was === undefined ||
+        was.status !== t.status ||
+        was.archived !== t.archived ||
+        was.pending !== t.pending ||
+        was.parentId !== t.parentId ||
+        was.queuedWork !== t.queuedWork ||
+        was.commands !== t.commands ||
+        was.agents !== t.agents;
+      if (!moved) continue;
+      if (t.archived && was?.archived !== true) this.onArchived(t.id);
+      if (was !== undefined && working(was) && !working(t)) void this.learn(t.id, "turn end");
+      tops.add(this.index.topOf(t.id));
+      if (was?.parentId != null) tops.add(this.index.topOf(was.parentId));
+    }
+    // A thread bb no longer lists was archived or deleted.
+    for (const [id, was] of before) {
+      if (seen.has(id) || was.archived || was.deleted) continue;
+      const fresh = this.stored(id) ? await this.fresh(id) : null;
+      if (fresh === null || fresh.deleted) this.onDeleted(id);
+      else this.onArchived(id);
+      if (was.parentId !== null) tops.add(this.index.topOf(was.parentId));
+    }
+    await Promise.all([...this.queuedThreads()].map((id) => this.refreshQueue(id)));
+    for (const id of this.queued.keys()) if (this.index.get(id)?.queuedWork === "none") this.queued.delete(id);
+    for (const id of this.queuedThreads()) tops.add(this.index.topOf(id));
+    for (const top of tops) this.replan(top);
+    this.saveWatermark(listed);
+  }
+
+  private async refreshQueue(threadId: string): Promise<void> {
+    this.counters.bbCalls++;
+    const rows = await this.deps.queuedMessages(threadId).catch(() => null);
+    if (rows !== null) this.queued.set(threadId, rows);
+  }
+
+  // ---- bb's events ----
+
+  /** A thread event of bb's: its thread as bb gives it now. */
+  onThread(event: "created" | "active" | "idle" | "failed" | "archived" | "unarchived" | "deleted" | "pending", raw: unknown): void {
+    const read = readThread(raw, false);
+    if (read === null) return;
+    const id = read.patch.id;
+    const before = this.index.get(id);
+    if (event === "deleted") {
+      this.onDeleted(id);
+      if (before?.parentId != null) this.replan(this.index.topOf(before.parentId));
+      return;
+    }
+    if (read.missing.length > 0) this.warnOnce(`missing\0${id}\0${read.missing.join(",")}`, `${id}: bb's ${event} event lacks ${read.missing.join(", ")}; nothing is sent to it until a reply carries them`);
+    const patch: Partial<Known> & { id: string } = { ...read.patch };
+    if (event === "pending") patch.pending = true;
+    // A turn that starts is past any question: bb announces a new one with interaction.pending.
+    if (event === "active") patch.pending = false;
+    const t = this.index.apply(patch, read.missing);
+    if (!this.started) return;
+    switch (event) {
+      case "active":
+        this.onActive(t);
+        // A report reaching a level of a tree keep-warm under way is the moment its leaves at that level go.
+        if (this.cycles.has(this.index.topOf(id))) {
+          void this.serial(`learn:${id}`, () => this.readEvents(id))
+            .catch(() => {})
+            .then(() => this.replan(this.index.topOf(id)));
+        }
+        break;
+      case "idle":
+      case "failed":
+        void this.learn(id, "turn end");
+        break;
+      case "archived":
+        this.onArchived(id);
+        break;
+      case "unarchived":
+        this.markArchived(id, false);
+        break;
+      default:
+        break;
+    }
+    const top = this.index.topOf(id);
+    this.replan(top);
+    if (before?.parentId != null && before.parentId !== t.parentId) this.replan(this.index.topOf(before.parentId));
+    if (event === "archived" || event === "unarchived") for (const c of this.index.childrenOf(id)) this.replan(this.index.topOf(c));
+  }
+
+  /** A queued row was queued, dispatched or cancelled. */
+  onQueued(event: "queued" | "dispatched" | "cancelled", raw: unknown): void {
+    const entry = raw as { id?: unknown; threadId?: unknown };
+    if (typeof entry?.id !== "string" || typeof entry.threadId !== "string") return;
+    const threadId = entry.threadId;
+    const rows = (this.queued.get(threadId) ?? []).filter((r) => r.id !== entry.id);
+    if (event === "queued") rows.push(queuedRowOf(raw));
+    this.queued.set(threadId, rows);
+    const t = this.index.get(threadId);
+    if (t !== undefined) this.index.apply({ id: threadId, queuedWork: rows.some((r) => !r.failed) ? "waiting" : rows.length > 0 ? "failed" : "none" }, t.missing);
+    if (!this.started) return;
+    // A report bb queued behind a question may bring nothing new.
+    if (event === "queued" && t?.pending === true && this.index.isClaude(threadId)) {
+      void this.serial(`learn:${threadId}`, () => this.deleteNothingNewReports(threadId))
+        .catch((error) => this.deps.log.warn(`${threadId}: ${message(error)}`))
+        .then(() => this.replan(this.index.topOf(threadId)));
+    }
+    this.replan(this.index.topOf(threadId));
   }
 
   /**
    * A thread turned active. If Cache Keeper sent nothing, a report or a message
    * started the turn: its read state now is the one to put back if the turn
-   * brings nothing new. A report leaves bb's read state as it was.
+   * brings nothing new.
    */
-  async onActive(threadId: string): Promise<void> {
-    if (this.deps.store.has(threadId) && this.threads.get(threadId)?.providerId === "claude-code") {
-      const now = this.deps.now();
-      const record = this.deps.store.get(threadId);
-      if (record.readBefore === null && record.inFlight === null) {
-        const state = await this.deps.readState(threadId);
-        this.deps.store.update(threadId, now, (r) => (r.readBefore !== null ? r : { ...r, readBefore: { read: isRead(state), lastReadAt: state.lastReadAt, since: now } }));
-      }
-    }
-    // A report reaching a level of a tree keep-warm under way is the moment its leaves at that level go.
-    if (this.cycles.has(topOf(threadId, (id) => this.threads.get(id)?.parentThreadId ?? null))) await this.pass({ threads: [threadId] });
+  private onActive(t: Known): void {
+    if (!this.stored(t.id) || t.providerId !== "claude-code") return;
+    const record = this.record(t.id);
+    if (record.readBefore !== null || record.inFlight !== null) return;
+    const readBefore: ReadBefore = { read: isRead(t), lastReadAt: t.lastReadAt, since: this.now() };
+    this.patch(t.id, (r) => (r.readBefore !== null ? r : { ...r, readBefore }));
   }
 
-  // ---- the pass ----
+  /** An archived thread keeps its switches; its idle stretch and its turn log go. */
+  private onArchived(threadId: string): void {
+    this.forgetStretch(threadId);
+    this.logs.delete(threadId);
+    this.deps.store.deleteTurnLog(threadId);
+    if (this.stored(threadId)) this.markArchived(threadId, true);
+  }
+
+  private markArchived(threadId: string, archived: boolean): void {
+    const ids = new Set(this.deps.store.getMeta<string[]>(ARCHIVED_META) ?? []);
+    if (ids.has(threadId) === archived) return;
+    if (archived) ids.add(threadId);
+    else ids.delete(threadId);
+    this.deps.store.setMeta(ARCHIVED_META, [...ids]);
+  }
+
+  private forgetStretch(threadId: string): void {
+    this.views.delete(threadId);
+    this.scheduler.set(`tree:${threadId}`, null);
+    if (!this.stored(threadId)) return;
+    const r = this.record(threadId);
+    if (r.stretch === null && r.inFlight === null && r.readBefore === null && Object.keys(r.tasks).length === 0) return;
+    this.patch(threadId, (rec) => ({ ...rec, stretch: null, inFlight: null, readBefore: null, tasks: {} }));
+  }
+
+  /** A deleted thread is forgotten, rows and all. */
+  private onDeleted(threadId: string): void {
+    this.index.remove(threadId);
+    this.records.delete(threadId);
+    this.logs.delete(threadId);
+    this.recent.delete(threadId);
+    this.queued.delete(threadId);
+    this.views.delete(threadId);
+    this.viewedAt.delete(threadId);
+    this.hostDown.delete(threadId);
+    this.scheduler.set(`tree:${threadId}`, null);
+    this.deps.store.delete(threadId);
+    this.markArchived(threadId, false);
+  }
+
+  /** The drive harness moved the clock: the timer is set again from the new time. */
+  clockMoved(): void {
+    this.scheduler.reset();
+    for (const top of this.watchedTops()) this.replan(top);
+  }
+
+  // ---- learning a thread ----
+
+  /** Whether the thread's deadline matters now, so its transcript is worth reading. */
+  private watched(threadId: string): boolean {
+    const t = this.index.get(threadId);
+    if (t === undefined || t.providerId !== "claude-code" || !this.index.isLive(threadId)) return false;
+    const r = this.record(threadId);
+    if (r.compactOn || r.inFlight !== null || r.readBefore !== null || Object.keys(r.tasks).length > 0 || r.stretch?.compactedAt != null) return true;
+    if (this.now() - (this.viewedAt.get(threadId) ?? -Infinity) < VIEWED_MS) return true;
+    return t.status === "idle" && this.waiting(threadId, new Map());
+  }
 
   /**
-   * Reads thread trees and acts where a rule says so: every tree, or only the
-   * trees holding `threads` and those with something due now. One pass runs
-   * at a time; one asked for during it runs after, over everything asked for.
+   * Brings one thread up to date: its events since the saved position, its
+   * transcript from the saved cursor where its deadline matters, its window,
+   * then charges and read state. Serial per thread.
    */
-  async pass(scope: { threads?: string[]; due?: boolean } | null = null): Promise<void> {
-    const asked: PassScope = scope === null ? { all: true, threads: new Set(), due: false } : { all: false, threads: new Set(scope.threads ?? []), due: scope.due ?? false };
-    this.queuedScope = this.queuedScope === null ? asked : mergeScopes(this.queuedScope, asked);
-    if (this.passing !== null) {
-      await this.passing;
-      return;
-    }
-    this.passing = (async () => {
-      while (this.queuedScope !== null) {
-        const next = this.queuedScope;
-        this.queuedScope = null;
-        await this.run(next);
+  learn(threadId: string, why: "turn end" | "restart" | "watched" | "view"): Promise<void> {
+    return this.serial(`learn:${threadId}`, async () => {
+      const t = this.index.get(threadId);
+      if (t === undefined || !this.index.isLive(threadId)) return;
+      const claude = t.providerId === "claude-code";
+      // A report climbs through every thread under a Claude Code one, whatever its harness.
+      if (!claude && this.claudeAbove(threadId) === null) return;
+      await this.readEvents(threadId);
+      if (claude) {
+        const watched = this.watched(threadId);
+        if (watched) await this.readTranscript(threadId);
+        this.account(threadId);
+        await this.deleteNothingNewReports(threadId);
+        await this.restoreRead(threadId);
+        if (watched) {
+          this.syncStretch(threadId);
+          await this.readWindow(threadId);
+        }
       }
-    })().finally(() => {
-      this.passing = null;
-    });
-    await this.passing;
+      if (why !== "view") this.replan(this.index.topOf(threadId));
+    }).catch((error) => this.deps.log.warn(`${threadId}: could not read its ${why === "turn end" ? "turn" : "state"}: ${message(error)}`));
   }
 
-  /** bb's threads, with the queued rows of any whose queue needs reading. */
-  private async load(): Promise<ListedThread[]> {
-    const listed = await this.deps.listThreads();
-    this.threads = new Map(listed.map((t) => [t.id, t]));
-    return listed;
+  private claudeAbove(threadId: string): string | null {
+    const seen = new Set<string>();
+    for (let p = this.index.get(threadId)?.parentId ?? null; p !== null && !seen.has(p); p = this.index.get(p)?.parentId ?? null) {
+      seen.add(p);
+      if (this.index.isClaude(p)) return p;
+    }
+    return null;
   }
 
-  private toWait = (t: ListedThread): WaitThread => ({
-    id: t.id,
-    parentThreadId: t.parentThreadId,
-    status: t.status,
-    archived: t.archivedAt !== null,
-    deleted: t.deletedAt !== null,
-    title: t.title ?? t.titleFallback ?? t.id,
-    createdAt: t.createdAt,
-    activeBackgroundCommandCount: t.activity.activeBackgroundCommandCount,
-    activeBackgroundAgentCount: t.activity.activeBackgroundAgentCount,
-    queuedMessageCount: this.queuedCounts.get(t.id) ?? (t.queuedWork === "waiting" ? 1 : 0),
-  });
-
-  private async run(scope: PassScope): Promise<void> {
-    const listed = await this.load();
-    const live = listed.filter((t) => t.archivedAt === null && t.deletedAt === null);
-    const liveIds = new Set(live.map((t) => t.id));
-    const trees = new Map<string, ListedThread[]>();
-    for (const t of live) {
-      const top = topOf(t.id, (id) => {
-        const parent = this.threads.get(id)?.parentThreadId ?? null;
-        return parent !== null && liveIds.has(parent) ? parent : null;
-      });
-      trees.set(top, [...(trees.get(top) ?? []), t]);
+  /** Reads the thread's new events: its turns, its background tasks, and a new Claude Code session. */
+  private async readEvents(threadId: string): Promise<void> {
+    let log = this.turnLog(threadId);
+    if (log === null) {
+      this.counters.bbCalls++;
+      log = emptyTurnLog(Math.max(0, (await this.deps.latestEventSeq(threadId)) - FIRST_READ_EVENTS));
     }
-    const changed: string[] = [];
-    const now = this.deps.now();
-    for (const [top, members] of trees) {
-      const selected =
-        scope.all || members.some((m) => scope.threads.has(m.id)) || (scope.due && (this.treeWakes.get(top) ?? Infinity) <= now + DUE_EARLY_MS);
-      if (!selected) continue;
-      const before = new Map(members.map((m) => [m.id, JSON.stringify(this.views.get(m.id) ?? null)]));
-      try {
-        const wake = await this.runTree(top, members, live);
-        if (wake === null) this.treeWakes.delete(top);
-        else this.treeWakes.set(top, wake);
-      } catch (error) {
-        // A view from before the failure would show a state bb has moved on from.
-        for (const m of members) this.views.delete(m.id);
-        this.deps.log.warn(`tree of ${members[0]!.id}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      for (const m of members) if (JSON.stringify(this.views.get(m.id) ?? null) !== before.get(m.id)) changed.push(m.id);
-    }
-    for (const top of [...this.treeWakes.keys(), ...this.cycles.keys()]) {
-      if (!trees.has(top)) {
-        this.treeWakes.delete(top);
-        this.cycles.delete(top);
-      }
-    }
-    if (!scope.all) {
-      if (changed.length > 0) this.deps.publish(changed);
-      return;
-    }
-    // Threads no longer listed are archived or deleted: forget their stretch.
-    for (const { threadId, record } of this.deps.store.all()) {
-      if (!liveIds.has(threadId) && (record.stretch !== null || record.inFlight !== null || record.readBefore !== null)) {
-        this.deps.store.put(threadId, { ...record, stretch: null, inFlight: null, readBefore: null }, now);
-        if (this.views.delete(threadId)) changed.push(threadId);
-      }
-    }
-    for (const id of [...this.views.keys()]) if (!liveIds.has(id) && this.views.delete(id)) changed.push(id);
-    if (changed.length > 0) this.deps.publish(changed);
-  }
-
-  private isClaude(threadId: string): boolean {
-    return this.threads.get(threadId)?.providerId === "claude-code";
-  }
-
-  /** Whether keep-warms or check-ins could apply, or the page lists it as waiting: idle and waiting by bb's counts. */
-  private mayAct(thread: ListedThread, live: ListedThread[]): boolean {
-    return thread.status === "idle" && this.waitsByCounts(thread, live);
-  }
-
-  /** A thread's parent while bb lists it as neither archived nor deleted, as the engine's trees read it. */
-  private liveParentOf = (id: string): string | null => {
-    const parent = this.threads.get(id)?.parentThreadId ?? null;
-    const t = parent === null ? undefined : this.threads.get(parent);
-    return t !== undefined && t.archivedAt === null && t.deletedAt === null ? parent : null;
-  };
-
-  /** The tree top whose switch covers `threadId`, or null for a thread that is not Claude Code with none above it. */
-  private treeTopIdOf(threadId: string): string | null {
-    return treeTopOf(threadId, this.liveParentOf, (id) => this.isClaude(id));
-  }
-
-  /** Whether `threadId`'s tree is kept warm: its tree top's switch and the setting. */
-  private isKeptWarm(threadId: string, settings: KeeperSettings): boolean {
-    const top = this.treeTopIdOf(threadId);
-    return keptWarm(settings.keepWarm, top === null ? null : this.deps.store.get(top).keepWarm);
-  }
-
-  private waitsByCounts(thread: ListedThread, live: ListedThread[]): boolean {
-    return hasOwnWork(this.toWait(thread)) || waitingChildren(thread.id, live.map(this.toWait)).length > 0;
-  }
-
-  private interesting(thread: ListedThread, live: ListedThread[], now: number): boolean {
-    if (thread.providerId !== "claude-code") return false;
-    const record = this.deps.store.get(thread.id);
-    const viewed = now - (this.viewedAt.get(thread.id) ?? -Infinity) < VIEWED_MS;
-    return record.compactOn || record.stretch?.compactedAt != null || viewed || this.mayAct(thread, live);
-  }
-
-  /** One thread tree: read, account, plan, act. Returns when anything in it next falls due. */
-  private async runTree(top: string, members: ListedThread[], live: ListedThread[]): Promise<number | null> {
-    const settings = this.deps.settings();
-    let now = this.deps.now();
-    await this.readQueues(members);
-    const claude = members.filter((m) => m.providerId === "claude-code");
-    const open = claude.some((m) => {
-      const r = this.deps.store.get(m.id);
-      return r.inFlight !== null || r.readBefore !== null;
-    });
-    const active = claude.filter((m) => this.interesting(m, live, now));
-    if (active.length === 0 && !open) {
-      for (const m of members) this.views.delete(m.id);
-      this.cycles.delete(top);
-      return null;
-    }
-
-    // Every thread's turns, Claude Code or not: a report climbs through all of them.
-    const logs = new Map<string, TurnLog>();
-    for (const m of members) logs.set(m.id, await this.readTurns(m.id));
-    const lookup = (id: string) => logs.get(id) ?? null;
-
-    for (const m of claude) await this.account(m, lookup);
-    await this.deleteNothingNewReports(claude, logs);
-    for (const m of claude) await this.restoreRead(m, lookup);
-
-    now = this.deps.now();
-    const observed = new Map<string, Observed>();
-    const plans = new Map<string, KeeperPlan>();
-    for (const m of claude) {
-      if (!active.includes(m)) {
-        this.views.delete(m.id);
-        continue;
-      }
-      let record = this.syncStretch(m, live, now);
-      let o = await this.observe(m, members, live, record, logs, now);
-      const done = o.facts?.lastCompaction;
-      if (record.compaction !== null && record.compaction.contextAfter === null && done != null && done.at >= record.compaction.at - CACHE_MARGIN_MS) {
-        this.deps.store.setContextAfter(record.compaction.historyId, done.postTokens);
-        record = { ...record, compaction: { ...record.compaction, contextAfter: done.postTokens } };
-      }
-      if (o.waiting) {
-        record = await this.watchTasks(m, o, record);
-        o = { ...o, items: [...o.items.filter((i) => i.kind !== "command" && i.kind !== "subagent"), ...taskItems(record)] };
-      } else if (Object.keys(record.tasks).length > 0) record = { ...record, tasks: {} };
-      this.deps.store.put(m.id, record, now);
-      observed.set(m.id, o);
-      this.observed.set(m.id, o);
-      plans.set(m.id, plan(this.keeperInput(o, record, now, settings)));
-    }
-
-    const nodes = members.map((m) => this.treeNode(m, observed, settings, logs.get(m.id)));
-    const tree = planTree(nodes, now);
-    for (const [id, o] of observed) this.views.set(id, this.view(o, this.deps.store.get(id), plans.get(id)!, tree, settings));
-
-    // Own rules first: a check-in or compaction refreshes the cache a keep-warm would.
-    const acted = new Set<string>();
-    for (const [id, p] of plans) {
-      const o = observed.get(id)!;
-      if (p.action === null || this.deps.store.get(id).inFlight !== null) continue;
-      const pastStop = nodes.find((n) => n.id === id)?.blocks === true && !(this.deps.store.get(id).stretch?.warmSkipped ?? false);
-      const sent = p.action.kind === "compact" ? await this.sendCompact(id, o) : await this.sendCheckIn(o, p.action.tasks, pastStop);
-      if (sent) acted.add(id);
-    }
-    const sendable = (id: string) => !acted.has(id) && observed.has(id) && this.deps.store.get(id).inFlight === null;
-    const depthOf = (id: string) => {
-      let d = 0;
-      for (let p = this.threads.get(id)?.parentThreadId ?? null; p !== null && members.some((m) => m.id === p) && d < members.length; p = this.threads.get(p)?.parentThreadId ?? null) d++;
-      return d;
-    };
-    let sent = acted.size > 0;
-
-    // A tree keep-warm goes to its deepest leaves first. A shallower leaf goes when the report from below reaches
-    // its level, so that its turn and the report's run side by side and bb batches both reports into the parent.
-    const cycle = this.cycles.get(top);
-    if (cycle !== undefined) {
-      // A report delivered at that level since the cycle began; bb records it before the thread turns active.
-      const reached = (depth: number) =>
-        members.some((m) => depthOf(m.id) === depth && (logs.get(m.id)?.delivered.some((d) => d.at >= cycle.at) ?? false));
-      const ready = cycle.pending.filter((p) => reached(p.depth) || now >= stagedFallback(cycle, p));
-      const go = ready.filter((p) => sendable(p.id) && nodes.find((n) => n.id === p.id)?.keepable === true).map((p) => p.id);
-      if (go.length > 0) await this.sendKeepWarms(go, observed, top, cycle.historyId);
-      sent ||= go.length > 0;
-      cycle.pending = cycle.pending.filter((p) => !ready.includes(p));
-      if (cycle.pending.length === 0) this.cycles.delete(top);
-    }
-    // No new tree keep-warm starts while the last one still has leaves to send.
-    const staging = this.cycles.has(top);
-    const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
-    const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: depthOf(d.id), deadline: observed.get(d.id)?.deadline ?? null }));
-    if (together.length > 0) {
-      const deepest = Math.max(...together.map((t) => t.depth));
-      const first = together.filter((t) => t.depth === deepest).map((t) => t.id);
-      const historyId = await this.sendKeepWarms(first, observed, top);
-      const pending = together.filter((t) => t.depth < deepest);
-      if (pending.length > 0) this.cycles.set(top, { at: now, deepest, pending, historyId });
-    }
-    for (const d of due.filter((d) => !d.tree)) await this.sendKeepWarms([d.id], observed, d.id);
-    if (sent || due.length > 0) {
-      for (const [id, o] of observed) this.views.set(id, this.view(o, this.deps.store.get(id), plans.get(id)!, tree, settings));
-    }
-
-    const wakes = [tree.wakeAt, ...[...plans.values()].map((p) => p.wakeAt)].filter((w): w is number => w !== null);
-    const staged = this.cycles.get(top);
-    if (staged !== undefined) for (const p of staged.pending) wakes.push(stagedFallback(staged, p));
-    // A report still on its way stops holding things once it is given up on.
-    for (const o of observed.values()) for (const c of o.pendingReports) {
-      const ended = logs.get(c)?.turns.at(-1)?.endedAt;
-      if (ended != null) wakes.push(ended + REPORT_WAIT_MS);
-    }
-    return wakes.length === 0 ? null : Math.min(...wakes);
-  }
-
-  // ---- reading ----
-
-  /** Lists the queued rows of every thread whose queue holds any, since failed rows, and report rows that bring nothing new, are not waited on. */
-  private async readQueues(members: ListedThread[]): Promise<void> {
-    for (const m of members) {
-      this.queuedRows.delete(m.id);
-      this.queuedCounts.delete(m.id);
-      this.nothingNewRows.delete(m.id);
-      if (m.queuedWork === "none") continue;
-      const rows = await this.deps.queuedMessages(m.id).catch(() => null);
-      if (rows === null) continue;
-      this.queuedRows.set(m.id, rows);
-      this.queuedCounts.set(m.id, rows.filter((r) => !r.failed).length);
-    }
-  }
-
-  /** Whether a thread is a child of `threadId`, one level down, as bb last listed them. */
-  private isChildOf(threadId: string): (id: string) => boolean {
-    return (id) => this.threads.get(id)?.parentThreadId === threadId;
-  }
-
-  /** Brings a thread's turn log up to date from bb's events. */
-  private async readTurns(threadId: string): Promise<TurnLog> {
-    let log = this.deps.store.turnLog(threadId);
-    if (log === null) log = emptyTurnLog(Math.max(0, (await this.deps.latestEventSeq(threadId)) - FIRST_READ_EVENTS));
     const before = log.afterSeq;
+    const claude = this.index.isClaude(threadId);
+    const record = claude ? this.record(threadId) : null;
+    const tasks: Record<string, TaskRecord> = { ...(record?.tasks ?? {}) };
+    let session: string | null = null;
+    const finished = { command: 0, subagent: 0 };
     for (let page = 0; page < 100; page++) {
-      const events = await this.deps.turnEvents(threadId, log.afterSeq);
+      this.counters.bbCalls++;
+      const raw = await this.deps.events(threadId, log.afterSeq);
+      const events = raw.map((e) => ({ ...e, seq: Number(e.seq), createdAt: this.deps.clock.fromWall(e.createdAt) }));
       log = foldTurns(log, events, {
         threadId,
-        isChild: this.isChildOf(threadId),
-        warn: (message) => {
-          if (this.warned.has(message)) return;
-          this.warned.add(message);
-          this.deps.log.warn(message);
-        },
+        isChild: (id) => this.index.get(id)?.parentId === threadId,
+        warn: (m) => this.warnOnce(m, m),
       });
-      if (events.length < EVENTS_PAGE) break;
+      for (const e of events) {
+        const data = (e.data ?? {}) as { item?: TaskItem; providerThreadId?: unknown };
+        if (e.type === "thread/identity" && typeof data.providerThreadId === "string") session = data.providerThreadId;
+        else if (claude) {
+          const done = foldTask(tasks, e.type, e.createdAt, data.item ?? null);
+          if (done !== null) finished[done]++;
+        }
+      }
+      if (raw.length < EVENTS_PAGE) break;
     }
-    if (log.afterSeq !== before || this.deps.store.turnLog(threadId) === null) this.deps.store.putTurnLog(threadId, log);
-    return log;
+    if (log.afterSeq !== before || this.deps.store.turnLog(threadId) === null) this.putTurnLog(threadId, log);
+    if (!claude) return;
+    const known = this.index.get(threadId)!;
+    // bb's counts come from its last list; a task seen finishing since takes one off, until the next list says.
+    const commands = Math.max(Object.values(tasks).filter((t) => t.kind === "command").length, known.commands - finished.command);
+    const agents = Math.max(Object.values(tasks).filter((t) => t.kind === "subagent").length, known.agents - finished.subagent);
+    this.index.apply({ id: threadId, commands, agents }, known.missing);
+    const changedTasks = JSON.stringify(tasks) !== JSON.stringify(record!.tasks);
+    const current = this.record(threadId).transcript;
+    const newSession = session !== null && current !== null && current.sessionId !== session;
+    if (!changedTasks && !newSession && !(session !== null && current === null && this.watched(threadId))) return;
+    if (!this.stored(threadId) && !changedTasks && !this.watched(threadId)) return;
+    this.patch(threadId, (r) => ({
+      ...r,
+      tasks: changedTasks ? mergeTasks(r.tasks, tasks) : r.tasks,
+      // A new session (bb emits one on /clear) starts from its own transcript: the old one's facts no longer count.
+      transcript: session !== null && (r.transcript === null || r.transcript.sessionId !== session) ? { sessionId: session, cursor: null, unreadable: null } : r.transcript,
+    }));
+    if (newSession) this.recent.delete(threadId);
+  }
+
+  /** Reads the thread's transcript on from its cursor. A host that does not answer holds the thread's sends. */
+  private async readTranscript(threadId: string): Promise<void> {
+    let session = this.record(threadId).transcript?.sessionId ?? null;
+    if (session === null) {
+      this.counters.bbCalls++;
+      session = await this.deps.sessionId(threadId);
+      if (session === null) return;
+      const sessionId = session;
+      this.patch(threadId, (r) => (r.transcript?.sessionId === sessionId ? r : { ...r, transcript: { sessionId, cursor: null, unreadable: null } }));
+    }
+    const hostId = await this.hostOf(threadId);
+    if (hostId === null) return;
+    const cursor = this.record(threadId).transcript?.cursor ?? null;
+    let read: TranscriptRead;
+    try {
+      this.counters.hostCalls++;
+      read = await this.deps.transcript(hostId, session, cursor);
+    } catch (error) {
+      if (!this.hostDown.has(threadId)) this.hostDown.set(threadId, this.now());
+      this.warnOnce(`host\0${threadId}\0${hostId}`, `${threadId}: its machine ${hostId} did not answer; nothing is sent to it until it does: ${message(error)}`);
+      return;
+    }
+    this.hostDown.delete(threadId);
+    this.logged.delete(`host\0${threadId}\0${hostId}`);
+    this.counters.bytesRead += read.bytesRead;
+    if (!read.found) return;
+    if (read.unreadable !== null) this.warnOnce(`unreadable\0${threadId}\0${read.unreadable}`, `${threadId}: its transcript is unreadable: ${read.unreadable}`);
+    const sessionId = session;
+    this.patch(threadId, (r) => {
+      if (r.transcript?.sessionId !== sessionId) return r;
+      return { ...r, transcript: { sessionId, cursor: read.cursor ?? r.transcript.cursor, unreadable: read.unreadable } };
+    });
+    if (read.requests.length > 0) this.recent.set(threadId, [...(this.recent.get(threadId) ?? []), ...read.requests].slice(-200));
+    const c = this.record(threadId).compaction;
+    const done = read.facts.lastCompaction;
+    if (c !== null && c.contextAfter === null && done !== null && done.at >= c.at - CACHE_MARGIN_MS) {
+      this.deps.store.setContextAfter(c.historyId, done.postTokens);
+      this.patch(threadId, (r) => (r.compaction === null ? r : { ...r, compaction: { ...r.compaction, contextAfter: done.postTokens } }));
+    }
+  }
+
+  private async hostOf(threadId: string): Promise<string | null> {
+    const t = this.index.get(threadId);
+    if (t === undefined) return null;
+    if (t.hostId !== undefined) return t.hostId;
+    this.counters.bbCalls++;
+    const hostId = await this.deps.hostOf(threadId).catch(() => null);
+    this.index.apply({ id: threadId, hostId }, this.index.get(threadId)?.missing ?? []);
+    return hostId;
+  }
+
+  /** Asks bb for the thread's window when none is stored for its model. There is no default: until bb reports one, the thread has no lines. */
+  private async readWindow(threadId: string): Promise<void> {
+    const r = this.record(threadId);
+    const model = r.transcript?.cursor?.fold.facts.model ?? null;
+    if (r.window !== null && r.window.model === model) return;
+    this.counters.bbCalls++;
+    const tokens = await this.deps.contextWindow(threadId).catch(() => null);
+    if (tokens === null || !(tokens > 0)) return;
+    this.patch(threadId, (rec) => ({ ...rec, window: { model, tokens } }));
   }
 
   /**
-   * Takes each turn that ended since the last pass: a real one ends the idle
-   * stretch; a Cache Keeper one is charged at its real cost, split equally
-   * between the messages that caused it.
+   * Takes each turn that ended since the last one accounted: a real one ends
+   * the idle stretch; a Cache Keeper one is charged at its real cost, split
+   * equally between the messages that caused it, or, where its own cost
+   * cannot be measured, at each message's forecast.
    */
-  private async account(thread: ListedThread, lookup: (id: string) => TurnLog | null): Promise<void> {
-    const log = lookup(thread.id)!;
-    const now = this.deps.now();
-    let record = this.deps.store.get(thread.id);
+  private account(threadId: string): void {
+    const log = this.turnLog(threadId);
+    if (log === null) return;
+    const lookup = (id: string) => this.turnLog(id);
+    const record = this.record(threadId);
     const ended = log.turns.filter((t) => t.startSeq > record.accountedSeq && t.endedAt !== null);
-    const first = this.deps.store.has(thread.id) ? null : ended.at(-1)?.startSeq;
-    // A thread seen for the first time starts from now: its past turns are nobody's to charge.
-    if (first != null) {
-      this.deps.store.put(thread.id, { ...record, accountedSeq: first }, now);
+    if (!this.stored(threadId)) {
+      // A thread seen for the first time starts from now: its past turns are nobody's to charge.
+      const first = ended.at(-1)?.startSeq;
+      if (first != null && this.watched(threadId)) this.patch(threadId, (r) => ({ ...r, accountedSeq: first }));
       return;
     }
     const upTo = log.turns.find((t) => t.startSeq > record.accountedSeq && t.endedAt === null)?.startSeq ?? Infinity;
     const due = ended.filter((t) => t.startSeq < upTo);
     if (due.length === 0) return;
-    let requests: TranscriptRequest[] | null = null;
-    let price: ReturnType<PriceBook["lookup"]> = null;
+    const facts = record.transcript?.cursor?.fold.facts ?? null;
+    const price = this.deps.prices().lookup(facts?.model ?? null);
+    const requests = this.recent.get(threadId) ?? [];
     for (const turn of due) {
-      const keeper = isKeeperTurn(thread.id, turn, lookup);
-      if (record.inFlight !== null && turn.startedAt >= record.inFlight.at - TURN_SLACK_MS && turn.inputs.some((i) => i.kind === "sent")) record = { ...record, inFlight: null };
+      const keeper = isKeeperTurn(threadId, turn, lookup);
+      const current = this.record(threadId);
+      if (current.inFlight !== null && turn.startedAt >= current.inFlight.at - TURN_SLACK_MS && turn.inputs.some((i) => i.kind === "sent")) {
+        this.patch(threadId, (r) => ({ ...r, inFlight: null }));
+      }
       if (!keeper) {
-        if (record.stretch !== null) {
-          if (record.stretch.compactedAt != null) this.recordReturn(thread.id, record, turn.startedAt);
-          record = { ...record, stretch: null };
+        if (current.stretch !== null) {
+          if (current.stretch.compactedAt != null) this.recordReturn(threadId, current, turn.startedAt);
+          this.patch(threadId, (r) => ({ ...r, stretch: null }));
         }
       } else {
-        if (requests === null) {
-          const read = await this.readRequests(thread, due[0]!.startedAt);
-          requests = read?.requests ?? [];
-          price = read?.price ?? null;
-        }
-        // The transcript's clock may be a little off bb's, but a request is never the turn's before the one before ended, or after the next began.
         const index = log.turns.indexOf(turn);
         const from = Math.max(turn.startedAt - TURN_SLACK_MS, log.turns[index - 1]?.endedAt ?? -Infinity);
         const to = Math.min(turn.endedAt! + TURN_SLACK_MS, log.turns[index + 1]?.startedAt ?? Infinity);
         const own = requestsIn(requests, from, to, 0);
-        // `/compact` writes no usage to the transcript: a turn with no request found is left at its estimate.
         const usd = price === null || own.length === 0 ? null : requestsUsd(own, price.price);
         if (turn.inputs.every((i) => i.kind === "report")) {
-          record = { ...record, keeperReports: { turns: record.keeperReports.turns + 1, requests: record.keeperReports.requests + own.length } };
+          this.patch(threadId, (r) => ({ ...r, keeperReports: { turns: r.keeperReports.turns + 1, requests: r.keeperReports.requests + own.length } }));
         }
-        if (usd !== null) this.charge(thread.id, turn, usd, lookup);
-        // The charge may have gone to this thread's own stretch.
-        record = { ...record, stretch: this.deps.store.get(thread.id).stretch };
+        this.charge(threadId, turn, usd, lookup);
       }
-      record = { ...record, accountedSeq: turn.startSeq };
+      this.patch(threadId, (r) => ({ ...r, accountedSeq: turn.startSeq }));
     }
-    this.deps.store.put(thread.id, record, now);
   }
 
-  private async readRequests(thread: ListedThread, since: number): Promise<{ requests: TranscriptRequest[]; price: ReturnType<PriceBook["lookup"]> } | null> {
-    const sessionId = await this.deps.sessionId(thread.id);
-    if (sessionId === null || thread.environmentHostId === null) return null;
-    const read = await this.deps.transcript(thread.environmentHostId, sessionId, since - TURN_SLACK_MS);
-    return { requests: read.requests, price: this.deps.prices().lookup(read.facts.model) };
-  }
-
-  /** Charges a Cache Keeper turn in `threadId` to the messages behind it, and to the stretches they were sent in. */
-  private charge(threadId: string, turn: Turn, usd: number, lookup: (id: string) => TurnLog | null): void {
+  /**
+   * Charges a Cache Keeper turn in `threadId` to the messages behind it, and to
+   * the stretches they were sent in. A turn whose cost is unknown charges each
+   * message sent to this thread its forecast, which already holds its share of
+   * the turns it forces above; it never counts as nothing.
+   */
+  private charge(threadId: string, turn: Turn, usd: number | null, lookup: (id: string) => TurnLog | null): void {
     const sends = originsOf(threadId, turn, lookup)
       .map((ref) => this.deps.store.findSend(ref.threadId, ref.hash, ref.at))
       .filter((s) => s !== null);
     if (sends.length === 0) return;
-    const share = usd / sends.length;
-    const now = this.deps.now();
     for (const send of sends) {
-      this.deps.store.chargeSend(send.id, threadId, share, send.threadId === threadId);
-      this.deps.store.update(send.threadId, now, (r) =>
-        r.stretch !== null && r.stretch.startedAt === send.stretchStartedAt ? { ...r, stretch: { ...r.stretch, chargedUsd: r.stretch.chargedUsd + share } } : r,
-      );
+      const own = send.threadId === threadId;
+      let share: number;
+      if (usd !== null) share = usd / sends.length;
+      else if (own && !send.measured) share = send.forecastUsd;
+      else continue;
+      this.deps.store.chargeSend(send.id, threadId, share, own, usd === null);
+      this.chargeStretch(send.threadId, send.stretchStartedAt, share);
     }
   }
 
+  private chargeStretch(threadId: string, stretchStartedAt: number, usd: number): void {
+    if (!this.stored(threadId)) return;
+    this.patch(threadId, (r) =>
+      r.stretch !== null && r.stretch.startedAt === stretchStartedAt ? { ...r, stretch: { ...r.stretch, chargedUsd: r.stretch.chargedUsd + usd } } : r,
+    );
+  }
+
   /** The first message back after a compaction: what the cold rewrite it spared would have cost. */
-  private recordReturn(threadId: string, record: ThreadRecord, now: number): void {
+  private recordReturn(threadId: string, record: ThreadRecord, at: number): void {
     const c = record.compaction;
     if (c === null || c.w === null || c.lifetimeMs === null || c.contextAfter === null) return;
     // Back before the cache would have gone cold, the compaction spared nothing.
-    if (now < c.at + c.lifetimeMs) return;
-    this.deps.store.addHistory(threadId, now, "return", { usd: null, avoidedUsd: Math.max(0, c.w * (c.contextBefore - c.contextAfter)) });
+    if (at < c.at + c.lifetimeMs) return;
+    this.deps.store.addHistory(threadId, at, "return", { usd: null, avoidedUsd: Math.max(0, c.w * (c.contextBefore - c.contextAfter)) });
   }
 
   /**
@@ -631,34 +864,35 @@ export class Engine {
    * whose every line reports a Cache Keeper turn that brought nothing new.
    * Such rows are not waited on even when the delete fails.
    */
-  private async deleteNothingNewReports(claude: ListedThread[], logs: Map<string, TurnLog>): Promise<void> {
-    for (const m of claude) {
-      if (!m.hasPendingInteraction) continue;
-      const rows = (this.queuedRows.get(m.id) ?? []).map((row) => ({ row, lines: reportLines(classifyQueued(row, this.isChildOf(m.id))) }));
-      // Each queued row reports the child turns since the row before it, so the rows count as delivered here.
-      const queuedLines = rows.flatMap(({ row, lines }) => lines.map((l) => ({ childId: l.childId, at: row.createdAt })));
-      const withQueue = { ...logs.get(m.id)!, delivered: [...logs.get(m.id)!.delivered, ...queuedLines] };
-      const lookup = (id: string) => (id === m.id ? withQueue : (logs.get(id) ?? null));
-      const nothingNew = rows.filter(
-        ({ row, lines }) => lines.length > 0 && lines.every((line) => lineHolds(lookup(m.id), lookup(line.childId), line, row.createdAt, (t) => broughtNothingNew(line.childId, t, lookup))),
-      );
-      if (nothingNew.length === 0) continue;
-      this.nothingNewRows.set(m.id, new Set(nothingNew.map(({ row }) => row.id)));
-      this.queuedCounts.set(m.id, Math.max(0, (this.queuedCounts.get(m.id) ?? 0) - nothingNew.length));
-      const log = logs.get(m.id)!;
-      const delivered = [...log.delivered];
-      for (const { row, lines } of nothingNew) {
-        try {
-          await this.deps.deleteQueued(m.id, row.id);
-        } catch (error) {
-          this.deps.log.warn(`could not delete a report row that brought nothing new from ${m.id}: ${error instanceof Error ? error.message : String(error)}`);
-        }
-        for (const line of lines) delivered.push({ childId: line.childId, at: row.createdAt });
+  private async deleteNothingNewReports(threadId: string): Promise<void> {
+    const t = this.index.get(threadId);
+    const log = this.turnLog(threadId);
+    if (t === undefined || t.pending !== true || log === null) return;
+    const isChild = (id: string) => this.index.get(id)?.parentId === threadId;
+    const rows = (this.queued.get(threadId) ?? []).map((row) => ({ row, lines: reportLines(classifyQueued(row, isChild)) }));
+    // Each queued row reports the child turns since the row before it, so the rows count as delivered here.
+    const queuedLines = rows.flatMap(({ row, lines }) => lines.map((l) => ({ childId: l.childId, at: row.createdAt })));
+    const withQueue = { ...log, delivered: [...log.delivered, ...queuedLines] };
+    const lookup = (id: string) => (id === threadId ? withQueue : this.turnLog(id));
+    const nothingNew = rows.filter(
+      ({ row, lines }) => lines.length > 0 && lines.every((line) => lineHolds(lookup(threadId), lookup(line.childId), line, row.createdAt, (turn) => broughtNothingNew(line.childId, turn, lookup))),
+    );
+    if (nothingNew.length === 0) return;
+    this.nothingNewRows.set(threadId, new Set(nothingNew.map(({ row }) => row.id)));
+    const delivered = [...log.delivered];
+    for (const { row, lines } of nothingNew) {
+      try {
+        this.counters.bbCalls++;
+        await this.deps.deleteQueued(threadId, row.id);
+        this.deps.store.addHistory(threadId, this.now(), "held", { usd: null, what: "report-row-deleted" });
+        this.deps.log.info(`${threadId}: deleted a queued report row that brought nothing new`);
+      } catch (error) {
+        this.deps.log.warn(`could not delete a report row that brought nothing new from ${threadId}: ${message(error)}`);
       }
-      const next = { ...log, delivered };
-      logs.set(m.id, next);
-      this.deps.store.putTurnLog(m.id, next);
+      for (const line of lines) delivered.push({ childId: line.childId, at: row.createdAt });
     }
+    this.queued.set(threadId, (this.queued.get(threadId) ?? []).filter((r) => !nothingNew.some((n) => n.row.id === r.id)));
+    this.putTurnLog(threadId, { ...log, delivered });
   }
 
   /**
@@ -666,21 +900,24 @@ export class Engine {
    * ended, and each brought nothing new, puts the thread's read state back to
    * what it was before, unless you changed it since.
    */
-  private async restoreRead(thread: ListedThread, lookup: (id: string) => TurnLog | null): Promise<void> {
-    const record = this.deps.store.get(thread.id);
-    const before = record.readBefore;
-    if (before === null) return;
-    const now = this.deps.now();
-    const turns = lookup(thread.id)!.turns.filter((t) => t.startedAt >= before.since - TURN_SLACK_MS);
-    const clear = () => this.deps.store.update(thread.id, now, (r) => ({ ...r, readBefore: null }));
+  private async restoreRead(threadId: string): Promise<void> {
+    if (!this.stored(threadId)) return;
+    const before = this.record(threadId).readBefore;
+    const log = this.turnLog(threadId);
+    if (before === null || log === null) return;
+    const now = this.now();
+    const turns = log.turns.filter((t) => t.startedAt >= before.since - TURN_SLACK_MS);
+    const clear = () => this.patch(threadId, (r) => ({ ...r, readBefore: null }));
     if (turns.length === 0) {
       if (now - before.since >= IN_FLIGHT_MS) clear();
       return;
     }
-    if (thread.status !== "idle" || turns.some((t) => t.endedAt === null)) return;
+    const t = this.index.get(threadId);
+    if (t === undefined || t.status !== "idle" || turns.some((turn) => turn.endedAt === null)) return;
     clear();
-    if (!turns.every((t) => broughtNothingNew(thread.id, t, lookup))) return;
-    await this.putBack(thread.id, before);
+    const lookup = (id: string) => this.turnLog(id);
+    if (!turns.every((turn) => broughtNothingNew(threadId, turn, lookup))) return;
+    await this.putBack(threadId, before);
   }
 
   /**
@@ -689,83 +926,119 @@ export class Engine {
    * turn ends, which would otherwise undo your marking it read.
    */
   private async putBack(threadId: string, before: ReadBefore): Promise<void> {
-    const state = await this.deps.readState(threadId);
+    this.counters.bbCalls++;
+    const raw = await this.deps.getThread(threadId).catch(() => null);
+    const read = raw === null ? null : readThread(raw, false);
+    if (read === null) return;
+    const state = { lastReadAt: read.patch.lastReadAt ?? null, latestAttentionAt: read.patch.latestAttentionAt ?? null };
+    let action: "read" | "unread" | null = null;
     if (state.lastReadAt !== before.lastReadAt) {
-      if (state.lastReadAt !== null && !isRead(state)) await this.deps.markRead(threadId);
-      return;
-    }
-    if (before.read && !isRead(state)) await this.deps.markRead(threadId);
-    else if (!before.read && isRead(state)) await this.deps.markUnread(threadId);
+      if (state.lastReadAt !== null && !isRead(state)) action = "read";
+    } else if (before.read && !isRead(state)) action = "read";
+    else if (!before.read && isRead(state)) action = "unread";
+    if (action === null) return;
+    this.counters.bbCalls++;
+    if (action === "read") await this.deps.markRead(threadId);
+    else await this.deps.markUnread(threadId);
+    this.deps.store.addHistory(threadId, this.now(), "held", { usd: null, what: "read-state-restored" });
+    this.deps.log.info(`${threadId}: put its read state back to ${action}`);
   }
 
-  /** After a restart, bb's status is the truth: a thread bb lists as idle, with work for Cache Keeper, is in a stretch. */
-  private syncStretch(thread: ListedThread, live: ListedThread[], now: number): ThreadRecord {
-    const stored = this.deps.store.has(thread.id);
-    let record = this.deps.store.get(thread.id);
-    if (thread.status === "idle" && record.stretch === null && (stored || this.mayAct(thread, live))) {
-      record = { ...record, stretch: newIdleStretch(now) };
-    }
-    if (record.inFlight !== null && now - record.inFlight.at >= IN_FLIGHT_MS) record = { ...record, inFlight: null };
-    this.deps.store.put(thread.id, record, now);
-    return record;
+  /** A thread bb lists as idle, with something for Cache Keeper, is in an idle stretch. */
+  private syncStretch(threadId: string): void {
+    const t = this.index.get(threadId);
+    const now = this.now();
+    const r = this.record(threadId);
+    const startStretch = t?.status === "idle" && r.stretch === null;
+    const giveUp = r.inFlight !== null && now - r.inFlight.at >= IN_FLIGHT_MS;
+    if (giveUp) this.giveUp(threadId);
+    if (startStretch || !this.stored(threadId)) this.patch(threadId, (rec) => (rec.stretch !== null || t?.status !== "idle" ? rec : { ...rec, stretch: newIdleStretch(now) }));
   }
 
-  private async observe(thread: ListedThread, members: ListedThread[], live: ListedThread[], record: ThreadRecord, logs: Map<string, TurnLog>, now: number): Promise<Observed> {
-    const items: WaitItem[] = [...taskItems(record)];
-    const children = waitingChildren(thread.id, live.map(this.toWait));
-    for (const child of children) items.push({ kind: "child", id: child.id, title: child.title, startedAt: child.createdAt });
+  /** A send whose turn never came: charged at its forecast, so it still counts towards the cost stop. */
+  private giveUp(threadId: string): void {
+    const inFlight = this.record(threadId).inFlight;
+    if (inFlight === null) return;
+    const send = this.deps.store.getSend(inFlight.sendId);
+    this.patch(threadId, (r) => ({ ...r, inFlight: null }));
+    if (send === null || send.measured || send.kind === "compact") return;
+    this.deps.store.chargeSend(send.id, threadId, send.forecastUsd, true, true);
+    this.chargeStretch(threadId, send.stretchStartedAt, send.forecastUsd);
+  }
+
+  // ---- what the engine works out from memory ----
+
+  /** Whether a thread waits: its own background work or queue, or a direct child working or itself waiting. */
+  private waiting(threadId: string, memo: Map<string, boolean>): boolean {
+    const cached = memo.get(threadId);
+    if (cached !== undefined) return cached;
+    memo.set(threadId, false);
+    const t = this.index.get(threadId);
+    let result = false;
+    if (t !== undefined) {
+      result = this.ownWork(t) || this.index.childrenOf(threadId).some((c) => {
+        const child = this.index.get(c)!;
+        return working(child) || this.waiting(c, memo);
+      });
+    }
+    memo.set(threadId, result);
+    return result;
+  }
+
+  private ownWork(t: Known): boolean {
+    if (t.commands > 0 || t.agents > 0) return true;
+    if (this.stored(t.id) && Object.keys(this.record(t.id).tasks).length > 0) return true;
+    const rows = this.queued.get(t.id);
+    if (rows === undefined) return t.queuedWork === "waiting";
+    const nothingNew = this.nothingNewRows.get(t.id);
+    return rows.some((r) => !r.failed && !(nothingNew?.has(r.id) ?? false));
+  }
+
+  private observe(threadId: string, memo: Map<string, boolean>): Observed {
+    const thread = this.index.get(threadId)!;
+    const record = this.record(threadId);
+    const now = this.now();
+    const items: WaitItem[] = taskItems(record);
+    const children = this.index.childrenOf(threadId);
+    for (const c of children) {
+      const child = this.index.get(c)!;
+      if (working(child) || this.waiting(c, memo)) items.push({ kind: "child", id: c, title: child.title, startedAt: child.createdAt });
+    }
     // A report bb queued behind a question has arrived; it waits in the queue, not on the way.
-    const queuedReports = new Set(
-      (this.queuedRows.get(thread.id) ?? []).flatMap((r) => reportLines(classifyQueued(r, this.isChildOf(thread.id))).map((l) => l.childId)),
-    );
-    const pendingReports = members
-      .filter((c) => c.parentThreadId === thread.id && !queuedReports.has(c.id) && reportPending(logs.get(thread.id) ?? null, c.id, logs.get(c.id) ?? null, now))
-      .map((c) => c.id);
+    const isChild = (id: string) => this.index.get(id)?.parentId === threadId;
+    const rows = this.queued.get(threadId) ?? [];
+    const queuedReports = new Set(rows.flatMap((r) => reportLines(classifyQueued(r, isChild)).map((l) => l.childId)));
+    const log = this.turnLog(threadId);
+    const pendingReports = children.filter((c) => !queuedReports.has(c) && reportPending(log, c, this.turnLog(c), now));
     for (const id of pendingReports) {
-      if (children.some((c) => c.id === id)) continue;
-      const c = this.threads.get(id)!;
-      items.push({ kind: "child", id, title: c.title ?? c.titleFallback ?? id, startedAt: c.createdAt });
+      if (items.some((i) => i.kind === "child" && i.id === id)) continue;
+      const c = this.index.get(id)!;
+      items.push({ kind: "child", id, title: c.title, startedAt: c.createdAt });
     }
-    const nothingNew = this.nothingNewRows.get(thread.id);
-    for (const q of this.queuedRows.get(thread.id) ?? []) {
+    const nothingNew = this.nothingNewRows.get(threadId);
+    for (const q of rows) {
       if (q.failed || nothingNew?.has(q.id)) continue;
-      items.push(q.sendAt !== null ? { kind: "scheduled", dueAt: q.sendAt, createdAt: q.createdAt } : { kind: "queued", createdAt: q.createdAt });
+      items.push(q.sendAt !== null ? { kind: "scheduled", dueAt: this.deps.clock.fromWall(q.sendAt), createdAt: q.createdAt } : { kind: "queued", createdAt: q.createdAt });
     }
-    const waiting = this.waitsByCounts(thread, live) || items.length > 0;
-
-    const sessionId = await this.deps.sessionId(thread.id);
-    let facts: TranscriptFacts | null = null;
-    let cwdSlug: string | null = null;
-    if (sessionId !== null && thread.environmentHostId !== null) {
-      const read = await this.deps.transcript(thread.environmentHostId, sessionId, null);
-      if (read.found) {
-        facts = read.facts;
-        cwdSlug = read.cwdSlug;
-      }
-    }
-    // bb learns the window from the thread's turns, so it is asked again until it answers, and again when the model changes.
-    const windowKey = `${thread.id}\0${facts?.model ?? ""}`;
-    let window = this.windows.get(windowKey);
-    if (window === undefined) {
-      const known = await this.deps.contextWindow(thread.id).catch(() => null);
-      if (known !== null) this.windows.set(windowKey, known);
-      window = known ?? DEFAULT_WINDOW;
-    }
+    const waiting = this.waiting(threadId, memo) || items.length > 0;
+    const facts = record.transcript?.cursor?.fold.facts ?? null;
+    const window = record.window !== null && record.window.model === (facts?.model ?? null) ? record.window.tokens : (record.window?.tokens ?? null);
     const price = this.deps.prices().lookup(facts?.model ?? null);
     const rates = price !== null && facts?.lifetime != null ? ratesOf(price.price, facts.lifetime) : null;
+    const warmRates = price !== null && facts?.lifetime != null ? warmRatesOf(price.price, facts.lifetime) : null;
     const k = facts === null ? DEFAULT_CALLS_PER_MESSAGE : callsPerMessage(facts, DEFAULT_CALLS_PER_MESSAGE, record.keeperReports);
     const p = facts?.lastCompaction?.postTokens ?? DEFAULT_POST_COMPACTION;
-    const lines = rates === null ? Array.from({ length: 10 }, () => null) : linesFor({ rates, k, p, window });
+    const lines = rates === null || window === null ? Array.from({ length: 10 }, () => null) : linesFor({ rates, k, p, window });
     return {
       thread,
+      record,
       waiting,
       items,
       pendingReports,
       facts,
-      cwdSlug,
-      sessionId,
       window,
       rates,
+      warmRates,
       priceOrigin: price?.origin ?? null,
       lines,
       callsPerMessage: k,
@@ -775,231 +1048,602 @@ export class Engine {
     };
   }
 
-  /** Brings the thread's background tasks and their clocks up to date from bb's events and the host. */
-  private async watchTasks(thread: ListedThread, observed: Observed, record: ThreadRecord): Promise<ThreadRecord> {
-    const tasks: Record<string, TaskRecord> = { ...record.tasks };
-    let afterSeq = record.eventsAfterSeq;
-    for (let page = 0; page < 100; page++) {
-      const events = await this.deps.taskEvents(thread.id, afterSeq);
-      for (const e of events) {
-        afterSeq = Math.max(afterSeq, e.seq);
-        const item = e.item;
-        // bb calls a task's id its `familyId`.
-        if (item?.type !== "backgroundTask" || item.familyId === undefined) continue;
-        const kind = item.taskType === "local_bash" ? "command" : item.taskType === "local_agent" ? "subagent" : null;
-        if (kind === null) continue;
-        const running = item.taskStatus === "running" || item.taskStatus === "pending";
-        if (e.type === "item/backgroundTask/completed" || !running) {
-          delete tasks[item.familyId];
-        } else if (tasks[item.familyId] === undefined) {
-          const clock: TaskClock = { startedAt: e.createdAt, lastActivityAt: e.createdAt, lastCheckInAt: null, stalledStreak: 0 };
-          tasks[item.familyId] = { kind, description: item.description ?? "", clock };
-        } else if (e.type === "item/backgroundTask/progress" && kind === "subagent") {
-          // A command's progress is its output file, read below; bb's events for it say nothing of its output.
-          const task = tasks[item.familyId]!;
-          tasks[item.familyId] = { ...task, clock: afterActivity(task.clock, e.createdAt) };
-        }
-      }
-      if (events.length < EVENTS_PAGE) break;
-    }
-    // A command's output file is its progress.
-    const commands = Object.entries(tasks).filter(([, t]) => t.kind === "command").map(([id]) => id);
-    if (commands.length > 0 && observed.sessionId !== null && observed.cwdSlug !== null && thread.environmentHostId !== null) {
-      const read = await this.deps.tasks(thread.environmentHostId, { sessionId: observed.sessionId, cwdSlug: observed.cwdSlug, commands, subagents: [] });
-      for (const c of read.commands) {
-        const task = tasks[c.id];
-        if (task !== undefined && c.changedAt !== null) tasks[c.id] = { ...task, clock: afterActivity(task.clock, c.changedAt) };
-      }
-    }
-    return { ...record, tasks, eventsAfterSeq: afterSeq };
-  }
-
-  private keeperInput(observed: Observed, record: ThreadRecord, now: number, settings: KeeperSettings) {
-    const setting = record.setting ?? this.lastSetting();
+  private keeperInput(o: Observed, now: number, settings: KeeperSettings) {
+    const setting = o.record.setting ?? this.lastSetting();
     return {
       now,
-      claudeCode: observed.thread.providerId === "claude-code",
-      status: observed.thread.status,
-      hasPendingInteraction: observed.thread.hasPendingInteraction,
-      waiting: observed.waiting,
-      tasks: Object.entries(record.tasks).map(([id, t]) => ({ kind: t.kind, id, clock: t.clock })),
-      deadline: observed.deadline,
-      context: observed.facts?.context ?? null,
-      compactOn: record.compactOn,
-      line: observed.lines[setting - 1] ?? null,
-      stretch: record.stretch,
+      claudeCode: o.thread.providerId === "claude-code",
+      status: o.thread.status,
+      hasPendingInteraction: o.thread.pending !== false,
+      waiting: o.waiting,
+      tasks: Object.entries(o.record.tasks).map(([id, t]) => ({ kind: t.kind, id, clock: t.clock })),
+      deadline: o.deadline,
+      context: o.facts?.context ?? null,
+      compactOn: o.record.compactOn,
+      line: o.lines[setting - 1] ?? null,
+      stretch: o.record.stretch,
       checkIns: settings.checkIns,
       waitMs: settings.waitMs,
     };
   }
 
+  /** The tree top whose switch covers `threadId`, or null for a thread that is not Claude Code with none above it. */
+  private treeTopIdOf(threadId: string): string | null {
+    return treeTopOf(threadId, (id) => this.index.liveParentOf(id), (id) => this.index.isClaude(id));
+  }
+
+  /** Whether `threadId`'s tree is kept warm: its tree top's switch and the setting. */
+  private isKeptWarm(threadId: string, settings: KeeperSettings): boolean {
+    const top = this.treeTopIdOf(threadId);
+    return keptWarm(settings.keepWarm, top === null ? null : this.record(top).keepWarm);
+  }
+
   /** What the next keep-warm to a thread is expected to cost, with the turns it forces above. */
   private forecast(threadId: string, observed: Map<string, Observed>): number {
-    const record = this.deps.store.get(threadId);
+    const record = this.record(threadId);
     const last = record.lastSendId === null ? null : this.deps.store.getSend(record.lastSendId);
     const chain: Observed[] = [];
-    for (let id: string | null = threadId, d = 0; id !== null && d < 64; id = this.threads.get(id)?.parentThreadId ?? null, d++) {
+    for (let id: string | null = threadId, d = 0; id !== null && d < 64; id = this.index.liveParentOf(id), d++) {
       const o = observed.get(id);
       if (o !== undefined) chain.push(o);
     }
-    const estimate = estimateKeepWarmUsd(chain.map((o) => ({ rates: o.rates, context: o.facts?.context ?? null })));
+    const estimate = estimateKeepWarmUsd(chain.map((o) => ({ rates: o.warmRates, context: o.facts?.context ?? null })));
     // The report turns a keep-warm forced above are charged after its own turn, so a measured cost may not hold them yet.
     return last !== null && last.measured ? Math.max(last.usd, estimate) : estimate;
   }
 
-  /**
-   * A thread as the tree planner reads it. A thread running a turn a Cache
-   * Keeper message or a report started counts as in flight whether or not
-   * this pass observed it: the cycle it belongs to has not landed yet.
-   */
-  private treeNode(m: ListedThread, observed: Map<string, Observed>, settings: KeeperSettings, log: TurnLog | undefined): TreeNode {
-    const o = observed.get(m.id);
-    const parentId = m.parentThreadId !== null && this.threads.has(m.parentThreadId) ? m.parentThreadId : null;
+  /** Why keep-warms are held for a waiting thread in a tree kept warm, or null. */
+  private warmHold(o: Observed, forecast: number): HoldReason | null {
+    const stretch = o.record.stretch;
+    if (o.thread.missing.length > 0) return "missing-field";
+    if (o.thread.pending !== false) return o.thread.pending === null ? "missing-field" : "pending-interaction";
+    if (this.hostDown.has(o.thread.id)) return "host-offline";
+    if (o.record.transcript?.unreadable != null) return "transcript-unreadable";
+    if (stretch?.warmSkipped) return "skipped";
+    if (o.warmRates === null) return "no-price";
+    if (pastCostStop(stretch?.chargedUsd ?? 0, forecast, o.warmRates, o.facts?.context ?? null)) return "cost-stop";
+    return null;
+  }
+
+  private treeNode(id: string, observed: Map<string, Observed>, settings: KeeperSettings): TreeNode {
+    const o = observed.get(id);
+    const parentId = this.index.liveParentOf(id);
+    const log = this.turnLog(id);
     const running = log?.turns.at(-1);
+    const now = this.now();
     // bb records a report's request before the turn that takes it starts: from then on it is part of the cycle too.
     const cycleTurn =
       (running !== undefined && running.endedAt === null && running.inputs.some((i) => i.kind !== "other")) ||
-      Object.values(log?.requests ?? {}).some((r) => this.deps.now() - r.at < REPORT_WAIT_MS && r.inputs.some((i) => i.kind !== "other"));
-    const record = this.deps.store.get(m.id);
-    const inFlight = cycleTurn || (this.deps.store.has(m.id) && record.inFlight !== null);
+      Object.values(log?.requests ?? {}).some((r) => now - r.at < REPORT_WAIT_MS && r.inputs.some((i) => i.kind !== "other"));
+    const inFlight = cycleTurn || (this.stored(id) && this.record(id).inFlight !== null);
     if (o === undefined) {
-      return { id: m.id, parentId, keepable: false, deadline: null, lifetimeMs: null, blocks: false, selfOff: false, inFlight, reportPending: false };
+      return { id, parentId, keepable: false, deadline: null, lifetimeMs: null, blocks: false, selfOff: false, inFlight, reportPending: false };
     }
-    const stretch = record.stretch;
+    const stretch = o.record.stretch;
     const context = o.facts?.context ?? null;
-    const forecast = this.forecast(m.id, observed);
+    const forecast = this.forecast(id, observed);
     const charged = stretch?.chargedUsd ?? 0;
+    const hold = this.warmHold(o, forecast);
     return {
-      id: m.id,
+      id,
       parentId,
-      keepable: this.isKeptWarm(m.id, settings) && m.status === "idle" && !m.hasPendingInteraction && o.waiting && stretch !== null,
+      keepable: this.isKeptWarm(id, settings) && o.thread.status === "idle" && o.thread.pending === false && o.waiting && stretch !== null && o.thread.missing.length === 0,
       deadline: o.deadline,
       lifetimeMs: o.lifetimeMs,
-      blocks: stretch !== null && (stretch.warmSkipped || pastCostStop(charged, forecast, o.rates, context)),
-      selfOff: scheduledBeyondStop({ items: o.items, chargedUsd: charged, forecastUsd: forecast, rates: o.rates, context, deadline: o.deadline, lifetimeMs: o.lifetimeMs }),
+      blocks: stretch !== null && hold !== null && hold !== "pending-interaction" && hold !== "host-offline" && hold !== "missing-field",
+      selfOff:
+        hold === "host-offline" ||
+        scheduledBeyondStop({ items: o.items, chargedUsd: charged, forecastUsd: forecast, rates: o.warmRates, context, deadline: o.deadline, lifetimeMs: o.lifetimeMs }),
       inFlight,
       reportPending: o.pendingReports.length > 0,
     };
   }
 
-  private view(observed: Observed, record: ThreadRecord, decided: KeeperPlan, tree: TreePlan, settings: KeeperSettings): ThreadView {
-    const { thread, facts } = observed;
+  private view(o: Observed, decided: KeeperPlan, tree: TreePlan, settings: KeeperSettings): ThreadView {
+    const { thread, facts, record } = o;
     const setting = record.setting ?? this.lastSetting();
+    const decision = record.decision === null ? null : { at: record.decision.at, what: record.decision.what, reason: record.decision.reason === null ? null : reasonText(record.decision.reason) };
     return {
       threadId: thread.id,
-      title: thread.title ?? thread.titleFallback ?? thread.id,
+      title: thread.title,
       eligible: thread.providerId === "claude-code",
       status: thread.status,
-      hasPendingInteraction: thread.hasPendingInteraction,
+      hasPendingInteraction: thread.pending !== false,
       compactOn: record.compactOn,
       setting,
-      lines: observed.lines,
-      line: observed.lines[setting - 1] ?? null,
+      lines: o.lines,
+      line: o.lines[setting - 1] ?? null,
       context: facts?.context ?? null,
-      window: observed.window,
+      window: o.window ?? 0,
+      windowKnown: o.window !== null,
       model: facts?.model ?? null,
       lifetime: facts?.lifetime ?? null,
-      callsPerMessage: observed.callsPerMessage,
+      callsPerMessage: o.callsPerMessage,
       callsMeasured: (facts?.userMessages ?? 0) > 0,
-      postCompaction: observed.postCompaction,
+      postCompaction: o.postCompaction,
       postMeasured: facts?.lastCompaction != null,
-      priceOrigin: observed.priceOrigin,
-      rates: observed.rates,
-      deadline: observed.deadline,
+      priceOrigin: o.priceOrigin,
+      rates: o.rates,
+      deadline: o.deadline,
       compactionDue: decided.compactionDue,
       compactSkipped: record.stretch?.compactSkipped ?? false,
       compactedAt: record.stretch?.compactedAt ?? null,
-      canCompactNow: thread.status === "idle" && !thread.hasPendingInteraction && !observed.waiting && facts !== null,
-      waiting: observed.waiting,
+      canCompactNow: thread.status === "idle" && thread.pending === false && !o.waiting && facts !== null,
+      waiting: o.waiting,
       keptWarm: this.isKeptWarm(thread.id, settings),
       warmSetting: settings.keepWarm,
       treeTop: this.treeTopRef(thread.id),
       warmPlanned: tree.planned.has(thread.id),
       warmSkipped: record.stretch?.warmSkipped ?? false,
       nextWarmAt: tree.nextAt.get(thread.id) ?? null,
-      counts: withBbCounts(countItems(observed.items), thread),
+      warmNoPrice: o.waiting && o.warmRates === null && facts?.lifetime != null,
+      counts: withBbCounts(countItems(o.items), thread),
+      decision,
+      transcriptUnreadable: record.transcript?.unreadable ?? null,
     };
   }
 
-  // ---- sending ----
-
-  /**
-   * Sends keep-warms to `ids` at the same moment, as one page entry. Each asks
-   * the agent to look at any task of its own that has run 30 minutes; a task
-   * whose files cannot be read is asked about next time instead.
-   */
-  private async sendKeepWarms(ids: string[], observed: Map<string, Observed>, entryThreadId: string, historyId?: number): Promise<number> {
-    const now = this.deps.now();
-    const texts = new Map<string, { text: string; folded: CheckInTask[] }>();
-    for (const id of ids) {
-      const o = observed.get(id)!;
-      const record = this.deps.store.get(id);
-      const { checkIns, waitMs } = this.deps.settings();
-      const due = Object.entries(record.tasks)
-        .filter(([, t]) => checkIns && foldDue(t.clock, now, waitMs))
-        .map(([taskId]) => ({ id: taskId, reason: "routine" as const }));
-      const folded = due.length === 0 ? [] : await this.checkInTasks(o, record, due, now);
-      texts.set(id, { text: keepWarmText(o.items, folded), folded });
-    }
-    const folded = [...texts.values()].flatMap((t) => t.folded.map((f) => f.id));
-    const earlier = historyId === undefined ? null : this.deps.store.historyRow(historyId);
-    const entry =
-      earlier === null
-        ? this.deps.store.addHistory(ids.length === 1 ? ids[0]! : entryThreadId, now, "keep-warm", { usd: null, threads: ids, folded })
-        : earlier.id;
-    if (earlier !== null) {
-      this.deps.store.patchHistoryRecord(entry, { threads: [...(earlier.record.threads ?? []), ...ids], folded: [...(earlier.record.folded ?? []), ...folded] });
-      this.deps.store.retitleHistory(entry, entryThreadId);
-    }
-    for (const id of ids) {
-      const { text, folded: asked } = texts.get(id)!;
-      const sendId = await this.sendTracked(id, text, "keep-warm", entry);
-      if (sendId === null) continue;
-      this.deps.store.update(id, now, (r) => {
-        const tasks = { ...r.tasks };
-        for (const t of asked) if (tasks[t.id] !== undefined) tasks[t.id] = { ...tasks[t.id]!, clock: afterCheckIn(tasks[t.id]!.clock, "routine", now) };
-        return { ...r, tasks, lastSendId: sendId };
-      });
-    }
-    return entry;
+  /** The tree top covering `threadId`, with its title; the thread itself where none covers it. */
+  private treeTopRef(threadId: string): ThreadRef {
+    const top = this.treeTopIdOf(threadId) ?? threadId;
+    return { threadId: top, title: this.titleOf(top) };
   }
 
-  /** A check-in; past the cost stop the cache is cold, so its entry shows a cold write until its turn is charged. */
-  private async sendCheckIn(o: Observed, taskIds: string[], pastStop: boolean): Promise<boolean> {
-    const now = this.deps.now();
-    const record = this.deps.store.get(o.thread.id);
-    const tasks = await this.checkInTasks(o, record, taskIds.map((id) => ({ id, reason: "stalled" as const })), now);
-    if (tasks.length === 0) return false;
-    const context = o.facts?.context ?? null;
-    const historyId = this.deps.store.addHistory(o.thread.id, now, "check-in", {
-      usd: pastStop && o.rates !== null && context !== null ? costStopUsd(o.rates, context) : null,
-      coldWrite: pastStop && o.rates !== null && context !== null,
-      tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, reason: t.reason })),
+  // ---- planning a tree ----
+
+  /**
+   * Works out a tree from memory: each Claude Code thread's view, what is due
+   * now, and when the tree is next due. No bb or host call is made here.
+   */
+  private planOf(top: string): { observed: Map<string, Observed>; plans: Map<string, KeeperPlan>; tree: TreePlan; members: string[]; wake: number | null } {
+    const settings = this.deps.settings();
+    const now = this.now();
+    const members = this.index.treeOf(top);
+    const memo = new Map<string, boolean>();
+    const observed = new Map<string, Observed>();
+    const plans = new Map<string, KeeperPlan>();
+    const wakes: number[] = [];
+    for (const id of members) {
+      if (!this.watched(id)) {
+        this.views.delete(id);
+        continue;
+      }
+      if (this.record(id).inFlight !== null && now - this.record(id).inFlight!.at >= IN_FLIGHT_MS) this.giveUp(id);
+      // A thread bb lists as idle, with something for Cache Keeper, is in an idle stretch.
+      if (this.index.get(id)!.status === "idle" && this.record(id).stretch === null) this.patch(id, (r) => (r.stretch !== null ? r : { ...r, stretch: newIdleStretch(now) }));
+      const o = this.observe(id, memo);
+      observed.set(id, o);
+      const p = plan(this.keeperInput(o, now, settings));
+      plans.set(id, p);
+      if (p.wakeAt !== null) wakes.push(p.wakeAt);
+      // A compaction held back is still logged at its deadline.
+      if (o.record.compactOn && !o.waiting && o.deadline !== null && o.deadline > now && o.thread.status === "idle") wakes.push(o.deadline);
+      if (this.hostDown.has(id) || o.record.transcript?.unreadable != null) {
+        if (o.deadline !== null && o.deadline > now) wakes.push(o.deadline);
+      }
+    }
+    const nodes = members.map((id) => this.treeNode(id, observed, settings));
+    const tree = planTree(nodes, now);
+    for (const [id, o] of observed) this.views.set(id, this.view(o, plans.get(id)!, tree, settings));
+    if (tree.wakeAt !== null) wakes.push(tree.wakeAt);
+    // Keep-warms held in a tree kept warm are logged at their deadline.
+    for (const n of nodes) {
+      const o = observed.get(n.id);
+      if (o !== undefined && o.waiting && o.deadline !== null && o.deadline > now && this.isKeptWarm(n.id, settings)) wakes.push(o.deadline);
+    }
+    const staged = this.cycles.get(top);
+    if (staged !== undefined) for (const p of staged.pending) wakes.push(stagedFallback(staged, p));
+    // A report still on its way stops holding things once it is given up on.
+    for (const o of observed.values()) {
+      for (const c of o.pendingReports) {
+        const ended = this.turnLog(c)?.turns.at(-1)?.endedAt;
+        if (ended != null) wakes.push(ended + REPORT_WAIT_MS);
+      }
+    }
+    const future = wakes.filter((w) => w > now);
+    return { observed, plans, tree, members, wake: future.length === 0 ? null : Math.min(...future) };
+  }
+
+  /**
+   * Plans a tree and sets its timer; anything due now is acted on. Views
+   * that changed are published. Threads whose deadline came to matter
+   * without their transcript read are learnt.
+   */
+  replan(top: string): void {
+    if (!this.started || !this.index.isLive(top)) {
+      this.scheduler.set(`tree:${top}`, null);
+      return;
+    }
+    const before = new Map<string, string>();
+    for (const id of this.index.treeOf(top)) before.set(id, JSON.stringify(this.views.get(id) ?? null));
+    const { observed, plans, tree, wake } = this.planOf(top);
+    const now = this.now();
+    this.scheduler.set(`tree:${top}`, wake);
+    const changed = [...before].filter(([id, was]) => JSON.stringify(this.views.get(id) ?? null) !== was).map(([id]) => id);
+    if (changed.length > 0) this.deps.publish(changed);
+    for (const [id, o] of observed) {
+      if (o.record.transcript?.cursor == null && o.thread.status === "idle" && !this.chains.has(`learn:${id}`) && !this.learnt.has(id)) {
+        this.learnt.add(id);
+        void this.learn(id, "watched");
+      }
+    }
+    const due = [...plans.values()].some((p) => p.action !== null) || tree.due.length > 0 || this.cycles.has(top) || this.heldDue(observed, now);
+    if (due && !this.actQueued.has(top)) {
+      this.actQueued.add(top);
+      void this.act(top);
+    }
+    this.scheduleKeepAlive();
+  }
+
+  /** Trees with an act queued that has not started: a second is not queued behind it. */
+  private readonly actQueued = new Set<string>();
+
+  /** Threads learnt once for having come to matter, so a failing read is not retried on every plan. */
+  private readonly learnt = new Set<string>();
+
+  /** Whether a send held back falls due now, to be logged. */
+  private heldDue(observed: Map<string, Observed>, now: number): boolean {
+    for (const o of observed.values()) {
+      if (o.deadline !== null && now >= o.deadline && now < o.deadline + CACHE_MARGIN_MS && o.thread.status === "idle") return true;
+    }
+    return false;
+  }
+
+  private fire(keys: string[]): void {
+    for (const key of keys) {
+      if (key === "reconcile") {
+        void this.serial("reconcile", () => this.reconcile())
+          .catch((error) => this.deps.log.warn(`reconciliation check failed: ${message(error)}`))
+          .finally(() => this.scheduleReconcile());
+      } else if (key === "keepalive") {
+        void this.keepAlive();
+      } else if (key.startsWith("tree:")) {
+        this.replan(key.slice(5));
+      }
+    }
+  }
+
+  /** Reads a thread's task events, and its commands' output times on its machine. */
+  private async refreshTasks(threadId: string): Promise<void> {
+    await this.readEvents(threadId).catch(() => {});
+    const record = this.record(threadId);
+    const commands = Object.entries(record.tasks).filter(([, t]) => t.kind === "command").map(([id]) => id);
+    const session = record.transcript?.sessionId ?? null;
+    const slug = record.transcript?.cursor?.cwdSlug ?? null;
+    if (commands.length === 0 || session === null || slug === null) return;
+    const hostId = await this.hostOf(threadId);
+    if (hostId === null) return;
+    let read: TaskActivity;
+    try {
+      this.counters.hostCalls++;
+      read = await this.deps.tasks(hostId, { sessionId: session, cwdSlug: slug, commands, subagents: [] });
+    } catch (error) {
+      if (!this.hostDown.has(threadId)) this.hostDown.set(threadId, this.now());
+      this.warnOnce(`host\0${threadId}\0${hostId}`, `${threadId}: its machine ${hostId} did not answer; nothing is sent to it until it does: ${message(error)}`);
+      return;
+    }
+    this.hostDown.delete(threadId);
+    this.patch(threadId, (r) => {
+      const tasks = { ...r.tasks };
+      for (const c of read.commands) {
+        const task = tasks[c.id];
+        if (task !== undefined && c.changedAt !== null) tasks[c.id] = { ...task, clock: afterActivity(task.clock, c.changedAt) };
+      }
+      return { ...r, tasks };
     });
-    const sendId = await this.sendTracked(o.thread.id, checkInText(tasks), "check-in", historyId);
-    if (sendId === null) return false;
-    this.deps.store.update(o.thread.id, now, (r) => {
-      const next = { ...r.tasks };
-      for (const t of tasks) if (next[t.id] !== undefined) next[t.id] = { ...next[t.id]!, clock: afterCheckIn(next[t.id]!.clock, "stalled", now) };
-      return { ...r, tasks: next };
-    });
+  }
+
+  // ---- acting ----
+
+  /** Plans the tree again and sends whatever is due now, one tree at a time. */
+  private act(top: string): Promise<void> {
+    return this.serial(`act:${top}`, async () => {
+      this.actQueued.delete(top);
+      const { observed, plans, tree, members } = this.planOf(top);
+      const settings = this.deps.settings();
+      const now = this.now();
+      this.logHeld(observed, plans, now, settings);
+      const acted = new Set<string>();
+      const own: Promise<void>[] = [];
+      // Own rules first: a check-in or compaction refreshes the cache a keep-warm would.
+      for (const [id, p] of plans) {
+        const o = observed.get(id)!;
+        if (p.action === null || o.record.inFlight !== null || (this.retryAt.get(id) ?? 0) > now) continue;
+        acted.add(id);
+        if (p.action.kind === "compact") own.push(this.sendCompact(o, false).then(() => {}));
+        else {
+          const pastStop = this.treeNode(id, observed, settings).blocks && !(o.record.stretch?.warmSkipped ?? false);
+          own.push(this.checkInIfStalled(id, pastStop));
+        }
+      }
+      const sendable = (id: string) => !acted.has(id) && observed.has(id) && this.record(id).inFlight === null && (this.retryAt.get(id) ?? 0) <= now;
+
+      // A tree keep-warm goes to its deepest leaves first. A shallower leaf goes when the report from below reaches
+      // its level, so that its turn and the report's run side by side and bb batches both reports into the parent.
+      const cycle = this.cycles.get(top);
+      if (cycle !== undefined) {
+        const reached = (depth: number) => members.some((m) => this.index.depthOf(m) === depth && (this.turnLog(m)?.delivered.some((d) => d.at >= cycle.at) ?? false));
+        const ready = cycle.pending.filter((p) => reached(p.depth) || now >= stagedFallback(cycle, p));
+        const nodes = new Map(members.map((m) => [m, this.treeNode(m, observed, settings)]));
+        const go = ready.filter((p) => sendable(p.id) && nodes.get(p.id)?.keepable === true).map((p) => p.id);
+        if (go.length > 0) cycle.historyId = await this.sendKeepWarms(go, observed, top, cycle.historyId);
+        cycle.pending = cycle.pending.filter((p) => !ready.includes(p));
+        if (cycle.pending.length === 0) this.cycles.delete(top);
+      }
+      // No new tree keep-warm starts while the last one still has leaves to send.
+      const staging = this.cycles.has(top);
+      const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
+      const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: this.index.depthOf(d.id), deadline: observed.get(d.id)?.deadline ?? null }));
+      if (together.length > 0) {
+        const deepest = Math.max(...together.map((t) => t.depth));
+        const first = together.filter((t) => t.depth === deepest).map((t) => t.id);
+        const historyId = await this.sendKeepWarms(first, observed, top, null);
+        const pending = together.filter((t) => t.depth < deepest);
+        if (pending.length > 0) this.cycles.set(top, { at: now, deepest, pending, historyId });
+      }
+      await Promise.all(due.filter((d) => !d.tree).map((d) => this.sendKeepWarms([d.id], observed, d.id, null)));
+      // Check-ins wait on their machine; the keep-warms above did not wait for them.
+      await Promise.all(own);
+      const after = this.planOf(top);
+      this.scheduler.set(`tree:${top}`, after.wake);
+    }).catch((error) => this.deps.log.warn(`tree of ${top}: ${message(error)}`));
+  }
+
+  /**
+   * Reads the thread's task progress and output first: a task that printed
+   * since its last check is not stalled. Then checks in on those still due.
+   */
+  private async checkInIfStalled(threadId: string, pastStop: boolean): Promise<void> {
+    await this.serial(`learn:${threadId}`, () => this.refreshTasks(threadId));
+    const o = this.observe(threadId, new Map());
+    const p = plan(this.keeperInput(o, this.now(), this.deps.settings()));
+    if (p.action?.kind === "check-in") await this.sendCheckIn(o, p.action.tasks, pastStop);
+  }
+
+  /** Logs each send due now that a rule holds back, once per due time. */
+  private logHeld(observed: Map<string, Observed>, plans: Map<string, KeeperPlan>, now: number, settings: KeeperSettings): void {
+    for (const [id, o] of observed) {
+      if (o.deadline === null || now < o.deadline || now >= o.deadline + CACHE_MARGIN_MS || o.thread.status !== "idle") continue;
+      const dueKey = `${o.deadline}`;
+      if (o.waiting) {
+        if (!this.isKeptWarm(id, settings)) continue;
+        const hold = this.warmHold(o, this.forecast(id, observed));
+        if (hold !== null) this.decide(id, "keep-warm", `keep-warm:${dueKey}`, hold);
+        continue;
+      }
+      const r = o.record;
+      if (!r.compactOn || r.stretch === null || r.stretch.compactedAt !== null || plans.get(id)?.action !== null) continue;
+      const setting = r.setting ?? this.lastSetting();
+      const line = o.lines[setting - 1] ?? null;
+      let hold: HoldReason | null = null;
+      if (o.thread.missing.length > 0 || o.thread.pending === null) hold = "missing-field";
+      else if (o.thread.pending) hold = "pending-interaction";
+      else if (this.hostDown.has(id)) hold = "host-offline";
+      else if (r.transcript?.unreadable != null) hold = "transcript-unreadable";
+      else if (r.stretch.compactSkipped) hold = "skipped";
+      else if (o.window === null) hold = "window-unknown";
+      else if (o.rates === null) hold = "no-price";
+      else if (line === null) hold = "never";
+      if (hold !== null) this.decide(id, "compact", `compact:${dueKey}`, hold);
+    }
+  }
+
+  /** Reads the thread afresh from bb: its state and whether it waits on your answer. */
+  private async fresh(threadId: string): Promise<FreshThread | null> {
+    this.counters.bbCalls += 2;
+    const [raw, pending] = await Promise.all([this.deps.getThread(threadId), this.deps.pendingInteractions(threadId).catch(() => undefined)]);
+    if (raw === null) return null;
+    const read = readThread(raw, false);
+    if (read === null) return { status: "", archived: false, deleted: false, providerId: "", pending: null, missing: ["id"] };
+    const missing = [...read.missing];
+    const list = Array.isArray(pending) ? pending : Array.isArray((pending as { interactions?: unknown })?.interactions) ? (pending as { interactions: unknown[] }).interactions : null;
+    if (list === null) missing.push("pendingInteractions");
+    const t = this.index.get(threadId);
+    if (t !== undefined) this.index.apply({ ...read.patch, pending: list === null ? t.pending : list.length > 0 }, t.missing);
+    return {
+      status: read.patch.status ?? "",
+      archived: read.patch.archived ?? false,
+      deleted: read.patch.deleted ?? false,
+      providerId: read.patch.providerId ?? "",
+      pending: list === null ? null : list.length > 0,
+      missing: missing.filter((m) => m !== "pendingInteractions" || list === null),
+    };
+  }
+
+  /** Whether what is being sent is still switched on, read from the records after bb's reply. */
+  private stillOn(threadId: string, kind: SentKind, manual: boolean): HoldReason | null {
+    const settings = this.deps.settings();
+    const r = this.record(threadId);
+    if (kind === "compact") return manual || r.compactOn ? null : "switched-off";
+    if (kind === "check-in") return settings.checkIns ? null : "switched-off";
+    if (settings.keepWarm === "never") return "never";
+    if (!this.isKeptWarm(threadId, settings)) return "switched-off";
+    for (let id: string | null = threadId; id !== null; id = this.index.liveParentOf(id)) {
+      if (this.stored(id) && this.record(id).stretch?.warmSkipped) return "skipped";
+    }
+    return null;
+  }
+
+  /**
+   * The last steps before a send: reads the thread afresh, confirms it is
+   * still idle, not archived or deleted, a Claude Code thread with no pending
+   * interaction, and still switched on for what is sent; then claims the due
+   * time. Returns false with the reason logged and written to history.
+   */
+  private async prepare(planned: Planned, manual = false): Promise<boolean> {
+    const { id, kind, dueKey } = planned;
+    let fresh: FreshThread | null;
+    try {
+      fresh = await this.fresh(id);
+    } catch (error) {
+      this.deps.log.warn(`${id}: could not read it before sending ${kind}: ${message(error)}`);
+      if (manual) throw new NotReadyError(`could not read the thread from bb: ${message(error)}`);
+      return false;
+    }
+    const reason = confirmSend(fresh, this.stillOn(id, kind, manual));
+    if (reason !== null) {
+      this.deps.store.addHistory(id, this.now(), "held", { usd: null, what: kind, reason });
+      this.decide(id, kind, dueKey, reason);
+      if (reason === "deleted") this.onDeleted(id);
+      if (manual) throw new NotReadyError(`nothing sent: ${reasonText(reason)}`);
+      return false;
+    }
     return true;
   }
 
   /**
+   * Claims, records and sends one message. Returns the send's id once bb took
+   * it; null when the due time was already claimed, bb refused it because the
+   * thread became busy (not retried for that due time), or it failed.
+   */
+  private async deliver(planned: Planned, text: string, historyOf: () => number, forecastUsd: number, manual = false): Promise<number | null> {
+    const { id, kind, dueKey } = planned;
+    const now = this.now();
+    const stretch: IdleStretch = this.record(id).stretch ?? newIdleStretch(now);
+    const claim = this.deps.store.claimSend({ threadId: id, at: now, dueKey, kind, hash: textHash(text.trim()), stretchStartedAt: stretch.startedAt, forecastUsd });
+    if (claim === null) {
+      this.decide(id, kind, dueKey, "already-sent");
+      if (manual) throw new NotReadyError("Cache Keeper already sent this thread a message for this moment");
+      return null;
+    }
+    const wasRead = (() => {
+      const t = this.index.get(id);
+      return t === undefined ? null : isRead(t);
+    })();
+    this.patch(id, (r) => ({ ...r, stretch: r.stretch ?? stretch, inFlight: { kind, at: now, sendId: claim } }));
+    let result: "sent" | "busy";
+    try {
+      this.counters.bbCalls++;
+      result = await this.deps.send(id, text);
+    } catch (error) {
+      this.deps.store.dropSend(claim);
+      this.patch(id, (r) => ({ ...r, inFlight: null }));
+      this.retryAt.set(id, this.now() + RETRY_MS);
+      this.deps.log.warn(`could not send ${kind} to ${id}: ${message(error)}`);
+      if (manual) throw new NotReadyError(`bb did not take the message: ${message(error)}`);
+      return null;
+    }
+    if (result === "busy") {
+      // bb refused: the thread became busy. The claim stays, so this due time is not tried again, and nothing claims a send.
+      this.patch(id, (r) => ({ ...r, inFlight: null }));
+      this.decide(id, kind, dueKey, "busy");
+      if (manual) throw new NotReadyError("the thread is working; it can be compacted once its turn ends");
+      return null;
+    }
+    this.counters.sends++;
+    this.deps.store.confirmSend(claim, historyOf());
+    this.decide(id, kind, dueKey, null);
+    // bb marks a thread read when a message is sent to it; the read state from before is put back after the turn.
+    this.counters.bbCalls++;
+    const after = await this.deps.getThread(id).catch(() => null);
+    const read = after === null ? null : readThread(after, false);
+    if (read !== null) this.index.apply(read.patch, this.index.get(id)?.missing ?? []);
+    if (read !== null && wasRead !== null) {
+      const readBefore: ReadBefore = { read: wasRead, lastReadAt: read.patch.lastReadAt ?? null, since: now };
+      this.patch(id, (r) => (r.readBefore !== null ? r : { ...r, readBefore }));
+    }
+    this.deps.publish([id]);
+    return claim;
+  }
+
+  /**
+   * Sends keep-warms to `ids` at the same moment, as one page entry. Each asks
+   * the agent to look at any task of its own that has run 30 minutes; a task
+   * whose files cannot be read is asked about next time instead. Returns the
+   * entry, or null when none went.
+   */
+  private async sendKeepWarms(ids: string[], observed: Map<string, Observed>, entryThreadId: string, historyId: number | null): Promise<number | null> {
+    let entry = historyId;
+    const now = this.now();
+    await Promise.all(
+      ids.map(async (id) => {
+        const o = observed.get(id)!;
+        const planned: Planned = { id, kind: "keep-warm", dueKey: `keep-warm:${o.facts?.lastRequestAt ?? now}` };
+        if (!(await this.prepare(planned))) return;
+        const { checkIns, waitMs } = this.deps.settings();
+        const record = this.record(id);
+        const routine = Object.entries(record.tasks)
+          .filter(([, t]) => checkIns && foldDue(t.clock, now, waitMs))
+          .map(([taskId]) => ({ id: taskId, reason: "routine" as const }));
+        const folded = routine.length === 0 ? [] : await this.checkInTasks(o, routine, now);
+        const forecastUsd = this.forecast(id, observed);
+        const text = keepWarmText(o.items, folded);
+        const historyFor = () => {
+          if (entry === null) {
+            entry = this.deps.store.addHistory(ids.length === 1 ? id : entryThreadId, now, "keep-warm", { usd: null, threads: [], folded: [] });
+          }
+          const row = this.deps.store.historyRow(entry)!;
+          const threads = [...(row.record.threads ?? []), id];
+          const usd = (row.record.split === undefined ? (row.record.usd ?? 0) : (row.record.usd ?? 0)) + forecastUsd;
+          this.deps.store.patchHistoryRecord(entry, {
+            threads,
+            folded: [...(row.record.folded ?? []), ...folded.map((f) => f.id)],
+            ...(row.record.split === undefined ? { usd, estimated: true } : {}),
+          });
+          if (threads.length > 1) this.deps.store.retitleHistory(entry, entryThreadId);
+          return entry;
+        };
+        const sendId = await this.deliver(planned, text, historyFor, forecastUsd);
+        if (sendId === null) return;
+        this.patch(id, (r) => {
+          const tasks = { ...r.tasks };
+          for (const t of folded) if (tasks[t.id] !== undefined) tasks[t.id] = { ...tasks[t.id]!, clock: afterCheckIn(tasks[t.id]!.clock, "routine", now) };
+          return { ...r, tasks, lastSendId: sendId };
+        });
+      }),
+    );
+    return entry;
+  }
+
+  /** A check-in; past the cost stop the cache is cold, so its entry shows a cold write until its turn is charged. */
+  private async sendCheckIn(o: Observed, taskIds: string[], pastStop: boolean): Promise<void> {
+    const now = this.now();
+    const id = o.thread.id;
+    const clocks = taskIds.map((t) => `${t}@${stalledDueAt(this.record(id).tasks[t]?.clock ?? { startedAt: 0, lastActivityAt: 0, lastCheckInAt: null, stalledStreak: 0 }, this.deps.settings().waitMs)}`);
+    const planned: Planned = { id, kind: "check-in", dueKey: `check-in:${clocks.join(",")}` };
+    if (!(await this.prepare(planned))) return;
+    const tasks = await this.checkInTasks(o, taskIds.map((t) => ({ id: t, reason: "stalled" as const })), now);
+    if (tasks.length === 0) return;
+    const context = o.facts?.context ?? null;
+    const rates = o.warmRates ?? o.rates;
+    const cold = pastStop && rates !== null && context !== null;
+    const sendId = await this.deliver(
+      planned,
+      checkInText(tasks),
+      () =>
+        this.deps.store.addHistory(id, now, "check-in", {
+          usd: cold ? costStopUsd(rates!, context!) : null,
+          coldWrite: cold,
+          tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, reason: t.reason })),
+        }),
+      rates !== null && context !== null ? rates.r * context : 0,
+    );
+    if (sendId === null) return;
+    this.patch(id, (r) => {
+      const next = { ...r.tasks };
+      for (const t of tasks) if (next[t.id] !== undefined) next[t.id] = { ...next[t.id]!, clock: afterCheckIn(next[t.id]!.clock, "stalled", now) };
+      return { ...r, tasks: next };
+    });
+  }
+
+  /**
    * The paragraphs for the tasks asked about. A task whose output file or
-   * transcript could not be read on its machine is left for a later pass
+   * transcript could not be read on its machine is left for a later check
    * rather than asked about without them.
    */
-  private async checkInTasks(observed: Observed, record: ThreadRecord, asked: { id: string; reason: "stalled" | "routine" }[], now: number): Promise<CheckInTask[]> {
+  private async checkInTasks(o: Observed, asked: { id: string; reason: "stalled" | "routine" }[], now: number): Promise<CheckInTask[]> {
+    const record = this.record(o.thread.id);
     const ids = (kind: TaskKind) => asked.filter((t) => record.tasks[t.id]?.kind === kind).map((t) => t.id);
-    const hostId = observed.thread.environmentHostId;
-    if (hostId === null || observed.sessionId === null || observed.cwdSlug === null) return [];
-    let read: Awaited<ReturnType<EngineDeps["tasks"]>>;
+    const hostId = await this.hostOf(o.thread.id);
+    const session = record.transcript?.sessionId ?? null;
+    const slug = record.transcript?.cursor?.cwdSlug ?? null;
+    if (hostId === null || session === null || slug === null) return [];
+    let read: TaskActivity;
     try {
-      read = await this.deps.tasks(hostId, { sessionId: observed.sessionId, cwdSlug: observed.cwdSlug, commands: ids("command"), subagents: ids("subagent") });
+      this.counters.hostCalls++;
+      read = await this.deps.tasks(hostId, { sessionId: session, cwdSlug: slug, commands: ids("command"), subagents: ids("subagent") });
     } catch (error) {
-      this.deps.log.warn(`could not read ${observed.thread.id}'s background tasks; asking about them waits: ${error instanceof Error ? error.message : String(error)}`);
+      this.warnOnce(`tasks\0${o.thread.id}`, `could not read ${o.thread.id}'s background tasks; asking about them waits: ${message(error)}`);
       return [];
     }
     const out: CheckInTask[] = [];
@@ -1018,102 +1662,169 @@ export class Engine {
     return out;
   }
 
-  private async sendCompact(threadId: string, observed: Observed): Promise<boolean> {
-    const now = this.deps.now();
-    const context = observed.facts?.context ?? 0;
-    const rates = observed.rates;
-    const lifetime = observed.facts?.lifetime ?? null;
-    const historyId = this.deps.store.addHistory(threadId, now, "compaction", {
-      usd: rates === null ? null : compactionUsd(rates, context),
-      contextBefore: context,
-      contextAfter: null,
-    });
-    const compaction = { historyId, at: now, contextBefore: context, contextAfter: null, w: rates?.w ?? null, lifetimeMs: lifetime === null ? null : lifetimeMs(lifetime) };
-    this.deps.store.update(threadId, now, (r) => ({ ...r, compaction }));
-    const sendId = await this.sendTracked(threadId, COMPACT_MESSAGE, "compact", historyId);
+  /** `/compact` at the deadline, or at once for Compact now; both claim the same due time, so only one goes. */
+  private async sendCompact(o: Observed, manual: boolean): Promise<boolean> {
+    const id = o.thread.id;
+    const now = this.now();
+    const planned: Planned = { id, kind: "compact", dueKey: `compact:${o.deadline ?? o.facts?.lastRequestAt ?? now}` };
+    if (!(await this.prepare(planned, manual))) return false;
+    const context = o.facts?.context ?? 0;
+    const rates = o.rates;
+    const lifetime = o.facts?.lifetime ?? null;
+    let historyId = 0;
+    const sendId = await this.deliver(
+      planned,
+      COMPACT_MESSAGE,
+      () => {
+        historyId = this.deps.store.addHistory(id, now, "compaction", {
+          usd: rates === null ? null : compactionUsd(rates, context),
+          estimated: true,
+          contextBefore: context,
+          contextAfter: null,
+        });
+        return historyId;
+      },
+      rates === null ? 0 : compactionUsd(rates, context),
+      manual,
+    );
     if (sendId === null) return false;
-    this.deps.store.update(threadId, now, (r) => ({ ...r, stretch: { ...(r.stretch ?? newIdleStretch(now)), compactedAt: now } }));
+    const compaction = { historyId, at: now, contextBefore: context, contextAfter: null, w: rates?.w ?? null, lifetimeMs: lifetime === null ? null : lifetimeMs(lifetime) };
+    this.patch(id, (r) => ({ ...r, compaction, stretch: { ...(r.stretch ?? newIdleStretch(now)), compactedAt: now } }));
     return true;
   }
 
-  /**
-   * Records the send, marks it in flight and sends it. The thread's read state
-   * from before is kept, with `lastReadAt` as bb left it after taking the
-   * message (bb marks a thread read when a message is sent to it), so the turn
-   * can put it back.
-   */
-  private async sendTracked(threadId: string, text: string, kind: SentKind, historyId: number): Promise<number | null> {
-    const now = this.deps.now();
-    const record = this.deps.store.get(threadId);
-    const stretch: IdleStretch = record.stretch ?? newIdleStretch(now);
-    const sendId = this.deps.store.addSend({ threadId, at: now, historyId, kind, text, stretchStartedAt: stretch.startedAt });
-    const before = await this.deps.readState(threadId).catch(() => null);
-    const wasRead = before === null ? null : isRead(before);
-    this.deps.store.put(threadId, { ...record, stretch, inFlight: { kind, at: now, sendId } }, now);
-    try {
-      await this.deps.send(threadId, text, { kind, sendId });
-    } catch (error) {
-      this.deps.store.update(threadId, now, (r) => ({ ...r, inFlight: null }));
-      this.deps.log.warn(`could not send ${kind} to ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
+  // ---- the host keep-alive ----
+
+  /** Renews the lease on every machine with a deadline or stall check pending, every 4 minutes while any is. */
+  private scheduleKeepAlive(): void {
+    if (this.scheduler.get("keepalive") !== null) return;
+    if (this.pendingHosts().size === 0) return;
+    this.scheduler.set("keepalive", this.now());
+  }
+
+  private pendingHosts(): Set<string> {
+    const hosts = new Set<string>();
+    const now = this.now();
+    for (const [id, view] of this.views) {
+      const t = this.index.get(id);
+      if (t?.hostId == null) continue;
+      const tasks = this.stored(id) && Object.keys(this.record(id).tasks).length > 0;
+      if (tasks || (view.deadline !== null && view.deadline + CACHE_MARGIN_MS > now && (view.compactionDue || view.warmPlanned))) hosts.add(t.hostId);
     }
-    const after = await this.deps.readState(threadId).catch(() => null);
-    if (after !== null && wasRead !== null) {
-      this.deps.store.update(threadId, now, (r) => (r.readBefore !== null ? r : { ...r, readBefore: { read: wasRead, lastReadAt: after.lastReadAt, since: now } }));
-    }
-    this.deps.publish([threadId]);
-    return sendId;
+    return hosts;
+  }
+
+  private async keepAlive(): Promise<void> {
+    const hosts = this.pendingHosts();
+    if (hosts.size === 0) return;
+    this.scheduler.set("keepalive", this.now() + KEEPALIVE_MS);
+    await Promise.all(
+      [...hosts].map(async (hostId) => {
+        this.counters.hostCalls++;
+        await this.deps.retain(hostId, LEASE_MS).catch(() => {});
+      }),
+    );
   }
 
   // ---- what the surfaces ask ----
 
-  /** The view of a thread, read now if the last pass skipped it. */
+  /** The view of a thread from memory; a thread with none is read alone. */
   async viewOf(threadId: string): Promise<ThreadView | null> {
-    this.viewedAt.set(threadId, this.deps.now());
-    if (!this.views.has(threadId)) {
-      if (!this.threads.has(threadId)) await this.load();
-      if (!this.isClaude(threadId)) return null;
-      await this.pass();
+    this.viewedAt.set(threadId, this.now());
+    let t = this.index.get(threadId);
+    if (t === undefined) {
+      this.counters.bbCalls++;
+      const raw = await this.deps.getThread(threadId).catch(() => null);
+      const read = raw === null ? null : readThread(raw, false);
+      if (read === null) return null;
+      t = this.index.apply(read.patch, read.missing);
     }
+    if (t.providerId !== "claude-code") return null;
+    const cached = this.views.get(threadId);
+    if (cached !== undefined) return cached;
+    if (this.record(threadId).transcript?.cursor == null) await this.learn(threadId, "view");
+    return this.buildView(threadId);
+  }
+
+  /** Plans the thread's tree for its view, without acting. */
+  private buildView(threadId: string): ThreadView | null {
+    if (!this.index.isLive(threadId)) return null;
+    const top = this.index.topOf(threadId);
+    this.replan(top);
     return this.views.get(threadId) ?? null;
   }
 
-  /** The views of every thread with compact when idle on, read now where the last pass has none. */
-  async switchedOn(): Promise<ThreadView[]> {
-    const ids = this.deps.store.compactOnIds();
-    const now = this.deps.now();
-    for (const id of ids) this.viewedAt.set(id, now);
-    if (ids.some((id) => !this.views.has(id))) await this.pass().catch(() => {});
-    return ids.map((id) => this.views.get(id)).filter((v): v is ThreadView => v !== undefined);
+  /** The views of every thread with compact when idle on, from memory. */
+  switchedOn(): ThreadView[] {
+    const out: ThreadView[] = [];
+    for (const id of this.deps.store.compactOnIds()) {
+      if (!this.index.isLive(id)) continue;
+      const view = this.views.get(id) ?? this.buildView(id);
+      if (view !== null) out.push(view);
+    }
+    return out;
+  }
+
+  /** Every view in memory. */
+  allViews(): ThreadView[] {
+    return [...this.views.values()];
+  }
+
+  /**
+   * Whether two threads are in the same thread tree: the same top-level thread
+   * by bb's parent links, archived ancestors included. Ancestors the plugin has
+   * not seen are read from bb.
+   */
+  async sameTree(a: string, b: string): Promise<boolean> {
+    const load = async (id: string) => {
+      for (let at: string | null = id, depth = 0; at !== null && depth < 64; depth++) {
+        let t = this.index.get(at);
+        if (t === undefined) {
+          this.counters.bbCalls++;
+          const raw = await this.deps.getThread(at).catch(() => null);
+          const read = raw === null ? null : readThread(raw, false);
+          if (read === null) return;
+          t = this.index.apply(read.patch, read.missing);
+        }
+        at = t.parentId;
+      }
+    };
+    await Promise.all([load(a), load(b)]);
+    if (this.index.get(a) === undefined || this.index.get(b) === undefined) return false;
+    return this.index.rootOf(a) === this.index.rootOf(b);
   }
 
   /** A thread's title as bb lists it, or its id. */
   titleOf(threadId: string): string {
-    const t = this.threads.get(threadId);
-    return t?.title ?? t?.titleFallback ?? threadId;
+    return this.index.get(threadId)?.title ?? threadId;
   }
 
-  allViews(): ThreadView[] {
-    return [...this.views.values()];
+  private async requireClaude(threadId: string): Promise<Known> {
+    let t = this.index.get(threadId);
+    if (t === undefined) {
+      this.counters.bbCalls++;
+      const raw = await this.deps.getThread(threadId).catch(() => null);
+      const read = raw === null ? null : readThread(raw, false);
+      if (read === null || read.patch.deleted === true) throw new NotReadyError(`no thread ${threadId}`);
+      t = this.index.apply(read.patch, read.missing);
+    }
+    if (t.providerId !== "claude-code") throw new ClaudeOnlyError("Cache Keeper acts on Claude Code threads only");
+    return t;
   }
 
   /** Switches compact-when-idle on or off, optionally at a setting. */
   async setCompact(threadId: string, on: boolean, setting?: number): Promise<ThreadView | null> {
     await this.requireClaude(threadId);
-    const now = this.deps.now();
-    this.deps.store.update(threadId, now, (r) => ({
-      ...r,
-      compactOn: on,
-      setting: setting ?? r.setting ?? this.lastSetting(),
-    }));
+    const last = this.lastSetting();
+    this.patch(threadId, (r) => ({ ...r, compactOn: on, setting: setting ?? r.setting ?? last }));
     if (setting !== undefined) this.deps.store.setMeta(LAST_SETTING_META, setting);
-    else if (on && this.deps.store.getMeta(LAST_SETTING_META) === null) this.deps.store.setMeta(LAST_SETTING_META, this.lastSetting());
+    else if (on && this.deps.store.getMeta(LAST_SETTING_META) === null) this.deps.store.setMeta(LAST_SETTING_META, last);
     return this.refresh(threadId);
   }
 
   async setSetting(threadId: string, setting: number): Promise<ThreadView | null> {
     await this.requireClaude(threadId);
-    this.deps.store.update(threadId, this.deps.now(), (r) => ({ ...r, setting }));
+    this.patch(threadId, (r) => ({ ...r, setting }));
     this.deps.store.setMeta(LAST_SETTING_META, setting);
     return this.refresh(threadId);
   }
@@ -1124,104 +1835,140 @@ export class Engine {
    * when the setting changes.
    */
   async setKeepWarm(threadId: string, on: boolean): Promise<KeepWarmResult> {
-    await this.load();
-    if (!this.threads.has(threadId)) throw new NotReadyError(`no thread ${threadId}`);
+    if (this.index.get(threadId) === undefined) await this.requireClaude(threadId).catch((error) => {
+      if (error instanceof ClaudeOnlyError) return;
+      throw error;
+    });
+    if (this.index.get(threadId) === undefined) throw new NotReadyError(`no thread ${threadId}`);
     const top = this.treeTopIdOf(threadId);
     if (top === null) {
-      const childrenOf = (id: string) => [...this.threads.values()].filter((t) => this.liveParentOf(t.id) === id).map((t) => t.id);
-      const below = treeTopsBelow(threadId, childrenOf, (id) => this.isClaude(id));
+      const below = treeTopsBelow(threadId, (id) => this.index.childrenOf(id), (id) => this.index.isClaude(id));
       throw new NoTreeTopError(threadId, below.map((id) => ({ threadId: id, title: this.titleOf(id) })));
     }
-    this.deps.store.update(top, this.deps.now(), (r) => ({ ...r, keepWarm: on }));
+    this.patch(top, (r) => ({ ...r, keepWarm: on }));
     await this.refresh(threadId);
     const settings = this.deps.settings();
     return { treeTop: this.treeTopRef(threadId), keptWarm: keptWarm(settings.keepWarm, on), never: settings.keepWarm === "never" };
   }
 
-  /** The tree top covering `threadId`, with its title; the thread itself where none covers it. */
-  private treeTopRef(threadId: string): ThreadRef {
-    const top = this.treeTopIdOf(threadId) ?? threadId;
-    return { threadId: top, title: this.titleOf(top) };
-  }
-
   /** Skip, or undo a Skip, of the compaction until the thread next runs, or of the keep-warms for this wait, for it and every thread below it. */
   async skip(threadId: string, what: "compaction" | "warm", undo: boolean): Promise<ThreadView | null> {
-    const now = this.deps.now();
-    this.deps.store.update(threadId, now, (r) => {
+    const now = this.now();
+    this.patch(threadId, (r) => {
       const stretch = r.stretch ?? newIdleStretch(now);
       return { ...r, stretch: what === "compaction" ? { ...stretch, compactSkipped: !undo } : { ...stretch, warmSkipped: !undo } };
     });
     return this.refresh(threadId);
   }
 
-  /** Compacts now, over the line or not, when the thread is idle, has no pending interaction and is not waiting. */
+  /**
+   * Compacts now, over the line or not, whatever Compact when idle says, when
+   * the thread is idle, not archived or deleted, a Claude Code thread, has no
+   * pending interaction and is not waiting.
+   */
   async compactNow(threadId: string): Promise<ThreadView | null> {
     await this.requireClaude(threadId);
-    this.viewedAt.set(threadId, this.deps.now());
-    await this.pass();
-    const thread = this.threads.get(threadId)!;
-    const observed = this.observed.get(threadId);
-    const record = this.deps.store.get(threadId);
-    if (thread.status !== "idle") throw new NotReadyError("the thread is working; it can be compacted once its turn ends");
-    if (thread.hasPendingInteraction) throw new NotReadyError("the thread is waiting on your answer");
-    if (observed === undefined || observed.waiting) throw new NotReadyError("the thread is waiting on background work, a child thread or a queued message");
-    if (record.inFlight !== null) throw new NotReadyError("Cache Keeper already sent this thread a message that has not run yet");
-    await this.sendCompact(threadId, observed);
-    return this.refresh(threadId);
+    this.viewedAt.set(threadId, this.now());
+    await this.learn(threadId, "view");
+    return this.serial(`act:${this.index.topOf(threadId)}`, async () => {
+      const fresh = await this.fresh(threadId);
+      const reason = confirmSend(fresh, null);
+      if (reason === "busy") throw new NotReadyError("the thread is working; it can be compacted once its turn ends");
+      if (reason === "pending-interaction") throw new NotReadyError("the thread is waiting on your answer");
+      if (reason !== null) throw new NotReadyError(`the thread cannot be compacted: ${reasonText(reason)}`);
+      const o = this.observe(threadId, new Map());
+      if (o.waiting) throw new NotReadyError("the thread is waiting on background work, a child thread or a queued message");
+      if (o.record.inFlight !== null) throw new NotReadyError("Cache Keeper already sent this thread a message that has not run yet");
+      await this.sendCompact(o, true);
+      return null;
+    }).then(() => this.refresh(threadId));
   }
 
   private async refresh(threadId: string): Promise<ThreadView | null> {
     this.views.delete(threadId);
-    const view = await this.viewOf(threadId);
+    const view = this.index.isLive(threadId) ? this.buildView(threadId) : null;
     this.deps.publish([threadId]);
     return view;
   }
 
-  private async requireClaude(threadId: string): Promise<void> {
-    if (!this.threads.has(threadId)) await this.load();
-    const thread = this.threads.get(threadId);
-    if (thread === undefined) throw new NotReadyError(`no thread ${threadId}`);
-    if (thread.providerId !== "claude-code") throw new ClaudeOnlyError("Cache Keeper acts on Claude Code threads only");
-  }
-
   /** Totals for the last `days` days; a keep-warm sent to several threads at once is one. */
   totals(days: number) {
-    const rows = this.deps.store.history(this.deps.now() - days * DAY_MS, 100_000);
-    const sum = (kind: string) => rows.filter((r) => r.kind === kind).reduce((s, r) => s + (r.record.usd ?? 0), 0);
-    const count = (kind: string) => rows.filter((r) => r.kind === kind).length;
+    const sums = this.deps.store.sums(this.now() - days * DAY_MS);
+    const of = (kind: string) => sums[kind] ?? { count: 0, usd: 0, avoidedUsd: 0 };
     return {
-      compactions: count("compaction"),
-      compactionUsd: sum("compaction"),
-      keepWarms: count("keep-warm"),
-      checkIns: count("check-in"),
-      warmUsd: sum("keep-warm") + sum("check-in"),
-      avoidedUsd: rows.filter((r) => r.kind === "return").reduce((s, r) => s + (r.record.avoidedUsd ?? 0), 0),
+      compactions: of("compaction").count,
+      compactionUsd: of("compaction").usd,
+      keepWarms: of("keep-warm").count,
+      checkIns: of("check-in").count,
+      warmUsd: of("keep-warm").usd + of("check-in").usd,
+      avoidedUsd: of("return").avoidedUsd,
     };
   }
+
+  /**
+   * After a reinstall: every thread's Compact when idle off, every tree
+   * top's recorded Keep warm while waiting off, every Skip cleared.
+   */
+  resetSwitches(): number {
+    let changed = 0;
+    this.deps.store.transaction(() => {
+      for (const { threadId } of this.deps.store.all()) {
+        this.records.delete(threadId);
+        const r = this.record(threadId);
+        const stretch = r.stretch === null ? null : { ...r.stretch, compactSkipped: false, warmSkipped: false };
+        if (!r.compactOn && r.keepWarm !== true && JSON.stringify(stretch) === JSON.stringify(r.stretch)) continue;
+        changed++;
+        this.patch(threadId, (rec) => ({ ...rec, compactOn: false, keepWarm: rec.keepWarm === null ? null : false, stretch }));
+      }
+    });
+    for (const top of this.watchedTops()) this.replan(top);
+    return changed;
+  }
+}
+
+/** A background task as bb's events carry it. */
+interface TaskItem {
+  type?: string;
+  familyId?: string;
+  taskType?: string;
+  description?: string;
+  taskStatus?: string;
+}
+
+/** Folds one event into the thread's tasks: started, progressed (a subagent) or finished. Returns the kind of a task that finished. */
+function foldTask(tasks: Record<string, TaskRecord>, type: string, at: number, item: TaskItem | null): TaskKind | null {
+  // bb calls a task's id its `familyId`.
+  if (item?.type !== "backgroundTask" || item.familyId === undefined) return null;
+  if (type !== "item/started" && type !== "item/backgroundTask/progress" && type !== "item/backgroundTask/completed") return null;
+  const kind = item.taskType === "local_bash" ? "command" : item.taskType === "local_agent" ? "subagent" : null;
+  if (kind === null) return null;
+  const running = item.taskStatus === "running" || item.taskStatus === "pending";
+  if (type === "item/backgroundTask/completed" || !running) {
+    delete tasks[item.familyId];
+    return kind;
+  } else if (tasks[item.familyId] === undefined) {
+    const clock: TaskClock = { startedAt: at, lastActivityAt: at, lastCheckInAt: null, stalledStreak: 0 };
+    tasks[item.familyId] = { kind, description: item.description ?? "", clock };
+  } else if (type === "item/backgroundTask/progress" && kind === "subagent") {
+    // A command's progress is its output file, read at its stall check; bb's events for it say nothing of its output.
+    const task = tasks[item.familyId]!;
+    tasks[item.familyId] = { ...task, clock: afterActivity(task.clock, at) };
+  }
+  return null;
+}
+
+/** The tasks read from events over the ones stored, keeping each stored task's check-in clock. */
+function mergeTasks(stored: Record<string, TaskRecord>, read: Record<string, TaskRecord>): Record<string, TaskRecord> {
+  const out: Record<string, TaskRecord> = {};
+  for (const [id, task] of Object.entries(read)) {
+    const was = stored[id];
+    out[id] = was === undefined ? task : { ...task, clock: { ...task.clock, lastCheckInAt: was.clock.lastCheckInAt, stalledStreak: was.clock.lastActivityAt === task.clock.lastActivityAt ? was.clock.stalledStreak : task.clock.stalledStreak, lastActivityAt: Math.max(was.clock.lastActivityAt, task.clock.lastActivityAt) } };
+  }
+  return out;
 }
 
 function taskItems(record: ThreadRecord): WaitItem[] {
   return Object.entries(record.tasks).map(([id, task]) => ({ kind: task.kind, id, description: task.description, startedAt: task.clock.startedAt }));
-}
-
-/** Which trees a pass reads. */
-interface PassScope {
-  all: boolean;
-  threads: Set<string>;
-  due: boolean;
-}
-
-const mergeScopes = (a: PassScope, b: PassScope): PassScope => ({ all: a.all || b.all, threads: new Set([...a.threads, ...b.threads]), due: a.due || b.due });
-
-/** A pass for what is due also takes trees due within this long, so it does not wake again a moment later. */
-const DUE_EARLY_MS = 500;
-
-/** A tree keep-warm whose shallower leaves have not been sent yet. */
-interface Cycle {
-  at: number;
-  deepest: number;
-  pending: { id: string; depth: number; deadline: number | null }[];
-  historyId: number;
 }
 
 /**
@@ -1235,12 +1982,8 @@ const stagedFallback = (cycle: Cycle, p: Cycle["pending"][number]) =>
 const STAGED_GRACE_MS = 30_000;
 
 /** bb counts a background task before its events are read; the banner takes whichever count is higher. */
-function withBbCounts(counts: WaitCounts, thread: ListedThread): WaitCounts {
-  return {
-    ...counts,
-    commands: Math.max(counts.commands, thread.activity.activeBackgroundCommandCount),
-    subagents: Math.max(counts.subagents, thread.activity.activeBackgroundAgentCount),
-  };
+function withBbCounts(counts: WaitCounts, thread: Known): WaitCounts {
+  return { ...counts, commands: Math.max(counts.commands, thread.commands), subagents: Math.max(counts.subagents, thread.agents) };
 }
 
 export { CACHE_MARGIN_MS };

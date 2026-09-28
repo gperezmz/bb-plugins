@@ -109,6 +109,18 @@ export interface FoldState {
   awaitingRequest: boolean;
 }
 
+/**
+ * How far a transcript has been read: which file, by its slug and inode, how
+ * many bytes of it, and where the fold over them stands. The server keeps it,
+ * so a restarted daemon, host or plugin reads on from `offset`.
+ */
+export interface TranscriptCursor {
+  cwdSlug: string;
+  ino: number;
+  offset: number;
+  fold: FoldState;
+}
+
 /** Incremental fold over a transcript's lines. */
 export class TranscriptFold {
   private facts: TranscriptFacts = { ...EMPTY_FACTS };

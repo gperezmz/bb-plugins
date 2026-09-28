@@ -7,7 +7,9 @@
 import { open, readdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { TranscriptFold, type FoldState, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
+import { TranscriptFold, type TranscriptCursor, type TranscriptFacts, type TranscriptRequest } from "../core/transcript.js";
+
+export type { TranscriptCursor };
 
 export interface Roots {
   /** Claude Code's `projects` directories, most likely first. */
@@ -24,18 +26,6 @@ export function resolveRoots(env: NodeJS.ProcessEnv = process.env, home = homedi
 }
 
 const exists = async (path: string) => (await stat(path).catch(() => null)) !== null;
-
-/**
- * How far a transcript has been read: which file, by its inode, how many
- * bytes of it, and where the fold over them stands. The server keeps it, so
- * a restarted daemon, host or plugin reads on from `offset`.
- */
-export interface TranscriptCursor {
-  cwdSlug: string;
-  ino: number;
-  offset: number;
-  fold: FoldState;
-}
 
 export interface TranscriptRead {
   found: boolean;

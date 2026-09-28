@@ -105,11 +105,11 @@ export const costStopUsd = (rates: Rates, context: number) => rates.w * context;
 
 /**
  * Whether a thread's next keep-warm would take its charges in this idle
- * stretch past its cost stop. Without a price or a context it is not known
- * to be, and keep-warms go on.
+ * stretch past its cost stop. Without a price or a context the stop is
+ * unknown, and it counts as reached.
  */
 export function pastCostStop(chargedUsd: number, forecastUsd: number, rates: Rates | null, context: number | null): boolean {
-  if (rates === null || context === null) return false;
+  if (rates === null || context === null) return true;
   return chargedUsd + forecastUsd > costStopUsd(rates, context);
 }
 
