@@ -16,7 +16,7 @@ export const SETTINGS = {
     type: "select",
     label: "Keep caches warm while waiting",
     description:
-      "Which Claude Code threads get keep-warms while they wait on background work, child threads or a scheduled message. A thread tree follows this until you flip its Keep warm while waiting switch in the composer chip, from the banner or with `bb cache-keeper keep-warm`; Never sends none whatever the switches say.",
+      "Which Claude Code threads get keep-warms while they wait on background work, child threads or a scheduled message. A thread tree follows this until you flip its Keep warm while waiting switch in the composer chip or with `bb cache-keeper keep-warm`; Never sends none whatever the switches say.",
     options: Object.keys(KEEP_WARM_OPTIONS),
     default: "Only threads switched on",
   },

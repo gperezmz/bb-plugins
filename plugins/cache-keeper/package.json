@@ -13,7 +13,8 @@
       "icon": "./icons/timer.svg",
       "experimental_icons": {
         "cache-keeper": "./icons/timer.svg",
-        "flame": "./icons/flame.svg"
+        "flame": "./icons/flame.svg",
+        "crossed-out-flame": "./icons/crossed-out-flame.svg"
       }
     },
     "server": "./server.ts",

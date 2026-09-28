@@ -88,4 +88,51 @@ describe("the popover", () => {
     expect(await screen.findByText("bb refused the change")).toBeTruthy();
     expect(blocks().at(-1)).toBe("other: bb refused the change");
   });
+
+  it("offers Skip this wait while the thread waits and is kept warm, doing what the banner's Skip did", () => {
+    call.mockClear();
+    show(view({ waiting: true, warmPlanned: true }));
+    expect(blocks()[0]).toBe("keep warm");
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Skip this wait" }));
+    expect(call).toHaveBeenCalledWith("skip", { threadId: "thr_a", what: "warm", undo: false });
+  });
+
+  it("offers Undo for the rest of a skipped wait, doing what the banner's Undo did", () => {
+    call.mockClear();
+    show(view({ waiting: true, warmSkipped: true }));
+    expect(screen.getByText("Skipped for this wait")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Skip this wait" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(call).toHaveBeenCalledWith("skip", { threadId: "thr_a", what: "warm", undo: true });
+  });
+
+  it("offers Keep warm below a tree top whose tree is not switched on, switching its tree top on", () => {
+    call.mockClear();
+    show(view({ waiting: true, keptWarm: false, treeTop: { threadId: "thr_1", title: "Build the page" } }));
+    expect(blocks()[0]).toBe("keep warm, set on its tree top");
+    fireEvent.click(screen.getByRole("button", { name: "Keep warm" }));
+    expect(call).toHaveBeenCalledWith("setKeepWarm", { threadId: "thr_a", on: true });
+  });
+
+  it("offers no Keep warm button on a tree top, under Never, or while the thread is not waiting", () => {
+    for (const over of [
+      { waiting: true, keptWarm: false },
+      { waiting: true, keptWarm: false, warmSetting: "never" as const, treeTop: { threadId: "thr_1", title: "Build the page" } },
+      { keptWarm: false, treeTop: { threadId: "thr_1", title: "Build the page" } },
+    ]) {
+      show(view(over));
+      expect(screen.queryByRole("button", { name: "Keep warm" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Skip this wait" })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("shows an error from Skip this wait in the popover", async () => {
+    call.mockRejectedValueOnce(new Error("bb refused the skip"));
+    show(view({ waiting: true, warmPlanned: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip this wait" }));
+    expect(await screen.findByText("bb refused the skip")).toBeTruthy();
+    expect(blocks().at(-1)).toBe("other: bb refused the skip");
+  });
 });

@@ -1,15 +1,17 @@
 /**
  * The composer chip's popover: Keep warm while waiting, set on the thread's
- * tree top; Compact when idle; the context bar with the line on its handle,
+ * tree top, with Skip this wait, Undo or Keep warm while the thread waits;
+ * Compact when idle; the context bar with the line on its handle,
  * while the thread's window is known; the status line; and a closed Details
  * fold with what the line rests on and, while the window is known, the
  * dollar figures of "Why {line}?" or "Why never?".
  */
 import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { formatSize, lineWhy } from "@/src/core/line";
-import { noLineReason, statusLine, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
+import { isTreeTop, noLineReason, statusLine, warmControl, warmSwitchFlippable, type ThreadView } from "@/src/core/view";
 import { useAction, useKeeperRpc } from "../api";
 import { formatUsd } from "../model/bar";
+import { BannerButton } from "./BannerButton";
 import { ContextBar } from "./ContextBar";
 
 export function CompactPopover({ view, now, onChange }: { view: ThreadView; now: number; onChange: (next: ThreadView | null) => void }) {
@@ -19,8 +21,10 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
   const lifetime = view.lifetime === null ? "cache lifetime not read yet" : view.lifetime === "5m" ? "5 min cache" : "1 h cache";
 
   const navigate = useBbNavigate();
-  const below = view.treeTop.threadId !== view.threadId;
+  const below = !isTreeTop(view);
   const flippable = warmSwitchFlippable(view);
+  const control = warmControl(view);
+  const skip = (undo: boolean) => void run(rpc.call("skip", { threadId: view.threadId, what: "warm", undo }));
 
   return (
     <div className="flex flex-col gap-3 text-sm">
@@ -43,6 +47,22 @@ export function CompactPopover({ view, now, onChange }: { view: ThreadView; now:
               {view.treeTop.title}
             </button>
           </p>
+        )}
+        {control === "skip-warm" && (
+          <div className="flex">
+            <BannerButton onClick={() => skip(false)}>Skip this wait</BannerButton>
+          </div>
+        )}
+        {control === "undo-warm" && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span>Skipped for this wait</span>
+            <BannerButton onClick={() => skip(true)}>Undo</BannerButton>
+          </div>
+        )}
+        {control === "keep-warm" && (
+          <div className="flex">
+            <BannerButton onClick={() => void run(rpc.call("setKeepWarm", { threadId: view.threadId, on: true }))}>Keep warm</BannerButton>
+          </div>
         )}
       </div>
       <div className="flex items-center justify-between gap-3 font-medium">

@@ -63,7 +63,7 @@ Each drive makes its own Claude Code threads with `bb thread spawn` and `bb thre
 | `tree-keep-warm.sh` | A tree top waiting on a child that waits on a background command, kept warm: the child gets a keep-warm at its deadline and none before, replies with the nothing-new reply, and its report refreshes the top, which gets no keep-warm of its own. |
 | `cost-stop.sh` | An 800k-token thread, kept warm, whose keep-warm turns each write 30% of its context: after a few keep-warms none is planned, the next deadline's is held back with "cost stop" in `status` and the log, and none goes after it. |
 | `check-in.sh` | "Check in on stalled background work" on, 10-minute wait: no check-in at 9.5 minutes of silence, one at 10, naming the task and saying a task quiet on purpose is fine to leave running, answered with the nothing-new reply; the next one 20 minutes after the first. |
-| `skip-undo.sh` | Skip and Undo as the banner presses them: a skipped compaction is held with "skipped" and the Skip ends when the thread runs again; skipped and undone, it is sent. The same for a keep-warm. |
+| `skip-undo.sh` | Skip and Undo as the banner and the chip's popover press them: a skipped compaction is held with "skipped" and the Skip ends when the thread runs again; skipped and undone, it is sent. The same for a keep-warm. |
 | `reinstall.sh` | With every switch on and Skips pressed, the plugin is uninstalled and installed again: every switch is off, check-ins are off in bb's settings, and the first line of `status` says so until a switch is flipped. |
 | `archived-quiet.sh` | After the others: no thread they archived got a Cache Keeper message afterwards. |
 

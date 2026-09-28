@@ -1,16 +1,17 @@
 /**
- * The composer chip: compaction only. An icon alone while compact-when-idle
+ * The composer chip. Its text is compaction's: nothing while compact-when-idle
  * is off, `≥ {line}` when on, `{m}m` while a compaction is due, `paused` on a
- * pending interaction. Clicking opens the popover.
+ * pending interaction. Its icon is the timer, or while the thread waits, the
+ * flame or the crossed-out flame. Clicking opens the popover.
  */
 import { useState, type SyntheticEvent } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import { chipSentence, chipText, type ThreadView } from "@/src/core/view";
+import { chipIcon, chipSentence, chipText, type ChipIcon, type ThreadView } from "@/src/core/view";
 import { buttonVariants } from "@/components/ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { TIMER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
+import { CROSSED_OUT_FLAME_ICON, FLAME_ICON, TIMER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 import { CompactPopover } from "./CompactPopover";
 
 const stop = (e: SyntheticEvent) => e.stopPropagation();
@@ -25,6 +26,8 @@ const CONTAIN = {
   onFocus: stop,
   onBlur: stop,
 } as const;
+
+const ICONS: Record<ChipIcon, string> = { timer: TIMER_ICON, flame: FLAME_ICON, "crossed-out-flame": CROSSED_OUT_FLAME_ICON };
 
 export function Chip() {
   const threadId = useComposerThreadId();
@@ -55,7 +58,7 @@ function ThreadChip({ threadId }: { threadId: string }) {
             view.compactionDue && "text-primary data-[state=open]:text-primary",
           )}
         >
-          <Icon name={TIMER_ICON} fallback="Archive" className="size-4" aria-hidden />
+          <Icon name={ICONS[chipIcon(view)]} fallback="Archive" className="size-4" aria-hidden />
           {text !== "" && <span className="tabular-nums">{text}</span>}
         </button>
       </PopoverTrigger>
