@@ -177,15 +177,15 @@ Cache Keeper's button in a Claude Code thread's composer, showing Compact when i
 _Avoid_: Chip, Cache Keeper chip
 
 **Timer icon**:
-Cache Keeper's icon, a dial with one hand and a crown, drawn on its nav item, its banner, its composer chip while the thread is not waiting, and a sidebar row whose compaction is due.
+Cache Keeper's icon, a dial with one hand and a crown, drawn on its nav item, its banner, its composer chip unless the thread is waiting with its turn ended, and a sidebar row whose compaction is due.
 _Avoid_: Clock, stopwatch, Cache Keeper logo
 
 **Flame**:
-Cache Keeper's glyph, on a sidebar row and on the composer chip, while a keep-warm is planned for its thread or a thread below it.
+Cache Keeper's glyph, on a sidebar row and, once the thread's turn has ended, on the composer chip, while a keep-warm is planned for its thread or a thread below it.
 _Avoid_: Fire, warm icon
 
 **Crossed-out flame**:
-The flame with one diagonal stroke across it, on the composer chip while its thread waits and its cache is not kept warm. It never appears in the sidebar.
+The flame with one diagonal stroke across it, on the composer chip while its thread is waiting with its turn ended and its cache is not kept warm. It never appears in the sidebar.
 _Avoid_: Flame off, cold icon, no-flame
 
 **Keep warm while waiting**:
