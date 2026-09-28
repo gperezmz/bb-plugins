@@ -113,7 +113,7 @@ The keep-warms Cache Keeper sends at the same moment to the waiting threads at t
 _Avoid_: Family keep-warm, group ping, batch keep-warm
 
 **Check-in**:
-A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work, fix it if needed and carry on.
+A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work and report what it finds.
 _Avoid_: Nudge
 
 **Stalled task**:

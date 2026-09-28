@@ -16,8 +16,18 @@ const CUT = 60;
 
 /** Cuts text to 60 characters, the last one "…". */
 export function cut(text: string): string {
-  const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length <= CUT ? oneLine : `${oneLine.slice(0, CUT - 1)}…`;
+  const trimmed = text.trim();
+  return trimmed.length <= CUT ? trimmed : `${trimmed.slice(0, CUT - 1)}…`;
+}
+
+/**
+ * Text from outside the plugin (a task id or description, a thread title, a
+ * tool name) as a message quotes it: cut to 60 characters, then with
+ * backslashes, quotes and line breaks escaped, so it cannot end the quote it
+ * sits in or start a line of its own.
+ */
+export function outside(text: string): string {
+  return cut(text).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, "\\n").replace(/\t/g, " ");
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -44,11 +54,11 @@ export const localClock: ClockFormat = (ms) => {
 function entry(item: WaitItem, clock: ClockFormat): string {
   switch (item.kind) {
     case "command":
-      return `background command ${item.id} ("${cut(item.description)}")`;
+      return `background command ${outside(item.id)} ("${outside(item.description)}")`;
     case "subagent":
-      return `background subagent ${item.id} ("${cut(item.description)}")`;
+      return `background subagent ${outside(item.id)} ("${outside(item.description)}")`;
     case "child":
-      return `child thread ${item.id} ("${cut(item.title)}")`;
+      return `child thread ${outside(item.id)} ("${outside(item.title)}")`;
     case "scheduled":
       return `a scheduled message due at ${clock(item.dueAt)}`;
     case "queued":
@@ -72,7 +82,7 @@ export function notFinishedReply(items: readonly WaitItem[], clock: ClockFormat 
 }
 
 export function checkedReply(taskIds: readonly string[]): string {
-  return `Checked ${joinAnd(taskIds)}, still running normally, nothing new. ${NOTHING_NEEDED}`;
+  return `Checked ${joinAnd(taskIds.map(outside))}, still running normally, nothing new. ${NOTHING_NEEDED}`;
 }
 
 /**
@@ -87,21 +97,22 @@ export function keepWarmText(items: readonly WaitItem[], folded: readonly CheckI
 }
 
 function paragraph(task: CheckInTask): string {
-  const name = `${task.id} ("${cut(task.description)}")`;
+  const name = `${outside(task.id)} ("${outside(task.description)}")`;
   if (task.kind === "command") {
     return task.reason === "stalled"
-      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check it's still moving? Its output is in ${task.outputFile}. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`
-      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${task.outputFile} for repeated errors or retries. If it's looping, stop it, fix it and carry on. If it's fine, leave it running.`;
+      ? `Background command ${name} hasn't printed anything in ${duration(task.silentMs)}. Can you check on it? Its output is in ${task.outputFile}.`
+      : `Background command ${name} has been running ${duration(task.runningMs)} and is still printing. Have a look at the latest output in ${task.outputFile} for repeated errors or retries.`;
   }
   return task.reason === "stalled"
-    ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${task.lastTool}. Can you check on it? If it's stuck, stop it, then fix the problem or do that part yourself and keep going. If it's fine, leave it.`
-    : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${task.lastTool}. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`;
+    ? `Background subagent ${name} hasn't made progress in ${duration(task.silentMs)}; its last tool was ${outside(task.lastTool)}. Can you check on it?`
+    : `Background subagent ${name} has been running ${duration(task.runningMs)}; its last tool was ${outside(task.lastTool)}. Can you check it's on track?`;
 }
 
 /** Commands before subagents, oldest first. */
 const orderTasks = (tasks: readonly CheckInTask[]) => [...tasks].sort((a, b) => (a.kind === b.kind ? a.startedAt - b.startedAt : a.kind === "command" ? -1 : 1));
 
-const checkedEnd = (tasks: readonly CheckInTask[]) => `If nothing is wrong, reply with exactly "${checkedReply(tasks.map((t) => t.id))}" ${CHECK_IN_TAIL}`;
+const checkedEnd = (tasks: readonly CheckInTask[]) =>
+  `${QUIET_ON_PURPOSE} If nothing is wrong, reply with exactly "${checkedReply(tasks.map((t) => t.id))}" ${CHECK_IN_TAIL}`;
 
 /** A check-in on stalled tasks: one paragraph each, then the reply it asks for. */
 export function checkInText(tasks: readonly CheckInTask[]): string {
@@ -110,10 +121,14 @@ export function checkInText(tasks: readonly CheckInTask[]): string {
 }
 
 const NOTHING_NEEDED = "Nothing needed from you.";
-const CHECK_IN_TAIL = "Otherwise tell me in a line what you found and what you did. Don't wait for me either way.";
-/** The endings of the merged version's messages, still recognised in older transcripts and events. */
+const QUIET_ON_PURPOSE = "A task that's quiet on purpose, such as a server or a watcher, is fine to leave running.";
+const CHECK_IN_TAIL = "Otherwise tell me in a line what you found. Don't wait for me either way.";
+/** The endings of earlier versions' messages, still recognised in older transcripts and events. */
 const OLD_KEEP_WARM_END = 'Nothing to do yet, just reply "OK".';
-const OLD_CHECK_IN_END = "Tell me in a line what you found. Don't wait for me either way.";
+const OLD_CHECK_IN_ENDS = [
+  "Otherwise tell me in a line what you found and what you did. Don't wait for me either way.",
+  "Tell me in a line what you found. Don't wait for me either way.",
+];
 
 export type SentKind = "keep-warm" | "check-in" | "compact";
 
@@ -121,8 +136,9 @@ export type SentKind = "keep-warm" | "check-in" | "compact";
 export function sentKind(text: string): SentKind | null {
   const t = text.trim();
   if (t === COMPACT_MESSAGE) return "compact";
-  if (t.startsWith("Still waiting on ") && (t.endsWith(OLD_KEEP_WARM_END) || t.endsWith(`${NOTHING_NEEDED}"`) || t.endsWith(CHECK_IN_TAIL))) return "keep-warm";
-  if (t.endsWith(CHECK_IN_TAIL) || t.endsWith(OLD_CHECK_IN_END)) return "check-in";
+  const checkInEnd = t.endsWith(CHECK_IN_TAIL) || OLD_CHECK_IN_ENDS.some((end) => t.endsWith(end));
+  if (t.startsWith("Still waiting on ") && (t.endsWith(OLD_KEEP_WARM_END) || t.endsWith(`${NOTHING_NEEDED}"`) || checkInEnd)) return "keep-warm";
+  if (checkInEnd) return "check-in";
   return null;
 }
 

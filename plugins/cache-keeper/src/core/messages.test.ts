@@ -57,11 +57,9 @@ describe("messages", () => {
   it("writes a check-in as one paragraph per task and the Checked reply naming each", () => {
     const text = checkInText([{ ...stalled, id: "c1xx", startedAt: 3 }, stalled]);
     const parts = text.split("\n\n");
-    expect(parts[0]).toBe(
-      `Background command b1 ("npm test") hasn't printed anything in 15 minutes. Can you check it's still moving? Its output is in /tmp/b1.output. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.`,
-    );
+    expect(parts[0]).toBe(`Background command b1 ("npm test") hasn't printed anything in 15 minutes. Can you check on it? Its output is in /tmp/b1.output.`);
     expect(parts[2]).toBe(
-      `If nothing is wrong, reply with exactly "Checked b1 and c1xx, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.`,
+      `A task that's quiet on purpose, such as a server or a watcher, is fine to leave running. If nothing is wrong, reply with exactly "Checked b1 and c1xx, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found. Don't wait for me either way.`,
     );
     expect(sentKind(text)).toBe("check-in");
   });
@@ -70,10 +68,36 @@ describe("messages", () => {
     const text = keepWarmText([{ kind: "subagent", id: "a1", description: "Explore", startedAt: 1 }], [long], clock);
     expect(text.split("\n\n")).toEqual([
       'Still waiting on background subagent a1 ("Explore").',
-      `Background subagent a1 ("Explore") has been running 30 minutes; its last tool was Grep. Check it's on track. If it's going in circles, stop it and take over that part. If it's fine, leave it.`,
-      `If nothing is wrong, reply with exactly "Checked a1, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.`,
+      `Background subagent a1 ("Explore") has been running 30 minutes; its last tool was Grep. Can you check it's on track?`,
+      `A task that's quiet on purpose, such as a server or a watcher, is fine to leave running. If nothing is wrong, reply with exactly "Checked a1, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found. Don't wait for me either way.`,
     ]);
     expect(sentKind(text)).toBe("keep-warm");
+  });
+
+  it("never tells the agent to stop, kill or restart a task", () => {
+    const subagent: CheckInTask = { ...long, reason: "stalled", silentMs: 20 * 60_000 };
+    const command: CheckInTask = { ...stalled, reason: "routine", runningMs: 40 * 60_000 };
+    for (const text of [checkInText([stalled, subagent]), keepWarmText([], [long, command], clock)]) {
+      expect(text).not.toMatch(/\b(stop|kill|restart)/i);
+      expect(text).toContain("quiet on purpose, such as a server or a watcher, is fine to leave running");
+    }
+  });
+
+  it("still recognises the earlier check-in wording and the reply to it", () => {
+    const earlier = `Background command b1 ("npm test") hasn't printed anything in 15 minutes. Can you check it's still moving? Its output is in /tmp/b1.output. If it's stuck, stop it, fix whatever's blocking it and keep going with the task. If it's fine, leave it running.\n\nIf nothing is wrong, reply with exactly "Checked b1, still running normally, nothing new. Nothing needed from you." Otherwise tell me in a line what you found and what you did. Don't wait for me either way.`;
+    expect(sentKind(earlier)).toBe("check-in");
+    expect(isNothingNewReply(earlier, "Checked b1, still running normally, nothing new. Nothing needed from you.")).toBe(true);
+    expect(isNothingNewReply(earlier, "It was stuck, so I restarted it.")).toBe(false);
+  });
+
+  it("quotes outside text cut to 60 characters, with quotes and line breaks escaped", () => {
+    const text = keepWarmText([{ kind: "command", id: "b1", description: 'say "hi"\nthen \\ exit', startedAt: 0 }], [], clock);
+    expect(text).toContain('background command b1 ("say \\"hi\\"\\nthen \\\\ exit")');
+    expect(text).not.toContain("\n");
+    const child = keepWarmText([{ kind: "child", id: "thr_a", title: "t".repeat(90), startedAt: 0 }], [], clock);
+    expect(child).toContain(`("${"t".repeat(59)}…")`);
+    const tool = checkInText([{ ...long, reason: "stalled", lastTool: 'Bash"\nrm' }]);
+    expect(tool).toContain('its last tool was Bash\\"\\nrm.');
   });
 
   it("recognises the nothing-new replies by shape", () => {
