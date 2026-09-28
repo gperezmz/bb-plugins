@@ -20,6 +20,8 @@ export interface IdleStretch {
   compactedAt: number | null;
   compactSkipped: boolean;
   warmSkipped: boolean;
+  /** When Skip was last pressed: one pressed after the turn that ends the stretch carries over to the next. */
+  skippedAt?: number;
   /** The real cost charged to its keep-warms and check-ins so far, with their share of the turns they forced above. */
   chargedUsd: number;
 }

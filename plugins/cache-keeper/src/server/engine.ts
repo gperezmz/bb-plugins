@@ -816,9 +816,15 @@ export class Engine {
         this.patch(threadId, (r) => ({ ...r, inFlight: null }));
       }
       if (!keeper) {
-        if (current.stretch !== null) {
+        // A stretch begun after this turn started (a Skip pressed since it ended) is the next one, and stays.
+        if (current.stretch !== null && current.stretch.startedAt <= turn.startedAt) {
           if (current.stretch.compactedAt != null) this.recordReturn(threadId, current, turn.startedAt);
-          this.patch(threadId, (r) => ({ ...r, stretch: null }));
+          this.patch(threadId, (r) => {
+            // A Skip pressed after the turn ended was pressed on the stretch that follows it.
+            const s = r.stretch;
+            if (s === null || s.skippedAt === undefined || s.skippedAt < turn.endedAt!) return { ...r, stretch: null };
+            return { ...r, stretch: { ...newIdleStretch(turn.endedAt!), compactSkipped: s.compactSkipped, warmSkipped: s.warmSkipped, skippedAt: s.skippedAt } };
+          });
         }
       } else {
         const index = log.turns.indexOf(turn);
@@ -1875,7 +1881,8 @@ export class Engine {
     const now = this.now();
     this.patch(threadId, (r) => {
       const stretch = r.stretch ?? newIdleStretch(now);
-      return { ...r, stretch: what === "compaction" ? { ...stretch, compactSkipped: !undo } : { ...stretch, warmSkipped: !undo } };
+      const next = what === "compaction" ? { ...stretch, compactSkipped: !undo } : { ...stretch, warmSkipped: !undo };
+      return { ...r, stretch: { ...next, skippedAt: now } };
     });
     return this.refresh(threadId);
   }
