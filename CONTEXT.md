@@ -128,6 +128,10 @@ _Avoid_: Check-in wait, stall timeout
 Cache Keeper's per-thread switch that has a thread compacted at its deadline when its turn ends at or above its compaction line.
 _Avoid_: Auto-compact, idle compact
 
+**Composer chip**:
+Cache Keeper's button in a Claude Code thread's composer, showing Compact when idle's state; its popover holds the thread's switches.
+_Avoid_: Chip
+
 **Keep warm while waiting**:
 Cache Keeper's switch on the topmost Claude Code thread of a thread tree that has keep-warms sent to it and every thread below it while they wait. Until you flip it, it follows the "Keep caches warm while waiting" setting.
 _Avoid_: Keep-warm switch, warm toggle

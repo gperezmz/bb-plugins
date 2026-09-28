@@ -13,7 +13,7 @@ Under Settings → Plugins → Cache Keeper, or `bb plugin config cache-keeper`.
 | No-output wait | `noOutputWait` | `15 min` | `10 min`, `15 min` or `30 min` without output or progress before a background command or subagent gets a check-in |
 | Fetch current prices daily | `fetchPrices` | on | Fetch LiteLLM's and models.dev's public price lists once a day. Off fetches nothing and uses the list bundled with the plugin |
 
-Compact when idle has no setting: it is switched on per thread, from its chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
+Compact when idle has no setting: it is switched on per thread, from its composer chip, `bb cache-keeper on` or the agent tool, and stays on until switched off. Keep warm while waiting is switched per thread tree on its tree top, from the composer chip's popover, the banner's **Keep warm** or `bb cache-keeper keep-warm`; there is no agent tool for it. A setting changed takes effect at once, without a restart.
 
 ### Agent tools
 
@@ -25,12 +25,25 @@ Only on Claude Code threads.
 
 | Surface | Shows |
 |---|---|
-| Composer chip | Compaction only: the icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings |
-| Chip popover | **Keep warm while waiting**, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never`. Then **Compact when idle**: its switch; the line's sentence; a bar from 0 to the context window, filled to the context now, with a handle at the line (drag it between the ten settings, or click its size to type one such as `500k`); `now {context} · {status}`; the model, cache lifetime and calls per message the line rests on; a folded "Why {line}?" with the dollar figures. Where no size up to the window gives a line, the sentence says so (and whether a lower setting would give one, or none does, or the model has no price) and the fold is "Why never?", with the same figures at the whole window |
+| Composer chip | Compaction only: the icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
+| Composer chip's popover | See [the popover](#the-composer-chips-popover) |
 | Banner | One line above the composer, with no tooltip; see [the banner](#the-banner) |
 | Sidebar row | Cache Keeper's icon in place of the status glyph while a compaction is due; a clock while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
 
 **Compact now** compacts whatever the size, provided the thread is idle, waits on no answer and is not waiting.
+
+### The composer chip's popover
+
+From the top:
+
+| Block | Shows |
+|---|---|
+| **Keep warm while waiting** | Its switch, showing whether the thread's tree is kept warm now: a switch on a tree top; greyed out on a thread below one, with "Set on {tree top's title}", which opens the tree top; greyed out everywhere under `Never` |
+| **Compact when idle** | Its switch |
+| Context bar | A bar from 0 to the context window, filled to the context now, with the compaction line on its handle. Drag the handle between the ten settings, or click its size to type one such as `500k`. Hidden while bb has not reported the thread's window |
+| Status line | `Now {context} · {status}`, each side starting with a capital: `Working`, `Waiting on your answer`, `Compacting in {m}m`, `Compacted {time} ago`, `Skipped until this thread next runs`, `Waiting on background work`, `Idle, no line`, `Idle, under the line` or `Idle`. `{context}` is `unknown` until the transcript has been read |
+| **Details** | Closed when the popover opens; one click opens it. The model, cache lifetime and calls per message the line rests on, then "Why {line}?" with the dollar figures at the line, or, where no size up to the window gives one, "Why never?" with the same figures at the whole window and whether a lower setting would give a line. The figures are left out while the window is unknown or the model has no price |
+| Error | Only while the last action from the popover has failed: what went wrong |
 
 ### The banner
 
