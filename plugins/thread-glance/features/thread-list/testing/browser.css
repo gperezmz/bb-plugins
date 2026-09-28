@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+/* The tests measure where the row's boxes end up; fades would only delay it. */
+*,
+*::before,
+*::after {
+  transition: none !important;
+}
+
+/* bb draws icons as sized SVGs; the test SDK's stand-in is a bare span. */
+[data-icon] {
+  display: inline-block;
+}
