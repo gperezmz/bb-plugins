@@ -39,7 +39,10 @@ import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
 import { isDoneUnseen } from "../model/state";
-import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
+import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
+import { pullRequestFact, pullRequestLookupIds, type SettleInputs } from "../model/settled";
+import { usePullRequestAnswers } from "../data/usePullRequestAnswers";
+import { PullRequestProbes } from "./PullRequestProbes";
 import { buildListView, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
@@ -157,6 +160,31 @@ function ThreadListBody({
     [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
+  // Projects with a thread on a branch: the rest need no default branch.
+  const branchedProjectIds = useMemo(
+    () => [...new Set(threads.flatMap((thread) => (thread.environment?.branchName ? [thread.projectId] : [])))],
+    [threads],
+  );
+  const defaultBranches = useDefaultBranches(branchedProjectIds);
+  const defaultBranchOf = useCallback(
+    (thread: PluginSidebarThread) => (defaultBranches.has(thread.projectId) ? (defaultBranches.get(thread.projectId) ?? null) : undefined),
+    [defaultBranches],
+  );
+  const [pullRequests, onPullRequest] = usePullRequestAnswers();
+  const pullRequestLookups = useMemo(
+    () => (forest === null ? [] : pullRequestLookupIds(forest.infos.values(), defaultBranchOf)),
+    [forest, defaultBranchOf],
+  );
+  const settle: SettleInputs = useMemo(
+    () => ({
+      now,
+      settleAfter: prefs.settleAfter,
+      startedAt: stamps.startedAt,
+      finishedAt: stamps.finishedAt,
+      pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread), pullRequests),
+    }),
+    [now, prefs.settleAfter, stamps.startedAt, stamps.finishedAt, defaultBranchOf, pullRequests],
+  );
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
@@ -172,8 +200,9 @@ function ThreadListBody({
             prefs,
             activeThreadId,
             targets,
+            settle,
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, targets],
+    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, targets, settle],
   );
   useLayoutEffect(() => {
     previousView.current = view;
@@ -192,13 +221,6 @@ function ThreadListBody({
     // Only the active thread's changes matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
-
-  // Projects with a thread on a branch: the rest need no default branch.
-  const branchedProjectIds = useMemo(
-    () => [...new Set(threads.flatMap((thread) => (thread.environment?.branchName ? [thread.projectId] : [])))],
-    [threads],
-  );
-  const defaultBranches = useDefaultBranches(branchedProjectIds);
 
   const marks = useMemo(() => assignProviderMarks(providers), [providers]);
   // One display per harness, built once: rows compare it by identity.
@@ -337,8 +359,7 @@ function ThreadListBody({
       comfortable: client.density === "comfortable",
       setEditingId,
       harnessIcon: prefs.harnessIcon,
-      defaultBranchOf: (thread) =>
-        defaultBranches.has(thread.projectId) ? defaultBranches.get(thread.projectId) ?? null : undefined,
+      defaultBranchOf,
       multiHost,
       provider: providerDisplay,
       sections: sidebar.sections,
@@ -349,10 +370,10 @@ function ThreadListBody({
         applyToggle(toggleChip(row, prefs, forest!));
       },
       onToggleOlder: (row) => {
-        const { prefs, forest, view } = latest.current;
-        const group = view!.groups.find((candidate) => candidate.descriptor.id === row.scopeId) ?? null;
-        applyToggle(toggleOlder(row, prefs, group, forest!));
+        const { prefs, forest } = latest.current;
+        applyToggle(toggleOlder(row, prefs, forest!));
       },
+      onToggleSettled: (row) => applyToggle(toggleSettled(row, latest.current.prefs)),
       onToggleEnvironment: (environmentId) => {
         const { collapsedEnvironments } = latest.current.prefs;
         update({
@@ -384,7 +405,7 @@ function ThreadListBody({
     client.density,
     prefs.harnessIcon,
     prefs.organizationMode,
-    defaultBranches,
+    defaultBranchOf,
     multiHost,
     providerDisplay,
     sidebar.sections,
@@ -661,6 +682,7 @@ function ThreadListBody({
   return (
     <ListLiveContext.Provider value={live}>
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
+        <PullRequestProbes threadIds={pullRequestLookups} onAnswer={onPullRequest} />
         {threads.length === 0 ? (
           // bb's own pinned New thread button covers the empty list.
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>

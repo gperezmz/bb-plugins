@@ -8,6 +8,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { buildForest, type Forest } from "../model/trees";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
+import { pullRequestFact, type PullRequestState, type SettleInputs } from "../model/settled";
 
 export const T0 = 1_780_000_000_000;
 
@@ -115,6 +116,11 @@ export interface Scenario {
   draftIds?: string[];
   notes?: Record<string, import("@/shared/contract").ThreadNotes>;
   now?: number;
+  startedAt?: Record<string, number>;
+  /** Project id → default branch; "main" for every project when absent. */
+  defaultBranches?: Record<string, string | null>;
+  /** Pull request lookups that answered, by thread id. */
+  pullRequests?: Record<string, PullRequestState | null>;
 }
 
 export function forestOf(scenario: Scenario): Forest {
@@ -141,7 +147,22 @@ export function viewOf(scenario: Scenario): ListView {
     prefs: { ...defaultPreferences(), ...scenario.prefs },
     activeThreadId: scenario.activeThreadId ?? null,
     targets: scenario.targets ?? new Map(),
+    settle: settleOf(scenario),
   });
+}
+
+/** The settle inputs a scenario stands for. */
+export function settleOf(scenario: Scenario): SettleInputs {
+  const answers = new Map(Object.entries(scenario.pullRequests ?? {}));
+  const defaultBranchOf = (projectId: string) =>
+    scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[projectId];
+  return {
+    now: scenario.now ?? T0 + 60_000,
+    settleAfter: scenario.prefs?.settleAfter ?? defaultPreferences().settleAfter,
+    startedAt: scenario.startedAt ?? {},
+    finishedAt: scenario.finishedAt ?? {},
+    pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread.projectId), answers),
+  };
 }
 
 function idsOf(rows: readonly Row[]): string[] {
@@ -150,7 +171,9 @@ function idsOf(rows: readonly Row[]): string[] {
       ? row.info.thread.id
       : row.type === "older"
         ? `older:${row.count}`
-        : `env:${row.environmentId}`,
+        : row.type === "settled"
+          ? `settled:${row.count}`
+          : `env:${row.environmentId}`,
   );
 }
 

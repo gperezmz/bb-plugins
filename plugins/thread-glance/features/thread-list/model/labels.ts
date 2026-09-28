@@ -1,5 +1,5 @@
 // Accessible names: everything a tooltip says is in the aria-label.
-import type { OlderRow, ThreadRow } from "./view";
+import type { OlderRow, SettledRow, ThreadRow } from "./view";
 import { FLAG_GLYPHS, type Flag } from "./state";
 import { formatDateTime } from "./details";
 
@@ -32,19 +32,18 @@ export function chipLabel(title: string, count: number, flag: Flag | null, expan
   return `${expanded ? "Collapse" : "Show"} ${count} ${noun} of ${title}${detail}`;
 }
 
-/**
- * The fold row's text and accessible name. The tree's row says "child
- * threads" so it never reads like the group's "older" row.
- */
+/** The text and accessible name of an open tree's fold row. */
 export function olderRowText(row: OlderRow): { label: string; ariaLabel: string } {
-  const noun = row.count === 1 ? "thread" : "threads";
-  if (row.scope === "group") {
-    return {
-      label: row.expanded ? "Show fewer" : `${row.count} older`,
-      ariaLabel: `${row.expanded ? "Hide" : "Show"} ${row.count} older ${noun}`,
-    };
-  }
   const children = row.count === 1 ? "child thread" : "child threads";
   if (row.expanded) return { label: "Show fewer", ariaLabel: `Hide ${row.count} older ${children}` };
   return { label: `${row.count} more ${children}`, ariaLabel: `Show ${row.count} more ${children}` };
+}
+
+/** The settled fold's text: "Settled (N)" while closed, "Settled" while open. N counts trees. */
+export function settledRowText(row: SettledRow): { label: string; ariaLabel: string } {
+  const noun = row.count === 1 ? "settled thread tree" : "settled thread trees";
+  return {
+    label: row.expanded ? "Settled" : `Settled (${row.count})`,
+    ariaLabel: `${row.expanded ? "Hide" : "Show"} ${row.count} ${noun}`,
+  };
 }

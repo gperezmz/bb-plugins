@@ -45,7 +45,8 @@ function rpc(
   stamps: Partial<Record<string, Record<string, number>>> = {},
   notes: Record<string, unknown> = {},
 ) {
-  const preferences = { ...defaultPreferences(), ...prefs };
+  // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
+  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...prefs };
   return {
     listPreferences: () => ({ preferences }),
     setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
@@ -412,6 +413,41 @@ describe("Thread Glance slot", () => {
     render([makeThread({ id: "t", providerId: "codex" })]);
     const marks = await screen.findAllByRole("img", { name: "Codex" });
     expect(marks[0]!.textContent).toBe("CO");
+  });
+
+  it("folds settled trees behind a faint Settled (N) divider, and saves its opening on the server", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const slot = render(
+        [
+          makeThread({ id: "live", title: "Live", createdAt: Date.now(), latestAttentionAt: Date.now(), lastReadAt: Date.now() }),
+          makeThread({ id: "old", title: "Old" }),
+          makeThread({ id: "merged", title: "Merged", createdAt: Date.now(), latestAttentionAt: Date.now(), lastReadAt: Date.now(), environment: { branchName: "fix/x" } }),
+        ],
+        {
+          prefs: { settleAfter: "1d" },
+          extra: { sidebarPullRequests: { merged: { number: 7, title: "Fix", url: "u", state: "merged", attention: "merged" } } },
+        },
+      );
+      const fold = await screen.findByRole("button", { name: "Show 2 settled thread trees" });
+      expect(fold.textContent).toBe("Settled (2)");
+      expect(fold.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.getByRole("link", { name: /Open Live/ })).toBeTruthy();
+      expect(screen.queryByRole("link", { name: /Open Old/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /Open Merged/ })).toBeNull();
+      expect(screen.queryByText(/older/)).toBeNull();
+      fireEvent.click(fold);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(screen.getByRole("button", { name: "Hide 2 settled thread trees" }).textContent).toBe("Settled");
+      expect(screen.getByRole("link", { name: /Open Old/ })).toBeTruthy();
+      expect(slot.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: { key: "openSettledFolds", value: ["project:proj_a"] } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("collapsing a project persists through setPreference", async () => {

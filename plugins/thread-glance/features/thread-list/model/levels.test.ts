@@ -10,9 +10,13 @@ const rowsOf = (view: ListView, id = "project:proj_a"): Row[] => {
 };
 const depths = (view: ListView) =>
   rowsOf(view).map((row) =>
-    row.type === "thread" ? `${row.info.thread.id}@${row.depth}` : row.type === "older"
+    row.type === "thread"
+      ? `${row.info.thread.id}@${row.depth}`
+      : row.type === "older"
         ? `older:${row.count}@${row.depth}`
-        : `env@${row.depth}`,
+        : row.type === "settled"
+          ? `settled:${row.count}`
+          : `env@${row.depth}`,
   );
 
 describe("per-level folding", () => {

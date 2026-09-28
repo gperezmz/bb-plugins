@@ -17,7 +17,7 @@ import { ICONS } from "../icons";
 import type { GroupView, Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
-import { EnvironmentRowView, OlderRowView } from "./FoldRows";
+import { EnvironmentRowView, OlderRowView, SettledRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
@@ -343,6 +343,8 @@ function Rows({
               />
             ) : row.type === "older" ? (
               <OlderRowView key={row.key} row={row} controller={rowController} />
+            ) : row.type === "settled" ? (
+              <SettledRowView key={row.key} row={row} controller={rowController} />
             ) : (
               <EnvironmentRowView
                 key={row.key}

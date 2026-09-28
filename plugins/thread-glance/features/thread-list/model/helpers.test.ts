@@ -4,7 +4,7 @@ import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
 import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
-import { olderRowText } from "./labels";
+import { olderRowText, settledRowText } from "./labels";
 import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
@@ -245,9 +245,12 @@ describe("fold row text", () => {
     expect(olderRowText(fold("tree", 1)).label).toBe("1 more child thread");
     expect(olderRowText(fold("reveal", 4)).label).toBe("4 more child threads");
   });
-  it("keeps 'older' for the group's fold, so the two never read alike", () => {
-    expect(olderRowText(fold("group", 5)).label).toBe("5 older");
-    expect(olderRowText(fold("group", 5, true)).label).toBe("Show fewer");
+  it("says Show fewer on an open tree's fold", () => {
     expect(olderRowText(fold("tree", 5, true)).label).toBe("Show fewer");
+  });
+  it("reads Settled (N) on a closed settled fold and Settled on an open one, N counting trees", () => {
+    const settled = (count: number, expanded: boolean) => ({ type: "settled" as const, key: "k", groupId: "g", count, expanded });
+    expect(settledRowText(settled(3, false))).toEqual({ label: "Settled (3)", ariaLabel: "Show 3 settled thread trees" });
+    expect(settledRowText(settled(1, true))).toEqual({ label: "Settled", ariaLabel: "Hide 1 settled thread tree" });
   });
 });

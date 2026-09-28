@@ -1,4 +1,4 @@
-// The fold rows (`N older` on a group, `N more child threads` on a tree)
+// The fold rows (a group's settled fold, `N more child threads` in a tree)
 // and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
@@ -11,9 +11,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { olderRowText } from "../model/labels";
+import { olderRowText, settledRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import type { EnvironmentRow, OlderRow } from "../model/view";
+import type { EnvironmentRow, OlderRow, SettledRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
@@ -21,29 +21,39 @@ import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 export const OlderRowView = memo(function OlderRowView({ row, controller }: { row: OlderRow; controller: RowController }) {
   const { label, ariaLabel } = olderRowText(row);
-  // A tree's fold sits where its children do, with a dots glyph in the
-  // Status column; the group's fold keeps the chevron.
-  const inTree = row.scope !== "group";
+  // It sits where the children do, with a dots glyph in the Status column.
   return (
     <button
       type="button"
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
       onClick={() => controller.onToggleOlder(row)}
-      className={cn(
-        "relative flex w-full items-center rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        inTree ? "h-7 gap-1.5 max-md:pointer-coarse:h-9" : "h-6 gap-1",
-      )}
-      style={{ paddingLeft: rowIndent(row.depth) + (inTree ? 0 : 2) }}
+      className="relative flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      style={{ paddingLeft: rowIndent(row.depth) }}
     >
-      {inTree ? (
-        <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
-          <Icon name={ICONS.more} className="size-3.5" />
-        </span>
-      ) : (
-        <Icon name={ICONS.expand} aria-hidden className={cn("size-3 transition-transform", row.expanded && "-rotate-90")} />
-      )}
+      <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
+        <Icon name={ICONS.more} className="size-3.5" />
+      </span>
       {label}
+    </button>
+  );
+});
+
+/** The settled fold: a faint label, a hairline to the row's end, and a chevron. */
+export const SettledRowView = memo(function SettledRowView({ row, controller }: { row: SettledRow; controller: RowController }) {
+  const { label, ariaLabel } = settledRowText(row);
+  return (
+    <button
+      type="button"
+      aria-expanded={row.expanded}
+      aria-label={ariaLabel}
+      onClick={() => controller.onToggleSettled(row)}
+      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-[11px] text-muted-foreground/70 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      style={{ paddingLeft: rowIndent(0) }}
+    >
+      <span className="shrink-0 tabular-nums">{label}</span>
+      <span aria-hidden className="h-px flex-1 bg-border/60" />
+      <Icon name={ICONS.expand} aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", row.expanded && "rotate-90")} />
     </button>
   );
 });

@@ -8,7 +8,7 @@ import type { HarnessIcon, OrganizationMode } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ThreadTree } from "../model/trees";
 import type { RowMenuAction } from "../model/menu";
-import type { OlderRow, ThreadRow } from "../model/view";
+import type { OlderRow, SettledRow, ThreadRow } from "../model/view";
 import type { ProviderDisplay } from "./ProviderBadge";
 
 export interface ModelInfo {
@@ -32,6 +32,7 @@ export interface RowController {
   onNavigate(): void;
   onToggleChip(row: ThreadRow): void;
   onToggleOlder(row: OlderRow): void;
+  onToggleSettled(row: SettledRow): void;
   onToggleEnvironment(environmentId: string): void;
   onMenuAction(action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null): void;
   onRename(threadId: string, title: string): Promise<void>;

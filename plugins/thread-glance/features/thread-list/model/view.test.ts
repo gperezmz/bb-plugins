@@ -17,6 +17,8 @@ import type { ThreadRow } from "./view";
 import { toggleChip } from "./toggles";
 import { defaultPreferences } from "@/shared/preferences";
 
+const DAY = 24 * 60 * 60 * 1000;
+
 /** Runs one render the way the list does: diff, merge targets, build. */
 function render(scenario: Scenario, previous: ReturnType<typeof snapshotOf> | null, targets: Targets) {
   const forest = forestOf(scenario);
@@ -117,19 +119,10 @@ describe("scenario 2: child failed while its parent finished", () => {
     expect(child.info).toMatchObject({ unread: false, state: { kind: "failed", glyph: { icon: "CircleX" } } });
   });
 
-  it("the tree can then fold", () => {
+  it("the tree can then settle, failed child and all", () => {
     const read = threads.map((t) => ({ ...t, lastReadAt: T0 + 20 }));
-    const others = [1, 2, 3, 4, 5].map((n) =>
-      makeThread({ id: `q${n}`, latestAttentionAt: T0 + 100 + n, lastReadAt: T0 + 200 }),
-    );
-    expect(rowIds(viewOf({ threads: [...read, ...others] }), "project:proj_a")).toEqual([
-      "q5",
-      "q4",
-      "q3",
-      "q2",
-      "q1",
-      "older:1",
-    ]);
+    const recent = makeThread({ id: "q", createdAt: T0 + DAY, latestAttentionAt: T0 + DAY, lastReadAt: T0 + DAY });
+    expect(rowIds(viewOf({ threads: [...read, recent], now: T0 + DAY + 60_000 }), "project:proj_a")).toEqual(["q", "settled:1"]);
   });
 });
 
@@ -149,57 +142,6 @@ describe("scenario 3: machine offline", () => {
     const view = viewOf({ threads: [makeThread({ id: "t", status: "active", runtimeStatus: "host-reconnecting" })] });
     expect(threadRow(view, "t").info.state).toMatchObject({ kind: "working", label: "Reconnecting" });
     expect(group(view, "project:proj_a").counters.working).toBe(1);
-  });
-});
-
-describe("scenario 5: a project with 60 old threads", () => {
-  const old = Array.from({ length: 60 }, (_, n) =>
-    makeThread({ id: `o${n}`, createdAt: T0 + n, latestAttentionAt: T0 + n, lastReadAt: T0 + n }),
-  );
-
-  it("shows the 5 most recent quiet roots, then 55 older", () => {
-    const ids = rowIds(viewOf({ threads: old }), "project:proj_a");
-    expect(ids).toEqual(["o59", "o58", "o57", "o56", "o55", "older:55"]);
-  });
-  it("non-quiet roots are all shown, in sort order", () => {
-    const withBusy = old.map((t) => (t.id === "o3" ? { ...t, ...working } : t));
-    const ids = rowIds(viewOf({ threads: withBusy }), "project:proj_a");
-    expect(ids).toEqual(["o59", "o58", "o57", "o56", "o55", "o3", "older:54"]);
-  });
-  it("the persisted expansion shows every root", () => {
-    const ids = rowIds(viewOf({ threads: old, prefs: { expandedOlder: ["project:proj_a"] } }), "project:proj_a");
-    expect(ids).toHaveLength(61);
-    expect(ids.at(-1)).toBe("older:55");
-  });
-  it("keeps the 5 newest quiet roots whatever the order", () => {
-    const newest = ["o55", "o56", "o57", "o58", "o59"];
-    const ids = (prefs: Scenario["prefs"]) => rowIds(viewOf({ threads: old, prefs }), "project:proj_a");
-    expect(ids({ sortDirection: "ascending" })).toEqual([...newest, "older:55"]);
-    expect(ids({ chronologicalSort: "created", sortDirection: "ascending" })).toEqual([...newest, "older:55"]);
-    // Titles run against age here, so A–Z lists the five newest last-created first.
-    const titled = old.map((t, n) => ({ ...t, displayTitle: `t${String(99 - n).padStart(2, "0")}` }));
-    expect(rowIds(viewOf({ threads: titled, prefs: { chronologicalSort: "alpha" } }), "project:proj_a")).toEqual([
-      "o59",
-      "o58",
-      "o57",
-      "o56",
-      "o55",
-      "older:55",
-    ]);
-  });
-  it("an unread child folds with its old tree unless Needs attention counts every child", () => {
-    const child = makeThread({ id: "c", parentThreadId: "o0", createdAt: T0, latestAttentionAt: T0, lastReadAt: T0 - 1 });
-    const threads = [...old, child];
-    expect(rowIds(viewOf({ threads }), "project:proj_a")).toEqual(["o59", "o58", "o57", "o56", "o55", "older:55"]);
-    const every = viewOf({ threads, prefs: { childAttention: "everything" } });
-    expect(attentionRootIds({ threads, prefs: { childAttention: "everything" } })).toEqual(["o0"]);
-    expect(rowIds(every, "project:proj_a")).toEqual(["o59", "o58", "o57", "o56", "o55", "o0", "older:54"]);
-  });
-  it("unread roots stay out of the fold; the header counts them", () => {
-    const unread = old.map((t) => ({ ...t, lastReadAt: T0 - 1 }));
-    const view = viewOf({ threads: unread });
-    expect(rowIds(view, "project:proj_a")).toHaveLength(60);
-    expect(group(view, "project:proj_a").counters.unread).toBe(60);
   });
 });
 
@@ -246,24 +188,14 @@ describe("scenario 7: active grandchild inside a collapsed project", () => {
     expect(project.userCollapsed).toBe(true);
     expect(project.collapsed).toBe(false);
     const ids = rowIds(view, "project:proj_a");
-    // r0 holds the active thread, so it isn't quiet: only r1–r6 are, and one folds.
-    expect(ids.slice(-4)).toEqual(["r0", "child", "grand", "older:1"]);
+    expect(ids.slice(-3)).toEqual(["r0", "child", "grand"]);
     expect(threadRow(view, "grand")).toMatchObject({ nested: true, parentTitle: "Thread child", depth: 2 });
     expect(threadRow(view, "child").nested).toBe(false);
     expect(threadRow(view, "grand").info.isActive).toBe(true);
   });
-  it("an older fold holding a target opens, without persisting", () => {
-    const unreadOld = [...quietRoots.slice(1), makeThread({ id: "u", createdAt: T0 - 50, latestAttentionAt: T0 - 50, lastReadAt: T0 - 50 })];
-    const first = render({ threads: unreadOld }, null, new Map());
-    const readNow = unreadOld.map((t) => (t.id === "u" ? { ...t, lastReadAt: T0 + 100 } : t));
-    const nextTargets = mergeTargets(first.targets, new Map([["u", "reveal"]]));
-    const view = viewOf({ threads: readNow, targets: nextTargets });
-    expect(rowIds(view, "project:proj_a")).toContain("u");
-    expect(rowIds(viewOf({ threads: readNow }), "project:proj_a")).not.toContain("u");
-  });
-  it("the root never folds while the grandchild is active", () => {
-    const view = viewOf({ threads, prefs: {}, activeThreadId: "grand" });
-    expect(rowIds(view, "project:proj_a")).toContain("r0");
+  it("draws the open grandchild's settled tree just above the settled fold, which counts it", () => {
+    const { view } = render({ threads, activeThreadId: "grand", now: T0 + 2 * DAY }, null, new Map());
+    expect(rowIds(view, "project:proj_a")).toEqual(["r0", "child", "grand", "settled:7"]);
   });
 });
 
@@ -363,38 +295,6 @@ describe("folding inside a tree", () => {
   it("an expanded older fold shows all", () => {
     const view = viewOf({ threads, prefs: { expandedChildren: ["p"], expandedOlder: ["p"] } });
     expect(rowIds(view, "project:proj_a")).toHaveLength(10);
-  });
-});
-
-describe("a group's fold while a thread is open", () => {
-  // 13 quiet roots, newest first r12..r0; r11 has a quiet child.
-  const roots = Array.from({ length: 13 }, (_, n) =>
-    makeThread({ id: `r${n}`, createdAt: T0 + n * 10, updatedAt: T0 + n * 10, latestAttentionAt: T0 + n * 10, lastReadAt: T0 + 200 }),
-  );
-  const threads = [...roots, makeThread({ id: "k", parentThreadId: "r11", createdAt: T0 + 111, lastReadAt: T0 + 200 })];
-  const rows = (activeThreadId: string | null) => rowIds(viewOf({ threads, activeThreadId }), "project:proj_a");
-  const idle = ["r12", "r11", "r10", "r9", "r8", "older:8"];
-
-  it("keeps the shown roots and the older count when a shown root or its child is opened", () => {
-    expect(rows(null)).toEqual(idle);
-    for (const active of ["r12", "r11", "r10", "r9", "r8", "k"]) expect(rows(active)).toEqual(idle);
-  });
-  it("adds a root behind the fold when it is opened, in its place, and counts one fewer", () => {
-    expect(rows("r3")).toEqual(["r12", "r11", "r10", "r9", "r8", "r3", "older:7"]);
-  });
-  it("adds a root behind the fold with the open child and its reveal, and keeps the fold shut", () => {
-    const withChild = [...threads, makeThread({ id: "j", parentThreadId: "r2", createdAt: T0 + 21, lastReadAt: T0 + 200 })];
-    const first = render({ threads: withChild }, null, new Map());
-    const opened = render({ threads: withChild, activeThreadId: "j" }, first.snapshot, first.targets);
-    expect(rowIds(opened.view, "project:proj_a")).toEqual(["r12", "r11", "r10", "r9", "r8", "r2", "j", "older:7"]);
-  });
-  it("keeps the rows as they were across the render that opens a thread", () => {
-    const first = render({ threads }, null, new Map());
-    const opened = render({ threads, activeThreadId: "r12" }, first.snapshot, first.targets);
-    expect(rowIds(opened.view, "project:proj_a")).toEqual(idle);
-    // Opening one behind the fold reveals it alone, not the whole fold.
-    const behind = render({ threads, activeThreadId: "r3" }, first.snapshot, first.targets);
-    expect(rowIds(behind.view, "project:proj_a")).toEqual(["r12", "r11", "r10", "r9", "r8", "r3", "older:7"]);
   });
 });
 

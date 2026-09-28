@@ -4,7 +4,7 @@ import type { Preferences } from "@/shared/preferences";
 import { ancestorsOf, type ThreadTree, type Forest } from "./trees";
 import { isGroupCollapsed, toggleGroupCollapse } from "./groups";
 import { isDoneUnseen } from "./state";
-import type { GroupView, OlderRow, ThreadRow } from "./view";
+import type { GroupView, OlderRow, SettledRow, ThreadRow } from "./view";
 
 export interface ToggleOutcome {
   patch: Partial<Preferences>;
@@ -34,24 +34,19 @@ export function openChildren(parentId: string, prefs: Preferences): ToggleOutcom
   return { patch: { expandedChildren: [...without(prefs.expandedChildren, parentId), parentId] }, drop: null };
 }
 
-export function toggleOlder(row: OlderRow, prefs: Preferences, group: GroupView | null, forest: Forest): ToggleOutcome {
+/** Opens or closes an open tree's "N more child threads" fold. */
+export function toggleOlder(row: OlderRow, prefs: Preferences, forest: Forest): ToggleOutcome {
   if (row.scope === "reveal") return openChildren(row.scopeId, prefs);
   if (!row.expanded) {
     return { patch: { expandedOlder: [...without(prefs.expandedOlder, row.scopeId), row.scopeId] }, drop: null };
   }
-  const patch = { expandedOlder: without(prefs.expandedOlder, row.scopeId) };
-  if (row.scope === "tree") return { patch, drop: under(forest, row.scopeId) };
-  // Folding a group's older roots drops the targets that held it open.
-  const quietRoots = new Set<string>();
-  for (const tree of forest.trees) if (tree.quietIgnoringOpen) quietRoots.add(tree.root.thread.id);
-  const inGroup = new Set(group?.rootIds ?? []);
-  return {
-    patch,
-    drop: (id) => {
-      const tree = forest.treeOf.get(id);
-      return tree !== undefined && quietRoots.has(tree.root.thread.id) && inGroup.has(tree.root.thread.id);
-    },
-  };
+  return { patch: { expandedOlder: without(prefs.expandedOlder, row.scopeId) }, drop: under(forest, row.scopeId) };
+}
+
+/** Opens or closes a group's settled fold. */
+export function toggleSettled(row: SettledRow, prefs: Preferences): ToggleOutcome {
+  const rest = without(prefs.openSettledFolds, row.groupId);
+  return { patch: { openSettledFolds: row.expanded ? rest : [...rest, row.groupId] }, drop: null };
 }
 
 export function toggleGroup(group: GroupView, prefs: Preferences, forest: Forest): ToggleOutcome {

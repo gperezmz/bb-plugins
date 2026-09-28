@@ -20,12 +20,11 @@ import {
 } from "./groups";
 import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
+import { isSettledTree, type SettleInputs } from "./settled";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
 
-/** How many of a group's newest quiet roots stay out of its older fold. */
-export const KEEP_QUIET = 5;
 /** How many quiet children stay in an expanded tree. */
 export const KEEP_QUIET_CHILDREN = 3;
 
@@ -62,13 +61,14 @@ export interface ThreadRow {
   projectId: string;
 }
 
+/** The fold inside an open tree: "N more child threads". */
 export interface OlderRow {
   type: "older";
   key: string;
-  /** A group id, or a parent thread id for a tree's fold. */
+  /** The parent thread's id. */
   scopeId: string;
-  /** `reveal`: an auto-reveal left `count` children hidden ("N more child threads"). */
-  scope: "group" | "tree" | "reveal";
+  /** `reveal`: an auto-reveal left `count` children hidden. */
+  scope: "tree" | "reveal";
   count: number;
   expanded: boolean;
   depth: number;
@@ -88,7 +88,20 @@ export interface EnvironmentRow {
   depth: number;
 }
 
-export type Row = ThreadRow | OlderRow | EnvironmentRow;
+/** A group's settled fold: the faint "Settled (N)" divider at its end. */
+export interface SettledRow {
+  type: "settled";
+  key: string;
+  groupId: string;
+  /** Settled trees in the group, the open one drawn above the divider included. */
+  count: number;
+  expanded: boolean;
+}
+
+/** The rows a tree and its folders draw. */
+export type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
+
+export type Row = TreeRow | SettledRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
@@ -125,12 +138,14 @@ export interface ViewInputs {
   prefs: Preferences;
   activeThreadId: string | null;
   targets: Targets;
+  settle: SettleInputs;
 }
 
 interface Context extends ViewInputs {
   compare: (a: SortKey, b: SortKey) => number;
   expandedChildren: ReadonlySet<string>;
   expandedOlder: ReadonlySet<string>;
+  openSettledFolds: ReadonlySet<string>;
   collapsedEnvironments: ReadonlySet<string>;
   /** Parent ids on the path to a reveal target. */
   revealPath: ReadonlySet<string>;
@@ -273,13 +288,13 @@ function environmentLabel(thread: PluginSidebarThread): string {
   return "Environment";
 }
 
-type Unit = { info: ThreadInfo; rows: Row[]; flags: ReadonlySet<Flag> };
+type Unit = { info: ThreadInfo; rows: TreeRow[]; flags: ReadonlySet<Flag> };
 
 /**
  * Folds sibling units that share a worktree environment (2 or more) into a
  * folder row. Off unless the environment grouping preference is on.
  */
-function clusterEnvironments(context: Context, units: Unit[], depth: number): Row[] {
+function clusterEnvironments(context: Context, units: Unit[], depth: number): TreeRow[] {
   if (!context.prefs.environmentGrouping) return units.flatMap((unit) => unit.rows);
   const counts = new Map<string, number>();
   for (const unit of units) {
@@ -288,7 +303,7 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Ro
       counts.set(environment.id, (counts.get(environment.id) ?? 0) + 1);
     }
   }
-  const rows: Row[] = [];
+  const rows: TreeRow[] = [];
   const emitted = new Set<string>();
   for (const unit of units) {
     const environment = unit.info.thread.environment;
@@ -359,7 +374,7 @@ function rollupFlags(context: Context, info: ThreadInfo): Set<Flag> {
 }
 
 /** The rows under `parent`: each shown child, then its own level. */
-function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, depth: number): Row[] {
+function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, depth: number): TreeRow[] {
   const { shown, older } = foldedChildren(context, parent, depth);
   const units: Unit[] = shown.map((info) => ({
     info,
@@ -380,7 +395,7 @@ function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, dep
   return rows;
 }
 
-function foldedTreeRows(context: Context, tree: ThreadTree): Row[] {
+function foldedTreeRows(context: Context, tree: ThreadTree): TreeRow[] {
   const root = tree.root;
   const chip = chipOf(context, root, context.expandedChildren.has(root.thread.id));
   return [threadRow(context, root, root, { depth: 0, nested: false, chip }), ...foldedLevel(context, tree, root, 1)];
@@ -421,44 +436,27 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
     );
   }
 
-  let visible = collapsed ? sorted.filter(needsAttention) : sorted;
-  let older: OlderRow | null = null;
-  const foldable = !isPinned && !collapsed;
-  if (foldable) {
-    // The fold reads `quietIgnoringOpen`, as if no thread were open. The open tree
-    // joins afterwards when it sits behind the fold, and takes no other row's place.
-    const quietActive = sorted.filter((tree) => tree.quietIgnoringOpen && !tree.root.thread.isArchived);
-    // The newest quiet roots stay whatever the order: by creation under
-    // Created, by latest activity otherwise.
-    const byCreation = effectiveSortField(context.prefs.chronologicalSort) === "created";
-    const age = (tree: ThreadTree) => (byCreation ? tree.root.thread.createdAt : tree.latestAttentionAt);
-    const keepQuiet = new Set([...quietActive].sort((a, b) => age(b) - age(a)).slice(0, KEEP_QUIET));
-    const foldedTrees = quietActive.filter((tree) => !keepQuiet.has(tree) && !tree.containsActive);
-    if (foldedTrees.length > 0) {
-      const opened =
-        context.expandedOlder.has(descriptor.id) ||
-        foldedTrees.some(
-          (tree) =>
-            context.targets.has(tree.root.thread.id) ||
-            tree.descendants.some((info) => context.targets.has(info.thread.id)),
-        );
-      const folded = new Set(foldedTrees);
-      if (!opened) visible = sorted.filter((tree) => !folded.has(tree));
-      older = {
-        type: "older",
-        key: `older:group:${descriptor.id}`,
-        scopeId: descriptor.id,
-        scope: "group",
-        count: foldedTrees.length,
-        expanded: opened,
-        depth: 0,
-      };
+  let rows: Row[];
+  if (collapsed) {
+    rows = clusterEnvironments(context, sorted.filter(needsAttention).map((tree) => treeUnit(context, tree)), 0);
+  } else {
+    // Settled trees go behind the fold at the group's end. The open one, if
+    // settled, is drawn just above the divider, so opening it moves nothing else.
+    const settled = sorted.filter((tree) => isSettledTree(tree, context.settle));
+    const settledSet = new Set(settled);
+    const live = sorted.filter((tree) => !settledSet.has(tree));
+    const open = settled.find((tree) => tree.containsActive) ?? null;
+    rows = clusterEnvironments(context, live.map((tree) => treeUnit(context, tree)), 0);
+    if (settled.length > 0) {
+      if (open !== null) rows.push(...treeUnit(context, open).rows);
+      const expanded = context.openSettledFolds.has(descriptor.id);
+      rows.push({ type: "settled", key: `settled:${descriptor.id}`, groupId: descriptor.id, count: settled.length, expanded });
+      if (expanded) {
+        const folded = settled.filter((tree) => tree !== open).map((tree) => treeUnit(context, tree));
+        rows.push(...clusterEnvironments(context, folded, 0));
+      }
     }
   }
-
-  const units = visible.map((tree) => treeUnit(context, tree));
-  const rows = clusterEnvironments(context, units, 0);
-  if (older !== null) rows.push(older);
   return {
     descriptor,
     counters,
@@ -489,6 +487,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     compare: makeComparator({ field: prefs.chronologicalSort, direction: prefs.sortDirection }),
     expandedChildren: new Set(prefs.expandedChildren),
     expandedOlder: new Set(prefs.expandedOlder),
+    openSettledFolds: new Set(prefs.openSettledFolds),
     collapsedEnvironments: new Set(prefs.collapsedEnvironments),
     revealIds,
     revealPath,
