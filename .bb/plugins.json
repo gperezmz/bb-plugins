@@ -26,6 +26,10 @@
     {
       "name": "cache-keeper",
       "source": "./plugins/cache-keeper"
+    },
+    {
+      "name": "ui-tweaks",
+      "source": "./plugins/ui-tweaks"
     }
   ]
 }
