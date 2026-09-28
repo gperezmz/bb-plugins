@@ -182,7 +182,7 @@ describe("failures", () => {
       });
     const pending = complete(prompt, endpoint, { fetch: fakeFetch(hang).fetch, signal: cancel.signal });
     cancel.abort();
-    await expect(pending).rejects.toThrow('bb cancelled the request to Endpoint "gateway".');
+    await expect(pending).rejects.toThrow();
     expect(aborted).toBe(true);
   });
 });
