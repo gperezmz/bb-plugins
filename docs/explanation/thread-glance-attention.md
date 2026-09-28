@@ -14,6 +14,8 @@ A root thread **needs attention** when it:
 
 A thread that is working does not need attention, and nor does one you have read, even if it failed. Its row keeps the red glyph so you can still see the failure, but it no longer counts. [States and glyphs](../reference/thread-glance-states.md) lists every state a row can show.
 
+A thread open in a pane of the window, the focused one or any other split pane, is never unread in Thread Glance. When it finishes or fails, bb marks it read a moment later, and counting it until then would only make the need-you filter appear and vanish. While bb's window is in the background, a thread left open that finishes therefore adds nothing to the need-you filter until you come back. Where a pane is maximized, Thread Glance takes every pane bb's split layout lists as visible.
+
 ## What a child thread adds
 
 A parent thread that spawns ten workers should not raise ten flags. Its workers finish, fail and retry as part of the parent thread's job, and the parent thread hears about each one. So by default a child needs attention only when its parent thread cannot deal with it:
@@ -24,12 +26,14 @@ flowchart TD
   asks -->|yes| counts["Needs attention"]
   asks -->|no| failed{"Failed and not read, or a queued message failed to send?"}
   failed -->|no| not["Does not need attention"]
-  failed -->|yes| idle{"Is its parent thread idle, and has it not run since the failure?"}
+  failed -->|yes| idle{"Has its parent thread been idle for 5 seconds, and not run since the failure?"}
   idle -->|yes| counts
   idle -->|no| not
 ```
 
 Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle parent thread that has not run since is an **orphaned failure**: nobody is going to pick it up. A parent thread that is running is usually already handling the failure, so counting it would raise a flag for work already in hand.
+
+A failure counts as orphaned only once the parent thread has been idle for 5 seconds, counted from the later of the failure and the parent thread last becoming idle. bb reports a child's failure to its parent thread after a 2 second delay, and the parent thread then starts, so without the wait a failure it was about to pick up would show in the need-you filter for 2 or 3 seconds. If the parent thread gets busy within the 5 seconds, the failure never counts. Thread Glance notes when it sees a thread become idle; after a reload it counts from the parent thread's last finish instead. The wait applies only to orphaned failures: with **Needs attention counts every child** on, a failed child counts at once, as an unread one.
 
 A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [children chip](../reference/thread-glance-states.md#the-children-chip) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
 

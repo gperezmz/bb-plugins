@@ -39,7 +39,7 @@ The thread that spawned a child thread.
 _Avoid_: Manager, owner
 
 **Orphaned failure**:
-A child thread's failure that its parent thread went idle without handling.
+A child thread's failure that its parent thread has stayed idle for 5 seconds without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
