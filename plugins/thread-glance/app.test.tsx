@@ -7,6 +7,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
 import manifest from "./package.json";
 import {
+  failedUnread,
   finishedUnread,
   makeThread,
   PROJECTS,
@@ -902,5 +903,185 @@ describe("row hover card", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a parent's glyph, child dot and children chip", () => {
+  const parent = (overrides: object = {}) => makeThread({ id: "p", title: "Parent", ...overrides });
+  const child = (id: string, overrides: object = {}, parentId = "p") =>
+    makeThread({ id, title: `Child ${id}`, parentThreadId: parentId, createdAt: T0 + id.length, ...overrides });
+  const offline = { status: "active", runtimeStatus: "waiting-for-host" } as const;
+
+  interface Shown {
+    /** The state the glyph and the row's label give. */
+    state: string;
+    dot: boolean;
+  }
+  interface Tree {
+    name: string;
+    threads: ReturnType<typeof makeThread>[];
+    collapsed: Shown;
+    expanded: Shown;
+    chip: { count: number; unread: number };
+    bold: boolean;
+  }
+  const own = (state: string): Shown => ({ state, dot: false });
+  const fromTree = (state: string): Shown => ({ state, dot: true });
+
+  const TREES: Tree[] = [
+    {
+      name: "parent idle, child working",
+      threads: [parent(), child("c", working)],
+      collapsed: fromTree("Working, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      name: "parent unread, child quiet",
+      threads: [parent(finishedUnread), child("c")],
+      collapsed: own("Unread"),
+      expanded: own("Unread"),
+      chip: { count: 1, unread: 0 },
+      bold: true,
+    },
+    {
+      name: "parent unread, child unread",
+      threads: [parent(finishedUnread), child("c", finishedUnread)],
+      collapsed: own("Unread"),
+      expanded: own("Unread"),
+      chip: { count: 1, unread: 1 },
+      bold: true,
+    },
+    {
+      name: "parent working, child unread",
+      threads: [parent(working), child("c", finishedUnread)],
+      collapsed: own("Working"),
+      expanded: own("Working"),
+      chip: { count: 1, unread: 1 },
+      bold: false,
+    },
+    {
+      name: "parent idle, child failed",
+      threads: [parent(), child("c", failedUnread)],
+      collapsed: fromTree("Failed, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 1 },
+      bold: false,
+    },
+    {
+      name: "parent idle, grandchild waits on you, child idle",
+      threads: [parent(), child("c"), child("gg", { hasPendingInteraction: true }, "c")],
+      collapsed: fromTree("Needs your input, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      // A quiet visible child gives the parent its chip.
+      name: "parent idle, hidden child working",
+      threads: [parent(), child("c"), child("hh", { ...working, isHidden: true })],
+      collapsed: own("Idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      name: "parent idle, hidden child unread",
+      threads: [parent(), child("c"), child("hh", { ...finishedUnread, isHidden: true })],
+      collapsed: own("Idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      name: "parent idle, child offline",
+      threads: [parent(), child("c", offline)],
+      collapsed: fromTree("Machine offline, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      name: "parent idle, child's queued message failed",
+      threads: [parent(), child("c", { queuedWork: "failed" })],
+      collapsed: fromTree("Queued message failed, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 0 },
+      bold: false,
+    },
+    {
+      name: "parent idle, child unread",
+      threads: [parent(), child("c", finishedUnread)],
+      collapsed: fromTree("Unread, in child threads; idle"),
+      expanded: own("Idle"),
+      chip: { count: 1, unread: 1 },
+      bold: false,
+    },
+  ];
+
+  /** What a person reads off the parent's row. */
+  async function parentRow() {
+    const link = await screen.findByRole("link", { name: /^Open Parent — / });
+    const row = link.parentElement!;
+    const column = link.nextElementSibling as HTMLElement;
+    const chip = within(row).getByRole("button", { name: /child threads? of Parent/ });
+    return {
+      label: link.getAttribute("aria-label"),
+      glyph: column.querySelector("[title]")?.getAttribute("title"),
+      dot: column.querySelector("[data-child-dot]"),
+      chipLabel: chip.getAttribute("aria-label"),
+      chipBlue: chip.querySelector('[class*="--timeline-accent"]') !== null,
+      bold: within(row).getByTitle("Parent").className.includes("font-semibold"),
+    };
+  }
+
+  for (const tree of TREES) {
+    for (const expanded of [false, true]) {
+      it(`${tree.name}, ${expanded ? "expanded" : "collapsed"}`, async () => {
+        render(tree.threads, { prefs: expanded ? { expandedChildren: ["p"] } : {} });
+        const shown = expanded ? tree.expanded : tree.collapsed;
+        const seen = await parentRow();
+        expect(seen.glyph).toBe(shown.state);
+        expect(seen.label).toBe(`Open Parent — ${shown.state}; Claude Code`);
+        expect(seen.dot !== null).toBe(shown.dot);
+        if (seen.dot !== null) {
+          expect(seen.dot.className).toContain("bg-muted-foreground");
+          expect(seen.dot.className).toContain("ring-sidebar");
+        }
+        const noun = tree.chip.count === 1 ? "child thread" : "child threads";
+        const unread = tree.chip.unread > 0 ? `, ${tree.chip.unread} unread in the tree` : "";
+        expect(seen.chipLabel).toBe(`${expanded ? "Collapse" : "Show"} ${tree.chip.count} ${noun} of Parent${unread}`);
+        expect(seen.chipBlue).toBe(tree.chip.unread > 0);
+        expect(seen.bold).toBe(tree.bold);
+      });
+    }
+  }
+
+  it("draws a working state taken from the tree as the spinner, still under reduced motion", async () => {
+    render([parent(), child("c", working)]);
+    const link = await screen.findByRole("link", { name: /^Open Parent — Working, in child threads/ });
+    const spinner = (link.nextElementSibling as HTMLElement).querySelector('[class*="animate-spin"]');
+    expect(spinner?.className).toContain("motion-reduce:animate-none");
+  });
+
+  describe("with a plugin row status", () => {
+    const extra = { sidebarRowStatuses: { p: { icon: "Timer", label: "Cache warm", tone: "neutral" } } };
+
+    it("never replaces waits on you from the tree, which keeps its grey child dot", async () => {
+      render([parent(), child("c", { hasPendingInteraction: true })], { extra });
+      const link = await screen.findByRole("link", { name: /^Open Parent — / });
+      expect(link.getAttribute("aria-label")).toBe("Open Parent — Needs your input, in child threads; idle; Claude Code");
+      expect((link.nextElementSibling as HTMLElement).querySelector("[data-child-dot]")).not.toBeNull();
+      expect(screen.queryByLabelText("Cache warm")).toBeNull();
+    });
+
+    it("replaces an unread state from the tree with no child dot, and the chip still shows the unread child", async () => {
+      render([parent(), child("c", finishedUnread)], { extra });
+      const link = await screen.findByRole("link", { name: /^Open Parent — / });
+      expect(link.getAttribute("aria-label")).toBe("Open Parent — Cache warm; Claude Code");
+      expect((link.nextElementSibling as HTMLElement).querySelector("[data-child-dot]")).toBeNull();
+      expect(within(link.parentElement!).getByRole("button", { name: "Show 1 child thread of Parent, 1 unread in the tree" })).toBeTruthy();
+    });
   });
 });
