@@ -61,6 +61,8 @@ describe("the composer chip's popover", () => {
     });
     await act(async () => fireEvent.keyDown(popover(), { key: "Escape" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    // Radix hands focus back to the trigger a tick after closing; a person reopens later than that.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     await act(async () => {
       fireEvent.keyDown(trigger, { key: "Enter" });
       fireEvent.click(trigger);
