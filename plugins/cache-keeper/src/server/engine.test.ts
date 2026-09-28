@@ -484,10 +484,10 @@ describe("keep warm while waiting", () => {
     h.transcript("p", T0, 20_000, "1h");
     await h.start();
     await h.engine.setKeepWarm("p", true);
-    h.thread({ id: "late", parentThreadId: "p", status: "active", createdAt: T0 + MIN });
+    // bb's created event carries neither its question nor its background count: the next reconciliation check does.
+    h.thread({ id: "late", parentThreadId: "p", status: "active", createdAt: T0 + MIN, activity: busy });
     h.emit("created", "late");
     h.transcript("late", T0 + 2 * MIN, 20_000, "1h");
-    h.task("late", "b9", "command", T0 + 2 * MIN);
     h.now = T0 + 2 * MIN;
     await h.ranTurn("late", [], "Started the build.");
     h.transcript("late", T0 + 2 * MIN, 20_000, "1h");
@@ -723,5 +723,20 @@ describe("waiting", () => {
     await h.start();
     expect((await h.engine.viewOf("p"))?.waiting).toBe(true);
     expect((await h.engine.viewOf("c"))?.counts.queued).toBe(1);
+  });
+});
+
+describe("the CLI's tree rule", () => {
+  it("counts threads in the same thread tree by bb's parent links, archived ancestors included, and no other", async () => {
+    h.thread({ id: "root", providerId: "pi" });
+    h.thread({ id: "mid", parentThreadId: "root", archivedAt: T0 });
+    h.thread({ id: "leaf", parentThreadId: "mid" });
+    h.thread({ id: "sib", parentThreadId: "root" });
+    h.thread({ id: "other" });
+    await h.start();
+    expect(await h.engine.sameTree("leaf", "sib")).toBe(true);
+    expect(await h.engine.sameTree("sib", "root")).toBe(true);
+    expect(await h.engine.sameTree("leaf", "other")).toBe(false);
+    expect(await h.engine.sameTree("leaf", "thr_missing")).toBe(false);
   });
 });

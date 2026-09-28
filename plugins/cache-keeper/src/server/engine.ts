@@ -633,6 +633,8 @@ export class Engine {
       if (!claude && this.claudeAbove(threadId) === null) return;
       await this.readEvents(threadId);
       if (claude) {
+        // bb's events do not say whether a thread waits on your answer; a thread first seen through them is asked once.
+        if (this.index.get(threadId)?.pending === null) await this.readPending(threadId);
         const watched = this.watched(threadId);
         if (watched) await this.readTranscript(threadId);
         this.account(threadId);
@@ -645,6 +647,18 @@ export class Engine {
       }
       if (why !== "view") this.replan(this.index.topOf(threadId));
     }).catch((error) => this.deps.log.warn(`${threadId}: could not read its ${why === "turn end" ? "turn" : "state"}: ${message(error)}`));
+  }
+
+  private async readPending(threadId: string): Promise<void> {
+    this.counters.bbCalls++;
+    const raw = await this.deps.pendingInteractions(threadId).catch(() => undefined);
+    const list = Array.isArray(raw) ? raw : Array.isArray((raw as { interactions?: unknown })?.interactions) ? (raw as { interactions: unknown[] }).interactions : null;
+    const t = this.index.get(threadId);
+    if (list === null || t === undefined) {
+      this.warnOnce(`missing\0${threadId}\0pendingInteractions`, `${threadId}: bb's pending interactions reply lacks the list; nothing is sent to it until a reply carries it`);
+      return;
+    }
+    this.index.apply({ id: threadId, pending: list.length > 0 }, t.missing);
   }
 
   private claudeAbove(threadId: string): string | null {
@@ -1262,10 +1276,13 @@ export class Engine {
     const changed = [...before].filter(([id, was]) => JSON.stringify(this.views.get(id) ?? null) !== was).map(([id]) => id);
     if (changed.length > 0) this.deps.publish(changed);
     for (const [id, o] of observed) {
-      if (o.record.transcript?.cursor == null && o.thread.status === "idle" && !this.chains.has(`learn:${id}`) && !this.learnt.has(id)) {
-        this.learnt.add(id);
-        void this.learn(id, "watched");
-      }
+      if (o.record.transcript?.cursor != null || o.thread.status !== "idle" || this.learning.has(id)) continue;
+      if (now - (this.unlearnt.get(id) ?? -Infinity) < RECONCILE_MS) continue;
+      this.learning.add(id);
+      void this.learn(id, "watched").finally(() => {
+        this.learning.delete(id);
+        if (this.record(id).transcript?.cursor == null) this.unlearnt.set(id, this.now());
+      });
     }
     const due = [...plans.values()].some((p) => p.action !== null) || tree.due.length > 0 || this.cycles.has(top) || this.heldDue(observed, now);
     if (due && !this.actQueued.has(top)) {
@@ -1278,8 +1295,10 @@ export class Engine {
   /** Trees with an act queued that has not started: a second is not queued behind it. */
   private readonly actQueued = new Set<string>();
 
-  /** Threads learnt once for having come to matter, so a failing read is not retried on every plan. */
-  private readonly learnt = new Set<string>();
+  /** Threads being read for having come to matter. */
+  private readonly learning = new Set<string>();
+  /** When a thread that came to matter could not be read, so it is not tried again on every plan. */
+  private readonly unlearnt = new Map<string, number>();
 
   /** Whether a send held back falls due now, to be logged. */
   private heldDue(observed: Map<string, Observed>, now: number): boolean {
@@ -1886,6 +1905,8 @@ export class Engine {
 
   private async refresh(threadId: string): Promise<ThreadView | null> {
     this.views.delete(threadId);
+    // A thread switched on for the first time is read before its view is given.
+    if (this.index.isClaude(threadId) && this.record(threadId).transcript?.cursor == null) await this.learn(threadId, "view");
     const view = this.index.isLive(threadId) ? this.buildView(threadId) : null;
     this.deps.publish([threadId]);
     return view;
