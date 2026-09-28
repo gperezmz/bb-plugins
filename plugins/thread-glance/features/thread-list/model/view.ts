@@ -175,7 +175,7 @@ export interface ViewInputs {
    * The need-you filter is on: every group, hidden ones included, draws only
    * its trees that need attention, and a group with none is left out.
    */
-  needYouOnly?: boolean;
+  needYouOnly: boolean;
 }
 
 interface Context extends ViewInputs {
@@ -476,7 +476,7 @@ export function needYouActive(on: boolean, count: number): boolean {
  * auto-reveal did.
  */
 function buildGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
-  if (context.needYouOnly === true) return needYouGroup(context, descriptor, trees, hidden);
+  if (context.needYouOnly) return needYouGroup(context, descriptor, trees, hidden);
   const counters = countTrees(trees);
   const userCollapsed = isGroupCollapsed(descriptor, context.prefs);
   const activeId = context.activeThreadId;
@@ -485,17 +485,7 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   const collapsed = userCollapsed && !opened;
   const isPinned = descriptor.id === PINNED_GROUP_ID;
 
-  const sorted = [...trees];
-  if (isPinned) {
-    sorted.sort((a, b) => comparePinned(a.root.thread, b.root.thread));
-  } else {
-    sorted.sort((a, b) =>
-      context.compare(
-        { thread: a.root.thread, treeAttention: a.latestAttentionAt },
-        { thread: b.root.thread, treeAttention: b.latestAttentionAt },
-      ),
-    );
-  }
+  const sorted = sortTrees(context, descriptor, trees);
 
   let rows: Row[];
   if (collapsed) {
@@ -529,16 +519,20 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   };
 }
 
+/** A group's trees in its order: Pinned's own, else the chosen sort. */
+function sortTrees(context: Context, descriptor: GroupDescriptor, trees: readonly ThreadTree[]): ThreadTree[] {
+  if (descriptor.id === PINNED_GROUP_ID) return [...trees].sort((a, b) => comparePinned(a.root.thread, b.root.thread));
+  return [...trees].sort((a, b) =>
+    context.compare(
+      { thread: a.root.thread, treeAttention: a.latestAttentionAt },
+      { thread: b.root.thread, treeAttention: b.latestAttentionAt },
+    ),
+  );
+}
+
 /** A group under the need-you filter: its header, and its trees that need attention, whatever its collapse. */
 function needYouGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
-  const sorted = [...trees].sort((a, b) =>
-    descriptor.id === PINNED_GROUP_ID
-      ? comparePinned(a.root.thread, b.root.thread)
-      : context.compare(
-          { thread: a.root.thread, treeAttention: a.latestAttentionAt },
-          { thread: b.root.thread, treeAttention: b.latestAttentionAt },
-        ),
-  );
+  const sorted = sortTrees(context, descriptor, trees);
   return {
     descriptor,
     counters: countTrees(trees),
@@ -618,7 +612,7 @@ export function buildListView(inputs: ViewInputs): ListView {
       if (id === THREADS_GROUP_ID && prefs.organizationMode !== "chronological") continue;
     }
     const hidden = id !== PINNED_GROUP_ID && hiddenIds.has(id);
-    if (context.needYouOnly === true) {
+    if (context.needYouOnly) {
       // Under the filter, a hidden group's trees come out of More, each under its own header.
       if (trees.some(needsAttention)) groups.push(buildGroup(context, descriptor, trees, hidden));
       continue;

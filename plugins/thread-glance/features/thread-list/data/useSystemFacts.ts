@@ -34,6 +34,8 @@ export function useSystemFacts(): SystemFacts {
   const [facts, setFacts] = useState<SystemFacts>(UNKNOWN_SYSTEM);
   useEffect(() => {
     let cancelled = false;
+    // Called inside the chain, so a host that throws for an area it lacks
+    // lands in the rejection handler and leaves the facts unknown.
     Promise.resolve()
       .then(() => sdk.system.config())
       .then(

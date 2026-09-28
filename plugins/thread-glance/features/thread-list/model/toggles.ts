@@ -89,3 +89,19 @@ export function markAllReadPlan(
   }
   return { read, seen };
 }
+
+/**
+ * What one row's Mark read marks: on a tree's root, every unread thread in
+ * the tree; on any other row, the thread alone.
+ */
+export function markReadPlanFor(
+  threadId: string,
+  forest: Pick<Forest, "infos" | "treeOf">,
+  context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },
+): MarkAllRead {
+  const tree = forest.treeOf.get(threadId);
+  if (tree !== undefined && tree.root.thread.id === threadId) return markAllReadPlan([tree], context);
+  const thread = forest.infos.get(threadId)?.thread;
+  if (thread === undefined) return { read: [threadId], seen: [] };
+  return { read: [threadId], seen: isDoneUnseen(thread, context) ? [threadId] : [] };
+}

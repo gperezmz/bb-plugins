@@ -36,7 +36,7 @@ export function chipLabel(title: string, count: number, expanded: boolean): stri
 /** The text and accessible name of an open tree's fold row. */
 export function olderRowText(row: OlderRow): { label: string; ariaLabel: string } {
   const children = row.count === 1 ? "child thread" : "child threads";
-  if (row.expanded) return { label: "Show fewer", ariaLabel: `Hide ${row.count} older ${children}` };
+  if (row.expanded) return { label: "Show fewer", ariaLabel: `Hide ${row.count} more ${children}` };
   return { label: `${row.count} more ${children}`, ariaLabel: `Show ${row.count} more ${children}` };
 }
 

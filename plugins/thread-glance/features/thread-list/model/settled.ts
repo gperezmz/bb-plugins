@@ -86,14 +86,19 @@ export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean
   const thread = info.thread;
   if (thread.isHidden) return info.attentionFlags.size === 0;
   if (thread.isArchived) return true;
-  if (!isQuietThread(info.state, info.unread, false)) return false;
-  if (info.attentionFlags.size > 0) return false;
-  if (thread.pinnedAt !== null || thread.isPinned) return false;
+  if (!mightSettle(info)) return false;
   const pullRequest = inputs.pullRequestOf(thread);
   if (pullRequest === "unknown" || pullRequest === "open" || pullRequest === "draft") return false;
   if (pullRequest === "merged" || pullRequest === "closed") return true;
   if (inputs.settleAfter === "never") return false;
   return inputs.now - lastActivityAt(thread, inputs) >= SETTLE_AFTER_MS[inputs.settleAfter];
+}
+
+/** A row's thread that settles once its pull request and activity allow: quiet as if none were open, needing no attention, not pinned. */
+function mightSettle(info: ThreadInfo): boolean {
+  const thread = info.thread;
+  if (thread.pinnedAt !== null || thread.isPinned) return false;
+  return isQuietThread(info.state, info.unread, false) && info.attentionFlags.size === 0;
 }
 
 /**
@@ -117,8 +122,7 @@ export function pullRequestLookupIds(
   const ids: string[] = [];
   for (const info of infos) {
     const thread = info.thread;
-    if (thread.isHidden || thread.isArchived || thread.pinnedAt !== null || thread.isPinned) continue;
-    if (!isQuietThread(info.state, info.unread, false) || info.attentionFlags.size > 0) continue;
+    if (thread.isHidden || thread.isArchived || !mightSettle(info)) continue;
     if (needsPullRequestLookup(thread.environment?.branchName ?? null, defaultBranchOf(thread))) ids.push(thread.id);
   }
   return ids;

@@ -1,5 +1,9 @@
 // The pull request lookups that answered, by thread id. Answers arriving in
 // one burst (a list's worth of lookups on load) land in one state update.
+//
+// Debt: this copies server state the host's per-row pull request hook owns,
+// because settling reads every thread's pull request at once and the SDK
+// offers no query over many threads. It clears when the SDK does.
 import { useCallback, useRef, useState } from "react";
 import type { PullRequestState } from "../model/settled";
 

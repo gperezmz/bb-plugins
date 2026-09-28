@@ -1,5 +1,9 @@
 // Each project's default branch, looked up once per list through the
 // machine of the project's default source.
+//
+// Debt: the answers are kept in component state, with no refresh, because
+// the SDK offers no cached query for a project's branches. It clears when
+// the SDK does, or when a default branch changing mid-session matters.
 import { useEffect, useRef, useState } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { defaultSourceHostId } from "../model/branches";

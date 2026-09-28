@@ -38,8 +38,7 @@ import { buildForest } from "../model/trees";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
-import { isDoneUnseen } from "../model/state";
-import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
+import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
 import { pullRequestFact, pullRequestLookupIds, type SettleInputs } from "../model/settled";
 import { usePullRequestAnswers } from "../data/usePullRequestAnswers";
 import { PullRequestProbes } from "./PullRequestProbes";
@@ -232,11 +231,10 @@ function ThreadListBody({
   useLayoutEffect(() => {
     previousView.current = view;
   }, [view]);
-  // Nothing left that needs you turns the filter off, so the full list comes back.
-  const needYouCount = view?.needYouCount ?? 0;
-  useEffect(() => {
-    if (needYouOn && needYouCount === 0) setNeedYouOn(false);
-  }, [needYouOn, needYouCount]);
+  // Nothing left that needs you turns the filter off, so it does not narrow
+  // the list again unasked when something next does. Set during render, as
+  // React adjusts state from a changed input.
+  if (needYouOn && forest !== null && !needYouActive(needYouOn, countNeedYou(forest))) setNeedYouOn(false);
 
   // Viewing a child stamps seenAt, on arrival and on leaving, so a child
   // that finishes while you watch doesn't turn unread behind you.
@@ -297,16 +295,10 @@ function ThreadListBody({
           void copyText(thread.id, "Thread ID copied");
           return;
         case "mark-read": {
-          // A root's Mark read covers its tree, children marked unread only here included.
-          const tree = latest.current.forest?.treeOf.get(thread.id);
-          if (tree !== undefined && tree.root.thread.id === thread.id) {
-            const plan = markAllReadPlan([tree], context);
-            if (plan.seen.length > 0) markSeen(plan.seen);
-            for (const id of plan.read) actions.setRead(id, true).catch(fail("Couldn't mark read"));
-            return;
-          }
-          if (isDoneUnseen(thread, context)) markSeen([thread.id]);
-          actions.setRead(thread.id, true).catch(fail("Couldn't mark read"));
+          const forest = latest.current.forest;
+          const plan = forest === null ? { read: [thread.id], seen: [] } : markReadPlanFor(thread.id, forest, context);
+          if (plan.seen.length > 0) markSeen(plan.seen);
+          for (const id of plan.read) actions.setRead(id, true).catch(fail("Couldn't mark read"));
           return;
         }
         case "mark-unread":
