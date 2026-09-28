@@ -13,7 +13,7 @@ import {
   type StateKind,
   type ThreadState,
 } from "./state";
-import { attentionFlagsOf, isOrphanedFailure } from "./attention";
+import { attentionFlagsOf, orphanedAt } from "./attention";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
@@ -40,9 +40,9 @@ export interface ThreadInfo {
   /** Quiet test for the thread alone. */
   quiet: boolean;
   /**
-   * A quiet thread, as if no thread were open: nothing to see behind a
+   * A quiet thread, as if no thread were focused: nothing to see behind a
    * tree's fold. A root, or any child when `childAttention` is
-   * `everything`, takes the quiet test without the open thread's exemption.
+   * `everything`, takes the quiet test without the focused thread's exemption.
    * Otherwise a child is quiet unless it runs or needs attention, so finishing
    * unread folds it; an archived child is always quiet. The fold reads this,
    * so opening a thread never changes which children stay shown.
@@ -67,7 +67,7 @@ export interface Subtree {
   visibleCount: number;
   /** Visible direct children: the chip's number. */
   childCount: number;
-  /** Every visible descendant is quiet, as if no thread were open, so the subtree adds nothing to see when folded. */
+  /** Every visible descendant is quiet, as if no thread were focused, so the subtree adds nothing to see when folded. */
   quietIgnoringOpen: boolean;
 }
 
@@ -88,7 +88,7 @@ export interface ThreadTree {
   /** Every thread quiet and the active thread not in it. */
   quiet: boolean;
   /**
-   * The quiet test without the open thread's exemption. A group's fold reads
+   * The quiet test without the focused thread's exemption. A group's fold reads
    * this, so opening a thread never changes which roots stay shown.
    */
   quietIgnoringOpen: boolean;
@@ -103,6 +103,8 @@ export interface Forest {
   treeOf: ReadonlyMap<string, ThreadTree>;
   /** The rollup under every thread with a row, by thread id. */
   subtrees: ReadonlyMap<string, Subtree>;
+  /** The earliest moment after `now` a child's failure becomes an orphaned failure, or null for none. */
+  nextOrphanAt: number | null;
 }
 
 export interface ForestInputs extends ThreadContext {
@@ -114,6 +116,12 @@ export interface ForestInputs extends ThreadContext {
   notes?: Readonly<Record<string, ThreadNotes>>;
   /** Which children can need attention; `blocked` when absent. */
   childAttention?: ChildAttention;
+  /** When this list last saw each thread go from busy to idle (see `trackIdle`). */
+  idleSince?: Readonly<Record<string, number>>;
+  /** The server's `idleAt` stamps: when any window last saw each thread go idle. */
+  idleAt?: Readonly<Record<string, number>>;
+  /** False until the stamps have loaded: no failure counts as orphaned before then. */
+  stampsLoaded?: boolean;
 }
 
 function isPinned(thread: PluginSidebarThread): boolean {
@@ -148,6 +156,18 @@ export function attachParent(
   return attach;
 }
 
+/**
+ * When a thread last went idle, as this list or any window saw it; null while
+ * the stamps that may hold it have not loaded.
+ */
+function idleSinceOf(id: string, inputs: ForestInputs): number | null | undefined {
+  if (inputs.stampsLoaded === false) return null;
+  const seen = inputs.idleSince?.[id];
+  const stamped = inputs.idleAt?.[id];
+  if (seen === undefined) return stamped;
+  return stamped === undefined ? seen : Math.max(seen, stamped);
+}
+
 export function buildForest(inputs: ForestInputs): Forest {
   const byId = new Map(inputs.threads.map((thread) => [thread.id, thread]));
   const infos = new Map<string, ThreadInfo>();
@@ -178,14 +198,22 @@ export function buildForest(inputs: ForestInputs): Forest {
   }
 
   const mode = inputs.childAttention ?? "blocked";
+  let nextOrphanAt: number | null = null;
   for (const info of infos.values()) {
     const parent = info.parentId === null ? undefined : infos.get(info.parentId);
+    const orphaned =
+      parent === undefined
+        ? null
+        : orphanedAt(info.thread, info.flags, {
+            ...parent,
+            finishedAt: inputs.finishedAt[parent.thread.id],
+            idleSince: idleSinceOf(parent.thread.id, inputs),
+          });
+    if (orphaned !== null && orphaned > inputs.now) nextOrphanAt = Math.min(nextOrphanAt ?? orphaned, orphaned);
     info.attentionFlags = attentionFlagsOf(info.flags, {
       isRoot: parent === undefined,
       mode,
-      orphaned:
-        parent !== undefined &&
-        isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
+      orphaned: orphaned !== null && orphaned <= inputs.now,
     });
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
@@ -294,7 +322,16 @@ export function buildForest(inputs: ForestInputs): Forest {
     treeOf.set(root.thread.id, tree);
     for (const info of descendants) treeOf.set(info.thread.id, tree);
   }
-  return { infos, children, trees, treeOf, subtrees };
+  return { infos, children, trees, treeOf, subtrees, nextOrphanAt };
+}
+
+/**
+ * Whether any thread in the trees is unread, descendants, hidden and
+ * archived threads included: the threads Mark all read marks, so it is
+ * offered only when this holds.
+ */
+export function anyUnread(trees: readonly ThreadTree[]): boolean {
+  return trees.some((tree) => tree.root.unread || tree.descendants.some((info) => info.unread));
 }
 
 /** Ids from `id` up to (not including) `stopAt`, nearest first. */

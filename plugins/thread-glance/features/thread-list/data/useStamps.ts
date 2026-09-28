@@ -4,25 +4,33 @@ import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-
 import type { RpcContract } from "@/shared/contract";
 import { CHANNELS, type StampSignal, type Stamps } from "@/shared/signals";
 
-const EMPTY: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {} };
+const EMPTY: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
 const KINDS = new Set(Object.keys(EMPTY));
 
 export interface StampsState {
   stamps: Stamps;
+  /** The first listing came back, or failed: until then every map is empty for want of it. */
+  loaded: boolean;
   markSeen(threadIds: string[]): void;
+  /** Records on the server that these threads were just seen going idle. */
+  markIdle(threadIds: string[]): void;
   clearSeen(threadIds: string[]): void;
 }
 
 export function useStamps(): StampsState {
   const rpc = useRpc<RpcContract>();
   const [stamps, setStamps] = useState<Stamps>(EMPTY);
+  const [loaded, setLoaded] = useState(false);
   const connection = useRealtimeConnectionState();
   const wasConnected = useRef(false);
 
   const load = useCallback(() => {
     rpc.call("listStamps", null).then(
-      (result) => setStamps(result.stamps),
-      () => undefined,
+      (result) => {
+        setStamps(result.stamps);
+        setLoaded(true);
+      },
+      () => setLoaded(true),
     );
   }, [rpc]);
 
@@ -55,6 +63,13 @@ export function useStamps(): StampsState {
     },
     [apply, rpc],
   );
+  const markIdle = useCallback(
+    (threadIds: string[]) => {
+      if (threadIds.length === 0) return;
+      rpc.call("markIdle", { threadIds }).catch(() => undefined);
+    },
+    [rpc],
+  );
   const clearSeen = useCallback(
     (threadIds: string[]) => {
       if (threadIds.length === 0) return;
@@ -64,5 +79,5 @@ export function useStamps(): StampsState {
     [apply, rpc],
   );
 
-  return { stamps, markSeen, clearSeen };
+  return { stamps, loaded, markSeen, markIdle, clearSeen };
 }

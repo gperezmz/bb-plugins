@@ -32,6 +32,7 @@ import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } 
 import { SplitMiniMap, type MiniMapPane } from "./SplitMiniMap";
 import { ThreadDetails } from "./ThreadDetails";
 import { useRowCard } from "./row-card";
+import { ROW_HOVER_HIDES, ROW_HOVER_LAYS_OUT, ROW_HOVER_SHOWS } from "./input-modality";
 
 /** Two clicks on one row within this window start a rename, as in bb. */
 const RENAME_CLICK_MS = 400;
@@ -88,7 +89,7 @@ export interface ThreadRowViewProps {
   inPinned: boolean;
   /** Drop feedback from the list's drag state. */
   dropState: "valid" | "blocked" | "unchanged" | "before" | "after" | null;
-  /** The open thread is this one. */
+  /** The focused thread is this one. */
   active: boolean;
   /** Its title is being renamed. */
   editing: boolean;
@@ -309,7 +310,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     ? ""
     : menuShowing
       ? "opacity-0"
-      : "group-hover/row:opacity-0 group-focus-within/row:opacity-0";
+      : ROW_HOVER_HIDES;
 
   const body = (
     <div
@@ -471,7 +472,7 @@ export const ThreadRowView = memo(function ThreadRowView({
             <span
               className={cn(
                 "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
-                menuShowing ? "flex" : "hidden group-hover/row:flex group-focus-within/row:flex",
+                menuShowing ? "flex" : ROW_HOVER_LAYS_OUT,
               )}
             >
               {row.treeUnread ? (
@@ -577,7 +578,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                       ? "relative"
                       : menuShowing
                         ? "opacity-100"
-                        : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
+                        : ROW_HOVER_SHOWS,
                   )}
                 >
                   <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>

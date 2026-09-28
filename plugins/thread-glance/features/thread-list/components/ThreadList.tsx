@@ -20,6 +20,7 @@ import {
   experimental_useSidebarThreads as useSidebarThreads,
   useEnvironmentProviders,
   useSdk,
+  useSidebarSplitLayout,
   useSidebarThreadDraftIds,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
@@ -29,6 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAutoExpand } from "../data/useAutoExpand";
 import { useClientPreferences } from "../data/useClientPreferences";
+import { useIdleSince } from "../data/useIdleSince";
 import { useNow } from "../data/useNow";
 import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
@@ -52,6 +54,7 @@ import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
 import { cancelPendingCards } from "./row-card";
+import { useInputModality } from "./input-modality";
 import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
@@ -113,19 +116,31 @@ function ThreadListBody({
   const [client, updateClient] = useClientPreferences();
   // The need-you filter is per window and starts off on every load.
   const [needYouOn, setNeedYouOn] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useInputModality(root);
   const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.showArchived ? ["active", "archived"] : ["active"] });
   const actions = useThreadActions();
   const sdk = useSdk();
   const { providers } = useProviders();
   const { providers: environmentProviders } = useEnvironmentProviders();
   const draftIds = useSidebarThreadDraftIds();
-  const { stamps, markSeen, clearSeen } = useStamps();
+  const splitLayout = useSidebarSplitLayout();
+  // Every thread a split pane shows is open, not only the focused one.
+  const openThreadIds = useMemo(
+    () => new Set(splitLayout?.panes.flatMap((pane) => (pane.threadId === null ? [] : [pane.threadId])) ?? []),
+    [splitLayout],
+  );
+  const { stamps, loaded: stampsLoaded, markSeen, markIdle, clearSeen } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
+  // When the next child's failure becomes orphaned. The forest knows it, but
+  // the forest is built from the clock, so the clock takes it from state.
+  const [orphanDeadline, setOrphanDeadline] = useState<number | null>(null);
   const nextDeadline = useMemo(() => {
     const future = Object.values(scheduled).filter((at) => at > Date.now());
+    if (orphanDeadline !== null) future.push(orphanDeadline);
     return future.length > 0 ? Math.min(...future) : null;
-  }, [scheduled]);
+  }, [scheduled, orphanDeadline]);
   const now = useNow(nextDeadline);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -143,6 +158,7 @@ function ThreadListBody({
   const ready = sidebar.status === "ready";
   const threads = sidebar.threads;
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  const idleSince = useIdleSince(threads, markIdle);
 
   const forest = useMemo(
     () =>
@@ -150,6 +166,7 @@ function ThreadListBody({
         ? buildForest({
             threads,
             activeThreadId,
+            openThreadIds,
             finishedAt: stamps.finishedAt,
             seenAt: stamps.seenAt,
             draftIds,
@@ -157,10 +174,15 @@ function ThreadListBody({
             now,
             notes,
             childAttention: prefs.childAttention,
+            idleSince,
+            idleAt: stamps.idleAt,
+            stampsLoaded,
           })
         : null,
-    [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
+    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, stamps.idleAt, stampsLoaded, draftIds, scheduled, now, notes, prefs.childAttention, idleSince],
   );
+  const nextOrphanAt = forest?.nextOrphanAt ?? null;
+  if (nextOrphanAt !== orphanDeadline) setOrphanDeadline(nextOrphanAt);
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
   // Projects with a thread on a branch: the rest need no default branch.
   const branchedProjectIds = useMemo(
@@ -273,7 +295,7 @@ function ThreadListBody({
 
   const runMenuAction = useCallback(
     (action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null) => {
-      const context = { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt };
+      const context = { activeThreadId, openThreadIds, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt };
       const fail = (message: string) => (error: unknown) => toast.error(message, { description: describeError(error) });
       switch (action) {
         case "open-in-split":
@@ -326,7 +348,7 @@ function ThreadListBody({
           return;
       }
     },
-    [actions, activeThreadId, clearSeen, markSeen, onNavigate, sdk, stamps.finishedAt, stamps.seenAt],
+    [actions, activeThreadId, openThreadIds, clearSeen, markSeen, onNavigate, sdk, stamps.finishedAt, stamps.seenAt],
   );
   const runMenuActionRef = useRef(runMenuAction);
   useLayoutEffect(() => {
@@ -335,9 +357,9 @@ function ThreadListBody({
 
   // The committed state for the controllers' callbacks: they read it when
   // called, so the controllers themselves stay put while threads change.
-  const latest = useRef({ forest, view, prefs, byId, activeThreadId, stamps });
+  const latest = useRef({ forest, view, prefs, byId, activeThreadId, openThreadIds, stamps });
   useLayoutEffect(() => {
-    latest.current = { forest, view, prefs, byId, activeThreadId, stamps };
+    latest.current = { forest, view, prefs, byId, activeThreadId, openThreadIds, stamps };
   });
 
   const loadModel = useCallback(
@@ -451,15 +473,13 @@ function ThreadListBody({
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
   const markTreesRead = useCallback(
     (trees: readonly ThreadTree[], where: string) => {
-      const { activeThreadId, stamps } = latest.current;
-      const plan = markAllReadPlan(trees, { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
+      const { activeThreadId, openThreadIds, stamps } = latest.current;
+      const plan = markAllReadPlan(trees, { activeThreadId, openThreadIds, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
       const run = () => {
         if (plan.seen.length > 0) markSeen(plan.seen);
         for (const id of plan.read) actions.setRead(id, true).catch(() => undefined);
       };
-      if (plan.read.length === 0) {
-        toast(`Nothing unread in ${where}`);
-      } else if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
+      if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
         setConfirm({
           title: `Mark ${plan.read.length} threads read?`,
           description: `Every unread thread in ${where}, child threads included, will be marked read.`,
@@ -703,12 +723,13 @@ function ThreadListBody({
 
   return (
     <ListLiveContext.Provider value={live}>
-      <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
+      <div ref={root} className="flex w-full min-w-0 flex-col px-1.5 pb-2">
         <ListHeader
           mode={prefs.organizationMode}
           needYouCount={view.needYouCount}
           needYouOnly={needYouOn}
           onToggleNeedYou={onToggleNeedYou}
+          hasUnread={view.hasUnread}
           onMarkAllRead={onMarkListRead}
           prefs={prefs}
           client={client}

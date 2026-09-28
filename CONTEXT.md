@@ -39,15 +39,19 @@ The thread that spawned a child thread.
 _Avoid_: Manager, owner
 
 **Orphaned failure**:
-A child thread's failure that its parent thread went idle without handling.
+A child thread's failure that its parent thread has stayed idle for 5 seconds without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
 The count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them, led by the glyph of the most urgent state among its descendants.
 _Avoid_: Chip, Pill, children badge, child dot
 
+**Open thread**:
+A thread shown in any pane of bb's window, the focused one or another split pane. Thread Glance never counts it as unread.
+_Avoid_: Viewed thread, visible thread
+
 **Quiet thread**:
-A thread that is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
+A thread that is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 _Avoid_: Idle thread
 
 **Settled thread**:

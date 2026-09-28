@@ -321,6 +321,7 @@ describe("stamps", () => {
         finishedAt: { t1: 3_000, t2: 4_000 },
         pendingAt: { t1: 2_000 },
         seenAt: {},
+        idleAt: {},
       },
     });
     expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
@@ -345,6 +346,25 @@ describe("stamps", () => {
       { kind: "seenAt", threadIds: ["a", "b"], value: 5_000 },
       { kind: "seenAt", threadIds: ["a"], value: null },
     ]);
+  });
+
+  it("keeps the later idleAt, so a window reporting late cannot move it back", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(6_000);
+    const { bb, harness } = await load();
+    expect(await harness.behavior.callRpc("markIdle", { threadIds: ["a"] })).toEqual({ at: 6_000 });
+    vi.setSystemTime(8_000);
+    await harness.behavior.callRpc("markIdle", { threadIds: ["a", "b"] });
+    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ idleAt: 8_000 });
+    vi.setSystemTime(7_000);
+    await harness.behavior.callRpc("markIdle", { threadIds: ["a"] });
+    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ idleAt: 8_000 });
+    expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
+      { kind: "idleAt", threadIds: ["a"], value: 6_000 },
+      { kind: "idleAt", threadIds: ["a", "b"], value: 8_000 },
+    ]);
+    await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
+    expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
   });
 
   it("forgets a deleted thread's stamps without publishing", async () => {

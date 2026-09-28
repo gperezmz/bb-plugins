@@ -19,6 +19,10 @@ beforeAll(async () => {
 
 /** Moves the pointer off every row, onto a strip below the list. */
 async function pointerAway() {
+  await userEvent.hover(awayStrip());
+}
+
+function awayStrip(): HTMLElement {
   let away = document.querySelector<HTMLElement>("[data-away]");
   if (away === null) {
     away = document.createElement("div");
@@ -26,7 +30,7 @@ async function pointerAway() {
     away.style.cssText = "position: fixed; left: 0; right: 0; bottom: 0; height: 8px";
     document.body.append(away);
   }
-  await userEvent.hover(away);
+  return away;
 }
 
 afterEach(async () => {
@@ -119,6 +123,7 @@ async function render(width: number) {
           ),
           pendingAt: Object.fromEntries(CASES.map((c) => [c.id, Date.now() - 59 * 60_000])),
           seenAt: {},
+          idleAt: {},
         },
       }),
       markSeen: () => ({ at: Date.now() }),
@@ -298,5 +303,137 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
     await userEvent.hover(rowOf(parent));
     await userEvent.click(chip);
     await expect.poll(() => chip.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+// bb routes a row's link itself; here a followed link would unload the test.
+document.addEventListener(
+  "click",
+  (event) => {
+    if ((event.target as Element).closest("a[href]")) event.preventDefault();
+  },
+  true,
+);
+
+/** Whether a person sees the element: laid out and not faded out. */
+const seen = (element: Element | null) =>
+  element !== null && element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+
+/** A root with children and something unread, so every hover action shows. */
+const FULL = CASES.find((c) => c.kind === "root" && c.parent && c.unread)!;
+
+/** The Alpha group's header, where every case lives. */
+function header(): HTMLElement {
+  return screen.getByRole("button", { name: /(Collapse|Expand) Alpha section/ }).closest<HTMLElement>('[data-sidebar="group-label"]')!;
+}
+
+function expectHeaderAtRest(label: string) {
+  const at = header();
+  expect(seen(at.querySelector('button[aria-label="New thread in Alpha"]')), `${label}: +`).toBe(false);
+  expect(seen(at.querySelector('button[aria-label="Alpha actions"]')), `${label}: …`).toBe(false);
+  expect(seen(at.querySelector('[role="group"]')), `${label}: counters`).toBe(true);
+}
+
+function expectHeaderActions(label: string) {
+  const at = header();
+  expect(seen(at.querySelector('button[aria-label="New thread in Alpha"]')), `${label}: +`).toBe(true);
+  expect(seen(at.querySelector('button[aria-label="Alpha actions"]')), `${label}: …`).toBe(true);
+}
+
+/**
+ * Clicks outside every row and menu, as a person dismisses a menu. An open
+ * menu turns pointer events off on the page, so the click is forced to the
+ * spot rather than waiting for the strip to take it.
+ */
+async function clickAway() {
+  await userEvent.click(awayStrip(), { force: true });
+}
+
+// Wide enough that menus open as dropdowns rather than drawers.
+const DESKTOP = 1024;
+
+describe("the hover look after a click", () => {
+  it("leaves a clicked row at rest once the pointer leaves it", async () => {
+    await render(DESKTOP);
+    await ready();
+    await userEvent.click(rowOf(FULL).querySelector("a")!);
+    await pointerAway();
+    expectRowEnd(FULL, false);
+  });
+
+  it("leaves a row at rest after a click on any of its controls, a menu closed with the pointer included", async () => {
+    await render(DESKTOP);
+    await ready();
+    for (const part of ["markRead", "archive", "childrenChip", "more"] as const) {
+      await userEvent.hover(rowOf(FULL));
+      await userEvent.click(rowOf(FULL).querySelector<HTMLElement>(PARTS[part]())!);
+      if (part === "more") {
+        await screen.findByRole("menu");
+        await clickAway();
+        await expect.poll(() => screen.queryByRole("menu")).toBeNull();
+      }
+      await pointerAway();
+      expectRowEnd(FULL, false);
+    }
+  });
+
+  it("leaves a clicked group header at rest once the pointer leaves it, after its chevron, + or … was clicked", async () => {
+    await render(DESKTOP);
+    await ready();
+    const toggle = () => screen.getByRole("button", { name: /(Collapse|Expand) Alpha section/ });
+    await userEvent.click(toggle());
+    await pointerAway();
+    expectHeaderAtRest("after collapsing");
+    await userEvent.click(toggle());
+    await pointerAway();
+    expectHeaderAtRest("after expanding");
+    await userEvent.hover(header());
+    await userEvent.click(header().querySelector<HTMLElement>('button[aria-label="New thread in Alpha"]')!);
+    await pointerAway();
+    expectHeaderAtRest("after +");
+    await userEvent.hover(header());
+    await userEvent.click(header().querySelector<HTMLElement>('button[aria-label="Alpha actions"]')!);
+    await screen.findByRole("menu");
+    await clickAway();
+    await expect.poll(() => screen.queryByRole("menu")).toBeNull();
+    await pointerAway();
+    expectHeaderAtRest("after a menu closed with the pointer");
+  });
+
+  it("shows a row's hover actions while keyboard focus is anywhere in it", async () => {
+    await render(DESKTOP);
+    await ready();
+    const index = CASES.indexOf(FULL);
+    // Focus the row above, then Tab: focus a key brought, as a person moves it.
+    const previous = index > 0 ? rowOf(CASES[index - 1]!) : header();
+    previous.querySelector<HTMLElement>("a, button")!.focus();
+    const row = rowOf(FULL);
+    await userEvent.keyboard("{Tab}");
+    while (!row.contains(document.activeElement)) await userEvent.keyboard("{Tab}");
+    const reached: string[] = [];
+
+    while (row.contains(document.activeElement)) {
+      reached.push(document.activeElement!.getAttribute("aria-label") ?? "");
+      expectRowEnd(FULL, true);
+      await userEvent.keyboard("{Tab}");
+    }
+    expect(reached.length, reached.join(", ")).toBeGreaterThanOrEqual(5);
+  });
+
+  it("shows a group header's + and … while keyboard focus is on any of its controls", async () => {
+    await render(DESKTOP);
+    await ready();
+    const toggle = screen.getByRole("button", { name: /(Collapse|Expand) Alpha section/ });
+    toggle.focus();
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    await userEvent.keyboard("{Tab}");
+    expect(document.activeElement).toBe(toggle);
+    expectHeaderActions("the chevron");
+    await userEvent.keyboard("{Tab}");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("New thread in Alpha");
+    expectHeaderActions("+");
+    await userEvent.keyboard("{Tab}");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Alpha actions");
+    expectHeaderActions("…");
   });
 });

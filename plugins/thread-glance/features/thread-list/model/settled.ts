@@ -42,7 +42,7 @@ export function lastActivityAt(
 }
 
 /**
- * A settled thread: quiet as if no thread were open, not needing attention,
+ * A settled thread: quiet as if no thread were focused, not needing attention,
  * not pinned, and its own last activity is older than the Settle after
  * period. Hidden and archived threads take the same test.
  */

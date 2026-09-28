@@ -54,7 +54,7 @@ export interface ListLive {
 
 export const ListLiveContext = createContext<ListLive>({
   now: 0,
-  stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {} },
+  stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} },
   notes: {},
   treeOf: () => undefined,
 });

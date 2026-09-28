@@ -21,6 +21,7 @@ import { EnvironmentRowView, OlderRowView, SettledRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
+import { HEADER_HOVER_HIDES, HEADER_HOVER_SHOWS } from "./input-modality";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
 
 export interface GroupController {
@@ -70,13 +71,13 @@ const GroupHeader = memo(function GroupHeader({
   });
   const compact = controller.compact;
   // Desktop: the counter sits flush right, and "+" and "…" fade in over its
-  // place on hover or focus, as a row's actions fade over its age. Nothing is
+  // place on hover or keyboard focus, as a row's actions fade over its age. Nothing is
   // kept for them otherwise. Phones keep them in line, always shown.
   const counterFade = compact
     ? ""
     : menuOpen
       ? "opacity-0"
-      : "group-hover/header:opacity-0 group-focus-within/header:opacity-0";
+      : HEADER_HOVER_HIDES;
   const actionsFade = compact
     ? ""
     : cn(
@@ -84,7 +85,7 @@ const GroupHeader = memo(function GroupHeader({
         dropActive ? "bg-sidebar-accent" : "bg-sidebar",
         menuOpen
           ? "opacity-100"
-          : "pointer-events-none opacity-0 group-hover/header:pointer-events-auto group-hover/header:opacity-100 group-focus-within/header:pointer-events-auto group-focus-within/header:opacity-100",
+          : HEADER_HOVER_SHOWS,
       );
   return (
     <div
@@ -163,10 +164,12 @@ const GroupHeader = memo(function GroupHeader({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-48">
-                <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
-                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-                  Mark all read
-                </DropdownMenuItem>
+                {group.hasUnread ? (
+                  <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
+                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                    Mark all read
+                  </DropdownMenuItem>
+                ) : null}
                 {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
                   <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
                     <Icon name={ICONS.newThread} aria-hidden className="size-4" />

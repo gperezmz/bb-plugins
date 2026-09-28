@@ -6,7 +6,7 @@ import type {
   PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { ancestorsOf, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
+import { ancestorsOf, anyUnread, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
 import {
   builtinGroup,
   entityGroups,
@@ -142,6 +142,8 @@ export interface GroupView {
   rows: Row[];
   /** Every tree root bucketed in the group, those behind folds included. */
   rootIds: string[];
+  /** A thread in the group's trees is unread: its menu offers Mark all read. */
+  hasUnread: boolean;
 }
 
 export interface ListView {
@@ -153,6 +155,8 @@ export interface ListView {
   order: string[];
   /** Thread trees that need attention, in every group, hidden ones included: the need-you filter's N. */
   needYouCount: number;
+  /** A thread in the list is unread, hidden groups included: the list header offers Mark all read. */
+  hasUnread: boolean;
 }
 
 export interface ViewInputs {
@@ -188,7 +192,7 @@ interface Context extends ViewInputs {
   /** Parent ids on the path to a reveal target. */
   revealPath: ReadonlySet<string>;
   revealIds: ReadonlySet<string>;
-  /** The open thread and its ancestors. */
+  /** The focused thread and its ancestors. */
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
@@ -325,7 +329,7 @@ function foldedChildren(
   }
 
   // The stable set reads `quietIgnoringOpen` for the child and everything under it, and
-  // ignores which thread is open and the reveal targets: they join afterwards
+  // ignores which thread is focused and the reveal targets: they join afterwards
   // and take no other row's place.
   const quietTree = (kid: ThreadInfo) => kid.quietIgnoringOpen && subtreeOf(context, kid.thread.id).quietIgnoringOpen;
   const stable = new Set<string>();
@@ -514,6 +518,7 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
     hidden,
     rows,
     rootIds: trees.map((tree) => tree.root.thread.id),
+    hasUnread: anyUnread(trees),
   };
 }
 
@@ -539,6 +544,7 @@ function needYouGroup(context: Context, descriptor: GroupDescriptor, trees: Thre
     hidden,
     rows: clusterEnvironments(context, sorted.filter(needsAttention).map((tree) => treeUnit(context, tree)), 0),
     rootIds: trees.map((tree) => tree.root.thread.id),
+    hasUnread: anyUnread(trees),
   };
 }
 
@@ -624,7 +630,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     }
   }
 
-  return { groups, more, moreCounters, order, needYouCount: countNeedYou(forest) };
+  return { groups, more, moreCounters, order, needYouCount: countNeedYou(forest), hasUnread: anyUnread(forest.trees) };
 }
 
 /** Every thread row in visual order, for keyboard and windowing. */

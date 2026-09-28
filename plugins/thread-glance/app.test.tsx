@@ -54,7 +54,7 @@ function rpc(
     resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
     importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
     listStamps: () => ({
-      stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, ...stamps },
+      stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {}, ...stamps },
     }),
     markSeen: () => ({ at: Date.now() }),
     clearSeen: () => ({ ok: true as const }),
@@ -638,6 +638,33 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toHaveLength(21));
   });
 
+  it("draws Mark all read in the header only while something in the list is unread, live as that changes", async () => {
+    render([]);
+    await screen.findByText("No threads yet.");
+    expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull();
+    cleanup();
+    const threads = [makeThread({ id: "q", title: "Quiet" }), makeThread({ id: "u", title: "Unread", ...finishedUnread })];
+    const slot = render(threads);
+    expect(await screen.findByRole("button", { name: "Mark all read" })).toBeTruthy();
+    // Opening the one unread thread leaves nothing unread; leaving it, bb has not marked it read yet here.
+    const List = app.threadLists[0]!.component;
+    slot.lifecycle.rerender(<List {...props} activeThreadId="u" />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Mark all read" })).toBeNull());
+    slot.lifecycle.rerender(<List {...props} activeThreadId={null} />);
+    expect(await screen.findByRole("button", { name: "Mark all read" })).toBeTruthy();
+  });
+
+  it("offers Mark all read in a group's menu only while something in that group is unread", async () => {
+    render([makeThread({ id: "q", title: "Quiet" }), makeThread({ id: "u", title: "Unread", projectId: "proj_b", ...finishedUnread })]);
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, pointerType: "mouse" });
+    await screen.findByRole("menuitem", { name: "Customize list" });
+    expect(screen.queryByRole("menuitem", { name: "Mark all read" })).toBeNull();
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Beta actions" }), { button: 0, pointerType: "mouse" });
+    expect(await screen.findByRole("menuitem", { name: "Mark all read" })).toBeTruthy();
+  });
+
   it("opens the settings panel under the header from the settings button, and closes it with the same button", async () => {
     render([makeThread({ id: "a" })]);
     const button = await screen.findByRole("button", { name: "Thread Glance settings" });
@@ -1083,5 +1110,100 @@ describe("the glyph is the thread, the children chip is its children", () => {
     render([parent(), child("c", working)]);
     const seen = await parentRow();
     expect(seen.chip!.firstElementChild!.className).toContain("motion-reduce:animate-none");
+  });
+});
+
+describe("the open thread is never unread", () => {
+  // bb bumps latestAttentionAt when the thread finishes or fails and marks it
+  // read a moment later: these hold that moment still.
+  const cases = [
+    { name: "a root that just finished", mode: "blocked" as const, state: finishedUnread, child: false },
+    { name: "a root that just failed", mode: "blocked" as const, state: failedUnread, child: false },
+    { name: "a child that just finished, counting every child", mode: "everything" as const, state: finishedUnread, child: true },
+    { name: "a child that just failed, counting every child", mode: "everything" as const, state: failedUnread, child: true },
+  ];
+  const threadsFor = (c: (typeof cases)[number]) =>
+    c.child
+      ? [makeThread({ id: "m", title: "Parent" }), makeThread({ id: "v", title: "Viewed", parentThreadId: "m", createdAt: T0 + 1, ...c.state })]
+      : [makeThread({ id: "v", title: "Viewed", ...c.state })];
+
+  for (const c of cases) {
+    it(`draws no need-you filter and no unread row for ${c.name} while it is open`, async () => {
+      render(threadsFor(c), { prefs: { childAttention: c.mode }, props: { activeThreadId: "v" } });
+      const row = await screen.findByRole("link", { name: /^Open Viewed —/ });
+      expect(row.getAttribute("aria-label")).not.toMatch(/unread/i);
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+    });
+
+    it(`counts ${c.name} once it is not open`, async () => {
+      render(threadsFor(c), { prefs: { childAttention: c.mode } });
+      await screen.findByRole("button", { name: "1 need you" });
+    });
+  }
+
+  it("leaves a thread another split pane shows out of unread, as the focused one", async () => {
+    render([makeThread({ id: "v", title: "Viewed", ...finishedUnread }), makeThread({ id: "f", title: "Focused" })], {
+      props: { activeThreadId: "f" },
+      extra: {
+        sidebarSplitLayout: {
+          panes: [
+            { paneId: "p1", rect: { x: 0, y: 0, width: 0.5, height: 1 }, threadId: "f", isFocused: true },
+            { paneId: "p2", rect: { x: 0.5, y: 0, width: 0.5, height: 1 }, threadId: "v", isFocused: false },
+          ],
+        },
+      },
+    });
+    const row = await screen.findByRole("link", { name: /^Open Viewed —/ });
+    expect(row.getAttribute("aria-label")).not.toMatch(/unread/i);
+    expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+  });
+});
+
+describe("a child's failure while its parent is idle", () => {
+  it("after a reload, waits 5 seconds from the parent going idle as another window recorded it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const wentIdle = Date.now() - 1_600;
+      render(
+        [
+          makeThread({ id: "m", title: "Parent" }),
+          makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, status: "error", latestAttentionAt: wentIdle - 7_000, lastReadAt: T0 }),
+        ],
+        { stamps: { idleAt: { m: wentIdle } } },
+      );
+      await screen.findByRole("link", { name: /^Open Parent —/ });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(screen.getByRole("button", { name: "1 need you" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reaches the need-you filter 5 seconds after it happens, with nothing else in the list changing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const failedAt = Date.now();
+      render([
+        makeThread({ id: "m", title: "Parent" }),
+        makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, status: "error", latestAttentionAt: failedAt, lastReadAt: T0 }),
+      ]);
+      await screen.findByRole("link", { name: /^Open Parent —/ });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(screen.getByRole("button", { name: "1 need you" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

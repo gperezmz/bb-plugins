@@ -11,6 +11,8 @@ export const stampsSchema = z.object({
   finishedAt: stampMapSchema,
   pendingAt: stampMapSchema,
   seenAt: stampMapSchema,
+  /** When a window saw the thread go from busy to idle, the latest such moment. */
+  idleAt: stampMapSchema,
 });
 export type Stamps = z.infer<typeof stampsSchema>;
 export type StampKind = keyof Stamps;

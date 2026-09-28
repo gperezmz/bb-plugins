@@ -119,7 +119,7 @@ function render() {
   return {
     async answerAll() {
       stamps.resolve({
-        stamps: { startedAt: { r: recent - HOUR, c: recent - HOUR }, finishedAt: { r: recent, c: recent }, pendingAt: {}, seenAt: {} },
+        stamps: { startedAt: { r: recent - HOUR, c: recent - HOUR }, finishedAt: { r: recent, c: recent }, pendingAt: {}, seenAt: {}, idleAt: {} },
       });
       project.resolve({ sources: [{ hostId: "host_1", isDefault: true }] });
       pullRequestLookup.set(true);
