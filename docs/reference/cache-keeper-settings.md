@@ -25,10 +25,10 @@ Only on Claude Code threads.
 
 | Surface | Shows |
 |---|---|
-| Composer chip | Compaction only: the icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
+| Composer chip | Compaction only: the timer icon alone when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Hovering gives the full sentence, then whether the thread is kept warm while it waits, or that keep-warms are off in Settings. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
 | Composer chip's popover | See [the popover](#the-composer-chips-popover) |
 | Banner | One line above the composer, with no tooltip; see [the banner](#the-banner) |
-| Sidebar row | Cache Keeper's icon in place of the status glyph while a compaction is due; a clock while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
+| Sidebar row | The timer icon in place of the status glyph while a compaction is due; the flame while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
 
 **Compact now** compacts whatever the size, provided the thread is idle, waits on no answer and is not waiting.
 

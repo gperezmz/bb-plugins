@@ -172,6 +172,14 @@ _Avoid_: Auto-compact, idle compact
 Cache Keeper's button in a Claude Code thread's composer, showing Compact when idle's state; its popover holds the thread's switches.
 _Avoid_: Chip, Cache Keeper chip
 
+**Timer icon**:
+Cache Keeper's icon, a dial with one hand and a crown, drawn on its nav item, its composer chip and a sidebar row whose compaction is due.
+_Avoid_: Clock, stopwatch, Cache Keeper logo
+
+**Flame**:
+Cache Keeper's glyph on a sidebar row while a keep-warm is planned for its thread or a thread below it.
+_Avoid_: Fire, warm icon
+
 **Keep warm while waiting**:
 Cache Keeper's switch on the topmost Claude Code thread of a thread tree that has keep-warms sent to it and every thread below it while they wait. Until you flip it, it follows the "Keep caches warm while waiting" setting.
 _Avoid_: Keep-warm switch, warm toggle
