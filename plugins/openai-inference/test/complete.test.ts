@@ -182,7 +182,7 @@ describe("failures", () => {
       });
     const pending = complete(prompt, endpoint, { fetch: fakeFetch(hang).fetch, signal: cancel.signal });
     cancel.abort();
-    await expect(pending).rejects.toThrow();
+    await expect(pending).rejects.toThrow('Could not reach Endpoint "gateway"');
     expect(aborted).toBe(true);
   });
 });
