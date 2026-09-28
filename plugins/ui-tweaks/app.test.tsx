@@ -5,6 +5,7 @@ import { loadPluginApp, mountPluginContentScripts, renderSlot } from "@get-bb/pl
 import type { Tweaks } from "@/shared/tweaks";
 import { tweakState } from "@/features/ui-tweaks/state";
 import { GRACE_MS } from "@/features/ui-tweaks/contentScript";
+import { RETRY_MS } from "@/features/ui-tweaks/components/TweaksSync";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -90,6 +91,26 @@ describe("keeping every window current", () => {
     const overlay = renderSlot(app.appOverlays[0]!, {}, { rpc: server({ textSize: "medium", width: "medium" }) });
     await overlay.behavior.emitRealtime("tweaks", { textSize: "small", width: "wide" });
     expect(tweakState.get()).toEqual({ textSize: "small", width: "wide" });
+  });
+
+  it("reads the choices again when a read fails", async () => {
+    vi.useFakeTimers();
+    let fail = true;
+    const rpc = server({ textSize: "large", width: "wide" });
+    renderSlot(app.appOverlays[0]!, {}, {
+      rpc: {
+        ...rpc,
+        getTweaks: () => {
+          if (fail) throw new Error("server away");
+          return rpc.getTweaks();
+        },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tweakState.get()).toEqual({ textSize: "medium", width: "medium" });
+    fail = false;
+    await vi.advanceTimersByTimeAsync(RETRY_MS);
+    expect(tweakState.get()).toEqual({ textSize: "large", width: "wide" });
   });
 
   it("reads the choices again after a reconnection", async () => {
