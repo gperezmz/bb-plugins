@@ -233,3 +233,11 @@ _Avoid_: Test bb, e2e rig
 **UI Tweaks**:
 The plugin that adds appearance settings bb lacks, starting with transcript text size and transcript width.
 _Avoid_: Appearance plugin, theme
+
+**Tweak**:
+One of UI Tweaks' settings, shown as a row with a segmented control: transcript text size or transcript width. Medium is bb's own look for every tweak.
+_Avoid_: Setting override, adjustment
+
+**Thread view**:
+bb's own view of a thread's transcript and composer, in the main area or a split pane. A thread chat another plugin embeds with bb's `ThreadChat` component is not one.
+_Avoid_: Thread window, chat panel, thread surface
