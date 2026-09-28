@@ -1,11 +1,11 @@
-// State glyphs, chip glyphs and header counters. They draw what the model
+// State glyphs, the child dot and header counters. They draw what the model
 // decided; tone and animation come from host token classes only.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { Counters } from "../model/counters";
 import type { RowNote } from "../model/notes";
-import { FLAG_GLYPHS, type ChipTone, type Flag, type Glyph, type Tone } from "../model/state";
+import { dotTone, FLAG_GLYPHS, type DotTone, type Flag, type Glyph, type Tone } from "../model/state";
 
 export const TONE_CLASS: Record<Tone, string> = {
   attention: "text-attention",
@@ -18,18 +18,31 @@ export const TONE_CLASS: Record<Tone, string> = {
   none: "",
 };
 
-// The tone colour is one of bb's tokens, mixed toward the foreground for the
-// text so it clears 4.5:1 on the sidebar in both themes; the border and fill
-// are the same colour, thinned. Written out in full so the class scan sees them.
-export const CHIP_TONE_CLASS: Record<ChipTone, string> = {
-  attention:
-    "border-[color:color-mix(in_oklch,var(--attention)_45%,transparent)] bg-[color-mix(in_oklch,var(--attention)_10%,transparent)] text-[color:color-mix(in_oklch,var(--attention),var(--foreground)_55%)] hover:bg-[color-mix(in_oklch,var(--attention)_20%,transparent)]",
-  destructive:
-    "border-[color:color-mix(in_oklch,var(--destructive-text)_45%,transparent)] bg-[color-mix(in_oklch,var(--destructive-text)_10%,transparent)] text-[color:color-mix(in_oklch,var(--destructive-text),var(--foreground)_55%)] hover:bg-[color-mix(in_oklch,var(--destructive-text)_20%,transparent)]",
-  working:
-    "border-[color:color-mix(in_oklch,var(--timeline-accent)_45%,transparent)] bg-[color-mix(in_oklch,var(--timeline-accent)_10%,transparent)] text-[color:color-mix(in_oklch,var(--timeline-accent),var(--foreground)_55%)] hover:bg-[color-mix(in_oklch,var(--timeline-accent)_20%,transparent)]",
-  neutral: "border-border/70 text-muted-foreground hover:bg-state-hover hover:text-foreground",
+// The child dot's colours: the tone of the state it stands for, and the
+// unread dot's accent for unread.
+const DOT_TONE_CLASS: Record<DotTone, string> = {
+  attention: "bg-attention",
+  destructive: "bg-destructive",
+  working: "bg-[var(--timeline-accent)]",
+  unread: "bg-[var(--timeline-accent)]",
 };
+
+/**
+ * The child dot on a parent's status glyph, at its lower right corner. A
+ * ring of the sidebar's colour keeps it apart from the glyph under it.
+ */
+export function ChildDot({ flag }: { flag: Flag }) {
+  return (
+    <span
+      aria-hidden
+      data-child-dot={flag}
+      className={cn(
+        "pointer-events-none absolute -right-0.5 -bottom-0.5 size-[7px] rounded-full ring-[1.5px] ring-sidebar",
+        DOT_TONE_CLASS[dotTone(flag)],
+      )}
+    />
+  );
+}
 
 const SHINE = "animate-shine-icon motion-reduce:animate-none";
 const SPIN = "animate-spin motion-reduce:animate-none";

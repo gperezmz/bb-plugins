@@ -1,19 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { childAttentionFor, countsEveryChild, lifecyclesFor, sortArrow, sortFieldPatch, threadsShown } from "./settings";
-
-describe("Threads: Active, Archived, Both", () => {
-  it("reads every saved lifecycle list as one choice", () => {
-    expect(threadsShown(["active"])).toBe("active");
-    expect(threadsShown(["archived"])).toBe("archived");
-    expect(threadsShown(["active", "archived"])).toBe("both");
-    expect(threadsShown(["archived", "active"])).toBe("both");
-  });
-  it("saves at least one lifecycle for every choice", () => {
-    expect(lifecyclesFor("active")).toEqual(["active"]);
-    expect(lifecyclesFor("archived")).toEqual(["archived"]);
-    expect(lifecyclesFor("both")).toEqual(["active", "archived"]);
-  });
-});
+import { childAttentionFor, countsEveryChild, sortArrow, sortFieldPatch } from "./settings";
 
 describe("the ↓/↑ button", () => {
   it("shows the direction the list is in, a saved default as the field's own", () => {

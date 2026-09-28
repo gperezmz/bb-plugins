@@ -1,6 +1,6 @@
 # What "Needs attention" means
 
-Thread Glance is built around one question: which threads can only you move forward? A thread working on its own does not need attention. A thread asking a question does. Everything the list does beyond drawing rows (the **Needs attention** section, the header counters, the colour of a children chip, which folded threads open by themselves) answers that one question the same way.
+Thread Glance is built around one question: which threads can only you move forward? A thread working on its own does not need attention. A thread asking a question does. Everything the list does beyond drawing rows (what a collapsed group still shows, the need-you filter, the header counters, which threads stay out of the settled fold, which folded threads open by themselves) answers that one question the same way.
 
 ## What a thread needs attention for
 
@@ -29,64 +29,66 @@ flowchart TD
   idle -->|no| not
 ```
 
-Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle parent thread that has not run since is an **orphaned failure**: nobody is going to pick it up. A parent thread that is running is usually already handling the failure, so showing it would move busy trees in and out of the section.
+Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is taken to be the nearest ancestor that has a row, since a hidden thread cannot be acted on. It is idle when it is not working, setting up, running background work, or holding a queued or scheduled message. A failure under an idle parent thread that has not run since is an **orphaned failure**: nobody is going to pick it up. A parent thread that is running is usually already handling the failure, so counting it would raise a flag for work already in hand.
 
-A child that only finished unread does not need attention. It keeps its own unread dot and bold title, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees) and its fold.
+A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [child dot](../reference/thread-glance-states.md#the-child-dot) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
 
 The setting **Needs attention counts every child** makes a child count exactly as a root does: every failed or finished-unread child needs attention too. The same setting decides which children a tree's fold keeps out, below.
 
-## The Needs attention section
+## Needs attention is a state, not a place
 
-A tree with a thread that needs attention leaves its group (project, custom section, machine or Pinned, hidden groups included) and is drawn in **Needs attention**, above every group. One place per thread: the tree is not listed twice.
+A tree that needs attention stays in its own group (project, custom section, machine, Pinned or Threads), in the place its sort gives it. Rows never move between places because something changed state: what needs attention is told by the row's glyph, its line, the parent's child dot and the group's counters.
 
-```mermaid
-flowchart LR
-  group["In its group"] -->|"a thread in it needs attention"| section["In Needs attention"]
-  section -->|"nothing in it needs attention, and none of its threads is open"| group
-```
+A collapsed group still draws, under its header, every tree in it that needs attention, and nothing else. Collapsing a group hides what you have dealt with, never what waits on you.
 
-In the section, a tree arrives with the path from its root down to each thread that needs attention, and to the open thread. The root shows the name of its home group where the age normally is. Closed, the tree draws its root and that path and nothing else. The root's chip counts every thread under the root, as it does in the home group, and opens the tree as it opens there; clicking it again closes the tree back to the path. Whether a tree is open is one state, shared by the section and its home group: a tree opened in one is open in the other.
+## The need-you filter
 
-Nothing moves while you are inside a tree. A tree in the section stays there while you have one of its threads open, even after nothing in it needs attention any more, so opening an unread thread does not move it out from under the pointer. Its place among the section's trees does not change either: it keeps the place it had when you opened it, whatever happens inside it.
-
-A tree in the section that you opened and that has nothing left needing attention is **attended**: bb recorded the read when you opened it, you answered its question, approved its plan or read its failure. An attended tree stops looking like it needs attention at once. Its titles are not bold, no row has a line saying why, and its rows are as bright as in its home group: quiet threads dimmed, running ones not. It does not count in the section's header, and no counter counts its threads as waiting on you, failed, offline or unread. If something in it needs attention again while you are still inside it, for example when a child asks a question, it draws and counts that way again in the same place. It goes back to its home group as soon as none of its threads is open: you open a thread outside it, open a page that is not a thread, or close, archive or delete the thread you had open. Thread Glance never marks a thread read or unread for any of this; only bb moves a thread's read state.
-
-A tree that is not in the section does not enter it while you have one of its threads open: not when its open thread finishes a turn (bb marks it read only when you act in it, so it reads as unread until then), not when it asks a question, not when a child in it needs attention. Its row keeps the unread dot and its group keeps the counters. Whenever you open a thread outside the tree, it is judged afresh: it goes to the section if something in it still needs attention, and otherwise stays in its group.
-
-The section lists the trees most urgent first: waiting on you, then failed, then offline, then unread. Within each, it follows **Sort by** in the field's own direction; the ↓/↑ button reverses the groups only. The header shows how many trees the section holds, attended ones left out, and shows no number when every tree in it is attended. The whole section sits on a faint band of bb's attention colour, with its count in a badge of the same colour; its rows keep the colours they have in a group. It cannot be collapsed or hidden, and it is absent when no tree is in it.
+The list header's `N need you` counts the trees that need attention across the whole list, hidden groups included, and is absent when none does. Turning it on leaves only those trees, each under its own group's header, a hidden group's included, so the whole list's worth of what needs you fits on one screen. Turning it off brings the full list back, and so does N reaching 0. The filter belongs to the window: it starts off on every load.
 
 ## Trees and folding
 
-A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a children chip on that row. The chip shows the number of children and the most urgent thing among them, so a collapsed tree still says what it holds.
+A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a [children chip](../reference/thread-glance-states.md#the-children-chip) on that row. The chip counts the root's direct children, and the [child dot](../reference/thread-glance-states.md#the-child-dot) on the root's glyph shows the most urgent thing anywhere below it, so a closed tree still says what it holds.
 
 Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two older folds keep threads with nothing to show out of the way, one for roots and one for children, and each has its own test. Both read the **quiet thread** test: a thread is quiet when it is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
+Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 
-With **Collapse older threads** on, each group shows every root that is not quiet, then its 5 newest quiet roots, then an `N older` row for the rest. Pinned never folds, and neither does an archived root. The newest are by creation under **Created**, and by latest activity otherwise, whatever the direction. With it off, every root shows and no `N older` row appears.
-
-Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row, whatever **Collapse older threads** says. A child is quiet unless it or anything under it:
+Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row. A child is quiet unless it or anything under it:
 
 - works, sets up or runs background work;
 - needs attention, [as above](#what-a-child-thread-adds): waits on you, lost its machine, or has an orphaned failure.
 
 A hidden thread under it counts only for the second, and an archived child is always quiet.
 
-So a parent thread whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. With **Needs attention counts every child** on, a finished, unread child needs attention, so its tree is in Needs attention instead.
+So a parent thread whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. With **Needs attention counts every child** on, a finished, unread child needs attention, so it stays out of the fold.
 
-Both folds are worked out as if no thread were open, so the roots and children shown stay the same while you move between them. Opening a thread that sits behind a fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
+The fold is worked out as if no thread were open, so the children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
+
+## Settled threads
+
+A **settled thread** is a quiet thread that does not need attention, is not pinned and has no open pull request, and that either has a pull request that merged or closed, or has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when only the pull request counts. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
+
+A tree settles as one unit: it goes behind its group's settled fold only when every thread in it is settled, and a child never leaves its tree for the fold. Archived threads, shown with **Show archived threads**, take the same test. Pinned threads never settle, so Pinned has no fold.
+
+```mermaid
+flowchart LR
+  live["In its group"] -->|"every thread in the tree settled: a pull request merged or closed, or Settle after passed"| fold["Behind the settled fold"]
+  fold -->|"any activity: a message sent, a run started, something needing attention"| live
+```
+
+Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes, its pull request merges or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. To know whether a pull request is open, Thread Glance asks bb for it on every quiet thread whose branch is not its project's default branch; the thread stays out of the fold until bb answers. There is no manual settle: bb's archive already takes a thread out of the list.
+
+When the thread you have open is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
 
 ## What opens by itself
 
-When you open a thread inside a collapsed tree, Thread Glance opens the path to it: the group, the `N older` fold, and each chip down to the thread. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to wait on you or fails, so its tree's chips stay open on the way to it once the tree goes back to its group. A thread that needs attention because it finished unread opens its group and the `N older` fold, but no chip.
+When you open a thread inside a closed tree, Thread Glance opens the path to it: each chip down to the thread, and its group if the group is collapsed. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to wait on you or fails, so its tree's chips stay open on the way to it; its group stays collapsed, since a collapsed group draws that tree anyway. A thread that finished unread opens no chip, and nothing opens the settled fold.
 
 This happens on a change, not on every render: when a thread starts to need attention, or when you open another thread. If you collapse it again, it stays collapsed until the next change. A child that merely finished opens no chip, because a parent thread with many workers would otherwise keep reopening.
 
 ## Why rows do not jump around
 
-Under **Updated** sort, a tree's place in its group comes from the most recent attention time of any thread in it. bb moves that time only when a root finishes its turn, or when any thread fails. A child finishing does not move rows. So groups stay still while threads work, and what needs attention moves into the section rather than to the top of its group.
-
-**Working threads first** puts running threads on top, as bb's own list does. It is off by default because every start and stop then reorders the list.
+Under **Updated** sort, a tree's place in its group comes from the most recent attention time of any thread in it. bb moves that time only when a root finishes its turn, or when any thread fails. A child finishing does not move rows, and neither does a thread starting or stopping. So groups stay still while threads work, and what needs attention stays where it is.
 
 ## Children bb never marks unread
 

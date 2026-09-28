@@ -1,22 +1,6 @@
 // What the settings panel's controls show and write. Pure.
-import type { ChildAttention, Lifecycle, Preferences, SortField } from "@/shared/preferences";
+import type { ChildAttention, Preferences, SortField } from "@/shared/preferences";
 import { effectiveDirection, effectiveSortField, naturalDirection } from "./sort";
-
-export type ThreadsShown = "active" | "archived" | "both";
-
-/** The Threads choice a saved lifecycle list stands for. */
-export function threadsShown(lifecycles: readonly Lifecycle[]): ThreadsShown {
-  const active = lifecycles.includes("active");
-  const archived = lifecycles.includes("archived");
-  if (active && archived) return "both";
-  return archived ? "archived" : "active";
-}
-
-/** The lifecycles a Threads choice saves; never empty. */
-export function lifecyclesFor(shown: ThreadsShown): Lifecycle[] {
-  if (shown === "both") return ["active", "archived"];
-  return [shown];
-}
 
 /** "Needs attention counts every child" is on when children count as `everything`. */
 export function countsEveryChild(childAttention: ChildAttention): boolean {

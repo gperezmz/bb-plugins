@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { mapBbPreferences, coercePreferences, defaultPreferences } from "@/shared/preferences";
+import { mapBbPreferences, coercePreferences, defaultPreferences, parsePreference, parseStoredPreference } from "@/shared/preferences";
+import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
 import { resolveDrop, type DraggedThread } from "./drag";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
-import { olderRowText } from "./labels";
+import { olderRowText, settledRowText } from "./labels";
 import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
-import { chipTone } from "./state";
+import { dotTone } from "./state";
 import { formatDuration, trailingTime } from "./time";
 import type { OlderRow } from "./view";
 import { chunk, windowedNavValue } from "./windowing";
@@ -149,6 +150,21 @@ describe("windowed nav contract", () => {
   });
 });
 
+describe("default branch", () => {
+  it("asks the default source's machine, else the first source's, else none", () => {
+    expect(defaultSourceHostId([{ hostId: "a", isDefault: false }, { hostId: "b", isDefault: true }])).toBe("b");
+    expect(defaultSourceHostId([{ hostId: "a", isDefault: false }])).toBe("a");
+    expect(defaultSourceHostId([])).toBeNull();
+  });
+  it("knows a branch differs only once the default branch is known", () => {
+    expect(isOffDefaultBranch("feature", "main")).toBe(true);
+    expect(isOffDefaultBranch("main", "main")).toBe(false);
+    expect(isOffDefaultBranch("feature", undefined)).toBe(false);
+    expect(isOffDefaultBranch("feature", null)).toBe(false);
+    expect(isOffDefaultBranch(null, "main")).toBe(false);
+  });
+});
+
 describe("preferences", () => {
   it("imports bb's values, maps auto grouping to off and skips collapsedThreads", () => {
     expect(
@@ -166,20 +182,31 @@ describe("preferences", () => {
   it("defaults follow the spec", () => {
     expect(defaultPreferences()).toMatchObject({
       organizationMode: "project",
-      foldOlder: true,
-      workingFirst: false,
       environmentGrouping: false,
-      showPullRequests: true,
+      settleAfter: "1d",
+      harnessIcon: "muted",
+      openSettledFolds: [],
     });
   });
   it("a bad mirror value falls back per key", () => {
-    expect(coercePreferences({ organizationMode: "machine", foldOlder: "yes" })).toMatchObject({ organizationMode: "machine", foldOlder: true });
+    expect(coercePreferences({ organizationMode: "machine", settleAfter: "2d" })).toMatchObject({ organizationMode: "machine", settleAfter: "1d" });
   });
-  it("reads a saved tree nesting as the folded layout, without an error", () => {
-    const prefs = coercePreferences({ nesting: "tree", collapsedChildren: ["p"], foldOlder: false });
-    expect(prefs).not.toHaveProperty("nesting");
-    expect(prefs).not.toHaveProperty("collapsedChildren");
-    expect(prefs.foldOlder).toBe(false);
+  it("drops removed settings, and a saved foldOlder leaves Settle after at its default", () => {
+    const prefs = coercePreferences({ nesting: "tree", collapsedChildren: ["p"], foldOlder: false, workingFirst: true, showPullRequests: false });
+    for (const key of ["nesting", "collapsedChildren", "foldOlder", "workingFirst", "showPullRequests"]) {
+      expect(prefs).not.toHaveProperty(key);
+    }
+    expect(prefs.settleAfter).toBe("1d");
+  });
+  it("reads a stored Hidden harness icon as Muted, and refuses to save it", () => {
+    expect(coercePreferences({ harnessIcon: "hidden" }).harnessIcon).toBe("muted");
+    expect(parseStoredPreference("harnessIcon", "hidden")).toEqual({ success: true, value: "muted" });
+    expect(parsePreference("harnessIcon", "hidden").success).toBe(false);
+  });
+  it("does not import a removed setting from bb", () => {
+    expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, threadLifecycles: ["active", "archived"], organizationMode: "machine" })).toEqual({
+      organizationMode: "machine",
+    });
   });
 });
 
@@ -191,15 +218,14 @@ describe("row indent", () => {
   });
 });
 
-describe("child chip tone", () => {
-  it("is amber for waits-on-you, red for failures, blue for working, neutral otherwise", () => {
-    expect(chipTone("waits-on-you")).toBe("attention");
-    expect(chipTone("unread-failed")).toBe("destructive");
-    expect(chipTone("queue-failed")).toBe("destructive");
-    expect(chipTone("working")).toBe("working");
-    expect(chipTone("offline")).toBe("neutral");
-    expect(chipTone("unread")).toBe("neutral");
-    expect(chipTone(null)).toBe("neutral");
+describe("child dot tone", () => {
+  it("takes each state's colour: attention for waits on you and offline, red for failures, the accent for working and unread", () => {
+    expect(dotTone("waits-on-you")).toBe("attention");
+    expect(dotTone("unread-failed")).toBe("destructive");
+    expect(dotTone("queue-failed")).toBe("destructive");
+    expect(dotTone("offline")).toBe("attention");
+    expect(dotTone("working")).toBe("working");
+    expect(dotTone("unread")).toBe("unread");
   });
 });
 
@@ -218,9 +244,12 @@ describe("fold row text", () => {
     expect(olderRowText(fold("tree", 1)).label).toBe("1 more child thread");
     expect(olderRowText(fold("reveal", 4)).label).toBe("4 more child threads");
   });
-  it("keeps 'older' for the group's fold, so the two never read alike", () => {
-    expect(olderRowText(fold("group", 5)).label).toBe("5 older");
-    expect(olderRowText(fold("group", 5, true)).label).toBe("Show fewer");
+  it("says Show fewer on an open tree's fold", () => {
     expect(olderRowText(fold("tree", 5, true)).label).toBe("Show fewer");
+  });
+  it("reads Settled (N) on a closed settled fold and Settled on an open one, N counting trees", () => {
+    const settled = (count: number, expanded: boolean) => ({ type: "settled" as const, key: "k", groupId: "g", count, expanded });
+    expect(settledRowText(settled(3, false))).toEqual({ label: "Settled (3)", ariaLabel: "Show 3 settled thread trees" });
+    expect(settledRowText(settled(1, true))).toEqual({ label: "Settled", ariaLabel: "Hide 1 settled thread tree" });
   });
 });

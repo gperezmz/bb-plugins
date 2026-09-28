@@ -271,26 +271,39 @@ export function hiddenThreadFlags(flags: ReadonlySet<Flag>): Set<Flag> {
   return kept;
 }
 
+/** Flags a hidden thread adds to its parent's child dot: what asks for you or failed, and offline. */
+const HIDDEN_DOT_FLAGS: ReadonlySet<Flag> = new Set<Flag>(["waits-on-you", "unread-failed", "queue-failed", "offline"]);
+
+/**
+ * The flags a thread adds to the child dot of the threads above it. A
+ * hidden thread adds only waits-on-you, failed, queued message failed and
+ * offline; which trees need attention reads `hiddenThreadFlags` instead,
+ * so this leaves it unchanged.
+ */
+export function dotFlagsOf(flags: ReadonlySet<Flag>, isHidden: boolean): Set<Flag> {
+  return isHidden ? new Set([...flags].filter((flag) => HIDDEN_DOT_FLAGS.has(flag))) : new Set(flags);
+}
+
 /** The most urgent flag, or null. */
 export function mostUrgent(flags: ReadonlySet<Flag>): Flag | null {
   return FLAG_ORDER.find((flag) => flags.has(flag)) ?? null;
 }
 
-/** The colour a child chip takes: only what asks for you, fails, or works. */
-export type ChipTone = "attention" | "destructive" | "working" | "neutral";
+/** The colour of a child dot, by the most urgent state among the descendants. */
+export type DotTone = "attention" | "destructive" | "working" | "unread";
 
-/** The tone of a chip whose most urgent rolled-up flag is `flag`. */
-export function chipTone(flag: Flag | null): ChipTone {
+export function dotTone(flag: Flag): DotTone {
   switch (flag) {
     case "waits-on-you":
+    case "offline":
       return "attention";
     case "unread-failed":
     case "queue-failed":
       return "destructive";
     case "working":
       return "working";
-    default:
-      return "neutral";
+    case "unread":
+      return "unread";
   }
 }
 

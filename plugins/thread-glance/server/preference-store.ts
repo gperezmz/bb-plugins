@@ -6,6 +6,7 @@ import {
   PREFERENCE_KEYS,
   defaultPreferences,
   parsePreference,
+  parseStoredPreference,
   preferenceDefault,
   type PreferenceKey,
   type Preferences,
@@ -59,7 +60,7 @@ export function createPreferenceStore(
   async function read<K extends PreferenceKey>(key: K): Promise<Preferences[K]> {
     const stored = await kv.get<unknown>(preferenceKvKey(key));
     if (stored === undefined) return preferenceDefault(key);
-    const parsed = parsePreference(key, stored);
+    const parsed = parseStoredPreference(key, stored);
     if (parsed.success) return parsed.value;
     bb.log.warn(`stored preference ${key} is invalid (${parsed.message}); using the default`);
     return preferenceDefault(key);

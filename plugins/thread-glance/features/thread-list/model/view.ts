@@ -20,23 +20,21 @@ import {
 } from "./groups";
 import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
-import { inAttention, isAttended, type SectionTree } from "./attention";
+import { isSettledTree, type SettleInputs } from "./settled";
+import { isOffDefaultBranch } from "./branches";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
 
-/** How many of a group's newest quiet roots stay out of its older fold. */
-export const KEEP_QUIET = 5;
 /** How many quiet children stay in an expanded tree. */
 export const KEEP_QUIET_CHILDREN = 3;
 
+/** The children chip: the muted count of a parent's direct children, and its chevron. */
 export interface Chip {
+  /** Direct children opening it shows, hidden ones left out. */
   count: number;
-  flag: Flag | null;
   /** The user opened the chip, so every child shows. */
   expanded: boolean;
-  /** Harnesses among the visible children that differ from the parent's. */
-  providerIds: string[];
 }
 
 export interface ThreadRow {
@@ -50,32 +48,51 @@ export interface ThreadRow {
   /** Title of the thread this one attaches to, for tooltips and labels. */
   parentTitle: string | null;
   chip: Chip | null;
-  /** The title is bold: the thread is unread and its tree is not attended. */
-  bold: boolean;
   /**
-   * The line under the title. In Needs attention, a row that itself needs
-   * attention says why, and an attended tree's rows have none; any other
-   * row says why it waits on you or failed.
+   * The row draws its harness icon: a root whose harness is not bb's
+   * default, a child whose harness is not its parent thread's.
    */
+  harness: boolean;
+  /**
+   * The child dot on the status glyph: the most urgent state among the
+   * thread's descendants at any depth, or null for none.
+   */
+  childDot: Flag | null;
+  /** The title is bold: the thread is unread. */
+  bold: boolean;
+  /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
+  treeUnread: boolean;
+  /** The line under the title: why it waits on you or failed, in both densities. */
   note: RowNote | null;
+  /**
+   * In Comfortable density, a row with no note whose branch is known not to
+   * be its project's default draws that branch on its second line.
+   */
+  branchLine: string | null;
+  /**
+   * Where the pull request badge goes: after the branch on the second line,
+   * on the title line (a root off its default branch, as before), or nowhere.
+   */
+  pullRequest: "second-line" | "title" | null;
+  /** The machine's name, beside the age, for a thread off bb's primary machine. */
+  machine: string | null;
   /** The title, and the chip with it, step back: see `isDimmed`. */
   dimmed: boolean;
   /** A hidden thread shown because it needs attention or failed. */
   hiddenBadge: boolean;
   /** "In project X" when the thread is outside its tree's group. */
   crossGroupLabel: string | null;
-  /** A root in Needs attention: its home group's name, drawn where the age goes. */
-  homeGroupLabel: string | null;
   projectId: string;
 }
 
+/** The fold inside an open tree: "N more child threads". */
 export interface OlderRow {
   type: "older";
   key: string;
-  /** A group id, or a parent thread id for a tree's fold. */
+  /** The parent thread's id. */
   scopeId: string;
-  /** `reveal`: an auto-reveal left `count` children hidden ("N more child threads"). */
-  scope: "group" | "tree" | "reveal";
+  /** `reveal`: an auto-reveal left `count` children hidden. */
+  scope: "tree" | "reveal";
   count: number;
   expanded: boolean;
   depth: number;
@@ -95,44 +112,46 @@ export interface EnvironmentRow {
   depth: number;
 }
 
-export type Row = ThreadRow | OlderRow | EnvironmentRow;
+/** A group's settled fold: the faint "Settled (N)" divider at its end. */
+export interface SettledRow {
+  type: "settled";
+  key: string;
+  groupId: string;
+  /** Settled trees in the group, the open one drawn above the divider included. */
+  count: number;
+  expanded: boolean;
+}
+
+/** The rows a tree and its folders draw. */
+export type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
+
+export type Row = TreeRow | SettledRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
   counters: Counters;
   /** What the user stored. */
   userCollapsed: boolean;
-  /** What is drawn: user collapse, unless a target opened it. */
+  /**
+   * What is drawn: user collapse, unless opening a thread in the group
+   * opened it. A collapsed group still draws its trees that need attention.
+   */
   collapsed: boolean;
   hidden: boolean;
   rows: Row[];
-  /** Every tree root bucketed in the group, those in Needs attention and behind folds included. */
+  /** Every tree root bucketed in the group, those behind folds included. */
   rootIds: string[];
 }
 
-/** The id Needs attention's rows are drawn under; no group has it. */
-export const ATTENTION_GROUP_ID = "attention";
-
-/** The Needs attention section: every tree with a thread that needs attention, or held there while one of its threads is open. */
-export interface AttentionView {
-  /** How many trees the section holds, attended ones left out, for its header. */
-  treeCount: number;
-  rows: Row[];
-  /** The home group of each thread drawn here, by thread id: a drop on its row acts there. */
-  homeGroupIds: Record<string, string>;
-}
-
 export interface ListView {
-  /** Null when no tree is in the section. */
-  attention: AttentionView | null;
   groups: GroupView[];
   /** Hidden groups, shown in the More popover. */
   more: GroupView[];
   moreCounters: Counters;
   /** Resolved top-level order for the mode, for header drag. */
   order: string[];
-  /** Threads span more than one host (the row's second line). */
-  multiHost: boolean;
+  /** Thread trees that need attention, in every group, hidden ones included: the need-you filter's N. */
+  needYouCount: number;
 }
 
 export interface ViewInputs {
@@ -142,16 +161,28 @@ export interface ViewInputs {
   sections: readonly PluginSidebarSection[];
   prefs: Preferences;
   activeThreadId: string | null;
-  /** The tree Needs attention keeps while one of its threads is open, as it was when opened: the section orders it by this. */
-  held: SectionTree | null;
   targets: Targets;
+  settle: SettleInputs;
+  /** bb's default harness; null while unknown, when no root draws one. */
+  defaultProviderId: string | null;
+  /** bb's primary machine; null while unknown, when no row names its machine. */
+  primaryHostId: string | null;
+  /** Comfortable density: rows may take a branch line. */
+  comfortable: boolean;
+  /** A project's default branch: undefined while looked up, null when not found. */
+  defaultBranchOf(thread: PluginSidebarThread): string | null | undefined;
+  /**
+   * The need-you filter is on: every group, hidden ones included, draws only
+   * its trees that need attention, and a group with none is left out.
+   */
+  needYouOnly: boolean;
 }
 
 interface Context extends ViewInputs {
-  heldRootId: string | null;
   compare: (a: SortKey, b: SortKey) => number;
   expandedChildren: ReadonlySet<string>;
   expandedOlder: ReadonlySet<string>;
+  openSettledFolds: ReadonlySet<string>;
   collapsedEnvironments: ReadonlySet<string>;
   /** Parent ids on the path to a reveal target. */
   revealPath: ReadonlySet<string>;
@@ -160,10 +191,6 @@ interface Context extends ViewInputs {
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
-  /** The rows are drawn in Needs attention. */
-  drawnInAttention: boolean;
-  /** The rows are an attended tree's: they draw as in its home group, with no bold title or why line. */
-  attended: boolean;
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -200,14 +227,38 @@ function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolea
   return info.quiet;
 }
 
+
+/** A root draws its harness when it differs from bb's default; a child, when it differs from its parent thread's. */
+function drawsHarness(context: Context, info: ThreadInfo): boolean {
+  const providerId = info.thread.providerId;
+  if (info.parentId === null) return context.defaultProviderId !== null && providerId !== context.defaultProviderId;
+  return providerId !== context.forest.infos.get(info.parentId)?.thread.providerId;
+}
+
+/** The row's second line and pull request badge, as the density and the branch allow. */
+function lines(context: Context, info: ThreadInfo, depth: number): Pick<ThreadRow, "branchLine" | "pullRequest"> {
+  const branch = info.thread.environment?.branchName ?? null;
+  const offDefault = isOffDefaultBranch(branch, context.defaultBranchOf(info.thread));
+  if (context.comfortable && info.note === null && offDefault) return { branchLine: branch, pullRequest: "second-line" };
+  return { branchLine: null, pullRequest: depth === 0 && offDefault ? "title" : null };
+}
+
+/** The machine a row names: one other than bb's primary, unless the list is grouped by machine. */
+function machineOf(context: Context, info: ThreadInfo): string | null {
+  const host = info.thread.host;
+  if (context.prefs.organizationMode === "machine" || context.primaryHostId === null || host === null) return null;
+  return host.id === context.primaryHostId ? null : host.name || "Unknown machine";
+}
+
 function threadRow(
   context: Context,
   info: ThreadInfo,
   root: ThreadInfo,
   options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
-  const needsAttention = !info.thread.isArchived && info.attentionFlags.size > 0;
   return {
+    ...lines(context, info, options.depth),
+    machine: machineOf(context, info),
     type: "thread",
     key: `thread:${info.thread.id}`,
     info,
@@ -215,12 +266,14 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
-    bold: info.unread && !context.attended,
-    note: context.attended ? null : context.drawnInAttention && needsAttention ? info.attentionNote : info.note,
+    harness: drawsHarness(context, info),
+    childDot: mostUrgent(subtreeOf(context, info.thread.id).dotFlags),
+    bold: info.unread,
+    treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
+    note: info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
-    homeGroupLabel: null,
     projectId: info.thread.projectId,
   };
 }
@@ -300,13 +353,13 @@ function environmentLabel(thread: PluginSidebarThread): string {
   return "Environment";
 }
 
-type Unit = { info: ThreadInfo; rows: Row[]; flags: ReadonlySet<Flag> };
+type Unit = { info: ThreadInfo; rows: TreeRow[]; flags: ReadonlySet<Flag> };
 
 /**
  * Folds sibling units that share a worktree environment (2 or more) into a
  * folder row. Off unless the environment grouping preference is on.
  */
-function clusterEnvironments(context: Context, units: Unit[], depth: number): Row[] {
+function clusterEnvironments(context: Context, units: Unit[], depth: number): TreeRow[] {
   if (!context.prefs.environmentGrouping) return units.flatMap((unit) => unit.rows);
   const counts = new Map<string, number>();
   for (const unit of units) {
@@ -315,7 +368,7 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Ro
       counts.set(environment.id, (counts.get(environment.id) ?? 0) + 1);
     }
   }
-  const rows: Row[] = [];
+  const rows: TreeRow[] = [];
   const emitted = new Set<string>();
   for (const unit of units) {
     const environment = unit.info.thread.environment;
@@ -352,30 +405,11 @@ function clusterEnvironments(context: Context, units: Unit[], depth: number): Ro
   return rows;
 }
 
-/** Distinct child harnesses other than the parent's, at most three. */
-function childProviders(parent: ThreadInfo, descendants: readonly ThreadInfo[]): string[] {
-  const ids: string[] = [];
-  for (const info of descendants) {
-    const id = info.thread.providerId;
-    if (info.thread.isHidden || id === parent.thread.providerId || ids.includes(id)) continue;
-    ids.push(id);
-    if (ids.length === 3) break;
-  }
-  return ids;
-}
-
-/** The chip of a parent: its children's count, most urgent flag and harnesses. */
+/** The children chip of a parent, or null when opening it would show nothing. */
 function chipOf(context: Context, info: ThreadInfo, expanded: boolean): Chip | null {
-  const subtree = subtreeOf(context, info.thread.id);
-  const hasChildren =
-    subtree.visibleCount > 0 || subtree.descendants.some((descendant) => descendant.thread.isHidden && descendant.attentionFlags.size > 0);
-  if (!hasChildren) return null;
-  return {
-    count: subtree.visibleCount,
-    flag: mostUrgent(subtree.flags),
-    expanded,
-    providerIds: childProviders(info, subtree.descendants),
-  };
+  const count = subtreeOf(context, info.thread.id).childCount;
+  if (count === 0 && eligibleChildren(context, info.thread.id).length === 0) return null;
+  return { count, expanded };
 }
 
 /** What a thread and everything under it carry, for an environment folder's glyph. */
@@ -386,7 +420,7 @@ function rollupFlags(context: Context, info: ThreadInfo): Set<Flag> {
 }
 
 /** The rows under `parent`: each shown child, then its own level. */
-function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, depth: number): Row[] {
+function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, depth: number): TreeRow[] {
   const { shown, older } = foldedChildren(context, parent, depth);
   const units: Unit[] = shown.map((info) => ({
     info,
@@ -407,7 +441,7 @@ function foldedLevel(context: Context, tree: ThreadTree, parent: ThreadInfo, dep
   return rows;
 }
 
-function foldedTreeRows(context: Context, tree: ThreadTree): Row[] {
+function foldedTreeRows(context: Context, tree: ThreadTree): TreeRow[] {
   const root = tree.root;
   const chip = chipOf(context, root, context.expandedChildren.has(root.thread.id));
   return [threadRow(context, root, root, { depth: 0, nested: false, chip }), ...foldedLevel(context, tree, root, 1)];
@@ -417,168 +451,59 @@ function treeUnit(context: Context, tree: ThreadTree): Unit {
   return { info: tree.root, rows: foldedTreeRows(context, tree), flags: tree.flags };
 }
 
-/** Waiting on you, then failed, then offline, then unread, then the rest. */
-export function urgency(tree: Pick<ThreadTree, "attentionFlags">): number {
-  const flags = tree.attentionFlags;
-  if (flags.has("waits-on-you")) return 0;
-  if (flags.has("unread-failed") || flags.has("queue-failed")) return 1;
-  if (flags.has("offline")) return 2;
-  if (flags.has("unread")) return 3;
-  return 4;
+/** Whether a thread in the tree needs attention: it stays drawn when its group is collapsed. */
+export function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
+  return tree.attentionFlags.size > 0;
+}
+
+/** The need-you filter's N: thread trees that need attention, in every group. */
+export function countNeedYou(forest: Pick<Forest, "trees">): number {
+  return forest.trees.filter(needsAttention).length;
+}
+
+/** The filter narrows the list only while something needs you: at 0 the full list is back. */
+export function needYouActive(on: boolean, count: number): boolean {
+  return on && count > 0;
 }
 
 /**
- * One tree's rows in Needs attention. It arrives with the path from the root
- * down to each thread that needs attention or is open. Closed, the path is all
- * it draws; opened with the root's chip, it draws as in its home group and
- * keeps the path.
+ * One group. `trees` is every tree bucketed in it. Collapsed, it draws only
+ * its trees that need attention; opening a thread in it opens it, as an
+ * auto-reveal did.
  */
-function attentionTreeRows(groupContext: Context, tree: ThreadTree, homeGroupLabel: string): Row[] {
-  const context: Context = {
-    ...groupContext,
-    drawnInAttention: true,
-    attended: isAttended(tree, groupContext.heldRootId),
-  };
-  const root = tree.root;
-  const onPath = new Set<string>([root.thread.id]);
-  for (const info of tree.descendants) {
-    const attention = !info.thread.isArchived && info.attentionFlags.size > 0;
-    if (!attention && !info.isActive) continue;
-    onPath.add(info.thread.id);
-    for (const ancestor of ancestorsOf(info.thread.id, context.forest.infos, root.thread.id)) onPath.add(ancestor);
-  }
-  const expanded = context.expandedChildren.has(root.thread.id);
-  if (expanded) {
-    // The path is kept the way a reveal target's is.
-    const kept: Context = { ...context, revealIds: new Set([...context.revealIds, ...onPath]) };
-    const [rootRow, ...rest] = foldedTreeRows(kept, tree);
-    return [{ ...(rootRow as ThreadRow), homeGroupLabel }, ...rest];
-  }
-  const chip = chipOf(context, root, false);
-  const rows: Row[] = [{ ...threadRow(context, root, root, { depth: 0, nested: false, chip }), homeGroupLabel }];
-  const walk = (parentId: string, depth: number) => {
-    for (const id of context.forest.children.get(parentId) ?? []) {
-      if (!onPath.has(id)) continue;
-      rows.push(threadRow(context, context.forest.infos.get(id)!, root, { depth, nested: depth > 1, chip: null }));
-      walk(id, depth + 1);
-    }
-  };
-  walk(root.thread.id, 1);
-  return rows;
-}
-
-function buildAttention(
-  context: Context,
-  trees: readonly ThreadTree[],
-  homeGroupOf: (tree: ThreadTree) => GroupDescriptor,
-): AttentionView | null {
-  if (trees.length === 0) return null;
-  // Most urgent first, then the chosen field in its natural direction: the
-  // sort direction orders the groups only. The held tree sorts as it was
-  // when opened, so nothing inside it moves it.
-  const compare = makeComparator({
-    field: context.prefs.chronologicalSort,
-    direction: "default",
-    workingFirst: context.prefs.workingFirst,
-  });
-  const slotOf = (tree: ThreadTree): SectionTree =>
-    context.held !== null && tree.root.thread.id === context.heldRootId ? context.held : tree;
-  const sorted = [...trees].sort((treeA, treeB) => {
-    const a = slotOf(treeA);
-    const b = slotOf(treeB);
-    return (
-      urgency(a) - urgency(b) ||
-      compare(
-        { thread: a.root.thread, treeAttention: a.latestAttentionAt },
-        { thread: b.root.thread, treeAttention: b.latestAttentionAt },
-      )
-    );
-  });
-  const homeGroupIds: Record<string, string> = {};
-  const rows = sorted.flatMap((tree) => {
-    const home = homeGroupOf(tree);
-    const treeRows = attentionTreeRows(context, tree, home.label);
-    for (const row of treeRows) if (row.type === "thread") homeGroupIds[row.info.thread.id] = home.id;
-    return treeRows;
-  });
-  return {
-    treeCount: sorted.filter((tree) => !isAttended(tree, context.heldRootId)).length,
-    rows,
-    homeGroupIds,
-  };
-}
-
-/**
- * One group. `trees` is every tree bucketed in it, for its counters and
- * `rootIds`; `drawn` leaves out those in Needs attention.
- */
-function buildGroup(
-  context: Context,
-  descriptor: GroupDescriptor,
-  trees: ThreadTree[],
-  drawn: ThreadTree[],
-  hidden: boolean,
-): GroupView {
+function buildGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
+  if (context.needYouOnly) return needYouGroup(context, descriptor, trees, hidden);
   const counters = countTrees(trees);
   const userCollapsed = isGroupCollapsed(descriptor, context.prefs);
-  const hasTarget = drawn.some(
-    (tree) =>
-      context.targets.has(tree.root.thread.id) ||
-      tree.descendants.some((info) => context.targets.has(info.thread.id)),
-  );
-  const collapsed = userCollapsed && !hasTarget;
+  const activeId = context.activeThreadId;
+  const opened =
+    activeId !== null && context.targets.has(activeId) && trees.some((tree) => tree.containsActive);
+  const collapsed = userCollapsed && !opened;
   const isPinned = descriptor.id === PINNED_GROUP_ID;
 
-  const sorted = [...drawn];
-  if (isPinned) {
-    sorted.sort((a, b) => comparePinned(a.root.thread, b.root.thread));
-  } else {
-    sorted.sort((a, b) =>
-      context.compare(
-        { thread: a.root.thread, treeAttention: a.latestAttentionAt },
-        { thread: b.root.thread, treeAttention: b.latestAttentionAt },
-      ),
-    );
-  }
+  const sorted = sortTrees(context, descriptor, trees);
 
-  let visible = sorted;
-  let older: OlderRow | null = null;
-  const foldable = !isPinned && context.prefs.foldOlder;
-  if (foldable) {
-    // The fold reads `quietIgnoringOpen`, as if no thread were open. The open tree
-    // joins afterwards when it sits behind the fold, and takes no other row's place.
-    const quietActive = sorted.filter((tree) => tree.quietIgnoringOpen && !tree.root.thread.isArchived);
-    // The newest quiet roots stay whatever the order: by creation under
-    // Created, by latest activity otherwise.
-    const byCreation = effectiveSortField(context.prefs.chronologicalSort) === "created";
-    const age = (tree: ThreadTree) => (byCreation ? tree.root.thread.createdAt : tree.latestAttentionAt);
-    const keepQuiet = new Set([...quietActive].sort((a, b) => age(b) - age(a)).slice(0, KEEP_QUIET));
-    const foldedTrees = quietActive.filter((tree) => !keepQuiet.has(tree) && !tree.containsActive);
-    if (foldedTrees.length > 0) {
-      const opened =
-        context.expandedOlder.has(descriptor.id) ||
-        foldedTrees.some(
-          (tree) =>
-            context.targets.has(tree.root.thread.id) ||
-            tree.descendants.some((info) => context.targets.has(info.thread.id)),
-        );
-      const folded = new Set(foldedTrees);
-      if (!opened) visible = sorted.filter((tree) => !folded.has(tree));
-      older = {
-        type: "older",
-        key: `older:group:${descriptor.id}`,
-        scopeId: descriptor.id,
-        scope: "group",
-        count: foldedTrees.length,
-        expanded: opened,
-        depth: 0,
-      };
+  let rows: Row[];
+  if (collapsed) {
+    rows = clusterEnvironments(context, sorted.filter(needsAttention).map((tree) => treeUnit(context, tree)), 0);
+  } else {
+    // Settled trees go behind the fold at the group's end. The open one, if
+    // settled, is drawn just above the divider, so opening it moves nothing else.
+    const settled = sorted.filter((tree) => isSettledTree(tree, context.settle));
+    const settledSet = new Set(settled);
+    const live = sorted.filter((tree) => !settledSet.has(tree));
+    const open = settled.find((tree) => tree.containsActive) ?? null;
+    rows = clusterEnvironments(context, live.map((tree) => treeUnit(context, tree)), 0);
+    if (settled.length > 0) {
+      if (open !== null) rows.push(...treeUnit(context, open).rows);
+      const expanded = context.openSettledFolds.has(descriptor.id);
+      rows.push({ type: "settled", key: `settled:${descriptor.id}`, groupId: descriptor.id, count: settled.length, expanded });
+      if (expanded) {
+        const folded = settled.filter((tree) => tree !== open).map((tree) => treeUnit(context, tree));
+        rows.push(...clusterEnvironments(context, folded, 0));
+      }
     }
   }
-
-  const units = visible.map((tree) => treeUnit(context, tree));
-  const rows = clusterEnvironments(context, units, 0);
-  if (older !== null) rows.push(older);
   return {
     descriptor,
     counters,
@@ -586,6 +511,31 @@ function buildGroup(
     collapsed,
     hidden,
     rows,
+    rootIds: trees.map((tree) => tree.root.thread.id),
+  };
+}
+
+/** A group's trees in its order: Pinned's own, else the chosen sort. */
+function sortTrees(context: Context, descriptor: GroupDescriptor, trees: readonly ThreadTree[]): ThreadTree[] {
+  if (descriptor.id === PINNED_GROUP_ID) return [...trees].sort((a, b) => comparePinned(a.root.thread, b.root.thread));
+  return [...trees].sort((a, b) =>
+    context.compare(
+      { thread: a.root.thread, treeAttention: a.latestAttentionAt },
+      { thread: b.root.thread, treeAttention: b.latestAttentionAt },
+    ),
+  );
+}
+
+/** A group under the need-you filter: its header, and its trees that need attention, whatever its collapse. */
+function needYouGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
+  const sorted = sortTrees(context, descriptor, trees);
+  return {
+    descriptor,
+    counters: countTrees(trees),
+    userCollapsed: isGroupCollapsed(descriptor, context.prefs),
+    collapsed: false,
+    hidden,
+    rows: clusterEnvironments(context, sorted.filter(needsAttention).map((tree) => treeUnit(context, tree)), 0),
     rootIds: trees.map((tree) => tree.root.thread.id),
   };
 }
@@ -606,28 +556,19 @@ export function buildListView(inputs: ViewInputs): ListView {
   }
   const context: Context = {
     ...inputs,
-    heldRootId: inputs.held?.root.thread.id ?? null,
-    compare: makeComparator({
-      field: prefs.chronologicalSort,
-      direction: prefs.sortDirection,
-      workingFirst: prefs.workingFirst,
-    }),
+    compare: makeComparator({ field: prefs.chronologicalSort, direction: prefs.sortDirection }),
     expandedChildren: new Set(prefs.expandedChildren),
     expandedOlder: new Set(prefs.expandedOlder),
+    openSettledFolds: new Set(prefs.openSettledFolds),
     collapsedEnvironments: new Set(prefs.collapsedEnvironments),
     revealIds,
     revealPath,
     activePath,
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
-    drawnInAttention: false,
-    attended: false,
   };
 
   const byGroup = new Map<string, ThreadTree[]>();
-  const homeOf = new Map<ThreadTree, string>();
-  const section: ThreadTree[] = [];
-  const openRootId = inputs.activeThreadId === null ? null : (forest.treeOf.get(inputs.activeThreadId)?.root.thread.id ?? null);
   for (const tree of forest.trees) {
     const id = groupIdForRoot(tree.root.thread, {
       mode: prefs.organizationMode,
@@ -636,10 +577,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     const list = byGroup.get(id) ?? [];
     list.push(tree);
     byGroup.set(id, list);
-    homeOf.set(tree, id);
-    if (inAttention(tree, context.heldRootId, openRootId)) section.push(tree);
   }
-  const inSection = new Set(section);
 
   const alphabetical = effectiveSortField(prefs.chronologicalSort) === "alpha";
   const entities = entityGroups(
@@ -663,15 +601,19 @@ export function buildListView(inputs: ViewInputs): ListView {
     const descriptor = descriptors.get(id);
     if (descriptor === undefined) continue;
     const trees = byGroup.get(id) ?? [];
-    const drawn = trees.filter((tree) => !inSection.has(tree));
-    // Pinned and the loose bucket appear only when they hold threads outside
-    // Needs attention, except the loose bucket in custom-section mode, as in bb.
-    if (drawn.length === 0) {
+    // Pinned and the loose bucket appear only when they hold threads, except
+    // the loose bucket in custom-section mode, as in bb.
+    if (trees.length === 0) {
       if (id === PINNED_GROUP_ID) continue;
       if (id === THREADS_GROUP_ID && prefs.organizationMode !== "chronological") continue;
     }
     const hidden = id !== PINNED_GROUP_ID && hiddenIds.has(id);
-    const view = buildGroup(context, descriptor, trees, drawn, hidden);
+    if (context.needYouOnly) {
+      // Under the filter, a hidden group's trees come out of More, each under its own header.
+      if (trees.some(needsAttention)) groups.push(buildGroup(context, descriptor, trees, hidden));
+      continue;
+    }
+    const view = buildGroup(context, descriptor, trees, hidden);
     if (hidden) {
       more.push(view);
       moreCounters = addCounters(moreCounters, view.counters);
@@ -680,11 +622,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     }
   }
 
-  const hosts = new Set<string>();
-  for (const thread of inputs.threads) if (thread.host !== null) hosts.add(thread.host.id);
-  // Every root's group id has a descriptor: entity groups include unknown sections and every host.
-  const attention = buildAttention(context, section, (tree) => descriptors.get(homeOf.get(tree)!)!);
-  return { attention, groups, more, moreCounters, order, multiHost: hosts.size > 1 };
+  return { groups, more, moreCounters, order, needYouCount: countNeedYou(forest) };
 }
 
 /** Every thread row in visual order, for keyboard and windowing. */

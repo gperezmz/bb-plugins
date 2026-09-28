@@ -93,7 +93,7 @@ export function ThreadDetails({
       <dl className="flex flex-col gap-1">
         <Line label="Harness">
           <span className="inline-flex items-center gap-1.5">
-            <ProviderBadge display={provider} mode={controller.harnessIcon === "hidden" ? "muted" : controller.harnessIcon} />
+            <ProviderBadge display={provider} mode={controller.harnessIcon} />
             {provider.name}
           </span>
         </Line>

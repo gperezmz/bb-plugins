@@ -19,12 +19,12 @@ import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
-import { chipTone, pluginStatusWins } from "../model/state";
+import { pluginStatusWins } from "../model/state";
 import { trailingTime } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
 import type { RowController } from "./controller";
-import { CHIP_TONE_CLASS, FlagGlyph, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
+import { ChildDot, GlyphIcon, NoteLine, PluginStatusGlyph } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
@@ -58,12 +58,11 @@ function swallowNextClick(): void {
 }
 
 /**
- * A quiet title, and its chip: the foreground mixed toward the surface under
- * the row (the sidebar, or the Needs attention band) in oklch, which keeps
- * 4.5:1 in both of bb's themes. Opacity blends in sRGB and lands lower in
- * the light theme.
+ * A quiet title, and its chip: the foreground mixed toward the sidebar in
+ * oklch, which keeps 4.5:1 in both of bb's themes. Opacity blends in sRGB and
+ * lands lower in the light theme.
  */
-const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_var(--tg-quiet,68%),var(--tg-surface,var(--sidebar)))]";
+const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--sidebar))]";
 
 export const ROW_ICON_BUTTON =
   "pointer-events-auto relative z-10 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-active";
@@ -175,7 +174,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       );
   const menuItems = rowMenuItems({
     thread,
-    unread: info.unread,
+    unread: row.depth === 0 ? row.treeUnread : info.unread,
     splitAvailable: split.isAvailable,
     isRoot: thread.parentThreadId === null,
     hasSections: controller.mode === "chronological" || controller.sections.length > 0,
@@ -219,10 +218,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     controller.setEditingId(thread.id);
   };
 
-  const defaultBranch = controller.showPullRequests && row.depth === 0 ? controller.defaultBranchOf(thread) : undefined;
-  const branch = thread.environment?.branchName ?? null;
-  const showPullRequest =
-    controller.showPullRequests && row.depth === 0 && branch !== null && defaultBranch !== undefined && branch !== defaultBranch;
+  const showPullRequest = row.pullRequest !== null;
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -300,7 +296,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   const chip = row.chip;
   const indent = rowIndent(row.depth);
   const note = row.note;
-  const twoLines = controller.comfortable || note !== null;
+  const twoLines = note !== null || row.branchLine !== null;
   const dimmed = row.dimmed && !editing;
   const menuShowing = menuOpen || contextOpen;
   // Desktop: the actions cross-fade over the harness and age, as bb's
@@ -366,7 +362,10 @@ export const ThreadRowView = memo(function ThreadRowView({
         }}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
-      <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">{stateSlot}</span>
+      <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
+        {stateSlot}
+        {row.childDot !== null ? <ChildDot flag={row.childDot} /> : null}
+      </span>
       {row.nested ? (
         // Tight against the title, and over the row's gap, so it adds 8px.
         <span
@@ -404,27 +403,31 @@ export const ThreadRowView = memo(function ThreadRowView({
             }}
           />
         ) : (
-          <span
-            title={thread.displayTitle}
-            className={cn(
-              "min-w-0 truncate",
-              row.bold ? "font-semibold" : "font-normal",
-              // Children sit a step below their parent.
-              row.depth > 0 && "text-xs",
-              // Quiet threads step back so live ones lead; hover brings them back.
-              dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
-            )}
-          >
-            {/* Plain text: mention pills lost the truncation fight. */}
-            {thread.displayTitle}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              title={thread.displayTitle}
+              className={cn(
+                "min-w-0 truncate",
+                row.bold ? "font-semibold" : "font-normal",
+                // Children sit a step below their parent.
+                row.depth > 0 && "text-xs",
+                // Quiet threads step back so live ones lead; hover brings them back.
+                dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
+              )}
+            >
+              {/* Plain text: mention pills lost the truncation fight. */}
+              {thread.displayTitle}
+            </span>
+            {/* On a two-line row the badge stays on the title's line, not centred beside both. */}
+            {row.pullRequest === "title" && twoLines ? <PullRequestBadge threadId={thread.id} /> : null}
           </span>
         )}
         {!editing && note !== null ? (
           <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
             <NoteLine note={note} />
           </span>
-        ) : controller.comfortable && !editing ? (
-          <SecondLine row={row} multiHost={controller.multiHost} defaultBranch={controller.defaultBranchOf(thread)} />
+        ) : row.branchLine !== null && !editing ? (
+          <BranchLine row={row} branch={row.branchLine} />
         ) : null}
       </span>
       {row.hiddenBadge ? (
@@ -432,7 +435,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           <Icon name={ICONS.hidden} aria-hidden className="size-3.5" />
         </span>
       ) : null}
-      {showPullRequest && !editing ? (
+      {row.pullRequest === "title" && !twoLines && !editing ? (
         <span className="pointer-events-none relative">
           <PullRequestBadge threadId={thread.id} />
         </span>
@@ -441,8 +444,8 @@ export const ThreadRowView = memo(function ThreadRowView({
         <button
           type="button"
           aria-expanded={chip.expanded}
-          aria-label={chipLabel(thread.displayTitle, chip.count, chip.flag, chip.expanded)}
-          title={chipLabel(thread.displayTitle, chip.count, chip.flag, chip.expanded)}
+          aria-label={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
+          title={chipLabel(thread.displayTitle, chip.count, chip.expanded)}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -450,20 +453,12 @@ export const ThreadRowView = memo(function ThreadRowView({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
-          data-tone={chipTone(chip.flag)}
           className={cn(
-            "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md border px-1 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-            CHIP_TONE_CLASS[chipTone(chip.flag)],
+            "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
             dimmed && QUIET_TEXT,
           )}
         >
           {chip.count}
-          {chip.flag !== null ? <FlagGlyph flag={chip.flag} className="size-3" /> : null}
-          {controller.harnessIcon !== "hidden"
-            ? chip.providerIds.map((providerId) => (
-                <ProviderBadge key={providerId} display={controller.provider(providerId)} className="size-3 [&_*]:size-3" />
-              ))
-            : null}
           <Icon
             name={ICONS.expand}
             aria-hidden
@@ -471,7 +466,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           />
         </button>
       ) : null}
-      {!editing ? (
+      {!editing && row.harness ? (
         <span
           className={cn(
             "pointer-events-none relative inline-flex shrink-0 transition-opacity",
@@ -490,14 +485,16 @@ export const ThreadRowView = memo(function ThreadRowView({
             </kbd>
           ) : (
             <>
-              {row.homeGroupLabel !== null ? (
+              {row.machine !== null ? (
                 <span
-                  title={`In ${row.homeGroupLabel}`}
-                  className={cn("pointer-events-none max-w-24 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
+                  title={`On ${row.machine}`}
+                  aria-label={`On ${row.machine}`}
+                  className={cn("pointer-events-none max-w-20 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
                 >
-                  {row.homeGroupLabel}
+                  {row.machine}
                 </span>
-              ) : time !== null ? (
+              ) : null}
+              {time !== null ? (
                 <span
                   title={time.label}
                   aria-label={time.label}
@@ -521,6 +518,22 @@ export const ThreadRowView = memo(function ThreadRowView({
                       : "absolute right-0 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
                 )}
               >
+                {!compact && row.treeUnread ? (
+                  <button
+                    type="button"
+                    aria-label="Mark read"
+                    title="Mark read"
+                    className={ROW_ICON_BUTTON}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      controller.onMenuAction("mark-read", thread);
+                    }}
+                  >
+                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+                  </button>
+                ) : null}
                 {!compact ? (
                   <button
                     type="button"
@@ -601,38 +614,17 @@ export const ThreadRowView = memo(function ThreadRowView({
   );
 });
 
-function SecondLine({
-  row,
-  multiHost,
-  defaultBranch,
-}: {
-  row: ThreadRow;
-  multiHost: boolean;
-  defaultBranch: string | null | undefined;
-}) {
-  const thread = row.info.thread;
-  const environment = thread.environment;
-  const parts: React.ReactNode[] = [];
-  // The branch earns the line only when it isn't the project's default:
-  // "main" on every row said nothing.
-  const branch = environment?.branchName ?? null;
-  if (branch !== null && branch !== defaultBranch) {
-    parts.push(
-      <span key="branch" className="inline-flex min-w-0 items-center gap-0.5">
+/** The Comfortable second line: the branch, then its pull request badge. */
+function BranchLine({ row, branch }: { row: ThreadRow; branch: string }) {
+  const environment = row.info.thread.environment;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+      <span className="inline-flex min-w-0 items-center gap-0.5">
         <Icon name={environment?.isWorktree ? ICONS.worktree : ICONS.branch} aria-hidden className="size-3 shrink-0" />
         <span className="truncate">{branch}</span>
         {environment?.isWorktree ? <span className="sr-only"> (worktree)</span> : null}
-      </span>,
-    );
-  }
-  if (multiHost && thread.host !== null) {
-    parts.push(
-      <span key="host" className="inline-flex shrink-0 items-center gap-0.5">
-        <Icon name={ICONS.machine} aria-hidden className="size-3" />
-        {thread.host.name}
-      </span>,
-    );
-  }
-  if (parts.length === 0) return null;
-  return <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">{parts}</span>;
+      </span>
+      {row.pullRequest === "second-line" ? <PullRequestBadge threadId={row.info.thread.id} /> : null}
+    </span>
+  );
 }

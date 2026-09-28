@@ -4,7 +4,7 @@ import type { Preferences } from "@/shared/preferences";
 import { ancestorsOf, type ThreadTree, type Forest } from "./trees";
 import { isGroupCollapsed, toggleGroupCollapse } from "./groups";
 import { isDoneUnseen } from "./state";
-import type { GroupView, OlderRow, ThreadRow } from "./view";
+import type { GroupView, OlderRow, SettledRow, ThreadRow } from "./view";
 
 export interface ToggleOutcome {
   patch: Partial<Preferences>;
@@ -34,24 +34,19 @@ export function openChildren(parentId: string, prefs: Preferences): ToggleOutcom
   return { patch: { expandedChildren: [...without(prefs.expandedChildren, parentId), parentId] }, drop: null };
 }
 
-export function toggleOlder(row: OlderRow, prefs: Preferences, group: GroupView | null, forest: Forest): ToggleOutcome {
+/** Opens or closes an open tree's "N more child threads" fold. */
+export function toggleOlder(row: OlderRow, prefs: Preferences, forest: Forest): ToggleOutcome {
   if (row.scope === "reveal") return openChildren(row.scopeId, prefs);
   if (!row.expanded) {
     return { patch: { expandedOlder: [...without(prefs.expandedOlder, row.scopeId), row.scopeId] }, drop: null };
   }
-  const patch = { expandedOlder: without(prefs.expandedOlder, row.scopeId) };
-  if (row.scope === "tree") return { patch, drop: under(forest, row.scopeId) };
-  // Folding a group's older roots drops the targets that held it open.
-  const quietRoots = new Set<string>();
-  for (const tree of forest.trees) if (tree.quietIgnoringOpen) quietRoots.add(tree.root.thread.id);
-  const inGroup = new Set(group?.rootIds ?? []);
-  return {
-    patch,
-    drop: (id) => {
-      const tree = forest.treeOf.get(id);
-      return tree !== undefined && quietRoots.has(tree.root.thread.id) && inGroup.has(tree.root.thread.id);
-    },
-  };
+  return { patch: { expandedOlder: without(prefs.expandedOlder, row.scopeId) }, drop: under(forest, row.scopeId) };
+}
+
+/** Opens or closes a group's settled fold. */
+export function toggleSettled(row: SettledRow, prefs: Preferences): ToggleOutcome {
+  const rest = without(prefs.openSettledFolds, row.groupId);
+  return { patch: { openSettledFolds: row.expanded ? rest : [...rest, row.groupId] }, drop: null };
 }
 
 export function toggleGroup(group: GroupView, prefs: Preferences, forest: Forest): ToggleOutcome {
@@ -78,7 +73,7 @@ export interface MarkAllRead {
   seen: string[];
 }
 
-/** Every unread thread in the trees, descendants included. */
+/** Every unread thread in the trees, descendants included: Mark all read, and a root's Mark read for its tree. */
 export function markAllReadPlan(
   trees: readonly ThreadTree[],
   context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },
@@ -87,10 +82,26 @@ export function markAllReadPlan(
   const seen: string[] = [];
   for (const tree of trees) {
     for (const info of [tree.root, ...tree.descendants]) {
-      if (!info.unread || info.thread.isArchived) continue;
+      if (!info.unread) continue;
       read.push(info.thread.id);
       if (isDoneUnseen(info.thread, context)) seen.push(info.thread.id);
     }
   }
   return { read, seen };
+}
+
+/**
+ * What one row's Mark read marks: on a tree's root, every unread thread in
+ * the tree; on any other row, the thread alone.
+ */
+export function markReadPlanFor(
+  threadId: string,
+  forest: Pick<Forest, "infos" | "treeOf">,
+  context: { activeThreadId: string | null; finishedAt: Readonly<Record<string, number>>; seenAt: Readonly<Record<string, number>> },
+): MarkAllRead {
+  const tree = forest.treeOf.get(threadId);
+  if (tree !== undefined && tree.root.thread.id === threadId) return markAllReadPlan([tree], context);
+  const thread = forest.infos.get(threadId)?.thread;
+  if (thread === undefined) return { read: [threadId], seen: [] };
+  return { read: [threadId], seen: isDoneUnseen(thread, context) ? [threadId] : [] };
 }

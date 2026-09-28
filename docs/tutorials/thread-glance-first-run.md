@@ -14,11 +14,14 @@ The list looks much like bb's: Thread Glance copied your grouping, sort, group o
 
 ## 2. Read a row
 
+The list starts with its header: `Projects`, the name of the grouping, then a Mark all read button and a sliders button. Below it are your groups, each ending with a faint `Settled (N)` divider when some of its threads have gone a day without activity.
+
 Look at any thread you have run before. From left to right, its row holds:
 
 - a state glyph, or a faint ring when the thread is idle and read;
 - the title, bold if you have not read the thread since it finished;
-- a small logo of the harness that runs it;
+- a small harness logo, only if the thread runs on a harness other than bb's default;
+- the machine's name, only if the thread runs on a machine other than bb's own;
 - how long ago it last finished.
 
 Hover the row for half a second. The card names the state, the harness, the model the next turn will use, the branch and the machine.
@@ -31,24 +34,26 @@ In a thread of your project, send:
 Spawn one child thread that lists the files in this repository, then wait for it and summarise what it found.
 ```
 
-While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a chip: `1` with a spinner, because its one child is working. The child has no row of its own at the top of the group. It sits behind that chip.
+While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a muted `1` and a chevron beside its title: its one child. The child has no row of its own at the top of the group. It sits behind that chip.
 
 Click the chip. The child's row opens under the parent, indented one step, its title one size smaller.
 
 ## 4. Let it finish
 
-When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's chip does not turn urgent, because the parent is the one waiting for that result.
+The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and a small blue dot on the ring's corner, the child dot, says a child is working.
+
+When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's child dot stays blue, now for unread, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
 
 When the parent finishes, its row shows the dot and a bold title.
 
 ## 5. See what needs attention
 
-While you have the parent open, its tree stays in its project's group. Open any thread outside the tree. The tree moves into **Needs attention**, the section at the top of the list, because its parent finished unread. Your finished child did not bring it there: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why. The parent's row shows its project's name where the age normally is.
+The tree stays where it is in its project's group, and the list header now shows `1 need you`, because the parent finished unread. Your finished child did not add to it: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why.
 
-Open the parent again. The tree stays in the section while you read it, in the same place, but its title is no longer bold and the section's count leaves it out: it is attended. Open a thread outside it, and the tree goes back to its project.
+Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row and click **Mark read**, the open envelope beside archive: the parent and its child are read, and `1 need you` goes away.
 
 ## 6. Change a setting
 
-Click the **Thread Glance** item, its List view icon, in the sidebar footer, and under **Rows** set **Harness icon** to **Colour**. Every row's logo takes its provider's colour. Set it back to **Muted**.
+Click the sliders button at the right of the list header. Under **List**, set **Settle after** to **12h**. Trees that have gone half a day without activity join each group's `Settled (N)` divider at its end; click a divider to see what it holds. Set it back to **1d**, and click the sliders button again to close the panel.
 
-You have installed Thread Glance, read its rows and chips, and watched a tree move through Needs attention. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
+You have installed Thread Glance, read its rows, chips and child dots, and used the need-you filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.

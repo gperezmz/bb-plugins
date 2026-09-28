@@ -9,8 +9,8 @@ const idListSchema = z.array(idSchema).max(MAX_ITEMS);
 export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
 export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
 export const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
-export const lifecycleSchema = z.enum(["active", "archived"]);
-export const harnessIconSchema = z.enum(["muted", "colour", "hidden"]);
+export const harnessIconSchema = z.enum(["muted", "colour"]);
+export const settleAfterSchema = z.enum(["12h", "1d", "3d", "1w", "never"]);
 export const childAttentionSchema = z.enum(["blocked", "everything"]);
 
 const hiddenGroupsSchema = z
@@ -21,34 +21,33 @@ const hiddenGroupsSchema = z
 export type OrganizationMode = z.infer<typeof organizationModeSchema>;
 export type SortField = z.infer<typeof sortFieldSchema>;
 export type SortDirection = z.infer<typeof sortDirectionSchema>;
-export type Lifecycle = z.infer<typeof lifecycleSchema>;
 export type HarnessIcon = z.infer<typeof harnessIconSchema>;
 export type ChildAttention = z.infer<typeof childAttentionSchema>;
+export type SettleAfter = z.infer<typeof settleAfterSchema>;
 
 interface PreferenceDefinition<T> {
   schema: z.ZodType<T, unknown>;
   defaultValue: T;
   description: string;
+  /** Maps a value an earlier version stored, which the schema now refuses, onto a current one. */
+  readStored?: (stored: unknown) => unknown;
 }
 
 function define<T>(
   schema: z.ZodType<T, unknown>,
   defaultValue: T,
   description: string,
+  readStored?: (stored: unknown) => unknown,
 ): PreferenceDefinition<T> {
-  return { schema, defaultValue, description };
+  return { schema, defaultValue, description, ...(readStored ? { readStored } : {}) };
 }
 
 /** Server-side preferences, shared across windows and devices. */
 export const PREFERENCES = {
-  threadLifecycles: define(
-    z
-      .array(lifecycleSchema)
-      .min(1)
-      .max(2)
-      .refine((values) => new Set(values).size === values.length, "Lifecycles must be unique"),
-    ["active"] as Lifecycle[],
-    "Threads shown: [\"active\"], [\"archived\"] or both. At least one is required.",
+  showArchived: define(
+    z.boolean(),
+    false,
+    "Show archived threads: whether every group also lists archived threads, as each group's menu toggles.",
   ),
   organizationMode: define(
     organizationModeSchema,
@@ -107,36 +106,36 @@ export const PREFERENCES = {
     [] as string[],
     "Environment ids whose folder row is collapsed.",
   ),
-  foldOlder: define(
-    z.boolean(),
-    true,
-    "Collapse older threads: whether each group's quiet roots past its 5 newest fold behind an N older row.",
-  ),
-  workingFirst: define(
-    z.boolean(),
-    false,
-    "Working threads first: whether working threads sort first under Updated, as bb's list does.",
-  ),
   expandedOlder: define(
     idListSchema,
     [] as string[],
-    "Group ids and parent thread ids whose fold the user opened: a group's \"N older\" row, or the \"N more child threads\" row of a tree whose children chip is already open.",
+    "Parent thread ids whose \"N more child threads\" row the user opened, once that tree's children chip was open.",
+  ),
+  openSettledFolds: define(
+    idListSchema,
+    [] as string[],
+    "Group ids whose settled fold the user opened.",
+  ),
+  settleAfter: define(
+    settleAfterSchema,
+    "1d" as SettleAfter,
+    "Settle after: how long a quiet thread goes without activity before it settles into its group's settled fold: 12h, 1d, 3d, 1w or never.",
   ),
   expandedChildren: define(
     idListSchema,
     [] as string[],
     "Parent thread ids whose chip the user opened.",
   ),
-  showPullRequests: define(z.boolean(), true, "Whether rows show a pull request badge."),
   childAttention: define(
     childAttentionSchema,
     "blocked" as ChildAttention,
-    "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of a thread tree's older fold, as running ones do.",
+    "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of an open tree's N more child threads fold, as running ones do.",
   ),
   harnessIcon: define(
     harnessIconSchema,
     "muted" as HarnessIcon,
-    "How rows draw the harness logo: muted (monochrome), colour (the provider's tint) or hidden.",
+    "How rows draw the harness logo, where a row draws one: muted (monochrome) or colour (the provider's tint). A stored hidden reads as muted.",
+    (stored) => (stored === "hidden" ? "muted" : stored),
   ),
 } as const;
 
@@ -177,6 +176,18 @@ export function parsePreference<K extends PreferenceKey>(
 }
 
 /**
+ * Parses a value read back from storage: what `parsePreference` accepts, and
+ * the values earlier versions stored that the key maps onto current ones.
+ */
+export function parseStoredPreference<K extends PreferenceKey>(
+  key: K,
+  stored: unknown,
+): ParseResult<Preferences[K]> {
+  const definition: PreferenceDefinition<unknown> = PREFERENCES[key];
+  return parsePreference(key, definition.readStored ? definition.readStored(stored) : stored);
+}
+
+/**
  * Reads a whole preference object, falling back to the default for each key
  * that is missing or invalid. Used for the localStorage mirror.
  */
@@ -186,7 +197,7 @@ export function coercePreferences(raw: unknown): Preferences {
   const record = raw as Record<string, unknown>;
   for (const key of PREFERENCE_KEYS) {
     if (!(key in record)) continue;
-    const parsed = parsePreference(key, record[key]);
+    const parsed = parseStoredPreference(key, record[key]);
     if (parsed.success) (result as Record<string, unknown>)[key] = parsed.value;
   }
   return result;

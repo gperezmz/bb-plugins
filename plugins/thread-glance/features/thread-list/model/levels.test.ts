@@ -10,9 +10,13 @@ const rowsOf = (view: ListView, id = "project:proj_a"): Row[] => {
 };
 const depths = (view: ListView) =>
   rowsOf(view).map((row) =>
-    row.type === "thread" ? `${row.info.thread.id}@${row.depth}` : row.type === "older"
+    row.type === "thread"
+      ? `${row.info.thread.id}@${row.depth}`
+      : row.type === "older"
         ? `older:${row.count}@${row.depth}`
-        : `env@${row.depth}`,
+        : row.type === "settled"
+          ? `settled:${row.count}`
+          : `env@${row.depth}`,
   );
 
 describe("per-level folding", () => {
@@ -128,7 +132,7 @@ describe("a grandchild never shows without its parent (property)", () => {
     return { threads, ids: threads.map((thread) => thread.id) };
   }
 
-  it("holds for random forests, folds, settings, open threads, holds and reveals, and draws each thread once", () => {
+  it("holds for random forests, folds, settings, open threads and reveals, and draws each thread once", () => {
     let checked = 0;
     for (let seed = 1; seed <= 400; seed += 1) {
       const next = random(seed);
@@ -138,17 +142,16 @@ describe("a grandchild never shows without its parent (property)", () => {
       const view = viewOf({
         threads,
         activeThreadId: active,
-        heldRootId: next() < 0.3 ? ids[Math.floor(next() * ids.length)]! : null,
         prefs: {
           expandedChildren: pick(),
           expandedOlder: pick(),
           childAttention: next() < 0.5 ? "blocked" : "everything",
-          threadLifecycles: ["active", "archived"],
+          showArchived: true,
         },
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
       const drawn = new Set<string>();
-      for (const rows of [view.attention?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
+      for (const rows of [...view.groups, ...view.more].map((group) => group.rows)) {
         const seen: ThreadRow[] = [];
         for (const row of rows) {
           if (row.type !== "thread") continue;

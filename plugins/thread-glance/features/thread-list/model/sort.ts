@@ -5,7 +5,6 @@ import type { SortDirection, SortField } from "@/shared/preferences";
 export interface SortOptions {
   field: SortField;
   direction: SortDirection;
-  workingFirst: boolean;
 }
 
 /** What a comparator needs to know about a root beyond the thread itself. */
@@ -48,22 +47,12 @@ export function effectiveDirection(field: SortField, direction: SortDirection): 
   return direction === "default" ? naturalDirection(field) : direction;
 }
 
-/**
- * The comparator for roots in a group. Working first keeps active threads on
- * top whatever the direction.
- */
+/** The comparator for roots in a group. */
 export function makeComparator(options: SortOptions): (a: SortKey, b: SortKey) => number {
   const field = effectiveSortField(options.field);
   const sign = effectiveDirection(field, options.direction) === naturalDirection(field) ? 1 : -1;
   const base = field === "alpha" ? byAlpha : field === "created" ? byCreated : byUpdated;
-  return (a, b) => {
-    if (field === "updated" && options.workingFirst) {
-      const aActive = a.thread.status === "active";
-      const bActive = b.thread.status === "active";
-      if (aActive !== bActive) return aActive ? -1 : 1;
-    }
-    return sign * base(a, b);
-  };
+  return (a, b) => sign * base(a, b);
 }
 
 /** Pinned order: pinSortKey, then pinnedAt desc, createdAt desc, id. */

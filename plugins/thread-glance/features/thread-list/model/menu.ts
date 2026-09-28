@@ -30,6 +30,7 @@ export interface RowMenuItem {
 
 export interface RowMenuInputs {
   thread: PluginSidebarThread;
+  /** The thread is unread; for a root, anything in its tree is, and Mark read marks the tree. */
   unread: boolean;
   splitAvailable: boolean;
   /** True for a thread with no parent (bb: Move to section on roots only). */

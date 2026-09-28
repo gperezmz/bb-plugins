@@ -45,7 +45,8 @@ function rpc(
   stamps: Partial<Record<string, Record<string, number>>> = {},
   notes: Record<string, unknown> = {},
 ) {
-  const preferences = { ...defaultPreferences(), ...prefs };
+  // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
+  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...prefs };
   return {
     listPreferences: () => ({ preferences }),
     setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
@@ -68,10 +69,11 @@ function render(
     props?: Partial<PluginThreadListProps>;
     extra?: object;
     notes?: Record<string, unknown>;
+    stamps?: Partial<Record<string, Record<string, number>>>;
   } = {},
 ) {
   return renderSlot(app.threadLists[0]!, { ...props, ...options.props }, {
-    rpc: rpc(options.prefs, {}, options.notes) as never,
+    rpc: rpc(options.prefs, options.stamps, options.notes) as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
     providers: {
       status: "ready",
@@ -82,18 +84,27 @@ function render(
     },
     sdk: {
       threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
-      projects: { branches: async () => ({ defaultBranch: "main" }) } as never,
+      projects: {
+        get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
+        branches: async () => ({ defaultBranch: "main" }),
+      } as never,
       providers: { models: async () => ({ models: [] }) } as never,
+      system: {
+        config: async () => ({
+          primaryHostId: "host_1",
+          generalSettings: { defaultProviderId: null },
+          serverAccess: { defaultProviderId: "claude-code" },
+        }),
+      } as never,
     },
     ...options.extra,
   });
 }
 
-/** Thread Glance's item in bb's sidebar footer, opened: the settings panel. */
-function renderSettings(options: { prefs?: Partial<Preferences>; extra?: object } = {}) {
-  const item = app.experimentalSidebarFooterItems[0]!;
-  if (item.kind !== "disclosure") throw new Error("the footer item opens no panel");
-  return renderSlot(item, { dismiss() {} }, { rpc: rpc(options.prefs) as never, ...options.extra }).container;
+/** Opens the settings panel from the list header of the list on screen, and returns it. */
+async function openSettings(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "Thread Glance settings" }));
+  return screen.findByRole("dialog");
 }
 
 describe("Thread Glance slot", () => {
@@ -101,12 +112,10 @@ describe("Thread Glance slot", () => {
     expect(app.threadLists.map((list) => list.id)).toEqual(["thread-glance"]);
   });
 
-  it("puts one Thread Glance item in bb's footer, drawn with the icon the manifest brands it with", () => {
-    expect(app.experimentalSidebarFooterItems.map(({ kind, label, icon }) => ({ kind, label, icon }))).toEqual([
-      { kind: "disclosure", label: "Thread Glance", icon: manifest.bb.branding.icon },
-    ]);
-    expect(manifest.bb.branding.icon).not.toBe("Settings");
+  it("puts nothing in bb's sidebar footer", () => {
+    expect(app.experimentalSidebarFooterItems).toEqual([]);
     expect(app.sidebarFooterActions).toEqual([]);
+    expect(manifest.bb.branding.icon).toBe("ListView");
   });
 
   it("shows a skeleton while threads load", async () => {
@@ -142,49 +151,22 @@ describe("Thread Glance slot", () => {
     ).toBeTruthy();
   });
 
-  it("scenario 1: Needs attention draws the blocked child's path, and the group header keeps its counter", async () => {
+  it("scenario 1: a tree whose child waits on you stays in its group, with the child's path revealed and its header counting it", async () => {
     render([
-      makeThread({ id: "m", title: "Parent" }),
+      makeThread({ id: "m", title: "Parent", latestAttentionAt: T0 + 10, lastReadAt: T0 + 10 }),
       ...[1, 2, 3, 4, 5].map((n) =>
         makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
       ),
       makeThread({ id: "o", title: "Other" }),
     ]);
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(section).getByRole("link", { name: /Open Parent — .*; in Alpha/ })).toBeTruthy();
-    expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
-    expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
-    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
-    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
-    expect(within(section).getByText("Alpha")).toBeTruthy();
-    const project = screen.getByRole("region", { name: "Alpha" });
-    expect(within(project).queryByRole("link", { name: /Open Parent/ })).toBeNull();
-    expect(within(project).getByRole("link", { name: /Open Other/ })).toBeTruthy();
+    const project = await screen.findByRole("region", { name: "Alpha" });
+    await within(project).findByRole("link", { name: /Open Child 2/ });
+    const links = within(project)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("aria-label")!.replace(/^Open (.*?) —.*$/, "$1"));
+    expect(links).toEqual(["Parent", "Child 2", "Other"]);
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
-  });
-
-  it("opens a tree in Needs attention from its chip, and closes it back to the path", async () => {
-    render([
-      makeThread({ id: "m", title: "Parent" }),
-      ...[1, 2, 3].map((n) =>
-        makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
-      ),
-    ]);
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    const chip = within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" });
-    expect(chip.textContent).toContain("3");
-    expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
-    fireEvent.click(chip);
-    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
-    expect(within(section).getByRole("link", { name: /Open Child 3/ })).toBeTruthy();
-    fireEvent.click(within(section).getByRole("button", { name: /Collapse 3 child threads of Parent/ }));
-    await waitFor(() => expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull());
-    // Closed, the path to what needs attention stays, and nothing counts the rest.
-    expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
-    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
-    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
-    fireEvent.click(within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" }));
-    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
+    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   });
 
   it("opens and closes a tree from its chip", async () => {
@@ -192,7 +174,7 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "m", title: "Parent" }),
       ...[1, 2].map((n) => makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working })),
     ]);
-    const chip = await screen.findByRole("button", { name: /child threads of Parent, working/ });
+    const chip = await screen.findByRole("button", { name: "Show 2 child threads of Parent" });
     expect(chip.getAttribute("aria-expanded")).toBe("false");
     expect(chip.textContent).toContain("2");
     expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull();
@@ -202,57 +184,36 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull());
   });
 
-  it("draws Needs attention first, above Pinned, with no row above it and no All / Needs attention filter", async () => {
-    const { container } = render([
+  it("draws no Needs attention section: a thread that needs attention stays in its group", async () => {
+    render([
       makeThread({ id: "a", title: "Busy", ...working }),
       makeThread({ id: "b", title: "Done", ...finishedUnread }),
       makeThread({ id: "p", title: "Pinned one", pinnedAt: T0, isPinned: true }),
     ]);
     await screen.findByRole("link", { name: /Open Done/ });
     const regions = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
-    expect(regions).toEqual(["Needs attention", "Pinned", "Alpha", "Beta"]);
-    expect(within(screen.getByRole("region", { name: "Needs attention" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Busy/ })).toBeTruthy();
-    expect(screen.queryByRole("radio")).toBeNull();
-    // The section's own header is the only "Needs attention" on screen.
-    expect(screen.getAllByText(/Needs attention/)).toHaveLength(1);
-    // The list starts at the section: no settings row above it.
-    expect(screen.queryByRole("button", { name: /settings/i })).toBeNull();
-    const list = container.firstElementChild!;
-    expect(list.firstElementChild).toBe(screen.getByRole("region", { name: "Needs attention" }));
+    expect(regions).toEqual(["Pinned", "Alpha", "Beta"]);
+    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
+    expect(screen.queryByText(/Needs attention/)).toBeNull();
   });
 
-  it("draws no Needs attention section, and no line for it, when nothing needs attention", async () => {
-    render([makeThread({ id: "a", title: "Busy", ...working })]);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
-    expect(screen.queryByText(/Needs attention|Nothing needs/)).toBeNull();
-  });
-
-  it("shows the whole list with Needs attention to someone whose saved view was the old Needs attention filter", async () => {
-    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ filter: "attention", density: "comfortable" }));
-    render([makeThread({ id: "a", title: "Busy", ...working }), makeThread({ id: "b", title: "Done", ...finishedUnread })]);
-    expect(await screen.findByRole("link", { name: /Open Busy/ })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Needs attention" })).toBeTruthy();
-  });
-
-  it("gives the Needs attention header no collapse, menu or count other than its trees", async () => {
+  it("keeps drawing a collapsed group's trees that need attention under its header, and nothing else", async () => {
     render(
       [
         makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
+        makeThread({ id: "q", title: "Quiet" }),
         makeThread({ id: "b", title: "Also asks", projectId: "proj_b", hasPendingInteraction: true }),
       ],
       { prefs: { collapsedProjects: ["proj_a", "proj_b"] } },
     );
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    const header = within(section).getByRole("heading", { name: /Needs attention/ });
-    expect(within(header).getByLabelText("2 thread trees").textContent).toBe("2");
-    expect(within(header).queryAllByRole("button")).toEqual([]);
-    fireEvent.click(header);
-    expect(within(section).getByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    const alpha = await screen.findByRole("region", { name: "Alpha" });
+    expect(await within(alpha).findByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    expect(within(alpha).queryByRole("link", { name: /Open Quiet/ })).toBeNull();
+    expect(within(alpha).getByRole("button", { name: "Expand Alpha section" })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Beta" })).getByRole("link", { name: /Open Also asks/ })).toBeTruthy();
   });
 
-  it("indents each level of a Needs attention path by one small step, and the grandchild carries its parent's name", async () => {
+  it("indents each level of a revealed path by one small step, and the grandchild carries its parent's name", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1 }),
@@ -265,46 +226,61 @@ describe("Thread Glance slot", () => {
     expect(screen.getByText("↳").getAttribute("title")).toBe("Child of Child");
   });
 
-  it("starts the list at its first group header when nothing needs attention", async () => {
-    const { container } = render([makeThread({ id: "a", title: "Busy", ...working })]);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(container.firstElementChild!.firstElementChild).toBe(screen.getByRole("region", { name: "Alpha" }));
+  it("starts the list at the list header, naming the grouping without acting on a click, in every grouping and viewport", async () => {
+    for (const [organizationMode, name] of [
+      ["project", "Projects"],
+      ["chronological", "Sections"],
+      ["machine", "Machines"],
+    ] as const) {
+      for (const isCompactViewport of [false, true]) {
+        const { container } = render([makeThread({ id: "a", title: "Busy", ...working })], {
+          prefs: { organizationMode },
+          props: { isCompactViewport },
+        });
+        await screen.findByRole("link", { name: /Open Busy/ });
+        const header = container.firstElementChild!.firstElementChild as HTMLElement;
+        expect(header.getAttribute("data-sidebar")).toBe("list-header");
+        const heading = within(header).getByRole("heading", { name });
+        expect(heading.closest("button, a")).toBeNull();
+        fireEvent.click(heading);
+        expect(within(header).getByRole("heading", { name })).toBe(heading);
+        cleanup();
+      }
+    }
   });
 
   it("opens one settings panel with no tabs, holding exactly the listed settings", async () => {
-    const panel = renderSettings();
+    render([makeThread({ id: "a" })]);
+    const panel = await openSettings();
     await within(panel).findByRole("heading", { name: "List" });
     expect(within(panel).queryByRole("tablist")).toBeNull();
     expect(within(panel).queryByRole("tab")).toBeNull();
-    expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Show"]);
+    expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Attention"]);
     const segments = within(panel)
       .getAllByRole("radiogroup")
       .map((group) => [group.getAttribute("aria-label"), within(group).getAllByRole("radio").map((radio) => radio.textContent)]);
     expect(segments).toEqual([
       ["Group by", ["Project", "Custom", "Machine"]],
       ["Sort by", ["Updated", "Created", "A–Z"]],
+      ["Settle after", ["12h", "1d", "3d", "1w", "Never"]],
       ["Density", ["Compact", "Comfortable"]],
-      ["Harness icon", ["Muted", "Colour", "Hidden"]],
-      ["Threads", ["Active", "Archived", "Both"]],
+      ["Harness icon", ["Muted", "Colour"]],
     ]);
     const checkboxes = within(panel)
       .getAllByRole("checkbox")
       .map((box) => [box.textContent, box.getAttribute("aria-checked")]);
     expect(checkboxes).toEqual([
-      ["Working threads first", "false"],
       ["Worktrees as foldersThreads sharing a worktree fold into one row", "false"],
-      ["Collapse older threads", "true"],
-      ["Pull request badge", "true"],
       ["Needs attention counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
-    expect(within(panel).getAllByRole("radio")).toHaveLength(14);
+    expect(within(panel).getAllByRole("radio")).toHaveLength(15);
     expect(within(panel).getAllByRole("button")).toHaveLength(1);
-    expect(panel.querySelectorAll("button")).toHaveLength(14 + 5 + 1);
+    expect(panel.querySelectorAll("button")).toHaveLength(15 + 2 + 1);
   });
 
-  it("reverses every group with the ↓/↑ button, and saves Threads choices as lifecycles", async () => {
+  it("reverses every group with the ↓/↑ button", async () => {
     const setPreference = vi.fn(({ key, value }: { key: string; value: unknown }) => ({ key, value }));
     const threads = [
       makeThread({ id: "a1", title: "A old", createdAt: T0, latestAttentionAt: T0 }),
@@ -312,21 +288,15 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "b1", title: "B old", projectId: "proj_b", createdAt: T0, latestAttentionAt: T0 }),
       makeThread({ id: "b2", title: "B new", projectId: "proj_b", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
     ];
-    render(threads);
+    render(threads, { extra: { rpc: { ...rpc(), setPreference } as never } });
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
     expect(order()).toEqual(["Open A new", "Open A old", "Open B new", "Open B old"]);
-    // The panel mounts apart from the list, as bb's footer draws it.
-    const panel = renderSettings({ extra: { rpc: { ...rpc(), setPreference } as never } });
+    const panel = await openSettings();
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new", "Open B old", "Open B new"]));
     expect(within(panel).getByRole("button", { name: /Sort order: Oldest first/ }).textContent).toBe("↑");
-    const threadsGroup = within(panel).getByRole("radiogroup", { name: "Threads" });
-    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Archived" }));
-    fireEvent.click(within(threadsGroup).getByRole("radio", { name: "Both" }));
-    await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "threadLifecycles", value: ["active", "archived"] }));
-    expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" });
-    expect(within(threadsGroup).getByRole("radio", { name: "Both" }).getAttribute("aria-checked")).toBe("true");
+    await waitFor(() => expect(setPreference).toHaveBeenCalledWith({ key: "sortDirection", value: "ascending" }));
   });
 
   it("keeps a change made in the panel when the list hears the old value before the write goes out", async () => {
@@ -337,7 +307,7 @@ describe("Thread Glance slot", () => {
     const list = render(threads);
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
-    const panel = renderSettings();
+    const panel = await openSettings();
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
     await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
@@ -351,7 +321,7 @@ describe("Thread Glance slot", () => {
     const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
     await screen.findByRole("link", { name: /Open Busy/ });
     const compact = row().textContent;
-    const panel = renderSettings();
+    const panel = await openSettings();
     fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Comfortable" }));
     await waitFor(() => expect(row().textContent).not.toBe(compact));
     const comfortable = row().textContent;
@@ -362,16 +332,116 @@ describe("Thread Glance slot", () => {
     expect(row().textContent).toBe(comfortable);
   });
 
-  it("tints the child chip by the most urgent child state and draws unread in the accent", async () => {
+  it("finds the default branch through the project's default source, and draws no branch line until it knows it", async () => {
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    const asked: string[] = [];
+    let answer: (value: { defaultBranch: string }) => void = () => undefined;
+    const threads = [
+      makeThread({ id: "a", title: "Trunk", host: { id: "host_2", name: "work" }, environment: { branchName: "main" } }),
+      makeThread({ id: "b", title: "Topic", host: { id: "host_2", name: "work" }, environment: { branchName: "fix/login" } }),
+    ];
+    render(threads, {
+      extra: {
+        sdk: {
+          threads: { defaultExecutionOptions: async () => null } as never,
+          providers: { models: async () => ({ models: [] }) } as never,
+          projects: {
+            get: async () => ({ sources: [{ hostId: "host_2", isDefault: false }, { hostId: "host_1", isDefault: true }] }),
+            branches: ({ hostId }: { hostId: string }) => {
+              asked.push(hostId);
+              return new Promise((resolve) => (answer = resolve));
+            },
+          } as never,
+        },
+      },
+    });
+    const row = async (name: RegExp) => (await screen.findByRole("link", { name })).parentElement!;
+    await waitFor(() => expect(asked).toEqual(["host_1"]));
+    expect((await row(/Open Topic/)).textContent).not.toContain("fix/login");
+    expect((await row(/Open Trunk/)).textContent).not.toContain("main");
+    await act(async () => answer({ defaultBranch: "main" }));
+    await waitFor(async () => expect((await row(/Open Topic/)).textContent).toContain("fix/login"));
+    expect((await row(/Open Trunk/)).textContent).not.toContain("main");
+  });
+
+  it("draws a muted chip with a count and chevron only, a child dot on the parent's own glyph, and unread in the accent", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
-      makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working }),
+      makeThread({ id: "c", title: "Busy child", parentThreadId: "m", createdAt: T0 + 1, ...working, providerId: "codex" }),
       makeThread({ id: "u", title: "Fresh", ...finishedUnread }),
     ]);
-    const chip = await screen.findByRole("button", { name: /child thread of Parent/ });
-    expect(chip.getAttribute("data-tone")).toBe("working");
+    const chip = await screen.findByRole("button", { name: "Show 1 child thread of Parent" });
+    expect(chip.textContent).toBe("1");
+    expect(chip.className).not.toMatch(/(^|\s)border(\s|-)/);
+    expect(chip.className).not.toMatch(/(^|\s)bg-/);
+    expect(within(chip).queryByRole("img")).toBeNull();
+    const parent = await screen.findByRole("link", { name: /Open Parent — Idle;.*child threads: working/ });
+    const column = parent.nextElementSibling as HTMLElement;
+    expect(column.querySelector("[data-child-dot]")?.getAttribute("data-child-dot")).toBe("working");
+    expect(column.querySelector("[data-child-dot]")?.className).toContain("--timeline-accent");
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
+  });
+
+  it("puts the pull request badge after the branch in Comfortable, on the title line in Compact, and names another machine beside the age", async () => {
+    const threads = [
+      makeThread({ id: "b", title: "Topic", environment: { branchName: "fix/login" }, host: { id: "host_2", name: "work" } }),
+    ];
+    const extra = { sidebarPullRequests: { b: { number: 7, title: "Fix", url: "u", state: "open", attention: "none" } } };
+    render(threads, { extra });
+    const anchor = await screen.findByRole("link", { name: /Open Topic/ });
+    const row = anchor.parentElement!;
+    const badge = await within(row).findByLabelText(/Pull request #7/);
+    // Compact: one line, the badge beside the title, and no branch.
+    expect(row.textContent).not.toContain("fix/login");
+    expect(within(row).getByLabelText("On work").textContent).toBe("work");
+    expect(within(row).getByLabelText(/ago|now/)).toBeTruthy();
+    expect(badge.closest("span.flex-col")).toBeNull();
+    cleanup();
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    render(threads, { extra });
+    const comfortable = (await screen.findByRole("link", { name: /Open Topic/ })).parentElement!;
+    await waitFor(() => expect(comfortable.textContent).toContain("fix/login"));
+    const line = within(comfortable).getByText("fix/login").closest("span.text-xs")!;
+    expect(within(line as HTMLElement).getByLabelText(/Pull request #7/)).toBeTruthy();
+    expect(within(comfortable).getAllByLabelText(/Pull request #7/)).toHaveLength(1);
+    expect(within(comfortable).getByLabelText("On work")).toBeTruthy();
+  });
+
+  it("keeps the pull request badge on the title line of a Comfortable row whose second line is a note", async () => {
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    render(
+      [makeThread({ id: "f", title: "Broke", status: "error", environment: { branchName: "fix/y" } })],
+      {
+        notes: { f: { failed: { kind: "failed", text: "timeout", at: T0 } } },
+        extra: { sidebarPullRequests: { f: { number: 9, title: "Y", url: "u", state: "open", attention: "none" } } },
+      },
+    );
+    const row = (await screen.findByRole("link", { name: /Open Broke/ })).parentElement!;
+    const badge = await within(row).findByLabelText(/Pull request #9/);
+    const title = within(row).getByTitle("Broke");
+    expect(badge.parentElement).toBe(title.parentElement);
+    expect(row.textContent).toContain("Failed: timeout");
+    expect(row.textContent).not.toContain("fix/y");
+  });
+
+  it("draws a harness icon only where it differs, in the Muted or Colour style the panel picks", async () => {
+    render([
+      makeThread({ id: "d", title: "Default root" }),
+      makeThread({ id: "x", title: "Codex root", providerId: "codex" }),
+      makeThread({ id: "c", title: "Codex child", parentThreadId: "d", providerId: "codex", createdAt: T0 + 1 }),
+      makeThread({ id: "s", title: "Same child", parentThreadId: "d", createdAt: T0 + 2 }),
+    ], { prefs: { expandedChildren: ["d"] } });
+    const icon = async (name: RegExp) => within((await screen.findByRole("link", { name })).parentElement!).queryByRole("img", { name: /Codex|Claude Code/ });
+    expect(await icon(/Open Default root/)).toBeNull();
+    expect(await icon(/Open Same child/)).toBeNull();
+    expect(await icon(/Open Codex root/)).toBeTruthy();
+    expect(await icon(/Open Codex child/)).toBeTruthy();
+    expect((await icon(/Open Codex root/))!.className).toContain("opacity-60");
+    const panel = await openSettings();
+    fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Harness icon" })).getByRole("radio", { name: "Colour" }));
+    await waitFor(async () => expect((await icon(/Open Codex root/))!.className).not.toContain("opacity-60"));
+    expect((await icon(/Open Codex child/))!.className).not.toContain("opacity-60");
   });
 
   it("draws a ring screen readers skip in an idle row's Status column, and no ring in any other", async () => {
@@ -388,6 +458,44 @@ describe("Thread Glance slot", () => {
     const unread = await column(/Open Fresh/);
     expect(within(unread).getByRole("img", { name: "Unread" })).toBeTruthy();
     expect(unread.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it("offers Mark read beside archive on a root whose tree holds something unread, and marks the whole tree read", async () => {
+    const slot = render([
+      makeThread({ id: "r", title: "Root" }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
+      makeThread({ id: "d", title: "Done child", parentThreadId: "r", createdAt: T0 + 2 }),
+      makeThread({ id: "q", title: "Calm" }),
+    ], { stamps: { finishedAt: { d: T0 + 50 } } });
+    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    const calm = (await screen.findByRole("link", { name: /Open Calm/ })).parentElement!;
+    expect(within(calm).queryByRole("button", { name: "Mark read" })).toBeNull();
+    const button = within(row).getByRole("button", { name: "Mark read" });
+    expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "d"]),
+    );
+    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
+  });
+
+  it("offers Mark read for the tree in a root's menu whenever something in it is unread", async () => {
+    const slot = render([
+      makeThread({ id: "r", title: "Root" }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
+    ]);
+    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", threadId: "c", read: true })),
+    );
+  });
+
+  it("draws no Mark read hover action on a phone", async () => {
+    render([makeThread({ id: "u", title: "Fresh", ...finishedUnread })], { props: { isCompactViewport: true } });
+    const row = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!;
+    expect(within(row).queryByRole("button", { name: "Mark read" })).toBeNull();
   });
 
   it("marks read through the host's action from the row menu", async () => {
@@ -428,6 +536,115 @@ describe("Thread Glance slot", () => {
     render([makeThread({ id: "t", providerId: "codex" })]);
     const marks = await screen.findAllByRole("img", { name: "Codex" });
     expect(marks[0]!.textContent).toBe("CO");
+  });
+
+  it("folds settled trees behind a faint Settled (N) divider, and saves its opening on the server", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const slot = render(
+        [
+          makeThread({ id: "live", title: "Live", createdAt: Date.now(), latestAttentionAt: Date.now(), lastReadAt: Date.now() }),
+          makeThread({ id: "old", title: "Old" }),
+          makeThread({ id: "merged", title: "Merged", createdAt: Date.now(), latestAttentionAt: Date.now(), lastReadAt: Date.now(), environment: { branchName: "fix/x" } }),
+        ],
+        {
+          prefs: { settleAfter: "1d" },
+          extra: { sidebarPullRequests: { merged: { number: 7, title: "Fix", url: "u", state: "merged", attention: "merged" } } },
+        },
+      );
+      const fold = await screen.findByRole("button", { name: "Show 2 settled thread trees" });
+      expect(fold.textContent).toBe("Settled (2)");
+      expect(fold.getAttribute("aria-expanded")).toBe("false");
+      expect(screen.getByRole("link", { name: /Open Live/ })).toBeTruthy();
+      expect(screen.queryByRole("link", { name: /Open Old/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /Open Merged/ })).toBeNull();
+      expect(screen.queryByText(/older/)).toBeNull();
+      fireEvent.click(fold);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(screen.getByRole("button", { name: "Hide 2 settled thread trees" }).textContent).toBe("Settled");
+      expect(screen.getByRole("link", { name: /Open Old/ })).toBeTruthy();
+      expect(slot.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: { key: "openSettledFolds", value: ["project:proj_a"] } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("saves Show archived threads from a group's menu as showArchived, for every group", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const slot = render([makeThread({ id: "t" })]);
+      fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, ctrlKey: false });
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Show archived threads" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200);
+      });
+      expect(slot.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: { key: "showArchived", value: true } }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows only what needs you while the need-you filter is on, and drops the filter when nothing does", async () => {
+    const threads = [
+      makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
+      makeThread({ id: "q", title: "Quiet" }),
+      makeThread({ id: "b", title: "Hidden asks", projectId: "proj_b", hasPendingInteraction: true }),
+    ];
+    render(threads, { prefs: { hiddenGroups: ["project:proj_b"] } });
+    const filter = await screen.findByRole("button", { name: "2 need you" });
+    expect(filter.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("link", { name: /Open Hidden asks/ })).toBeNull();
+    fireEvent.click(filter);
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Open Quiet/ })).toBeNull());
+    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Beta" })).getByRole("link", { name: /Open Hidden asks/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "2 need you" }));
+    await waitFor(() => expect(screen.getByRole("link", { name: /Open Quiet/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "2 need you" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Open Quiet/ })).toBeNull());
+  });
+
+  it("draws no need-you filter when nothing needs you", async () => {
+    render([makeThread({ id: "q", title: "Quiet" })]);
+    await screen.findByRole("link", { name: /Open Quiet/ });
+    expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+  });
+
+  it("marks every unread thread in the list read from the header, hidden groups included, asking first above 20", async () => {
+    const few = [
+      makeThread({ id: "u1", title: "U1", ...finishedUnread }),
+      makeThread({ id: "u2", title: "U2", projectId: "proj_b", ...finishedUnread }),
+      makeThread({ id: "c", title: "C", parentThreadId: "u1", createdAt: T0 + 1, ...finishedUnread }),
+    ];
+    const slot = render(few, { prefs: { hiddenGroups: ["project:proj_b"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "u1", "u2"]),
+    );
+    cleanup();
+    const many = Array.from({ length: 21 }, (_, n) => makeThread({ id: `m${n}`, title: `M${n}`, ...finishedUnread }));
+    const big = render(many);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Mark 21 threads read?")).toBeTruthy();
+    expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark all read" }));
+    await waitFor(() => expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toHaveLength(21));
+  });
+
+  it("opens the settings panel under the header from the settings button, and closes it with the same button", async () => {
+    render([makeThread({ id: "a" })]);
+    const button = await screen.findByRole("button", { name: "Thread Glance settings" });
+    fireEvent.click(button);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("collapsing a project persists through setPreference", async () => {

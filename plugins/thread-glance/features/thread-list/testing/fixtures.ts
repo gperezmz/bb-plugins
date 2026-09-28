@@ -8,7 +8,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { buildForest, type Forest } from "../model/trees";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
-import type { SectionTree } from "../model/attention";
+import { pullRequestFact, type PullRequestState, type SettleInputs } from "../model/settled";
 
 export const T0 = 1_780_000_000_000;
 
@@ -109,10 +109,6 @@ export interface Scenario {
   sections?: PluginSidebarSection[];
   prefs?: Partial<Preferences>;
   activeThreadId?: string | null;
-  /** The root of the held tree, held as it stands now. */
-  heldRootId?: string | null;
-  /** The held tree as it was when opened; wins over `heldRootId`. */
-  held?: SectionTree | null;
   targets?: Targets;
   finishedAt?: Record<string, number>;
   seenAt?: Record<string, number>;
@@ -120,6 +116,17 @@ export interface Scenario {
   draftIds?: string[];
   notes?: Record<string, import("@/shared/contract").ThreadNotes>;
   now?: number;
+  startedAt?: Record<string, number>;
+  /** Project id → default branch; "main" for every project when absent. */
+  defaultBranches?: Record<string, string | null>;
+  /** bb's primary machine; "host_1", the fixtures' own, when absent. */
+  primaryHostId?: string | null;
+  comfortable?: boolean;
+  needYouOnly?: boolean;
+  /** bb's default harness; "claude-code", the fixtures' own, when absent. */
+  defaultProviderId?: string | null;
+  /** Pull request lookups that answered, by thread id. */
+  pullRequests?: Record<string, PullRequestState | null>;
 }
 
 export function forestOf(scenario: Scenario): Forest {
@@ -145,9 +152,29 @@ export function viewOf(scenario: Scenario): ListView {
     sections: scenario.sections ?? [],
     prefs: { ...defaultPreferences(), ...scenario.prefs },
     activeThreadId: scenario.activeThreadId ?? null,
-    held: scenario.held ?? (scenario.heldRootId == null ? null : (forest.treeOf.get(scenario.heldRootId) ?? null)),
     targets: scenario.targets ?? new Map(),
+    settle: settleOf(scenario),
+    defaultProviderId: scenario.defaultProviderId === undefined ? "claude-code" : scenario.defaultProviderId,
+    primaryHostId: scenario.primaryHostId === undefined ? "host_1" : scenario.primaryHostId,
+    comfortable: scenario.comfortable ?? false,
+    needYouOnly: scenario.needYouOnly ?? false,
+    defaultBranchOf: (thread) =>
+      scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[thread.projectId],
   });
+}
+
+/** The settle inputs a scenario stands for. */
+export function settleOf(scenario: Scenario): SettleInputs {
+  const answers = new Map(Object.entries(scenario.pullRequests ?? {}));
+  const defaultBranchOf = (projectId: string) =>
+    scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[projectId];
+  return {
+    now: scenario.now ?? T0 + 60_000,
+    settleAfter: scenario.prefs?.settleAfter ?? defaultPreferences().settleAfter,
+    startedAt: scenario.startedAt ?? {},
+    finishedAt: scenario.finishedAt ?? {},
+    pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread.projectId), answers),
+  };
 }
 
 function idsOf(rows: readonly Row[]): string[] {
@@ -156,7 +183,9 @@ function idsOf(rows: readonly Row[]): string[] {
       ? row.info.thread.id
       : row.type === "older"
         ? `older:${row.count}`
-        : `env:${row.environmentId}`,
+        : row.type === "settled"
+          ? `settled:${row.count}`
+          : `env:${row.environmentId}`,
   );
 }
 
@@ -167,7 +196,9 @@ export function rowIds(view: ListView, groupId: string): string[] {
   return idsOf(group.rows);
 }
 
-/** Thread ids in Needs attention, in order. Empty when the section is absent. */
-export function attentionIds(view: ListView): string[] {
-  return idsOf(view.attention?.rows ?? []);
+/** Roots of the trees that need attention, in the forest's order. */
+export function attentionRootIds(scenario: Scenario): string[] {
+  return forestOf(scenario)
+    .trees.filter((tree) => tree.attentionFlags.size > 0)
+    .map((tree) => tree.root.thread.id);
 }

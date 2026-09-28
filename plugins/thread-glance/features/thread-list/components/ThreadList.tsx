@@ -29,7 +29,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAutoExpand } from "../data/useAutoExpand";
 import { useClientPreferences } from "../data/useClientPreferences";
-import { useAttentionHold } from "../data/useAttentionHold";
 import { useNow } from "../data/useNow";
 import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
@@ -39,21 +38,27 @@ import { buildForest } from "../model/trees";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
-import { isDoneUnseen } from "../model/state";
-import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, type ToggleOutcome } from "../model/toggles";
-import { buildListView, type GroupView, type ListView } from "../model/view";
+import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
+import { pullRequestFact, pullRequestLookupIds, type SettleInputs } from "../model/settled";
+import { usePullRequestAnswers } from "../data/usePullRequestAnswers";
+import { PullRequestProbes } from "./PullRequestProbes";
+import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
 import { ConfirmDialog, CustomizeDialog, DetailsDialog, MoveDialog, NewSectionDialog, type CustomizeItem } from "./Dialogs";
 import { useNotes } from "../data/useNotes";
+import { useDefaultBranches } from "../data/useDefaultBranches";
+import { useSystemFacts } from "../data/useSystemFacts";
 import { moveTargets } from "../model/move";
 import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
 import { CounterStrip } from "./glyphs";
 import { cancelPendingCards } from "./row-card";
-import { GroupSection, AttentionSection, type DropStates, type GroupController } from "./GroupSection";
+import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
+import { ListHeader } from "./ListHeader";
+import type { ThreadTree } from "../model/trees";
 
 const PLUGIN_ID = "thread-glance";
 
@@ -107,8 +112,10 @@ function ThreadListBody({
   onRetry,
 }: PluginThreadListProps & { attempt: number; onRetry(): void }) {
   const { prefs, hydrated, update } = usePreferences();
-  const [client] = useClientPreferences();
-  const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.threadLifecycles });
+  const [client, updateClient] = useClientPreferences();
+  // The need-you filter is per window and starts off on every load.
+  const [needYouOn, setNeedYouOn] = useState(false);
+  const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.showArchived ? ["active", "archived"] : ["active"] });
   const actions = useThreadActions();
   const sdk = useSdk();
   const { providers } = useProviders();
@@ -133,8 +140,6 @@ function ThreadListBody({
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [dropStates, setDropStates] = useState<DropStates>(() => new Map());
   const [dropGroupId, setDropGroupId] = useState<string | null>(null);
-  const [defaultBranches, setDefaultBranches] = useState<ReadonlyMap<string, string | null>>(() => new Map());
-  const branchRequests = useRef(new Set<string>());
   const models = useRef(new Map<string, Promise<ModelInfo | null>>());
 
   const ready = sidebar.status === "ready";
@@ -159,7 +164,32 @@ function ThreadListBody({
     [ready, threads, activeThreadId, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
   );
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
-  const held = useAttentionHold(forest, activeThreadId);
+  // Projects with a thread on a branch: the rest need no default branch.
+  const branchedProjectIds = useMemo(
+    () => [...new Set(threads.flatMap((thread) => (thread.environment?.branchName ? [thread.projectId] : [])))],
+    [threads],
+  );
+  const defaultBranches = useDefaultBranches(branchedProjectIds);
+  const defaultBranchOf = useCallback(
+    (thread: PluginSidebarThread) => (defaultBranches.has(thread.projectId) ? (defaultBranches.get(thread.projectId) ?? null) : undefined),
+    [defaultBranches],
+  );
+  const [pullRequests, onPullRequest] = usePullRequestAnswers();
+  const system = useSystemFacts();
+  const pullRequestLookups = useMemo(
+    () => (forest === null ? [] : pullRequestLookupIds(forest.infos.values(), defaultBranchOf)),
+    [forest, defaultBranchOf],
+  );
+  const settle: SettleInputs = useMemo(
+    () => ({
+      now,
+      settleAfter: prefs.settleAfter,
+      startedAt: stamps.startedAt,
+      finishedAt: stamps.finishedAt,
+      pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread), pullRequests),
+    }),
+    [now, prefs.settleAfter, stamps.startedAt, stamps.finishedAt, defaultBranchOf, pullRequests],
+  );
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
@@ -174,14 +204,37 @@ function ThreadListBody({
             sections: sidebar.sections,
             prefs,
             activeThreadId,
-            held,
             targets,
+            settle,
+            defaultProviderId: system.defaultProviderId,
+            primaryHostId: system.primaryHostId,
+            comfortable: client.density === "comfortable",
+            defaultBranchOf,
+            needYouOnly: needYouActive(needYouOn, countNeedYou(forest)),
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, held, targets],
+    [
+      forest,
+      threads,
+      sidebar.projects,
+      sidebar.sections,
+      prefs,
+      activeThreadId,
+      targets,
+      settle,
+      system.defaultProviderId,
+      system.primaryHostId,
+      client.density,
+      defaultBranchOf,
+      needYouOn,
+    ],
   );
   useLayoutEffect(() => {
     previousView.current = view;
   }, [view]);
+  // Nothing left that needs you turns the filter off, so it does not narrow
+  // the list again unasked when something next does. Set during render, as
+  // React adjusts state from a changed input.
+  if (needYouOn && forest !== null && !needYouActive(needYouOn, countNeedYou(forest))) setNeedYouOn(false);
 
   // Viewing a child stamps seenAt, on arrival and on leaving, so a child
   // that finishes while you watch doesn't turn unread behind you.
@@ -196,22 +249,6 @@ function ThreadListBody({
     // Only the active thread's changes matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
-
-  // Each project's default branch, fetched once per session.
-  useEffect(() => {
-    if (!prefs.showPullRequests || forest === null) return;
-    for (const tree of forest.trees) {
-      const thread = tree.root.thread;
-      const projectId = thread.projectId;
-      if (thread.environment?.branchName == null || thread.host === null) continue;
-      if (branchRequests.current.has(projectId)) continue;
-      branchRequests.current.add(projectId);
-      sdk.projects.branches({ projectId, hostId: thread.host.id, limit: "1" }).then(
-        (result) => setDefaultBranches((current) => new Map(current).set(projectId, result.defaultBranch)),
-        () => setDefaultBranches((current) => new Map(current).set(projectId, null)),
-      );
-    }
-  }, [prefs.showPullRequests, forest, sdk]);
 
   const marks = useMemo(() => assignProviderMarks(providers), [providers]);
   // One display per harness, built once: rows compare it by identity.
@@ -257,10 +294,13 @@ function ThreadListBody({
         case "copy-id":
           void copyText(thread.id, "Thread ID copied");
           return;
-        case "mark-read":
-          if (isDoneUnseen(thread, context)) markSeen([thread.id]);
-          actions.setRead(thread.id, true).catch(fail("Couldn't mark read"));
+        case "mark-read": {
+          const forest = latest.current.forest;
+          const plan = forest === null ? { read: [thread.id], seen: [] } : markReadPlanFor(thread.id, forest, context);
+          if (plan.seen.length > 0) markSeen(plan.seen);
+          for (const id of plan.read) actions.setRead(id, true).catch(fail("Couldn't mark read"));
           return;
+        }
         case "mark-unread":
           clearSeen([thread.id]);
           actions.setRead(thread.id, false).catch(fail("Couldn't mark unread"));
@@ -341,7 +381,6 @@ function ThreadListBody({
     [sdk],
   );
 
-  const multiHost = view?.multiHost ?? false;
   const built = forest !== null && view !== null;
   const rowController: RowController | null = useMemo(() => {
     if (!built) return null;
@@ -349,11 +388,7 @@ function ThreadListBody({
       compact: isCompactViewport,
       comfortable: client.density === "comfortable",
       setEditingId,
-      showPullRequests: prefs.showPullRequests,
       harnessIcon: prefs.harnessIcon,
-      defaultBranchOf: (thread) =>
-        defaultBranches.has(thread.projectId) ? defaultBranches.get(thread.projectId) ?? null : undefined,
-      multiHost,
       provider: providerDisplay,
       sections: sidebar.sections,
       mode: prefs.organizationMode,
@@ -363,10 +398,10 @@ function ThreadListBody({
         applyToggle(toggleChip(row, prefs, forest!));
       },
       onToggleOlder: (row) => {
-        const { prefs, forest, view } = latest.current;
-        const group = view!.groups.find((candidate) => candidate.descriptor.id === row.scopeId) ?? null;
-        applyToggle(toggleOlder(row, prefs, group, forest!));
+        const { prefs, forest } = latest.current;
+        applyToggle(toggleOlder(row, prefs, forest!));
       },
+      onToggleSettled: (row) => applyToggle(toggleSettled(row, latest.current.prefs)),
       onToggleEnvironment: (environmentId) => {
         const { collapsedEnvironments } = latest.current.prefs;
         update({
@@ -396,11 +431,8 @@ function ThreadListBody({
     built,
     isCompactViewport,
     client.density,
-    prefs.showPullRequests,
     prefs.harnessIcon,
     prefs.organizationMode,
-    defaultBranches,
-    multiHost,
     providerDisplay,
     sidebar.sections,
     onNavigate,
@@ -422,44 +454,48 @@ function ThreadListBody({
       ? null
       : groupIdForRoot(tree.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
   }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
-  const showArchived = prefs.threadLifecycles.includes("archived");
+  const showArchived = prefs.showArchived;
 
-  const groupController: GroupController | null = useMemo(() => {
-    if (!built) return null;
-    const markAll = (group: GroupView) => {
-      const { forest, activeThreadId, stamps } = latest.current;
-      // Folded roots count too: every tree bucketed in the group.
-      const trees = group.rootIds.flatMap((id) => forest!.treeOf.get(id) ?? []);
-      const plan = markAllReadPlan(trees, {
-        activeThreadId,
-        finishedAt: stamps.finishedAt,
-        seenAt: stamps.seenAt,
-      });
+  /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
+  const markTreesRead = useCallback(
+    (trees: readonly ThreadTree[], where: string) => {
+      const { activeThreadId, stamps } = latest.current;
+      const plan = markAllReadPlan(trees, { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
       const run = () => {
         if (plan.seen.length > 0) markSeen(plan.seen);
         for (const id of plan.read) actions.setRead(id, true).catch(() => undefined);
       };
       if (plan.read.length === 0) {
-        toast(`Nothing unread in ${group.descriptor.label}`);
+        toast(`Nothing unread in ${where}`);
       } else if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
         setConfirm({
           title: `Mark ${plan.read.length} threads read?`,
-          description: `Every unread thread in ${group.descriptor.label}, child threads included, will be marked read.`,
+          description: `Every unread thread in ${where}, child threads included, will be marked read.`,
           confirmLabel: "Mark all read",
           run,
         });
       } else {
         run();
       }
-    };
+    },
+    [actions, markSeen],
+  );
+  const onMarkListRead = useCallback(() => markTreesRead(latest.current.forest?.trees ?? [], "the list"), [markTreesRead]);
+  const onToggleNeedYou = useCallback(() => setNeedYouOn((on) => !on), []);
+
+  const groupController: GroupController | null = useMemo(() => {
+    if (!built) return null;
+    // Folded roots count too: every tree bucketed in the group.
+    const markAll = (group: GroupView) =>
+      markTreesRead(
+        group.rootIds.flatMap((id) => latest.current.forest!.treeOf.get(id) ?? []),
+        group.descriptor.label,
+      );
     return {
       compact: isCompactViewport,
       activeGroupId,
       showArchived,
-      onToggleArchived: () =>
-        update({
-          threadLifecycles: latest.current.prefs.threadLifecycles.includes("archived") ? ["active"] : ["active", "archived"],
-        }),
+      onToggleArchived: () => update({ showArchived: !latest.current.prefs.showArchived }),
       canCreateSections: prefs.organizationMode === "chronological",
       onToggleCollapse: (group) => {
         const { prefs, forest } = latest.current;
@@ -500,7 +536,7 @@ function ThreadListBody({
       onMarkAllRead: markAll,
       onNewSection: () => setNewSectionOpen(true),
     };
-  }, [built, isCompactViewport, activeGroupId, showArchived, prefs.organizationMode, applyToggle, actions, onNavigate, update, sdk, markSeen]);
+  }, [built, isCompactViewport, activeGroupId, showArchived, prefs.organizationMode, applyToggle, actions, onNavigate, update, sdk, markTreesRead]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, MOUSE_SENSOR),
@@ -522,8 +558,7 @@ function ThreadListBody({
   }, []);
 
   const dropContext = useMemo(() => {
-    // A row in Needs attention drops as it would in its home group.
-    const groupOfThread = new Map<string, string>(Object.entries(view?.attention?.homeGroupIds ?? {}));
+    const groupOfThread = new Map<string, string>();
     for (const group of [...(view?.groups ?? []), ...(view?.more ?? [])]) {
       for (const row of group.rows) if (row.type === "thread") groupOfThread.set(row.info.thread.id, group.descriptor.id);
     }
@@ -677,23 +712,23 @@ function ThreadListBody({
   return (
     <ListLiveContext.Provider value={live}>
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
+        <ListHeader
+          mode={prefs.organizationMode}
+          needYouCount={view.needYouCount}
+          needYouOnly={needYouOn}
+          onToggleNeedYou={onToggleNeedYou}
+          onMarkAllRead={onMarkListRead}
+          prefs={prefs}
+          client={client}
+          onPrefs={update}
+          onClient={updateClient}
+        />
+        <PullRequestProbes threadIds={pullRequestLookups} onAnswer={onPullRequest} />
         {threads.length === 0 ? (
           // bb's own pinned New thread button covers the empty list.
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-            {view.attention !== null ? (
-              <AttentionSection
-                view={view.attention}
-                rowController={rowController}
-                environmentProviders={environmentProviders}
-                dropStates={dropStates}
-                activeThreadId={activeThreadId}
-                editingId={editingId}
-                now={now}
-                stamps={stamps}
-              />
-            ) : null}
             {view.groups.map((group) => (
               <GroupSection
                 key={group.descriptor.id}
@@ -821,7 +856,7 @@ function ThreadListBody({
             <ThreadDetails
               info={details}
               controller={rowController}
-              showPullRequest={prefs.showPullRequests}
+              showPullRequest
               actions={{
                 open: () => {
                   setDetailsId(null);

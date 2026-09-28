@@ -54,7 +54,7 @@ function render() {
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
       rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), expandedChildren: ["p"], foldOlder: false } }),
+        listPreferences: () => ({ preferences: { ...defaultPreferences(), expandedChildren: ["p"], settleAfter: "never" } }),
         setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
         resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
         importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
@@ -68,7 +68,10 @@ function render() {
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       sdk: {
         threads: { defaultExecutionOptions: async () => null } as never,
-        projects: { branches: async () => ({ defaultBranch: "main" }) } as never,
+        projects: {
+          get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
+          branches: async () => ({ defaultBranch: "main" }),
+        } as never,
         providers: { models: async () => ({ models: [] }) } as never,
       },
     },

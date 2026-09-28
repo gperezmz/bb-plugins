@@ -4,10 +4,10 @@ import { revealsOn } from "./attention";
 import type { Forest } from "./trees";
 
 /**
- * `reveal` targets open their group, their `N older` fold and the parent
- * chips on their path. `open` targets (a thread that newly became unread)
- * open the group and the fold only, so finished children don't expand
- * their parent's chip.
+ * `reveal` targets open the parent chips on their path. `open` targets (a
+ * thread that newly became unread) open no chip, so finished children don't
+ * expand their parent's. The open thread's target, of either kind, also
+ * opens its collapsed group. No target opens a settled fold.
  */
 export type TargetKind = "reveal" | "open";
 export type Targets = ReadonlyMap<string, TargetKind>;
