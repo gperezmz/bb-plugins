@@ -14,7 +14,7 @@ import {
 } from "./state";
 import { attentionFlagsOf, isOrphanedFailure } from "./attention";
 import { compareCreationAscending } from "./sort";
-import { attentionNote, needsKindOf, rowNote, type RowNote } from "./notes";
+import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ChildAttention } from "@/shared/preferences";
 
@@ -29,8 +29,9 @@ export interface ThreadInfo {
   /** Own flags; for hidden threads only waits-on-you and unread-failed. */
   flags: ReadonlySet<Flag>;
   /**
-   * The flags of this thread that make it need attention, for Needs attention, the
-   * counters and auto-reveal: a child counts less than a root.
+   * The flags of this thread that make it need attention, for collapsed
+   * groups, the counters, the need-you filter and auto-reveal: a child counts
+   * less than a root.
    */
   attentionFlags: Set<Flag>;
   /** Quiet test for the thread alone. */
@@ -49,8 +50,6 @@ export interface ThreadInfo {
   parentId: string | null;
   /** Why it waits on you or failed, for the line under the row. */
   note: RowNote | null;
-  /** Why it needs attention, for the line under its row in Needs attention. */
-  attentionNote: RowNote | null;
 }
 
 /** What a thread's descendants add up to, for its chip and for folding. */
@@ -73,7 +72,7 @@ export interface ThreadTree {
   descendantFlags: ReadonlySet<Flag>;
   /** The same over root and descendants (rollup, folder rows). */
   flags: ReadonlySet<Flag>;
-  /** Needs attention flags over root and descendants: what the section and its order read. */
+  /** Needs attention flags over root and descendants: the tree needs attention when any is set. */
   attentionFlags: ReadonlySet<Flag>;
   /** Visible descendants: the chip's number. */
   visibleDescendantCount: number;
@@ -167,7 +166,6 @@ export function buildForest(inputs: ForestInputs): Forest {
       isActive,
       parentId: attachParent(thread, byId),
       note: rowNote(thread, inputs.notes?.[thread.id]),
-      attentionNote: null,
     });
   }
 
@@ -181,7 +179,6 @@ export function buildForest(inputs: ForestInputs): Forest {
         parent !== undefined &&
         isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
     });
-    info.attentionNote = attentionNote(info.thread, inputs.notes?.[info.thread.id], info.attentionFlags);
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
         ? isQuietThread(info.state, info.unread, false)

@@ -128,7 +128,7 @@ describe("a grandchild never shows without its parent (property)", () => {
     return { threads, ids: threads.map((thread) => thread.id) };
   }
 
-  it("holds for random forests, folds, settings, open threads, holds and reveals, and draws each thread once", () => {
+  it("holds for random forests, folds, settings, open threads and reveals, and draws each thread once", () => {
     let checked = 0;
     for (let seed = 1; seed <= 400; seed += 1) {
       const next = random(seed);
@@ -138,7 +138,6 @@ describe("a grandchild never shows without its parent (property)", () => {
       const view = viewOf({
         threads,
         activeThreadId: active,
-        heldRootId: next() < 0.3 ? ids[Math.floor(next() * ids.length)]! : null,
         prefs: {
           expandedChildren: pick(),
           expandedOlder: pick(),
@@ -148,7 +147,7 @@ describe("a grandchild never shows without its parent (property)", () => {
         targets: new Map(pick().map((id) => [id, "reveal" as const])),
       });
       const drawn = new Set<string>();
-      for (const rows of [view.attention?.rows ?? [], ...[...view.groups, ...view.more].map((group) => group.rows)]) {
+      for (const rows of [...view.groups, ...view.more].map((group) => group.rows)) {
         const seen: ThreadRow[] = [];
         for (const row of rows) {
           if (row.type !== "thread") continue;

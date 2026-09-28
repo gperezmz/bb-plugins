@@ -58,12 +58,11 @@ function swallowNextClick(): void {
 }
 
 /**
- * A quiet title, and its chip: the foreground mixed toward the surface under
- * the row (the sidebar, or the Needs attention band) in oklch, which keeps
- * 4.5:1 in both of bb's themes. Opacity blends in sRGB and lands lower in
- * the light theme.
+ * A quiet title, and its chip: the foreground mixed toward the sidebar in
+ * oklch, which keeps 4.5:1 in both of bb's themes. Opacity blends in sRGB and
+ * lands lower in the light theme.
  */
-const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_var(--tg-quiet,68%),var(--tg-surface,var(--sidebar)))]";
+const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--sidebar))]";
 
 export const ROW_ICON_BUTTON =
   "pointer-events-auto relative z-10 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-active";
@@ -487,14 +486,7 @@ export const ThreadRowView = memo(function ThreadRowView({
             </kbd>
           ) : (
             <>
-              {row.homeGroupLabel !== null ? (
-                <span
-                  title={`In ${row.homeGroupLabel}`}
-                  className={cn("pointer-events-none max-w-24 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
-                >
-                  {row.homeGroupLabel}
-                </span>
-              ) : time !== null ? (
+              {time !== null ? (
                 <span
                   title={time.label}
                   aria-label={time.label}

@@ -77,16 +77,17 @@ describe("shareView", () => {
     expect(threadRow(next, "a")).toBe(threadRow(previous, "a"));
   });
 
-  it("keeps Needs attention's unchanged rows when a tree joins it", () => {
+  it("keeps a group's unchanged rows when a tree that needs attention joins it", () => {
     const blocked = threads.map((thread) => (thread.id === "c" ? { ...thread, hasPendingInteraction: true } : thread));
     const previous = viewOf({ ...scenario, threads: blocked });
     const added = [...blocked, makeThread({ id: "e", createdAt: 5, updatedAt: 5, ...finishedUnread })];
     const fresh = viewOf({ ...scenario, threads: added });
     const next = shareView(previous, fresh);
     expect(next).toEqual(fresh);
-    const row = (view: ListView, id: string) => view.attention!.rows.find((candidate) => candidate.key === `thread:${id}`);
+    const rows = (view: ListView) => view.groups.find((group) => group.descriptor.id === "project:proj_a")!.rows;
+    const row = (view: ListView, id: string) => rows(view).find((candidate) => candidate.key === `thread:${id}`);
     expect(row(next, "c")).toBe(row(previous, "c"));
-    expect(next.attention).not.toBe(previous.attention);
-    expect(shareView(next, viewOf({ ...scenario, threads: added })).attention).toBe(next.attention);
+    expect(rows(next)).not.toBe(rows(previous));
+    expect(shareView(next, viewOf({ ...scenario, threads: added })).groups).toBe(next.groups);
   });
 });

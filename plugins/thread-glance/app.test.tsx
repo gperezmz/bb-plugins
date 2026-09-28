@@ -142,49 +142,22 @@ describe("Thread Glance slot", () => {
     ).toBeTruthy();
   });
 
-  it("scenario 1: Needs attention draws the blocked child's path, and the group header keeps its counter", async () => {
+  it("scenario 1: a tree whose child waits on you stays in its group, with the child's path revealed and its header counting it", async () => {
     render([
-      makeThread({ id: "m", title: "Parent" }),
+      makeThread({ id: "m", title: "Parent", latestAttentionAt: T0 + 10, lastReadAt: T0 + 10 }),
       ...[1, 2, 3, 4, 5].map((n) =>
         makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
       ),
       makeThread({ id: "o", title: "Other" }),
     ]);
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    expect(within(section).getByRole("link", { name: /Open Parent — .*; in Alpha/ })).toBeTruthy();
-    expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
-    expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
-    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
-    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
-    expect(within(section).getByText("Alpha")).toBeTruthy();
-    const project = screen.getByRole("region", { name: "Alpha" });
-    expect(within(project).queryByRole("link", { name: /Open Parent/ })).toBeNull();
-    expect(within(project).getByRole("link", { name: /Open Other/ })).toBeTruthy();
+    const project = await screen.findByRole("region", { name: "Alpha" });
+    await within(project).findByRole("link", { name: /Open Child 2/ });
+    const links = within(project)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("aria-label")!.replace(/^Open (.*?) —.*$/, "$1"));
+    expect(links).toEqual(["Parent", "Child 2", "Other"]);
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
-  });
-
-  it("opens a tree in Needs attention from its chip, and closes it back to the path", async () => {
-    render([
-      makeThread({ id: "m", title: "Parent" }),
-      ...[1, 2, 3].map((n) =>
-        makeThread({ id: `c${n}`, title: `Child ${n}`, parentThreadId: "m", createdAt: T0 + n, ...working, hasPendingInteraction: n === 2 }),
-      ),
-    ]);
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    const chip = within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" });
-    expect(chip.textContent).toContain("3");
-    expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull();
-    fireEvent.click(chip);
-    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
-    expect(within(section).getByRole("link", { name: /Open Child 3/ })).toBeTruthy();
-    fireEvent.click(within(section).getByRole("button", { name: /Collapse 3 child threads of Parent/ }));
-    await waitFor(() => expect(within(section).queryByRole("link", { name: /Open Child 1/ })).toBeNull());
-    // Closed, the path to what needs attention stays, and nothing counts the rest.
-    expect(within(section).getByRole("link", { name: /Open Child 2/ })).toBeTruthy();
-    expect(within(section).queryByText(/\+\d+ more/)).toBeNull();
-    expect(within(section).queryByRole("button", { name: /more child thread/ })).toBeNull();
-    fireEvent.click(within(section).getByRole("button", { name: "Show 3 child threads of Parent, needs your input" }));
-    await waitFor(() => expect(within(section).getByRole("link", { name: /Open Child 1/ })).toBeTruthy());
+    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   });
 
   it("opens and closes a tree from its chip", async () => {
@@ -202,57 +175,36 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(screen.queryByRole("link", { name: /Open Child 1/ })).toBeNull());
   });
 
-  it("draws Needs attention first, above Pinned, with no row above it and no All / Needs attention filter", async () => {
-    const { container } = render([
+  it("draws no Needs attention section: a thread that needs attention stays in its group", async () => {
+    render([
       makeThread({ id: "a", title: "Busy", ...working }),
       makeThread({ id: "b", title: "Done", ...finishedUnread }),
       makeThread({ id: "p", title: "Pinned one", pinnedAt: T0, isPinned: true }),
     ]);
     await screen.findByRole("link", { name: /Open Done/ });
     const regions = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
-    expect(regions).toEqual(["Needs attention", "Pinned", "Alpha", "Beta"]);
-    expect(within(screen.getByRole("region", { name: "Needs attention" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
-    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Busy/ })).toBeTruthy();
-    expect(screen.queryByRole("radio")).toBeNull();
-    // The section's own header is the only "Needs attention" on screen.
-    expect(screen.getAllByText(/Needs attention/)).toHaveLength(1);
-    // The list starts at the section: no settings row above it.
-    expect(screen.queryByRole("button", { name: /settings/i })).toBeNull();
-    const list = container.firstElementChild!;
-    expect(list.firstElementChild).toBe(screen.getByRole("region", { name: "Needs attention" }));
+    expect(regions).toEqual(["Pinned", "Alpha", "Beta"]);
+    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Done/ })).toBeTruthy();
+    expect(screen.queryByText(/Needs attention/)).toBeNull();
   });
 
-  it("draws no Needs attention section, and no line for it, when nothing needs attention", async () => {
-    render([makeThread({ id: "a", title: "Busy", ...working })]);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
-    expect(screen.queryByText(/Needs attention|Nothing needs/)).toBeNull();
-  });
-
-  it("shows the whole list with Needs attention to someone whose saved view was the old Needs attention filter", async () => {
-    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ filter: "attention", density: "comfortable" }));
-    render([makeThread({ id: "a", title: "Busy", ...working }), makeThread({ id: "b", title: "Done", ...finishedUnread })]);
-    expect(await screen.findByRole("link", { name: /Open Busy/ })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "Needs attention" })).toBeTruthy();
-  });
-
-  it("gives the Needs attention header no collapse, menu or count other than its trees", async () => {
+  it("keeps drawing a collapsed group's trees that need attention under its header, and nothing else", async () => {
     render(
       [
         makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
+        makeThread({ id: "q", title: "Quiet" }),
         makeThread({ id: "b", title: "Also asks", projectId: "proj_b", hasPendingInteraction: true }),
       ],
       { prefs: { collapsedProjects: ["proj_a", "proj_b"] } },
     );
-    const section = await screen.findByRole("region", { name: "Needs attention" });
-    const header = within(section).getByRole("heading", { name: /Needs attention/ });
-    expect(within(header).getByLabelText("2 thread trees").textContent).toBe("2");
-    expect(within(header).queryAllByRole("button")).toEqual([]);
-    fireEvent.click(header);
-    expect(within(section).getByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    const alpha = await screen.findByRole("region", { name: "Alpha" });
+    expect(await within(alpha).findByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    expect(within(alpha).queryByRole("link", { name: /Open Quiet/ })).toBeNull();
+    expect(within(alpha).getByRole("button", { name: "Expand Alpha section" })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Beta" })).getByRole("link", { name: /Open Also asks/ })).toBeTruthy();
   });
 
-  it("indents each level of a Needs attention path by one small step, and the grandchild carries its parent's name", async () => {
+  it("indents each level of a revealed path by one small step, and the grandchild carries its parent's name", async () => {
     render([
       makeThread({ id: "m", title: "Parent" }),
       makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1 }),

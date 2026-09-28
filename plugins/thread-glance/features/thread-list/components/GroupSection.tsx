@@ -1,5 +1,5 @@
 // A top-level group: its header with counters, and its rows, windowed
-// in chunks; and the Needs attention section above every group.
+// in chunks.
 import { memo, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import { ATTENTION_GROUP_ID, type GroupView, type AttentionView, type Row } from "../model/view";
+import type { GroupView, Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
 import type { RowController } from "./controller";
 import { EnvironmentRowView, OlderRowView } from "./FoldRows";
@@ -390,9 +390,8 @@ export const GroupSection = memo(function GroupSection({
         inOverflow={inOverflow}
         dropActive={dropTargetGroupId === group.descriptor.id}
       />
-      {group.collapsed ? null : group.rows.length === 0 ? (
-        // A group whose every tree sits in Needs attention draws only its header.
-        group.rootIds.length === 0 ? <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p> : null
+      {group.rows.length === 0 ? (
+        group.collapsed || group.rootIds.length > 0 ? null : <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p>
       ) : (
         <Rows
           {...rest}
@@ -402,43 +401,6 @@ export const GroupSection = memo(function GroupSection({
           forceMount={inOverflow}
         />
       )}
-    </section>
-  );
-});
-
-// bb's attention colour, thinned over the sidebar: the one colour the section
-// adds. Opaque, so the sticky header hides the rows scrolling under it. Mixed
-// in oklab: the sidebar's grey has hue 0 in oklch, which would pull the tint
-// toward pink. Set as the surface quiet titles mix toward; the band is
-// lighter than the sidebar in the dark theme, so they keep 70% of the
-// foreground there to stay above 4.5:1 (68% measured 4.44:1).
-const ATTENTION_BAND =
-  "[--tg-surface:color-mix(in_oklab,var(--attention)_8%,var(--sidebar))] [--tg-quiet:70%] bg-[var(--tg-surface)]";
-const ATTENTION_COUNT =
-  "bg-[color-mix(in_oklab,var(--attention)_20%,transparent)] text-[color:color-mix(in_oklab,var(--attention),var(--foreground)_55%)]";
-
-/**
- * The Needs attention section: a header with its tree count (none when every
- * tree in it is attended), then its rows, on one band of bb's attention
- * colour. It has no collapse, menu or drag, and no drop target of its own.
- */
-export const AttentionSection = memo(function AttentionSection({ view, ...rest }: SectionProps & { view: AttentionView }) {
-  return (
-    <section aria-label="Needs attention" className={cn("relative mb-1 flex w-full min-w-0 flex-col rounded-md pb-0.5", ATTENTION_BAND)}>
-      <h2
-        className="sticky top-0 z-20 flex h-7 items-center gap-1 rounded-t-md bg-[var(--tg-surface)] pl-2 pr-1 text-xs font-medium text-muted-foreground max-md:pointer-coarse:h-9"
-      >
-        <span className="min-w-0 flex-1 truncate">Needs attention</span>
-        {view.treeCount > 0 ? (
-          <span
-            className={cn("rounded-full px-1.5 text-[11px] leading-4 tabular-nums", ATTENTION_COUNT)}
-            aria-label={`${view.treeCount} ${view.treeCount === 1 ? "thread tree" : "thread trees"}`}
-          >
-            {view.treeCount}
-          </span>
-        ) : null}
-      </h2>
-      <Rows {...rest} rows={view.rows} groupId={ATTENTION_GROUP_ID} inPinned={false} forceMount={false} />
     </section>
   );
 });
