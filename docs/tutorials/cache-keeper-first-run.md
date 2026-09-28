@@ -52,7 +52,7 @@ Click **Details**. It holds:
 - the model, the cache lifetime and the calls per message the line rests on, `(default)` where Cache Keeper has not measured the thread yet;
 - **Why {line}?**: what compacting costs at the line, and what it saves on your first message back after the cache goes cold.
 
-`Idle, no line` means the thread has no line: bb has not reported its window yet, or no size up to its window repays compacting. In the second case **Details** shows **Why never?** in place of **Why {line}?**.
+`Idle, no line` means the thread has no line: bb has not reported its window yet, its model has no price, or no size up to its window repays compacting. In the last case **Details** shows **Why never?** in place of **Why {line}?**.
 
 ## 6. Switch Keep warm while waiting on for a tree
 

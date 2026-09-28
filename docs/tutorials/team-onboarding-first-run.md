@@ -86,7 +86,7 @@ Team checks
 
 ## 5. Approve the team command
 
-On the Onboarding page, open **The shell says hello**. Under **Commands from your team** it shows `echo hello` exactly as written. Click **Approve**, then **Recheck** on the row. The item turns green.
+On the Onboarding page, open **The shell says hello**. Under **Commands from your team** it shows `echo hello` exactly as written. Click **Approve**. The item is checked again at once, runs `echo hello`, and turns green.
 
 Open the **Team manifest** tab: the command is listed there as approved, with **Revoke** beside it.
 

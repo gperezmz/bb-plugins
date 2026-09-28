@@ -1,6 +1,6 @@
 # What "Needs attention" means
 
-Thread Glance is built around one question: which threads can only you move forward? A thread working on its own does not need attention. A thread asking a question does. Everything the list does beyond drawing rows (the **Needs attention** section, the header counters, the colour of a chip, which folded threads open by themselves) answers that one question the same way.
+Thread Glance is built around one question: which threads can only you move forward? A thread working on its own does not need attention. A thread asking a question does. Everything the list does beyond drawing rows (the **Needs attention** section, the header counters, the colour of a children chip, which folded threads open by themselves) answers that one question the same way.
 
 ## What a thread needs attention for
 
@@ -22,7 +22,7 @@ A parent thread that spawns ten workers should not raise ten flags. Its workers 
 flowchart TD
   child["Child thread"] --> asks{"Waits on you, or its machine is offline?"}
   asks -->|yes| counts["Needs attention"]
-  asks -->|no| failed{"Failed, and not read?"}
+  asks -->|no| failed{"Failed and not read, or a queued message failed to send?"}
   failed -->|no| not["Does not need attention"]
   failed -->|yes| idle{"Is its parent thread idle, and has it not run since the failure?"}
   idle -->|yes| counts
@@ -57,13 +57,13 @@ The section lists the trees most urgent first: waiting on you, then failed, then
 
 ## Trees and folding
 
-A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a chip on that row. The chip shows the number of children and the most urgent thing among them, so a collapsed tree still says what it holds.
+A thread's tree is listed as one unit: only the root gets a row in its group, and its children sit behind a children chip on that row. The chip shows the number of children and the most urgent thing among them, so a collapsed tree still says what it holds.
 
-Opening a chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
+Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two older folds keep threads with nothing to show out of the way, one for roots and one for children, and each has its own test. Both read the **quiet thread** test: a thread is quiet when it is not running, does not need attention and is not the one open.
+Two older folds keep threads with nothing to show out of the way, one for roots and one for children, and each has its own test. Both read the **quiet thread** test: a thread is quiet when it is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 
-With **Collapse older threads** on, each group shows every root that is not quiet, then its 5 newest quiet roots, then an `N older` row for the rest. The newest are by creation under **Created**, and by latest activity otherwise, whatever the direction. With it off, every root shows and no `N older` row appears.
+With **Collapse older threads** on, each group shows every root that is not quiet, then its 5 newest quiet roots, then an `N older` row for the rest. Pinned never folds, and neither does an archived root. The newest are by creation under **Created**, and by latest activity otherwise, whatever the direction. With it off, every root shows and no `N older` row appears.
 
 Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row, whatever **Collapse older threads** says. A child is quiet unless it or anything under it:
 
@@ -78,9 +78,9 @@ Both folds are worked out as if no thread were open, so the roots and children s
 
 ## What opens by itself
 
-When you open a thread inside a collapsed tree, Thread Glance opens the path to it: the group, the `N older` fold, and each chip down to the thread. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to need attention, so its tree's chips stay open on the way to it once the tree goes back to its group.
+When you open a thread inside a collapsed tree, Thread Glance opens the path to it: the group, the `N older` fold, and each chip down to the thread. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to wait on you or fails, so its tree's chips stay open on the way to it once the tree goes back to its group. A thread that needs attention because it finished unread opens its group and the `N older` fold, but no chip.
 
-This happens on a change, not on every render: when a thread starts to need attention, or when you open another thread. If you collapse it again, it stays collapsed until the next change. A child that merely finished does not open anything, because a parent thread with many workers would otherwise keep reopening.
+This happens on a change, not on every render: when a thread starts to need attention, or when you open another thread. If you collapse it again, it stays collapsed until the next change. A child that merely finished opens no chip, because a parent thread with many workers would otherwise keep reopening.
 
 ## Why rows do not jump around
 

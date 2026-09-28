@@ -16,7 +16,7 @@ Pocket Navigation follows the order and visibility of bb's own **Customize sideb
 
 - An entry you hide there moves behind "…", New thread and search included.
 - The icon row and "…" list entries in the order you set there.
-- With nothing hidden, the icon row has no "…".
+- With nothing hidden, the icon row has no "…", so Customize sidebar opens only from bb's own More on a wider screen.
 
 ## Switch back to bb's navigation
 
@@ -26,8 +26,14 @@ Choose **Navigation (built-in)** under Settings → Appearance → Navigation, o
 bb settings ui set sidebar.navigationProvider navigation/navigation
 ```
 
-To see which navigation is chosen:
+To see which navigation is chosen, where `"__automatic__"` means Automatic:
 
 ```sh
 bb settings ui get sidebar.navigationProvider
+```
+
+To go back to Automatic:
+
+```sh
+bb settings ui reset sidebar.navigationProvider
 ```

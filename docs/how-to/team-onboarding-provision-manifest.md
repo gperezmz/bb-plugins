@@ -11,7 +11,7 @@ bb team-onboarding manifest install ./onboarding.yaml
 
 [`examples/bootstrap.sh`](../../plugins/team-onboarding/examples/bootstrap.sh) is the same as a script that takes the manifest's path.
 
-`manifest install` validates the file first and refuses an invalid one, leaving any installed manifest in place. It writes to `<data dir>/team-onboarding/onboarding.yaml`, for example `/var/lib/bb/.bb/team-onboarding/onboarding.yaml`, through a temporary file and a rename, so the plugin never reads half a file. The plugin sees the new file within seconds.
+`manifest install` validates the file first and refuses an invalid one, leaving any installed manifest in place. It writes where `bb team-onboarding manifest path` says, which is `<data dir>/team-onboarding/onboarding.yaml` (for example `/var/lib/bb/.bb/team-onboarding/onboarding.yaml`) unless the **Manifest file** setting below names another file. It writes through a temporary file and a rename, so the plugin never reads half a file, and it refuses a destination that is a symlink. The plugin sees the new file within seconds.
 
 ## Or write the file with your own tool
 

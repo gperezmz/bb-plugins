@@ -30,7 +30,7 @@ Some usage never reaches bb's events. The plugin's host entry reads each harness
 - **History** from before the plugin was installed, or from a gap.
 - **pi's own cost**, which pi writes per message.
 
-Codex logs are read for history only. Cursor, run through ACP, reports no tokens to bb and keeps no log the plugin reads, so its threads show no usage.
+Codex logs are read for history and gaps only. Cursor, run through ACP, reports no tokens to bb and keeps no log the plugin reads, so its threads show no usage.
 
 Reads are incremental: the host entry remembers how far it read each file and parses only what was appended. When a machine is offline, the thread is marked with the machine's name and the time, and read again when the Usage tab opens and every 15 minutes, so a missing log shows as missing, never as zero.
 
@@ -44,7 +44,7 @@ A model with no price anywhere is **unpriced**. Its tokens still show, labelled 
 
 ## Gateways
 
-When a LiteLLM gateway sits between the harnesses and the model providers, it knows exactly what each request cost under your own prices and aliases. To find a thread's requests there, each request has to carry the thread's id. For Claude Code, the plugin adds a header to every command bb runs; Codex and pi need one line in their own config, since their gateway settings live there. The gateway logs the header as a session id, and the plugin sweeps the gateway's spend log for rows whose session id names a thread it knows, about once a minute while threads run.
+When a LiteLLM gateway sits between the harnesses and the model providers, it knows exactly what each request cost under your own prices and aliases. To find a thread's requests there, each request has to carry the thread's id. For Claude Code, the plugin adds a header to every command bb runs; Codex and pi need one line in their own config, since their gateway settings live there. The gateway logs the header as a session id, and the plugin sweeps the gateway's spend log for rows whose session id names a thread it knows, about once a minute while threads run, 20 seconds after one goes idle, and when a Usage tab opens.
 
 A gateway row belongs to the turn it started in, up to 30 seconds after the turn ended. Rows outside every turn (a title, a compaction, a subagent that outlived its turn) are shown as **Outside turns**.
 

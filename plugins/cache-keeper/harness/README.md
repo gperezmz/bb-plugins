@@ -22,7 +22,7 @@ It refuses to start, and changes nothing, when any of its ports answers, when it
 - the fake Anthropic API, `fake-anthropic.mjs`;
 - a bb server and a host daemon on a data directory in the run directory, both with `CACHE_KEEPER_DRIVE_CLOCK=1`, and the daemon's Claude Code pointed at the fake API (`ANTHROPIC_BASE_URL`, a fake `ANTHROPIC_API_KEY`);
 - a project for the drives' threads, in a git checkout in the run directory;
-- Cache Keeper, installed with `bb plugin install path:` from a copy of `plugins/cache-keeper` as the checkout has it, without `dist/` and `node_modules/`. bb builds the copy, so nothing is written into the checkout. "Fetch current prices daily" is switched off, so the plugin uses its bundled prices.
+- Cache Keeper, installed with `bb plugin install path:` from a copy of `plugins/cache-keeper` as the checkout has it, without `dist/`, `node_modules/` and `harness/`. bb builds the copy, so nothing is written into the checkout. "Fetch current prices daily" is switched off, so the plugin uses its bundled prices.
 
 It prints what to source to point `bb` at the throwaway, and only at it:
 
@@ -62,7 +62,7 @@ Each drive makes its own Claude Code threads with `bb thread spawn` and `bb thre
 | `compaction.sh` | A thread above its compaction line, switched on: no `/compact` 30 s before its deadline, one within 2 s of it. |
 | `tree-keep-warm.sh` | A tree top waiting on a child that waits on a background command, kept warm: the child gets a keep-warm at its deadline and none before, replies with the nothing-new reply, and its report refreshes the top, which gets no keep-warm of its own. |
 | `cost-stop.sh` | An 800k-token thread, kept warm, whose keep-warm turns each write 30% of its context: after a few keep-warms none is planned, the next deadline's is held back with "cost stop" in `status` and the log, and none goes after it. |
-| `check-in.sh` | "Check in on stalled background work" on, 10-minute wait: no check-in at 9.5 minutes of silence, one at 10, naming the task and saying a quiet task is fine to leave running, answered with the nothing-new reply; the next one at 20. |
+| `check-in.sh` | "Check in on stalled background work" on, 10-minute wait: no check-in at 9.5 minutes of silence, one at 10, naming the task and saying a task quiet on purpose is fine to leave running, answered with the nothing-new reply; the next one 20 minutes after the first. |
 | `skip-undo.sh` | Skip and Undo as the banner presses them: a skipped compaction is held with "skipped" and the Skip ends when the thread runs again; skipped and undone, it is sent. The same for a keep-warm. |
 | `reinstall.sh` | With every switch on and Skips pressed, the plugin is uninstalled and installed again: every switch is off, check-ins are off in bb's settings, and the first line of `status` says so until a switch is flipped. |
 | `archived-quiet.sh` | After the others: no thread they archived got a Cache Keeper message afterwards. |

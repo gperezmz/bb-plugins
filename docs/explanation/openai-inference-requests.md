@@ -57,11 +57,11 @@ The host entry then sends the request again, within the same time limit, without
 
 ### Why what was dropped is kept in a file
 
-bb starts the host entry's worker when a request needs it and stops it after a few idle minutes. Remembered only in the worker's memory, the dropped fields would be lost between most titles, and each title would pay again for every refusal: two extra requests to a server that refuses `chat_template_kwargs` and then `enable_thinking`, inside bb's 5 seconds. So the host entry keeps them in `learned-fields.json`, readable only by bb's user, in the plugin's data directory on the primary machine. It reads the file on its first call and writes it only when it learns something new. A file it cannot read or parse counts as empty, so a request never fails because of it.
+bb starts the host entry's worker when a request needs it and stops it after a few idle minutes. Remembered only in the worker's memory, the dropped fields would be lost between most titles, and each title would pay again for every refusal: two extra requests to a server that refuses `chat_template_kwargs` and then `enable_thinking`, inside bb's 5 seconds. So the host entry keeps them in `learned-fields.json`, readable only by bb's user, in the plugin's data directory on the primary machine. It reads the file on its first call and writes it only when it learns something new or forgets an entry. A file it cannot read or parse counts as empty, so a request never fails because of it.
 
 An entry is keyed by the Endpoint's URL as the settings write it, `${NAME}` references included, and by the model. It is forgotten in two cases:
 
-- **The Endpoint's URL changes in the settings**, or the Endpoint is removed. What one URL refused says nothing about another.
+- **No Endpoint lists the URL any more**, because it changed in the settings or its Endpoint was removed. What one URL refused says nothing about another. The host entry checks this whenever the backend sends it the Endpoints.
 - **The server names a field it was not sent.** When the first request leaves out remembered fields and its 400 or 422 names one of them, the server has changed, for example to one that now needs `max_tokens`. The host entry forgets the entry and sends the request again with every field, then drops fields as above.
 
 A URL that stays the same while `${NAME}` points somewhere else keeps its entry until the second case applies.

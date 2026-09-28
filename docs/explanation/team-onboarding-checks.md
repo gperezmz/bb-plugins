@@ -20,7 +20,7 @@ sequenceDiagram
 
 The backend on the [server machine](how-the-plugins-fit-bb.md#where-each-part-runs) reads the manifest, decides what is due, and keeps the results. The checks themselves run in the plugin's host entry on each machine, the server included, as the user bb's daemon runs as. The host entry offers a fixed list of operations (make an SSH key, ask gh who is logged in, run `git ls-remote`, read a tool's version); the only free-form command it runs is a team command the engineer approved.
 
-A fix that needs a person (a login, `sudo`, a tool install) opens a terminal on that machine, under the item that asked for it. When the terminal exits, the item is checked again.
+A fix that needs a person (an agent's login, `sudo`, a tool install) opens a terminal on that machine, under the item that asked for it. When the terminal exits, the item is checked again. The GitHub login is the exception: the page shows a one-time code to enter on GitHub.
 
 ## The schedule
 
@@ -44,7 +44,7 @@ A check that runs every 30 minutes must not open a keychain dialog, ask for a pa
 - gh runs with its prompts disabled;
 - git runs from an empty folder the plugin owns, so no repository's config in the home directory applies.
 
-The price is that a working setup can look unknown from the background: an SSH key held only in an agent, or a host alias defined only in `~/.ssh/config`, is invisible there. Such an item reads **Checked without your ssh config; Recheck to use it**, and no safe fix touches it. A **Recheck** on the row, or a fix started from the page, runs with the engineer's full git and SSH config, because the engineer is there to answer a prompt. Commands the CLI, schedule or agents start never count as the engineer being there.
+The price is that a working setup can look unknown from the background: an SSH key held only in an agent, or a host alias defined only in `~/.ssh/config`, is invisible there. Such an item shows `unknown`, saying it was **Checked without your SSH agent and ssh config**, and no safe fix touches it. A **Recheck** on the row, or a fix started from the page, runs with the engineer's full git and SSH config, because the engineer is there to answer a prompt. Commands the CLI, schedule or agents start never count as the engineer being there.
 
 ## Why the manifest is a file
 
@@ -64,6 +64,8 @@ Results store a category (`no-access`, `sso-required`, `read-only`), never raw o
 
 ## What it touches
 
-- On the server machine: team skills it installed in `<data dir>/skills` (never a folder it did not install), gh's login and `gh auth setup-git` when the engineer logs in, and the plugins the engineer approved.
-- On each machine where SSH applies: `~/.ssh/bb_ed25519`, `~/.ssh/bb_known_hosts`, `~/.ssh/bb_config`, and git's global `core.sshCommand`. The user's own `~/.ssh/config` is never edited; the plugin's config includes it.
+- On the server machine: team skills it installed in `<data dir>/skills` (never a folder it did not install), gh's login and `gh auth setup-git` when the engineer logs in, the plugins and marketplaces the engineer approved, and the plugin settings the manifest presets.
+- On each machine where SSH applies: `~/.ssh/bb_ed25519`, `~/.ssh/bb_known_hosts`, `~/.ssh/bb_config`, and git's global `core.sshCommand`; with signed commits, also git's global `gpg.format`, `user.signingkey` and `commit.gpgsign`. The user's own `~/.ssh/config` is never edited; the plugin's config includes it.
+- On GitHub: the SSH key, when the engineer clicks **Add the key with gh**, and the signing key, from **Set up signing**.
+- bb's built-in git setting, turned off for every machine when the engineer switches to `per-machine` mode, or back on from `github.builtin-git`.
 - Machine variables the engineer typed into an `env` item's form. Every agent on every machine can read them.

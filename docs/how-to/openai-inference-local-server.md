@@ -31,7 +31,7 @@ bb settings ai-services set commit-message mlx
 
 Automatic never picks an Endpoint, so the selection is what makes bb use it. Start a thread to see a title from the local model.
 
-bb has no fallback from a selected service to another. When the local server is stopped, or the model is not loaded, the AI task is not done and the thread keeps the start of your prompt as its title. To use a gateway when the local model is down, select the gateway instead: the [first run](../tutorials/openai-inference-first-run.md#2-put-the-gateway-in-bbs-environment) adds one.
+bb has no fallback from a selected service to another. When the local server is stopped, or the model is not loaded, the AI task is not done and the thread keeps the start of your prompt as its title. To use a gateway when the local model is down, select the gateway instead: the [first run](../tutorials/openai-inference-first-run.md) adds one.
 
 ## Keep it within bb's time limit
 

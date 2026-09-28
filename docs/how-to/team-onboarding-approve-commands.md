@@ -1,11 +1,11 @@
 # Approve your team's commands
 
-A team command, plugin source or marketplace in the manifest does nothing until an engineer approves it in the Onboarding page; until then its item shows `needs-approval`. An agent or the CLI cannot approve for you. [Why approvals happen only in the page](../explanation/team-onboarding-checks.md#why-approvals-happen-only-in-the-page) explains the rule.
+A team command, plugin source or marketplace in the manifest does nothing until an engineer approves it in the Onboarding page. Until then a team check, plugin or marketplace item shows `needs-approval`, and a tool or a check waiting on its `install` or `fix` offers **Review and approve**. An agent or the CLI cannot approve for you. [Why approvals happen only in the page](../explanation/team-onboarding-checks.md#why-approvals-happen-only-in-the-page) explains the rule.
 
 ## Approve
 
 1. Open **Onboarding** in the sidebar.
-2. Open the item marked **Needs approval**. Under **Commands from your team** it shows each command, or the plugin or marketplace source, exactly as the manifest has it.
+2. Open the item marked **Needs approval**, or the one offering **Review and approve**. Under **Commands from your team** it shows each command, or the plugin or marketplace source, exactly as the manifest has it.
 3. Read it. It will run on your machines, as the user bb runs as, with the same access your agents have.
 4. Click **Approve**.
 
@@ -13,14 +13,14 @@ To review everything at once, open the **Team manifest** tab: it lists the manif
 
 After approval:
 
-- a team check runs on its next check, scheduled or by **Recheck**;
+- the item is checked again at once, so a team check runs then and on every check after;
 - a `fix` of kind `run` becomes a fix you can click;
 - a `fix` of kind `terminal`, or a tool's `install`, opens a terminal on the machine with the command typed in. Press Enter to run it;
 - an approved plugin or marketplace becomes a safe fix, so **Fix all safe items** and `bb team-onboarding apply --safe` install it.
 
 ## Revoke
 
-Click **Revoke** beside the command, in the item's row or on the **Team manifest** tab. It stops running, and its item returns to `needs-approval`.
+Click **Revoke** beside the command, in the item's row or on the **Team manifest** tab. It stops running, and the item is checked again at once: a team check, plugin or marketplace returns to `needs-approval`, and a `fix` or `install` goes back to **Review and approve**.
 
 ## When approval is asked for again
 

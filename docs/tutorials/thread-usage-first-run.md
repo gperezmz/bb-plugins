@@ -33,7 +33,7 @@ Click the coin. The Usage tab opens in the thread's side panel:
 - The headline, with a toggle between **This thread** and **With children**. Switch it and watch the figure change by what the child cost.
 - **Tokens** by kind, and the share of input read from cache.
 - **By model**. Hover a cost to see which price list it came from and when that list was fetched.
-- **Cost per turn**. Click a bar to see that turn's prompt, model, tokens and cost.
+- **Cost per turn**, or **Tokens per turn** on a subscription. Click a bar to see that turn's prompt, model, tokens and cost.
 - **Child threads**: your child, with its own cost and its share of the total. Click it to open the child.
 - **Data quality**: anything missing or estimated, in words.
 
