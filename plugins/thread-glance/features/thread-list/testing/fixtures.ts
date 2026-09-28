@@ -119,6 +119,9 @@ export interface Scenario {
   startedAt?: Record<string, number>;
   /** Project id → default branch; "main" for every project when absent. */
   defaultBranches?: Record<string, string | null>;
+  /** bb's primary machine; "host_1", the fixtures' own, when absent. */
+  primaryHostId?: string | null;
+  comfortable?: boolean;
   /** bb's default harness; "claude-code", the fixtures' own, when absent. */
   defaultProviderId?: string | null;
   /** Pull request lookups that answered, by thread id. */
@@ -151,6 +154,10 @@ export function viewOf(scenario: Scenario): ListView {
     targets: scenario.targets ?? new Map(),
     settle: settleOf(scenario),
     defaultProviderId: scenario.defaultProviderId === undefined ? "claude-code" : scenario.defaultProviderId,
+    primaryHostId: scenario.primaryHostId === undefined ? "host_1" : scenario.primaryHostId,
+    comfortable: scenario.comfortable ?? false,
+    defaultBranchOf: (thread) =>
+      scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[thread.projectId],
   });
 }
 

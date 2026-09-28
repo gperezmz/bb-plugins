@@ -467,7 +467,9 @@ describe("groups and modes", () => {
     });
     expect(view.groups.map((g) => g.descriptor.label)).toEqual(["Laptop", "Server"]);
     expect(threadRow(view, "c").crossGroupLabel).toBe("On machine Server");
-    expect(view.multiHost).toBe(true);
+    // Grouped by machine, no row names its machine.
+    expect(threadRow(view, "b").machine).toBeNull();
+    expect(threadRow(view, "c").machine).toBeNull();
   });
   it("environment folders group 2+ roots sharing a worktree when enabled", () => {
     const wt = { id: "env_wt", isWorktree: true, branchName: "feat/x" };

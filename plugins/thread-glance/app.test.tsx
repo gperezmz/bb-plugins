@@ -367,6 +367,31 @@ describe("Thread Glance slot", () => {
     expect(dot?.className).toContain("--timeline-accent");
   });
 
+  it("puts the pull request badge after the branch in Comfortable, on the title line in Compact, and names another machine beside the age", async () => {
+    const threads = [
+      makeThread({ id: "b", title: "Topic", environment: { branchName: "fix/login" }, host: { id: "host_2", name: "work" } }),
+    ];
+    const extra = { sidebarPullRequests: { b: { number: 7, title: "Fix", url: "u", state: "open", attention: "none" } } };
+    render(threads, { extra });
+    const anchor = await screen.findByRole("link", { name: /Open Topic/ });
+    const row = anchor.parentElement!;
+    const badge = await within(row).findByLabelText(/Pull request #7/);
+    // Compact: one line, the badge beside the title, and no branch.
+    expect(row.textContent).not.toContain("fix/login");
+    expect(within(row).getByLabelText("On work").textContent).toBe("work");
+    expect(within(row).getByLabelText(/ago|now/)).toBeTruthy();
+    expect(badge.closest("span.flex-col")).toBeNull();
+    cleanup();
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    render(threads, { extra });
+    const comfortable = (await screen.findByRole("link", { name: /Open Topic/ })).parentElement!;
+    await waitFor(() => expect(comfortable.textContent).toContain("fix/login"));
+    const line = within(comfortable).getByText("fix/login").closest("span.text-xs")!;
+    expect(within(line as HTMLElement).getByLabelText(/Pull request #7/)).toBeTruthy();
+    expect(within(comfortable).getAllByLabelText(/Pull request #7/)).toHaveLength(1);
+    expect(within(comfortable).getByLabelText("On work")).toBeTruthy();
+  });
+
   it("draws a harness icon only where it differs, in the Muted or Colour style the panel picks", async () => {
     render([
       makeThread({ id: "d", title: "Default root" }),

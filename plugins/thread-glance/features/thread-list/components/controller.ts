@@ -22,9 +22,6 @@ export interface RowController {
   comfortable: boolean;
   setEditingId(id: string | null): void;
   harnessIcon: HarnessIcon;
-  /** Undefined while unknown; the lookup starts on first ask. */
-  defaultBranchOf(thread: PluginSidebarThread): string | null | undefined;
-  multiHost: boolean;
   /** One object per harness, the same one on every call. */
   provider(providerId: string): ProviderDisplay;
   sections: readonly PluginSidebarSection[];

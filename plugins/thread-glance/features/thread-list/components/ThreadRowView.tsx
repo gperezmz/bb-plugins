@@ -16,7 +16,6 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
-import { isOffDefaultBranch } from "../model/branches";
 import { rowIndent } from "../model/layout";
 import { rowMenuItems } from "../model/menu";
 import { noteText } from "../model/notes";
@@ -219,7 +218,7 @@ export const ThreadRowView = memo(function ThreadRowView({
     controller.setEditingId(thread.id);
   };
 
-  const showPullRequest = row.depth === 0 && isOffDefaultBranch(thread.environment?.branchName ?? null, controller.defaultBranchOf(thread));
+  const showPullRequest = row.pullRequest !== null;
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -297,7 +296,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   const chip = row.chip;
   const indent = rowIndent(row.depth);
   const note = row.note;
-  const twoLines = controller.comfortable || note !== null;
+  const twoLines = note !== null || row.branchLine !== null;
   const dimmed = row.dimmed && !editing;
   const menuShowing = menuOpen || contextOpen;
   // Desktop: the actions cross-fade over the harness and age, as bb's
@@ -423,8 +422,8 @@ export const ThreadRowView = memo(function ThreadRowView({
           <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
             <NoteLine note={note} />
           </span>
-        ) : controller.comfortable && !editing ? (
-          <SecondLine row={row} multiHost={controller.multiHost} defaultBranch={controller.defaultBranchOf(thread)} />
+        ) : row.branchLine !== null && !editing ? (
+          <BranchLine row={row} branch={row.branchLine} />
         ) : null}
       </span>
       {row.hiddenBadge ? (
@@ -432,7 +431,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           <Icon name={ICONS.hidden} aria-hidden className="size-3.5" />
         </span>
       ) : null}
-      {showPullRequest && !editing ? (
+      {row.pullRequest === "title" && !editing ? (
         <span className="pointer-events-none relative">
           <PullRequestBadge threadId={thread.id} />
         </span>
@@ -482,6 +481,15 @@ export const ThreadRowView = memo(function ThreadRowView({
             </kbd>
           ) : (
             <>
+              {row.machine !== null ? (
+                <span
+                  title={`On ${row.machine}`}
+                  aria-label={`On ${row.machine}`}
+                  className={cn("pointer-events-none max-w-20 truncate text-[11px] text-muted-foreground transition-opacity", fadeClass)}
+                >
+                  {row.machine}
+                </span>
+              ) : null}
               {time !== null ? (
                 <span
                   title={time.label}
@@ -586,38 +594,17 @@ export const ThreadRowView = memo(function ThreadRowView({
   );
 });
 
-function SecondLine({
-  row,
-  multiHost,
-  defaultBranch,
-}: {
-  row: ThreadRow;
-  multiHost: boolean;
-  defaultBranch: string | null | undefined;
-}) {
-  const thread = row.info.thread;
-  const environment = thread.environment;
-  const parts: React.ReactNode[] = [];
-  // The branch earns the line only when it is known not to be the
-  // project's default: "main" on every row said nothing.
-  const branch = environment?.branchName ?? null;
-  if (isOffDefaultBranch(branch, defaultBranch)) {
-    parts.push(
-      <span key="branch" className="inline-flex min-w-0 items-center gap-0.5">
+/** The Comfortable second line: the branch, then its pull request badge. */
+function BranchLine({ row, branch }: { row: ThreadRow; branch: string }) {
+  const environment = row.info.thread.environment;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+      <span className="inline-flex min-w-0 items-center gap-0.5">
         <Icon name={environment?.isWorktree ? ICONS.worktree : ICONS.branch} aria-hidden className="size-3 shrink-0" />
         <span className="truncate">{branch}</span>
         {environment?.isWorktree ? <span className="sr-only"> (worktree)</span> : null}
-      </span>,
-    );
-  }
-  if (multiHost && thread.host !== null) {
-    parts.push(
-      <span key="host" className="inline-flex shrink-0 items-center gap-0.5">
-        <Icon name={ICONS.machine} aria-hidden className="size-3" />
-        {thread.host.name}
-      </span>,
-    );
-  }
-  if (parts.length === 0) return null;
-  return <span className="flex min-w-0 items-center gap-2 text-xs leading-4 text-muted-foreground">{parts}</span>;
+      </span>
+      {row.pullRequest === "second-line" ? <PullRequestBadge threadId={row.info.thread.id} /> : null}
+    </span>
+  );
 }

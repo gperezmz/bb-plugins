@@ -21,6 +21,7 @@ import {
 import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
+import { isOffDefaultBranch } from "./branches";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
@@ -59,8 +60,20 @@ export interface ThreadRow {
   childDot: Flag | null;
   /** The title is bold: the thread is unread. */
   bold: boolean;
-  /** The line under the title: why it waits on you or failed. */
+  /** The line under the title: why it waits on you or failed, in both densities. */
   note: RowNote | null;
+  /**
+   * In Comfortable density, a row with no note whose branch is known not to
+   * be its project's default draws that branch on its second line.
+   */
+  branchLine: string | null;
+  /**
+   * Where the pull request badge goes: after the branch on the second line,
+   * on the title line (a root off its default branch, as before), or nowhere.
+   */
+  pullRequest: "second-line" | "title" | null;
+  /** The machine's name, beside the age, for a thread off bb's primary machine. */
+  machine: string | null;
   /** The title, and the chip with it, step back: see `isDimmed`. */
   dimmed: boolean;
   /** A hidden thread shown because it needs attention or failed. */
@@ -135,8 +148,6 @@ export interface ListView {
   moreCounters: Counters;
   /** Resolved top-level order for the mode, for header drag. */
   order: string[];
-  /** Threads span more than one host (the row's second line). */
-  multiHost: boolean;
 }
 
 export interface ViewInputs {
@@ -150,6 +161,12 @@ export interface ViewInputs {
   settle: SettleInputs;
   /** bb's default harness; null while unknown, when no root draws one. */
   defaultProviderId: string | null;
+  /** bb's primary machine; null while unknown, when no row names its machine. */
+  primaryHostId: string | null;
+  /** Comfortable density: rows may take a branch line. */
+  comfortable: boolean;
+  /** A project's default branch: undefined while looked up, null when not found. */
+  defaultBranchOf(thread: PluginSidebarThread): string | null | undefined;
 }
 
 interface Context extends ViewInputs {
@@ -208,6 +225,21 @@ function drawsHarness(context: Context, info: ThreadInfo): boolean {
   return providerId !== context.forest.infos.get(info.parentId)?.thread.providerId;
 }
 
+/** The row's second line and pull request badge, as the density and the branch allow. */
+function lines(context: Context, info: ThreadInfo, depth: number): Pick<ThreadRow, "branchLine" | "pullRequest"> {
+  const branch = info.thread.environment?.branchName ?? null;
+  const offDefault = isOffDefaultBranch(branch, context.defaultBranchOf(info.thread));
+  if (context.comfortable && info.note === null && offDefault) return { branchLine: branch, pullRequest: "second-line" };
+  return { branchLine: null, pullRequest: depth === 0 && offDefault ? "title" : null };
+}
+
+/** The machine a row names: one other than bb's primary, unless the list is grouped by machine. */
+function machineOf(context: Context, info: ThreadInfo): string | null {
+  const host = info.thread.host;
+  if (context.prefs.organizationMode === "machine" || context.primaryHostId === null || host === null) return null;
+  return host.id === context.primaryHostId ? null : host.name || "Unknown machine";
+}
+
 function threadRow(
   context: Context,
   info: ThreadInfo,
@@ -215,6 +247,8 @@ function threadRow(
   options: { depth: number; nested: boolean; chip: Chip | null },
 ): ThreadRow {
   return {
+    ...lines(context, info, options.depth),
+    machine: machineOf(context, info),
     type: "thread",
     key: `thread:${info.thread.id}`,
     info,
@@ -546,9 +580,7 @@ export function buildListView(inputs: ViewInputs): ListView {
     }
   }
 
-  const hosts = new Set<string>();
-  for (const thread of inputs.threads) if (thread.host !== null) hosts.add(thread.host.id);
-  return { groups, more, moreCounters, order, multiHost: hosts.size > 1 };
+  return { groups, more, moreCounters, order };
 }
 
 /** Every thread row in visual order, for keyboard and windowing. */

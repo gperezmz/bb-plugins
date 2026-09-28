@@ -204,8 +204,24 @@ function ThreadListBody({
             targets,
             settle,
             defaultProviderId: system.defaultProviderId,
+            primaryHostId: system.primaryHostId,
+            comfortable: client.density === "comfortable",
+            defaultBranchOf,
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, targets, settle, system.defaultProviderId],
+    [
+      forest,
+      threads,
+      sidebar.projects,
+      sidebar.sections,
+      prefs,
+      activeThreadId,
+      targets,
+      settle,
+      system.defaultProviderId,
+      system.primaryHostId,
+      client.density,
+      defaultBranchOf,
+    ],
   );
   useLayoutEffect(() => {
     previousView.current = view;
@@ -353,7 +369,6 @@ function ThreadListBody({
     [sdk],
   );
 
-  const multiHost = view?.multiHost ?? false;
   const built = forest !== null && view !== null;
   const rowController: RowController | null = useMemo(() => {
     if (!built) return null;
@@ -362,8 +377,6 @@ function ThreadListBody({
       comfortable: client.density === "comfortable",
       setEditingId,
       harnessIcon: prefs.harnessIcon,
-      defaultBranchOf,
-      multiHost,
       provider: providerDisplay,
       sections: sidebar.sections,
       mode: prefs.organizationMode,
@@ -408,8 +421,6 @@ function ThreadListBody({
     client.density,
     prefs.harnessIcon,
     prefs.organizationMode,
-    defaultBranchOf,
-    multiHost,
     providerDisplay,
     sidebar.sections,
     onNavigate,
