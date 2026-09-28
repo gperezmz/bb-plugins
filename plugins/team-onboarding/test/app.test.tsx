@@ -364,14 +364,14 @@ describe("Onboarding page", () => {
 });
 
 describe("forgetting a long-offline machine", () => {
-  const laptop = (longOffline: boolean, online = false) => ({
+  const laptop = (offlineDays: number | "online") => ({
     id: "h2",
     name: "laptop",
     isServer: false,
-    online,
-    lastSeenAt: new Date(Date.now() - (longOffline ? 10 : 2) * 24 * 3600_000).toISOString(),
+    online: offlineDays === "online",
+    lastSeenAt: offlineDays === "online" ? null : new Date(Date.now() - offlineDays * 24 * 3600_000).toISOString(),
     hostEntry: true,
-    longOffline,
+    longOffline: offlineDays !== "online" && offlineDays > 7,
   });
   const stateWith = (machine: ReturnType<typeof laptop>) => {
     const skipped = (hostId: string) => ({ itemId: "tool:gh", hostId, status: "skipped", category: "long-offline", checkedAt: null, detail: "", facts: {} });
@@ -384,14 +384,14 @@ describe("forgetting a long-offline machine", () => {
 
   it("offers Forget this machine when every result is skipped, and posts the forget", async () => {
     const posted = stubActions();
-    const slot = renderSlot(panel(), { subPath: "" }, { rpc: { state: () => stateWith(laptop(true)) } as never });
+    const slot = renderSlot(panel(), { subPath: "" }, { rpc: { state: () => stateWith(laptop(10)) } as never });
     fireEvent.click(await slot.findByRole("button", { name: "Forget this machine" }));
     expect(slot.getByText(/has been offline for over a week/)).toBeTruthy();
     expect(posted.map((entry) => entry.body)).toEqual([{ action: "forgetMachine", hostId: "h2" }]);
   });
 
   it("does not offer it for an online machine or one offline under the threshold", async () => {
-    for (const machine of [laptop(false, true), laptop(false)]) {
+    for (const machine of [laptop("online"), laptop(2)]) {
       const slot = renderSlot(panel(), { subPath: "" }, { rpc: { state: () => stateWith(machine) } as never });
       expect(await slot.findByText(/Your machines:/)).toBeTruthy();
       expect(slot.queryByRole("button", { name: "Forget this machine" })).toBeNull();

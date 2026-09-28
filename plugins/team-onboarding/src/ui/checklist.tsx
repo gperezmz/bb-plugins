@@ -59,16 +59,16 @@ export function Checklist({ state }: { state: OnboardingState }) {
  * no item row lists them; this is where they can be forgotten.
  */
 function LongOfflineMachines({ machines }: { machines: Machines }) {
-  const gone = machines.filter((machine) => machine.longOffline);
-  if (gone.length === 0) return null;
+  const longOffline = machines.filter((machine) => machine.longOffline);
+  if (longOffline.length === 0) return null;
   return (
     <section aria-label="Machines offline for over a week" className="divide-y divide-border rounded-lg border border-border bg-card">
-      {gone.map((machine) => (
+      {longOffline.map((machine) => (
         <div key={machine.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
           <span className="min-w-0 flex-1 text-muted-foreground">
             <span className="font-medium text-foreground">{machine.name}</span> has been offline for over a week.
           </span>
-          <Button size="sm" variant="ghost" onClick={() => void postAction({ action: "forgetMachine", hostId: machine.id }).catch((c) => toast.error(errorText(c)))}>
+          <Button size="sm" variant="ghost" onClick={() => void postAction({ action: "forgetMachine", hostId: machine.id }).catch((cause) => toast.error(errorText(cause)))}>
             Forget this machine
           </Button>
         </div>
