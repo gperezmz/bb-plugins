@@ -15,7 +15,7 @@ Set these under Settings → Installed plugins → Thread Usage, or with `bb plu
 | `billingCodex` | Billing for Codex | `auto` | as above |
 | `billingPi` | Billing for pi | `auto` | as above |
 | `billingOther` | Billing for other harnesses | `auto` | as above |
-| `showAmount` | Show amount in header | `false` | Show the thread tree total beside the header coin |
+| `showAmount` | Show amount in header | `false` | Show the thread tree total inside the header coin's button, after the coin |
 | `warnAbove` | Warn above | `0` | A thread tree's billed total (the list-price equivalent of subscription use left out) that, once crossed, tints the coin and shows one toast per tree and amount. A tree already over the amount when the plugin starts or the amount changes gets the tint without the toast. `0` turns it off |
 | `currency` | Currency label | `$` | The label only, 1 to 12 characters; figures are USD |
 

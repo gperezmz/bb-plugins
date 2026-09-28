@@ -22,7 +22,7 @@ Wait for the parent to finish.
 
 ## 3. Read the header chip
 
-A coin has appeared in the thread's header. Hover it. The card shows the [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees)'s [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use), a bar of tokens by kind, and `1 child thread`: the figure covers the parent and its child.
+A coin has appeared in the thread's header, in an outlined button beside the editor picker. Hover it. The card shows the [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees)'s [headline](../explanation/thread-usage-counting.md#billed-and-subscription-use), a bar of tokens by kind, and `1 child thread`: the figure covers the parent and its child.
 
 If your agent runs on a subscription plan, the headline leads with tokens, and the dollars read **list-price equivalent**. With an API key it leads with dollars, labelled **estimate**. [Billed and subscription use](../explanation/thread-usage-counting.md#billed-and-subscription-use) explains the difference.
 
