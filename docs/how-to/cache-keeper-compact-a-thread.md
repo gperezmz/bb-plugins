@@ -13,7 +13,7 @@ bb cache-keeper on thr_… --above 500k
 
 It snaps `500k` to the nearest of the thread's ten lines and prints the one it set. It refuses, and changes nothing, while the thread's window is unknown, for a size above the thread's highest line, and when no setting gives a line because the model has no price or compacting never repays; [the refusals](../reference/cache-keeper-cli.md#sizes-and-lines) lists each.
 
-While a compaction is due, the banner above the composer counts down. **Skip** leaves the thread alone until it next runs; **Compact now**, or `bb cache-keeper compact-now thr_…`, does it at once. To stop, turn the switch off or run `bb cache-keeper off thr_…`.
+While a compaction is due, the banner above the composer counts down. **Skip** leaves the thread alone until it next runs; **Compact now**, or `bb cache-keeper compact-now thr_…`, does it at once. To stop, turn the switch off or run `bb cache-keeper off thr_…`. Uninstalling and installing Cache Keeper again [switches it off](../reference/cache-keeper-settings.md#after-a-reinstall) on every thread.
 
 To let the thread's agent switch it on itself, turn on **Compact when idle** under Settings → Plugins → Cache Keeper → Agent tools; the agent gets the tool when its session next starts or resumes.
 

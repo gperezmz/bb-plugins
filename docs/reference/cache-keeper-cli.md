@@ -1,6 +1,6 @@
 # Cache Keeper: `bb cache-keeper` and the agent tool
 
-The CLI runs on the bb server. Every command acts on Claude Code threads only, and refuses any other. Source: [`server.ts`](../../plugins/cache-keeper/server.ts), [`src/core/above.ts`](../../plugins/cache-keeper/src/core/above.ts), [`src/server/surfaces.ts`](../../plugins/cache-keeper/src/server/surfaces.ts).
+The CLI runs on the bb server. Every command acts on Claude Code threads only, and refuses any other with `not_claude_code`, except `keep-warm`, which takes a thread below a Claude Code tree top. Source: [`server.ts`](../../plugins/cache-keeper/server.ts), [`src/core/above.ts`](../../plugins/cache-keeper/src/core/above.ts), [`src/server/surfaces.ts`](../../plugins/cache-keeper/src/server/surfaces.ts).
 
 ## Who may act on which thread
 
@@ -39,7 +39,7 @@ Switches it off.
 bb cache-keeper compact-now [<thread>]
 ```
 
-Compacts the thread now, as **Compact now** does: whatever its size and whatever Compact when idle says, provided bb gives it as idle (or ended in failure), not archived or deleted, with no pending interaction, and it is not [waiting](../explanation/cache-keeper-timing.md#waiting). Otherwise it exits with `not_ready` and says why. A thread that is not Claude Code exits with `not_claude_code`. It and an automatic compaction falling due at the same moment send one `/compact` between them.
+Compacts the thread now, as **Compact now** does: whatever its size and whatever Compact when idle says, provided bb gives it as idle (or ended in failure), not archived or deleted, with no pending interaction, and it is not [waiting](../explanation/cache-keeper-timing.md#waiting). Otherwise it exits with `not_ready` and says why, as it does while a message Cache Keeper sent the thread has not run yet. A thread that is not Claude Code exits with `not_claude_code`, no thread given and no current thread with `missing_thread`, and, run from a thread, a thread outside the caller's tree with `outside_tree`. It and an automatic compaction falling due at the same moment send one `/compact` between them.
 
 ## `bb cache-keeper keep-warm`
 
@@ -61,7 +61,7 @@ Under `Never` it still records the choice, and the first line reads `on, but kee
 |---|---|
 | `missing_thread` | No thread was given and there is no current thread |
 | `no_tree_top` | The thread is not a Claude Code thread and has no Claude Code thread above it; the message names the tree tops below it, if any |
-| `not_ready` | bb has no such thread |
+| `not_ready` | bb has no such thread (run from a thread, a thread bb does not have is outside the caller's tree, and gives `outside_tree`) |
 | `outside_tree` | Run from a thread, the thread given is not in the caller's thread tree |
 
 ## `bb cache-keeper status`
@@ -77,7 +77,7 @@ With a thread:
 | compact when idle | on or off |
 | line | The line, or that there is none until bb reports the thread's window |
 | context | The context now, and the window |
-| status | As the popover words it, or `transcript unreadable` when the transcript cannot be read or parsed |
+| status | `working`, `waiting on your answer`, `compacting in {n}m`, `compacted {when}`, `skipped until this thread next runs`, `waiting on background work`, `idle, no line`, `idle, under the line` or `idle`, the first that holds; or `transcript unreadable` when the transcript cannot be read or parsed |
 | last decision | What Cache Keeper last sent or held back, when, and why it held it back: see [why nothing was sent](../explanation/cache-keeper-timing.md#why-nothing-was-sent) |
 | keep-warms | On or off for its tree, or held because the model has no price |
 | price source | `LiteLLM`, `models.dev` or `bundled`, or none |
@@ -85,7 +85,7 @@ With a thread:
 | transcript unreadable | Why, when it cannot be read |
 | last price fetch error | The last error fetching a price list, when there is one |
 
-Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](../explanation/how-the-plugins-fit-bb.md#what-each-plugin-stores), the first line says every switch was turned off, until a switch is next flipped. `--json` carries the same fields: the thread's view, `statusText`, `priceSource`, `lastPriceFetchError`, and `reset` after a reinstall.
+Without a thread: every thread with compact when idle on, then the totals for the last 30 days. After a [reinstall](cache-keeper-settings.md#after-a-reinstall), the first line says every switch was turned off, until a switch, a Skip or Undo, a line, an Agent tools row or the check-ins setting is next changed. `--json` carries the same fields: the thread's view, `statusText`, `priceSource`, `lastPriceFetchError`, and `reset` after a reinstall.
 
 ## The `cache_keeper_compact_when_idle` agent tool
 
@@ -97,4 +97,4 @@ A thread is offered it only while its row in [Agent tools](cache-keeper-settings
 |---|---|
 | `above` | Optional `<size>`, snapped and refused as [above](#sizes-and-lines) |
 
-It returns JSON: `on: true`, the `line` as a size, the `setting`, `context` and `windowKnown`; or `on: false` with an `error`.
+It returns JSON: `on: true`, the `line` as a size (`never` where the setting has no line), the `setting`, `context` and `windowKnown`; or `on: false` with an `error`.

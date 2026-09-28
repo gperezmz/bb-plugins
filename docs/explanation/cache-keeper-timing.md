@@ -28,7 +28,7 @@ Cache Keeper runs on bb's events. It keeps what it knows of each thread in memor
 | The nightly prune | Once a night, of history and sends older than 90 days |
 | The price refresh | Once a day while [Fetch current prices daily](../reference/cache-keeper-settings.md#settings) is on |
 
-The saved positions survive a restart of bb, the daemon or the plugin. After a restart Cache Keeper lists bb's threads once, catches up only the threads bb updated since it last looked (less a minute's margin), each from its saved position, and sets its timer from the facts it stored. No transcript is read from its start again unless it became another file, or a new Claude Code session (bb starts one on `/clear`), whose transcript is read from then on and whose old facts no longer count.
+The saved positions survive a restart of bb, the daemon or the plugin. A reinstall keeps them too, but [switches everything off](../reference/cache-keeper-settings.md#after-a-reinstall). After a restart Cache Keeper lists bb's threads once, catches up only the threads bb updated since it last looked (less a minute's margin), each from its saved position, and sets its timer from the facts it stored. No transcript is read from its start again unless it became another file, or a new Claude Code session (bb starts one on `/clear`), whose transcript is read from then on and whose old facts no longer count.
 
 A surface asking for a thread (the chip, the banner, `status`) is answered from memory; a thread it has never read is read alone. A machine that does not answer within 10 seconds holds only the threads it runs.
 
