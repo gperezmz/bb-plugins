@@ -2,14 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences } from "@/shared/preferences";
 import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, settleOf, T0, viewOf, working, type Scenario } from "../testing/fixtures";
-import {
-  isSettledThread,
-  isSettledTree,
-  lastActivityAt,
-  pullRequestFact,
-  pullRequestLookupIds,
-  SETTLE_AFTER_MS,
-} from "./settled";
+import { isSettledThread, isSettledTree, lastActivityAt, SETTLE_AFTER_MS } from "./settled";
 import { markAllReadPlan, markReadPlanFor, toggleSettled } from "./toggles";
 import type { SettledRow } from "./view";
 
@@ -43,7 +36,7 @@ describe("a settled thread", () => {
     expect(settled({ threads: [makeThread({ id: "t" })], draftIds: ["t"], now: LATER }, "t")).toBe(true);
   });
 
-  it("follows each Settle after period, and with Never only a pull request that merged or closed", () => {
+  it("follows each Settle after period, and with Never does not settle", () => {
     const threads = [makeThread({ id: "t" })];
     for (const [period, ms] of Object.entries(SETTLE_AFTER_MS)) {
       const prefs = { settleAfter: period as keyof typeof SETTLE_AFTER_MS };
@@ -52,27 +45,16 @@ describe("a settled thread", () => {
     }
     const never = { settleAfter: "never" as const };
     expect(settled({ threads, prefs: never, now: T0 + 365 * DAY }, "t")).toBe(false);
-    expect(settled({ threads: [onBranch()], prefs: never, pullRequests: { t: "merged" }, now: T0 + 60_000 }, "t")).toBe(true);
-    expect(settled({ threads: [onBranch()], prefs: never, pullRequests: { t: "closed" }, now: T0 + 60_000 }, "t")).toBe(true);
+    expect(settled({ threads: [onBranch()], prefs: never, now: T0 + 365 * DAY }, "t")).toBe(false);
   });
 
-  it("settles at once when its pull request merged or closed, and never while one is open", () => {
-    const threads = [onBranch()];
-    expect(settled({ threads, pullRequests: { t: "merged" } }, "t")).toBe(true);
-    expect(settled({ threads, pullRequests: { t: "closed" } }, "t")).toBe(true);
-    expect(settled({ threads, pullRequests: { t: "open" }, now: T0 + 30 * DAY }, "t")).toBe(false);
-    expect(settled({ threads, pullRequests: { t: "draft" }, now: T0 + 30 * DAY }, "t")).toBe(false);
-    expect(settled({ threads, pullRequests: { t: null }, now: LATER }, "t")).toBe(true);
-    // A pinned or busy thread whose pull request merged stays.
-    expect(settled({ threads: [onBranch({ pinnedAt: T0, isPinned: true })], pullRequests: { t: "merged" } }, "t")).toBe(false);
-    expect(settled({ threads: [onBranch({ ...working })], pullRequests: { t: "merged" } }, "t")).toBe(false);
-  });
-
-  it("does not settle while its pull request, or its project's default branch, is still being looked up", () => {
-    expect(settled({ threads: [onBranch()], now: LATER }, "t")).toBe(false);
-    expect(settled({ threads: [onBranch()], defaultBranches: {}, now: LATER }, "t")).toBe(false);
-    // On the default branch, or on none, there is nothing to look up.
-    expect(settled({ threads: [makeThread({ id: "t", environment: { branchName: "main" } })], now: LATER }, "t")).toBe(true);
+  it("settles by its activity alone, on a branch other than its project's default or while that is still being looked up", () => {
+    expect(settled({ threads: [onBranch()], now: LATER }, "t")).toBe(true);
+    expect(settled({ threads: [onBranch()], defaultBranches: {}, now: LATER }, "t")).toBe(true);
+    expect(settled({ threads: [onBranch()], now: T0 + DAY - 60_000 }, "t")).toBe(false);
+    // A pinned or busy thread on a branch stays.
+    expect(settled({ threads: [onBranch({ pinnedAt: T0, isPinned: true })], now: LATER }, "t")).toBe(false);
+    expect(settled({ threads: [onBranch({ ...working })], now: LATER }, "t")).toBe(false);
   });
 
   it("counts its own last activity, not a rename or a visit that only moved updatedAt", () => {
@@ -81,31 +63,6 @@ describe("a settled thread", () => {
     expect(lastActivityAt(thread, stamps)).toBe(T0 + 9);
     expect(settled({ threads: [thread], now: LATER + 9 }, "t")).toBe(true);
     expect(settled({ threads: [thread], startedAt: { t: T0 + DAY }, now: LATER }, "t")).toBe(false);
-  });
-
-  it("looks up the pull request only of threads that would settle but for it, on a branch other than the default", () => {
-    const threads = [
-      onBranch(),
-      makeThread({ id: "main", environment: { branchName: "main" } }),
-      makeThread({ id: "none", environment: null }),
-      makeThread({ id: "busy", environment: { branchName: "x" }, ...working }),
-      makeThread({ id: "pinned", environment: { branchName: "x" }, pinnedAt: T0, isPinned: true }),
-      makeThread({ id: "hidden", environment: { branchName: "x" }, isHidden: true, parentThreadId: "t" }),
-      makeThread({ id: "hidden-busy", environment: { branchName: "x" }, isHidden: true, parentThreadId: "t", ...working }),
-      makeThread({ id: "unknown", projectId: "proj_b", environment: { branchName: "x" } }),
-    ];
-    const forest = forestOf({ threads });
-    const defaults: Record<string, string | null | undefined> = { proj_a: "main", proj_b: undefined };
-    expect(pullRequestLookupIds(forest.infos.values(), (thread) => defaults[thread.projectId])).toEqual(["t", "hidden"]);
-    expect(pullRequestLookupIds(forest.infos.values(), () => null)).toEqual(["t", "main", "hidden", "unknown"]);
-  });
-
-  it("reads no pull request off a thread with no branch or on the default branch", () => {
-    const answers = new Map([["t", "open" as const]]);
-    expect(pullRequestFact(makeThread({ id: "t" }), "main", answers)).toBeNull();
-    expect(pullRequestFact(makeThread({ id: "t", environment: { branchName: "main" } }), "main", answers)).toBeNull();
-    expect(pullRequestFact(makeThread({ id: "t", environment: { branchName: "f" } }), "main", answers)).toBe("open");
-    expect(pullRequestFact(makeThread({ id: "t", environment: { branchName: "f" } }), undefined, answers)).toBe("unknown");
   });
 });
 
@@ -122,7 +79,7 @@ describe("a settled tree", () => {
   it("settles as one unit, only when every thread in it is settled", () => {
     expect(treeSettled({ threads: tree(), now: LATER })).toBe(true);
     expect(treeSettled({ threads: tree({ ...working }), now: LATER })).toBe(false);
-    expect(treeSettled({ threads: tree({ environment: { branchName: "f" } }), pullRequests: { c: "open" }, now: LATER })).toBe(false);
+    expect(treeSettled({ threads: tree({ environment: { branchName: "f" } }), now: LATER })).toBe(true);
     expect(treeSettled({ threads: tree({ latestAttentionAt: T0 + DAY, lastReadAt: T0 + DAY }), now: LATER })).toBe(false);
   });
 
@@ -131,8 +88,9 @@ describe("a settled tree", () => {
     expect(treeSettled({ threads: tree(archived), now: LATER })).toBe(true);
     expect(treeSettled({ threads: tree({ ...archived, ...working }), now: LATER })).toBe(false);
     expect(treeSettled({ threads: [makeThread({ id: "p", ...archived })], now: LATER })).toBe(true);
-    const closed = [makeThread({ id: "p", ...archived, environment: { branchName: "f" } })];
-    expect(treeSettled({ threads: closed, pullRequests: { p: "closed" } })).toBe(true);
+    const branched = [makeThread({ id: "p", ...archived, environment: { branchName: "f" } })];
+    expect(treeSettled({ threads: branched, now: LATER })).toBe(true);
+    expect(treeSettled({ threads: branched })).toBe(false);
     expect(treeSettled({ threads: [makeThread({ id: "p", ...archived, ...finishedUnread })], now: LATER })).toBe(false);
   });
 
@@ -140,7 +98,7 @@ describe("a settled tree", () => {
     expect(treeSettled({ threads: tree({ isHidden: true }), now: LATER })).toBe(true);
     expect(treeSettled({ threads: tree({ isHidden: true, ...working }), now: LATER })).toBe(false);
     expect(treeSettled({ threads: tree({ isHidden: true, hasPendingInteraction: true }), now: LATER })).toBe(false);
-    expect(treeSettled({ threads: tree({ isHidden: true, environment: { branchName: "f" } }), pullRequests: { c: "open" }, now: LATER })).toBe(false);
+    expect(treeSettled({ threads: tree({ isHidden: true, environment: { branchName: "f" } }), now: LATER })).toBe(true);
   });
 });
 
@@ -189,16 +147,14 @@ describe("the settled fold", () => {
     expect(rowIds(view, "project:proj_a")).toEqual(["new", "old2", "w", "busy", "settled:1"]);
   });
 
-  it("takes in a tree that crosses the period, or whose pull request merges, and changes with Settle after", () => {
+  it("takes in a tree that crosses the period, and changes with Settle after", () => {
     expect(ids({ now: T0 + DAY - 1 })).toEqual(["new", "old1", "old2", "busy"]);
     // old1's child was created last, at T0 + 3, so the tree crosses then.
     expect(ids({ now: T0 + DAY + 2 })).toEqual(["new", "old1", "busy", "settled:1"]);
     expect(ids({ now: T0 + DAY + 3 })).toEqual(["new", "busy", "settled:2"]);
     expect(ids({ prefs: { settleAfter: "3d" } })).toEqual(["new", "old1", "old2", "busy"]);
     expect(ids({ prefs: { settleAfter: "12h" } })).toEqual(["new", "busy", "settled:2"]);
-    const branched = threads.map((thread) => (thread.id === "new" ? { ...thread, environment: { ...thread.environment!, branchName: "f" } } : thread));
-    expect(rowIds(viewOf({ threads: branched, now: LATER, pullRequests: { new: "open" } }), "project:proj_a")).toEqual(["new", "busy", "settled:2"]);
-    expect(rowIds(viewOf({ threads: branched, now: LATER, pullRequests: { new: "merged" } }), "project:proj_a")).toEqual(["busy", "settled:3"]);
+    expect(ids({ prefs: { settleAfter: "never" } })).toEqual(["new", "old1", "old2", "busy"]);
   });
 
   it("lets a settled tree that becomes active again leave the fold", () => {

@@ -15,46 +15,12 @@ export const SETTLE_AFTER_MS: Readonly<Record<Exclude<SettleAfter, "never">, num
   "1w": 7 * 24 * HOUR,
 };
 
-/** A pull request's state, as bb's lookup reports it. */
-export type PullRequestState = "open" | "draft" | "merged" | "closed";
-
-/**
- * What settling knows of a thread's pull request: its state, null when the
- * thread has none, or `unknown` while a lookup it needs has not answered.
- */
-export type PullRequestFact = PullRequestState | null | "unknown";
-
-/**
- * Whether a thread's branch can carry a pull request worth looking up: it is
- * on a branch other than its project's default. A default branch the lookup
- * could not find (null) is no reason to skip one; one still being looked up
- * (undefined) is, until it answers.
- */
-export function needsPullRequestLookup(branch: string | null, defaultBranch: string | null | undefined): boolean {
-  return branch !== null && defaultBranch !== undefined && branch !== defaultBranch;
-}
-
-/** A thread's pull request fact, from its project's default branch and the lookups that answered. */
-export function pullRequestFact(
-  thread: Pick<PluginSidebarThread, "id" | "environment">,
-  defaultBranch: string | null | undefined,
-  answers: ReadonlyMap<string, PullRequestState | null>,
-): PullRequestFact {
-  const branch = thread.environment?.branchName ?? null;
-  if (branch === null) return null;
-  if (defaultBranch === undefined) return "unknown";
-  if (!needsPullRequestLookup(branch, defaultBranch)) return null;
-  const answer = answers.get(thread.id);
-  return answer === undefined ? "unknown" : answer;
-}
-
 export interface SettleInputs {
   now: number;
   settleAfter: SettleAfter;
   /** Server stamps: when each thread last started and finished a turn. */
   startedAt: Readonly<Record<string, number>>;
   finishedAt: Readonly<Record<string, number>>;
-  pullRequestOf(thread: PluginSidebarThread): PullRequestFact;
 }
 
 /**
@@ -77,46 +43,18 @@ export function lastActivityAt(
 
 /**
  * A settled thread: quiet as if no thread were open, not needing attention,
- * not pinned, with no open pull request, and either its pull request merged
- * or closed or its own last activity is older than the Settle after period.
- * Hidden and archived threads take the same test.
+ * not pinned, and its own last activity is older than the Settle after
+ * period. Hidden and archived threads take the same test.
  */
 export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean {
   const thread = info.thread;
-  if (!mightSettle(info)) return false;
-  const pullRequest = inputs.pullRequestOf(thread);
-  if (pullRequest === "unknown" || pullRequest === "open" || pullRequest === "draft") return false;
-  if (pullRequest === "merged" || pullRequest === "closed") return true;
+  if (thread.pinnedAt !== null || thread.isPinned) return false;
+  if (!isQuietThread(info.state, info.unread, false) || info.attentionFlags.size > 0) return false;
   if (inputs.settleAfter === "never") return false;
   return inputs.now - lastActivityAt(thread, inputs) >= SETTLE_AFTER_MS[inputs.settleAfter];
-}
-
-/** A row's thread that settles once its pull request and activity allow: quiet as if none were open, needing no attention, not pinned. */
-function mightSettle(info: ThreadInfo): boolean {
-  const thread = info.thread;
-  if (thread.pinnedAt !== null || thread.isPinned) return false;
-  return isQuietThread(info.state, info.unread, false) && info.attentionFlags.size === 0;
 }
 
 /** A tree settles as one unit: when every thread in it is settled. */
 export function isSettledTree(tree: Pick<ThreadTree, "root" | "descendants">, inputs: SettleInputs): boolean {
   return isSettledThread(tree.root, inputs) && tree.descendants.every((info) => isSettledThread(info, inputs));
-}
-
-/**
- * The threads whose pull request settling has to look up: every thread that
- * would settle but for its pull request, on a branch other than its
- * project's default.
- */
-export function pullRequestLookupIds(
-  infos: Iterable<ThreadInfo>,
-  defaultBranchOf: (thread: PluginSidebarThread) => string | null | undefined,
-): string[] {
-  const ids: string[] = [];
-  for (const info of infos) {
-    const thread = info.thread;
-    if (!mightSettle(info)) continue;
-    if (needsPullRequestLookup(thread.environment?.branchName ?? null, defaultBranchOf(thread))) ids.push(thread.id);
-  }
-  return ids;
 }
