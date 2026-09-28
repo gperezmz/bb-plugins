@@ -101,7 +101,7 @@ export const SETTINGS = {
   showAmount: {
     type: "boolean",
     label: "Show amount in header",
-    description: "Show the thread tree total inside the header coin's button, after the coin.",
+    description: "Show the thread tree total inside the header chip, after the coin.",
     default: false,
   },
   warnAbove: {
