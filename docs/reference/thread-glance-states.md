@@ -12,7 +12,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon | Faint grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
-| 9 | Unread | The thread finished since you last read it, and is not open in a pane of the window | Filled dot | Blue |
+| 9 | Unread | The thread finished since you last read it, and is not [open in a pane of the window](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
 | 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Faint grey |
 

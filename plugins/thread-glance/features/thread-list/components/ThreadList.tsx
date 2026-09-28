@@ -133,7 +133,8 @@ function ThreadListBody({
   const { stamps, markSeen, clearSeen } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
-  // When the next child's failure becomes orphaned: read off the forest below.
+  // When the next child's failure becomes orphaned. The forest knows it, but
+  // the forest is built from the clock, so the clock takes it from state.
   const [orphanDeadline, setOrphanDeadline] = useState<number | null>(null);
   const nextDeadline = useMemo(() => {
     const future = Object.values(scheduled).filter((at) => at > Date.now());
