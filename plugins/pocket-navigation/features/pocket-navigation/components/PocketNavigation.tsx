@@ -32,8 +32,8 @@ const ICON_BUTTON = cn(CONTROL, "aspect-square px-0");
 const ACTIVE = "bg-sidebar-accent text-sidebar-foreground";
 
 /**
- * bb's sidebar navigation, drawn on a phone as one icon row and a New thread
- * line, and everywhere else as bb draws it.
+ * bb's sidebar navigation, drawn on a phone as a New thread line above one
+ * icon row, and everywhere else as bb draws it.
  */
 export function PocketNavigation({ isCompactViewport, experimental_Original: Original }: ExperimentalSidebarNavigationProps) {
   if (!isCompactViewport) return <Original />;
@@ -60,17 +60,6 @@ function PhoneNavigation() {
   return (
     <TooltipProvider>
       <nav aria-label="Sidebar navigation" className="shrink-0 space-y-0.5 px-2 py-2">
-        <div className="flex items-center gap-0.5">
-          {/* Scrolls sideways when the icons outgrow the sidebar; "…" stays put. */}
-          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
-            {iconRow.map((item) => (
-              <IconButton key={item.id} item={item} isActive={isActive(item)} {...itemProps(item)} />
-            ))}
-          </div>
-          {overflow.length > 0 ? (
-            <Overflow items={overflow} isActive={isActive} onActivate={activate} onCustomize={actions.openCustomize} />
-          ) : null}
-        </div>
         {newThread !== null || search !== null ? (
           <div className="flex items-center gap-0.5">
             {newThread !== null ? (
@@ -90,6 +79,17 @@ function PhoneNavigation() {
             ) : null}
           </div>
         ) : null}
+        <div className="flex items-center gap-0.5">
+          {/* Scrolls sideways when the icons outgrow the sidebar; "…" stays put. */}
+          <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+            {iconRow.map((item) => (
+              <IconButton key={item.id} item={item} isActive={isActive(item)} {...itemProps(item)} />
+            ))}
+          </div>
+          {overflow.length > 0 ? (
+            <Overflow items={overflow} isActive={isActive} onActivate={activate} onCustomize={actions.openCustomize} />
+          ) : null}
+        </div>
       </nav>
       <div aria-hidden="true" className="mx-2 my-2 shrink-0 border-t border-sidebar-border/25" />
     </TooltipProvider>
