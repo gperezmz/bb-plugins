@@ -26,7 +26,6 @@ describe("the stored 0.1.0 shape", () => {
     const row = fixture("threads-row.json") as { thread_id: string; compact_on: number; record: string; updated_at: number };
     db.prepare("INSERT INTO threads (thread_id, compact_on, record, updated_at) VALUES (?, ?, ?, ?)").run(row.thread_id, row.compact_on, row.record, row.updated_at);
     expect(store.get(row.thread_id)).toEqual(fixture("threads-record.json"));
-    expect(store.compactOnIds()).toEqual([row.thread_id]);
 
     const log = fixture("turn-logs-row.json") as { thread_id: string; record: string };
     db.prepare("INSERT INTO turn_logs (thread_id, record) VALUES (?, ?)").run(log.thread_id, log.record);

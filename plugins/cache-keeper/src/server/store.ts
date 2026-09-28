@@ -4,9 +4,8 @@
  * been read, what was sent and what it cost, and the fetched price lists.
  * Rows hold JSON; indexed columns are only what queries filter on.
  *
- * Every write to a thread's record is a synchronous read-modify-write of the
- * stored row (`update`), so two writers never undo each other: a change made
- * while the engine awaits bb or a host is read back before the engine writes.
+ * The engine keeps every record in memory and is the only writer, so its
+ * changes are made to the record as it stands and written back in batches.
  */
 import type { CheckInReason, TaskClock } from "../core/checkins";
 import { newIdleStretch, type IdleStretch } from "../core/keeper";
@@ -116,7 +115,7 @@ export interface ThreadRecord {
   compactOn: boolean;
   /** Keep warm while waiting, as flipped on this tree top; null until flipped, when the setting decides. */
   keepWarm: boolean | null;
-  /** The setting N; null until switched on. */
+  /** The setting, 1 to 10; null until switched on. */
   setting: number | null;
   stretch: IdleStretch | null;
   inFlight: InFlight | null;
@@ -326,20 +325,9 @@ export class Store {
     ).run(threadId, record.compactOn ? 1 : 0, storedForm(record), now);
   }
 
-  /** Applies `change` to the record as stored now, and stores the result. Never await between reading a record and this call. */
-  update(threadId: string, now: number, change: (record: ThreadRecord) => ThreadRecord): ThreadRecord {
-    const next = change(this.get(threadId));
-    this.put(threadId, next, now);
-    return next;
-  }
-
   all(): { threadId: string; record: ThreadRecord }[] {
     const rows = this.sql("SELECT thread_id, record FROM threads").all() as { thread_id: string; record: string }[];
     return rows.map((r) => ({ threadId: r.thread_id, record: normalizeRecord(parse<Partial<ThreadRecord> & Record<string, unknown>>(r.record, {})) }));
-  }
-
-  compactOnIds(): string[] {
-    return (this.sql("SELECT thread_id FROM threads WHERE compact_on = 1").all() as { thread_id: string }[]).map((r) => r.thread_id);
   }
 
   /** Whether anything was ever stored: a first load after a reinstall finds rows here. */
@@ -359,10 +347,6 @@ export class Store {
     const result = this.sql("INSERT INTO history (thread_id, at, kind, record) VALUES (?, ?, ?, ?)")
       .run(threadId, at, kind, JSON.stringify(record)) as { lastInsertRowid?: number | bigint };
     return Number(result.lastInsertRowid ?? 0);
-  }
-
-  deleteHistory(id: number): void {
-    this.sql("DELETE FROM history WHERE id = ?").run(id);
   }
 
   setContextAfter(id: number, contextAfter: number): void {
@@ -391,13 +375,6 @@ export class Store {
     const rows = this.sql(`SELECT id, thread_id, at, kind, record FROM history WHERE at >= ?${filter} ORDER BY at DESC, id DESC LIMIT ?`)
       .all(since, ...(kinds ?? []), limit) as HistoryDbRow[];
     return rows.map(historyOf);
-  }
-
-  /** The thread's most recent entry of one of `kinds`, or null. */
-  lastHistory(threadId: string, kinds: readonly HistoryKind[]): HistoryRow | null {
-    const r = this.sql(`SELECT id, thread_id, at, kind, record FROM history WHERE thread_id = ? AND kind IN (${kinds.map(() => "?").join(", ")}) ORDER BY at DESC, id DESC LIMIT 1`)
-      .get(threadId, ...kinds) as HistoryDbRow | undefined;
-    return r === undefined ? null : historyOf(r);
   }
 
   /** Count and cost by kind since `since`, summed in SQLite so a busy install's month is not read row by row. */

@@ -204,8 +204,8 @@ interface Observed {
   lifetimeMs: number | null;
 }
 
-/** A tree keep-warm whose shallower leaves have not been sent yet. */
-interface Cycle {
+/** A tree keep-warm whose shallower leaves have not been sent yet, while the report from below climbs to them. */
+interface StagedKeepWarm {
   at: number;
   deepest: number;
   pending: { id: string; depth: number; deadline: number | null }[];
@@ -235,7 +235,7 @@ export class Engine {
   private readonly nothingNewRows = new Map<string, Set<string>>();
   private readonly views = new Map<string, ThreadView>();
   private readonly viewedAt = new Map<string, number>();
-  private readonly cycles = new Map<string, Cycle>();
+  private readonly stagedKeepWarms = new Map<string, StagedKeepWarm>();
   /** Threads whose host did not answer, and since when; nothing is sent to them until it does. */
   private readonly hostDown = new Map<string, number>();
   private readonly retryAt = new Map<string, number>();
@@ -576,7 +576,7 @@ export class Engine {
       case "active":
         this.onActive(t);
         // A report reaching a level of a tree keep-warm under way is the moment its leaves at that level go.
-        if (this.cycles.has(this.index.topOf(id))) {
+        if (this.stagedKeepWarms.has(this.index.topOf(id))) {
           void this.serial(`learn:${id}`, () => this.readEvents(id))
             .catch(() => {})
             .then(() => this.replan(this.index.topOf(id)));
@@ -739,7 +739,7 @@ export class Engine {
   private async readPending(threadId: string): Promise<void> {
     this.counters.bbCalls++;
     const raw = await this.deps.pendingInteractions(threadId).catch(() => undefined);
-    const list = Array.isArray(raw) ? raw : Array.isArray((raw as { interactions?: unknown })?.interactions) ? (raw as { interactions: unknown[] }).interactions : null;
+    const list = pendingList(raw);
     const t = this.index.get(threadId);
     if (list === null || t === undefined) {
       this.warnOnce(`missing\0${threadId}\0pendingInteractions`, `${threadId}: bb's pending interactions reply lacks the list; nothing is sent to it until a reply carries it`);
@@ -850,8 +850,7 @@ export class Engine {
       this.counters.hostCalls++;
       read = await this.deps.transcript(hostId, session, cursor);
     } catch (error) {
-      if (!this.hostDown.has(threadId)) this.hostDown.set(threadId, this.now());
-      this.warnOnce(`host\0${threadId}\0${hostId}`, `${threadId}: its machine ${hostId} did not answer; nothing is sent to it until it does: ${message(error)}`);
+      this.hostFailed(threadId, hostId, error);
       return;
     }
     this.hostDown.delete(threadId);
@@ -871,6 +870,12 @@ export class Engine {
       this.deps.store.setContextAfter(c.historyId, done.postTokens);
       this.patch(threadId, (r) => (r.compaction === null ? r : { ...r, compaction: { ...r.compaction, contextAfter: done.postTokens } }));
     }
+  }
+
+  /** A machine that did not answer, or answered with a reply lacking a field: nothing is sent to the thread until it answers. */
+  private hostFailed(threadId: string, hostId: string, error: unknown): void {
+    if (!this.hostDown.has(threadId)) this.hostDown.set(threadId, this.now());
+    this.warnOnce(`host\0${threadId}\0${hostId}`, `${threadId}: its machine ${hostId} did not answer as expected; nothing is sent to it until it does: ${message(error)}`);
   }
 
   private async hostOf(threadId: string): Promise<string | null> {
@@ -1374,7 +1379,7 @@ export class Engine {
       const o = observed.get(n.id);
       if (o !== undefined && o.waiting && o.deadline !== null && o.deadline > now && this.isKeptWarm(n.id, settings)) wakes.push(o.deadline);
     }
-    const staged = this.cycles.get(top);
+    const staged = this.stagedKeepWarms.get(top);
     if (staged !== undefined) for (const p of staged.pending) wakes.push(stagedFallback(staged, p));
     // A report still on its way stops holding things once it is given up on.
     for (const o of observed.values()) {
@@ -1433,7 +1438,7 @@ export class Engine {
         if (this.record(id).transcript?.cursor == null) this.unlearnt.set(id, this.now());
       });
     }
-    const due = [...plans.values()].some((p) => p.action !== null) || tree.due.length > 0 || this.cycles.has(top) || this.heldDue(observed, now);
+    const due = [...plans.values()].some((p) => p.action !== null) || tree.due.length > 0 || this.stagedKeepWarms.has(top) || this.heldDue(observed, now);
     if (due && !this.actQueued.has(top)) {
       this.actQueued.add(top);
       void this.act(top);
@@ -1492,8 +1497,7 @@ export class Engine {
       this.counters.hostCalls++;
       read = await this.deps.tasks(hostId, { sessionId: session, cwdSlug: slug, commands, subagents: [] });
     } catch (error) {
-      if (!this.hostDown.has(threadId)) this.hostDown.set(threadId, this.now());
-      this.warnOnce(`host\0${threadId}\0${hostId}`, `${threadId}: its machine ${hostId} did not answer; nothing is sent to it until it does: ${message(error)}`);
+      this.hostFailed(threadId, hostId, error);
       return;
     }
     this.hostDown.delete(threadId);
@@ -1534,7 +1538,7 @@ export class Engine {
 
       // A tree keep-warm goes to its deepest leaves first. A shallower leaf goes when the report from below reaches
       // its level, so that its turn and the report's run side by side and bb batches both reports into the parent.
-      const cycle = this.cycles.get(top);
+      const cycle = this.stagedKeepWarms.get(top);
       if (cycle !== undefined) {
         const reached = (depth: number) => members.some((m) => this.index.depthOf(m) === depth && (this.turnLog(m)?.delivered.some((d) => d.at >= cycle.at) ?? false));
         const ready = cycle.pending.filter((p) => reached(p.depth) || now >= stagedFallback(cycle, p));
@@ -1542,18 +1546,18 @@ export class Engine {
         const go = ready.filter((p) => sendable(p.id) && nodes.get(p.id)?.keepable === true).map((p) => p.id);
         if (go.length > 0) cycle.historyId = await this.sendKeepWarms(go, observed, top, cycle.historyId);
         cycle.pending = cycle.pending.filter((p) => !ready.includes(p));
-        if (cycle.pending.length === 0) this.cycles.delete(top);
+        if (cycle.pending.length === 0) this.stagedKeepWarms.delete(top);
       }
       // No new tree keep-warm starts while the last one still has leaves to send.
-      const staging = this.cycles.has(top);
-      const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.cycles.get(top)?.pending.some((p) => p.id === d.id) ?? false));
+      const staging = this.stagedKeepWarms.has(top);
+      const due = tree.due.filter((d) => sendable(d.id) && !(staging && d.tree) && !(this.stagedKeepWarms.get(top)?.pending.some((p) => p.id === d.id) ?? false));
       const together = due.filter((d) => d.tree).map((d) => ({ id: d.id, depth: this.index.depthOf(d.id), deadline: observed.get(d.id)?.deadline ?? null }));
       if (together.length > 0) {
         const deepest = Math.max(...together.map((t) => t.depth));
         const first = together.filter((t) => t.depth === deepest).map((t) => t.id);
         const historyId = await this.sendKeepWarms(first, observed, top, null);
         const pending = together.filter((t) => t.depth < deepest);
-        if (pending.length > 0) this.cycles.set(top, { at: now, deepest, pending, historyId });
+        if (pending.length > 0) this.stagedKeepWarms.set(top, { at: now, deepest, pending, historyId });
       }
       await Promise.all(due.filter((d) => !d.tree).map((d) => this.sendKeepWarms([d.id], observed, d.id, null)));
       // Check-ins wait on their machine; the keep-warms above did not wait for them.
@@ -1610,7 +1614,7 @@ export class Engine {
     const read = readThread(raw, false);
     if (read === null) return { status: "", archived: false, deleted: false, providerId: "", pending: null, missing: ["id"] };
     const missing = [...read.missing];
-    const list = Array.isArray(pending) ? pending : Array.isArray((pending as { interactions?: unknown })?.interactions) ? (pending as { interactions: unknown[] }).interactions : null;
+    const list = pendingList(pending);
     if (list === null) missing.push("pendingInteractions");
     const t = this.index.get(threadId);
     if (t !== undefined) this.index.apply({ ...read.patch, pending: list === null ? t.pending : list.length > 0 }, t.missing);
@@ -1733,12 +1737,12 @@ export class Engine {
       ids.map(async (id) => {
         const o = observed.get(id)!;
         const planned: Planned = { id, kind: "keep-warm", dueKey: `keep-warm:${o.facts?.lastRequestAt ?? now}` };
-        if (!(await this.prepare(planned))) return;
         const { checkIns, waitMs } = this.deps.settings();
         const record = this.record(id);
         const routine = Object.entries(record.tasks)
           .filter(([, t]) => checkIns && foldDue(t.clock, now, waitMs))
           .map(([taskId]) => ({ id: taskId, reason: "routine" as const }));
+        if (!(await this.prepare(planned))) return;
         const folded = routine.length === 0 ? [] : await this.checkInTasks(o, routine, now);
         const forecastUsd = this.forecast(id, observed);
         const text = keepWarmText(o.items, folded);
@@ -1748,7 +1752,7 @@ export class Engine {
           }
           const row = this.deps.store.historyRow(entry)!;
           const threads = [...(row.record.threads ?? []), id];
-          const usd = (row.record.split === undefined ? (row.record.usd ?? 0) : (row.record.usd ?? 0)) + forecastUsd;
+          const usd = (row.record.usd ?? 0) + forecastUsd;
           this.deps.store.patchHistoryRecord(entry, {
             threads,
             folded: [...(row.record.folded ?? []), ...folded.map((f) => f.id)],
@@ -2104,6 +2108,13 @@ export class Engine {
   }
 }
 
+/** The rows of bb's pending-interactions reply, or null when it lacks them. */
+function pendingList(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw;
+  const rows = (raw as { interactions?: unknown } | null | undefined)?.interactions;
+  return Array.isArray(rows) ? rows : null;
+}
+
 /** A background task as bb's events carry it. */
 interface TaskItem {
   type?: string;
@@ -2153,7 +2164,7 @@ function taskItems(record: ThreadRecord): WaitItem[] {
  * A shallower leaf no report reached goes 30 s a level after the deepest, and
  * never more than 30 s past its own deadline: the cache is warm for 60.
  */
-const stagedFallback = (cycle: Cycle, p: Cycle["pending"][number]) =>
+const stagedFallback = (cycle: StagedKeepWarm, p: StagedKeepWarm["pending"][number]) =>
   Math.min(cycle.at + (cycle.deepest - p.depth) * LEAD_PER_LEVEL_MS, (p.deadline ?? Infinity) + STAGED_GRACE_MS);
 
 /** How far past its own deadline a staged leaf may wait for the report from below; the deadline leaves a minute. */
