@@ -57,7 +57,22 @@ With **Comfortable** density, a row with no note whose branch is not its project
 
 The badge reads `#<number>`, coloured red when checks failed, the branch conflicts or changes were requested, green when it is ready to merge, and grey otherwise. It sits after the branch when the second line shows the branch. Otherwise, in either density, it sits on the title line of a root whose branch is not its project's default branch.
 
+## The row's right end
+
+Left to right, from the title to the row's end. On hover the children chip stays where it was, and the title gives up room only where the actions need more than the harness and machine leave. Source: [`features/thread-list/components/ThreadRowView.tsx`](../../plugins/thread-glance/features/thread-list/components/ThreadRowView.tsx).
+
+| | Title | Harness and machine | Children chip | Trailing slot |
+|---|---|---|---|---|
+| At rest | The title, then the hidden badge on a hidden child, or the [pull request badge](#the-pull-request-badge) on a root | The [harness logo and machine name](#the-harness-logo-and-the-machine-name), where the row shows them | On a parent thread only | The time |
+| On hover | Shortened where the actions need the room | **Mark read**, on a root whose tree holds something unread, and **Archive**, in place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
+
+A row without children has no chip and no space kept for one.
+
+On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
+
 ## The trailing slot
+
+The last column of every row, 4 px after the children chip. It is as wide as the **…** button or the widest time up to `99w`, whichever is wider, so the times line up down the list; a thread 100 weeks old or more widens its own row's slot.
 
 | Row | Shows |
 |---|---|
@@ -67,13 +82,15 @@ The badge reads `#<number>`, coloured red when checks failed, the branch conflic
 
 An archived row shows no time. A thread that started before Thread Glance was installed has no start time, and shows no timer until its next run.
 
-A thread on a machine other than bb's primary machine shows the machine's name beside its time, in both densities. A thread on the primary machine shows no machine, and while the list is grouped by machine no row does.
+## The harness logo and the machine name
 
-The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees), the provider's logo or a two-letter mark when the provider has none, sits beside the time only where the harness differs: on a root whose harness is not bb's default harness, and on a child whose harness is not its parent thread's. The **Harness icon** preference draws it muted or in the provider's colour.
+A thread on a machine other than bb's primary machine shows the machine's name before the children chip, in both densities. A thread on the primary machine shows no machine, and while the list is grouped by machine no row does.
+
+The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees), the provider's logo or a two-letter mark when the provider has none, sits before the machine name only where the harness differs: on a root whose harness is not bb's default harness, and on a child whose harness is not its parent thread's. The **Harness icon** preference draws it muted or in the provider's colour.
 
 ## The children chip
 
-A parent thread carries a muted chip beside its title: the number of its direct children and a chevron that opens and closes them. Hidden children are not counted; archived children are counted while archived threads are shown. Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
+A parent thread carries a muted chip just before its time: the number of its direct children and a chevron that opens and closes them. Hidden children are not counted; archived children are counted while archived threads are shown. Opening the chip shows its direct children, and those rows plus the number on its `N more child threads` row, when there is one, add up to the chip's number. Which children show without opening it is set out in [what "Needs attention" means](../explanation/thread-glance-attention.md#trees-and-folding).
 
 ## The settled fold
 

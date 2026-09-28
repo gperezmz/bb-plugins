@@ -43,7 +43,7 @@ A child thread's failure that its parent thread went idle without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
-The muted count of a parent thread's direct children beside its title, with the chevron that opens and closes them.
+The muted count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them.
 _Avoid_: Chip, Pill, children badge
 
 **Child dot**:
@@ -65,6 +65,10 @@ _Avoid_: Auto-settle days, inactivity threshold
 **Settled fold**:
 The faint "Settled (N)" divider at the end of a group that holds its settled threads.
 _Avoid_: Older fold, N older, more row
+
+**Trailing slot**:
+The last column of a Thread Glance row, one width on every row, holding the time at rest and the "…" menu button on hover.
+_Avoid_: Last slot, time slot, time column
 
 **Status column**:
 The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
