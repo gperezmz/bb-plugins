@@ -100,11 +100,10 @@ function render(
   });
 }
 
-/** Thread Glance's item in bb's sidebar footer, opened: the settings panel. */
-function renderSettings(options: { prefs?: Partial<Preferences>; extra?: object } = {}) {
-  const item = app.experimentalSidebarFooterItems[0]!;
-  if (item.kind !== "disclosure") throw new Error("the footer item opens no panel");
-  return renderSlot(item, { dismiss() {} }, { rpc: rpc(options.prefs) as never, ...options.extra }).container;
+/** Opens the settings panel from the list header of the list on screen, and returns it. */
+async function openSettings(): Promise<HTMLElement> {
+  fireEvent.click(await screen.findByRole("button", { name: "Thread Glance settings" }));
+  return screen.findByRole("dialog");
 }
 
 describe("Thread Glance slot", () => {
@@ -112,12 +111,10 @@ describe("Thread Glance slot", () => {
     expect(app.threadLists.map((list) => list.id)).toEqual(["thread-glance"]);
   });
 
-  it("puts one Thread Glance item in bb's footer, drawn with the icon the manifest brands it with", () => {
-    expect(app.experimentalSidebarFooterItems.map(({ kind, label, icon }) => ({ kind, label, icon }))).toEqual([
-      { kind: "disclosure", label: "Thread Glance", icon: manifest.bb.branding.icon },
-    ]);
-    expect(manifest.bb.branding.icon).not.toBe("Settings");
+  it("puts nothing in bb's sidebar footer", () => {
+    expect(app.experimentalSidebarFooterItems).toEqual([]);
     expect(app.sidebarFooterActions).toEqual([]);
+    expect(manifest.bb.branding.icon).toBe("ListView");
   });
 
   it("shows a skeleton while threads load", async () => {
@@ -228,24 +225,43 @@ describe("Thread Glance slot", () => {
     expect(screen.getByText("↳").getAttribute("title")).toBe("Child of Child");
   });
 
-  it("starts the list at its first group header when nothing needs attention", async () => {
-    const { container } = render([makeThread({ id: "a", title: "Busy", ...working })]);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(container.firstElementChild!.firstElementChild).toBe(screen.getByRole("region", { name: "Alpha" }));
+  it("starts the list at the list header, naming the grouping without acting on a click, in every grouping and viewport", async () => {
+    for (const [organizationMode, name] of [
+      ["project", "Projects"],
+      ["chronological", "Sections"],
+      ["machine", "Machines"],
+    ] as const) {
+      for (const isCompactViewport of [false, true]) {
+        const { container } = render([makeThread({ id: "a", title: "Busy", ...working })], {
+          prefs: { organizationMode },
+          props: { isCompactViewport },
+        });
+        await screen.findByRole("link", { name: /Open Busy/ });
+        const header = container.firstElementChild!.firstElementChild as HTMLElement;
+        expect(header.getAttribute("data-sidebar")).toBe("list-header");
+        const heading = within(header).getByRole("heading", { name });
+        expect(heading.closest("button, a")).toBeNull();
+        fireEvent.click(heading);
+        expect(within(header).getByRole("heading", { name })).toBe(heading);
+        cleanup();
+      }
+    }
   });
 
   it("opens one settings panel with no tabs, holding exactly the listed settings", async () => {
-    const panel = renderSettings();
+    render([makeThread({ id: "a" })]);
+    const panel = await openSettings();
     await within(panel).findByRole("heading", { name: "List" });
     expect(within(panel).queryByRole("tablist")).toBeNull();
     expect(within(panel).queryByRole("tab")).toBeNull();
-    expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Show"]);
+    expect(within(panel).getAllByRole("heading").map((heading) => heading.textContent)).toEqual(["List", "Rows", "Attention"]);
     const segments = within(panel)
       .getAllByRole("radiogroup")
       .map((group) => [group.getAttribute("aria-label"), within(group).getAllByRole("radio").map((radio) => radio.textContent)]);
     expect(segments).toEqual([
       ["Group by", ["Project", "Custom", "Machine"]],
       ["Sort by", ["Updated", "Created", "A–Z"]],
+      ["Settle after", ["12h", "1d", "3d", "1w", "Never"]],
       ["Density", ["Compact", "Comfortable"]],
       ["Harness icon", ["Muted", "Colour"]],
     ]);
@@ -258,9 +274,9 @@ describe("Thread Glance slot", () => {
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
-    expect(within(panel).getAllByRole("radio")).toHaveLength(10);
+    expect(within(panel).getAllByRole("radio")).toHaveLength(15);
     expect(within(panel).getAllByRole("button")).toHaveLength(1);
-    expect(panel.querySelectorAll("button")).toHaveLength(10 + 2 + 1);
+    expect(panel.querySelectorAll("button")).toHaveLength(15 + 2 + 1);
   });
 
   it("reverses every group with the ↓/↑ button", async () => {
@@ -271,12 +287,11 @@ describe("Thread Glance slot", () => {
       makeThread({ id: "b1", title: "B old", projectId: "proj_b", createdAt: T0, latestAttentionAt: T0 }),
       makeThread({ id: "b2", title: "B new", projectId: "proj_b", createdAt: T0 + 1, latestAttentionAt: T0 + 1, lastReadAt: T0 + 1 }),
     ];
-    render(threads);
+    render(threads, { extra: { rpc: { ...rpc(), setPreference } as never } });
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
     expect(order()).toEqual(["Open A new", "Open A old", "Open B new", "Open B old"]);
-    // The panel mounts apart from the list, as bb's footer draws it.
-    const panel = renderSettings({ extra: { rpc: { ...rpc(), setPreference } as never } });
+    const panel = await openSettings();
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new", "Open B old", "Open B new"]));
     expect(within(panel).getByRole("button", { name: /Sort order: Oldest first/ }).textContent).toBe("↑");
@@ -291,7 +306,7 @@ describe("Thread Glance slot", () => {
     const list = render(threads);
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
-    const panel = renderSettings();
+    const panel = await openSettings();
     fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
     await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
     await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
@@ -305,7 +320,7 @@ describe("Thread Glance slot", () => {
     const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
     await screen.findByRole("link", { name: /Open Busy/ });
     const compact = row().textContent;
-    const panel = renderSettings();
+    const panel = await openSettings();
     fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Comfortable" }));
     await waitFor(() => expect(row().textContent).not.toBe(compact));
     const comfortable = row().textContent;
@@ -405,7 +420,7 @@ describe("Thread Glance slot", () => {
     expect(await icon(/Open Codex root/)).toBeTruthy();
     expect(await icon(/Open Codex child/)).toBeTruthy();
     expect((await icon(/Open Codex root/))!.className).toContain("opacity-60");
-    const panel = renderSettings();
+    const panel = await openSettings();
     fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Harness icon" })).getByRole("radio", { name: "Colour" }));
     await waitFor(async () => expect((await icon(/Open Codex root/))!.className).not.toContain("opacity-60"));
     expect((await icon(/Open Codex child/))!.className).not.toContain("opacity-60");
@@ -517,6 +532,63 @@ describe("Thread Glance slot", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("shows only what needs you while the need-you filter is on, and drops the filter when nothing does", async () => {
+    const threads = [
+      makeThread({ id: "a", title: "Asks", hasPendingInteraction: true }),
+      makeThread({ id: "q", title: "Quiet" }),
+      makeThread({ id: "b", title: "Hidden asks", projectId: "proj_b", hasPendingInteraction: true }),
+    ];
+    render(threads, { prefs: { hiddenGroups: ["project:proj_b"] } });
+    const filter = await screen.findByRole("button", { name: "2 need you" });
+    expect(filter.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("link", { name: /Open Hidden asks/ })).toBeNull();
+    fireEvent.click(filter);
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Open Quiet/ })).toBeNull());
+    expect(within(screen.getByRole("region", { name: "Alpha" })).getByRole("link", { name: /Open Asks/ })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Beta" })).getByRole("link", { name: /Open Hidden asks/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "2 need you" }));
+    await waitFor(() => expect(screen.getByRole("link", { name: /Open Quiet/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "2 need you" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: /Open Quiet/ })).toBeNull());
+  });
+
+  it("draws no need-you filter when nothing needs you", async () => {
+    render([makeThread({ id: "q", title: "Quiet" })]);
+    await screen.findByRole("link", { name: /Open Quiet/ });
+    expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+  });
+
+  it("marks every unread thread in the list read from the header, hidden groups included, asking first above 20", async () => {
+    const few = [
+      makeThread({ id: "u1", title: "U1", ...finishedUnread }),
+      makeThread({ id: "u2", title: "U2", projectId: "proj_b", ...finishedUnread }),
+      makeThread({ id: "c", title: "C", parentThreadId: "u1", createdAt: T0 + 1, ...finishedUnread }),
+    ];
+    const slot = render(few, { prefs: { hiddenGroups: ["project:proj_b"] } });
+    fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
+    await waitFor(() =>
+      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "u1", "u2"]),
+    );
+    cleanup();
+    const many = Array.from({ length: 21 }, (_, n) => makeThread({ id: `m${n}`, title: `M${n}`, ...finishedUnread }));
+    const big = render(many);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Mark 21 threads read?")).toBeTruthy();
+    expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark all read" }));
+    await waitFor(() => expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toHaveLength(21));
+  });
+
+  it("opens the settings panel under the header from the settings button, and closes it with the same button", async () => {
+    render([makeThread({ id: "a" })]);
+    const button = await screen.findByRole("button", { name: "Thread Glance settings" });
+    fireEvent.click(button);
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("collapsing a project persists through setPreference", async () => {

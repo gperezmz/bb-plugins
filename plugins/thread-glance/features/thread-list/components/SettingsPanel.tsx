@@ -1,11 +1,9 @@
-// Thread Glance's settings, shown by its item in bb's sidebar footer.
-import { experimental_Icon as Icon, type ExperimentalSidebarFooterDisclosureProps } from "@get-bb/plugin-sdk/app";
+// Thread Glance's settings, under the list header's settings button.
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { childAttentionFor, countsEveryChild, sortArrow, sortFieldPatch } from "../model/settings";
 import { effectiveSortField } from "../model/sort";
-import { useClientPreferences } from "../data/useClientPreferences";
-import { usePreferences } from "../data/usePreferences";
 import { ICONS } from "../icons";
 
 // bb's own segmented controls (the Reasoning picker, the diff view toggle)
@@ -105,7 +103,8 @@ function Heading({ children }: { children: React.ReactNode }) {
   return <h3 className="px-2 pb-0.5 pt-3 text-xs font-medium text-muted-foreground first:pt-0">{children}</h3>;
 }
 
-function SettingsPanel({
+/** Thread Glance's settings, as the list header's settings button opens them. */
+export function SettingsPanel({
   prefs,
   client,
   onPrefs,
@@ -159,6 +158,20 @@ function SettingsPanel({
         checked={prefs.environmentGrouping}
         onChange={(value) => onPrefs({ environmentGrouping: value })}
       />
+      <Line label="Settle after">
+        <Segmented
+          label="Settle after"
+          options={[
+            ["12h", "12h"],
+            ["1d", "1d"],
+            ["3d", "3d"],
+            ["1w", "1w"],
+            ["never", "Never"],
+          ]}
+          current={prefs.settleAfter}
+          onSelect={(value) => onPrefs({ settleAfter: value })}
+        />
+      </Line>
       <Heading>Rows</Heading>
       <Line label="Density">
         <Segmented
@@ -182,24 +195,13 @@ function SettingsPanel({
           onSelect={(value) => onPrefs({ harnessIcon: value })}
         />
       </Line>
-      <Heading>Show</Heading>
+      <Heading>Attention</Heading>
       <Toggle
         label="Needs attention counts every child"
         description="Every unread or failed child thread; otherwise only those blocked on you."
         checked={countsEveryChild(prefs.childAttention)}
         onChange={(value) => onPrefs({ childAttention: childAttentionFor(value) })}
       />
-    </div>
-  );
-}
-
-/** The footer item's panel, reading and writing the preferences the list reads. */
-export function SettingsDisclosure(_props: ExperimentalSidebarFooterDisclosureProps) {
-  const { prefs, update } = usePreferences();
-  const [client, updateClient] = useClientPreferences();
-  return (
-    <div className="p-1">
-      <SettingsPanel prefs={prefs} client={client} onPrefs={update} onClient={updateClient} />
     </div>
   );
 }

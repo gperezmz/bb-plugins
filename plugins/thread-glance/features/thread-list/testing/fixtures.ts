@@ -122,6 +122,7 @@ export interface Scenario {
   /** bb's primary machine; "host_1", the fixtures' own, when absent. */
   primaryHostId?: string | null;
   comfortable?: boolean;
+  needYouOnly?: boolean;
   /** bb's default harness; "claude-code", the fixtures' own, when absent. */
   defaultProviderId?: string | null;
   /** Pull request lookups that answered, by thread id. */
@@ -156,6 +157,7 @@ export function viewOf(scenario: Scenario): ListView {
     defaultProviderId: scenario.defaultProviderId === undefined ? "claude-code" : scenario.defaultProviderId,
     primaryHostId: scenario.primaryHostId === undefined ? "host_1" : scenario.primaryHostId,
     comfortable: scenario.comfortable ?? false,
+    needYouOnly: scenario.needYouOnly ?? false,
     defaultBranchOf: (thread) =>
       scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[thread.projectId],
   });

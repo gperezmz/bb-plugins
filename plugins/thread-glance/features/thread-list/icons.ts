@@ -25,6 +25,7 @@ export const ICONS = {
   newThread: "Plus",
   newSection: "SectionAdd",
   customize: "SlidersHorizontal",
+  settings: "SlidersHorizontal",
   check: "Check",
   pullRequest: "GitPullRequest",
   branch: "GitBranch",

@@ -2,6 +2,7 @@
 import type { OlderRow, SettledRow, ThreadRow } from "./view";
 import { FLAG_GLYPHS, type Flag } from "./state";
 import { formatDateTime } from "./details";
+import type { OrganizationMode } from "@/shared/preferences";
 
 export function stateText(row: ThreadRow, pluginLabel: string | null): string {
   const state = row.info.state;
@@ -46,4 +47,16 @@ export function settledRowText(row: SettledRow): { label: string; ariaLabel: str
     label: row.expanded ? "Settled" : `Settled (${row.count})`,
     ariaLabel: `${row.expanded ? "Hide" : "Show"} ${row.count} ${noun}`,
   };
+}
+
+/** The list header's name for the current grouping. */
+export function groupingName(mode: OrganizationMode): string {
+  switch (mode) {
+    case "project":
+      return "Projects";
+    case "chronological":
+      return "Sections";
+    case "machine":
+      return "Machines";
+  }
 }

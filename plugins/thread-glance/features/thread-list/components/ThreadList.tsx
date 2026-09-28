@@ -43,7 +43,7 @@ import { markAllReadPlan, toggleChip, toggleGroup, toggleOlder, toggleSettled, t
 import { pullRequestFact, pullRequestLookupIds, type SettleInputs } from "../model/settled";
 import { usePullRequestAnswers } from "../data/usePullRequestAnswers";
 import { PullRequestProbes } from "./PullRequestProbes";
-import { buildListView, type GroupView, type ListView } from "../model/view";
+import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
 import { ConfirmDialog, CustomizeDialog, DetailsDialog, MoveDialog, NewSectionDialog, type CustomizeItem } from "./Dialogs";
@@ -58,6 +58,8 @@ import { cancelPendingCards } from "./row-card";
 import { GroupSection, type DropStates, type GroupController } from "./GroupSection";
 import type { ProviderDisplay } from "./ProviderBadge";
 import { ThreadDetails } from "./ThreadDetails";
+import { ListHeader } from "./ListHeader";
+import type { ThreadTree } from "../model/trees";
 
 const PLUGIN_ID = "thread-glance";
 
@@ -111,7 +113,9 @@ function ThreadListBody({
   onRetry,
 }: PluginThreadListProps & { attempt: number; onRetry(): void }) {
   const { prefs, hydrated, update } = usePreferences();
-  const [client] = useClientPreferences();
+  const [client, updateClient] = useClientPreferences();
+  // The need-you filter is per window and starts off on every load.
+  const [needYouOn, setNeedYouOn] = useState(false);
   const sidebar = useSidebarThreads({ experimental_lifecycles: prefs.showArchived ? ["active", "archived"] : ["active"] });
   const actions = useThreadActions();
   const sdk = useSdk();
@@ -207,6 +211,7 @@ function ThreadListBody({
             primaryHostId: system.primaryHostId,
             comfortable: client.density === "comfortable",
             defaultBranchOf,
+            needYouOnly: needYouActive(needYouOn, countNeedYou(forest)),
           })),
     [
       forest,
@@ -221,11 +226,17 @@ function ThreadListBody({
       system.primaryHostId,
       client.density,
       defaultBranchOf,
+      needYouOn,
     ],
   );
   useLayoutEffect(() => {
     previousView.current = view;
   }, [view]);
+  // Nothing left that needs you turns the filter off, so the full list comes back.
+  const needYouCount = view?.needYouCount ?? 0;
+  useEffect(() => {
+    if (needYouOn && needYouCount === 0) setNeedYouOn(false);
+  }, [needYouOn, needYouCount]);
 
   // Viewing a child stamps seenAt, on arrival and on leaving, so a child
   // that finishes while you watch doesn't turn unread behind you.
@@ -444,34 +455,41 @@ function ThreadListBody({
   }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
   const showArchived = prefs.showArchived;
 
-  const groupController: GroupController | null = useMemo(() => {
-    if (!built) return null;
-    const markAll = (group: GroupView) => {
-      const { forest, activeThreadId, stamps } = latest.current;
-      // Folded roots count too: every tree bucketed in the group.
-      const trees = group.rootIds.flatMap((id) => forest!.treeOf.get(id) ?? []);
-      const plan = markAllReadPlan(trees, {
-        activeThreadId,
-        finishedAt: stamps.finishedAt,
-        seenAt: stamps.seenAt,
-      });
+  /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
+  const markTreesRead = useCallback(
+    (trees: readonly ThreadTree[], where: string) => {
+      const { activeThreadId, stamps } = latest.current;
+      const plan = markAllReadPlan(trees, { activeThreadId, finishedAt: stamps.finishedAt, seenAt: stamps.seenAt });
       const run = () => {
         if (plan.seen.length > 0) markSeen(plan.seen);
         for (const id of plan.read) actions.setRead(id, true).catch(() => undefined);
       };
       if (plan.read.length === 0) {
-        toast(`Nothing unread in ${group.descriptor.label}`);
+        toast(`Nothing unread in ${where}`);
       } else if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
         setConfirm({
           title: `Mark ${plan.read.length} threads read?`,
-          description: `Every unread thread in ${group.descriptor.label}, child threads included, will be marked read.`,
+          description: `Every unread thread in ${where}, child threads included, will be marked read.`,
           confirmLabel: "Mark all read",
           run,
         });
       } else {
         run();
       }
-    };
+    },
+    [actions, markSeen],
+  );
+  const onMarkListRead = useCallback(() => markTreesRead(latest.current.forest?.trees ?? [], "the list"), [markTreesRead]);
+  const onToggleNeedYou = useCallback(() => setNeedYouOn((on) => !on), []);
+
+  const groupController: GroupController | null = useMemo(() => {
+    if (!built) return null;
+    // Folded roots count too: every tree bucketed in the group.
+    const markAll = (group: GroupView) =>
+      markTreesRead(
+        group.rootIds.flatMap((id) => latest.current.forest!.treeOf.get(id) ?? []),
+        group.descriptor.label,
+      );
     return {
       compact: isCompactViewport,
       activeGroupId,
@@ -517,7 +535,7 @@ function ThreadListBody({
       onMarkAllRead: markAll,
       onNewSection: () => setNewSectionOpen(true),
     };
-  }, [built, isCompactViewport, activeGroupId, showArchived, prefs.organizationMode, applyToggle, actions, onNavigate, update, sdk, markSeen]);
+  }, [built, isCompactViewport, activeGroupId, showArchived, prefs.organizationMode, applyToggle, actions, onNavigate, update, sdk, markTreesRead]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, MOUSE_SENSOR),
@@ -693,6 +711,17 @@ function ThreadListBody({
   return (
     <ListLiveContext.Provider value={live}>
       <div className="flex w-full min-w-0 flex-col px-1.5 pb-2">
+        <ListHeader
+          mode={prefs.organizationMode}
+          needYouCount={view.needYouCount}
+          needYouOnly={needYouOn}
+          onToggleNeedYou={onToggleNeedYou}
+          onMarkAllRead={onMarkListRead}
+          prefs={prefs}
+          client={client}
+          onPrefs={update}
+          onClient={updateClient}
+        />
         <PullRequestProbes threadIds={pullRequestLookups} onAnswer={onPullRequest} />
         {threads.length === 0 ? (
           // bb's own pinned New thread button covers the empty list.
