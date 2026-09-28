@@ -111,7 +111,7 @@ export interface ThreadContext {
   activeThreadId: string | null;
   /**
    * Threads shown in a visible pane of the window besides the active one:
-   * bb's split panes. Absent, only the active thread is open.
+   * bb's split panes. Absent, only the active (focused) thread is open.
    */
   openThreadIds?: ReadonlySet<string>;
   /** Stamps, from the plugin server. */

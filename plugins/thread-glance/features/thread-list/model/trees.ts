@@ -40,9 +40,9 @@ export interface ThreadInfo {
   /** Quiet test for the thread alone. */
   quiet: boolean;
   /**
-   * A quiet thread, as if no thread were open: nothing to see behind a
+   * A quiet thread, as if no thread were focused: nothing to see behind a
    * tree's fold. A root, or any child when `childAttention` is
-   * `everything`, takes the quiet test without the open thread's exemption.
+   * `everything`, takes the quiet test without the focused thread's exemption.
    * Otherwise a child is quiet unless it runs or needs attention, so finishing
    * unread folds it; an archived child is always quiet. The fold reads this,
    * so opening a thread never changes which children stay shown.
@@ -67,7 +67,7 @@ export interface Subtree {
   visibleCount: number;
   /** Visible direct children: the chip's number. */
   childCount: number;
-  /** Every visible descendant is quiet, as if no thread were open, so the subtree adds nothing to see when folded. */
+  /** Every visible descendant is quiet, as if no thread were focused, so the subtree adds nothing to see when folded. */
   quietIgnoringOpen: boolean;
 }
 
@@ -88,7 +88,7 @@ export interface ThreadTree {
   /** Every thread quiet and the active thread not in it. */
   quiet: boolean;
   /**
-   * The quiet test without the open thread's exemption. A group's fold reads
+   * The quiet test without the focused thread's exemption. A group's fold reads
    * this, so opening a thread never changes which roots stay shown.
    */
   quietIgnoringOpen: boolean;

@@ -12,13 +12,13 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon | Faint grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
-| 9 | Unread | The thread finished since you last read it, and is not [open in a pane of the window](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
+| 9 | Unread | The thread finished since you last read it, and is not an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
 | 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Faint grey |
 
 A parent thread's glyph is chosen exactly as for a thread with no children, from its own state only, open or collapsed: an idle parent whose children are working shows the idle ring. What its children are doing is on its [children chip](#the-children-chip).
 
-A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, open or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
+A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, focused or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
 

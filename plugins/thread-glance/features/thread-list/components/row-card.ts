@@ -80,7 +80,7 @@ export function useRowCard(isActive: boolean, enabled: boolean): RowCard {
     };
   }, []);
 
-  // Becoming or ceasing to be the open thread, or a menu or rename taking
+  // Becoming or ceasing to be the focused thread, or a menu or rename taking
   // the row, closes the card and drops a pending open.
   useEffect(() => {
     cancel();

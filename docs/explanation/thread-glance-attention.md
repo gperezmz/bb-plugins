@@ -14,7 +14,7 @@ A root thread **needs attention** when it:
 
 A thread that is working does not need attention, and nor does one you have read, even if it failed. Its row keeps the red glyph so you can still see the failure, but it no longer counts. [States and glyphs](../reference/thread-glance-states.md) lists every state a row can show.
 
-A thread open in a pane of the window, the focused one or any other split pane, is never unread in Thread Glance. When it finishes or fails, bb marks it read a moment later, and counting it until then would only make the need-you filter appear and vanish. While bb's window is in the background, a thread left open that finishes therefore adds nothing to the need-you filter until you come back. Where a pane is maximized, Thread Glance takes every pane bb's split layout lists as visible.
+An **open thread**, one shown in any pane of the window, the focused one or another split pane, is never unread in Thread Glance. When it finishes or fails, bb marks it read a moment later, and counting it until then would only make the need-you filter appear and vanish. While bb's window is in the background, a thread left open that finishes therefore adds nothing to the need-you filter until you come back. Where a pane is maximized, Thread Glance takes every pane bb's split layout lists as visible.
 
 ## What a child thread adds
 
@@ -55,7 +55,7 @@ A thread's tree is listed as one unit: only the root gets a row in its group, an
 
 Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the one open, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
+Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 
 Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row. A child is quiet unless it or anything under it:
 
@@ -66,7 +66,7 @@ A hidden thread under it counts only for the second, and an archived child is al
 
 So a parent thread whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. With **Needs attention counts every child** on, a finished, unread child needs attention, so it stays out of the fold.
 
-The fold is worked out as if no thread were open, so the children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
+The fold is worked out as if no thread were focused, so the children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
 
 ## Settled threads
 
@@ -82,7 +82,7 @@ flowchart LR
 
 Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. A thread's pull request plays no part: a merged one does not settle it sooner, and an open one does not keep it out. So a thread is in or out of the fold from the first paint, and the pull request badges and branch lines filling in never move it. bb's thread list carries each thread's last finish, so the plugin's own record of when threads last started and finished, which arrives a moment later, rarely moves one either; a turn you stopped may be the exception. There is no manual settle: bb's archive already takes a thread out of the list.
 
-When the thread you have open is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
+When the focused thread is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
 
 ## What opens by itself
 

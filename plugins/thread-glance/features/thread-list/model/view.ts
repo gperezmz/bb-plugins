@@ -192,7 +192,7 @@ interface Context extends ViewInputs {
   /** Parent ids on the path to a reveal target. */
   revealPath: ReadonlySet<string>;
   revealIds: ReadonlySet<string>;
-  /** The open thread and its ancestors. */
+  /** The focused thread and its ancestors. */
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
@@ -329,7 +329,7 @@ function foldedChildren(
   }
 
   // The stable set reads `quietIgnoringOpen` for the child and everything under it, and
-  // ignores which thread is open and the reveal targets: they join afterwards
+  // ignores which thread is focused and the reveal targets: they join afterwards
   // and take no other row's place.
   const quietTree = (kid: ThreadInfo) => kid.quietIgnoringOpen && subtreeOf(context, kid.thread.id).quietIgnoringOpen;
   const stable = new Set<string>();
