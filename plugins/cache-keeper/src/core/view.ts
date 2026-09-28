@@ -207,15 +207,17 @@ export function bannerOf(view: ThreadView, now: number): { text: string; actions
 }
 
 /** A sidebar row showing a Cache Keeper glyph, and which. */
+export type RowStatus = "compaction" | "keep-warm";
+
 export interface RowGlyph {
   threadId: string;
-  status: "compaction" | "clock";
+  status: RowStatus;
 }
 
 /** What the sidebar row shows in place of its status glyph, or null. */
-export function rowStatus(view: ThreadView): RowGlyph["status"] | null {
+export function rowStatus(view: ThreadView): RowStatus | null {
   if (view.compactionDue) return "compaction";
-  if (view.warmPlanned) return "clock";
+  if (view.warmPlanned) return "keep-warm";
   return null;
 }
 

@@ -10,9 +10,10 @@
     "name": "Cache Keeper",
     "description": "Keeps idle Claude Code threads cheap to come back to: compacts them just before their prompt cache goes cold, and keeps threads waiting on background work warm.",
     "branding": {
-      "icon": "./icons/cache-keeper.svg",
+      "icon": "./icons/timer.svg",
       "experimental_icons": {
-        "cache-keeper": "./icons/cache-keeper.svg"
+        "cache-keeper": "./icons/timer.svg",
+        "flame": "./icons/flame.svg"
       }
     },
     "server": "./server.ts",

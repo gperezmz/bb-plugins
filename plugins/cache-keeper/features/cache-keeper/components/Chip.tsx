@@ -6,9 +6,11 @@
 import { useState, type SyntheticEvent } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { chipSentence, chipText, type ThreadView } from "@/src/core/view";
+import { buttonVariants } from "@/components/ui/button";
+import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { KEEPER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
+import { TIMER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 import { CompactPopover } from "./CompactPopover";
 
 const stop = (e: SyntheticEvent) => e.stopPropagation();
@@ -47,12 +49,13 @@ function ThreadChip({ threadId }: { threadId: string }) {
           aria-label={`Cache Keeper: ${sentence}`}
           title={sentence}
           className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground hover:bg-state-hover hover:text-foreground",
-            view.compactOn && "text-foreground",
-            view.compactionDue && "text-primary",
+            buttonVariants({ variant: "ghost", size: null }),
+            COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+            "gap-1.5 text-[13px] text-foreground",
+            view.compactionDue && "text-primary data-[state=open]:text-primary",
           )}
         >
-          <Icon name={KEEPER_ICON} fallback="Archive" className="size-3.5" aria-hidden />
+          <Icon name={TIMER_ICON} fallback="Archive" className="size-4" aria-hidden />
           {text !== "" && <span className="tabular-nums">{text}</span>}
         </button>
       </PopoverTrigger>
