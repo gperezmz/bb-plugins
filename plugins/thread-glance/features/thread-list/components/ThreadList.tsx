@@ -49,6 +49,7 @@ import { ListLiveContext, type ListLive, type ModelInfo, type RowController } fr
 import { ConfirmDialog, CustomizeDialog, DetailsDialog, MoveDialog, NewSectionDialog, type CustomizeItem } from "./Dialogs";
 import { useNotes } from "../data/useNotes";
 import { useDefaultBranches } from "../data/useDefaultBranches";
+import { useSystemFacts } from "../data/useSystemFacts";
 import { moveTargets } from "../model/move";
 import { modelDisplayName } from "../model/details";
 import { groupIdForRoot } from "../model/groups";
@@ -171,6 +172,7 @@ function ThreadListBody({
     [defaultBranches],
   );
   const [pullRequests, onPullRequest] = usePullRequestAnswers();
+  const system = useSystemFacts();
   const pullRequestLookups = useMemo(
     () => (forest === null ? [] : pullRequestLookupIds(forest.infos.values(), defaultBranchOf)),
     [forest, defaultBranchOf],
@@ -201,8 +203,9 @@ function ThreadListBody({
             activeThreadId,
             targets,
             settle,
+            defaultProviderId: system.defaultProviderId,
           })),
-    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, targets, settle],
+    [forest, threads, sidebar.projects, sidebar.sections, prefs, activeThreadId, targets, settle, system.defaultProviderId],
   );
   useLayoutEffect(() => {
     previousView.current = view;

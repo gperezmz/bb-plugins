@@ -48,6 +48,11 @@ export interface ThreadRow {
   parentTitle: string | null;
   chip: Chip | null;
   /**
+   * The row draws its harness icon: a root whose harness is not bb's
+   * default, a child whose harness is not its parent thread's.
+   */
+  harness: boolean;
+  /**
    * The child dot on the status glyph: the most urgent state among the
    * thread's descendants at any depth, or null for none.
    */
@@ -143,6 +148,8 @@ export interface ViewInputs {
   activeThreadId: string | null;
   targets: Targets;
   settle: SettleInputs;
+  /** bb's default harness; null while unknown, when no root draws one. */
+  defaultProviderId: string | null;
 }
 
 interface Context extends ViewInputs {
@@ -194,6 +201,13 @@ function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolea
   return info.quiet;
 }
 
+/** A root draws its harness when it differs from bb's default; a child, when it differs from its parent thread's. */
+function drawsHarness(context: Context, info: ThreadInfo): boolean {
+  const providerId = info.thread.providerId;
+  if (info.parentId === null) return context.defaultProviderId !== null && providerId !== context.defaultProviderId;
+  return providerId !== context.forest.infos.get(info.parentId)?.thread.providerId;
+}
+
 function threadRow(
   context: Context,
   info: ThreadInfo,
@@ -208,6 +222,7 @@ function threadRow(
     nested: options.nested,
     parentTitle: titleOf(context, info.parentId),
     chip: options.chip,
+    harness: drawsHarness(context, info),
     childDot: mostUrgent(subtreeOf(context, info.thread.id).dotFlags),
     bold: info.unread,
     note: info.note,

@@ -463,7 +463,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           />
         </button>
       ) : null}
-      {!editing ? (
+      {!editing && row.harness ? (
         <span
           className={cn(
             "pointer-events-none relative inline-flex shrink-0 transition-opacity",

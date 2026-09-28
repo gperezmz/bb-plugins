@@ -119,6 +119,8 @@ export interface Scenario {
   startedAt?: Record<string, number>;
   /** Project id → default branch; "main" for every project when absent. */
   defaultBranches?: Record<string, string | null>;
+  /** bb's default harness; "claude-code", the fixtures' own, when absent. */
+  defaultProviderId?: string | null;
   /** Pull request lookups that answered, by thread id. */
   pullRequests?: Record<string, PullRequestState | null>;
 }
@@ -148,6 +150,7 @@ export function viewOf(scenario: Scenario): ListView {
     activeThreadId: scenario.activeThreadId ?? null,
     targets: scenario.targets ?? new Map(),
     settle: settleOf(scenario),
+    defaultProviderId: scenario.defaultProviderId === undefined ? "claude-code" : scenario.defaultProviderId,
   });
 }
 

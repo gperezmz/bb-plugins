@@ -88,6 +88,13 @@ function render(
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
       providers: { models: async () => ({ models: [] }) } as never,
+      system: {
+        config: async () => ({
+          primaryHostId: "host_1",
+          generalSettings: { defaultProviderId: null },
+          serverAccess: { defaultProviderId: "claude-code" },
+        }),
+      } as never,
     },
     ...options.extra,
   });
@@ -358,6 +365,25 @@ describe("Thread Glance slot", () => {
     expect(column.querySelector("[data-child-dot]")?.className).toContain("--timeline-accent");
     const dot = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!.querySelector('span[class*="rounded-full"]');
     expect(dot?.className).toContain("--timeline-accent");
+  });
+
+  it("draws a harness icon only where it differs, in the Muted or Colour style the panel picks", async () => {
+    render([
+      makeThread({ id: "d", title: "Default root" }),
+      makeThread({ id: "x", title: "Codex root", providerId: "codex" }),
+      makeThread({ id: "c", title: "Codex child", parentThreadId: "d", providerId: "codex", createdAt: T0 + 1 }),
+      makeThread({ id: "s", title: "Same child", parentThreadId: "d", createdAt: T0 + 2 }),
+    ], { prefs: { expandedChildren: ["d"] } });
+    const icon = async (name: RegExp) => within((await screen.findByRole("link", { name })).parentElement!).queryByRole("img", { name: /Codex|Claude Code/ });
+    expect(await icon(/Open Default root/)).toBeNull();
+    expect(await icon(/Open Same child/)).toBeNull();
+    expect(await icon(/Open Codex root/)).toBeTruthy();
+    expect(await icon(/Open Codex child/)).toBeTruthy();
+    expect((await icon(/Open Codex root/))!.className).toContain("opacity-60");
+    const panel = renderSettings();
+    fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Harness icon" })).getByRole("radio", { name: "Colour" }));
+    await waitFor(async () => expect((await icon(/Open Codex root/))!.className).not.toContain("opacity-60"));
+    expect((await icon(/Open Codex child/))!.className).not.toContain("opacity-60");
   });
 
   it("draws a ring screen readers skip in an idle row's Status column, and no ring in any other", async () => {
