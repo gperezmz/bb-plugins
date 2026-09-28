@@ -10,7 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { KEEPER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
+import { TIMER_ICON, touches, useComposerThreadId, useKeeperRpc, useLive, useNow } from "../api";
 import { CompactPopover } from "./CompactPopover";
 
 const stop = (e: SyntheticEvent) => e.stopPropagation();
@@ -55,7 +55,7 @@ function ThreadChip({ threadId }: { threadId: string }) {
             view.compactionDue && "text-primary",
           )}
         >
-          <Icon name={KEEPER_ICON} fallback="Archive" className="size-4" aria-hidden />
+          <Icon name={TIMER_ICON} fallback="Archive" className="size-4" aria-hidden />
           {text !== "" && <span className="tabular-nums">{text}</span>}
         </button>
       </PopoverTrigger>

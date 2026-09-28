@@ -4,17 +4,16 @@
  * polls the server through `fetchRowStatuses` rather than using hooks.
  */
 import type { PluginContentScriptContext, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
-import type { RowGlyph } from "@/src/core/view";
-import { FLAME_ICON, fetchRowStatuses, KEEPER_ICON } from "./api";
+import type { RowStatus } from "@/src/core/view";
+import { FLAME_ICON, fetchRowStatuses, TIMER_ICON } from "./api";
 
 const POLL_MS = 20_000;
 
-/** The glyph and label a row shows for Cache Keeper's status. */
-export function rowGlyph(status: RowGlyph["status"]): PluginSidebarThreadRowStatus {
-  return status === "compaction"
-    ? { icon: KEEPER_ICON, label: "Cache Keeper: compacting before the cache goes cold" }
-    : { icon: FLAME_ICON, label: "Cache Keeper: keeping the cache warm while it waits" };
-}
+/** The glyph and label a row shows for each of Cache Keeper's statuses. */
+export const ROW_GLYPHS: Record<RowStatus, PluginSidebarThreadRowStatus> = {
+  compaction: { icon: TIMER_ICON, label: "Cache Keeper: compacting before the cache goes cold" },
+  "keep-warm": { icon: FLAME_ICON, label: "Cache Keeper: keeping the cache warm while it waits" },
+};
 
 export function mountRowStatus(context: PluginContentScriptContext): () => void {
   const set = context.experimental_setThreadRowStatus;
@@ -26,7 +25,7 @@ export function mountRowStatus(context: PluginContentScriptContext): () => void 
     const next = new Set<string>();
     for (const row of list) {
       next.add(row.threadId);
-      set(row.threadId, rowGlyph(row.status));
+      set(row.threadId, ROW_GLYPHS[row.status]);
     }
     for (const id of shown) if (!next.has(id)) set(id, null);
     shown = next;

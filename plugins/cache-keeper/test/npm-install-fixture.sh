@@ -3,8 +3,8 @@
 # scripts/ci/npm-install-check.sh). The throwaway bb has no Claude Code
 # thread, so this checks what it can reach without one: bb serves an app
 # bundle it calls compatible that registers the composer chip and banner, the
-# sidebar script, the nav page and the Agent tools settings section; bb serves
-# the timer and the flame as the plugin's icons; bb holds
+# sidebar script, the nav page and the Agent tools settings section; bb
+# serves the timer and the flame as the plugin's icons; bb holds
 # the plugin's four settings, with check-ins off; its CLI answers from the
 # server with nothing switched on, names compact-now and no `now`; and it
 # refuses to switch on, or keep warm, a thread that does not exist.
