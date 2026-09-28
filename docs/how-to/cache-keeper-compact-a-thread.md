@@ -11,7 +11,7 @@ Or from a terminal:
 bb cache-keeper on thr_… --above 500k
 ```
 
-It snaps `500k` to the nearest of the thread's ten lines and prints the one it set. It refuses, and changes nothing, while the thread's window is unknown, or for a size above the thread's highest line.
+It snaps `500k` to the nearest of the thread's ten lines and prints the one it set. It refuses, and changes nothing, while the thread's window is unknown, for a size above the thread's highest line, and when no setting gives a line because the model has no price or compacting never repays; [the refusals](../reference/cache-keeper-cli.md#sizes-and-lines) lists each.
 
 While a compaction is due, the banner above the composer counts down. **Skip** leaves the thread alone until it next runs; **Compact now**, or `bb cache-keeper compact-now thr_…`, does it at once. To stop, turn the switch off or run `bb cache-keeper off thr_…`.
 

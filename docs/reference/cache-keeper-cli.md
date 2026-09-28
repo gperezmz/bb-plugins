@@ -4,7 +4,7 @@ The CLI runs on the bb server. Every command acts on Claude Code threads only, a
 
 ## Who may act on which thread
 
-Run from inside a thread, where bb passes the calling thread, `on`, `off`, `compact-now` and `keep-warm` act only on threads in the caller's own [thread tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees). For any other thread they exit with `outside_tree` and change nothing. Run from your own terminal, with no calling thread, they act on any thread. `status` reads any thread either way.
+Run from inside a thread, where bb passes the calling thread, `on`, `off`, `compact-now` and `keep-warm` act only on threads in the caller's own thread tree: every thread under the caller's top-level thread, by bb's parent links, archived ones included. For any other thread they exit with `outside_tree` and change nothing. Run from your own terminal, with no calling thread, they act on any thread. `status` reads any thread either way.
 
 ## Sizes and lines
 
@@ -39,7 +39,7 @@ Switches it off.
 bb cache-keeper compact-now [<thread>]
 ```
 
-Compacts the thread now, as **Compact now** does: whatever its size and whatever Compact when idle says, provided bb gives it as idle, not archived or deleted, a Claude Code thread with no pending interaction, and it is not [waiting](../explanation/cache-keeper-timing.md#waiting). Otherwise it exits with `not_ready` and says why. It and an automatic compaction falling due at the same moment send one `/compact` between them.
+Compacts the thread now, as **Compact now** does: whatever its size and whatever Compact when idle says, provided bb gives it as idle (or ended in failure), not archived or deleted, with no pending interaction, and it is not [waiting](../explanation/cache-keeper-timing.md#waiting). Otherwise it exits with `not_ready` and says why. A thread that is not Claude Code exits with `not_claude_code`. It and an automatic compaction falling due at the same moment send one `/compact` between them.
 
 ## `bb cache-keeper keep-warm`
 
