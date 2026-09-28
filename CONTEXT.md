@@ -51,7 +51,7 @@ A thread that is read, not the one open, and idle, only a draft, or failed: not 
 _Avoid_: Idle thread
 
 **Settled thread**:
-A quiet thread with no open pull request whose pull request merged or closed, or that has had no activity for the Settle after period. It is worked out afresh each time, so any activity unsettles it.
+A quiet thread that needs no attention, is not pinned, and has had no activity for the Settle after period. It is worked out afresh each time, so any activity unsettles it.
 _Avoid_: Older thread, done thread, archived thread
 
 **Settle after**:

@@ -39,9 +39,7 @@ import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
 import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
-import { pullRequestFact, pullRequestLookupIds, type SettleInputs } from "../model/settled";
-import { usePullRequestAnswers } from "../data/usePullRequestAnswers";
-import { PullRequestProbes } from "./PullRequestProbes";
+import type { SettleInputs } from "../model/settled";
 import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
@@ -174,21 +172,15 @@ function ThreadListBody({
     (thread: PluginSidebarThread) => (defaultBranches.has(thread.projectId) ? (defaultBranches.get(thread.projectId) ?? null) : undefined),
     [defaultBranches],
   );
-  const [pullRequests, onPullRequest] = usePullRequestAnswers();
   const system = useSystemFacts();
-  const pullRequestLookups = useMemo(
-    () => (forest === null ? [] : pullRequestLookupIds(forest.infos.values(), defaultBranchOf)),
-    [forest, defaultBranchOf],
-  );
   const settle: SettleInputs = useMemo(
     () => ({
       now,
       settleAfter: prefs.settleAfter,
       startedAt: stamps.startedAt,
       finishedAt: stamps.finishedAt,
-      pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread), pullRequests),
     }),
-    [now, prefs.settleAfter, stamps.startedAt, stamps.finishedAt, defaultBranchOf, pullRequests],
+    [now, prefs.settleAfter, stamps.startedAt, stamps.finishedAt],
   );
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
@@ -723,7 +715,6 @@ function ThreadListBody({
           onPrefs={update}
           onClient={updateClient}
         />
-        <PullRequestProbes threadIds={pullRequestLookups} onAnswer={onPullRequest} />
         {threads.length === 0 ? (
           // bb's own pinned New thread button covers the empty list.
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>

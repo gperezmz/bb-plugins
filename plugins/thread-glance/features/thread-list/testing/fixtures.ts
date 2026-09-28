@@ -8,7 +8,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { buildForest, type Forest } from "../model/trees";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
-import { pullRequestFact, type PullRequestState, type SettleInputs } from "../model/settled";
+import type { SettleInputs } from "../model/settled";
 
 export const T0 = 1_780_000_000_000;
 
@@ -125,8 +125,6 @@ export interface Scenario {
   needYouOnly?: boolean;
   /** bb's default harness; "claude-code", the fixtures' own, when absent. */
   defaultProviderId?: string | null;
-  /** Pull request lookups that answered, by thread id. */
-  pullRequests?: Record<string, PullRequestState | null>;
 }
 
 export function forestOf(scenario: Scenario): Forest {
@@ -165,15 +163,11 @@ export function viewOf(scenario: Scenario): ListView {
 
 /** The settle inputs a scenario stands for. */
 export function settleOf(scenario: Scenario): SettleInputs {
-  const answers = new Map(Object.entries(scenario.pullRequests ?? {}));
-  const defaultBranchOf = (projectId: string) =>
-    scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[projectId];
   return {
     now: scenario.now ?? T0 + 60_000,
     settleAfter: scenario.prefs?.settleAfter ?? defaultPreferences().settleAfter,
     startedAt: scenario.startedAt ?? {},
     finishedAt: scenario.finishedAt ?? {},
-    pullRequestOf: (thread) => pullRequestFact(thread, defaultBranchOf(thread.projectId), answers),
   };
 }
 

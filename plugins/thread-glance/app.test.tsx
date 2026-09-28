@@ -551,18 +551,19 @@ describe("Thread Glance slot", () => {
           extra: { sidebarPullRequests: { merged: { number: 7, title: "Fix", url: "u", state: "merged", attention: "merged" } } },
         },
       );
-      const fold = await screen.findByRole("button", { name: "Show 2 settled thread trees" });
-      expect(fold.textContent).toBe("Settled (2)");
+      const fold = await screen.findByRole("button", { name: "Show 1 settled thread tree" });
+      expect(fold.textContent).toBe("Settled (1)");
       expect(fold.getAttribute("aria-expanded")).toBe("false");
       expect(screen.getByRole("link", { name: /Open Live/ })).toBeTruthy();
       expect(screen.queryByRole("link", { name: /Open Old/ })).toBeNull();
-      expect(screen.queryByRole("link", { name: /Open Merged/ })).toBeNull();
+      // A merged pull request settles nothing: Merged is as recent as Live.
+      expect(screen.getByRole("link", { name: /Open Merged/ })).toBeTruthy();
       expect(screen.queryByText(/older/)).toBeNull();
       fireEvent.click(fold);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(200);
       });
-      expect(screen.getByRole("button", { name: "Hide 2 settled thread trees" }).textContent).toBe("Settled");
+      expect(screen.getByRole("button", { name: "Hide 1 settled thread tree" }).textContent).toBe("Settled");
       expect(screen.getByRole("link", { name: /Open Old/ })).toBeTruthy();
       expect(slot.inspection.rpcCalls).toContainEqual(
         expect.objectContaining({ method: "setPreference", input: { key: "openSettledFolds", value: ["project:proj_a"] } }),

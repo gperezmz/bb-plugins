@@ -52,7 +52,7 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `collapsedThreadSections` | Custom section keys, `section:<id>` | `[]` |
 | `collapsedMachines` | Machine ids | `[]` |
 | `collapsedEnvironments` | Environment ids of collapsed folder rows | `[]` |
-| `settleAfter` | Settle after: how long a quiet thread goes without activity before its tree can settle into the group's "Settled (N)" fold: `12h`, `1d`, `3d`, `1w` or `never` (then only a merged or closed pull request settles it) | `1d` |
+| `settleAfter` | Settle after: how long a quiet thread goes without activity before its tree can settle into the group's "Settled (N)" fold: `12h`, `1d`, `3d`, `1w` or `never` (then nothing settles) | `1d` |
 | `openSettledFolds` | Group ids whose settled fold is open | `[]` |
 | `expandedOlder` | Parent thread ids whose "N more child threads" row is open, once that tree's children chip is open | `[]` |
 | `expandedChildren` | Parent thread ids whose chip is open | `[]` |

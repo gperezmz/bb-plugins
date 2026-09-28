@@ -29,7 +29,7 @@ Choosing a **Sort by** field starts it in its own direction: newest first for da
 | `environmentGrouping` | `false` | `true` folds sibling threads that share a worktree into a folder row |
 | `chronologicalSort` | `"updated"` | `updated`, `created`, `alpha`; `none` is read as `updated` |
 | `sortDirection` | `"default"` | `ascending` or `descending`; a saved `default` reads as the field's own direction (descending for dates, ascending for `alpha`) |
-| `settleAfter` | `"1d"` | Settle after: `12h`, `1d`, `3d`, `1w` or `never`; how long a quiet thread goes without activity before it [settles](../explanation/thread-glance-attention.md#settled-threads). With `never`, only a merged or closed pull request settles a thread |
+| `settleAfter` | `"1d"` | Settle after: `12h`, `1d`, `3d`, `1w` or `never`; how long a quiet thread goes without activity before it [settles](../explanation/thread-glance-attention.md#settled-threads). With `never`, nothing settles |
 | `harnessIcon` | `"muted"` | `muted` or `colour`; a stored `hidden` reads as `muted`, and `prefs set` refuses it |
 | `showArchived` | `false` | Show archived threads: `true` lists archived threads in every group |
 | `childAttention` | `"blocked"` | Needs attention counts every child: `blocked` (off) or `everything` (on). Which children need attention and stay out of a tree's fold; see [what a child adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) and [folding](../explanation/thread-glance-attention.md#trees-and-folding) |
