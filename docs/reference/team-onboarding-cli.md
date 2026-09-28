@@ -14,9 +14,9 @@ The CLI runs on the bb server. `--machine <name>` picks the machine, by its name
 
 `<file>` is relative to the current directory on the machine it is on. Item ids are listed in [items](team-onboarding-items.md#items) and by `status`.
 
-`status --json` prints `{ badge, progress, manifest, items }`. Each item has `id`, `title`, `required`, `status`, `results` and `safeFixes`. Each result has `machine` (the machine's id), `status`, `category` and `detail`, one per machine; each safe fix has `machine`, `kind` and `label`.
+`status --json` prints `{ badge, progress, manifest, items }`. Each item has `id`, `title`, `required`, `status`, `results` and `safeFixes`. Each result has `machineId` (the machine's host id), `machineName`, `status`, `category` and `detail`, one per machine; each safe fix has `machineId`, `machineName`, `kind` and `label`.
 
-`apply --safe --json` prints `{ machine, ran, manual }`: the machine's name, each safe fix it ran with `itemId`, `hostId`, `ok` and `message`, and each required item left by hand with `id`, `title`, `status` and `next`.
+`apply --safe --json` prints `{ machineId, machineName, ran, manual }`: the machine's host id and name, each safe fix it ran with `itemId`, `hostId`, `ok` and `message`, and each required item left by hand with `id`, `title`, `status` and `next`.
 
 `apply --safe` is meant for machine bootstraps: see [provision a manifest from a machine bootstrap](../how-to/team-onboarding-provision-manifest.md).
 

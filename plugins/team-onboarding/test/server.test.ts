@@ -1232,6 +1232,28 @@ describe("machines", () => {
     // The server machine was not touched.
     expect(existsSync(join(world.homes[SERVER]!, ".ssh"))).toBe(false);
   });
+
+  it("names every machine in apply --json and status --json by machineId and machineName", async () => {
+    world = makeWorld();
+    writeManifest(world, ["github: { mode: per-machine }", "ssh: {}"]);
+    const { harness } = await boot(world);
+    const applied = JSON.parse((await harness.behavior.runCli(["apply", "--safe", "--machine", "laptop", "--json"])).stdout);
+    expect(applied).toMatchObject({ machineId: REMOTE, machineName: "laptop" });
+    expect(applied).not.toHaveProperty("machine");
+
+    const status = JSON.parse((await harness.behavior.runCli(["status", "--json"])).stdout) as {
+      items: { results: Record<string, unknown>[]; safeFixes: Record<string, unknown>[] }[];
+    };
+    const names = { [SERVER]: "server", [REMOTE]: "laptop" } as Record<string, string>;
+    const entries = status.items.flatMap((entry) => [...entry.results, ...entry.safeFixes]);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(entry).not.toHaveProperty("machine");
+      expect(entry.machineName).toBe(names[entry.machineId as string]);
+    }
+    expect(status.items.flatMap((entry) => entry.results).map((r) => r.machineId)).toEqual(expect.arrayContaining([SERVER, REMOTE]));
+    expect(status.items.flatMap((entry) => entry.safeFixes).length).toBeGreaterThan(0);
+  });
 });
 
 describe("GitHub modes", () => {
