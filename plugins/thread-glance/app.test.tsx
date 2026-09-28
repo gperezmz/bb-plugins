@@ -1158,3 +1158,27 @@ describe("the open thread is never unread", () => {
     expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
   });
 });
+
+describe("a child's failure while its parent is idle", () => {
+  it("reaches the need-you filter 5 seconds after it happens, with nothing else in the list changing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const failedAt = Date.now();
+      render([
+        makeThread({ id: "m", title: "Parent" }),
+        makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, status: "error", latestAttentionAt: failedAt, lastReadAt: T0 }),
+      ]);
+      await screen.findByRole("link", { name: /^Open Parent —/ });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(screen.getByRole("button", { name: "1 need you" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

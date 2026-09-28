@@ -30,6 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAutoExpand } from "../data/useAutoExpand";
 import { useClientPreferences } from "../data/useClientPreferences";
+import { useIdleSince } from "../data/useIdleSince";
 import { useNow } from "../data/useNow";
 import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
@@ -129,10 +130,13 @@ function ThreadListBody({
   const { stamps, markSeen, clearSeen } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
+  // When the next child's failure becomes orphaned: read off the forest below.
+  const [orphanDeadline, setOrphanDeadline] = useState<number | null>(null);
   const nextDeadline = useMemo(() => {
     const future = Object.values(scheduled).filter((at) => at > Date.now());
+    if (orphanDeadline !== null) future.push(orphanDeadline);
     return future.length > 0 ? Math.min(...future) : null;
-  }, [scheduled]);
+  }, [scheduled, orphanDeadline]);
   const now = useNow(nextDeadline);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -150,6 +154,7 @@ function ThreadListBody({
   const ready = sidebar.status === "ready";
   const threads = sidebar.threads;
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  const idleSince = useIdleSince(threads);
 
   const forest = useMemo(
     () =>
@@ -165,10 +170,13 @@ function ThreadListBody({
             now,
             notes,
             childAttention: prefs.childAttention,
+            idleSince,
           })
         : null,
-    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention],
+    [ready, threads, activeThreadId, openThreadIds, stamps.finishedAt, stamps.seenAt, draftIds, scheduled, now, notes, prefs.childAttention, idleSince],
   );
+  const nextOrphanAt = forest?.nextOrphanAt ?? null;
+  if (nextOrphanAt !== orphanDeadline) setOrphanDeadline(nextOrphanAt);
   const { targets, prune } = useAutoExpand(hydrated ? forest : null, activeThreadId);
   // Projects with a thread on a branch: the rest need no default branch.
   const branchedProjectIds = useMemo(

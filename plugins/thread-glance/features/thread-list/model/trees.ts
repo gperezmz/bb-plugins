@@ -13,7 +13,7 @@ import {
   type StateKind,
   type ThreadState,
 } from "./state";
-import { attentionFlagsOf, isOrphanedFailure } from "./attention";
+import { attentionFlagsOf, orphanedAt } from "./attention";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
@@ -103,6 +103,8 @@ export interface Forest {
   treeOf: ReadonlyMap<string, ThreadTree>;
   /** The rollup under every thread with a row, by thread id. */
   subtrees: ReadonlyMap<string, Subtree>;
+  /** The earliest moment after `now` a child's failure becomes an orphaned failure, or null for none. */
+  nextOrphanAt: number | null;
 }
 
 export interface ForestInputs extends ThreadContext {
@@ -114,6 +116,8 @@ export interface ForestInputs extends ThreadContext {
   notes?: Readonly<Record<string, ThreadNotes>>;
   /** Which children can need attention; `blocked` when absent. */
   childAttention?: ChildAttention;
+  /** When the list last saw each thread go from busy to idle (see `trackIdle`). */
+  idleSince?: Readonly<Record<string, number>>;
 }
 
 function isPinned(thread: PluginSidebarThread): boolean {
@@ -178,14 +182,22 @@ export function buildForest(inputs: ForestInputs): Forest {
   }
 
   const mode = inputs.childAttention ?? "blocked";
+  let nextOrphanAt: number | null = null;
   for (const info of infos.values()) {
     const parent = info.parentId === null ? undefined : infos.get(info.parentId);
+    const orphaned =
+      parent === undefined
+        ? null
+        : orphanedAt(info.thread, info.flags, {
+            ...parent,
+            finishedAt: inputs.finishedAt[parent.thread.id],
+            idleSince: inputs.idleSince?.[parent.thread.id],
+          });
+    if (orphaned !== null && orphaned > inputs.now) nextOrphanAt = Math.min(nextOrphanAt ?? orphaned, orphaned);
     info.attentionFlags = attentionFlagsOf(info.flags, {
       isRoot: parent === undefined,
       mode,
-      orphaned:
-        parent !== undefined &&
-        isOrphanedFailure(info.thread, info.flags, { ...parent, finishedAt: inputs.finishedAt[parent.thread.id] }),
+      orphaned: orphaned !== null && orphaned <= inputs.now,
     });
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
@@ -294,7 +306,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     treeOf.set(root.thread.id, tree);
     for (const info of descendants) treeOf.set(info.thread.id, tree);
   }
-  return { infos, children, trees, treeOf, subtrees };
+  return { infos, children, trees, treeOf, subtrees, nextOrphanAt };
 }
 
 /**
