@@ -140,7 +140,7 @@ describe("Pocket Navigation", async () => {
     expect(slot.inspection.sidebarNavigationCalls.map((call) => call.method)).toEqual(["openCustomize"]);
   });
 
-  it("puts a hidden New thread behind … and leaves search alone on the top line", async () => {
+  it("puts a hidden New thread behind … and leaves search alone on the New thread line", async () => {
     render([hidden(NEW_THREAD), SEARCH, PLUGINS]);
     expect(buttonNames()).toEqual(["Search", "Plugins", "More sidebar navigation"]);
     expect((await openOverflow()).map((entry) => entry.textContent)).toEqual(["New thread", "Customize sidebar"]);
