@@ -152,6 +152,8 @@ const WATERMARK_MARGIN_MS = 60_000;
 /** How often the host keep-alive renews its lease while something is pending on a machine, and for how long. */
 const KEEPALIVE_MS = 4 * 60_000;
 const LEASE_MS = 6 * 60_000;
+/** How many threads a restart catches up at once. */
+const CATCH_UP_AT_ONCE = 4;
 /** After a failed send, the due time is tried again no sooner than this. */
 const RETRY_MS = 60_000;
 
@@ -431,13 +433,23 @@ export class Engine {
     );
     await Promise.all([...this.queuedThreads()].map((id) => this.refreshQueue(id)));
     this.started = true;
-    for (const id of touched) void this.learn(id, "restart");
+    // A few catch-ups at a time: bb's transport opens a connection for each request in flight.
+    void this.catchUp([...touched]);
     const tops = this.watchedTops();
     // A tree with a thread working or with work of its own may have a Claude Code thread waiting in it.
     for (const t of listed) if (this.index.isLive(t.id) && (working(t) || this.ownWork(t))) tops.add(this.index.topOf(t.id));
     for (const top of tops) this.replan(top);
     this.scheduleReconcile();
     this.saveWatermark(listed);
+  }
+
+  /** Catches up threads after a restart, `CATCH_UP_AT_ONCE` at a time. */
+  private async catchUp(ids: string[]): Promise<void> {
+    let next = 0;
+    const worker = async () => {
+      while (next < ids.length) await this.learn(ids[next++]!, "restart");
+    };
+    await Promise.all(Array.from({ length: Math.min(CATCH_UP_AT_ONCE, ids.length) }, worker));
   }
 
   stop(): void {
