@@ -1,6 +1,7 @@
 /** What `bb cache-keeper status` prints for one thread, as text and as JSON. */
 import { formatSize } from "../core/line";
 import { statusText, type ThreadView } from "../core/view";
+import type { ResetNotice } from "./reinstall";
 
 const SOURCES: Record<string, string> = { litellm: "LiteLLM", "models.dev": "models.dev", bundled: "bundled" };
 
@@ -30,12 +31,12 @@ export function describe(v: ThreadView, now: number, priceError: string | null):
   return lines.join("\n");
 }
 
-export function statusJson(v: ThreadView, now: number, priceError: string | null, reset: unknown) {
+export function statusJson(v: ThreadView, now: number, priceError: string | null, reset: ResetNotice | null) {
   return {
     ...v,
     statusText: v.transcriptUnreadable !== null ? "transcript unreadable" : statusText(v, now),
     priceSource: priceSource(v.priceOrigin),
     lastPriceFetchError: priceError,
-    ...(reset == null ? {} : { reset }),
+    ...(reset === null ? {} : { reset }),
   };
 }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { AgentTools } from "./agent-tools";
-import { FakeBb, T0 } from "./fake-bb.test.helpers";
+import { busy, FakeBb, MIN, T0 } from "./fake-bb.test.helpers";
+import { resetAfterReinstall, RESET_META } from "./reinstall";
 import { compactWhenIdle, rpcHandlers, type SurfaceDeps } from "./surfaces";
 
 let h: FakeBb;
@@ -85,5 +86,33 @@ describe("the agent tool", () => {
   it("refuses on a thread that is not Claude Code", async () => {
     deps.agentTools.set("compactWhenIdle", true);
     expect(JSON.parse(await compactWhenIdle(deps, "pi", undefined))).toMatchObject({ on: false, error: "Cache Keeper acts on Claude Code threads only" });
+  });
+});
+
+describe("a reinstall", () => {
+  it("switches every thread, tree top, Skip, Agent tools row and check-ins off, and says so until a switch is flipped", async () => {
+    h.thread({ id: "w", activity: busy });
+    h.transcript("w", T0, 100_000);
+    await h.engine.setCompact("t", true);
+    await h.engine.setKeepWarm("w", true);
+    await h.engine.skip("w", "warm", false);
+    deps.agentTools.set("compactWhenIdle", true);
+    let checkIns: boolean | null = null;
+    const notice = await resetAfterReinstall({ store: h.store, engine: h.engine, agentTools: deps.agentTools, now: T0 + MIN, setCheckIns: async (on) => (checkIns = on) });
+    expect(notice).toEqual({ at: T0 + MIN, threads: 2 });
+    expect(h.store.get("t").compactOn).toBe(false);
+    expect(h.store.get("w").keepWarm).toBe(false);
+    expect(h.store.get("w").stretch?.warmSkipped).toBe(false);
+    expect(deps.agentTools.offered()).toEqual([]);
+    expect(checkIns).toBe(false);
+    expect(h.store.getMeta(RESET_META)).toEqual(notice);
+    await rpcHandlers({ ...deps, flipped: () => h.store.deleteMeta(RESET_META) }).setCompact({ threadId: "t", on: true });
+    expect(h.store.getMeta(RESET_META)).toBeNull();
+  });
+
+  it("does nothing on a first install", async () => {
+    const fresh = new FakeBb();
+    const notice = await resetAfterReinstall({ store: fresh.store, engine: fresh.engine, agentTools: new AgentTools(fresh.store), now: T0, setCheckIns: async () => {} });
+    expect(notice).toBeNull();
   });
 });

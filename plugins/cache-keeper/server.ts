@@ -12,6 +12,7 @@ import { aboveSetting, AboveRefused } from "./src/core/above";
 import { AGENT_TOOLS, AgentTools } from "./src/server/agent-tools";
 import { ClaudeOnlyError, DAY_MS, Engine, EVENT_TYPES, EVENTS_PAGE, NoTreeTopError, NotReadyError, queuedRowOf, type QueuedRow } from "./src/server/engine";
 import { LITELLM_META, MODELS_DEV_META, refreshError, refreshPublicPrices, type FetchedPrices } from "./src/server/public-prices";
+import { resetAfterReinstall, RESET_META, type ResetNotice } from "./src/server/reinstall";
 import { rpcContract } from "./src/server/rpc";
 import { compactWhenIdle, rpcHandlers } from "./src/server/surfaces";
 import { parseSettings, SETTINGS, type KeeperSettings } from "./src/server/settings";
@@ -153,15 +154,21 @@ export default async function plugin(bb: BbPluginApi) {
     log: bb.log,
   });
 
-  /** A switch was flipped. */
-  const flipped = () => {};
+  /** A switch was flipped: the reinstall notice in `status` has done its job. */
+  const flipped = () => store.deleteMeta(RESET_META);
 
   settingsHandle.onChange((next, prev) => {
     settings = parseSettings(next);
     book = null;
+    if (next.stalledCheckIns !== prev.stalledCheckIns) flipped();
     if (settings.fetchPrices && prev.fetchPrices === false) void refreshPrices();
     engine.clockMoved();
     publish([]);
+  });
+
+  bb.onInstall(async () => {
+    const notice = await resetAfterReinstall({ store, engine, agentTools, now: clock.now(), setCheckIns: (on) => settingsHandle.experimental_set({ stalledCheckIns: on }) });
+    if (notice !== null) bb.log.info(`reinstalled over stored state: switched off ${notice.threads} thread switch(es), every Skip, the Agent tools and check-ins`);
   });
 
   // ---- bb's events ----
@@ -269,6 +276,13 @@ export default async function plugin(bb: BbPluginApi) {
       },
     });
 
+  const resetLine = () => {
+    const notice = store.getMeta<ResetNotice>(RESET_META);
+    return notice === null
+      ? []
+      : [`Reinstalled: every thread's Compact when idle, every tree's Keep warm while waiting, every Skip, the Agent tools and check-ins were switched off (${new Date(notice.at).toISOString()}).`, ""];
+  };
+
   const commands: Parameters<typeof defineCli>[0]["commands"] = {
     on: cliCommand({
       summary: "Switch compact-when-idle on for a thread",
@@ -313,17 +327,18 @@ export default async function plugin(bb: BbPluginApi) {
       async run(input) {
         const now = clock.now();
         const threadId = input.positionals.thread;
+        const reset = store.getMeta<ResetNotice>(RESET_META);
         const priceError = refreshError(store);
         if (threadId !== undefined) {
           const view = await engine.viewOf(threadId);
           if (view === null) throw new PluginCliError(`${threadId} is not a Claude Code thread bb lists`, { code: "not_claude_code" });
-          if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify(statusJson(view, now, priceError, null), null, 2) };
-          return { exitCode: 0, stdout: describe(view, now, priceError) };
+          if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify(statusJson(view, now, priceError, reset), null, 2) };
+          return { exitCode: 0, stdout: [...resetLine(), describe(view, now, priceError)].join("\n") };
         }
         const on = engine.switchedOn();
         const totals = engine.totals(30);
-        if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify({ threads: on.map((v) => statusJson(v, now, priceError, null)), totals }, null, 2) };
-        const lines = on.length === 0 ? ["No thread has compact-when-idle on."] : on.map((v) => describe(v, now, priceError));
+        if (input.options.json === true) return { exitCode: 0, stdout: JSON.stringify({ reset, threads: on.map((v) => statusJson(v, now, priceError, null)), totals }, null, 2) };
+        const lines = [...resetLine(), ...(on.length === 0 ? ["No thread has compact-when-idle on."] : on.map((v) => describe(v, now, priceError)))];
         lines.push(
           "",
           "Last 30 days:",
