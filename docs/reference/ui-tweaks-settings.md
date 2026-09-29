@@ -14,7 +14,7 @@ Size of the transcript and composer text. **Small**, **Medium** or **Large**.
 | Medium | 13 px, bb's own | bb's size |
 | Large | 15 px | 15/13 of bb's size |
 
-It scales every text inside the transcript: messages, code blocks, headings, tool rows and cards. In the composer it scales only what you type, its placeholder and its mention pills. Line heights scale with it. The composer's controls keep bb's size: the + button, the model picker, the mic, the send button, the footer with the project, checkout, branch and permission mode, the mention menu, and any plugin's composer chip. So does the editor for a queued message. The collapsed composer, "Send a follow-up", keeps bb's height, with its placeholder scaled inside it. Text outside the transcript and the composer keeps bb's size: the sidebar, menus, headers and settings.
+It scales every text inside the transcript: messages, code blocks, headings, tool rows and cards. In the composer it scales only what you type, its placeholder and its mention pills. Line heights scale with it. The composer's controls keep bb's size: the + button, the model picker, the mic, the send button, the footer with the project, checkout, branch and permission mode, the mention menu, and any plugin's composer chip. So do the editor for a queued message and the editor that opens in the transcript when you edit a sent message. The collapsed composer, "Send a follow-up", keeps bb's height, with its placeholder scaled inside it. Text outside the transcript and the composer keeps bb's size: the sidebar, menus, headers and settings.
 
 ## Transcript width
 
@@ -46,7 +46,7 @@ bb does not promise the parts of its thread view and New-thread screen that the 
 | Thread view | the transcript column (`.max-w-[760px]` with an inline `--md-content-w`) |
 | Thread view | the composer column (`.chat-prompt-box.max-w-[760px]`) |
 | Thread view | the composer's editor wrapper (`[data-follow-up-composer] [data-promptbox-editor-scroll]`), while the composer shows an editor |
-| New-thread screen | its column (`.max-w-[760px]` with an inline `--md-content-w`) |
+| New-thread screen | its column (`.max-w-[760px]`) |
 | New-thread screen | its editor wrapper (`[data-promptbox-editor-scroll]`) |
 | Both | the text size variable `--text-sm` at `:root` |
 

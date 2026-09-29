@@ -9,6 +9,7 @@ import {
   NEW_THREAD_COLUMN,
   NEW_THREAD_EDITOR,
   NEW_THREAD_EDITOR_WRAPPER,
+  SENT_MESSAGE_EDITOR_HOST,
   TEXT_VARIABLES,
   THREAD_VIEW,
 } from "./targets";
@@ -59,6 +60,8 @@ export function tweaksCss(tweaks: Tweaks, rootVariables: Readonly<Record<string,
   const scale = TEXT_SCALE[tweaks.textSize];
   if (scale !== 1) {
     for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR, IN_NEW_THREAD_EDITOR_WRAPPER]) rules.push(...scaledTextRules(scope, scale, rootVariables));
+    // Puts bb's own sizes back inside the column's scaled ones.
+    rules.push(...scaledTextRules(`${IN_COLUMN} ${SENT_MESSAGE_EDITOR_HOST}`, 1, rootVariables));
   }
   const width = WIDTH_PX[tweaks.width];
   if (width !== WIDTH_PX.medium) {

@@ -45,16 +45,25 @@ export const COMPOSER_EDITOR: Target = {
  */
 export const EDITABLE = ":is([contenteditable], textarea):not([data-queued-message-inline-editor] *)";
 
+/**
+ * Where bb moves the thread composer while a sent message is edited, inside
+ * the transcript column. The editor there keeps bb's size.
+ */
+export const SENT_MESSAGE_EDITOR_HOST = "[data-sent-message-inline-editor-host]";
+
 /** The thread view targets that must be there whatever its composer shows. */
 export const VIEW_COLUMNS: readonly Target[] = [COLUMN, COMPOSER];
 
 /** The New-thread screen's editor: a screen showing it is a New-thread screen. */
 export const NEW_THREAD_EDITOR = "#root-compose-prompt";
 
-/** The New-thread screen's column, which holds its composer. */
+/**
+ * The New-thread screen's column, which holds its composer. The compact
+ * layout bb shows below 768 px sets no inline --md-content-w on it.
+ */
 export const NEW_THREAD_COLUMN: Target = {
-  name: "its column (.max-w-[760px] with an inline --md-content-w)",
-  selector: COLUMN.selector,
+  name: "its column (.max-w-[760px])",
+  selector: ".max-w-\\[760px\\]",
 };
 
 export const NEW_THREAD_EDITOR_WRAPPER: Target = {

@@ -221,13 +221,13 @@ describe("a thread view missing a target", () => {
   });
 
   it("warns once per New-thread screen, naming what it lacks", async () => {
-    mountNewThread(`<div class="max-w-[760px]"><div id="root-compose-prompt" contenteditable="true"></div></div>`);
+    mountNewThread(`<div class="max-w-[800px]"><div id="root-compose-prompt" contenteditable="true"></div></div>`);
     mountNewThread();
     const { warn, scripts } = await watch();
     await vi.advanceTimersByTimeAsync(GRACE_MS * 3);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toBe(
-      "UI Tweaks: a New-thread screen lacks its column (.max-w-[760px] with an inline --md-content-w), its editor wrapper ([data-promptbox-editor-scroll]), so neither tweak applies to it. bb may have changed its New-thread screen.",
+      "UI Tweaks: a New-thread screen lacks its column (.max-w-[760px]), its editor wrapper ([data-promptbox-editor-scroll]), so neither tweak applies to it. bb may have changed its New-thread screen.",
     );
     await scripts.lifecycle.dispose();
   });

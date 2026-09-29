@@ -20,7 +20,7 @@ const VIEW =
   `:is(:not(:has(${BOX} :is([contenteditable], textarea):not([data-queued-message-inline-editor] *))), :has(${BOX} ${WRAPPER}))`;
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
 const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
-const NEW_THREAD = '.max-w-\\[760px\\][style*="--md-content-w"]:has([data-promptbox-editor-scroll] #root-compose-prompt)';
+const NEW_THREAD = ".max-w-\\[760px\\]:has([data-promptbox-editor-scroll] #root-compose-prompt)";
 const NEW_THREAD_WRAPPER = `${NEW_THREAD} [data-promptbox-editor-scroll]:has(#root-compose-prompt)`;
 
 describe("the tweaks stylesheet", () => {
@@ -73,6 +73,14 @@ describe("the tweaks stylesheet", () => {
     expect(css).toContain(`${NEW_THREAD_WRAPPER} { --text-2xs: calc(.625rem * ${scale});`);
     expect(css).toContain(`${NEW_THREAD_WRAPPER} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * ${scale});`);
     expect(css).not.toContain(`${NEW_THREAD} {`);
+  });
+
+  it("puts bb's own sizes back in the editor bb moves into the transcript to edit a sent message", () => {
+    const css = tweaksCss({ textSize: "large", width: "medium" }, ROOT);
+    const host = `${COLUMN} [data-sent-message-inline-editor-host]`;
+    expect(css).toContain(`${host} { --text-2xs: calc(.625rem * 1);`);
+    expect(css).toContain(`${host} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * 1); line-height: calc(calc(var(--spacing) * 4) * 1); }`);
+    expect(css.indexOf(`${host} {`)).toBeGreaterThan(css.indexOf(`${COLUMN} {`));
   });
 
   it("scales the fixed line heights and font sizes that bypass the variables", () => {

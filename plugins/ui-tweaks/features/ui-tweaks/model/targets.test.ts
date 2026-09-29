@@ -66,6 +66,11 @@ describe("a New-thread screen's targets", () => {
     expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual([]);
   });
 
+  it("are all there in bb 0.44's compact layout, whose column has no inline --md-content-w", () => {
+    const html = `<div data-testid="root-compose-compact-composer"><div class="mx-auto w-full max-w-[760px] px-4"><form data-promptbox>${WRAPPED}</form></div></div>`;
+    expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual([]);
+  });
+
   it("miss the editor wrapper when the editor carries the wrapper's attribute itself", () => {
     const html = `<div class="max-w-[760px]" style="--md-content-w: 760px;"><div id="root-compose-prompt" data-promptbox-editor-scroll contenteditable="true"></div></div>`;
     expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual(["its editor wrapper ([data-promptbox-editor-scroll])"]);
@@ -73,7 +78,7 @@ describe("a New-thread screen's targets", () => {
 
   it("name each one that is missing", () => {
     expect(missingNewThreadTargets(editorIn(`<div class="max-w-[800px]">${EDITOR}</div>`), {})).toEqual([
-      "its column (.max-w-[760px] with an inline --md-content-w)",
+      "its column (.max-w-[760px])",
       "its editor wrapper ([data-promptbox-editor-scroll])",
       "the text size variable --text-sm at :root",
     ]);
