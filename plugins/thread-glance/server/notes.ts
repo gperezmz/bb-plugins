@@ -9,6 +9,7 @@ import {
   type NotesSignal,
   type ThreadNotes,
 } from "../shared/contract";
+import { readRows } from "./kv-rows";
 import { createSerialQueue } from "./serial";
 
 export const NOTE_KEY_PREFIX = "note:";
@@ -166,12 +167,11 @@ export function createNoteStore(bb: Pick<BbPluginApi, "storage" | "realtime" | "
   async function load(): Promise<Map<string, ThreadNotes>> {
     if (cache !== null) return cache;
     const loaded = new Map<string, ThreadNotes>();
-    for (const key of await kv.list(NOTE_KEY_PREFIX)) {
-      const threadId = key.slice(NOTE_KEY_PREFIX.length);
-      const parsed = threadNotesSchema.safeParse(await kv.get<unknown>(key));
+    for (const [threadId, raw] of await readRows(kv, NOTE_KEY_PREFIX)) {
+      const parsed = threadNotesSchema.safeParse(raw);
       if (!parsed.success || Object.keys(parsed.data).length === 0) {
         bb.log.warn(`stored notes for ${threadId} are invalid; dropping them`);
-        await kv.delete(key);
+        await kv.delete(noteKvKey(threadId));
         continue;
       }
       loaded.set(threadId, parsed.data);

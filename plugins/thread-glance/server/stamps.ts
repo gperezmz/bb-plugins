@@ -3,6 +3,7 @@
 // and written through, so listing does not read every row per call.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CHANNELS, type StampKind, type StampSignal, type Stamps } from "../shared/contract";
+import { readRows } from "./kv-rows";
 import { createSerialQueue } from "./serial";
 
 export const STAMP_KEY_PREFIX = "stamp:";
@@ -60,12 +61,11 @@ export function createStampStore(
   async function load(): Promise<Map<string, ThreadStamps>> {
     if (cache !== null) return cache;
     const loaded = new Map<string, ThreadStamps>();
-    for (const key of await kv.list(STAMP_KEY_PREFIX)) {
-      const threadId = key.slice(STAMP_KEY_PREFIX.length);
-      const stamps = parseThreadStamps(await kv.get<unknown>(key));
+    for (const [threadId, raw] of await readRows(kv, STAMP_KEY_PREFIX)) {
+      const stamps = parseThreadStamps(raw);
       if (stamps === null) {
         bb.log.warn(`stored stamps for ${threadId} are invalid; dropping them`);
-        await kv.delete(key);
+        await kv.delete(stampKvKey(threadId));
         continue;
       }
       loaded.set(threadId, stamps);
