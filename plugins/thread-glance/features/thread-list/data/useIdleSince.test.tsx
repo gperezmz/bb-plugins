@@ -55,13 +55,12 @@ afterEach(() => {
 describe("reporting a change to idle that bb sends no event for", () => {
   it("is sent by one window of the browser, for background work or a queued message ending", async () => {
     vi.stubGlobal("navigator", { ...navigator, locks: fakeLocks() });
-    const first = openWindow([background]);
-    const second = openWindow([background]);
+    const [first, second, third] = [openWindow([background]), openWindow([background]), openWindow([background])];
     await act(async () => {});
-    first.show([idle]);
-    second.show([idle]);
+    for (const window of [first, second, third]) window.show([idle]);
     expect(first.reportIdle).toHaveBeenCalledExactlyOnceWith(["p"]);
     expect(second.reportIdle).not.toHaveBeenCalled();
+    expect(third.reportIdle).not.toHaveBeenCalled();
 
     first.show([queued]);
     first.show([idle]);
