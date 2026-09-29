@@ -1,0 +1,8 @@
+# APM installs these into the checkout and .gitignore keeps them out of git,
+# so bb copies them into every new worktree: agents there need the same
+# skills, hooks and settings as the main checkout.
+.claude/skills/
+.claude/hooks/
+.claude/settings.json
+.claude/apm-hooks.json
+.agents/skills/
