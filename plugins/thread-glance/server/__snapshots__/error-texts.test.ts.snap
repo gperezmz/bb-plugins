@@ -1,0 +1,909 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`refusal texts > a stored childAttention all logs its warning 1`] = `
+[
+  "stored preference childAttention is invalid (Invalid option: expected one of "blocked"|"everything"); using the default",
+]
+`;
+
+exports[`refusal texts > a stored chronologicalSort random logs its warning 1`] = `
+[
+  "stored preference chronologicalSort is invalid (Invalid option: expected one of "updated"|"created"|"alpha"|"none"); using the default",
+]
+`;
+
+exports[`refusal texts > a stored collapsedEnvironments ["aaaaaaaaaaaaaaa… logs its warning 1`] = `
+[
+  "stored preference collapsedEnvironments is invalid (Too big: expected string to have <=1024 characters); using the default",
+]
+`;
+
+exports[`refusal texts > a stored collapsedMachines true logs its warning 1`] = `
+[
+  "stored preference collapsedMachines is invalid (Invalid input: expected array, received boolean); using the default",
+]
+`;
+
+exports[`refusal texts > a stored collapsedProjects {} logs its warning 1`] = `
+[
+  "stored preference collapsedProjects is invalid (Invalid input: expected array, received object); using the default",
+]
+`;
+
+exports[`refusal texts > a stored collapsedSections ["projects"] logs its warning 1`] = `
+[
+  "stored preference collapsedSections is invalid (Invalid option: expected one of "pinned"|"threads"); using the default",
+]
+`;
+
+exports[`refusal texts > a stored collapsedThreadSections ["id0","id1","i… logs its warning 1`] = `
+[
+  "stored preference collapsedThreadSections is invalid (Too big: expected array to have <=10000 items); using the default",
+]
+`;
+
+exports[`refusal texts > a stored environmentGrouping 1 logs its warning 1`] = `
+[
+  "stored preference environmentGrouping is invalid (Invalid input: expected boolean, received number); using the default",
+]
+`;
+
+exports[`refusal texts > a stored expandedChildren 42 logs its warning 1`] = `
+[
+  "stored preference expandedChildren is invalid (Invalid input: expected array, received number); using the default",
+]
+`;
+
+exports[`refusal texts > a stored expandedOlder [null] logs its warning 1`] = `
+[
+  "stored preference expandedOlder is invalid (Invalid input: expected string, received null); using the default",
+]
+`;
+
+exports[`refusal texts > a stored harnessIcon hidden logs its warning 1`] = `[]`;
+
+exports[`refusal texts > a stored hiddenGroups ["pinned"] logs its warning 1`] = `
+[
+  "stored preference hiddenGroups is invalid (Invalid string: must match pattern /^(project|section|machine):\\S+$/); using the default",
+]
+`;
+
+exports[`refusal texts > a stored hiddenGroups ["project:"] logs its warning 1`] = `
+[
+  "stored preference hiddenGroups is invalid (Invalid string: must match pattern /^(project|section|machine):\\S+$/); using the default",
+]
+`;
+
+exports[`refusal texts > a stored hiddenGroups {} logs its warning 1`] = `
+[
+  "stored preference hiddenGroups is invalid (Invalid input: expected array, received object); using the default",
+]
+`;
+
+exports[`refusal texts > a stored machineSectionOrder null logs its warning 1`] = `
+[
+  "stored preference machineSectionOrder is invalid (Invalid input: expected array, received null); using the default",
+]
+`;
+
+exports[`refusal texts > a stored manualSectionOrder [1] logs its warning 1`] = `
+[
+  "stored preference manualSectionOrder is invalid (Invalid input: expected string, received number); using the default",
+]
+`;
+
+exports[`refusal texts > a stored openSettledFolds "g" logs its warning 1`] = `
+[
+  "stored preference openSettledFolds is invalid (Invalid input: expected array, received string); using the default",
+]
+`;
+
+exports[`refusal texts > a stored organizationMode sideways logs its warning 1`] = `
+[
+  "stored preference organizationMode is invalid (Invalid option: expected one of "project"|"chronological"|"machine"); using the default",
+]
+`;
+
+exports[`refusal texts > a stored sectionOrder "pinned" logs its warning 1`] = `
+[
+  "stored preference sectionOrder is invalid (Invalid input: expected array, received string); using the default",
+]
+`;
+
+exports[`refusal texts > a stored sectionOrder [""] logs its warning 1`] = `
+[
+  "stored preference sectionOrder is invalid (Too small: expected string to have >=1 characters); using the default",
+]
+`;
+
+exports[`refusal texts > a stored settleAfter 2d logs its warning 1`] = `
+[
+  "stored preference settleAfter is invalid (Invalid option: expected one of "12h"|"1d"|"3d"|"1w"|"never"); using the default",
+]
+`;
+
+exports[`refusal texts > a stored showArchived yes logs its warning 1`] = `
+[
+  "stored preference showArchived is invalid (Invalid input: expected boolean, received string); using the default",
+]
+`;
+
+exports[`refusal texts > a stored sortDirection up logs its warning 1`] = `
+[
+  "stored preference sortDirection is invalid (Invalid option: expected one of "default"|"ascending"|"descending"); using the default",
+]
+`;
+
+exports[`refusal texts > bb thread-glance prefs set childAttention all 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for childAttention: Invalid option: expected one of "blocked"|"everything" (Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of an open tree's N more child threads fold, as running ones do.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for childAttention: Invalid option: expected one of \\"blocked\\"|\\"everything\\"",
+    "hint": "Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of an open tree's N more child threads fold, as running ones do."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for childAttention: Invalid option: expected one of "blocked"|"everything" (Needs attention counts every child: blocked counts a child thread that waits on you, is offline or has an orphaned failure; everything also counts every failed or finished-unread child. The same children stay out of an open tree's N more child threads fold, as running ones do.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set chronologicalSort random 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for chronologicalSort: Invalid option: expected one of "updated"|"created"|"alpha"|"none" (Sort field inside a group: updated, created or alpha. none is read as updated.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for chronologicalSort: Invalid option: expected one of \\"updated\\"|\\"created\\"|\\"alpha\\"|\\"none\\"",
+    "hint": "Sort field inside a group: updated, created or alpha. none is read as updated."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for chronologicalSort: Invalid option: expected one of "updated"|"created"|"alpha"|"none" (Sort field inside a group: updated, created or alpha. none is read as updated.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set collapsedEnvironments ["aaaaaaaaaaaaaaa… 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedEnvironments: Too big: expected string to have <=1024 characters (Environment ids whose folder row is collapsed.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for collapsedEnvironments: Too big: expected string to have <=1024 characters",
+    "hint": "Environment ids whose folder row is collapsed."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedEnvironments: Too big: expected string to have <=1024 characters (Environment ids whose folder row is collapsed.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set collapsedMachines true 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedMachines: Invalid input: expected array, received boolean (Machine ids whose group is collapsed.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for collapsedMachines: Invalid input: expected array, received boolean",
+    "hint": "Machine ids whose group is collapsed."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedMachines: Invalid input: expected array, received boolean (Machine ids whose group is collapsed.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set collapsedProjects {} 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedProjects: Invalid input: expected array, received object (Project ids whose group is collapsed.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for collapsedProjects: Invalid input: expected array, received object",
+    "hint": "Project ids whose group is collapsed."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedProjects: Invalid input: expected array, received object (Project ids whose group is collapsed.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set collapsedSections ["projects"] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedSections: Invalid option: expected one of "pinned"|"threads" (Built-in groups (pinned, threads) that are collapsed.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for collapsedSections: Invalid option: expected one of \\"pinned\\"|\\"threads\\"",
+    "hint": "Built-in groups (pinned, threads) that are collapsed."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedSections: Invalid option: expected one of "pinned"|"threads" (Built-in groups (pinned, threads) that are collapsed.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set collapsedThreadSections ["id0","id1","i… 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedThreadSections: Too big: expected array to have <=10000 items (Custom section keys (section:<id>) whose group is collapsed.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for collapsedThreadSections: Too big: expected array to have <=10000 items",
+    "hint": "Custom section keys (section:<id>) whose group is collapsed."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for collapsedThreadSections: Too big: expected array to have <=10000 items (Custom section keys (section:<id>) whose group is collapsed.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set environmentGrouping 1 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for environmentGrouping: Invalid input: expected boolean, received number (Worktrees as folders: whether sibling threads sharing a worktree environment fold into a folder row.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for environmentGrouping: Invalid input: expected boolean, received number",
+    "hint": "Worktrees as folders: whether sibling threads sharing a worktree environment fold into a folder row."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for environmentGrouping: Invalid input: expected boolean, received number (Worktrees as folders: whether sibling threads sharing a worktree environment fold into a folder row.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set expandedChildren 42 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for expandedChildren: Invalid input: expected array, received number (Parent thread ids whose chip the user opened.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for expandedChildren: Invalid input: expected array, received number",
+    "hint": "Parent thread ids whose chip the user opened."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for expandedChildren: Invalid input: expected array, received number (Parent thread ids whose chip the user opened.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set expandedOlder [null] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for expandedOlder: Invalid input: expected string, received null (Parent thread ids whose "N more child threads" row the user opened, once that tree's children chip was open.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for expandedOlder: Invalid input: expected string, received null",
+    "hint": "Parent thread ids whose \\"N more child threads\\" row the user opened, once that tree's children chip was open."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for expandedOlder: Invalid input: expected string, received null (Parent thread ids whose "N more child threads" row the user opened, once that tree's children chip was open.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set harnessIcon hidden 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for harnessIcon: Invalid option: expected one of "muted"|"colour" (How rows draw the harness logo, where a row draws one: muted (monochrome) or colour (the provider's tint). A stored hidden reads as muted.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for harnessIcon: Invalid option: expected one of \\"muted\\"|\\"colour\\"",
+    "hint": "How rows draw the harness logo, where a row draws one: muted (monochrome) or colour (the provider's tint). A stored hidden reads as muted."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for harnessIcon: Invalid option: expected one of "muted"|"colour" (How rows draw the harness logo, where a row draws one: muted (monochrome) or colour (the provider's tint). A stored hidden reads as muted.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set hiddenGroups ["pinned"] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\S+$/ (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\\\S+$/",
+    "hint": "Groups moved into More: threads, project:<id>, section:<id> or machine:<id>."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\S+$/ (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set hiddenGroups ["project:"] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\S+$/ (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\\\S+$/",
+    "hint": "Groups moved into More: threads, project:<id>, section:<id> or machine:<id>."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid string: must match pattern /^(project|section|machine):\\S+$/ (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set hiddenGroups {} 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid input: expected array, received object (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for hiddenGroups: Invalid input: expected array, received object",
+    "hint": "Groups moved into More: threads, project:<id>, section:<id> or machine:<id>."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for hiddenGroups: Invalid input: expected array, received object (Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set machineSectionOrder null 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for machineSectionOrder: Invalid input: expected array, received null (Top-level group order when organized by machine.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for machineSectionOrder: Invalid input: expected array, received null",
+    "hint": "Top-level group order when organized by machine."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for machineSectionOrder: Invalid input: expected array, received null (Top-level group order when organized by machine.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set manualSectionOrder [1] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for manualSectionOrder: Invalid input: expected string, received number (Top-level group order when organized chronologically.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for manualSectionOrder: Invalid input: expected string, received number",
+    "hint": "Top-level group order when organized chronologically."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for manualSectionOrder: Invalid input: expected string, received number (Top-level group order when organized chronologically.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set openSettledFolds "g" 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for openSettledFolds: Invalid input: expected array, received string (Group ids whose settled fold the user opened.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for openSettledFolds: Invalid input: expected array, received string",
+    "hint": "Group ids whose settled fold the user opened."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for openSettledFolds: Invalid input: expected array, received string (Group ids whose settled fold the user opened.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set organizationMode sideways 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for organizationMode: Invalid option: expected one of "project"|"chronological"|"machine" (How top-level groups are formed: project, chronological (custom sections) or machine.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for organizationMode: Invalid option: expected one of \\"project\\"|\\"chronological\\"|\\"machine\\"",
+    "hint": "How top-level groups are formed: project, chronological (custom sections) or machine."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for organizationMode: Invalid option: expected one of "project"|"chronological"|"machine" (How top-level groups are formed: project, chronological (custom sections) or machine.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set sectionOrder "pinned" 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sectionOrder: Invalid input: expected array, received string (Top-level group order when organized by project.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for sectionOrder: Invalid input: expected array, received string",
+    "hint": "Top-level group order when organized by project."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sectionOrder: Invalid input: expected array, received string (Top-level group order when organized by project.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set sectionOrder [""] 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sectionOrder: Too small: expected string to have >=1 characters (Top-level group order when organized by project.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for sectionOrder: Too small: expected string to have >=1 characters",
+    "hint": "Top-level group order when organized by project."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sectionOrder: Too small: expected string to have >=1 characters (Top-level group order when organized by project.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set settleAfter 2d 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for settleAfter: Invalid option: expected one of "12h"|"1d"|"3d"|"1w"|"never" (Settle after: how long a quiet thread goes without activity before it settles into its group's settled fold: 12h, 1d, 3d, 1w or never.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for settleAfter: Invalid option: expected one of \\"12h\\"|\\"1d\\"|\\"3d\\"|\\"1w\\"|\\"never\\"",
+    "hint": "Settle after: how long a quiet thread goes without activity before it settles into its group's settled fold: 12h, 1d, 3d, 1w or never."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for settleAfter: Invalid option: expected one of "12h"|"1d"|"3d"|"1w"|"never" (Settle after: how long a quiet thread goes without activity before it settles into its group's settled fold: 12h, 1d, 3d, 1w or never.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set showArchived yes 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for showArchived: Invalid input: expected boolean, received string (Show archived threads: whether every group also lists archived threads, as each group's menu toggles.)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for showArchived: Invalid input: expected boolean, received string",
+    "hint": "Show archived threads: whether every group also lists archived threads, as each group's menu toggles."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for showArchived: Invalid input: expected boolean, received string (Show archived threads: whether every group also lists archived threads, as each group's menu toggles.)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > bb thread-glance prefs set sortDirection up 1`] = `
+{
+  "json": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sortDirection: Invalid option: expected one of "default"|"ascending"|"descending" (Sort direction: ascending or descending. A saved default reads as the field's own direction (descending for dates, ascending for alpha).)
+",
+    "stdout": "{
+  "ok": false,
+  "error": {
+    "code": "invalid_preference_value",
+    "message": "Invalid value for sortDirection: Invalid option: expected one of \\"default\\"|\\"ascending\\"|\\"descending\\"",
+    "hint": "Sort direction: ascending or descending. A saved default reads as the field's own direction (descending for dates, ascending for alpha)."
+  }
+}
+",
+  },
+  "plain": {
+    "exitCode": 1,
+    "stderr": "Invalid value for sortDirection: Invalid option: expected one of "default"|"ascending"|"descending" (Sort direction: ascending or descending. A saved default reads as the field's own direction (descending for dates, ascending for alpha).)
+",
+    "stdout": "",
+  },
+}
+`;
+
+exports[`refusal texts > rpc clearSeen refuses {"threadIds":"t1"} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected array, received string",
+      "path": [
+        "threadIds",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc importPreferences refuses "mirror" 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected object, received string",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc importPreferences refuses {"bbMirror":null,"extra":true} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Unrecognized key: "extra"",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc listNotes refuses 1 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected null, received number",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc listPreferences refuses {} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected null, received object",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc listScheduled refuses [] 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected null, received array",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc listStamps refuses {"all":true} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected null, received object",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc markIdle refuses {} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected array, received undefined",
+      "path": [
+        "threadIds",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc markIdle refuses an id of 1025 characters 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Too big: expected string to have <=1024 characters",
+      "path": [
+        "threadIds",
+        0,
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc markSeen refuses {"threadIds":[""]} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Too small: expected string to have >=1 characters",
+      "path": [
+        "threadIds",
+        0,
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc markSeen refuses 10001 ids 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Too big: expected array to have <=10000 items",
+      "path": [
+        "threadIds",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc resetPreference refuses {"key":1} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid option: expected one of "showArchived"|"organizationMode"|"environmentGrouping"|"chronologicalSort"|"sortDirection"|"sectionOrder"|"manualSectionOrder"|"machineSectionOrder"|"hiddenGroups"|"collapsedSections"|"collapsedProjects"|"collapsedThreadSections"|"collapsedMachines"|"collapsedEnvironments"|"expandedOlder"|"openSettledFolds"|"settleAfter"|"expandedChildren"|"childAttention"|"harnessIcon"",
+      "path": [
+        "key",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc setPreference refuses {"key":"colour","value":"red"} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid option: expected one of "showArchived"|"organizationMode"|"environmentGrouping"|"chronologicalSort"|"sortDirection"|"sectionOrder"|"manualSectionOrder"|"machineSectionOrder"|"hiddenGroups"|"collapsedSections"|"collapsedProjects"|"collapsedThreadSections"|"collapsedMachines"|"collapsedEnvironments"|"expandedOlder"|"openSettledFolds"|"settleAfter"|"expandedChildren"|"childAttention"|"harnessIcon"",
+      "path": [
+        "key",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc setPreference refuses {"key":"organizationMode","value":"mach… 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Unrecognized key: "extra"",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc setPreference refuses {"key":"organizationMode","value":"side… 1`] = `
+{
+  "code": "handler_error",
+  "issues": undefined,
+  "message": "Invalid value for organizationMode: Invalid option: expected one of "project"|"chronological"|"machine"",
+}
+`;
