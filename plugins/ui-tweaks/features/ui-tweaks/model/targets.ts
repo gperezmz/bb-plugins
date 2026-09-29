@@ -43,13 +43,13 @@ export const COMPOSER_EDITOR: Target = {
 /** The region of a prompt editor holding its editor wrapper. */
 const INPUT_REGION = "[data-promptbox-input-region]";
 
-/**
- * The Typeahead menu, drawn while it is open beside the input region of the
- * prompt editor it opens from. Being closed is not a missing target.
- */
+/** The Typeahead menu, drawn while it is open beside the input region of the prompt editor it opens from. */
 const TYPEAHEAD_MENU = "[data-promptbox-typeahead-menu]";
 
-/** The Typeahead menu the thread composer opens, not a queued message's editor. */
+/**
+ * The Typeahead menu the thread composer opens, not a queued message's
+ * editor. A menu is there only while open, so it is never a missing target.
+ */
 export const COMPOSER_TYPEAHEAD_MENU = `[data-follow-up-composer] ${INPUT_REGION}:has(${EDITOR_WRAPPER}) ~ ${TYPEAHEAD_MENU}:not(${QUEUED_MESSAGE_EDITOR} *)`;
 
 /**
@@ -80,7 +80,10 @@ export const NEW_THREAD_COLUMN: Target = {
   selector: ".max-w-\\[760px\\]",
 };
 
-/** The Typeahead menu the New-thread screen's editor opens. */
+/**
+ * The Typeahead menu the New-thread screen's editor opens. A menu is there
+ * only while open, so it is never a missing target.
+ */
 export const NEW_THREAD_TYPEAHEAD_MENU = `${INPUT_REGION}:has(${NEW_THREAD_EDITOR}) ~ ${TYPEAHEAD_MENU}`;
 
 export const NEW_THREAD_EDITOR_WRAPPER: Target = {

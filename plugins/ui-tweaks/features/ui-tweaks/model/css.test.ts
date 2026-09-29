@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scaledLength, tweaksCss as css16 } from "./css";
+import { scaledLength, tweaksCss as tweaksCssAtRemPx } from "./css";
 
 // bb 0.44.0's root values on a viewport that is not a phone.
 const ROOT = {
@@ -21,8 +21,8 @@ const ROOT = {
 };
 
 /** The stylesheet for a root whose font size is bb's 16 px. */
-function tweaksCss(tweaks: Parameters<typeof css16>[0], root: Record<string, string>): string {
-  return css16(tweaks, root, 16);
+function tweaksCss(tweaks: Parameters<typeof tweaksCssAtRemPx>[0], root: Record<string, string>): string {
+  return tweaksCssAtRemPx(tweaks, root, 16);
 }
 
 const BOX = ".chat-prompt-box.max-w-\\[760px\\]";

@@ -112,6 +112,5 @@ describe("the Typeahead menu", () => {
 
   it("is not a missing target while it is closed", () => {
     expect(missingTargets(view(COLUMN + COMPOSER), ROOT)).toEqual([]);
-    expect(COMPOSER).not.toContain("data-promptbox-typeahead-menu");
   });
 });

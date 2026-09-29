@@ -108,8 +108,13 @@ function scaledTextRules(scope: string, scale: number, rootVariables: Readonly<R
 }
 
 /**
- * `length` times `scale`, rounded to a whole pixel, or `length` itself when
- * `scale` is 1. A length in neither px nor rem is scaled without rounding.
+ * A length scaled and rounded to a whole pixel.
+ *
+ * @param length A CSS length. One in neither px nor rem is scaled without
+ *   rounding.
+ * @param scale The text size's ratio to bb's size. At 1, `length` comes back
+ *   as it is.
+ * @param remPx The root's font size in px, which a rem is.
  */
 export function scaledLength(length: string, scale: number, remPx: number): string {
   if (scale === 1) return length;

@@ -11,10 +11,14 @@ import { tweakState } from "./state";
 export const GRACE_MS = 5_000;
 const SCAN_DELAY_MS = 500;
 
+/** The root variables the stylesheet scales from: each text variable, its line height, and --spacing. */
+const ROOT_VARIABLES = [...TEXT_VARIABLES.flatMap((name) => [name, `${name}--line-height`]), "--spacing"];
+
+/** The {@link ROOT_VARIABLES} the page's root holds, by name, leaving out any it lacks. */
 export function readRootVariables(): Record<string, string> {
   const style = getComputedStyle(document.documentElement);
   const variables: Record<string, string> = {};
-  for (const variable of [...TEXT_VARIABLES.flatMap((name) => [name, `${name}--line-height`]), "--spacing"]) {
+  for (const variable of ROOT_VARIABLES) {
     const value = style.getPropertyValue(variable).trim();
     if (value) variables[variable] = value;
   }
