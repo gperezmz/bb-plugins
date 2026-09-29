@@ -55,7 +55,7 @@ A thread's tree is listed as one unit: only the root gets a row in its group, an
 
 Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
+Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine. The settled fold takes the test as if no thread were focused, so opening a thread does not move it out.
 
 Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row. A child is quiet unless it or anything under it:
 
@@ -70,7 +70,7 @@ The fold is worked out as if no thread were focused, so the children shown stay 
 
 ## Settled threads
 
-A **settled thread** is a quiet thread that does not need attention, is not pinned, and has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when nothing settles. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
+A **settled thread** is a thread that is quiet as if no thread were focused, does not need attention, is not pinned, and has had no activity of its own for the **Settle after** period: 12 hours, 1 day (the default), 3 days, 1 week, or Never, when nothing settles. Its activity is when it was created, last started, and last finished or failed; opening or renaming it is not activity.
 
 A tree settles as one unit: it goes behind its group's settled fold only when every thread in it is settled, and a child never leaves its tree for the fold. Archived threads, shown with **Show archived threads**, take the same test. Pinned threads never settle, so Pinned has no fold.
 
@@ -82,7 +82,18 @@ flowchart LR
 
 Settling is worked out afresh every time the list is drawn, never stored, so a tree enters the fold as the period passes or you change Settle after, and leaves it as soon as anything in it moves, all without a reload. A thread's pull request plays no part: a merged one does not settle it sooner, and an open one does not keep it out. So a thread is in or out of the fold from the first paint, and the pull request badges and branch lines filling in never move it. bb's thread list carries each thread's last finish, so the plugin's own record of when threads last started and finished, which arrives a moment later, rarely moves one either; a turn you stopped may be the exception. There is no manual settle: bb's archive already takes a thread out of the list.
 
-When the focused thread is in a settled tree, that tree is drawn just above the fold, which stays open or closed as you left it, so opening it moves no other row. Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
+Opening a thread is not activity, so a settled tree stays settled while you look at it, and the fold stays open or closed as you left it. With the fold open, the tree stays in place inside it. With the fold closed, the rows from the tree's root down to the thread you opened show under the `Settled (N)` divider, without their siblings or an `N more child threads` row, and go back behind the fold when you open another thread or none. N still counts the tree. It is the rule of the `N more child threads` fold: the opened row shows and nothing else moves. Threads open in other split panes get no such row.
+
+A tree that settles while you have one of its threads open, because opening it read it or because its Settle after period ran out, stays where it is until you open a thread outside its group's settled trees, or none; then it moves into the fold. Until then N does not count it. So opening a thread never moves the row you opened.
+
+```mermaid
+flowchart LR
+  open["Focused, in its group"] -->|"settles while focused"| held["Held where it is, not counted"]
+  held -->|"focus leaves the group's settled trees"| fold["Behind the settled fold"]
+  held -->|"any activity"| open
+```
+
+Whether a group's fold is open is saved on the server, so it survives a reload and follows you to every window.
 
 ## What opens by itself
 
