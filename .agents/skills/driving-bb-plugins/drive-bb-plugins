@@ -1,0 +1,315 @@
+#!/usr/bin/env bash
+# Drives this repository's plugins in a throwaway bb: a bb server and a host
+# daemon on a data directory of their own, the chosen plugins installed from a
+# copy of the checkout, Claude Code threads answered by Cache Keeper's fake
+# Anthropic API, and the bb web UI in headless Chromium. Never touches the
+# user's own bb: every command runs with the variables that name a bb unset or
+# pointed at the throwaway, and HOME inside the run's scratch directory.
+#
+# Reads: plugins/<id>/ in this checkout; DBP_* in the environment (below).
+# Writes: scratch in a mktemp directory under $DBP_SCRATCH_ROOT (removed by
+# stop), evidence and process handles in .drives/<run>/ at the repository root
+# (kept by stop), port claims in $DBP_SCRATCH_ROOT/ports (released by stop).
+#
+#   drive-bb-plugins start <plugin>...              start a run, print its name and URL
+#   drive-bb-plugins doctor [--run <run>]           exit 0 only when the run is worth driving
+#   drive-bb-plugins bb [--run <run>] <label> -- <args>
+#                                                   run `bb <args>` against the run, logged as evidence
+#   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>]
+#                                                   make a Claude Code thread, print its id once idle
+#   drive-bb-plugins ui [--run <run>] <label> <steps.mjs> [--mobile]
+#                                                   run a Playwright script against the bb web UI
+#   drive-bb-plugins stop [--run <run>]             stop the run, keep its evidence
+#
+# The run is --run's, else $DBP_RUN's, else the one .drives/latest points at.
+# start picks three free ports and claims them, so runs started at once from
+# any checkouts never share one; DBP_SERVER_PORT, DBP_DAEMON_PORT and
+# DBP_API_PORT pick them instead. Every later command reads the run's ports
+# from its run.env.
+set -euo pipefail
+
+skill_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+repo=$(git -C "$skill_dir" rev-parse --show-toplevel)
+evidence_root=$repo/.drives
+scratch_root=${DBP_SCRATCH_ROOT:-${TMPDIR:-/tmp}/drive-bb-plugins}
+claims=$scratch_root/ports
+unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI -u BB_HOST_DAEMON_PORT
+  -u BB_THREAD_STORAGE -u BB_DATA_DIR -u CLAUDE_CONFIG_DIR -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN
+  -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
+
+die() { echo "drive-bb-plugins: $*" >&2; exit 1; }
+port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
+
+# Resolves the run the command acts on into $run, $ev and $scratch, and loads
+# its recorded settings.
+load_run() {
+  run=${DBP_RUN:-$(readlink "$evidence_root/latest" 2> /dev/null || true)}
+  [[ -n $run && -f $evidence_root/$run/run.env ]] || die "no run found; start one with: drive-bb-plugins start <plugin>..."
+  ev=$evidence_root/$run
+  # shellcheck source=/dev/null
+  source "$ev/run.env"
+}
+
+# Every process whose environment carries this run's mark, "pid<TAB>cmdline".
+# The bb server's detached child and the Claude Code the daemon starts inherit it.
+marked_procs() {
+  local proc pid
+  for proc in /proc/[0-9]*; do
+    pid=${proc#/proc/}
+    [[ $pid == "$$" || $pid == "${BASHPID:-}" ]] && continue
+    if grep -qzxF "DBP_MARK=$scratch" "$proc/environ" 2> /dev/null; then
+      printf '%s\t%s\n' "$pid" "$(tr '\0\n\t' '   ' < "$proc/cmdline" 2> /dev/null | cut -c1-160)"
+    fi
+  done
+}
+
+# Prints a free port, claimed for this run's scratch: the claim is a
+# directory, made atomically, so two starts at once never take the same port.
+# A claim whose run's scratch is gone is stale and taken over.
+claim_port() {
+  local port owner
+  mkdir -p "$claims"
+  for _ in $(seq 50); do
+    port=$(node -e 'const s = require("net").createServer(); s.listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); })')
+    if mkdir "$claims/$port" 2> /dev/null; then
+      echo "$scratch" > "$claims/$port/owner"
+      echo "$port"
+      return
+    fi
+    owner=$(cat "$claims/$port/owner" 2> /dev/null || true)
+    [[ -n $owner && ! -d $owner ]] && rm -rf "$claims/$port"
+  done
+  die "no free port found"
+}
+
+# Releases the ports this run's scratch claimed.
+release_ports() {
+  local claim
+  for claim in "$claims"/*/; do
+    [[ $(cat "$claim/owner" 2> /dev/null) == "$scratch" ]] && rm -rf "$claim"
+  done
+  return 0
+}
+
+# Runs a command against the throwaway bb only.
+tb() { env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" "$@"; }
+
+cmd_start() {
+  [[ $# -gt 0 ]] || die "usage: drive-bb-plugins start <plugin>...  (plugins: $(ls "$repo/plugins" | tr '\n' ' '))"
+  local p
+  for p in "$@"; do [[ -f $repo/plugins/$p/package.json ]] || die "no plugin plugins/$p"; done
+  for tool in node jq curl git rsync bb bb-server bb-host-daemon; do
+    command -v "$tool" > /dev/null || die "$tool is not on PATH"
+  done
+  # A fresh worktree has no Playwright yet; `ui` needs it.
+  if [[ ! -d $repo/plugins/thread-glance/node_modules/playwright ]]; then
+    echo "installing plugins/thread-glance's dependencies, for Playwright" >&2
+    npm ci --prefix "$repo/plugins/thread-glance" --no-audit --no-fund > /dev/null || die "npm ci in plugins/thread-glance failed"
+  fi
+
+  mkdir -p "$scratch_root"
+  scratch=$(mktemp -d "$scratch_root/run.XXXXXX")
+  run=$(date +%Y%m%d-%H%M%S)-$(printf '%s' "$*" | tr ' ' '+')-${scratch##*.}
+  ev=$evidence_root/$run
+  server_port=${DBP_SERVER_PORT:-$(claim_port)}
+  daemon_port=${DBP_DAEMON_PORT:-$(claim_port)}
+  api_port=${DBP_API_PORT:-$(claim_port)}
+  [[ -n $server_port && -n $daemon_port && -n $api_port ]] || { release_ports; rm -rf "$scratch"; die "could not claim three ports"; }
+  for p in "$server_port" "$daemon_port" "$api_port"; do
+    ! port_busy "$p" || { release_ports; rm -rf "$scratch"; die "port $p is in use: choose another DBP_*_PORT"; }
+  done
+  server_url=http://127.0.0.1:$server_port
+  mkdir -p "$ev" "$scratch/home" "$scratch/tmp" "$scratch/plugins" "$scratch/work/demo"
+  ln -sfn "$run" "$evidence_root/latest"
+  cat > "$ev/run.env" << ENV
+scratch=$scratch
+server_url=$server_url
+server_port=$server_port
+daemon_port=$daemon_port
+api_port=$api_port
+plugins="$*"
+ENV
+  : > "$ev/pids"
+  : > "$ev/launch-pids"
+  fail() {
+    echo "drive-bb-plugins: $1" >&2
+    for log in "$scratch/fake-anthropic.log" "$scratch/server.log" "$scratch/bb/logs/server-stdio.log" "$scratch/host-daemon.log"; do
+      [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
+    done
+    echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
+    exit 1
+  }
+  wait_for() {
+    for _ in $(seq 60); do curl -fs -o /dev/null "$2" && return 0; sleep 1; done
+    fail "$1 did not answer at $2"
+  }
+
+  tb env PORT="$api_port" REQUEST_LOG="$scratch/requests.jsonl" \
+    node "$repo/plugins/cache-keeper/harness/fake-anthropic.mjs" > "$scratch/fake-anthropic.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  wait_for "the fake Anthropic API" "http://127.0.0.1:$api_port/_control"
+
+  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_HOST_DAEMON_PORT="$daemon_port" \
+    bb-server --data-dir "$scratch/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" > "$scratch/server.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  wait_for "the bb server" "$server_url/health"
+
+  local enroll host_id project status
+  enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
+  host_id=$(jq -r .hostId <<< "$enroll")
+  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" \
+    BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$host_id" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
+    bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" > "$scratch/host-daemon.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  connected() { [[ $(tb bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]; }
+  for _ in $(seq 60); do connected && break; sleep 1; done
+  connected || fail "the host daemon did not connect to the bb server"
+  # bb-server hands the server to a detached child; record it by the run's mark.
+  marked_procs | cut -f1 >> "$ev/pids"
+  sort -u "$ev/pids" -o "$ev/pids"
+
+  GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
+    bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
+  project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
+  [[ $project == proj_* ]] || fail "could not create the drives' project"
+
+  for p in "$@"; do
+    # A copy as the checkout has it, so bb builds what is checked out and
+    # writes nothing into the checkout.
+    rsync -a --exclude node_modules --exclude dist --exclude harness "$repo/plugins/$p/" "$scratch/plugins/$p/"
+    [[ -d $repo/plugins/$p/node_modules ]] && ln -s "$repo/plugins/$p/node_modules" "$scratch/plugins/$p/node_modules"
+    tb bb plugin install "path:$scratch/plugins/$p" --yes > "$scratch/install-$p.log" 2>&1 || { cat "$scratch/install-$p.log" >&2; fail "could not install $p"; }
+    status=$(tb bb plugin list --json | jq -r --arg id "$p" '.plugins[] | select(.id == $id) | .status')
+    [[ $status == running ]] || fail "$p's status is '$status', not running"
+  done
+  marked_procs | cut -f1 >> "$ev/pids"
+  sort -u "$ev/pids" -o "$ev/pids"
+
+  cat >> "$ev/run.env" << ENV
+host_id=$host_id
+project=$project
+ENV
+  cat > "$ev/env.sh" << ENV
+# Points bb at run $run and nothing else. Source it in a subshell.
+unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
+export BB_SERVER_URL=$server_url HOME=$scratch/home TMPDIR=$scratch/tmp DBP_MARK=$scratch
+export DBP_PROJECT=$project DBP_HOST=$host_id DBP_API=http://127.0.0.1:$api_port
+ENV
+  echo "run      $run   (pass --run $run to every later command)"
+  echo "web UI   $server_url/"
+  echo "project  $project   machine $host_id"
+  echo "plugins  $*"
+  echo "evidence $ev"
+}
+
+cmd_doctor() {
+  load_run
+  local bad=0 p row
+  check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; bad=1; fi; }
+  check "run $run points at $server_url, not the user's bb (${BB_SERVER_URL:-unset})" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
+  check "the fake API, bb server and host daemon launched for the run are alive" '[[ $(ps -p "$(paste -sd, - < "$ev/launch-pids")" -o pid= | wc -l) -eq 3 ]]'
+  check "the bb server answers /health" 'curl -fs -o /dev/null "$server_url/health"'
+  check "the server on $server_port serves the run's data dir" 'grep -qzxF "DBP_MARK=$scratch" /proc/$(ss -ltnpH "sport = :$server_port" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)/environ'
+  check "machine $host_id is connected" '[[ $(tb bb machine list --json | jq --arg id "$host_id" "[.[] | select(.id == \$id and .status == \"connected\")] | length") -gt 0 ]]'
+  for p in $plugins; do
+    row=$(tb bb plugin list --json | jq -c --arg id "$p" '.plugins[] | select(.id == $id)')
+    check "$p runs from the run's copy" '[[ $(jq -r .status <<< "$row") == running && $(jq -r .rootDir <<< "$row") == "$scratch/plugins/$p"* ]]'
+  done
+  return $bad
+}
+
+cmd_bb() {
+  load_run
+  local label=${1:?usage: drive-bb-plugins bb <label> -- <bb args>}
+  shift
+  [[ ${1:-} == -- ]] && shift
+  local out err code=0
+  out=$(mktemp) err=$(mktemp)
+  tb bb "$@" > "$out" 2> "$err" || code=$?
+  cat "$out"
+  cat "$err" >&2
+  {
+    printf '### %s  %s\n$ bb' "$label" "$(date -Iseconds)"
+    printf ' %q' "$@"
+    printf '\nexit %s\n--- stdout\n%s\n--- stderr\n%s\n\n' "$code" "$(cat "$out")" "$(cat "$err")"
+  } >> "$ev/cli.md"
+  rm -f "$out" "$err"
+  return $code
+}
+
+cmd_spawn() {
+  load_run
+  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>]} title=${2:?} prompt=${3:?} parent=${4:-} args id
+  args=(--project "$project" --provider claude-code --model "claude-opus-5-5[1m]" --title "$title" --json)
+  if [[ -n $parent ]]; then
+    args+=(--parent-thread "$parent" --environment "$(tb bb thread show "$parent" --json | jq -r .environment.id)")
+  else
+    args+=(--machine "$host_id" --environment-provider project-checkout)
+  fi
+  id=$(cmd_bb "$label" -- thread spawn "${args[@]}" --prompt "$prompt" | jq -r '.id // .thread.id')
+  [[ $id == thr_* ]] || die "bb made no thread"
+  tb bb thread wait "$id" --status idle --timeout 60s > /dev/null || die "$id did not go idle within 60s"
+  echo "$id"
+}
+
+cmd_ui() {
+  load_run
+  local label=${1:?usage: drive-bb-plugins ui <label> <steps.mjs> [--mobile]} steps=${2:?usage: drive-bb-plugins ui <label> <steps.mjs> [--mobile]}
+  local mobile=${3:-}
+  local playwright=$repo/plugins/thread-glance/node_modules/playwright
+  [[ -d $playwright ]] || die "Playwright is missing: run 'npm install' in plugins/thread-glance"
+  mkdir -p "$ev/ui/$label"
+  cp "$steps" "$ev/ui/$label/steps.mjs"
+  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_RUN="$run" DBP_URL="$server_url/" DBP_OUT="$ev/ui/$label" DBP_PLAYWRIGHT="$playwright" DBP_MOBILE="${mobile:+1}" \
+    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" "$(realpath "$steps")"
+}
+
+cmd_stop() {
+  load_run
+  local pid cmd left
+  # Keep bb's own logs with the evidence before the scratch goes.
+  if curl -fs -o /dev/null "$server_url/health"; then
+    for p in $plugins; do tb bb plugin logs "$p" -n 100000 > "$ev/plugin-$p.log" 2>&1 || true; done
+  fi
+  for log in server.log host-daemon.log fake-anthropic.log requests.jsonl; do
+    [[ -f $scratch/$log ]] && cp "$scratch/$log" "$ev/$log"
+  done
+  # Anything the run started after launch (Claude Code, its commands) joins
+  # the recorded handles before the kill.
+  marked_procs | cut -f1 >> "$ev/pids"
+  sort -u "$ev/pids" -o "$ev/pids"
+  # A recorded PID is killed only while it still carries the run's mark, so a
+  # PID the system reused for another process is left alone.
+  ours() { grep -qzxF "DBP_MARK=$scratch" "/proc/$1/environ" 2> /dev/null; }
+  while read -r pid; do
+    [[ -n $pid ]] && ours "$pid" && kill "$pid" 2> /dev/null && echo "stopped $pid"
+  done < "$ev/pids"
+  for _ in $(seq 20); do [[ -z $(marked_procs) ]] && break; sleep 0.5; done
+  while read -r pid; do [[ -n $pid ]] && ours "$pid" && kill -9 "$pid" 2> /dev/null && echo "killed $pid"; done < "$ev/pids"
+  sleep 0.5
+  left=$(marked_procs)
+  if [[ -n $left ]]; then
+    echo "drive-bb-plugins: still running, scratch kept at $scratch:" >&2
+    echo "$left" >&2
+    return 1
+  fi
+  release_ports
+  rm -rf "$scratch"
+  echo "run $run stopped; evidence kept in $ev"
+}
+
+case ${1:-} in
+  start | doctor | bb | spawn | ui | stop)
+    c=$1
+    shift
+    if [[ ${1:-} == --run ]]; then
+      [[ $c != start ]] || die "start makes a new run; --run names an existing one"
+      export DBP_RUN=${2:?--run needs a run name}
+      shift 2
+    fi
+    "cmd_$c" "$@"
+    ;;
+  *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
+esac
