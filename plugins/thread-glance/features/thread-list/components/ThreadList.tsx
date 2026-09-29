@@ -36,12 +36,12 @@ import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
 import { useStamps } from "../data/useStamps";
 import { resolveDrop, type DraggedThread, type DropAction, type DropTarget } from "../model/drag";
-import { buildForest } from "../model/trees";
+import { buildForest, type ThreadInfo } from "../model/trees";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
 import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
-import type { SettleInputs } from "../model/settled";
+import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
 import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 import { shareView } from "../model/share";
 import { ListLiveContext, type ListLive, type ModelInfo, type RowController } from "./controller";
@@ -204,12 +204,26 @@ function ThreadListBody({
     }),
     [now, prefs.settleAfter, stamps.startedAt, stamps.finishedAt],
   );
+  // Each build's hold reads the last one's, so a tree that settles while
+  // focused knows it was not settled before.
+  const groupOf = useCallback(
+    (root: ThreadInfo) => groupIdForRoot(root.thread, { mode: prefs.organizationMode, projects: sidebar.projects }),
+    [prefs.organizationMode, sidebar.projects],
+  );
+  const previousHold = useRef<SettleHold | null>(null);
+  const hold = useMemo(
+    () => (forest === null ? null : holdSettled(previousHold.current, forest.trees, settle, groupOf)),
+    [forest, settle, groupOf],
+  );
+  useLayoutEffect(() => {
+    previousHold.current = hold;
+  }, [hold]);
   // Rows and groups that did not change keep their objects, so their
   // memoized components skip the render.
   const previousView = useRef<ListView | null>(null);
   const view = useMemo(
     () =>
-      forest === null
+      forest === null || hold === null
         ? null
         : shareView(previousView.current, buildListView({
             forest,
@@ -220,6 +234,7 @@ function ThreadListBody({
             activeThreadId,
             targets,
             settle,
+            held: hold.held,
             defaultProviderId: system.defaultProviderId,
             primaryHostId: system.primaryHostId,
             showBranchLine: client.branchLine,
@@ -235,6 +250,7 @@ function ThreadListBody({
       activeThreadId,
       targets,
       settle,
+      hold,
       system.defaultProviderId,
       system.primaryHostId,
       client.branchLine,
@@ -466,10 +482,8 @@ function ThreadListBody({
 
   const activeGroupId = useMemo(() => {
     const tree = activeThreadId === null || forest === null ? undefined : forest.treeOf.get(activeThreadId);
-    return tree === undefined
-      ? null
-      : groupIdForRoot(tree.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
-  }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
+    return tree === undefined ? null : groupOf(tree.root);
+  }, [activeThreadId, forest, groupOf]);
   const showArchived = prefs.showArchived;
 
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */

@@ -396,6 +396,7 @@ describe.skipIf(!SNAPSHOT)("list model cost over a real snapshot", () => {
           showBranchLine: false,
           defaultBranchOf: () => undefined,
           settle: { now: Date.now(), settleAfter: preferences.settleAfter, startedAt: {}, finishedAt: {} },
+          held: new Set(),
         });
         const c = performance.now();
         forestMs.push(b - a);

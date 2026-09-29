@@ -129,6 +129,8 @@ export interface Scenario {
   primaryHostId?: string | null;
   showBranchLine?: boolean;
   needYouOnly?: boolean;
+  /** Roots of settled trees held out of the fold; none when absent. */
+  held?: readonly string[];
   /** bb's default harness; "claude-code", the fixtures' own, when absent. */
   defaultProviderId?: string | null;
 }
@@ -162,6 +164,7 @@ export function viewOf(scenario: Scenario): ListView {
     activeThreadId: scenario.activeThreadId ?? null,
     targets: scenario.targets ?? new Map(),
     settle: settleOf(scenario),
+    held: new Set(scenario.held ?? []),
     defaultProviderId: scenario.defaultProviderId === undefined ? "claude-code" : scenario.defaultProviderId,
     primaryHostId: scenario.primaryHostId === undefined ? "host_1" : scenario.primaryHostId,
     showBranchLine: scenario.showBranchLine ?? false,

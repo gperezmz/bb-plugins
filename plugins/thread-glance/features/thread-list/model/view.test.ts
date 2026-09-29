@@ -195,9 +195,9 @@ describe("scenario 7: active grandchild inside a collapsed project", () => {
     expect(threadRow(view, "child").nested).toBe(false);
     expect(threadRow(view, "grand").info.isActive).toBe(true);
   });
-  it("draws the open grandchild's settled tree just above the settled fold, which counts it", () => {
+  it("draws the path to the open grandchild under the closed settled fold, which counts its tree", () => {
     const { view } = render({ threads, activeThreadId: "grand", now: T0 + 2 * DAY }, null, new Map());
-    expect(rowIds(view, "project:proj_a")).toEqual(["r0", "child", "grand", "settled:7"]);
+    expect(rowIds(view, "project:proj_a")).toEqual(["settled:7", "r0", "child", "grand"]);
   });
 });
 
