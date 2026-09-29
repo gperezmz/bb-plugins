@@ -49,7 +49,7 @@ Thread Glance lists a root's tree together, so one busy parent thread does not p
 
 | Plugin | Where | What |
 |---|---|---|
-| Thread Glance | The plugin's key-value store on the server; the browser's `localStorage` for density | Layout preferences, per-thread time stamps, and a short note per thread: what it asks, what failed, or its last reply |
+| Thread Glance | The plugin's key-value store on the server; the browser's `localStorage` for Density and Branch line, kept per device | Layout preferences, per-thread time stamps, and a short note per thread: what it asks, what failed, or its last reply |
 | Thread Usage | `<data dir>/plugins/thread-usage/data.db` (SQLite) | Turn records, gateway rows, harness-log entries, the thread tree |
 | Team Onboarding | The plugin's storage on the server; `<data dir>/skills`; files on each machine it fixed | Results by category, approvals, which skill folders it installed |
 | OpenAI-compatible inference | `<data dir>/plugins/openai-inference/host-data/`, readable only by bb's user | `learned-fields.json`, the request fields each Endpoint refused |

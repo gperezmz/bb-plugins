@@ -13,11 +13,38 @@ The settings button, a sliders icon at the right of the [list header](thread-gla
 | List | ↓/↑ beside Sort by: ↓ descending (newest first, Z–A), ↑ ascending | `sortDirection` |
 | List | Worktrees as folders | `environmentGrouping` |
 | List | Settle after: 12h, 1d, 3d, 1w, Never | `settleAfter` |
-| Rows | Density: Compact, Comfortable | device |
+| Rows | Density: Compact, Comfortable | [device](#device-preferences) |
+| Rows | Branch line | [device](#device-preferences) |
 | Rows | Harness icon: Muted, Colour | `harnessIcon` |
 | Attention | Needs attention counts every child | `childAttention` |
 
 Choosing a **Sort by** field starts it in its own direction: newest first for dates, A–Z for names. Each group's **…** menu holds **Show archived threads** (`showArchived`), which shows archived threads in every group.
+
+## Device preferences
+
+Density and Branch line are kept in the browser's `localStorage`, so each device has its own and a change on one leaves the others as they were. Changing either leaves the other as it was. The CLI cannot read or change them.
+
+### Density
+
+Density is row spacing. Compact is the default. Comfortable makes thread rows and fold rows 4 px taller and doubles the space before each group header:
+
+| Row | Compact | Comfortable |
+|---|---|---|
+| Thread row, one line | 28 px (phones 36) | 32 px (phones 40) |
+| Thread row, two lines (a note or a branch line) | 44 px (phones 48) | 48 px (phones 52) |
+| "N more child threads" fold row | 28 px (phones 36) | 32 px (phones 40) |
+| Environment fold row | 28 px | 32 px |
+| Group header, list header | 28 px (phones 36) | 28 px (phones 36) |
+| Settled fold | 24 px (phones 36) | 24 px (phones 36) |
+| Space above a group header | 4 px | 8 px |
+
+The list header and the first group shown get no space above them; every group header after the first gets it, a collapsed group's included. Phones are narrow screens with a touch pointer.
+
+### Branch line
+
+While **Branch line** is on, a row with no note whose branch is not its project's default shows that branch on a [second line](thread-glance-states.md#the-second-line), in either density. It is off by default.
+
+A device that saved a density on Thread Glance 0.5.0 or earlier and no Branch line choice opens with Branch line on if that density was Comfortable, and off if it was Compact.
 
 ## Server preferences
 

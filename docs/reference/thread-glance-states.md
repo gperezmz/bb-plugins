@@ -24,7 +24,7 @@ When another plugin sets a status for a row, that status replaces the glyph in e
 
 ## The second line
 
-A thread that waits on you or failed says why under its title, in both densities:
+A thread that waits on you or failed says why under its title, whatever the settings:
 
 | Starts with | Meaning | Tone |
 |---|---|---|
@@ -36,11 +36,11 @@ A thread that waits on you or failed says why under its title, in both densities
 
 A row with nothing to follow the prefix has no second line. A finished, unread thread has none either: its dot and bold title say it.
 
-With **Comfortable** density, a row with no note whose branch is not its project's default branch shows that branch on its second line, followed by its pull request badge when the branch has a pull request. Every other row is one line. Thread Glance asks bb for each project's default branch on the machine of the project's default source, and shows no branch line until bb answers.
+While the [Branch line](thread-glance-preferences.md#branch-line) switch is on, a row with no note whose branch is not its project's default branch shows that branch on its second line, followed by its pull request badge when the branch has a pull request. Every other row is one line. [Density](thread-glance-preferences.md#density) sets how tall one-line and two-line rows are. Thread Glance asks bb for each project's default branch on the machine of the project's default source, and shows no branch line until bb answers.
 
 ## The pull request badge
 
-The badge reads `#<number>`, coloured red when checks failed, the branch conflicts or changes were requested, green when it is ready to merge, and grey otherwise. It sits after the branch when the second line shows the branch. Otherwise, in either density, it sits on the title line of a root whose branch is not its project's default branch.
+The badge reads `#<number>`, coloured red when checks failed, the branch conflicts or changes were requested, green when it is ready to merge, and grey otherwise. It sits after the branch when the second line shows the branch. Otherwise, with Branch line on or off, it sits on the title line of a root whose branch is not its project's default branch.
 
 ## The row's right end
 
