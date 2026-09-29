@@ -1,7 +1,7 @@
 // RPC contract between the app and the server. The app imports this module
 // for its types only; channel names and payload schemas live in signals.ts.
 import { defineRpcContract } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import * as z from "zod/mini";
 import { PREFERENCE_KEYS, PREFERENCES, type PreferenceKey } from "./preferences";
 import { stampsSchema, threadNotesSchema } from "./signals";
 
@@ -12,20 +12,20 @@ const preferencesSchema = z.object(
   Object.fromEntries(PREFERENCE_KEYS.map((key) => [key, PREFERENCES[key].schema])),
 );
 const stampMapSchema = z.record(z.string(), z.number());
-const threadIdsSchema = z.array(z.string().min(1).max(1024)).max(10_000);
+const threadIdsSchema = z.array(z.string().check(z.minLength(1), z.maxLength(1024))).check(z.maxLength(10_000));
 
 export const rpcContract = defineRpcContract({
   listPreferences: {
     input: z.null(),
-    output: z.object({ preferences: preferencesSchema }).strict(),
+    output: z.strictObject({ preferences: preferencesSchema }),
   },
   setPreference: {
-    input: z.object({ key: preferenceKeySchema, value: z.unknown() }).strict(),
-    output: z.object({ key: preferenceKeySchema, value: z.unknown() }).strict(),
+    input: z.strictObject({ key: preferenceKeySchema, value: z.unknown() }),
+    output: z.strictObject({ key: preferenceKeySchema, value: z.unknown() }),
   },
   resetPreference: {
-    input: z.object({ key: preferenceKeySchema }).strict(),
-    output: z.object({ key: preferenceKeySchema, value: z.unknown() }).strict(),
+    input: z.strictObject({ key: preferenceKeySchema }),
+    output: z.strictObject({ key: preferenceKeySchema, value: z.unknown() }),
   },
   /**
    * First-run import. `bbMirror` is the parsed value of bb's own
@@ -33,48 +33,44 @@ export const rpcContract = defineRpcContract({
    * tries `bb thread-list prefs list --json`. Runs at most once.
    */
   importPreferences: {
-    input: z.object({ bbMirror: z.unknown().nullable() }).strict(),
-    output: z
-      .object({
-        status: z.enum(["already-imported", "imported", "defaults"]),
-        source: z.enum(["local-storage", "cli", "none"]).nullable(),
-        keys: z.array(preferenceKeySchema),
-      })
-      .strict(),
+    input: z.strictObject({ bbMirror: z.nullable(z.unknown()) }),
+    output: z.strictObject({
+      status: z.enum(["already-imported", "imported", "defaults"]),
+      source: z.nullable(z.enum(["local-storage", "cli", "none"])),
+      keys: z.array(preferenceKeySchema),
+    }),
   },
   listStamps: {
     input: z.null(),
-    output: z.object({ stamps: stampsSchema }).strict(),
+    output: z.strictObject({ stamps: stampsSchema }),
   },
   /** Records `seenAt` for child threads the user viewed. */
   markSeen: {
-    input: z.object({ threadIds: threadIdsSchema }).strict(),
-    output: z.object({ at: z.number() }).strict(),
+    input: z.strictObject({ threadIds: threadIdsSchema }),
+    output: z.strictObject({ at: z.number() }),
   },
   /** Deletes `seenAt`, so Mark unread shows a finished child as unread. */
   clearSeen: {
-    input: z.object({ threadIds: threadIdsSchema }).strict(),
-    output: z.object({ ok: z.literal(true) }).strict(),
+    input: z.strictObject({ threadIds: threadIdsSchema }),
+    output: z.strictObject({ ok: z.literal(true) }),
   },
   /**
    * Records `idleAt` for threads a window saw go from busy to idle. A thread
    * keeps the later of its stored moment and this one.
    */
   markIdle: {
-    input: z.object({ threadIds: threadIdsSchema }).strict(),
-    output: z.object({ at: z.number() }).strict(),
+    input: z.strictObject({ threadIds: threadIdsSchema }),
+    output: z.strictObject({ at: z.number() }),
   },
   /** Notes per thread id (see `noteSchema`). */
   listNotes: {
     input: z.null(),
-    output: z.object({ notes: z.record(z.string(), threadNotesSchema) }).strict(),
+    output: z.strictObject({ notes: z.record(z.string(), threadNotesSchema) }),
   },
   /** Earliest future `sendAt` per thread (scheduled sends). */
   listScheduled: {
     input: z.null(),
-    output: z
-      .object({ status: z.enum(["ready", "error"]), scheduled: stampMapSchema })
-      .strict(),
+    output: z.strictObject({ status: z.enum(["ready", "error"]), scheduled: stampMapSchema }),
   },
 });
 

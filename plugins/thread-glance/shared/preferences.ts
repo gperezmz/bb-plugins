@@ -1,10 +1,10 @@
 // Preference schema shared by the server (kv storage, RPC, CLI) and the app
 // (localStorage mirror, first paint). Keys and defaults: docs/reference/thread-glance-preferences.md.
-import { z } from "zod";
+import * as z from "zod/mini";
 
 const MAX_ITEMS = 10_000;
-const idSchema = z.string().min(1).max(1024);
-const idListSchema = z.array(idSchema).max(MAX_ITEMS);
+const idSchema = z.string().check(z.minLength(1), z.maxLength(1024));
+const idListSchema = z.array(idSchema).check(z.maxLength(MAX_ITEMS));
 
 export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
 export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
@@ -13,10 +13,12 @@ export const harnessIconSchema = z.enum(["muted", "colour"]);
 export const settleAfterSchema = z.enum(["12h", "1d", "3d", "1w", "never"]);
 export const childAttentionSchema = z.enum(["blocked", "everything"]);
 
-const hiddenGroupsSchema = z
-  .array(z.union([z.literal("threads"), idSchema.regex(/^(project|section|machine):\S+$/)]))
-  .max(MAX_ITEMS)
-  .transform((groups) => [...new Set(groups)]);
+const hiddenGroupsSchema = z.pipe(
+  z
+    .array(z.union([z.literal("threads"), idSchema.check(z.regex(/^(project|section|machine):\S+$/))]))
+    .check(z.maxLength(MAX_ITEMS)),
+  z.transform((groups) => [...new Set(groups)]),
+);
 
 export type OrganizationMode = z.infer<typeof organizationModeSchema>;
 export type SortField = z.infer<typeof sortFieldSchema>;
@@ -26,7 +28,7 @@ export type ChildAttention = z.infer<typeof childAttentionSchema>;
 export type SettleAfter = z.infer<typeof settleAfterSchema>;
 
 interface PreferenceDefinition<T> {
-  schema: z.ZodType<T, unknown>;
+  schema: z.ZodMiniType<T, unknown>;
   defaultValue: T;
   description: string;
   /** Maps a value an earlier version stored, which the schema now refuses, onto a current one. */
@@ -34,7 +36,7 @@ interface PreferenceDefinition<T> {
 }
 
 function define<T>(
-  schema: z.ZodType<T, unknown>,
+  schema: z.ZodMiniType<T, unknown>,
   defaultValue: T,
   description: string,
   readStored?: (stored: unknown) => unknown,
@@ -90,7 +92,7 @@ export const PREFERENCES = {
     "Groups moved into More: threads, project:<id>, section:<id> or machine:<id>.",
   ),
   collapsedSections: define(
-    z.array(z.enum(["pinned", "threads"])).max(MAX_ITEMS),
+    z.array(z.enum(["pinned", "threads"])).check(z.maxLength(MAX_ITEMS)),
     [] as ("pinned" | "threads")[],
     "Built-in groups (pinned, threads) that are collapsed.",
   ),
@@ -229,12 +231,13 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
  * where 0.5.0 or earlier saved the density, whose Comfortable drew branch
  * lines, so it is read off the density there.
  */
-export const clientPreferencesSchema = z
-  .object({
-    density: z.enum(["compact", "comfortable"]).catch("compact"),
-    branchLine: z.boolean().optional().catch(undefined),
-  })
-  .transform(({ density, branchLine }) => ({ density, branchLine: branchLine ?? density === "comfortable" }));
+export const clientPreferencesSchema = z.pipe(
+  z.object({
+    density: z.catch(z.enum(["compact", "comfortable"]), "compact"),
+    branchLine: z.catch(z.optional(z.boolean()), undefined),
+  }),
+  z.transform(({ density, branchLine }) => ({ density, branchLine: branchLine ?? density === "comfortable" })),
+);
 export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
 
 export const CLIENT_PREFERENCES_STORAGE_KEY = "bb.thread-glance.client.v1";

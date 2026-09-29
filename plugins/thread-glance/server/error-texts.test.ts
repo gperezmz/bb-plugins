@@ -2,10 +2,17 @@
 // gave it: `bb thread-glance prefs set`, each RPC method's validation, and
 // the warning for a corrupt stored preference.
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { config } from "zod/mini";
 import plugin from "../server";
 import type { PreferenceKey } from "../shared/preferences";
 import { preferenceKvKey } from "./preference-store";
+
+// zod keeps its locale on globalThis, and the SDK's test host loads full zod,
+// which sets English. Cleared, the texts come from what the plugin sets.
+beforeEach(() => {
+  config({ localeError: undefined });
+});
 
 async function load() {
   const host = createFakePluginHost({ pluginId: "thread-glance" });
