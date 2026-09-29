@@ -124,7 +124,8 @@ describe("keeping every window current", () => {
 });
 
 const COLUMN = '<div class="mx-auto max-w-[760px]" style="--md-content-w: 760px;"><p class="text-sm">Hi</p></div>';
-const COMPOSER = '<div class="mx-auto max-w-[760px] chat-prompt-box"></div>';
+const EDITOR = '<div contenteditable="true" class="ProseMirror"><p>Draft</p></div>';
+const COMPOSER = `<div class="mx-auto max-w-[760px] chat-prompt-box"><div data-follow-up-composer><div data-promptbox-editor-scroll class="text-sm">${EDITOR}</div></div></div>`;
 
 function mountView(html = COLUMN + COMPOSER, attributes: Record<string, string> = {}) {
   const view = document.createElement("div");
@@ -187,6 +188,16 @@ describe("a thread view missing a target", () => {
     expect(warn).toHaveBeenCalledTimes(2);
     expect(warn.mock.calls[0]![0]).toContain("the composer column (.chat-prompt-box.max-w-[760px])");
     expect(warn.mock.calls[1]![0]).toContain("the transcript column");
+    await scripts.lifecycle.dispose();
+  });
+
+  it("names the composer's editor wrapper when the composer shows an editor without one", async () => {
+    mountView(COLUMN + `<div class="mx-auto max-w-[760px] chat-prompt-box"><div data-follow-up-composer>${EDITOR}</div></div>`);
+    const { warn, scripts } = await watch();
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("the composer's editor wrapper ([data-follow-up-composer] [data-promptbox-editor-scroll])");
+    expect(warn.mock.calls[0]![0]).not.toContain("column");
     await scripts.lifecycle.dispose();
   });
 

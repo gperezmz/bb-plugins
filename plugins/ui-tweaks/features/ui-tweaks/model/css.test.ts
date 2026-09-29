@@ -13,8 +13,13 @@ const ROOT = {
   "--text-base--line-height": "1.375rem",
 };
 
-const VIEW = '[data-thread-window]:not([data-surface-tone]):has(.max-w-\\[760px\\][style*="--md-content-w"]):has(.chat-prompt-box.max-w-\\[760px\\])';
+const BOX = ".chat-prompt-box.max-w-\\[760px\\]";
+const WRAPPER = "[data-follow-up-composer] [data-promptbox-editor-scroll]";
+const VIEW =
+  '[data-thread-window]:not([data-surface-tone]):has(.max-w-\\[760px\\][style*="--md-content-w"]):has(.chat-prompt-box.max-w-\\[760px\\])' +
+  `:is(:not(:has(${BOX} :is([contenteditable], textarea))), :has(${BOX} ${WRAPPER}))`;
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
+const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
 
 describe("the tweaks stylesheet", () => {
   it("is empty for Medium and Medium, bb's own look", () => {
@@ -43,6 +48,21 @@ describe("the tweaks stylesheet", () => {
     expect(css).not.toContain("--text-sm--line-height");
     expect(css).not.toContain("--text-xs--line-height");
     expect(css).not.toContain(".chat-prompt-box.max-w-\\[760px\\] {");
+  });
+
+  it.each([
+    ["small", 12 / 13],
+    ["large", 15 / 13],
+  ] as const)("scales %s's text in the composer's editor, mention pills included, and nowhere else in the composer", (textSize, scale) => {
+    const css = tweaksCss({ textSize, width: "medium" }, ROOT);
+    expect(css).toContain(`${EDITOR} { --text-2xs: calc(.625rem * ${scale});`);
+    expect(css).toContain(`--text-sm: calc(.8125rem * ${scale});`);
+    // A mention pill is text-xs with a fixed leading-4.
+    expect(css).toContain(`${EDITOR} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * ${scale}); line-height: calc(calc(var(--spacing) * 4) * ${scale}); }`);
+    // Every rule reaching into the composer column is one for its editor.
+    const inBox = css.split("\n").filter((rule) => rule.includes(`${VIEW} ${BOX}`));
+    expect(inBox.length).toBeGreaterThan(0);
+    expect(inBox.filter((rule) => !rule.includes(EDITOR))).toEqual([]);
   });
 
   it("scales the fixed line heights and font sizes that bypass the variables", () => {
