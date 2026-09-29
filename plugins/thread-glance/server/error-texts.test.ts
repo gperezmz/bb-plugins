@@ -50,13 +50,13 @@ const INVALID: [PreferenceKey, string][] = [
   ["harnessIcon", "hidden"],
 ];
 
-function rpcFailure(error: unknown) {
+function failureFields(error: unknown) {
   const { code, message, issues } = error as { code: string; message: string; issues?: unknown };
   return { code, message, issues };
 }
 
 /** Names a case by its key and value, the value cut short. */
-const named = INVALID.map(([key, value]) => ({
+const invalidCases = INVALID.map(([key, value]) => ({
   key,
   value,
   name: `${key} ${value.length > 40 ? `${value.slice(0, 37)}...` : value}`,
@@ -86,7 +86,7 @@ const RPC_CASES = ([
 }));
 
 describe("refusal texts", () => {
-  it.each(named)("bb thread-glance prefs set $name", async ({ key, value }) => {
+  it.each(invalidCases)("bb thread-glance prefs set $name", async ({ key, value }) => {
     const { harness } = await load();
     const plain = await harness.behavior.runCli(["prefs", "set", key, value]);
     const json = await harness.behavior.runCli(["prefs", "set", key, value, "--json"]);
@@ -100,10 +100,10 @@ describe("refusal texts", () => {
       (caught: unknown) => caught,
     );
     expect(error).toBeDefined();
-    expect(rpcFailure(error)).toMatchSnapshot();
+    expect(failureFields(error)).toMatchSnapshot();
   });
 
-  it.each(named)("a stored $name logs its warning", async ({ key, value }) => {
+  it.each(invalidCases)("a stored $name logs its warning", async ({ key, value }) => {
     const { bb, harness } = await load();
     let stored: unknown;
     try {

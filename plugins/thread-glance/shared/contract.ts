@@ -3,7 +3,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
 import { PREFERENCE_KEYS, PREFERENCES, type PreferenceKey } from "./preferences";
-import { stampsSchema, threadNotesSchema } from "./signals";
+import { stampMapSchema, stampsSchema, threadNotesSchema } from "./signals";
 
 export * from "./signals";
 
@@ -11,7 +11,6 @@ const preferenceKeySchema = z.enum(PREFERENCE_KEYS as [PreferenceKey, ...Prefere
 const preferencesSchema = z.object(
   Object.fromEntries(PREFERENCE_KEYS.map((key) => [key, PREFERENCES[key].schema])),
 );
-const stampMapSchema = z.record(z.string(), z.number());
 const threadIdsSchema = z.array(z.string().check(z.minLength(1), z.maxLength(1024))).check(z.maxLength(10_000));
 
 export const rpcContract = defineRpcContract({

@@ -31,7 +31,7 @@ const threads = [
   makeThread({ id: "s", title: "Later", queuedWork: "waiting" }),
 ];
 
-async function render() {
+async function renderList() {
   const slot = renderSlot(
     app.threadLists[0]!,
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
@@ -62,7 +62,7 @@ async function render() {
   );
   await screen.findByRole("link", { name: /Later/ });
   // Let the initial loads land before signalling.
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await settle();
   return slot;
 }
 
@@ -75,7 +75,7 @@ function mirrored(): Record<string, unknown> {
 
 describe("realtime payloads", () => {
   it("notes: takes a valid note, drops one of the wrong type and one past the length cap", async () => {
-    const slot = await render();
+    const slot = await renderList();
     await slot.emitRealtime(CHANNELS.notes, { threadId: "f", notes: "Out of credits" });
     await slot.emitRealtime(CHANNELS.notes, {
       threadId: "f",
@@ -91,7 +91,7 @@ describe("realtime payloads", () => {
   });
 
   it("preferences: takes a valid value, drops one of the wrong type", async () => {
-    const slot = await render();
+    const slot = await renderList();
     await slot.emitRealtime(CHANNELS.preferences, { key: "organizationMode", value: 5 });
     await slot.emitRealtime(CHANNELS.preferences, { key: "organizationMode", value: "sideways" });
     await settle();
@@ -101,7 +101,7 @@ describe("realtime payloads", () => {
   });
 
   it("stamps: takes a valid stamp, drops one of the wrong type", async () => {
-    const slot = await render();
+    const slot = await renderList();
     const startedAt = Date.now() - 5.5 * 60_000;
     await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: "w", value: startedAt });
     await slot.emitRealtime(CHANNELS.stamps, { kind: "begunAt", threadIds: ["w"], value: startedAt });
@@ -112,7 +112,7 @@ describe("realtime payloads", () => {
   });
 
   it("scheduled: takes a valid map, drops a payload of the wrong type", async () => {
-    const slot = await render();
+    const slot = await renderList();
     await slot.emitRealtime(CHANNELS.scheduled, "s");
     await settle();
     expect(screen.queryByLabelText(/Scheduled message/)).toBeNull();

@@ -3,7 +3,8 @@
 import * as z from "zod/mini";
 import type { PreferenceKey } from "./preferences";
 
-const stampMapSchema = z.record(z.string(), z.number());
+/** Epoch ms per thread id. */
+export const stampMapSchema = z.record(z.string(), z.number());
 
 /** Per-thread timestamps (epoch ms) kept by the server. */
 export const stampsSchema = z.object({
