@@ -78,6 +78,14 @@ _Avoid_: Last slot, time slot, time column
 The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
 _Avoid_: Glyph slot, indent, gutter
 
+**Density**:
+Thread Glance's per-device choice of row spacing, Compact or Comfortable. Its Compact has nothing to do with Cache Keeper's compacting.
+_Avoid_: Row size, zoom
+
+**Branch line**:
+The second line of a Thread Glance row naming its thread's branch when that is not its project's default, shown while its switch is on.
+_Avoid_: Branch row, subtitle
+
 ### Thread Usage
 
 **Header chip**:
