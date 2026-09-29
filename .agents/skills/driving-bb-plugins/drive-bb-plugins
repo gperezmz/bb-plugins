@@ -5,6 +5,11 @@
 # Anthropic API, and the bb web UI in headless Chromium. Never touches the
 # user's own bb: every command runs with the variables that name a bb unset or
 # pointed at the throwaway, and HOME inside the run's scratch directory.
+# Never exhausts the machine: everything a run starts, Claude Code included,
+# runs in a systemd user scope capped at DBP_MEMORY_MAX with no swap, so a run
+# past its cap loses its own processes and nothing else, and `spawn` holds at
+# most DBP_MAX_SESSIONS Claude Code sessions at once, releasing each after its
+# turn.
 #
 # Reads: plugins/<id>/ in this checkout, where it runs `npm ci` for a plugin
 # without node_modules; DBP_* in the environment (below).
@@ -17,7 +22,8 @@
 #   drive-bb-plugins bb [--run <run>] <label> -- <args>
 #                                                   run `bb <args>` against the run, logged as evidence
 #   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>]
-#                                                   make a Claude Code thread, print its id once idle
+#                                                   make a Claude Code thread, print its id once its
+#                                                   first turn has ended and its runtime is released
 #   drive-bb-plugins ui [--run <run>] <label> <steps.mjs> [--mobile]
 #                                                   run a Playwright script against the bb web UI
 #   drive-bb-plugins stop [--run <run>]             stop the run, keep its evidence
@@ -27,6 +33,12 @@
 # any checkouts never share one; DBP_SERVER_PORT, DBP_DAEMON_PORT and
 # DBP_API_PORT pick them instead. Every later command reads the run's ports
 # from its run.env.
+#
+# start refuses while less than DBP_MIN_FREE (default 4G) of memory is
+# available once other runs have grown to their caps, caps the run at DBP_MEMORY_MAX (default 6G, swap 0), and refuses
+# where no systemd user manager can run the scope, unless DBP_UNCAPPED=1.
+# DBP_MAX_SESSIONS (default 4) is how many `spawn`s of the run hold a Claude
+# Code session at once; the rest wait for a slot.
 set -euo pipefail
 
 skill_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -39,6 +51,11 @@ unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID
   -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
 
 die() { echo "drive-bb-plugins: $*" >&2; exit 1; }
+# A size such as 6G, 512M or a byte count, in bytes.
+to_bytes() { numfmt --from=iec "${1%[Bb]}" 2> /dev/null || die "'$1' is not a size such as 6G or 512M"; }
+iec() { numfmt --to=iec "$1"; }
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
 
 # Resolves the run the command acts on into $run, $ev and $scratch, and loads
@@ -122,6 +139,31 @@ cmd_start() {
   for tool in node jq curl git rsync bb bb-server bb-host-daemon; do
     command -v "$tool" > /dev/null || die "$tool is not on PATH"
   done
+  # A run's Claude Code sessions can take gigabytes; start none on a machine
+  # already short of memory, and none a cap cannot hold.
+  local min_free avail headroom=0 other max current memory_max="" unit="" max_sessions=${DBP_MAX_SESSIONS:-4}
+  [[ $max_sessions =~ ^[1-9][0-9]*$ ]] || die "DBP_MAX_SESSIONS='$max_sessions' is not a positive number"
+  min_free=$(to_bytes "${DBP_MIN_FREE:-4G}")
+  # One start at a time checks memory and launches, so two starts never both
+  # count memory the other is about to take.
+  mkdir -p "$scratch_root"
+  exec 7> "$scratch_root/start.lock"
+  flock 7
+  # Memory other runs may still grow into, up to their caps, is not free.
+  for other in $(sysu list-units 'dbp-*.scope' --state=active --plain --no-legend 2> /dev/null | awk '{ print $1 }'); do
+    max=$(sysu show "$other" -p MemoryMax --value) current=$(sysu show "$other" -p MemoryCurrent --value)
+    [[ $max =~ ^[0-9]+$ && $current =~ ^[0-9]+$ ]] && ((max > current)) && headroom=$((headroom + max - current))
+  done
+  avail=$(($(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo) * 1024 - headroom))
+  ((avail >= min_free)) ||
+    die "only $(iec "$((avail > 0 ? avail : 0))") of memory is available once other runs reach their caps ($(iec "$headroom") more), under the $(iec "$min_free") floor; stop another run (ls $scratch_root) or free memory first, or lower DBP_MIN_FREE"
+  if systemd-run --user --scope --quiet -- true 2> /dev/null; then
+    memory_max=$(to_bytes "${DBP_MEMORY_MAX:-6G}")
+  elif [[ ${DBP_UNCAPPED:-} == 1 ]]; then
+    echo "drive-bb-plugins: no systemd user manager; this run's memory is UNCAPPED (DBP_UNCAPPED=1)" >&2
+  else
+    die "no systemd user manager to cap the run's memory (systemd-run --user --scope failed with XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR); set DBP_UNCAPPED=1 to start uncapped"
+  fi
   # A fresh worktree has no Playwright yet; `ui` needs it.
   if [[ ! -d $repo/plugins/thread-glance/node_modules/playwright ]]; then
     echo "installing plugins/thread-glance's dependencies, for Playwright" >&2
@@ -136,7 +178,6 @@ cmd_start() {
     fi
   done
 
-  mkdir -p "$scratch_root"
   scratch=$(mktemp -d "$scratch_root/run.XXXXXX")
   run=$(date +%Y%m%d-%H%M%S)-$(printf '%s' "$*" | tr ' ' '+')-${scratch##*.}
   ev=$evidence_root/$run
@@ -148,6 +189,7 @@ cmd_start() {
     ! port_busy "$p" || { release_ports; remove_scratch; die "port $p is in use: choose another DBP_*_PORT"; }
   done
   server_url=http://127.0.0.1:$server_port
+  [[ -n $memory_max ]] && unit=dbp-${scratch##*.}.scope
   mkdir -p "$ev" "$scratch/home" "$scratch/tmp" "$scratch/plugins" "$scratch/work/demo"
   ln -sfn "$run" "$evidence_root/latest"
   cat > "$ev/run.env" << ENV
@@ -157,47 +199,33 @@ server_port=$server_port
 daemon_port=$daemon_port
 api_port=$api_port
 plugins="$*"
+unit=$unit
+memory_max=$memory_max
+max_sessions=$max_sessions
 ENV
   : > "$ev/pids"
   : > "$ev/launch-pids"
-  fail() {
-    echo "drive-bb-plugins: $1" >&2
-    for log in "$scratch/fake-anthropic.log" "$scratch/server.log" "$scratch/bb/logs/server-stdio.log" "$scratch/host-daemon.log"; do
-      [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
-    done
-    echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
-    exit 1
-  }
-  wait_for() {
-    for _ in $(seq 60); do curl -fs -o /dev/null "$2" && return 0; sleep 1; done
-    fail "$1 did not answer at $2"
-  }
 
-  tb env PORT="$api_port" REQUEST_LOG="$scratch/requests.jsonl" \
-    node "$repo/plugins/cache-keeper/harness/fake-anthropic.mjs" > "$scratch/fake-anthropic.log" 2>&1 &
-  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
-  wait_for "the fake Anthropic API" "http://127.0.0.1:$api_port/_control"
-
-  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_HOST_DAEMON_PORT="$daemon_port" \
-    bb-server --data-dir "$scratch/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" > "$scratch/server.log" 2>&1 &
-  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
-  wait_for "the bb server" "$server_url/health"
-
-  local enroll host_id project status
-  enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
-  host_id=$(jq -r .hostId <<< "$enroll")
-  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" \
-    BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$host_id" \
-    ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
-    bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" > "$scratch/host-daemon.log" 2>&1 &
-  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
-  connected() { [[ $(tb bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]; }
-  for _ in $(seq 60); do connected && break; sleep 1; done
-  connected || fail "the host daemon did not connect to the bb server"
+  # The fake API, bb server and host daemon start inside the run's scope, and
+  # everything they start (plugins, Claude Code, its commands) stays in it,
+  # so the kernel kills only this run's processes when it passes its cap, and
+  # systemd then stops the rest of the scope. The scope outlives the launch.
+  if [[ -n $unit ]]; then
+    systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
+      -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop \
+      -- env DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+  else
+    DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+  fi
+  exec 7>&-
+  # shellcheck source=/dev/null
+  source "$ev/run.env"
+  local project status
   # bb-server hands the server to a detached child; record it by the run's mark.
   marked_procs | cut -f1 >> "$ev/pids"
   sort -u "$ev/pids" -o "$ev/pids"
+  # bb's own limit on threads running at once, as a second bound under spawn's.
+  tb bb concurrency-limit global "$max_sessions" > /dev/null || fail "could not limit the run to $max_sessions running threads"
 
   GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
     bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
@@ -217,7 +245,6 @@ ENV
   sort -u "$ev/pids" -o "$ev/pids"
 
   cat >> "$ev/run.env" << ENV
-host_id=$host_id
 project=$project
 ENV
   cat > "$ev/env.sh" << ENV
@@ -230,14 +257,74 @@ ENV
   echo "web UI   $server_url/"
   echo "project  $project   machine $host_id"
   echo "plugins  $*"
+  if [[ -n $unit ]]; then
+    echo "memory   capped at $(iec "$memory_max"), no swap, in $unit; $max_sessions Claude Code sessions at once"
+  else
+    echo "memory   UNCAPPED; $max_sessions Claude Code sessions at once"
+  fi
   echo "evidence $ev"
+}
+
+# Reports a failed start with the run's logs, and exits.
+fail() {
+  echo "drive-bb-plugins: $1" >&2
+  for log in "$scratch/fake-anthropic.log" "$scratch/server.log" "$scratch/bb/logs/server-stdio.log" "$scratch/host-daemon.log"; do
+    [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
+  done
+  echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
+  exit 1
+}
+
+# start's launch of the fake API, bb server and host daemon, inside the run's
+# scope. Records the host in run.env.
+cmd__launch() {
+  load_run
+  wait_for() {
+    for _ in $(seq 60); do curl -fs -o /dev/null "$2" && return 0; sleep 1; done
+    fail "$1 did not answer at $2"
+  }
+
+  tb env PORT="$api_port" REQUEST_LOG="$scratch/requests.jsonl" \
+    node "$repo/plugins/cache-keeper/harness/fake-anthropic.mjs" > "$scratch/fake-anthropic.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  wait_for "the fake Anthropic API" "http://127.0.0.1:$api_port/_control"
+
+  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_HOST_DAEMON_PORT="$daemon_port" \
+    bb-server --data-dir "$scratch/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" > "$scratch/server.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  wait_for "the bb server" "$server_url/health"
+
+  local enroll host_id
+  enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
+  host_id=$(jq -r .hostId <<< "$enroll")
+  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" \
+    BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$host_id" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
+    bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" > "$scratch/host-daemon.log" 2>&1 &
+  echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
+  connected() { [[ $(tb bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]; }
+  for _ in $(seq 60); do connected && break; sleep 1; done
+  connected || fail "the host daemon did not connect to the bb server"
+  echo "host_id=$host_id" >> "$ev/run.env"
 }
 
 cmd_doctor() {
   load_run
   local bad=0 p row
-  check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; bad=1; fi; }
+  check() { if eval "$2" 2> /dev/null; then echo "ok   $1"; else echo "FAIL $1"; bad=1; fi; }
   check "run $run points at $server_url, not the user's bb (${BB_SERVER_URL:-unset})" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
+  if [[ -n ${unit:-} ]]; then
+    local state
+    state=$(sysu show "$unit" -p ActiveState -p Result --value 2> /dev/null | paste -sd/ -)
+    check "the run's scope $unit is active (${state:-not loaded}; oom-kill means the run passed its cap: stop it, start again with fewer sessions or a larger DBP_MEMORY_MAX)" '[[ $state == active/* ]]'
+    check "$unit caps memory at $(iec "$memory_max") with no swap" \
+      '[[ $(sysu show "$unit" -p MemoryMax --value) == "$memory_max" && $(sysu show "$unit" -p MemorySwapMax --value) == 0 ]]'
+    check "the run's bb server is inside $unit" \
+      'grep -qx "0::.*/$unit" /proc/$(ss -ltnpH "sport = :$server_port" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)/cgroup'
+  else
+    echo "warn run $run is UNCAPPED: nothing bounds its memory but spawn's $max_sessions sessions"
+  fi
   check "the fake API, bb server and host daemon launched for the run are alive" '[[ $(ps -p "$(paste -sd, - < "$ev/launch-pids")" -o pid= | wc -l) -eq 3 ]]'
   check "the bb server answers /health" 'curl -fs -o /dev/null "$server_url/health"'
   check "the server on $server_port serves the run's data dir" 'grep -qzxF "DBP_MARK=$scratch" /proc/$(ss -ltnpH "sport = :$server_port" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)/environ'
@@ -254,6 +341,8 @@ cmd_bb() {
   local label=${1:?usage: drive-bb-plugins bb <label> -- <bb args>}
   shift
   [[ ${1:-} == -- ]] && shift
+  [[ ${1:-} != thread || ! ${2:-} =~ ^(spawn|create)$ || ${DBP_IN_SPAWN:-} == 1 ]] ||
+    die "make threads with 'drive-bb-plugins spawn', which bounds and releases their Claude Code sessions"
   local out err code=0
   out=$(mktemp) err=$(mktemp)
   tb bb "$@" > "$out" 2> "$err" || code=$?
@@ -268,18 +357,48 @@ cmd_bb() {
   return $code
 }
 
+# Holds one of the run's $max_sessions session slots on fd 9 until this
+# process exits, waiting while every slot is held by another spawn.
+take_session_slot() {
+  local i
+  mkdir -p "$ev/slots"
+  while :; do
+    for i in $(seq "$max_sessions"); do
+      exec 9> "$ev/slots/$i"
+      flock -n 9 && return 0
+      exec 9>&-
+    done
+    sleep 1
+  done
+}
+
 cmd_spawn() {
   load_run
-  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>]} title=${2:?} prompt=${3:?} parent=${4:-} args id
+  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>]} title=${2:?} prompt=${3:?} parent=${4:-} args id idle=0
   args=(--project "$project" --provider claude-code --model "claude-opus-5-5[1m]" --title "$title" --json)
   if [[ -n $parent ]]; then
     args+=(--parent-thread "$parent" --environment "$(tb bb thread show "$parent" --json | jq -r .environment.id)")
   else
     args+=(--machine "$host_id" --environment-provider project-checkout)
   fi
-  id=$(cmd_bb "$label" -- thread spawn "${args[@]}" --prompt "$prompt" | jq -r '.id // .thread.id')
+  # bb keeps a thread's Claude Code loaded after its turn; the slot bounds how
+  # many run at once, and `thread stop` releases each before the slot frees.
+  take_session_slot
+  # bb fails a thread whose checkout another thread is still provisioning,
+  # so one spawn at a time holds the run's provisioning lock until its thread
+  # has left `starting`.
+  exec 8> "$ev/slots/provisioning"
+  flock 8
+  id=$(DBP_IN_SPAWN=1 cmd_bb "$label" -- thread spawn "${args[@]}" --prompt "$prompt" 8>&- 9>&- | jq -r '.id // .thread.id')
   [[ $id == thr_* ]] || die "bb made no thread"
-  tb bb thread wait "$id" --status idle --timeout 60s > /dev/null || die "$id did not go idle within 60s"
+  for _ in $(seq 300); do
+    [[ $(tb bb thread show "$id" --json 8>&- 9>&- | jq -r .thread.status) != starting ]] && break
+    sleep 0.2
+  done
+  exec 8>&-
+  tb bb thread wait "$id" --status idle --timeout 60s > /dev/null 9>&- && idle=1
+  tb bb thread stop "$id" > /dev/null 9>&- || die "could not release $id's runtime"
+  ((idle)) || die "$id did not go idle within 60s; its runtime is released"
   echo "$id"
 }
 
@@ -317,6 +436,12 @@ cmd_stop() {
   done < "$ev/pids"
   for _ in $(seq 20); do [[ -z $(marked_procs) ]] && break; sleep 0.5; done
   while read -r pid; do [[ -n $pid ]] && ours "$pid" && kill -9 "$pid" 2> /dev/null && echo "killed $pid"; done < "$ev/pids"
+  # The scope holds what the run started, marked or not; stopping it ends
+  # the rest, and resetting it unloads a scope that ended by oom-kill.
+  if [[ -n ${unit:-} ]]; then
+    sysu stop "$unit" 2> /dev/null || true
+    sysu reset-failed "$unit" 2> /dev/null || true
+  fi
   sleep 0.5
   left=$(marked_procs)
   if [[ -n $left ]]; then
@@ -330,7 +455,7 @@ cmd_stop() {
 }
 
 case ${1:-} in
-  start | doctor | bb | spawn | ui | stop)
+  start | doctor | bb | spawn | ui | stop | _launch)
     c=$1
     shift
     if [[ ${1:-} == --run ]]; then
