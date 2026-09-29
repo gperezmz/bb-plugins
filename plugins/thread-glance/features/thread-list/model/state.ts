@@ -247,7 +247,7 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
   }
   if (inputs.unread) return { kind: "unread", label: "Unread", glyph: glyph("dot", "none"), ...none };
   if (inputs.hasDraft) return { kind: "draft", label: "Unsubmitted draft", glyph: glyph("Edit", "muted"), ...none };
-  return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted"), ...none };
+  return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted-strong"), ...none };
 }
 
 /**

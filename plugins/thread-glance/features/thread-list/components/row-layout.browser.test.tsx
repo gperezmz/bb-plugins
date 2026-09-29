@@ -415,6 +415,74 @@ describe("the sidebar's text sizes", () => {
   });
 });
 
+describe("contrast against the sidebar in bb's palette", () => {
+  // bb 0.44.0's --sidebar and --muted-foreground, as its stylesheet resolves them.
+  const PALETTES = {
+    light: { "--sidebar": "oklch(0.985064 0 0)", "--muted-foreground": "oklch(0.44 0 0)" },
+    dark: { "--sidebar": "oklch(0.221445 0 0)", "--muted-foreground": "oklch(0.78 0 0)" },
+  };
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+
+  /** The colour a person sees: `color` painted over `background`, as sRGB. */
+  function painted(background: string, color?: string, opacity = 1): number[] {
+    context.globalAlpha = 1;
+    context.fillStyle = background;
+    context.fillRect(0, 0, 1, 1);
+    if (color !== undefined) {
+      context.globalAlpha = opacity;
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+    }
+    return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  }
+
+  function luminance(rgb: number[]): number {
+    const [r, g, b] = rgb.map((channel) => {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  }
+
+  /** WCAG's contrast ratio of `element`'s colour against the sidebar. */
+  function contrast(element: Element): number {
+    const style = getComputedStyle(element);
+    const sidebar = getComputedStyle(document.documentElement).getPropertyValue("--sidebar");
+    const [a, b] = [luminance(painted(sidebar, style.color, Number(style.opacity))), luminance(painted(sidebar))];
+    return (Math.max(a!, b!) + 0.05) / (Math.min(a!, b!) + 0.05);
+  }
+
+  function usePalette(theme: keyof typeof PALETTES) {
+    for (const [name, value] of Object.entries(PALETTES[theme])) document.documentElement.style.setProperty(name, value);
+  }
+
+  afterEach(() => {
+    for (const name of Object.keys(PALETTES.light)) document.documentElement.style.removeProperty(name);
+  });
+
+  /** The innermost element of a row's Status column: the glyph itself, inside its tooltip. */
+  const glyphOf = (id: string) =>
+    [...document.querySelector(`a[data-sidebar-thread-id="${id}"]`)!.parentElement!.querySelectorAll(`${PARTS.status()} *`)].at(-1)!;
+
+  it.each(["light", "dark"] as const)("keeps the settled fold at 4.5:1 and the idle and background glyphs at 3:1 in %s", async (theme) => {
+    usePalette(theme);
+    await render(320, {
+      preferences: { settleAfter: "12h" },
+      extraThreads: [
+        makeThread({ id: "idle", title: "Idle", isPinned: true }),
+        makeThread({ id: "background", title: "Background", activity: { workflows: 1 } }),
+      ],
+    });
+    const fold = await screen.findByRole("button", { name: /^Show \d+ settled/ });
+    expect(contrast(fold.querySelector("span")!)).toBeGreaterThanOrEqual(4.5);
+    await expect.poll(() => document.querySelector('a[data-sidebar-thread-id="idle"]')).not.toBeNull();
+    for (const id of ["idle", "background"]) expect(contrast(glyphOf(id)), id).toBeGreaterThanOrEqual(3);
+  });
+});
+
 // bb routes a row's link itself; here a followed link would unload the test.
 document.addEventListener(
   "click",

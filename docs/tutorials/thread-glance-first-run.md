@@ -14,7 +14,7 @@ The list looks much like bb's: Thread Glance copied your grouping, sort, group o
 
 ## 2. Read a row
 
-The list starts with its header: `Projects`, the name of the grouping, then a sliders button, with a Mark all read button before it while any thread in the list is unread. Below it are your groups, each ending with a faint `Settled (N)` divider when some of its threads have gone a day without activity.
+The list starts with its header: `Projects`, the name of the grouping, then a sliders button, with a Mark all read button before it while any thread in the list is unread. Below it are your groups, each ending with a muted `Settled (N)` divider when some of its threads have gone a day without activity.
 
 Look at any thread you have run before. From left to right, its row holds:
 

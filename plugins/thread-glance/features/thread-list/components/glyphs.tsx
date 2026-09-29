@@ -13,7 +13,8 @@ export const TONE_CLASS: Record<Tone, string> = {
   destructive: "text-destructive",
   // bb's timeline accent: blue, readable on the sidebar in both themes.
   working: "text-[var(--timeline-accent)]",
-  background: "text-muted-foreground/50",
+  // Muted at 75% holds 3:1 against the sidebar in both of bb's themes.
+  background: "text-muted-foreground/75",
   "muted-strong": "text-muted-foreground/75",
   muted: "text-muted-foreground",
   none: "",
@@ -36,13 +37,14 @@ export function UnreadDot({ label, className }: { label?: string; className?: st
 }
 
 // The Idle state's ring: uncoloured, smaller than the column and thinned, so
-// it reads as status yet stays fainter than the unread dot and the draft
-// pencil. Screen readers skip it, so an Idle row announces what it did before.
+// it reads as status yet stays fainter than every other glyph. Its tone alone
+// sets its colour, so it keeps 3:1 against the sidebar. Screen readers skip
+// it, so an Idle row announces what it did before.
 export function IdleRing({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn("inline-block size-2.5 shrink-0 rounded-full border-[1.5px] border-current opacity-50", className)}
+      className={cn("inline-block size-2.5 shrink-0 rounded-full border-[1.5px] border-current", className)}
     />
   );
 }

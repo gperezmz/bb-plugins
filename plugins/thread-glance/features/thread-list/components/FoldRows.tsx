@@ -48,7 +48,7 @@ export const SettledRowView = memo(function SettledRowView({ row, controller }: 
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
       onClick={() => controller.onToggleSettled(row)}
-      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground/70 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
       style={{ paddingLeft: rowIndent(0) }}
     >
       <span className="shrink-0 tabular-nums">{label}</span>

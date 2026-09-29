@@ -11,3 +11,10 @@
 [data-icon] {
   display: inline-block;
 }
+
+/* bb's colour utilities read its palette variables; a test sets the ones it needs. */
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+}
