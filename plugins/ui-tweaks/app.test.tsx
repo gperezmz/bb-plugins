@@ -53,8 +53,8 @@ describe("the plugin's page under Tools", () => {
   it("shows exactly the two rows, Medium chosen on a fresh install", async () => {
     renderSettings();
     const groups = screen.getAllByRole("radiogroup");
-    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Transcript text size", "Transcript width"]);
-    expect(screen.getByText("Size of the conversation transcript text.")).toBeTruthy();
+    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Text size", "Transcript width"]);
+    expect(screen.getByText("Size of the transcript and composer text.")).toBeTruthy();
     expect(screen.getByText("Maximum width of the transcript and composer columns.")).toBeTruthy();
     expect(within(groups[0]!).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Small", "Medium", "Large"]);
     expect(within(groups[1]!).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Narrow", "Medium", "Wide"]);
@@ -80,7 +80,7 @@ describe("the plugin's page under Tools", () => {
   it("moves the choice with the arrow keys", async () => {
     const slot = renderSettings();
     await waitFor(() => expect(screen.getAllByRole("radio", { checked: true })).toHaveLength(2));
-    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "Transcript text size" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "Text size" }), { key: "ArrowRight" });
     await waitFor(() => expect(screen.getByRole("radio", { name: "Large" }).getAttribute("aria-checked")).toBe("true"));
     expect(slot.inspection.rpcCalls.at(-1)).toMatchObject({ method: "setTweaks", input: { textSize: "large" } });
   });
