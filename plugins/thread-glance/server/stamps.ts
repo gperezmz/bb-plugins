@@ -33,8 +33,8 @@ export interface StampStore {
   stamp(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
   /**
    * Sets `kind` to `at` for each thread whose stored value is earlier or
-   * absent, and publishes one signal for those. A later value is kept, so
-   * several windows reporting one moment cannot move it back.
+   * absent, and publishes one signal for those. A later value is kept, so an
+   * event carrying an earlier moment cannot move it back.
    */
   advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
   /**

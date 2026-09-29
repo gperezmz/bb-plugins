@@ -90,8 +90,6 @@ export function isOrphanedFailure(
 export interface IdleTracker {
   busy: ReadonlySet<string>;
   idleSince: Readonly<Record<string, number>>;
-  /** The threads this step saw go idle, for the server's `idleAt`. */
-  wentIdle: readonly string[];
 }
 
 function isBusyThread(thread: PluginSidebarThread): boolean {
@@ -102,24 +100,22 @@ function isBusyThread(thread: PluginSidebarThread): boolean {
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
  * idle now went idle at `at`. A thread first seen idle has no time here; the
- * server's `idleAt` holds what an earlier window saw.
+ * server's `idleAt` holds it.
  */
 export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
   const busy = new Set<string>();
   const idleSince: Record<string, number> = {};
-  const wentIdle: string[] = [];
   for (const thread of threads) {
     const id = thread.id;
     if (isBusyThread(thread)) {
       busy.add(id);
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
-      wentIdle.push(id);
     } else if (previous?.idleSince[id] !== undefined) {
       idleSince[id] = previous.idleSince[id];
     }
   }
-  return { busy, idleSince, wentIdle };
+  return { busy, idleSince };
 }
 
 /**
