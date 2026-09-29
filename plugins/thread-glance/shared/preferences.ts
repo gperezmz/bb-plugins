@@ -223,10 +223,18 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   return mapped as Partial<Preferences>;
 }
 
-/** Per-client preferences, kept in localStorage only. A saved `filter`, from the old All / Needs attention control, is dropped. */
-export const clientPreferencesSchema = z.object({
-  density: z.enum(["compact", "comfortable"]).catch("compact"),
-});
+/**
+ * Per-client preferences, kept in localStorage only. A saved `filter`, from
+ * the old All / Needs attention control, is dropped. `branchLine` is missing
+ * where 0.5.0 or earlier saved the density, whose Comfortable drew branch
+ * lines, so it is read off the density there.
+ */
+export const clientPreferencesSchema = z
+  .object({
+    density: z.enum(["compact", "comfortable"]).catch("compact"),
+    branchLine: z.boolean().optional().catch(undefined),
+  })
+  .transform(({ density, branchLine }) => ({ density, branchLine: branchLine ?? density === "comfortable" }));
 export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
 
 export const CLIENT_PREFERENCES_STORAGE_KEY = "bb.thread-glance.client.v1";
@@ -235,5 +243,5 @@ export const BB_PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1"
 
 export function parseClientPreferences(raw: unknown): ClientPreferences {
   const result = clientPreferencesSchema.safeParse(raw ?? {});
-  return result.success ? result.data : { density: "compact" };
+  return result.success ? result.data : { density: "compact", branchLine: false };
 }

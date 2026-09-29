@@ -66,8 +66,8 @@ export interface ThreadRow {
   /** The line under the title: why it waits on you or failed, in both densities. */
   note: RowNote | null;
   /**
-   * In Comfortable density, a row with no note whose branch is known not to
-   * be its project's default draws that branch on its second line.
+   * While the Branch line switch is on, a row with no note whose branch is
+   * known not to be its project's default draws that branch on its second line.
    */
   branchLine: string | null;
   /**
@@ -172,8 +172,8 @@ export interface ViewInputs {
   defaultProviderId: string | null;
   /** bb's primary machine; null while unknown, when no row names its machine. */
   primaryHostId: string | null;
-  /** Comfortable density: rows may take a branch line. */
-  comfortable: boolean;
+  /** The Branch line switch is on: rows may take a branch line, in either density. */
+  showBranchLine: boolean;
   /** A project's default branch: undefined while looked up, null when not found. */
   defaultBranchOf(thread: PluginSidebarThread): string | null | undefined;
   /**
@@ -240,11 +240,11 @@ function drawsHarness(context: Context, info: ThreadInfo): boolean {
   return providerId !== context.forest.infos.get(info.parentId)?.thread.providerId;
 }
 
-/** The row's second line and pull request badge, as the density and the branch allow. */
+/** The row's second line and pull request badge, as the Branch line switch and the branch allow. */
 function lines(context: Context, info: ThreadInfo, depth: number): Pick<ThreadRow, "branchLine" | "pullRequest"> {
   const branch = info.thread.environment?.branchName ?? null;
   const offDefault = isOffDefaultBranch(branch, context.defaultBranchOf(info.thread));
-  if (context.comfortable && info.note === null && offDefault) return { branchLine: branch, pullRequest: "second-line" };
+  if (context.showBranchLine && info.note === null && offDefault) return { branchLine: branch, pullRequest: "second-line" };
   return { branchLine: null, pullRequest: depth === 0 && offDefault ? "title" : null };
 }
 

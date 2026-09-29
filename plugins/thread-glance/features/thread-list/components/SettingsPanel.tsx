@@ -184,6 +184,12 @@ export function SettingsPanel({
           onSelect={(value) => onClient({ density: value })}
         />
       </Line>
+      <Toggle
+        label="Branch line"
+        description="A thread off its project's default branch names the branch under its title"
+        checked={client.branchLine}
+        onChange={(value) => onClient({ branchLine: value })}
+      />
       <Line label="Harness icon">
         <Segmented
           label="Harness icon"

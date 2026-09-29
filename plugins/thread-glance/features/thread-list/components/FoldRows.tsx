@@ -17,6 +17,7 @@ import type { EnvironmentRow, OlderRow, SettledRow } from "../model/view";
 import type { RowController } from "./controller";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
+import { ENVIRONMENT_ROW_HEIGHT, OLDER_ROW_HEIGHT } from "./row-heights";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 export const OlderRowView = memo(function OlderRowView({ row, controller }: { row: OlderRow; controller: RowController }) {
@@ -28,7 +29,10 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
       onClick={() => controller.onToggleOlder(row)}
-      className="relative flex h-7 w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      className={cn(
+        "relative flex w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        OLDER_ROW_HEIGHT[controller.density],
+      )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
       <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center">
@@ -74,7 +78,10 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
       : environmentProviders.find((candidate) => candidate.id === row.environmentProviderId) ?? null;
   return (
     <div
-      className="group/row relative flex h-7 w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent"
+      className={cn(
+        "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent",
+        ENVIRONMENT_ROW_HEIGHT[controller.density],
+      )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
       <button

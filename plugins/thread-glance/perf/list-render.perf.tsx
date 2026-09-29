@@ -393,7 +393,7 @@ describe.skipIf(!SNAPSHOT)("list model cost over a real snapshot", () => {
           needYouOnly: false,
           defaultProviderId: null,
           primaryHostId: null,
-          comfortable: false,
+          showBranchLine: false,
           defaultBranchOf: () => undefined,
           settle: { now: Date.now(), settleAfter: preferences.settleAfter, startedAt: {}, finishedAt: {} },
         });
