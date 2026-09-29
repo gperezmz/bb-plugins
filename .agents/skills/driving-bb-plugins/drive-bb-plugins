@@ -49,6 +49,8 @@ load_run() {
   ev=$evidence_root/$run
   # shellcheck source=/dev/null
   source "$ev/run.env"
+  [[ ${scratch:-} == "$scratch_root"/run.?????? && $scratch != *..* ]] ||
+    die "$ev/run.env names no run directory under $scratch_root (scratch='${scratch:-}'); refusing to act on it"
 }
 
 # Every process whose environment carries this run's mark, "pid<TAB>cmdline".
@@ -62,6 +64,24 @@ marked_procs() {
       printf '%s\t%s\n' "$pid" "$(tr '\0\n\t' '   ' < "$proc/cmdline" 2> /dev/null | cut -c1-160)"
     fi
   done
+}
+
+# Removes the run's scratch directory, refusing any path that is not a run
+# directory mktemp made under the scratch root, so a missing or edited run.env
+# never deletes anything else.
+remove_scratch() {
+  [[ $scratch == "$scratch_root"/run.?????? && $scratch != *..* && -d $scratch && ! -L $scratch ]] ||
+    die "refusing to remove '$scratch': not a run directory under $scratch_root"
+  rm -rf "$scratch"
+}
+
+# Removes one port claim, refusing any path that is not $claims/<port>.
+remove_claim() {
+  local port=${1%/}
+  port=${port#"$claims"/}
+  [[ ${1%/} == "$claims/$port" && $port =~ ^[0-9]+$ && -d $claims/$port && ! -L $claims/$port ]] ||
+    die "refusing to remove '$1': not a port claim under $claims"
+  rm -rf "$claims/$port"
 }
 
 # Prints a free port, claimed for this run's scratch: the claim is a
@@ -78,7 +98,7 @@ claim_port() {
       return
     fi
     owner=$(cat "$claims/$port/owner" 2> /dev/null || true)
-    [[ -n $owner && ! -d $owner ]] && rm -rf "$claims/$port"
+    [[ -n $owner && ! -d $owner ]] && remove_claim "$claims/$port"
   done
   die "no free port found"
 }
@@ -87,7 +107,7 @@ claim_port() {
 release_ports() {
   local claim
   for claim in "$claims"/*/; do
-    [[ $(cat "$claim/owner" 2> /dev/null) == "$scratch" ]] && rm -rf "$claim"
+    [[ $(cat "$claim/owner" 2> /dev/null) == "$scratch" ]] && remove_claim "$claim"
   done
   return 0
 }
@@ -123,9 +143,9 @@ cmd_start() {
   server_port=${DBP_SERVER_PORT:-$(claim_port)}
   daemon_port=${DBP_DAEMON_PORT:-$(claim_port)}
   api_port=${DBP_API_PORT:-$(claim_port)}
-  [[ -n $server_port && -n $daemon_port && -n $api_port ]] || { release_ports; rm -rf "$scratch"; die "could not claim three ports"; }
+  [[ -n $server_port && -n $daemon_port && -n $api_port ]] || { release_ports; remove_scratch; die "could not claim three ports"; }
   for p in "$server_port" "$daemon_port" "$api_port"; do
-    ! port_busy "$p" || { release_ports; rm -rf "$scratch"; die "port $p is in use: choose another DBP_*_PORT"; }
+    ! port_busy "$p" || { release_ports; remove_scratch; die "port $p is in use: choose another DBP_*_PORT"; }
   done
   server_url=http://127.0.0.1:$server_port
   mkdir -p "$ev" "$scratch/home" "$scratch/tmp" "$scratch/plugins" "$scratch/work/demo"
@@ -305,7 +325,7 @@ cmd_stop() {
     return 1
   fi
   release_ports
-  rm -rf "$scratch"
+  remove_scratch
   echo "run $run stopped; evidence kept in $ev"
 }
 
