@@ -67,8 +67,12 @@ Thread Glance's setting for how long a thread goes without activity before it se
 _Avoid_: Auto-settle days, inactivity threshold
 
 **Settled fold**:
-The muted "Settled (N)" divider at the end of a group that holds its settled threads.
+The muted "Settled (N)" divider at the end of a group, behind which its settled threads go, a held tree excepted.
 _Avoid_: Older fold, N older, more row
+
+**Held tree**:
+A thread tree that settled while it held the focused thread, and stays where it was, out of its group's Settled fold and its count, until no thread in the group's settled trees is focused.
+_Avoid_: Pending tree, parked tree
 
 **Trailing slot**:
 The last column of a Thread Glance row, holding the time at rest and the "…" menu button on hover. It is as wide on every row as the "…" button or the widest time up to 99 weeks, whichever is wider.
