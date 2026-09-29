@@ -136,6 +136,15 @@ function mountView(html = COLUMN + COMPOSER, attributes: Record<string, string> 
   return view;
 }
 
+const NEW_THREAD_EDITOR = '<div data-promptbox-editor-scroll class="text-sm"><div id="root-compose-prompt" contenteditable="true"></div></div>';
+
+function mountNewThread(html = `<div class="mx-auto flex max-w-[760px]" style="--md-content-w: 760px;"><form data-promptbox>${NEW_THREAD_EDITOR}</form></div>`) {
+  const screen = document.createElement("div");
+  screen.innerHTML = html;
+  document.body.append(screen);
+  return screen;
+}
+
 const styleElements = () => [...document.querySelectorAll("style")].filter((style) => style.textContent?.includes("data-thread-window"));
 
 describe("the content script", () => {
@@ -206,6 +215,26 @@ describe("a thread view missing a target", () => {
     const { warn, scripts } = await watch();
     await vi.advanceTimersByTimeAsync(GRACE_MS / 2);
     view.innerHTML = COLUMN + COMPOSER;
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
+    expect(warn).not.toHaveBeenCalled();
+    await scripts.lifecycle.dispose();
+  });
+
+  it("warns once per New-thread screen, naming what it lacks", async () => {
+    mountNewThread(`<div class="max-w-[760px]"><div id="root-compose-prompt" contenteditable="true"></div></div>`);
+    mountNewThread();
+    const { warn, scripts } = await watch();
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 3);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toBe(
+      "UI Tweaks: a New-thread screen lacks its column (.max-w-[760px] with an inline --md-content-w), its editor wrapper ([data-promptbox-editor-scroll]), so neither tweak applies to it. bb may have changed its New-thread screen.",
+    );
+    await scripts.lifecycle.dispose();
+  });
+
+  it("stays silent about a screen without #root-compose-prompt", async () => {
+    mountNewThread('<div class="max-w-[760px]"><div data-promptbox-editor-scroll><div contenteditable="true"></div></div></div>');
+    const { warn, scripts } = await watch();
     await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
     expect(warn).not.toHaveBeenCalled();
     await scripts.lifecycle.dispose();

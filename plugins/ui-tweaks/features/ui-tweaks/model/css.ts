@@ -1,6 +1,17 @@
 // The stylesheet the content script puts in the page for a pair of tweaks.
 import { TEXT_SCALE, WIDTH_PX, type Tweaks } from "@/shared/tweaks";
-import { COLUMN, COMPOSER, COMPOSER_EDITOR, EDITABLE, hasTextTarget, TEXT_VARIABLES, THREAD_VIEW } from "./targets";
+import {
+  COLUMN,
+  COMPOSER,
+  COMPOSER_EDITOR,
+  EDITABLE,
+  hasTextTarget,
+  NEW_THREAD_COLUMN,
+  NEW_THREAD_EDITOR,
+  NEW_THREAD_EDITOR_WRAPPER,
+  TEXT_VARIABLES,
+  THREAD_VIEW,
+} from "./targets";
 
 /** bb's phone viewport, the media query its own text sizes switch on. */
 export const PHONE_QUERY = "(width <= 767px) and (pointer: coarse)";
@@ -14,6 +25,10 @@ const VIEW =
   `:is(:not(:has(${COMPOSER.selector} ${EDITABLE})), :has(${COMPOSER.selector} ${COMPOSER_EDITOR.selector}))`;
 const IN_COLUMN = `${VIEW} ${COLUMN.selector}`;
 const IN_COMPOSER_EDITOR = `${VIEW} ${COMPOSER.selector} ${COMPOSER_EDITOR.selector}`;
+
+/** A New-thread screen's column holding its editor wrapper; one lacking either matches nothing. */
+const NEW_THREAD = `${NEW_THREAD_COLUMN.selector}:has(${NEW_THREAD_EDITOR_WRAPPER.selector} ${NEW_THREAD_EDITOR})`;
+const IN_NEW_THREAD_EDITOR = `${NEW_THREAD} ${NEW_THREAD_EDITOR_WRAPPER.selector}:has(${NEW_THREAD_EDITOR})`;
 
 // bb's text utilities that bypass the --text-* variables, with the font size
 // or line height each one sets.
@@ -30,7 +45,8 @@ const FIXED_FONT_SIZES: readonly [string, string][] = [
 
 /**
  * The CSS for these tweaks: empty when both are Medium, and when the root
- * lacks --text-sm, since then no thread view has all its targets.
+ * lacks --text-sm, since then no thread view or New-thread screen has all
+ * its targets.
  *
  * @param tweaks The saved tweaks.
  * @param rootVariables bb's `--text-*` variables and their `--line-height`
@@ -42,13 +58,14 @@ export function tweaksCss(tweaks: Tweaks, rootVariables: Readonly<Record<string,
   const rules: string[] = [];
   const scale = TEXT_SCALE[tweaks.textSize];
   if (scale !== 1) {
-    for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR]) rules.push(...scaledTextRules(scope, scale, rootVariables));
+    for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR, IN_NEW_THREAD_EDITOR]) rules.push(...scaledTextRules(scope, scale, rootVariables));
   }
   const width = WIDTH_PX[tweaks.width];
   if (width !== WIDTH_PX.medium) {
     // The inline --md-content-w bb sets on the column yields only to !important.
     rules.push(`${IN_COLUMN} { max-width: ${width}px; --md-content-w: ${width}px !important; }`);
     rules.push(`${VIEW} ${COMPOSER.selector} { max-width: ${width}px; }`);
+    rules.push(`${NEW_THREAD} { max-width: ${width}px; --md-content-w: ${width}px !important; }`);
   }
   if (rules.length === 0) return "";
   return `@media not (${PHONE_QUERY}) {\n${rules.map((rule) => `  ${rule}`).join("\n")}\n}\n`;

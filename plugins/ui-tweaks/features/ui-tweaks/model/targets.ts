@@ -43,13 +43,28 @@ export const EDITABLE = ":is([contenteditable], textarea)";
 
 export const VIEW_TARGETS: readonly Target[] = [COLUMN, COMPOSER];
 
+/** The New-thread screen's editor: a screen showing it is a New-thread screen. */
+export const NEW_THREAD_EDITOR = "#root-compose-prompt";
+
+/** The New-thread screen's column, which holds its composer. */
+export const NEW_THREAD_COLUMN: Target = {
+  name: "its column (.max-w-[760px] with an inline --md-content-w)",
+  selector: COLUMN.selector,
+};
+
+/** The wrapper around the New-thread screen's editor, which sets the size of its text. */
+export const NEW_THREAD_EDITOR_WRAPPER: Target = {
+  name: "its editor wrapper ([data-promptbox-editor-scroll])",
+  selector: "[data-promptbox-editor-scroll]",
+};
+
 /** bb's text size variables, set at the root, that the text size tweak scales. */
 export const TEXT_VARIABLES = ["--text-2xs", "--text-xs", "--text-sm", "--text-base", "--text-lg", "--text-xl", "--text-2xl"] as const;
 
 /** The warning's name for --text-sm, the one text variable that counts as a target. */
 export const TEXT_SM_TARGET = "the text size variable --text-sm at :root";
 
-/** Whether the root holds --text-sm, without which no thread view has all its targets. */
+/** Whether the root holds --text-sm, without which no thread view or New-thread screen has all its targets. */
 export function hasTextTarget(rootVariables: Readonly<Record<string, string>>): boolean {
   return Boolean(rootVariables["--text-sm"]);
 }
@@ -61,6 +76,22 @@ export function missingTargets(view: ParentNode, rootVariables: Readonly<Record<
   if (composer?.querySelector(EDITABLE) && !composer.querySelector(COMPOSER_EDITOR.selector)) {
     missing.push(COMPOSER_EDITOR.name);
   }
+  if (!hasTextTarget(rootVariables)) missing.push(TEXT_SM_TARGET);
+  return missing;
+}
+
+/**
+ * Names of the targets the New-thread screen around `editor` lacks, in a
+ * fixed order.
+ *
+ * @param editor The screen's `#root-compose-prompt`.
+ */
+export function missingNewThreadTargets(editor: Element, rootVariables: Readonly<Record<string, string>>): string[] {
+  const missing: string[] = [];
+  const column = editor.closest(NEW_THREAD_COLUMN.selector);
+  const wrapper = editor.closest(NEW_THREAD_EDITOR_WRAPPER.selector);
+  if (!column) missing.push(NEW_THREAD_COLUMN.name);
+  if (!wrapper || (column && !column.contains(wrapper))) missing.push(NEW_THREAD_EDITOR_WRAPPER.name);
   if (!hasTextTarget(rootVariables)) missing.push(TEXT_SM_TARGET);
   return missing;
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { missingTargets } from "./targets";
+import { missingNewThreadTargets, missingTargets } from "./targets";
 
 const ROOT = { "--text-sm": ".8125rem" };
 
@@ -49,6 +49,30 @@ describe("a thread view's targets", () => {
   it("miss the column when it lost its inline --md-content-w", () => {
     expect(missingTargets(view('<div class="max-w-[760px]"></div>' + COMPOSER), ROOT)).toEqual([
       "the transcript column (.max-w-[760px] with an inline --md-content-w)",
+    ]);
+  });
+});
+
+describe("a New-thread screen's targets", () => {
+  function editorIn(html: string): Element {
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    return element.querySelector("#root-compose-prompt")!;
+  }
+
+  const EDITOR = '<div id="root-compose-prompt" contenteditable="true"></div>';
+  const WRAPPED = `<div data-promptbox-editor-scroll class="text-sm"><div data-promptbox-editor-content>${EDITOR}</div></div>`;
+
+  it("are all there in bb 0.44's New-thread screen", () => {
+    const html = `<div class="mx-auto flex max-w-[760px] pt-14" style="--md-content-w: 760px;"><form data-promptbox>${WRAPPED}</form></div>`;
+    expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual([]);
+  });
+
+  it("name each one that is missing", () => {
+    expect(missingNewThreadTargets(editorIn(`<div class="max-w-[800px]">${EDITOR}</div>`), {})).toEqual([
+      "its column (.max-w-[760px] with an inline --md-content-w)",
+      "its editor wrapper ([data-promptbox-editor-scroll])",
+      "the text size variable --text-sm at :root",
     ]);
   });
 });

@@ -20,6 +20,8 @@ const VIEW =
   `:is(:not(:has(${BOX} :is([contenteditable], textarea))), :has(${BOX} ${WRAPPER}))`;
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
 const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
+const NEW_THREAD = '.max-w-\\[760px\\][style*="--md-content-w"]:has([data-promptbox-editor-scroll] #root-compose-prompt)';
+const NEW_THREAD_EDITOR = `${NEW_THREAD} [data-promptbox-editor-scroll]:has(#root-compose-prompt)`;
 
 describe("the tweaks stylesheet", () => {
   it("is empty for Medium and Medium, bb's own look", () => {
@@ -65,6 +67,14 @@ describe("the tweaks stylesheet", () => {
     expect(inBox.filter((rule) => !rule.includes(EDITOR))).toEqual([]);
   });
 
+  it("scales the New-thread screen's typed text by the same ratio, in its editor wrapper only", () => {
+    const css = tweaksCss({ textSize: "large", width: "medium" }, ROOT);
+    const scale = 15 / 13;
+    expect(css).toContain(`${NEW_THREAD_EDITOR} { --text-2xs: calc(.625rem * ${scale});`);
+    expect(css).toContain(`${NEW_THREAD_EDITOR} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * ${scale});`);
+    expect(css).not.toContain(`${NEW_THREAD} {`);
+  });
+
   it("scales the fixed line heights and font sizes that bypass the variables", () => {
     const css = tweaksCss({ textSize: "small", width: "medium" }, ROOT);
     const scale = 12 / 13;
@@ -79,10 +89,11 @@ describe("the tweaks stylesheet", () => {
   it.each([
     ["narrow", 640],
     ["wide", 960],
-  ] as const)("gives %s's width to the transcript column, its tables and the composer", (width, px) => {
+  ] as const)("gives %s's width to the transcript column, its tables, the composer and the New-thread screen's column", (width, px) => {
     const css = tweaksCss({ textSize: "medium", width }, ROOT);
     expect(css).toContain(`${COLUMN} { max-width: ${px}px; --md-content-w: ${px}px !important; }`);
     expect(css).toContain(`${VIEW} .chat-prompt-box.max-w-\\[760px\\] { max-width: ${px}px; }`);
+    expect(css).toContain(`${NEW_THREAD} { max-width: ${px}px; --md-content-w: ${px}px !important; }`);
     expect(css).not.toContain("--text-sm:");
   });
 });
