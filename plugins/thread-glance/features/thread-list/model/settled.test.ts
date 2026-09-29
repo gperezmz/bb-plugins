@@ -225,7 +225,7 @@ describe("the focused thread in a settled tree", () => {
     expect(rowOf(mode, { prefs: expanded, activeThreadId: "c4" }, "c4").dimmed).toBe(false);
   });
 
-  it.each(modes)("under a closed fold, shows only the path from its root down to it, and keeps the count (%s)", (mode) => {
+  it.each(modes)("under a closed fold, shows only the path from its root down to it, and keeps the count (%s)", (mode, group) => {
     expect(ids(mode)).toEqual(["new", "busy", "settled:2"]);
     expect(ids(mode, { activeThreadId: "old2" })).toEqual(["new", "busy", "settled:2", "old2"]);
     // A focused root shows alone, without its children.
@@ -241,6 +241,14 @@ describe("the focused thread in a settled tree", () => {
       "old1",
       "c4",
     ]);
+    // Every ancestor shows, even where a closed chip hides the focused child in the open fold.
+    expect(ids(mode, { activeThreadId: "c1a" })).toEqual(path);
+    const clustered = threads.map((thread) =>
+      thread.parentThreadId === "old1" ? makeThread({ ...thread, environment: { id: "wt", isWorktree: true, branchName: "f" } }) : thread,
+    );
+    const folder = { environmentGrouping: true, collapsedEnvironments: ["wt"], expandedChildren: ["old1"] };
+    expect(ids(mode, { threads: clustered, activeThreadId: "c1a", prefs: { ...folder, openSettledFolds: [group] } })).not.toContain("c1a");
+    expect(ids(mode, { threads: clustered, activeThreadId: "c1a", prefs: folder })).toEqual(path);
     const focused = rowOf(mode, { activeThreadId: "c1a", targets: reveal("c1a") }, "c1a");
     expect(focused).toMatchObject({ dimmed: false, depth: 2 });
   });

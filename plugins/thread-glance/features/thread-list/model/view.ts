@@ -461,12 +461,18 @@ function treeUnit(context: Context, tree: ThreadTree): Unit {
 
 /**
  * The focused thread's tree under a closed settled fold: its root and each
- * row down to the focused thread, as the open fold draws them, and nothing
- * else. So the fold, like the child-threads fold, shows the opened row and
- * moves nothing.
+ * thread down to the focused one, drawn as the open fold draws them, and
+ * nothing else. Every one of them shows even where a closed chip or
+ * worktree folder would hide it, so the fold, like the child-threads fold,
+ * shows the opened row and moves nothing.
  */
-function focusedPath(context: Context, tree: ThreadTree): TreeRow[] {
-  return treeUnit(context, tree).rows.filter((row) => row.type === "thread" && context.activePath.has(row.info.thread.id));
+function focusedPath(context: Context, tree: ThreadTree, focusedId: string): ThreadRow[] {
+  const ids = [...ancestorsOf(focusedId, context.forest.infos).reverse(), focusedId];
+  return ids.map((id, depth) => {
+    const info = context.forest.infos.get(id)!;
+    const chip = chipOf(context, info, context.expandedChildren.has(id));
+    return threadRow(context, info, tree.root, { depth, nested: depth > 1, chip });
+  });
 }
 
 /** Whether a thread in the tree needs attention: it stays drawn when its group is collapsed. */
@@ -518,7 +524,7 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
         rows.push(...clusterEnvironments(context, settled.map((tree) => treeUnit(context, tree)), 0));
       } else {
         const focused = settled.find((tree) => tree.containsActive);
-        if (focused !== undefined) rows.push(...focusedPath(context, focused));
+        if (focused !== undefined && activeId !== null) rows.push(...focusedPath(context, focused, activeId));
       }
     }
   }
