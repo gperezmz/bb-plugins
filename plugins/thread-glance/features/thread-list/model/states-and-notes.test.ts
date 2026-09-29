@@ -12,7 +12,7 @@ import type { Flag } from "./state";
 
 const note = (kind: "question" | "approval" | "plan" | "input" | "failed" | "done", text: string) => ({ kind, text, at: T0 });
 
-describe("working is visible, background stays faint", () => {
+describe("working is visible, background stays grey", () => {
   it("draws working in the working tone and background in its own", () => {
     const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
     expect(computeState(makeThread({ id: "w", ...working }), base).glyph.tone).toBe("working");

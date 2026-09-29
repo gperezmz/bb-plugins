@@ -57,7 +57,7 @@ export const ListHeader = memo(function ListHeader({
           title={needYouOnly ? "Show every thread" : "Show only what needs you"}
           onClick={onToggleNeedYou}
           className={cn(
-            "inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            "inline-flex h-5 shrink-0 items-center rounded-full px-1.5 text-xs leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
             needYouOnly ? NEED_YOU_ON : NEED_YOU,
           )}
         >

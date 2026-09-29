@@ -67,7 +67,7 @@ Thread Glance's setting for how long a thread goes without activity before it se
 _Avoid_: Auto-settle days, inactivity threshold
 
 **Settled fold**:
-The faint "Settled (N)" divider at the end of a group that holds its settled threads.
+The muted "Settled (N)" divider at the end of a group that holds its settled threads.
 _Avoid_: Older fold, N older, more row
 
 **Trailing slot**:

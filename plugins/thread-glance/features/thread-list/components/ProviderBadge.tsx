@@ -45,7 +45,7 @@ export function ProviderBadge({
       aria-label={display.name}
       title={display.name}
       className={cn(
-        "inline-flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-border px-px text-[8px] font-semibold leading-none tracking-tight text-muted-foreground",
+        "inline-flex h-3.5 min-w-3.5 shrink-0 items-center justify-center rounded-[3px] border border-border px-px text-[10px] font-semibold leading-none tracking-tight text-muted-foreground",
         muted && "opacity-60",
         className,
       )}

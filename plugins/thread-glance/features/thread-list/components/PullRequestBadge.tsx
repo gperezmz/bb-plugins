@@ -42,7 +42,7 @@ export function PullRequestBadge({ threadId }: { threadId: string }) {
     <span
       title={pullRequestLabel(pullRequest)}
       aria-label={pullRequestLabel(pullRequest)}
-      className={cn("shrink-0 text-[11px] tabular-nums", pullRequestTone(pullRequest.attention))}
+      className={cn("shrink-0 text-xs tabular-nums", pullRequestTone(pullRequest.attention))}
     >
       #{pullRequest.number}
     </span>

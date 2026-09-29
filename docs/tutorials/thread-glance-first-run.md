@@ -14,7 +14,7 @@ The list looks much like bb's: Thread Glance copied your grouping, sort, group o
 
 ## 2. Read a row
 
-The list starts with its header: `Projects`, the name of the grouping, then a sliders button, with a Mark all read button before it while any thread in the list is unread. Below it are your groups, each ending with a faint `Settled (N)` divider when some of its threads have gone a day without activity.
+The list starts with its header: `Projects`, the name of the grouping, then a sliders button, with a Mark all read button before it while any thread in the list is unread. Below it are your groups, each ending with a muted `Settled (N)` divider when some of its threads have gone a day without activity.
 
 Look at any thread you have run before. From left to right, its row holds:
 
@@ -38,7 +38,7 @@ Then open a different thread. A thread shown in a pane of bb's window is an [ope
 
 While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a muted `1` and a chevron just before its time: its one child. The child has no row of its own at the top of the group. It sits behind that chip.
 
-Click the chip. The child's row opens under the parent, indented one step, its title one size smaller.
+Click the chip. The child's row opens under the parent, indented one step, its title the same size as its parent's.
 
 ## 4. Let it finish
 

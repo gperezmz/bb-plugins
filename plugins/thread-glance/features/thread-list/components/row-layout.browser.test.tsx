@@ -7,7 +7,7 @@ import { page, userEvent } from "vitest/browser";
 import { cleanup, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences } from "@/shared/preferences";
+import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import { finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -105,10 +105,24 @@ const props: PluginThreadListProps = {
   searchQuery: "",
 };
 
-async function render(width: number) {
+async function render(
+  width: number,
+  {
+    density = "compact",
+    organizationMode = "project",
+    preferences: overrides = {},
+    extraThreads = [],
+  }: {
+    density?: ClientPreferences["density"];
+    organizationMode?: OrganizationMode;
+    preferences?: Partial<Preferences>;
+    extraThreads?: ReturnType<typeof makeThread>[];
+  } = {},
+) {
   // The frame is the sidebar, tall enough to draw every row.
   await page.viewport(width, 1600);
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const };
+  localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density }));
+  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode, ...overrides };
   renderSlot(app.threadLists[0]!, props, {
     rpc: {
       listPreferences: () => ({ preferences }),
@@ -131,7 +145,7 @@ async function render(width: number) {
       listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
       listNotes: () => ({ notes: {} }),
     } as never,
-    sidebarThreads: { status: "ready", threads: threads(), projects: PROJECTS, sections: [] },
+    sidebarThreads: { status: "ready", threads: [...threads(), ...extraThreads], projects: PROJECTS, sections: [] },
     sidebarPullRequests: Object.fromEntries(
       CASES.map((c) => [c.id, { number: 1234, title: "Fix", url: "u", state: "open", attention: "none" }]),
     ),
@@ -183,7 +197,7 @@ interface Box {
   rect: DOMRect;
 }
 
-function rowOf(c: Case): HTMLElement {
+function rowOf(c: Pick<Case, "id">): HTMLElement {
   const anchor = document.querySelector(`a[data-sidebar-thread-id="${c.id}"]`);
   if (anchor === null) throw new Error(`no row for ${c.id}`);
   return anchor.parentElement!;
@@ -247,7 +261,7 @@ async function ready() {
   await expect.poll(() => document.querySelectorAll(PARTS.pullRequest()).length).toBe(CASES.filter((c) => c.kind === "root").length);
 }
 
-describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) => {
+describe.each([240, 320, 400])("a row's right end at a %i px sidebar", (width) => {
   it("shows every part it should, in order, with nothing overlapping, at rest and on hover", async () => {
     await render(width);
     await ready();
@@ -303,6 +317,172 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
     await userEvent.hover(rowOf(parent));
     await userEvent.click(chip);
     await expect.poll(() => chip.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("a child thread's title", () => {
+  const font = (element: Element) => {
+    const style = getComputedStyle(element);
+    return { fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight };
+  };
+
+  it.each(
+    (["compact", "comfortable"] as const).flatMap((density) =>
+      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ density, organizationMode })),
+    ),
+  )("is drawn at a root's size, two levels down, in $density density grouped by $organizationMode", async (options) => {
+    await render(320, options);
+    // Both are read, so neither is bold.
+    const root = CASES.find((c) => c.kind === "root" && !c.unread)!;
+    const child = CASES.find((c) => c.kind === "hidden-child")!;
+    for (const c of [root, child]) await screen.findByRole("link", { name: new RegExp(`${c.id}\\b`) });
+    expect(rowOf(child).querySelector(PARTS.nested()), "the child is nested").not.toBeNull();
+    const rootFont = font(rowOf(root).querySelector(PARTS.title(root))!);
+    expect(font(rowOf(child).querySelector(PARTS.title(child))!)).toEqual(rootFont);
+    expect(rootFont.fontWeight).toBe("400");
+    // Comfortable rows carry the branch on a second line.
+    for (const c of [root, child]) expect(rowOf(c).getBoundingClientRect().height, c.id).toBe(options.density === "compact" ? 28 : 44);
+  });
+});
+
+describe("the sidebar's text sizes", () => {
+  // Two unread threads in one worktree, to draw the environment fold outside the settled fold.
+  const worktree = { id: "env_wt", isWorktree: true, branchName: "fix/shared" };
+  const options = {
+    preferences: { settleAfter: "12h" as const, environmentGrouping: true },
+    extraThreads: [
+      makeThread({ id: "wt-a", title: "Worktree A", environment: worktree, ...finishedUnread }),
+      makeThread({ id: "wt-b", title: "Worktree B", environment: worktree, ...finishedUnread }),
+    ],
+  };
+
+  /** Every laid-out element that holds text of its own, with the size it is drawn at. */
+  function texts() {
+    const found: { element: Element; text: string; size: number; height: number }[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const text = node.textContent!.trim();
+      if (text === "") continue;
+      const element = node.parentElement!;
+      // dnd-kit's screen-reader instructions are never drawn.
+      if (!element.checkVisibility()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      found.push({ element, text, size: parseFloat(getComputedStyle(element).fontSize), height: range.getBoundingClientRect().height });
+    }
+    return found;
+  }
+
+  /** The ↳ mark, the shortcut label and the harness letter badge: the only fixed sizes. */
+  const isMark = (element: Element) =>
+    element.closest(`${PARTS.nested()}, kbd, ${PARTS.harness()}`) !== null;
+
+  async function renderAll(width = 320) {
+    await render(width, options);
+    // Each kind of text is on screen, so none escapes the check.
+    await screen.findByRole("button", { name: /^Show \d+ settled/ });
+    await screen.findByRole("button", { name: /Collapse fix\/shared environment/ });
+    expect(screen.getByRole("button", { name: /need you/ })).toBeTruthy();
+    // The unread roots stay out of the fold, with every badge a row can carry.
+    await expect.poll(() => document.querySelectorAll(PARTS.pullRequest()).length).toBeGreaterThan(0);
+    for (const part of ["harness", "machine", "childrenChip", "time"] as const) {
+      expect(document.querySelector(PARTS[part]()), part).not.toBeNull();
+    }
+  }
+
+  it.each([240, 320])("draws nothing below 12 px but the three 10 px marks, and wraps nothing, at a %i px sidebar", async (width) => {
+    await renderAll(width);
+    for (const { element, text, size, height } of texts()) {
+      if (isMark(element)) expect(size, text).toBe(10);
+      else expect(size, text).toBeGreaterThanOrEqual(12);
+      // Two lines would stand at least two font sizes tall.
+      expect(height, `${text} on one line`).toBeLessThan(2 * size);
+    }
+  });
+
+  it("takes every other size from bb's --text-xs and --text-sm", async () => {
+    await renderAll();
+    const root = document.documentElement.style;
+    root.setProperty("--text-xs", "21px");
+    root.setProperty("--text-sm", "23px");
+    try {
+      for (const { element, text, size } of texts()) {
+        if (isMark(element)) expect(size, text).toBe(10);
+        else expect([21, 23], text).toContain(size);
+      }
+    } finally {
+      root.removeProperty("--text-xs");
+      root.removeProperty("--text-sm");
+    }
+  });
+});
+
+describe("contrast against the sidebar in bb's palette", () => {
+  // bb 0.44.0's --sidebar and --muted-foreground, as its stylesheet resolves them.
+  const PALETTES = {
+    light: { "--sidebar": "oklch(0.985064 0 0)", "--muted-foreground": "oklch(0.44 0 0)" },
+    dark: { "--sidebar": "oklch(0.221445 0 0)", "--muted-foreground": "oklch(0.78 0 0)" },
+  };
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+
+  /** The colour a person sees: `color` painted over `background`, as sRGB. */
+  function painted(background: string, color?: string, opacity = 1): number[] {
+    context.globalAlpha = 1;
+    context.fillStyle = background;
+    context.fillRect(0, 0, 1, 1);
+    if (color !== undefined) {
+      context.globalAlpha = opacity;
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+    }
+    return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  }
+
+  function luminance(rgb: number[]): number {
+    const [r, g, b] = rgb.map((channel) => {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  }
+
+  /** WCAG's contrast ratio of `element`'s colour against the sidebar. */
+  function contrast(element: Element): number {
+    const style = getComputedStyle(element);
+    let opacity = 1;
+    for (let at: Element | null = element; at !== null; at = at.parentElement) opacity *= Number(getComputedStyle(at).opacity);
+    const sidebar = getComputedStyle(document.documentElement).getPropertyValue("--sidebar");
+    const [a, b] = [luminance(painted(sidebar, style.color, opacity)), luminance(painted(sidebar))];
+    return (Math.max(a!, b!) + 0.05) / (Math.min(a!, b!) + 0.05);
+  }
+
+  function usePalette(theme: keyof typeof PALETTES) {
+    for (const [name, value] of Object.entries(PALETTES[theme])) document.documentElement.style.setProperty(name, value);
+  }
+
+  afterEach(() => {
+    for (const name of Object.keys(PALETTES.light)) document.documentElement.style.removeProperty(name);
+  });
+
+  /** The innermost element of a row's Status column: the glyph itself, inside its tooltip. */
+  const glyphOf = (id: string) => [...rowOf({ id }).querySelectorAll(`${PARTS.status()} *`)].at(-1)!;
+
+  it.each(["light", "dark"] as const)("keeps the settled fold at 4.5:1 and the idle and background glyphs at 3:1 in %s", async (theme) => {
+    usePalette(theme);
+    await render(320, {
+      preferences: { settleAfter: "12h" },
+      extraThreads: [
+        makeThread({ id: "idle", title: "Idle", isPinned: true }),
+        makeThread({ id: "background", title: "Background", activity: { workflows: 1 } }),
+      ],
+    });
+    const fold = await screen.findByRole("button", { name: /^Show \d+ settled/ });
+    expect(contrast(fold.querySelector("span")!)).toBeGreaterThanOrEqual(4.5);
+    await expect.poll(() => document.querySelector('a[data-sidebar-thread-id="idle"]')).not.toBeNull();
+    for (const id of ["idle", "background"]) expect(contrast(glyphOf(id)), id).toBeGreaterThanOrEqual(3);
   });
 });
 

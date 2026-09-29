@@ -39,7 +39,7 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The settled fold: a faint label, a hairline to the row's end, and a chevron. */
+/** The settled fold: a muted label, a hairline to the row's end, and a chevron. */
 export const SettledRowView = memo(function SettledRowView({ row, controller }: { row: SettledRow; controller: RowController }) {
   const { label, ariaLabel } = settledRowText(row);
   return (
@@ -48,7 +48,7 @@ export const SettledRowView = memo(function SettledRowView({ row, controller }: 
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
       onClick={() => controller.onToggleSettled(row)}
-      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-[11px] text-muted-foreground/70 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
       style={{ paddingLeft: rowIndent(0) }}
     >
       <span className="shrink-0 tabular-nums">{label}</span>
@@ -102,7 +102,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
         <span className="pointer-events-none relative min-w-0 flex-1 truncate">{row.label}</span>
       )}
       {row.flag !== null ? <FlagGlyph flag={row.flag} className="pointer-events-none relative size-3.5" /> : null}
-      <span className="pointer-events-none relative text-[11px] tabular-nums">{row.threadIds.length}</span>
+      <span className="pointer-events-none relative text-xs tabular-nums">{row.threadIds.length}</span>
       <Icon
         name={ICONS.expand}
         aria-hidden

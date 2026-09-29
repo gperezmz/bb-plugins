@@ -9,16 +9,16 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 3 | Queued message failed | A queued message could not be sent | Warning triangle | Red |
 | 4 | Machine offline | The thread waits for its machine to come back | Cloud with a slash | Amber |
 | 5 | Working | Setting up, running, reconnecting or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
-| 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon | Faint grey |
+| 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon, shining | Grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
 | 9 | Unread | The thread finished since you last read it, and is not an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
 | 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
-| 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Faint grey |
+| 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Grey |
 
 A parent thread's glyph is chosen exactly as for a thread with no children, from its own state only, open or collapsed: an idle parent whose children are working shows the idle ring. What its children are doing is on its [children chip](#the-children-chip).
 
-A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, focused or needing attention is drawn at full brightness. A child's title is one size smaller than its parent's.
+A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, focused or needing attention is drawn at full brightness. A child's title is the same size as its parent's at any depth; the indent and the ↳ mark show its depth.
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
 
@@ -98,7 +98,7 @@ The chip's screen-reader label gives the number and names the state without coun
 
 ## The settled fold
 
-Each group ends with a faint divider, `Settled (N)` while closed and `Settled` while open, with a hairline and a chevron. It holds the group's [settled](../explanation/thread-glance-attention.md#settled-threads) thread trees, and N counts trees. It is absent when no tree in the group is settled, and starts closed.
+Each group ends with a muted divider, `Settled (N)` while closed and `Settled` while open, with a hairline and a chevron. It holds the group's [settled](../explanation/thread-glance-attention.md#settled-threads) thread trees, and N counts trees. It is absent when no tree in the group is settled, and starts closed.
 
 ## The list header
 

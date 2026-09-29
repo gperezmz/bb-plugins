@@ -33,8 +33,8 @@ export const FLAG_ORDER: readonly Flag[] = [
 
 /**
  * `working` is bb's timeline accent, so a running thread stands out in both
- * themes; `background` keeps bb's faint tone for background
- * activity, so the two stay apart.
+ * themes; `background` draws background activity in the grey `muted` has,
+ * and its glyph shines, which keeps it apart from a draft.
  */
 export type Tone = "attention" | "destructive" | "working" | "background" | "muted" | "muted-strong" | "none";
 
@@ -247,7 +247,7 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
   }
   if (inputs.unread) return { kind: "unread", label: "Unread", glyph: glyph("dot", "none"), ...none };
   if (inputs.hasDraft) return { kind: "draft", label: "Unsubmitted draft", glyph: glyph("Edit", "muted"), ...none };
-  return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted"), ...none };
+  return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted-strong"), ...none };
 }
 
 /**

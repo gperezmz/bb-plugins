@@ -537,7 +537,7 @@ describe("Thread Glance slot", () => {
     expect(marks[0]!.textContent).toBe("CO");
   });
 
-  it("folds settled trees behind a faint Settled (N) divider, and saves its opening on the server", async () => {
+  it("folds settled trees behind a muted Settled (N) divider, and saves its opening on the server", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const slot = render(
