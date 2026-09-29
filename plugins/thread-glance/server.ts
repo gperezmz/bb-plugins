@@ -61,6 +61,10 @@ export default function threadGlance(bb: BbPluginApi): void {
       await stamps.clear("seenAt", threadIds);
       return { ok: true as const };
     },
+    async reportIdle({ threadIds }) {
+      await stamps.advance("idleAt", threadIds, Date.now());
+      return { ok: true as const };
+    },
     async listNotes() {
       return { notes: await notes.list() };
     },

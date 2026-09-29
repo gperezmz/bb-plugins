@@ -130,7 +130,7 @@ function ThreadListBody({
     () => new Set(splitLayout?.panes.flatMap((pane) => (pane.threadId === null ? [] : [pane.threadId])) ?? []),
     [splitLayout],
   );
-  const { stamps, loaded: stampsLoaded, markSeen, clearSeen } = useStamps();
+  const { stamps, loaded: stampsLoaded, markSeen, clearSeen, reportIdle } = useStamps();
   const scheduled = useScheduled();
   const notes = useNotes();
   // When the next child's failure becomes orphaned. The forest knows it, but
@@ -158,7 +158,7 @@ function ThreadListBody({
   const ready = sidebar.status === "ready";
   const threads = sidebar.threads;
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
-  const idleSince = useIdleSince(threads);
+  const idleSince = useIdleSince(threads, reportIdle);
 
   const forest = useMemo(
     () =>

@@ -53,6 +53,15 @@ export const rpcContract = defineRpcContract({
     input: z.strictObject({ threadIds: threadIdsSchema }),
     output: z.strictObject({ ok: z.literal(true) }),
   },
+  /**
+   * Records `idleAt` for threads one window saw go idle from background work
+   * or a queued or scheduled message, which bb sends no event for. A thread
+   * keeps the later of its stored moment and this one.
+   */
+  reportIdle: {
+    input: z.object({ threadIds: threadIdsSchema }).strict(),
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
   /** Notes per thread id (see `noteSchema`). */
   listNotes: {
     input: z.null(),

@@ -89,12 +89,19 @@ export function isOrphanedFailure(
 /** Which threads the list last saw busy, and when each last went from busy to idle. */
 export interface IdleTracker {
   busy: ReadonlySet<string>;
+  /** The busy threads that were running a turn. */
+  working: ReadonlySet<string>;
   idleSince: Readonly<Record<string, number>>;
+  /**
+   * The threads this step saw go idle from background work or a queued or
+   * scheduled message rather than from a turn. bb sends the server no event
+   * for that change, so a window reports it.
+   */
+  unannounced: readonly string[];
 }
 
-function isBusyThread(thread: PluginSidebarThread): boolean {
-  const state = computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
-  return !isParentIdle({ thread, state });
+function stateOf(thread: PluginSidebarThread): ThreadState {
+  return computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
 }
 
 /**
@@ -104,18 +111,23 @@ function isBusyThread(thread: PluginSidebarThread): boolean {
  */
 export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
   const busy = new Set<string>();
+  const working = new Set<string>();
   const idleSince: Record<string, number> = {};
+  const unannounced: string[] = [];
   for (const thread of threads) {
     const id = thread.id;
-    if (isBusyThread(thread)) {
+    const state = stateOf(thread);
+    if (!isParentIdle({ thread, state })) {
       busy.add(id);
+      if (state.kind === "working") working.add(id);
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
+      if (!previous.working.has(id)) unannounced.push(id);
     } else if (previous?.idleSince[id] !== undefined) {
       idleSince[id] = previous.idleSince[id];
     }
   }
-  return { busy, idleSince };
+  return { busy, working, idleSince, unannounced };
 }
 
 /**

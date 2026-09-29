@@ -13,6 +13,8 @@ export interface StampsState {
   loaded: boolean;
   markSeen(threadIds: string[]): void;
   clearSeen(threadIds: string[]): void;
+  /** Records on the server that these threads went idle with no bb event saying so. */
+  reportIdle(threadIds: string[]): void;
 }
 
 export function useStamps(): StampsState {
@@ -70,5 +72,13 @@ export function useStamps(): StampsState {
     [apply, rpc],
   );
 
-  return { stamps, loaded, markSeen, clearSeen };
+  const reportIdle = useCallback(
+    (threadIds: string[]) => {
+      if (threadIds.length === 0) return;
+      rpc.call("reportIdle", { threadIds }).catch(() => undefined);
+    },
+    [rpc],
+  );
+
+  return { stamps, loaded, markSeen, clearSeen, reportIdle };
 }

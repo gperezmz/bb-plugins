@@ -118,7 +118,10 @@ export interface ForestInputs extends ThreadContext {
   childAttention?: ChildAttention;
   /** When this list last saw each thread go from busy to idle (see `trackIdle`). */
   idleSince?: Readonly<Record<string, number>>;
-  /** The server's `idleAt` stamps: when bb last reported each thread going idle. */
+  /**
+   * The server's `idleAt` stamps: when each thread last went idle, from bb's
+   * events or a window's report.
+   */
   idleAt?: Readonly<Record<string, number>>;
   /** False until the stamps have loaded: no failure counts as orphaned before then. */
   stampsLoaded?: boolean;

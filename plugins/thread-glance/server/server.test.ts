@@ -408,6 +408,23 @@ describe("stamps", () => {
     expect(set.mock.calls.filter(([, value]) => (value as { idleAt?: number }).idleAt !== undefined)).toHaveLength(1);
   });
 
+  it("records a reported idle moment only when it is later than the stored one", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { bb, harness } = await load();
+    await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "p" }), lastAssistantText: null });
+    vi.setSystemTime(9_000);
+    expect(await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] })).toEqual({ ok: true });
+    vi.setSystemTime(12_000);
+    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
+    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
+    expect(await bb.storage.kv.get(stampKvKey("p"))).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
+    expect(signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt")).toEqual([
+      { kind: "idleAt", threadIds: ["p"], value: 10_000 },
+      { kind: "idleAt", threadIds: ["p"], value: 12_000 },
+    ]);
+  });
+
   it("forgets a deleted thread's stamps without publishing", async () => {
     const { bb, harness } = await load();
     const thread = makeThreadResponse({ id: "t1" });

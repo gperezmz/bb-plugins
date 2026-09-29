@@ -79,6 +79,18 @@ describe("when a thread last became idle", () => {
     expect(done.idleSince).toEqual({ p: T0 + 2 });
     expect(trackIdle(done, [idle], T0 + 3).idleSince).toEqual({ p: T0 + 2 });
   });
+  it("names the threads that went idle from background work or a queued message, not from a turn", () => {
+    const background = makeThread({ id: "p", activity: { backgroundCommands: 1 } });
+    const queued = makeThread({ id: "p", queuedWork: "waiting" });
+    for (const thread of [background, queued]) {
+      const done = trackIdle(trackIdle(null, [thread], T0), [idle], T0 + 1);
+      expect(done.unannounced).toEqual(["p"]);
+      expect(trackIdle(done, [idle], T0 + 2).unannounced).toEqual([]);
+    }
+    expect(trackIdle(trackIdle(null, [busy], T0), [idle], T0 + 1).unannounced).toEqual([]);
+    expect(trackIdle(trackIdle(trackIdle(null, [busy], T0), [background], T0 + 1), [idle], T0 + 2).unannounced).toEqual(["p"]);
+    expect(trackIdle(trackIdle(null, [idle], T0), [idle], T0 + 1).unannounced).toEqual([]);
+  });
   it("treats background work and a queued message as busy, and drops a thread that is gone", () => {
     for (const thread of [
       makeThread({ id: "p", activity: { backgroundCommands: 1 } }),
