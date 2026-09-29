@@ -21,10 +21,10 @@ export const NESTED_MARK_TWO_LINES: Record<Density, string> = {
   comfortable: "mt-[11px] self-start",
 };
 
-/** The "N more child threads" fold row. */
+/** The "N more child threads" fold row, as tall as a one-line thread row. */
 export const OLDER_ROW_HEIGHT: Record<Density, string> = {
-  compact: "h-7 max-md:pointer-coarse:h-9",
-  comfortable: "h-8 max-md:pointer-coarse:h-10",
+  compact: THREAD_ROW_HEIGHT.compact.one,
+  comfortable: THREAD_ROW_HEIGHT.comfortable.one,
 };
 
 /** The environment fold row, the same height on phones as on desktop. */

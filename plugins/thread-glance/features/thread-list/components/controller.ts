@@ -21,7 +21,7 @@ export interface RowController {
   compact: boolean;
   density: ClientPreferences["density"];
   /** The Branch line switch; rows read theirs off the row, the windowing re-measures on a change. */
-  branchLine: boolean;
+  showBranchLine: boolean;
   setEditingId(id: string | null): void;
   harnessIcon: HarnessIcon;
   /** One object per harness, the same one on every call. */

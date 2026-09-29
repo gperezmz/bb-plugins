@@ -401,7 +401,7 @@ function ThreadListBody({
     return {
       compact: isCompactViewport,
       density: client.density,
-      branchLine: client.branchLine,
+      showBranchLine: client.branchLine,
       setEditingId,
       harnessIcon: prefs.harnessIcon,
       provider: providerDisplay,

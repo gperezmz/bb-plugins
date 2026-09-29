@@ -312,7 +312,7 @@ function Rows({
 }: RowsProps) {
   // A chunk measured under another density or Branch line would keep that
   // height while off screen, so a change mounts every chunk afresh to measure.
-  const layout = `${rowController.density}:${rowController.branchLine}`;
+  const layout = `${rowController.density}:${rowController.showBranchLine}`;
   return (
     <div data-sidebar="group-content" className="flex w-full flex-col text-sm">
       {chunk(all).map((rows) => (
