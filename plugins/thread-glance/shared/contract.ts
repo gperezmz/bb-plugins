@@ -59,8 +59,8 @@ export const rpcContract = defineRpcContract({
    * keeps the later of its stored moment and this one.
    */
   reportIdle: {
-    input: z.object({ threadIds: threadIdsSchema }).strict(),
-    output: z.object({ ok: z.literal(true) }).strict(),
+    input: z.strictObject({ threadIds: threadIdsSchema }),
+    output: z.strictObject({ ok: z.literal(true) }),
   },
   /** Notes per thread id (see `noteSchema`). */
   listNotes: {
