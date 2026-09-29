@@ -343,12 +343,20 @@ describe("stamps", () => {
       at: 5_000,
     });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ seenAt: 5_000 });
-    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a"] })).toEqual({ ok: true });
+    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "c"] })).toEqual({ ok: true });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
     expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
       { kind: "seenAt", threadIds: ["a", "b"], value: 5_000 },
       { kind: "seenAt", threadIds: ["a"], value: null },
     ]);
+  });
+
+  it("publishes nothing when clearing seenAt finds none", async () => {
+    const { harness } = await load();
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
+    const before = harness.inspection.realtimeSignals.length;
+    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "b"] })).toEqual({ ok: true });
+    expect(harness.inspection.realtimeSignals.length).toBe(before);
   });
 
   it("keeps the later idleAt, so a window reporting late cannot move it back", async () => {

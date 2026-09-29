@@ -37,7 +37,10 @@ export interface StampStore {
    * several windows reporting one moment cannot move it back.
    */
   advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
-  /** Deletes `kind` for each thread and publishes one signal with `value: null`. */
+  /**
+   * Deletes `kind` for each thread that has it, and publishes one signal with
+   * `value: null` naming those threads, or none when no thread had it.
+   */
   clear(kind: StampKind, threadIds: readonly string[]): Promise<void>;
   /** Deletes every stamp of each thread. Publishes nothing. */
   forget(threadIds: readonly string[]): Promise<void>;
@@ -129,13 +132,15 @@ export function createStampStore(
       serial(async () => {
         if (threadIds.length === 0) return;
         const rows = await load();
+        const cleared: string[] = [];
         for (const threadId of new Set(threadIds)) {
           const current = rows.get(threadId);
           if (current?.[kind] === undefined) continue;
           const { [kind]: _removed, ...rest } = current;
           await save(rows, threadId, rest);
+          cleared.push(threadId);
         }
-        publish({ kind, threadIds: [...threadIds], value: null });
+        if (cleared.length > 0) publish({ kind, threadIds: cleared, value: null });
       }),
     forget: (threadIds) =>
       serial(async () => {
