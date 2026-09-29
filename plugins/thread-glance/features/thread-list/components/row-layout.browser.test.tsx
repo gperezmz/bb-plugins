@@ -734,11 +734,16 @@ describe("Density and Branch line", () => {
     expect(sections.some((section) => section.querySelector('[aria-expanded="false"]') !== null && sections.indexOf(section) > 0)).toBe(true);
   });
 
-  it.each(
-    COMBINATIONS.flatMap((from) =>
-      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ from, organizationMode })),
-    ),
-  )("scrolls a long list with nothing moving, from $from.density and Branch line $from.branchLine, grouped by $organizationMode, after switching both mid-scroll", async ({ from, organizationMode }) => {
+  /**
+   * Scrolls a list longer than the frame top to bottom, switches Density and
+   * then Branch line mid-scroll, and scrolls again after each: no chunk
+   * changes height as it mounts or unmounts, so nothing moves.
+   */
+  async function expectSteadyScroll(
+    from: { density: "compact" | "comfortable"; branchLine: boolean },
+    organizationMode: OrganizationMode,
+    width = 320,
+  ) {
     const many = Array.from({ length: 240 }, (_, n) =>
       makeThread({
         id: `long${n}`,
@@ -749,7 +754,7 @@ describe("Density and Branch line", () => {
         createdAt: Date.now() - n * 60_000,
       }),
     );
-    await render(320, { ...from, organizationMode, extraThreads: many, height: 600 });
+    await render(width, { ...from, organizationMode, extraThreads: many, height: 600 });
     await screen.findByRole("link", { name: /Open Long 0\b/ });
     fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
     const panel = await screen.findByRole("dialog");
@@ -795,6 +800,14 @@ describe("Density and Branch line", () => {
     await expect.poll(() => screen.queryByRole("dialog")).toBeNull();
     // Back to the frame every other test draws in.
     await page.viewport(320, 1600);
+  }
+
+  it.each(
+    COMBINATIONS.flatMap((from) =>
+      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ from, organizationMode })),
+    ),
+  )("scrolls a long list with nothing moving, from $from.density and Branch line $from.branchLine, grouped by $organizationMode, after switching both mid-scroll", async ({ from, organizationMode }) => {
+    await expectSteadyScroll(from, organizationMode);
   });
 
   // Last in the file: Chromium's touch emulation, which makes the pointer
@@ -809,6 +822,10 @@ describe("Density and Branch line", () => {
 
     it.each(COMBINATIONS)("draws every row and header at its height under $density with Branch line $branchLine", async (options) => {
       await expectHeights(options, true);
+    });
+
+    it.each(COMBINATIONS)("scrolls a long list with nothing moving, from $density and Branch line $branchLine, after switching both mid-scroll", async (from) => {
+      await expectSteadyScroll(from, "project", 390);
     });
   });
 });
