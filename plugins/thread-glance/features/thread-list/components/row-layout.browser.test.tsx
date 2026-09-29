@@ -7,7 +7,7 @@ import { page, userEvent } from "vitest/browser";
 import { cleanup, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode } from "@/shared/preferences";
+import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import { finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -107,12 +107,22 @@ const props: PluginThreadListProps = {
 
 async function render(
   width: number,
-  { density = "compact", organizationMode = "project" }: { density?: ClientPreferences["density"]; organizationMode?: OrganizationMode } = {},
+  {
+    density = "compact",
+    organizationMode = "project",
+    preferences: overrides = {},
+    extraThreads = [],
+  }: {
+    density?: ClientPreferences["density"];
+    organizationMode?: OrganizationMode;
+    preferences?: Partial<Preferences>;
+    extraThreads?: ReturnType<typeof makeThread>[];
+  } = {},
 ) {
   // The frame is the sidebar, tall enough to draw every row.
   await page.viewport(width, 1600);
   localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density }));
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode };
+  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode, ...overrides };
   renderSlot(app.threadLists[0]!, props, {
     rpc: {
       listPreferences: () => ({ preferences }),
@@ -135,7 +145,7 @@ async function render(
       listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
       listNotes: () => ({ notes: {} }),
     } as never,
-    sidebarThreads: { status: "ready", threads: threads(), projects: PROJECTS, sections: [] },
+    sidebarThreads: { status: "ready", threads: [...threads(), ...extraThreads], projects: PROJECTS, sections: [] },
     sidebarPullRequests: Object.fromEntries(
       CASES.map((c) => [c.id, { number: 1234, title: "Fix", url: "u", state: "open", attention: "none" }]),
     ),
@@ -251,7 +261,7 @@ async function ready() {
   await expect.poll(() => document.querySelectorAll(PARTS.pullRequest()).length).toBe(CASES.filter((c) => c.kind === "root").length);
 }
 
-describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) => {
+describe.each([240, 320, 400])("a row's right end at a %i px sidebar", (width) => {
   it("shows every part it should, in order, with nothing overlapping, at rest and on hover", async () => {
     await render(width);
     await ready();
@@ -330,6 +340,78 @@ describe("a child thread's title", () => {
     const rootFont = font(rowOf(root).querySelector(PARTS.title(root))!);
     expect(font(rowOf(child).querySelector(PARTS.title(child))!)).toEqual(rootFont);
     expect(rootFont.fontWeight).toBe("400");
+  });
+});
+
+describe("the sidebar's text sizes", () => {
+  // Two unread threads in one worktree, to draw the environment fold outside the settled fold.
+  const worktree = { id: "env_wt", isWorktree: true, branchName: "fix/shared" };
+  const options = {
+    preferences: { settleAfter: "12h" as const, environmentGrouping: true },
+    extraThreads: [
+      makeThread({ id: "wt-a", title: "Worktree A", environment: worktree, ...finishedUnread }),
+      makeThread({ id: "wt-b", title: "Worktree B", environment: worktree, ...finishedUnread }),
+    ],
+  };
+
+  /** Every laid-out element that holds text of its own, with the size it is drawn at. */
+  function texts() {
+    const found: { element: Element; text: string; size: number; height: number }[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const text = node.textContent!.trim();
+      if (text === "") continue;
+      const element = node.parentElement!;
+      // dnd-kit's screen-reader instructions are never drawn.
+      if (!element.checkVisibility()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      found.push({ element, text, size: parseFloat(getComputedStyle(element).fontSize), height: range.getBoundingClientRect().height });
+    }
+    return found;
+  }
+
+  /** The ↳ mark, the shortcut label and the harness letter badge: the only fixed sizes. */
+  const isMark = (element: Element) =>
+    element.closest('span[title^="Child of"], kbd, [role="img"][aria-label="Codex"]') !== null;
+
+  async function renderAll(width = 320) {
+    await render(width, options);
+    // Each kind of text is on screen, so none escapes the check.
+    await screen.findByRole("button", { name: /^Show \d+ settled/ });
+    await screen.findByRole("button", { name: /Collapse fix\/shared environment/ });
+    expect(screen.getByRole("button", { name: /need you/ })).toBeTruthy();
+    // The unread roots stay out of the fold, with every badge a row can carry.
+    await expect.poll(() => document.querySelectorAll(PARTS.pullRequest()).length).toBeGreaterThan(0);
+    for (const part of ["harness", "machine", "childrenChip", "time"] as const) {
+      expect(document.querySelector(PARTS[part]()), part).not.toBeNull();
+    }
+  }
+
+  it.each([240, 320])("draws nothing below 12 px but the three 10 px marks, and wraps nothing, at a %i px sidebar", async (width) => {
+    await renderAll(width);
+    for (const { element, text, size, height } of texts()) {
+      if (isMark(element)) expect(size, text).toBe(10);
+      else expect(size, text).toBeGreaterThanOrEqual(12);
+      // Two lines would stand at least two font sizes tall.
+      expect(height, `${text} on one line`).toBeLessThan(2 * size);
+    }
+  });
+
+  it("takes every other size from bb's --text-xs and --text-sm", async () => {
+    await renderAll();
+    const root = document.documentElement.style;
+    root.setProperty("--text-xs", "21px");
+    root.setProperty("--text-sm", "23px");
+    try {
+      for (const { element, text, size } of texts()) {
+        if (isMark(element)) expect(size, text).toBe(10);
+        else expect([21, 23], text).toContain(size);
+      }
+    } finally {
+      root.removeProperty("--text-xs");
+      root.removeProperty("--text-sm");
+    }
   });
 });
 

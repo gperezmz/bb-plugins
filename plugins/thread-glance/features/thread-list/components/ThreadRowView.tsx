@@ -459,7 +459,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                 <span
                   title={`On ${row.machine}`}
                   aria-label={`On ${row.machine}`}
-                  className="pointer-events-none max-w-20 truncate text-[11px] text-muted-foreground"
+                  className="pointer-events-none max-w-20 truncate text-xs text-muted-foreground"
                 >
                   {row.machine}
                 </span>
@@ -525,7 +525,7 @@ export const ThreadRowView = memo(function ThreadRowView({
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
               className={cn(
-                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-[11px] leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-xs leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                 chip.flag === null
                   ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
                   : TONE_CLASS[chipTone(chip.flag)],
@@ -545,7 +545,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           <span data-trailing-slot="" className="relative grid h-6 shrink-0 items-center">
             <span aria-hidden className="invisible w-6 [grid-area:1/1]" />
             {TRAILING_SLOT_SIZERS.map((text) => (
-              <span key={text} aria-hidden className="invisible text-[11px] font-medium tabular-nums [grid-area:1/1]">
+              <span key={text} aria-hidden className="invisible text-xs font-medium tabular-nums [grid-area:1/1]">
                 {text}
               </span>
             ))}
@@ -560,7 +560,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                     title={time.label}
                     aria-label={time.label}
                     className={cn(
-                      "pointer-events-none justify-self-end text-[11px] tabular-nums transition-opacity [grid-area:1/1]",
+                      "pointer-events-none justify-self-end text-xs tabular-nums transition-opacity [grid-area:1/1]",
                       // A running timer reads as work, an age as history.
                       time.kind === "timer" ? "font-medium text-[var(--timeline-accent)]" : "text-muted-foreground",
                       fadeClass,
