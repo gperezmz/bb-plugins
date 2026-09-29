@@ -35,11 +35,9 @@ describe("a thread view's targets", () => {
     ]);
   });
 
-  it("miss the editor wrapper when the only one in the composer column is a queued message's", () => {
+  it("do not count a queued message's editor as the composer's", () => {
     const composer = `<div class="max-w-[760px] chat-prompt-box"><ul><li data-queued-message-inline-editor>${EDITOR}</li></ul></div>`;
-    expect(missingTargets(view(COLUMN + composer), ROOT)).toEqual([
-      "the composer's editor wrapper ([data-follow-up-composer] [data-promptbox-editor-scroll])",
-    ]);
+    expect(missingTargets(view(COLUMN + composer), ROOT)).toEqual([]);
   });
 
   it("do not include the editor wrapper while the composer shows no editor", () => {
@@ -66,6 +64,11 @@ describe("a New-thread screen's targets", () => {
   it("are all there in bb 0.44's New-thread screen", () => {
     const html = `<div class="mx-auto flex max-w-[760px] pt-14" style="--md-content-w: 760px;"><form data-promptbox>${WRAPPED}</form></div>`;
     expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual([]);
+  });
+
+  it("miss the editor wrapper when the editor carries the wrapper's attribute itself", () => {
+    const html = `<div class="max-w-[760px]" style="--md-content-w: 760px;"><div id="root-compose-prompt" data-promptbox-editor-scroll contenteditable="true"></div></div>`;
+    expect(missingNewThreadTargets(editorIn(html), ROOT)).toEqual(["its editor wrapper ([data-promptbox-editor-scroll])"]);
   });
 
   it("name each one that is missing", () => {

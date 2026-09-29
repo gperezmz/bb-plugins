@@ -36,10 +36,11 @@ export const COMPOSER_EDITOR: Target = {
 };
 
 /**
- * An editor of any kind. A composer column holding none shows no editor, so
- * lacking the editor wrapper is not a missing target there.
+ * An editor of any kind but a queued message's. A composer column holding
+ * none shows no editor of its own, so lacking the editor wrapper is not a
+ * missing target there.
  */
-export const EDITABLE = ":is([contenteditable], textarea)";
+export const EDITABLE = ":is([contenteditable], textarea):not([data-queued-message-inline-editor] *)";
 
 export const VIEW_TARGETS: readonly Target[] = [COLUMN, COMPOSER];
 
@@ -88,8 +89,9 @@ export function missingTargets(view: ParentNode, rootVariables: Readonly<Record<
  */
 export function missingNewThreadTargets(editor: Element, rootVariables: Readonly<Record<string, string>>): string[] {
   const missing: string[] = [];
-  const column = editor.closest(NEW_THREAD_COLUMN.selector);
-  const wrapper = editor.closest(NEW_THREAD_EDITOR_WRAPPER.selector);
+  // The stylesheet reaches the editor as a descendant of each, never as either.
+  const column = editor.parentElement?.closest(NEW_THREAD_COLUMN.selector);
+  const wrapper = editor.parentElement?.closest(NEW_THREAD_EDITOR_WRAPPER.selector);
   if (!column) missing.push(NEW_THREAD_COLUMN.name);
   if (!wrapper || (column && !column.contains(wrapper))) missing.push(NEW_THREAD_EDITOR_WRAPPER.name);
   if (!hasTextTarget(rootVariables)) missing.push(TEXT_SM_TARGET);

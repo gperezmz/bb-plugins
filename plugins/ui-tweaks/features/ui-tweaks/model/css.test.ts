@@ -17,7 +17,7 @@ const BOX = ".chat-prompt-box.max-w-\\[760px\\]";
 const WRAPPER = "[data-follow-up-composer] [data-promptbox-editor-scroll]";
 const VIEW =
   '[data-thread-window]:not([data-surface-tone]):has(.max-w-\\[760px\\][style*="--md-content-w"]):has(.chat-prompt-box.max-w-\\[760px\\])' +
-  `:is(:not(:has(${BOX} :is([contenteditable], textarea))), :has(${BOX} ${WRAPPER}))`;
+  `:is(:not(:has(${BOX} :is([contenteditable], textarea):not([data-queued-message-inline-editor] *))), :has(${BOX} ${WRAPPER}))`;
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
 const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
 const NEW_THREAD = '.max-w-\\[760px\\][style*="--md-content-w"]:has([data-promptbox-editor-scroll] #root-compose-prompt)';
