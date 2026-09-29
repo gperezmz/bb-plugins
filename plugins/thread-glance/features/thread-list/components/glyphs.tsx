@@ -13,8 +13,9 @@ export const TONE_CLASS: Record<Tone, string> = {
   destructive: "text-destructive",
   // bb's timeline accent: blue, readable on the sidebar in both themes.
   working: "text-[var(--timeline-accent)]",
-  // Muted at 75% holds 3:1 against the sidebar in both of bb's themes.
-  background: "text-muted-foreground/75",
+  // Full muted: bb's shine dims the glyph by about a third, and at 75% its
+  // dim frames fell below 3:1 against the light sidebar.
+  background: "text-muted-foreground",
   "muted-strong": "text-muted-foreground/75",
   muted: "text-muted-foreground",
   none: "",
