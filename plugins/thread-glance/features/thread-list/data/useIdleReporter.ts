@@ -4,7 +4,7 @@
 // every window reports and the server keeps the later moment.
 import { useCallback, useEffect, useRef } from "react";
 
-export const IDLE_REPORTER_LOCK = "bb.thread-glance.idle-reporter";
+const IDLE_REPORTER_LOCK = "bb.thread-glance.idle-reporter";
 
 /** Returns a call that says whether this list is the one that reports. */
 export function useIdleReporter(): () => boolean {

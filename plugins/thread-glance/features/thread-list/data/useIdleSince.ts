@@ -22,9 +22,9 @@ export function useIdleSince(
     setSeen(threads);
     setTracker((previous) => trackIdle(previous, threads, at));
   }
-  const reports = useIdleReporter();
+  const isReporter = useIdleReporter();
   useEffect(() => {
-    if (tracker !== null && tracker.unannounced.length > 0 && reports()) reportIdle([...tracker.unannounced]);
-  }, [tracker, reportIdle, reports]);
+    if (tracker !== null && tracker.unannounced.length > 0 && isReporter()) reportIdle([...tracker.unannounced]);
+  }, [tracker, reportIdle, isReporter]);
   return tracker?.idleSince ?? NONE;
 }

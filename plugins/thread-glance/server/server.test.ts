@@ -31,6 +31,10 @@ function signalsOn(harness: Awaited<ReturnType<typeof load>>["harness"], channel
     .map((signal) => signal.payload);
 }
 
+function idleSignals(harness: Awaited<ReturnType<typeof load>>["harness"]) {
+  return signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt");
+}
+
 let tempDir: string;
 const savedBbCli = process.env.BB_CLI;
 const savedServerUrl = process.env.BB_SERVER_URL;
@@ -378,7 +382,7 @@ describe("stamps", () => {
     vi.setSystemTime(7_000);
     await harness.behavior.emitThreadEvent("interaction.pending", { thread: a, interaction: {} as never });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ finishedAt: 8_000, idleAt: 8_000, pendingAt: 7_000 });
-    expect(signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt")).toEqual([
+    expect(idleSignals(harness)).toEqual([
       { kind: "idleAt", threadIds: ["a"], value: 6_000 },
       { kind: "idleAt", threadIds: ["a"], value: 8_000 },
       { kind: "idleAt", threadIds: ["b"], value: 8_000 },
@@ -387,9 +391,9 @@ describe("stamps", () => {
     expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
   });
 
-  // Ledger row B26: one idleAt write and one signal per busy-to-idle change,
-  // whatever the number of windows. In 0.7.0 each of three windows seeing the
-  // change called markIdle; a window now has no such request to send.
+  // Row B26 of the performance ledger (#145): one idleAt write and one signal
+  // per busy-to-idle change, whatever the number of windows, none of which has
+  // a request to send for it.
   it("records a thread going idle once, with no request from any window", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(9_000);
@@ -402,7 +406,7 @@ describe("stamps", () => {
     for (let window = 0; window < 3; window++) {
       await expect(harness.behavior.callRpc("markIdle", { threadIds: ["p"] })).rejects.toThrow();
     }
-    expect(signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt")).toEqual([
+    expect(idleSignals(harness)).toEqual([
       { kind: "idleAt", threadIds: ["p"], value: 9_000 },
     ]);
     expect(set.mock.calls.filter(([, value]) => (value as { idleAt?: number }).idleAt !== undefined)).toHaveLength(1);
@@ -419,7 +423,7 @@ describe("stamps", () => {
     await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
     await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
     expect(await bb.storage.kv.get(stampKvKey("p"))).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
-    expect(signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt")).toEqual([
+    expect(idleSignals(harness)).toEqual([
       { kind: "idleAt", threadIds: ["p"], value: 10_000 },
       { kind: "idleAt", threadIds: ["p"], value: 12_000 },
     ]);
@@ -494,9 +498,9 @@ function sqliteKv(file: string) {
   };
 }
 
-// Ledger row B25: the first listStamps and listNotes after a server start, at
-// 5,000 stored threads. It records the figures without failing on them; the
-// performance ledger enforces the threshold.
+// Row B25 of the performance ledger (#145): the first listStamps and listNotes
+// after a server start, at 5,000 stored threads. It records the figures
+// without failing on them; the ledger enforces the threshold.
 describe("cold read benchmark", () => {
   it("reads 1,500 and 5,000 stored threads' stamps and notes", async () => {
     const { db, kv } = sqliteKv(join(tempDir, "bb.db"));
