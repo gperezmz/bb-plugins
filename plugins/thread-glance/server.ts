@@ -23,7 +23,8 @@ import { runStartup } from "./server/startup";
 export default function threadGlance(bb: BbPluginApi): void {
   // zod/mini carries no messages of its own. The server and CLI show
   // refusals in English, so the locale is set here rather than in the app.
-  config(en());
+  // Like full zod, it leaves a locale something else in the process set.
+  if (config().localeError === undefined) config(en());
   const preferences = createPreferenceStore(bb);
   const stamps = createStampStore(bb);
   const notes = createNoteStore(bb);
