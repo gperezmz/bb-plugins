@@ -8,13 +8,15 @@ Both settings are under Settings → Plugins → UI Tweaks, each a row with a se
 
 Size of the transcript and composer text. **Small**, **Medium** or **Large**.
 
-| Choice | Message text and the text typed in the composer | Everything else in the transcript |
+| Choice | Message text and the text typed in the composer | Every other text it scales |
 |---|---|---|
-| Small | 12 px | 12/13 of bb's size |
+| Small | 12 px | 12/13 of bb's size, rounded to the nearest pixel |
 | Medium | 13 px, bb's own | bb's size |
-| Large | 15 px | 15/13 of bb's size |
+| Large | 15 px | 15/13 of bb's size, rounded to the nearest pixel |
 
-It scales every text inside the transcript: messages, code blocks, headings, tool rows and cards. In the composer it scales only what you type, its placeholder and its mention pills. Line heights scale with it. The composer's controls keep bb's size: the + button, the model picker, the mic, the send button, the footer with the project, checkout, branch and permission mode, the mention menu, and any plugin's composer chip. So do the editor for a queued message and the editor that opens in the transcript when you edit a sent message. The collapsed composer, "Send a follow-up", keeps bb's height, with its placeholder scaled inside it. Text outside the transcript and the composer keeps bb's size: the sidebar, menus, headers and settings.
+It scales every text inside the transcript: messages, code blocks, headings, tool rows and cards. In the composer it scales what you type, its placeholder, its mention pills, and the text of the Typeahead menu, the menu bb opens above the composer while you type a slash command or a mention: its section headings, item names and descriptions. Line heights scale with it. The composer's controls keep bb's size: the + button, the model picker, the mic, the send button, the footer with the project, checkout, branch and permission mode, the Typeahead menu's icons and width, and any plugin's composer chip. So do the editor for a queued message and the editor that opens in the transcript when you edit a sent message, and the Typeahead menu either one opens. The collapsed composer, "Send a follow-up", keeps bb's height, with its placeholder scaled inside it. Text outside the transcript and the composer keeps bb's size: the sidebar, menus, headers and settings.
+
+Every size it scales lands on a whole pixel. On Large, bb's 10, 12, 18 and 24 px text becomes 12, 14, 21 and 28 px; on Small it becomes 9, 11, 17 and 22 px. Line heights set in pixels round the same way, and line heights bb sets as a multiple of the font size follow the rounded font size. Text bb sizes relative to its parent, in `em` or `%`, follows the rounded parent without rounding of its own, as bb draws it at fractional sizes under Medium.
 
 ## Transcript width
 
@@ -49,6 +51,8 @@ bb does not promise the parts of its thread view and New-thread screen that the 
 | New-thread screen | its column (`.max-w-[760px]`) |
 | New-thread screen | its editor wrapper (`[data-promptbox-editor-scroll]`) |
 | Both | the text size variable `--text-sm` at `:root` |
+
+The Typeahead menu is not one of these parts: bb draws it only while it is open, so a thread view or New-thread screen without it is not missing anything, and the plugin scales it whenever it opens.
 
 The plugin knows a New-thread screen by its editor, `#root-compose-prompt`; a screen without it is left alone without a warning. A thread view or New-thread screen that lacks any of its parts after a bb update keeps bb's look under every choice. Once it has lacked one for 5 seconds, the plugin logs one warning for it in the browser console, starting `UI Tweaks: a thread view lacks` or `UI Tweaks: a New-thread screen lacks` and naming each part missing. With neither open it logs nothing.
 
