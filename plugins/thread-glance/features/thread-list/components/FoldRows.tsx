@@ -39,7 +39,7 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
   );
 });
 
-/** The settled fold: a faint label, a hairline to the row's end, and a chevron. */
+/** The settled fold: a muted label, a hairline to the row's end, and a chevron. */
 export const SettledRowView = memo(function SettledRowView({ row, controller }: { row: SettledRow; controller: RowController }) {
   const { label, ariaLabel } = settledRowText(row);
   return (

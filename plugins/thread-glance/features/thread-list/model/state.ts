@@ -33,8 +33,8 @@ export const FLAG_ORDER: readonly Flag[] = [
 
 /**
  * `working` is bb's timeline accent, so a running thread stands out in both
- * themes; `background` keeps bb's faint tone for background
- * activity, so the two stay apart.
+ * themes; `background` draws background activity in the grey `muted-strong`
+ * has, and its glyph shines, which keeps it apart from a queued message.
  */
 export type Tone = "attention" | "destructive" | "working" | "background" | "muted" | "muted-strong" | "none";
 

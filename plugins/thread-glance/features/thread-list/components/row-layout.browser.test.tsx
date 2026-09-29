@@ -197,7 +197,7 @@ interface Box {
   rect: DOMRect;
 }
 
-function rowOf(c: Case): HTMLElement {
+function rowOf(c: Pick<Case, "id">): HTMLElement {
   const anchor = document.querySelector(`a[data-sidebar-thread-id="${c.id}"]`);
   if (anchor === null) throw new Error(`no row for ${c.id}`);
   return anchor.parentElement!;
@@ -340,6 +340,8 @@ describe("a child thread's title", () => {
     const rootFont = font(rowOf(root).querySelector(PARTS.title(root))!);
     expect(font(rowOf(child).querySelector(PARTS.title(child))!)).toEqual(rootFont);
     expect(rootFont.fontWeight).toBe("400");
+    // Comfortable rows carry the branch on a second line.
+    for (const c of [root, child]) expect(rowOf(c).getBoundingClientRect().height, c.id).toBe(options.density === "compact" ? 28 : 44);
   });
 });
 
@@ -373,7 +375,7 @@ describe("the sidebar's text sizes", () => {
 
   /** The ↳ mark, the shortcut label and the harness letter badge: the only fixed sizes. */
   const isMark = (element: Element) =>
-    element.closest('span[title^="Child of"], kbd, [role="img"][aria-label="Codex"]') !== null;
+    element.closest(`${PARTS.nested()}, kbd, ${PARTS.harness()}`) !== null;
 
   async function renderAll(width = 320) {
     await render(width, options);
@@ -450,8 +452,10 @@ describe("contrast against the sidebar in bb's palette", () => {
   /** WCAG's contrast ratio of `element`'s colour against the sidebar. */
   function contrast(element: Element): number {
     const style = getComputedStyle(element);
+    let opacity = 1;
+    for (let at: Element | null = element; at !== null; at = at.parentElement) opacity *= Number(getComputedStyle(at).opacity);
     const sidebar = getComputedStyle(document.documentElement).getPropertyValue("--sidebar");
-    const [a, b] = [luminance(painted(sidebar, style.color, Number(style.opacity))), luminance(painted(sidebar))];
+    const [a, b] = [luminance(painted(sidebar, style.color, opacity)), luminance(painted(sidebar))];
     return (Math.max(a!, b!) + 0.05) / (Math.min(a!, b!) + 0.05);
   }
 
@@ -464,8 +468,7 @@ describe("contrast against the sidebar in bb's palette", () => {
   });
 
   /** The innermost element of a row's Status column: the glyph itself, inside its tooltip. */
-  const glyphOf = (id: string) =>
-    [...document.querySelector(`a[data-sidebar-thread-id="${id}"]`)!.parentElement!.querySelectorAll(`${PARTS.status()} *`)].at(-1)!;
+  const glyphOf = (id: string) => [...rowOf({ id }).querySelectorAll(`${PARTS.status()} *`)].at(-1)!;
 
   it.each(["light", "dark"] as const)("keeps the settled fold at 4.5:1 and the idle and background glyphs at 3:1 in %s", async (theme) => {
     usePalette(theme);

@@ -113,7 +113,7 @@ export interface EnvironmentRow {
   depth: number;
 }
 
-/** A group's settled fold: the faint "Settled (N)" divider at its end. */
+/** A group's settled fold: the muted "Settled (N)" divider at its end. */
 export interface SettledRow {
   type: "settled";
   key: string;
