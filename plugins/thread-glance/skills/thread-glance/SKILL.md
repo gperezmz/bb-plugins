@@ -62,8 +62,8 @@ and `bb environment list`; a thread id is a `thr_…` id.
 Density (row spacing, Compact or Comfortable) and the Branch line switch (a
 thread off its project's default branch names the branch on a second line)
 are kept per device in the browser, and the need-you filter per browser
-window; the CLI cannot read or change any of them. A tree that needs attention always stays in its
-group, drawn even when the group is collapsed.
+window; the CLI cannot read or change any of them. A tree that needs
+attention always stays in its group, drawn even when the group is collapsed.
 
 Sections themselves and the section a thread is in are bb core state: use
 `bb thread section` and `bb thread update`.
