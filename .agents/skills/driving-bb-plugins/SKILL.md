@@ -24,8 +24,9 @@ the repository root.
 `<plugin>` is a directory name under `plugins/`: the one under test, plus any
 the feature file's preconditions name. Ready is the command exiting 0 after
 printing `run`, `web UI`, `project` and `evidence`, in about 10 seconds, or
-a minute more in a checkout without `plugins/thread-glance/node_modules`,
-which it installs for Playwright. It needs `node`, `npm`, `jq`, `curl`,
+a minute more in a fresh checkout, where it runs `npm ci` in
+`plugins/thread-glance` for Playwright and in each plugin started that has
+no `node_modules`. It needs `node`, `npm`, `jq`, `curl`,
 `git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon` on `PATH`, and bb
 builds each plugin's copy itself, so the checkout gains no `dist/`.
 

@@ -6,7 +6,8 @@
 # user's own bb: every command runs with the variables that name a bb unset or
 # pointed at the throwaway, and HOME inside the run's scratch directory.
 #
-# Reads: plugins/<id>/ in this checkout; DBP_* in the environment (below).
+# Reads: plugins/<id>/ in this checkout, where it runs `npm ci` for a plugin
+# without node_modules; DBP_* in the environment (below).
 # Writes: scratch in a mktemp directory under $DBP_SCRATCH_ROOT (removed by
 # stop), evidence and process handles in .drives/<run>/ at the repository root
 # (kept by stop), port claims in $DBP_SCRATCH_ROOT/ports (released by stop).
@@ -106,6 +107,14 @@ cmd_start() {
     echo "installing plugins/thread-glance's dependencies, for Playwright" >&2
     npm ci --prefix "$repo/plugins/thread-glance" --no-audit --no-fund > /dev/null || die "npm ci in plugins/thread-glance failed"
   fi
+  # bb builds a path install from the files it finds and fetches no package,
+  # so a plugin's dependencies come from its own node_modules.
+  for p in "$@"; do
+    if [[ ! -d $repo/plugins/$p/node_modules ]]; then
+      echo "installing plugins/$p's dependencies" >&2
+      npm ci --prefix "$repo/plugins/$p" --no-audit --no-fund > /dev/null || die "npm ci in plugins/$p failed"
+    fi
+  done
 
   mkdir -p "$scratch_root"
   scratch=$(mktemp -d "$scratch_root/run.XXXXXX")
