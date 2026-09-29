@@ -118,7 +118,7 @@ export interface SettledRow {
   type: "settled";
   key: string;
   groupId: string;
-  /** Settled trees in the group, the open one drawn above the divider included. */
+  /** Settled trees behind the fold, the focused one included; a held tree is not. */
   count: number;
   expanded: boolean;
 }
@@ -168,6 +168,8 @@ export interface ViewInputs {
   activeThreadId: string | null;
   targets: Targets;
   settle: SettleInputs;
+  /** Roots of settled trees that stay where they are, out of the fold: see `holdSettled`. */
+  held: ReadonlySet<string>;
   /** bb's default harness; null while unknown, when no root draws one. */
   defaultProviderId: string | null;
   /** bb's primary machine; null while unknown, when no row names its machine. */
@@ -457,6 +459,16 @@ function treeUnit(context: Context, tree: ThreadTree): Unit {
   return { info: tree.root, rows: foldedTreeRows(context, tree), flags: tree.flags };
 }
 
+/**
+ * The focused thread's tree under a closed settled fold: its root and each
+ * row down to the focused thread, as the open fold draws them, and nothing
+ * else. So the fold, like the child-threads fold, shows the opened row and
+ * moves nothing.
+ */
+function focusedPath(context: Context, tree: ThreadTree): TreeRow[] {
+  return treeUnit(context, tree).rows.filter((row) => row.type === "thread" && context.activePath.has(row.info.thread.id));
+}
+
 /** Whether a thread in the tree needs attention: it stays drawn when its group is collapsed. */
 export function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
   return tree.attentionFlags.size > 0;
@@ -493,20 +505,20 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   if (collapsed) {
     rows = clusterEnvironments(context, sorted.filter(needsAttention).map((tree) => treeUnit(context, tree)), 0);
   } else {
-    // Settled trees go behind the fold at the group's end. The open one, if
-    // settled, is drawn just above the divider, so opening it moves nothing else.
-    const settled = sorted.filter((tree) => isSettledTree(tree, context.settle));
+    // Settled trees go behind the fold at the group's end, the focused one
+    // included; a held tree stays where it is until its hold ends.
+    const settled = sorted.filter((tree) => isSettledTree(tree, context.settle) && !context.held.has(tree.root.thread.id));
     const settledSet = new Set(settled);
     const live = sorted.filter((tree) => !settledSet.has(tree));
-    const open = settled.find((tree) => tree.containsActive) ?? null;
     rows = clusterEnvironments(context, live.map((tree) => treeUnit(context, tree)), 0);
     if (settled.length > 0) {
-      if (open !== null) rows.push(...treeUnit(context, open).rows);
       const expanded = context.openSettledFolds.has(descriptor.id);
       rows.push({ type: "settled", key: `settled:${descriptor.id}`, groupId: descriptor.id, count: settled.length, expanded });
       if (expanded) {
-        const folded = settled.filter((tree) => tree !== open).map((tree) => treeUnit(context, tree));
-        rows.push(...clusterEnvironments(context, folded, 0));
+        rows.push(...clusterEnvironments(context, settled.map((tree) => treeUnit(context, tree)), 0));
+      } else {
+        const focused = settled.find((tree) => tree.containsActive);
+        if (focused !== undefined) rows.push(...focusedPath(context, focused));
       }
     }
   }

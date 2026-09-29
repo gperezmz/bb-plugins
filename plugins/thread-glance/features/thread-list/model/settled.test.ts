@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences } from "@/shared/preferences";
-import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, settleOf, T0, viewOf, working, type Scenario } from "../testing/fixtures";
-import { isSettledThread, isSettledTree, lastActivityAt, SETTLE_AFTER_MS } from "./settled";
+import { failedUnread, finishedUnread, forestOf, makeProject, makeThread, rowIds, settleOf, T0, viewOf, working, type Scenario } from "../testing/fixtures";
+import { holdSettled, isSettledThread, isSettledTree, lastActivityAt, SETTLE_AFTER_MS, type SettleHold } from "./settled";
 import { markAllReadPlan, markReadPlanFor, toggleSettled } from "./toggles";
-import type { SettledRow } from "./view";
+import type { ThreadRow, SettledRow } from "./view";
+import { groupIdForRoot } from "./groups";
+import type { OrganizationMode } from "@/shared/preferences";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -163,13 +165,6 @@ describe("the settled fold", () => {
     expect(ids({ threads: replied })).toEqual(["old2", "new", "busy", "settled:1"]);
   });
 
-  it("draws the open thread's settled tree directly above the fold, leaving the fold as it was and every other row in place", () => {
-    expect(ids({ activeThreadId: "old2" })).toEqual(["new", "busy", "old2", "settled:2"]);
-    const open = { openSettledFolds: ["project:proj_a"] };
-    expect(ids({ activeThreadId: "old2", prefs: open })).toEqual(["new", "busy", "old2", "settled:2", "old1"]);
-    expect(ids({ activeThreadId: "old1c", prefs: { expandedChildren: ["old1"] } })).toEqual(["new", "busy", "old1", "old1c", "settled:2"]);
-  });
-
   it("has no place in Pinned, whose threads never settle", () => {
     const pinned = [makeThread({ id: "p", pinnedAt: T0, isPinned: true })];
     expect(rowIds(viewOf({ threads: pinned, now: T0 + 30 * DAY }), "pinned")).toEqual(["p"]);
@@ -186,6 +181,159 @@ describe("the settled fold", () => {
     expect(toggleSettled({ ...closed, expanded: true }, { ...prefs, openSettledFolds: ["other", "project:proj_a"] }).patch).toEqual({
       openSettledFolds: ["other"],
     });
+  });
+});
+
+describe("the focused thread in a settled tree", () => {
+  const recent = (id: string, at: number) => makeThread({ id, createdAt: at, latestAttentionAt: at, lastReadAt: at });
+  const child = (id: string, parent: string, at: number) => makeThread({ id, parentThreadId: parent, createdAt: at });
+  // old1 has five children, so an open chip keeps three and folds two.
+  const threads = [
+    recent("new", LATER - HOUR),
+    recent("old1", T0 + 20),
+    child("c1", "old1", T0 + 11),
+    child("c2", "old1", T0 + 12),
+    child("c3", "old1", T0 + 13),
+    child("c4", "old1", T0 + 14),
+    child("c5", "old1", T0 + 15),
+    child("c1a", "c1", T0 + 16),
+    recent("old2", T0 + 1),
+    { ...recent("busy", T0), ...working },
+  ];
+  const MODES: Record<OrganizationMode, string> = { project: "project:proj_a", chronological: "threads", machine: "machine:host_1" };
+  const modes = Object.entries(MODES) as [OrganizationMode, string][];
+  const ids = (mode: OrganizationMode, scenario: Partial<Scenario> = {}) =>
+    rowIds(viewOf({ threads, now: LATER, ...scenario, prefs: { organizationMode: mode, ...scenario.prefs } }), MODES[mode]);
+  const rowOf = (mode: OrganizationMode, scenario: Partial<Scenario>, id: string) =>
+    viewOf({ threads, now: LATER, ...scenario, prefs: { organizationMode: mode, ...scenario.prefs } })
+      .groups.flatMap((group) => group.rows)
+      .find((row): row is ThreadRow => row.type === "thread" && row.info.thread.id === id)!;
+  // The path the auto-expand opens to a focused child.
+  const reveal = (id: string) => new Map([[id, "reveal" as const]]);
+
+  it.each(modes)("stays in place inside the open fold, root or child, in bright rows (%s)", (mode, group) => {
+    const open = { openSettledFolds: [group] };
+    const before = ["new", "busy", "settled:2", "old1", "old2"];
+    expect(ids(mode, { prefs: open })).toEqual(before);
+    expect(ids(mode, { prefs: open, activeThreadId: "old2" })).toEqual(before);
+    expect(ids(mode, { prefs: open, activeThreadId: "old1" })).toEqual(before);
+    expect(rowOf(mode, { prefs: open, activeThreadId: "old2" }, "old2").dimmed).toBe(false);
+    const expanded = { ...open, expandedChildren: ["old1"] };
+    const tree = ["new", "busy", "settled:2", "old1", "c3", "c4", "c5", "older:2", "old2"];
+    expect(ids(mode, { prefs: expanded })).toEqual(tree);
+    expect(ids(mode, { prefs: expanded, activeThreadId: "c4", targets: reveal("c4") })).toEqual(tree);
+    expect(rowOf(mode, { prefs: expanded, activeThreadId: "c4" }, "c4").dimmed).toBe(false);
+  });
+
+  it.each(modes)("under a closed fold, shows only the path from its root down to it, and keeps the count (%s)", (mode) => {
+    expect(ids(mode)).toEqual(["new", "busy", "settled:2"]);
+    expect(ids(mode, { activeThreadId: "old2" })).toEqual(["new", "busy", "settled:2", "old2"]);
+    // A focused root shows alone, without its children.
+    expect(ids(mode, { activeThreadId: "old1", prefs: { expandedChildren: ["old1"] } })).toEqual(["new", "busy", "settled:2", "old1"]);
+    // No sibling and no "N more child threads" row, whether the chips were opened or the path revealed.
+    const path = ["new", "busy", "settled:2", "old1", "c1", "c1a"];
+    expect(ids(mode, { activeThreadId: "c1a", targets: reveal("c1a") })).toEqual(path);
+    expect(ids(mode, { activeThreadId: "c1a", prefs: { expandedChildren: ["old1", "c1"] } })).toEqual(path);
+    expect(ids(mode, { activeThreadId: "c4", prefs: { expandedChildren: ["old1"], expandedOlder: ["old1"] } })).toEqual([
+      "new",
+      "busy",
+      "settled:2",
+      "old1",
+      "c4",
+    ]);
+    const focused = rowOf(mode, { activeThreadId: "c1a", targets: reveal("c1a") }, "c1a");
+    expect(focused).toMatchObject({ dimmed: false, depth: 2 });
+  });
+
+  it.each(modes)("goes back behind the closed fold, or stays in the open one, when focus moves on (%s)", (mode, group) => {
+    for (const next of ["new", "busy", null]) {
+      expect(ids(mode, { activeThreadId: next })).toEqual(["new", "busy", "settled:2"]);
+      expect(ids(mode, { activeThreadId: next, prefs: { openSettledFolds: [group] } })).toEqual(["new", "busy", "settled:2", "old1", "old2"]);
+    }
+  });
+
+  it.each(modes)("leaves the fold on activity while focused (%s)", (mode) => {
+    const active = threads.map((thread) => (thread.id === "old2" ? { ...thread, ...working } : thread));
+    expect(ids(mode, { threads: active, activeThreadId: "old2" })).toEqual(["new", "old2", "busy", "settled:1"]);
+    const failed = threads.map((thread) => (thread.id === "c1a" ? { ...thread, status: "error" as const, latestAttentionAt: LATER - 1 } : thread));
+    expect(ids(mode, { threads: failed, activeThreadId: "c1a", targets: reveal("c1a") })).toContain("old1");
+    expect(ids(mode, { threads: failed, activeThreadId: "c1a", targets: reveal("c1a") }).at(-1)).toBe("settled:1");
+    const queued = threads.map((thread) => (thread.id === "old2" ? { ...thread, queuedWork: "waiting" as const } : thread));
+    expect(ids(mode, { threads: queued, activeThreadId: "old2" })).toEqual(["new", "old2", "busy", "settled:1"]);
+  });
+
+  it.each(modes)("keeps a held tree in its place, uncounted, until it moves into the fold (%s)", (mode) => {
+    expect(ids(mode, { activeThreadId: "old2", held: ["old2"] })).toEqual(["new", "old2", "busy", "settled:1"]);
+    expect(ids(mode, { held: ["old2"] })).toEqual(["new", "old2", "busy", "settled:1"]);
+  });
+});
+
+describe("the hold on a tree that settles while focused", () => {
+  const recent = (id: string, at: number) => makeThread({ id, createdAt: at, latestAttentionAt: at, lastReadAt: at });
+  const base = [
+    recent("new", LATER - HOUR),
+    recent("old1", T0 + 2),
+    recent("old2", T0 + 1),
+    makeThread({ id: "elsewhere", projectId: "proj_b", createdAt: T0 }),
+  ];
+  // old2 finished unread at T0 + 10 and has been left since.
+  const unread = base.map((thread) => (thread.id === "old2" ? { ...thread, ...finishedUnread } : thread));
+  const step = (previous: SettleHold | null, scenario: Scenario, mode: OrganizationMode = "project") =>
+    holdSettled(previous, forestOf(scenario).trees, settleOf(scenario), (root) =>
+      groupIdForRoot(root.thread, { mode, projects: [makeProject("proj_a"), makeProject("proj_b")] }),
+    );
+
+  it("holds nothing on the first build, so a reload draws a focused settled tree in the fold", () => {
+    expect(step(null, { threads: base, now: LATER, activeThreadId: "old2" }).held.size).toBe(0);
+  });
+
+  it("holds nothing when a settled thread is opened", () => {
+    const first = step(null, { threads: base, now: LATER });
+    expect(step(first, { threads: base, now: LATER, activeThreadId: "old2" }).held.size).toBe(0);
+  });
+
+  it.each(["project", "chronological", "machine"] as const)(
+    "holds an unread old thread that settles on opening until focus leaves its group's settled trees (%s)",
+    (mode) => {
+      const first = step(null, { threads: unread, now: LATER }, mode);
+      expect(first.settled.has("old2")).toBe(false);
+      // Opening reads it: it settles, and is held where it was.
+      const opened = step(first, { threads: unread, now: LATER, activeThreadId: "old2" }, mode);
+      expect([...opened.held]).toEqual(["old2"]);
+      expect(step(opened, { threads: unread, now: LATER, activeThreadId: "old2" }, mode).held.has("old2")).toBe(true);
+      // bb marks it read, which leaves it settled.
+      const read = step(opened, { threads: base, now: LATER, activeThreadId: "old2" }, mode);
+      expect(read.held.has("old2")).toBe(true);
+      // Focus on another settled tree in its group keeps the hold.
+      const inFold = step(read, { threads: base, now: LATER, activeThreadId: "old1" }, mode);
+      expect(inFold.held.has("old2")).toBe(true);
+      // Focus on a live thread, or none, ends it.
+      expect(step(inFold, { threads: base, now: LATER, activeThreadId: "new" }, mode).held.size).toBe(0);
+      expect(step(inFold, { threads: base, now: LATER, activeThreadId: null }, mode).held.size).toBe(0);
+    },
+  );
+
+  it("ends when focus moves to a settled tree in another group", () => {
+    const first = step(null, { threads: unread, now: LATER });
+    const opened = step(first, { threads: unread, now: LATER, activeThreadId: "old2" });
+    expect(step(opened, { threads: base, now: LATER, activeThreadId: "elsewhere" }).held.size).toBe(0);
+  });
+
+  it("holds a focused tree whose Settle after period runs out, and a settled tree that settles again after activity", () => {
+    const first = step(null, { threads: base, now: T0 + DAY - 1, activeThreadId: "old2" });
+    expect(first.settled.has("old2")).toBe(false);
+    expect([...step(first, { threads: base, now: LATER, activeThreadId: "old2" }).held]).toEqual(["old2"]);
+    const busy = base.map((thread) => (thread.id === "old2" ? { ...thread, ...working } : thread));
+    const woke = step(step(null, { threads: base, now: LATER, activeThreadId: "old2" }), { threads: busy, now: LATER, activeThreadId: "old2" });
+    expect(woke.settled.has("old2")).toBe(false);
+    expect([...step(woke, { threads: base, now: LATER, activeThreadId: "old2" }).held]).toEqual(["old2"]);
+  });
+
+  it("releases a held tree that stops being settled", () => {
+    const first = step(null, { threads: unread, now: LATER });
+    const opened = step(first, { threads: unread, now: LATER, activeThreadId: "old2" });
+    const busy = unread.map((thread) => (thread.id === "old2" ? { ...thread, ...working } : thread));
+    expect(step(opened, { threads: busy, now: LATER, activeThreadId: "old2" }).held.size).toBe(0);
   });
 });
 
