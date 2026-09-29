@@ -29,13 +29,15 @@ export const COMPOSER: Target = {
 const EDITOR_WRAPPER = "[data-promptbox-editor-scroll]";
 
 /**
- * The wrapper around the thread composer's editor, which sets the size of
- * its text. The editor for a queued message sits in the same composer column
- * outside `[data-follow-up-composer]`, and keeps bb's size.
+ * The row holding the editor for a queued message, in the composer column.
+ * It nests a `[data-follow-up-composer]` of its own, and keeps bb's size.
  */
+const QUEUED_MESSAGE_EDITOR = "[data-queued-message-inline-editor]";
+
+/** The wrapper around the thread composer's editor, which sets the size of its text. */
 export const COMPOSER_EDITOR: Target = {
   name: "the composer's editor wrapper ([data-follow-up-composer] [data-promptbox-editor-scroll])",
-  selector: `[data-follow-up-composer] ${EDITOR_WRAPPER}`,
+  selector: `[data-follow-up-composer] ${EDITOR_WRAPPER}:not(${QUEUED_MESSAGE_EDITOR} *)`,
 };
 
 /**
@@ -43,7 +45,7 @@ export const COMPOSER_EDITOR: Target = {
  * none shows no editor of its own, so lacking the editor wrapper is not a
  * missing target there.
  */
-export const EDITABLE = ":is([contenteditable], textarea):not([data-queued-message-inline-editor] *)";
+export const EDITABLE = `:is([contenteditable], textarea):not(${QUEUED_MESSAGE_EDITOR} *)`;
 
 /**
  * Where bb moves the thread composer while a sent message is edited, inside

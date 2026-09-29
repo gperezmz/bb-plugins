@@ -36,7 +36,7 @@ describe("a thread view's targets", () => {
   });
 
   it("do not count a queued message's editor as the composer's", () => {
-    const composer = `<div class="max-w-[760px] chat-prompt-box"><ul><li data-queued-message-inline-editor>${EDITOR}</li></ul></div>`;
+    const composer = `<div class="max-w-[760px] chat-prompt-box"><ul><li data-queued-message-inline-editor><div data-follow-up-composer>${EDITOR}</div></li></ul></div>`;
     expect(missingTargets(view(COLUMN + composer), ROOT)).toEqual([]);
   });
 

@@ -14,7 +14,7 @@ const ROOT = {
 };
 
 const BOX = ".chat-prompt-box.max-w-\\[760px\\]";
-const WRAPPER = "[data-follow-up-composer] [data-promptbox-editor-scroll]";
+const WRAPPER = "[data-follow-up-composer] [data-promptbox-editor-scroll]:not([data-queued-message-inline-editor] *)";
 const VIEW =
   '[data-thread-window]:not([data-surface-tone]):has(.max-w-\\[760px\\][style*="--md-content-w"]):has(.chat-prompt-box.max-w-\\[760px\\])' +
   `:is(:not(:has(${BOX} :is([contenteditable], textarea):not([data-queued-message-inline-editor] *))), :has(${BOX} ${WRAPPER}))`;
