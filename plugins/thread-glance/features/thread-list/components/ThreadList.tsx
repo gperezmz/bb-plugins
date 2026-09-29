@@ -36,7 +36,7 @@ import { usePreferences } from "../data/usePreferences";
 import { useScheduled } from "../data/useScheduled";
 import { useStamps } from "../data/useStamps";
 import { resolveDrop, type DraggedThread, type DropAction, type DropTarget } from "../model/drag";
-import { buildForest } from "../model/trees";
+import { buildForest, type ThreadInfo } from "../model/trees";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { assignProviderMarks, providerMark } from "../model/provider-mark";
@@ -206,15 +206,14 @@ function ThreadListBody({
   );
   // Each build's hold reads the last one's, so a tree that settles while
   // focused knows it was not settled before.
+  const groupOf = useCallback(
+    (root: ThreadInfo) => groupIdForRoot(root.thread, { mode: prefs.organizationMode, projects: sidebar.projects }),
+    [prefs.organizationMode, sidebar.projects],
+  );
   const previousHold = useRef<SettleHold | null>(null);
   const hold = useMemo(
-    () =>
-      forest === null
-        ? null
-        : holdSettled(previousHold.current, forest.trees, settle, (root) =>
-            groupIdForRoot(root.thread, { mode: prefs.organizationMode, projects: sidebar.projects }),
-          ),
-    [forest, settle, prefs.organizationMode, sidebar.projects],
+    () => (forest === null ? null : holdSettled(previousHold.current, forest.trees, settle, groupOf)),
+    [forest, settle, groupOf],
   );
   useLayoutEffect(() => {
     previousHold.current = hold;
@@ -483,10 +482,8 @@ function ThreadListBody({
 
   const activeGroupId = useMemo(() => {
     const tree = activeThreadId === null || forest === null ? undefined : forest.treeOf.get(activeThreadId);
-    return tree === undefined
-      ? null
-      : groupIdForRoot(tree.root.thread, { mode: prefs.organizationMode, projects: sidebar.projects });
-  }, [activeThreadId, forest, prefs.organizationMode, sidebar.projects]);
+    return tree === undefined ? null : groupOf(tree.root);
+  }, [activeThreadId, forest, groupOf]);
   const showArchived = prefs.showArchived;
 
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */

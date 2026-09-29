@@ -90,10 +90,9 @@ export function holdSettled(
   const held = new Set<string>();
   for (const tree of settledTrees) {
     const id = tree.root.thread.id;
-    const holds = previous?.held.has(id)
-      ? groupOf(tree.root) === focusedGroup
-      : tree.containsActive && previous !== null && !previous.settled.has(id);
-    if (holds) held.add(id);
+    const stillHeld = previous?.held.has(id) === true && groupOf(tree.root) === focusedGroup;
+    const newlyHeld = tree.containsActive && previous !== null && !previous.settled.has(id);
+    if (stillHeld || newlyHeld) held.add(id);
   }
   return { settled, held };
 }
