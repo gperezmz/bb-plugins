@@ -7,7 +7,7 @@ import { page, userEvent } from "vitest/browser";
 import { cleanup, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences } from "@/shared/preferences";
+import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode } from "@/shared/preferences";
 import { finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -105,10 +105,14 @@ const props: PluginThreadListProps = {
   searchQuery: "",
 };
 
-async function render(width: number) {
+async function render(
+  width: number,
+  { density = "compact", organizationMode = "project" }: { density?: ClientPreferences["density"]; organizationMode?: OrganizationMode } = {},
+) {
   // The frame is the sidebar, tall enough to draw every row.
   await page.viewport(width, 1600);
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const };
+  localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density }));
+  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode };
   renderSlot(app.threadLists[0]!, props, {
     rpc: {
       listPreferences: () => ({ preferences }),
@@ -303,6 +307,29 @@ describe.each([260, 320, 400])("a row's right end at a %i px sidebar", (width) =
     await userEvent.hover(rowOf(parent));
     await userEvent.click(chip);
     await expect.poll(() => chip.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("a child thread's title", () => {
+  const font = (element: Element) => {
+    const style = getComputedStyle(element);
+    return { fontSize: style.fontSize, lineHeight: style.lineHeight, fontWeight: style.fontWeight };
+  };
+
+  it.each(
+    (["compact", "comfortable"] as const).flatMap((density) =>
+      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ density, organizationMode })),
+    ),
+  )("is drawn at a root's size, two levels down, in $density density grouped by $organizationMode", async (options) => {
+    await render(320, options);
+    // Both are read, so neither is bold.
+    const root = CASES.find((c) => c.kind === "root" && !c.unread)!;
+    const child = CASES.find((c) => c.kind === "hidden-child")!;
+    for (const c of [root, child]) await screen.findByRole("link", { name: new RegExp(`${c.id}\\b`) });
+    expect(rowOf(child).querySelector(PARTS.nested()), "the child is nested").not.toBeNull();
+    const rootFont = font(rowOf(root).querySelector(PARTS.title(root))!);
+    expect(font(rowOf(child).querySelector(PARTS.title(child))!)).toEqual(rootFont);
+    expect(rootFont.fontWeight).toBe("400");
   });
 });
 

@@ -413,8 +413,6 @@ export const ThreadRowView = memo(function ThreadRowView({
               className={cn(
                 "min-w-0 truncate",
                 row.bold ? "font-semibold" : "font-normal",
-                // Children sit a step below their parent.
-                row.depth > 0 && "text-xs",
                 // Quiet threads step back so live ones lead; hover brings them back.
                 dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
               )}

@@ -38,7 +38,7 @@ Then open a different thread. A thread shown in a pane of bb's window is an [ope
 
 While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a muted `1` and a chevron just before its time: its one child. The child has no row of its own at the top of the group. It sits behind that chip.
 
-Click the chip. The child's row opens under the parent, indented one step, its title one size smaller.
+Click the chip. The child's row opens under the parent, indented one step, its title the same size as its parent's.
 
 ## 4. Let it finish
 
