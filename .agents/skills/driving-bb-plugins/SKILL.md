@@ -27,8 +27,20 @@ printing `run`, `web UI`, `project` and `evidence`, in about 10 seconds, or
 a minute more in a fresh checkout, where it runs `npm ci` in
 `plugins/thread-glance` for Playwright and in each plugin started that has
 no `node_modules`. It needs `node`, `npm`, `jq`, `curl`,
-`git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon` on `PATH`, and bb
-builds each plugin's copy itself, so the checkout gains no `dist/`.
+`git`, `rsync`, `flock`, `systemd-run`, `bb`, `bb-server` and `bb-host-daemon`
+on `PATH`, and bb builds each plugin's copy itself, so the checkout gains no
+`dist/`.
+
+A run shares the machine with the user's own bb and editor, so it is
+**memory-capped**. `start` refuses while less than `DBP_MIN_FREE` (default
+`4G`) of memory is available once other runs have grown to their caps, and
+starts the run's fake API, bb server and host daemon in a systemd user scope,
+`dbp-<id>.scope`, capped at `DBP_MEMORY_MAX` (default `6G`) with no swap. Everything they start, Claude
+Code included, stays in the scope, so a run that passes its cap loses its own
+processes, all of them, and nothing else. An idle run takes about 1.7G and
+each loaded Claude Code session about 0.4G more. Where `systemd-run --user
+--scope` fails, `start` refuses; `DBP_UNCAPPED=1` starts it uncapped, which
+is for a machine with no systemd user manager only.
 
 The `run` line is the run's name. Every later command names it with
 `--run <run>` straight after the command, as every command below does.
@@ -63,12 +75,15 @@ Teardown is [Cleanup](#cleanup).
 .agents/skills/driving-bb-plugins/drive-bb-plugins doctor --run <run>
 ```
 
-Exits 0 only when the run points away from the user's bb, its fake API, bb
-server and host daemon are alive, the server on the run's port serves the
+Exits 0 only when the run points away from the user's bb, its scope is active
+with the cap `start` printed and holds its bb server, its fake API, bb server
+and host daemon are alive, the server on the run's port serves the
 run's own data directory, the machine is connected, and every plugin started
 runs from the run's copy. Run it before the first drive, after any drive that
 failed or surprised you, and whenever a command answers from a bb you did
-not expect. A run that fails it is stopped and started again, not driven.
+not expect. A run that fails it is stopped and started again, not driven; a
+scope reading `failed/oom-kill` passed its cap, and starts again with fewer
+sessions (`DBP_MAX_SESSIONS`) or a larger `DBP_MEMORY_MAX`.
 
 ## Drive
 
@@ -91,6 +106,29 @@ once the first turn has ended:
 ```bash
 .agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> <label> <title> <prompt> [<parent-thread>]
 ```
+
+bb keeps a thread's Claude Code loaded after its turn, so `spawn` releases it
+with `bb thread stop` before returning; the thread still reads `idle`, and a
+later `bb thread tell` loads it again. At most `DBP_MAX_SESSIONS` (default
+4, fixed at `start`) `spawn`s of a run hold a session at once, and the rest
+wait for a slot; bb's own `concurrency-limit global` is set to the same
+number. `spawn` is the only way to make a thread in a run: the `bb` command
+refuses `thread spawn`.
+
+**Many threads** (a list, a sidebar, a performance audit): seed them through
+`spawn`, from a file of titles, with parallelism no wider than the run's
+session cap:
+
+```bash
+xargs -a titles.txt -d '\n' -P 4 -I{} \
+  .agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> seed/spawn {} hi
+```
+
+Each thread holds a session only for its turn, so a run seeds 40 threads in
+about 30 seconds and 300 in a few minutes on its default cap. Start every
+thread's `spawn` in a bounded pool such as `xargs -P`, never one `&` per
+thread; a `bb thread tell` to many threads is sent the same way, each
+followed by `bb thread stop` once `bb thread wait <id> --status idle` returns.
 
 UI actions, run as a Playwright script against the run's web UI:
 
@@ -160,7 +198,8 @@ verify the settings screen that writes it.
 - after `stop`: `plugin-<id>.log`, `server.log`, `host-daemon.log`,
   `fake-anthropic.log` and `requests.jsonl`;
 - `pids`, `launch-pids`, `run.env` and `env.sh`: the handles `stop` kills by
-  and the run's settings, its ports included.
+  and the run's settings, its ports and scope included;
+- `slots/`: the locks `spawn` holds its session slots by.
 
 ## Cleanup
 
@@ -169,9 +208,10 @@ verify the settings screen that writes it.
 ```
 
 Run it after the last drive, and after every failed attempt before the next
-`start`. It saves the logs into the evidence, kills each PID recorded in
-`.drives/<run>/pids` that still carries the run's mark in its environment,
-releases the run's ports, removes the scratch directory, and keeps
+`start`, a run its cap ended included. It saves the logs into the evidence,
+kills each PID recorded in `.drives/<run>/pids` that still carries the run's
+mark in its environment, stops and unloads the run's scope, releases the
+run's ports, removes the scratch directory, and keeps
 `.drives/<run>/`. Other runs, from this checkout or another, are left
 running. It exits 0 only
 when no process carrying the mark is left; otherwise it prints them and
