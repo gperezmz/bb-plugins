@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { missingNewThreadTargets, missingTargets } from "./targets";
+import { COMPOSER_TYPEAHEAD_MENU, missingNewThreadTargets, missingTargets, NEW_THREAD_TYPEAHEAD_MENU } from "./targets";
 
 const ROOT = { "--text-sm": ".8125rem" };
 
@@ -82,5 +82,35 @@ describe("a New-thread screen's targets", () => {
       "its editor wrapper ([data-promptbox-editor-scroll])",
       "the text size variable --text-sm at :root",
     ]);
+  });
+});
+
+describe("the Typeahead menu", () => {
+  const MENU = '<div data-promptbox-typeahead-menu class="absolute -left-px -right-px z-20 bottom-full mb-2"><button class="text-xs">/review</button></div>';
+  const PROMPT = `<div data-promptbox-main><div data-promptbox-input-region>${EDITOR}</div>${MENU}</div>`;
+
+  function menusIn(html: string, selector: string): number {
+    const element = document.createElement("div");
+    element.innerHTML = html;
+    return element.querySelectorAll(selector).length;
+  }
+
+  it("is the thread composer's when it opens beside the composer's editor", () => {
+    expect(menusIn(`<div class="max-w-[760px] chat-prompt-box"><div data-app-composer><div data-follow-up-composer>${PROMPT}</div></div></div>`, COMPOSER_TYPEAHEAD_MENU)).toBe(1);
+  });
+
+  it("is not the thread composer's when a queued message's editor opens it", () => {
+    const queued = `<ul><li data-queued-message-inline-editor><div data-follow-up-composer>${PROMPT}</div></li></ul>`;
+    expect(menusIn(`<div class="max-w-[760px] chat-prompt-box"><div data-follow-up-composer>${queued}</div></div>`, COMPOSER_TYPEAHEAD_MENU)).toBe(0);
+  });
+
+  it("is the New-thread screen's when it opens beside #root-compose-prompt", () => {
+    const prompt = `<div data-promptbox-main><div data-promptbox-input-region><div data-promptbox-editor-scroll><div id="root-compose-prompt" contenteditable="true"></div></div></div>${MENU}</div>`;
+    expect(menusIn(prompt, NEW_THREAD_TYPEAHEAD_MENU)).toBe(1);
+    expect(menusIn(PROMPT, NEW_THREAD_TYPEAHEAD_MENU)).toBe(0);
+  });
+
+  it("is not a missing target while it is closed", () => {
+    expect(missingTargets(view(COLUMN + COMPOSER), ROOT)).toEqual([]);
   });
 });

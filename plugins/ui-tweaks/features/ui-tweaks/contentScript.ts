@@ -11,16 +11,23 @@ import { tweakState } from "./state";
 export const GRACE_MS = 5_000;
 const SCAN_DELAY_MS = 500;
 
+/** The root variables the stylesheet scales from: each text variable, its line height, and --spacing. */
+const ROOT_VARIABLES = [...TEXT_VARIABLES.flatMap((name) => [name, `${name}--line-height`]), "--spacing"];
+
+/** The {@link ROOT_VARIABLES} the page's root holds, by name, leaving out any it lacks. */
 export function readRootVariables(): Record<string, string> {
   const style = getComputedStyle(document.documentElement);
   const variables: Record<string, string> = {};
-  for (const name of TEXT_VARIABLES) {
-    for (const variable of [name, `${name}--line-height`]) {
-      const value = style.getPropertyValue(variable).trim();
-      if (value) variables[variable] = value;
-    }
+  for (const variable of ROOT_VARIABLES) {
+    const value = style.getPropertyValue(variable).trim();
+    if (value) variables[variable] = value;
   }
   return variables;
+}
+
+/** The root's font size in px, which a rem is. */
+function readRemPx(): number {
+  return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
 }
 
 /** The content script: bb calls the function it returns when the plugin is disabled or removed. */
@@ -31,7 +38,7 @@ export function mountTweaks(): () => void {
   const render = () => {
     const tweaks = tweakState.get();
     // bb's root holds its phone sizes on a phone, and the tweaks do not apply there.
-    const css = tweaks && !phone.matches ? tweaksCss(tweaks, readRootVariables()) : "";
+    const css = tweaks && !phone.matches ? tweaksCss(tweaks, readRootVariables(), readRemPx()) : "";
     if (css === "") {
       style.remove();
       return;

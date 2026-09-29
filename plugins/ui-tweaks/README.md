@@ -10,7 +10,7 @@ Transcript width                              [ Narrow | Medium | Wide ]
 Maximum width of the transcript and composer columns.
 ```
 
-Medium is bb's own look for both. Small and Large set message text and the text you type in the composer to 12 px and 15 px, around bb's 13 px; the composer's buttons and menus keep bb's size. Narrow and Wide set the columns to 640 px and 960 px, around bb's 760 px. A change reaches every open window at once. The settings apply to bb's own thread views, the main one and split panes, and to the New-thread screen, and never on a phone.
+Medium is bb's own look for both. Small and Large set message text and the text you type in the composer to 12 px and 15 px, around bb's 13 px, and scale the rest of the transcript and the Typeahead menu (the menu for slash commands and mentions) by the same ratio, rounded to whole pixels; the composer's buttons and its other menus keep bb's size. Narrow and Wide set the columns to 640 px and 960 px, around bb's 760 px. A change reaches every open window at once. The settings apply to bb's own thread views, the main one and split panes, and to the New-thread screen, and never on a phone.
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin ui-tweaks
