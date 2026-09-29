@@ -53,8 +53,8 @@ describe("the plugin's page under Tools", () => {
   it("shows exactly the two rows, Medium chosen on a fresh install", async () => {
     renderSettings();
     const groups = screen.getAllByRole("radiogroup");
-    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Transcript text size", "Transcript width"]);
-    expect(screen.getByText("Size of the conversation transcript text.")).toBeTruthy();
+    expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual(["Text size", "Transcript width"]);
+    expect(screen.getByText("Size of the transcript and composer text.")).toBeTruthy();
     expect(screen.getByText("Maximum width of the transcript and composer columns.")).toBeTruthy();
     expect(within(groups[0]!).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Small", "Medium", "Large"]);
     expect(within(groups[1]!).getAllByRole("radio").map((radio) => radio.textContent)).toEqual(["Narrow", "Medium", "Wide"]);
@@ -80,7 +80,7 @@ describe("the plugin's page under Tools", () => {
   it("moves the choice with the arrow keys", async () => {
     const slot = renderSettings();
     await waitFor(() => expect(screen.getAllByRole("radio", { checked: true })).toHaveLength(2));
-    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "Transcript text size" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "Text size" }), { key: "ArrowRight" });
     await waitFor(() => expect(screen.getByRole("radio", { name: "Large" }).getAttribute("aria-checked")).toBe("true"));
     expect(slot.inspection.rpcCalls.at(-1)).toMatchObject({ method: "setTweaks", input: { textSize: "large" } });
   });
@@ -124,7 +124,8 @@ describe("keeping every window current", () => {
 });
 
 const COLUMN = '<div class="mx-auto max-w-[760px]" style="--md-content-w: 760px;"><p class="text-sm">Hi</p></div>';
-const COMPOSER = '<div class="mx-auto max-w-[760px] chat-prompt-box"></div>';
+const EDITOR = '<div contenteditable="true" class="ProseMirror"><p>Draft</p></div>';
+const COMPOSER = `<div class="mx-auto max-w-[760px] chat-prompt-box"><div data-follow-up-composer><div data-promptbox-editor-scroll class="text-sm">${EDITOR}</div></div></div>`;
 
 function mountView(html = COLUMN + COMPOSER, attributes: Record<string, string> = {}) {
   const view = document.createElement("div");
@@ -133,6 +134,15 @@ function mountView(html = COLUMN + COMPOSER, attributes: Record<string, string> 
   view.innerHTML = html;
   document.body.append(view);
   return view;
+}
+
+const NEW_THREAD_EDITOR = '<div data-promptbox-editor-scroll class="text-sm"><div id="root-compose-prompt" contenteditable="true"></div></div>';
+
+function mountNewThread(html = `<div class="mx-auto flex max-w-[760px]" style="--md-content-w: 760px;"><form data-promptbox>${NEW_THREAD_EDITOR}</form></div>`) {
+  const screen = document.createElement("div");
+  screen.innerHTML = html;
+  document.body.append(screen);
+  return screen;
 }
 
 const styleElements = () => [...document.querySelectorAll("style")].filter((style) => style.textContent?.includes("data-thread-window"));
@@ -190,11 +200,41 @@ describe("a thread view missing a target", () => {
     await scripts.lifecycle.dispose();
   });
 
+  it("names the composer's editor wrapper when the composer shows an editor without one", async () => {
+    mountView(COLUMN + `<div class="mx-auto max-w-[760px] chat-prompt-box"><div data-follow-up-composer>${EDITOR}</div></div>`);
+    const { warn, scripts } = await watch();
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("the composer's editor wrapper ([data-follow-up-composer] [data-promptbox-editor-scroll])");
+    expect(warn.mock.calls[0]![0]).not.toContain("column");
+    await scripts.lifecycle.dispose();
+  });
+
   it("does not warn about a view that finished loading within the grace period", async () => {
     const view = mountView('<div class="max-w-[760px]"></div>');
     const { warn, scripts } = await watch();
     await vi.advanceTimersByTimeAsync(GRACE_MS / 2);
     view.innerHTML = COLUMN + COMPOSER;
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
+    expect(warn).not.toHaveBeenCalled();
+    await scripts.lifecycle.dispose();
+  });
+
+  it("warns once per New-thread screen, naming what it lacks", async () => {
+    mountNewThread(`<div class="max-w-[800px]"><div id="root-compose-prompt" contenteditable="true"></div></div>`);
+    mountNewThread();
+    const { warn, scripts } = await watch();
+    await vi.advanceTimersByTimeAsync(GRACE_MS * 3);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toBe(
+      "UI Tweaks: a New-thread screen lacks its column (.max-w-[760px]), its editor wrapper ([data-promptbox-editor-scroll]), so neither tweak applies to it. bb may have changed its New-thread screen.",
+    );
+    await scripts.lifecycle.dispose();
+  });
+
+  it("stays silent about a screen without #root-compose-prompt", async () => {
+    mountNewThread('<div class="max-w-[760px]"><div data-promptbox-editor-scroll><div contenteditable="true"></div></div></div>');
+    const { warn, scripts } = await watch();
     await vi.advanceTimersByTimeAsync(GRACE_MS * 2);
     expect(warn).not.toHaveBeenCalled();
     await scripts.lifecycle.dispose();

@@ -39,9 +39,9 @@ export function TweaksSection() {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3.5">
       <div className="space-y-5">
-        <SettingsRow label="Transcript text size" description="Size of the conversation transcript text.">
+        <SettingsRow label="Text size" description="Size of the transcript and composer text.">
           <SegmentedControl
-            label="Transcript text size"
+            label="Text size"
             segments={TEXT_SIZE_SEGMENTS}
             value={tweaks?.textSize ?? null}
             onChange={(textSize) => save({ textSize })}

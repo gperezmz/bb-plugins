@@ -1,10 +1,13 @@
-// Applies the tweaks to bb's thread views through one style element, and
-// warns about each thread view that lacks a target.
+// Applies the tweaks to bb's thread views and New-thread screens through one
+// style element, and warns about each one that lacks a target.
 import { PHONE_QUERY, tweaksCss } from "./model/css";
-import { missingTargets, TEXT_VARIABLES, THREAD_VIEW } from "./model/targets";
+import { missingNewThreadTargets, missingTargets, NEW_THREAD_EDITOR, TEXT_VARIABLES, THREAD_VIEW } from "./model/targets";
 import { tweakState } from "./state";
 
-/** How long a thread view may lack a target before it counts as missing, so one still loading does not. */
+/**
+ * How long a thread view or New-thread screen may lack a target before it
+ * counts as missing, so one still loading does not.
+ */
 export const GRACE_MS = 5_000;
 const SCAN_DELAY_MS = 500;
 
@@ -38,7 +41,7 @@ export function mountTweaks(): () => void {
   };
   const unsubscribe = tweakState.subscribe(render);
   phone.addEventListener("change", render);
-  const stopWatching = watchThreadViews((message) => console.warn(message));
+  const stopWatching = watchScreens((message) => console.warn(message));
 
   return () => {
     unsubscribe();
@@ -48,11 +51,24 @@ export function mountTweaks(): () => void {
   };
 }
 
+/** A kind of screen the watcher looks for: the element standing for each one, and what each lacks. */
+interface WatchedScreen {
+  kind: string;
+  selector: string;
+  missing(element: Element, rootVariables: Record<string, string>): string[];
+}
+
+const WATCHED_SCREENS: readonly WatchedScreen[] = [
+  { kind: "thread view", selector: THREAD_VIEW, missing: missingTargets },
+  // A New-thread screen is known by its editor, so the editor stands for it.
+  { kind: "New-thread screen", selector: NEW_THREAD_EDITOR, missing: missingNewThreadTargets },
+];
+
 /**
- * Warns once about each thread view that has lacked a target for
- * {@link GRACE_MS}. Returns the function that stops watching.
+ * Warns once about each thread view and New-thread screen that has lacked a
+ * target for {@link GRACE_MS}. Returns the function that stops watching.
  */
-export function watchThreadViews(warn: (message: string) => void): () => void {
+export function watchScreens(warn: (message: string) => void): () => void {
   const firstSeen = new WeakMap<Element, number>();
   const warned = new WeakSet<Element>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -71,20 +87,24 @@ export function watchThreadViews(warn: (message: string) => void): () => void {
     if (stopped) return;
     const now = Date.now();
     let rootVariables: Record<string, string> | null = null;
-    for (const view of document.querySelectorAll(THREAD_VIEW)) {
-      if (warned.has(view)) continue;
-      const seen = firstSeen.get(view);
-      if (seen === undefined) {
-        firstSeen.set(view, now);
-        scanIn(GRACE_MS);
-        continue;
+    for (const screen of WATCHED_SCREENS) {
+      for (const element of document.querySelectorAll(screen.selector)) {
+        if (warned.has(element)) continue;
+        const seen = firstSeen.get(element);
+        if (seen === undefined) {
+          firstSeen.set(element, now);
+          scanIn(GRACE_MS);
+          continue;
+        }
+        if (now - seen < GRACE_MS) continue;
+        rootVariables ??= readRootVariables();
+        const missing = screen.missing(element, rootVariables);
+        if (missing.length === 0) continue;
+        warned.add(element);
+        warn(
+          `UI Tweaks: a ${screen.kind} lacks ${missing.join(", ")}, so neither tweak applies to it. bb may have changed its ${screen.kind}.`,
+        );
       }
-      if (now - seen < GRACE_MS) continue;
-      rootVariables ??= readRootVariables();
-      const missing = missingTargets(view, rootVariables);
-      if (missing.length === 0) continue;
-      warned.add(view);
-      warn(`UI Tweaks: a thread view lacks ${missing.join(", ")}, so neither tweak applies to it. bb may have changed its thread view.`);
     }
   };
 

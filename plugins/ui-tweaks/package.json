@@ -8,14 +8,14 @@
   },
   "bb": {
     "name": "UI Tweaks",
-    "description": "Appearance settings bb lacks: the size of the conversation transcript's text, and the width of the transcript and composer.",
+    "description": "Appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer.",
     "branding": {
       "icon": "SlidersHorizontal"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
   },
-  "description": "Appearance settings bb lacks: the size of the conversation transcript's text, and the width of the transcript and composer.",
+  "description": "Appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer.",
   "license": "MIT",
   "repository": {
     "type": "git",
