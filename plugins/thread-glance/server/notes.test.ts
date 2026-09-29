@@ -282,6 +282,18 @@ describe("notes through the server", () => {
     expect(noteSignals(harness).at(-1)).toEqual({ threadId: "t1", notes: null });
   });
 
+  it("drops an invalid stored row on a cold read and logs it", async () => {
+    const { bb, harness } = await load();
+    const done = { kind: "done", text: "Done.", at: 1 };
+    await bb.storage.kv.set(noteKvKey("good"), { done });
+    await bb.storage.kv.set(noteKvKey("bad"), { done: { kind: "done" } });
+    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({ notes: { good: { done } } });
+    expect(await bb.storage.kv.get(noteKvKey("bad"))).toBeUndefined();
+    expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
+      "stored notes for bad are invalid; dropping them",
+    ]);
+  });
+
   it("prunes notes of threads bb no longer lists on startup", async () => {
     const host = createFakePluginHost({
       pluginId: "thread-glance",

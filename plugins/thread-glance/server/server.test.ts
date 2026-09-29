@@ -1,6 +1,8 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
+import Database from "better-sqlite3";
 import {
   createFakePluginHost,
   makeQueueEntry,
@@ -11,8 +13,9 @@ import plugin from "../server";
 import { CHANNELS } from "../shared/contract";
 import { defaultPreferences } from "../shared/preferences";
 import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
+import { createNoteStore, noteKvKey } from "./notes";
 import { preferenceKvKey } from "./preference-store";
-import { stampKvKey } from "./stamps";
+import { createStampStore, stampKvKey } from "./stamps";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
@@ -377,6 +380,20 @@ describe("stamps", () => {
     expect(harness.inspection.realtimeSignals.length).toBe(before);
   });
 
+  it("drops an invalid stored row on a cold read and logs it", async () => {
+    const { bb, harness } = await load();
+    await bb.storage.kv.set(stampKvKey("good"), { finishedAt: 1_000 });
+    await bb.storage.kv.set(stampKvKey("bad"), { finishedAt: "yesterday" });
+    const { stamps } = (await harness.behavior.callRpc("listStamps", null)) as {
+      stamps: { finishedAt: Record<string, number> };
+    };
+    expect(stamps.finishedAt).toEqual({ good: 1_000 });
+    expect(await bb.storage.kv.get(stampKvKey("bad"))).toBeUndefined();
+    expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
+      "stored stamps for bad are invalid; dropping them",
+    ]);
+  });
+
   it("reloads stored stamps after a restart", async () => {
     const first = await load();
     await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
@@ -385,6 +402,82 @@ describe("stamps", () => {
       stamps: { seenAt: Record<string, number> };
     };
     expect(Object.keys(stamps.seenAt)).toEqual(["t1"]);
+  });
+});
+
+/**
+ * Plugin KV over SQLite, shaped as bb 0.44 keeps it: JSON rows namespaced by
+ * plugin in one table of a WAL database, each call a synchronous query in the
+ * server's own process behind a promise.
+ */
+function sqliteKv(file: string) {
+  const db = new Database(file);
+  db.pragma("journal_mode = WAL");
+  db.exec("CREATE TABLE IF NOT EXISTS plugin_kv (plugin_id TEXT, key TEXT, value TEXT, PRIMARY KEY (plugin_id, key))");
+  const plugin = "thread-glance";
+  const select = db.prepare("SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?");
+  const keys = db.prepare("SELECT key FROM plugin_kv WHERE plugin_id = ? AND key >= ? AND key < ? ORDER BY key");
+  const upsert = db.prepare("INSERT OR REPLACE INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, ?)");
+  const remove = db.prepare("DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?");
+  return {
+    db,
+    kv: {
+      async get<T>(key: string): Promise<T | undefined> {
+        const row = select.get(plugin, key) as { value: string } | undefined;
+        return row === undefined ? undefined : (JSON.parse(row.value) as T);
+      },
+      async set(key: string, value: unknown): Promise<void> {
+        upsert.run(plugin, key, JSON.stringify(value));
+      },
+      async delete(key: string): Promise<void> {
+        remove.run(plugin, key);
+      },
+      async list(prefix = ""): Promise<string[]> {
+        return (keys.all(plugin, prefix, `${prefix}\uffff`) as { key: string }[]).map((row) => row.key);
+      },
+    },
+  };
+}
+
+// Ledger row B25: the first listStamps and listNotes after a server start, at
+// 5,000 stored threads. It records the figures without failing on them; the
+// performance ledger enforces the threshold.
+describe("cold read benchmark", () => {
+  it("reads 1,500 and 5,000 stored threads' stamps and notes", async () => {
+    const { db, kv } = sqliteKv(join(tempDir, "bb.db"));
+    const bb = {
+      storage: { kv },
+      realtime: { publish: () => undefined },
+      log: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    } as unknown as Parameters<typeof createStampStore>[0];
+    const insert = db.transaction((from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        const id = `thr_${String(i).padStart(6, "0")}`;
+        void kv.set(stampKvKey(id), { startedAt: 1_000 + i, finishedAt: 2_000 + i, seenAt: 3_000 + i, idleAt: 2_000 + i });
+        void kv.set(noteKvKey(id), { done: { kind: "done", text: `Finished task ${i}.`, at: 2_000 + i } });
+      }
+    });
+    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    const time = async (read: () => Promise<unknown>) => {
+      const start = performance.now();
+      await read();
+      return performance.now() - start;
+    };
+    const figures: Record<string, string> = {};
+    for (const [from, to] of [[0, 1_500], [1_500, 5_000]]) {
+      insert(from, to);
+      const stampRuns: number[] = [];
+      const noteRuns: number[] = [];
+      for (let run = 0; run < 7; run++) {
+        stampRuns.push(await time(() => createStampStore(bb).list()));
+        noteRuns.push(await time(() => createNoteStore(bb).list()));
+      }
+      expect(Object.keys((await createStampStore(bb).list()).startedAt)).toHaveLength(to);
+      expect(Object.keys(await createNoteStore(bb).list())).toHaveLength(to);
+      figures[to] = `listStamps ${median(stampRuns).toFixed(1)} ms, listNotes ${median(noteRuns).toFixed(1)} ms`;
+    }
+    db.close();
+    process.stdout.write(`B25 cold read (median of 7): ${JSON.stringify(figures)}\n`);
   });
 });
 
