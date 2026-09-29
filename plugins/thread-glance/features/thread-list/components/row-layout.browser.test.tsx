@@ -2,12 +2,13 @@
 // The right end of a row, measured in Chromium: nothing the hover shows
 // covers anything, and the children chip never moves.
 import "../testing/browser.css";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { page, userEvent } from "vitest/browser";
-import { cleanup, screen } from "@testing-library/react";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { cdp, page, userEvent } from "vitest/browser";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
+import type { ThreadNotes } from "@/shared/contract";
 import { finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -27,7 +28,8 @@ function awayStrip(): HTMLElement {
   if (away === null) {
     away = document.createElement("div");
     away.dataset.away = "";
-    away.style.cssText = "position: fixed; left: 0; right: 0; bottom: 0; height: 8px";
+    // Above the rows, for a list long enough to reach it.
+    away.style.cssText = "position: fixed; left: 0; right: 0; bottom: 0; height: 8px; z-index: 1000";
     document.body.append(away);
   }
   return away;
@@ -109,19 +111,25 @@ async function render(
   width: number,
   {
     density = "compact",
+    branchLine = false,
     organizationMode = "project",
     preferences: overrides = {},
     extraThreads = [],
+    notes = {},
+    height = 1600,
   }: {
     density?: ClientPreferences["density"];
+    branchLine?: boolean;
     organizationMode?: OrganizationMode;
     preferences?: Partial<Preferences>;
     extraThreads?: ReturnType<typeof makeThread>[];
+    notes?: Record<string, ThreadNotes>;
+    /** The frame's height; by default tall enough to draw every row. */
+    height?: number;
   } = {},
 ) {
-  // The frame is the sidebar, tall enough to draw every row.
-  await page.viewport(width, 1600);
-  localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density }));
+  await page.viewport(width, height);
+  localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density, branchLine }));
   const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode, ...overrides };
   renderSlot(app.threadLists[0]!, props, {
     rpc: {
@@ -143,7 +151,7 @@ async function render(
       markSeen: () => ({ at: Date.now() }),
       clearSeen: () => ({ ok: true as const }),
       listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-      listNotes: () => ({ notes: {} }),
+      listNotes: () => ({ notes }),
     } as never,
     sidebarThreads: { status: "ready", threads: [...threads(), ...extraThreads], projects: PROJECTS, sections: [] },
     sidebarPullRequests: Object.fromEntries(
@@ -340,8 +348,7 @@ describe("a child thread's title", () => {
     const rootFont = font(rowOf(root).querySelector(PARTS.title(root))!);
     expect(font(rowOf(child).querySelector(PARTS.title(child))!)).toEqual(rootFont);
     expect(rootFont.fontWeight).toBe("400");
-    // Comfortable rows carry the branch on a second line.
-    for (const c of [root, child]) expect(rowOf(c).getBoundingClientRect().height, c.id).toBe(options.density === "compact" ? 28 : 44);
+    for (const c of [root, child]) expect(rowOf(c).getBoundingClientRect().height, c.id).toBe(options.density === "compact" ? 28 : 32);
   });
 });
 
@@ -615,5 +622,210 @@ describe("the hover look after a click", () => {
     await userEvent.keyboard("{Tab}");
     expect(document.activeElement?.getAttribute("aria-label")).toBe("Alpha actions");
     expectHeaderActions("…");
+  });
+});
+
+describe("Density and Branch line", () => {
+  const COMBINATIONS = (["compact", "comfortable"] as const).flatMap((density) =>
+    [false, true].map((branchLine) => ({ density, branchLine })),
+  );
+  const worktree = { id: "env_wt", isWorktree: true, branchName: "fix/shared" };
+  // One of each row in the Beta group: a one-line thread, one off its
+  // default branch, one with a note, a tree with a "2 more" fold, and a
+  // worktree folder; the settled fold follows once the Holder tree settles.
+  const kinds = [
+    makeThread({ id: "one", title: "One line", projectId: "proj_b", environment: { branchName: "main" }, ...finishedUnread }),
+    makeThread({ id: "branch", title: "Off main", projectId: "proj_b", environment: { branchName: "fix/x" }, ...finishedUnread }),
+    makeThread({ id: "noted", title: "Asks", projectId: "proj_b", hasPendingInteraction: true, environment: { branchName: "fix/q" } }),
+    makeThread({ id: "tree", title: "Tree", projectId: "proj_b", ...finishedUnread }),
+    ...[1, 2, 3, 4, 5].map((n) =>
+      makeThread({ id: `kid${n}`, title: `Kid ${n}`, projectId: "proj_b", parentThreadId: "tree", createdAt: Date.now() - n * 1000 }),
+    ),
+    makeThread({ id: "wt-a", title: "Worktree A", projectId: "proj_b", environment: worktree, ...finishedUnread }),
+    makeThread({ id: "wt-b", title: "Worktree B", projectId: "proj_b", environment: worktree, ...finishedUnread }),
+  ];
+  const notes = { noted: { pending: { kind: "question" as const, text: "Tabs or spaces?", at: Date.now() } } };
+
+  const height = (element: Element | null) => {
+    expect(element).not.toBeNull();
+    return element!.getBoundingClientRect().height;
+  };
+  const threadRow = (id: string) => rowOf({ id });
+
+  /** Heights drawn under Compact with Branch line off in 0.5.0, then what each switch adds. */
+  function expectedHeights(density: "compact" | "comfortable", branchLine: boolean, phone: boolean) {
+    const grow = density === "comfortable" ? 4 : 0;
+    return {
+      one: (phone ? 36 : 28) + grow,
+      branch: (branchLine ? (phone ? 48 : 44) : phone ? 36 : 28) + grow,
+      noted: (phone ? 48 : 44) + grow,
+      older: (phone ? 36 : 28) + grow,
+      // The environment fold row is 28 px on phones too.
+      environment: 28 + grow,
+      settled: phone ? 36 : 24,
+      header: phone ? 36 : 28,
+    };
+  }
+
+  async function renderKinds(options: { density: "compact" | "comfortable"; branchLine: boolean; organizationMode?: OrganizationMode }, width = 320) {
+    await render(width, {
+      ...options,
+      preferences: { settleAfter: "12h", environmentGrouping: true, expandedChildren: ["tree"] },
+      extraThreads: kinds,
+      notes,
+    });
+    await screen.findByRole("button", { name: /^Show \d+ settled/ });
+    await screen.findByRole("button", { name: /Collapse fix\/shared environment/ });
+    await screen.findByRole("button", { name: /^Show 2 more/ });
+    await screen.findByText("Tabs or spaces?", { exact: false });
+  }
+
+  async function expectHeights(options: { density: "compact" | "comfortable"; branchLine: boolean }, phone: boolean) {
+    await renderKinds(options, phone ? 390 : 320);
+    expect(matchMedia("(pointer: coarse)").matches).toBe(phone);
+    expect(measure()).toEqual(expectedHeights(options.density, options.branchLine, phone));
+    // The list header keeps its height too.
+    expect(height(screen.getByRole("button", { name: "Thread Glance settings" }).closest("div"))).toBe(phone ? 36 : 28);
+    // Only a Branch line switch on draws the branch, with its badge after it.
+    expect(threadRow("branch").textContent?.includes("fix/x")).toBe(options.branchLine);
+    expect(threadRow("one").textContent).not.toContain("main");
+  }
+
+  function measure() {
+    return {
+      one: height(threadRow("one")),
+      branch: height(threadRow("branch")),
+      noted: height(threadRow("noted")),
+      older: height(screen.getByRole("button", { name: /^Show 2 more/ })),
+      environment: height(screen.getByRole("button", { name: /Collapse fix\/shared environment/ }).parentElement),
+      settled: height(screen.getAllByRole("button", { name: /^Show \d+ settled/ })[0]!),
+      header: height(document.querySelector('[data-sidebar="group-label"]')),
+    };
+  }
+
+  it.each(COMBINATIONS)("draws every row and header at its height under $density with Branch line $branchLine", async (options) => {
+    await expectHeights(options, false);
+  });
+
+  it.each(
+    COMBINATIONS.flatMap((combination) =>
+      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ ...combination, organizationMode })),
+    ),
+  )("puts $density's gap above every group header but the first, grouped by $organizationMode, Branch line $branchLine", async (options) => {
+    // Two machines, so grouping by machine draws two groups.
+    const elsewhere = makeThread({ id: "far", title: "Far", sectionId: "sec_1", host: { id: "host_2", name: "work" } });
+    await render(320, {
+      ...options,
+      preferences: { settleAfter: "never", collapsedProjects: ["proj_b"], collapsedMachines: ["host_2"] },
+      extraThreads: [...kinds, elsewhere],
+    });
+    await screen.findAllByRole("link");
+    const sections = [...document.querySelectorAll<HTMLElement>("section[data-sidebar-visibility-group]")];
+    expect(sections.length, "groups drawn").toBeGreaterThan(1);
+    const listHeader = screen.getByRole("button", { name: "Thread Glance settings" }).closest("div")!;
+    expect(sections[0]!.getBoundingClientRect().top).toBe(listHeader.getBoundingClientRect().bottom);
+    const gap = options.density === "compact" ? 4 : 8;
+    for (const [index, section] of sections.entries()) {
+      if (index === 0) continue;
+      const header = section.querySelector('[data-sidebar="group-label"]')!;
+      expect(header.getBoundingClientRect().top - sections[index - 1]!.getBoundingClientRect().bottom, section.ariaLabel!).toBe(gap);
+    }
+    // A collapsed group's header gets the gap too.
+    expect(sections.some((section) => section.querySelector('[aria-expanded="false"]') !== null && sections.indexOf(section) > 0)).toBe(true);
+  });
+
+  /**
+   * Scrolls a list longer than the frame top to bottom, switches Density and
+   * then Branch line mid-scroll, and scrolls again after each: no chunk
+   * changes height as it mounts or unmounts, so nothing moves.
+   */
+  async function expectSteadyScroll(
+    from: { density: "compact" | "comfortable"; branchLine: boolean },
+    organizationMode: OrganizationMode,
+    width = 320,
+  ) {
+    const many = Array.from({ length: 240 }, (_, n) =>
+      makeThread({
+        id: `long${n}`,
+        title: `Long ${n}`,
+        projectId: n % 2 === 0 ? "proj_a" : "proj_b",
+        host: n % 3 === 0 ? { id: "host_2", name: "work" } : { id: "host_1", name: "Laptop" },
+        environment: { branchName: n % 4 === 0 ? "main" : `fix/${n}` },
+        createdAt: Date.now() - n * 60_000,
+      }),
+    );
+    await render(width, { ...from, organizationMode, extraThreads: many, height: 600 });
+    await screen.findByRole("link", { name: /Open Long 0\b/ });
+    fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
+    const panel = await screen.findByRole("dialog");
+    const chunks = () => [...document.querySelectorAll<HTMLElement>("[data-sidebar-windowed-item]")];
+    const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    /** Scrolls top to bottom in steps: no chunk changes height as it mounts or unmounts. */
+    async function scrollThrough() {
+      const heights = new Map<number, number>();
+      const scrollHeight = document.documentElement.scrollHeight;
+      for (let top = 0; top <= scrollHeight; top += 300) {
+        window.scrollTo(0, top);
+        await settle();
+        await settle();
+        expect(document.documentElement.scrollHeight, `list height at ${top}`).toBe(scrollHeight);
+        for (const [index, chunk] of chunks().entries()) {
+          const seen = heights.get(index);
+          const now = chunk.getBoundingClientRect().height;
+          if (seen === undefined) heights.set(index, now);
+          else expect(now, `chunk ${index} at ${top}`).toBe(seen);
+        }
+      }
+    }
+
+    await scrollThrough();
+    const flip = (element: HTMLElement) => element.click();
+    // Mid-scroll, switch Density, then Branch line, and scroll again after each.
+    for (const change of ["density", "branchLine"] as const) {
+      window.scrollTo(0, document.documentElement.scrollHeight / 2);
+      await settle();
+      if (change === "density") {
+        const other = from.density === "compact" ? "Comfortable" : "Compact";
+        flip(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: other }));
+      } else {
+        flip(within(panel).getByRole("checkbox", { name: /Branch line/ }));
+      }
+      await settle();
+      await settle();
+      await scrollThrough();
+    }
+    window.scrollTo(0, 0);
+    await userEvent.keyboard("{Escape}");
+    await expect.poll(() => screen.queryByRole("dialog")).toBeNull();
+    // Back to the frame every other test draws in.
+    await page.viewport(320, 1600);
+  }
+
+  it.each(
+    COMBINATIONS.flatMap((from) =>
+      (["project", "chronological", "machine"] as const).map((organizationMode) => ({ from, organizationMode })),
+    ),
+  )("scrolls a long list with nothing moving, from $from.density and Branch line $from.branchLine, grouped by $organizationMode, after switching both mid-scroll", async ({ from, organizationMode }) => {
+    await expectSteadyScroll(from, organizationMode);
+  });
+
+  // Last in the file: Chromium's touch emulation, which makes the pointer
+  // coarse, leaves hover off once switched back, so no test may follow it.
+  describe("on a phone", () => {
+    beforeAll(async () => {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    });
+    afterAll(async () => {
+      await cdp().send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    });
+
+    it.each(COMBINATIONS)("draws every row and header at its height under $density with Branch line $branchLine", async (options) => {
+      await expectHeights(options, true);
+    });
+
+    it.each(COMBINATIONS)("scrolls a long list with nothing moving, from $density and Branch line $branchLine, after switching both mid-scroll", async (from) => {
+      await expectSteadyScroll(from, "project", 390);
+    });
   });
 });

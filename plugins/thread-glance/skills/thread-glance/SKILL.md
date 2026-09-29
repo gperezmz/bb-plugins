@@ -59,9 +59,11 @@ and `bb environment list`; a thread id is a `thr_…` id.
 | `childAttention` | Needs attention counts every child. Which child threads need attention (collapsed groups, the need-you filter, counters, auto-reveal) and stay out of a tree's "N more child threads" fold alongside running ones: `blocked` counts a child that waits on you, is offline, or has an orphaned failure (its parent thread idle for 5 seconds since it failed); `everything` also counts every failed or unread child | `blocked` |
 | `harnessIcon` | How rows that draw a harness logo draw it: `muted` (monochrome) or `colour` (the provider's tint). A row draws one only where its harness differs from bb's default (a root) or its parent thread's (a child) | `muted` |
 
-Row density and the need-you filter are kept per browser window, and the CLI
-cannot read or change them. A tree that needs attention always stays in its
-group, drawn even when the group is collapsed.
+Density (row spacing, Compact or Comfortable) and the Branch line switch (a
+thread off its project's default branch names the branch on a second line)
+are kept per device in the browser, and the need-you filter per browser
+window; the CLI cannot read or change any of them. A tree that needs
+attention always stays in its group, drawn even when the group is collapsed.
 
 Sections themselves and the section a thread is in are bb core state: use
 `bb thread section` and `bb thread update`.

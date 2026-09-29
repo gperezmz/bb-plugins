@@ -32,6 +32,7 @@ import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } 
 import { SplitMiniMap, type MiniMapPane } from "./SplitMiniMap";
 import { ThreadDetails } from "./ThreadDetails";
 import { useRowCard } from "./row-card";
+import { NESTED_MARK_TWO_LINES, THREAD_ROW_HEIGHT } from "./row-heights";
 import { ROW_HOVER_HIDES, ROW_HOVER_LAYS_OUT, ROW_HOVER_SHOWS } from "./input-modality";
 
 /** Two clicks on one row within this window start a rename, as in bb. */
@@ -337,7 +338,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       {...longPress}
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
-        twoLines ? "h-11 max-md:pointer-coarse:h-12" : "h-7 max-md:pointer-coarse:h-9",
+        THREAD_ROW_HEIGHT[controller.density][twoLines ? "two" : "one"],
         isActive
           ? "bg-state-active text-sidebar-foreground"
           : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -378,7 +379,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           className={cn(
             "pointer-events-none relative -ml-[3px] -mr-px w-1.5 shrink-0 text-center text-[10px] leading-none text-muted-foreground",
             // On two-line rows it sits beside the title, not between the lines.
-            twoLines && "mt-[9px] self-start",
+            twoLines && NESTED_MARK_TWO_LINES[controller.density],
           )}
         >
           ↳
@@ -644,7 +645,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   );
 });
 
-/** The Comfortable second line: the branch, then its pull request badge. */
+/** The branch line: the branch, then its pull request badge. */
 function BranchLine({ row, branch }: { row: ThreadRow; branch: string }) {
   const environment = row.info.thread.environment;
   return (

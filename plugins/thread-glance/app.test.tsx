@@ -272,13 +272,14 @@ describe("Thread Glance slot", () => {
       .map((box) => [box.textContent, box.getAttribute("aria-checked")]);
     expect(checkboxes).toEqual([
       ["Worktrees as foldersThreads sharing a worktree fold into one row", "false"],
+      ["Branch line" + "A thread off its project's default branch names the branch under its title", "false"],
       ["Needs attention counts every child" + "Every unread or failed child thread; otherwise only those blocked on you.", "false"],
     ]);
     expect(within(panel).getByRole("button", { name: /Sort order: Newest first/ }).textContent).toBe("↓");
     // Nothing else: the radios, checkboxes and the arrow are every control.
     expect(within(panel).getAllByRole("radio")).toHaveLength(15);
     expect(within(panel).getAllByRole("button")).toHaveLength(1);
-    expect(panel.querySelectorAll("button")).toHaveLength(15 + 2 + 1);
+    expect(panel.querySelectorAll("button")).toHaveLength(15 + 3 + 1);
   });
 
   it("reverses every group with the ↓/↑ button", async () => {
@@ -315,22 +316,50 @@ describe("Thread Glance slot", () => {
     expect(order()).toEqual(["Open A old", "Open A new"]);
   });
 
-  it("applies a density picked in the panel to the list at once, and keeps it for the next list", async () => {
-    // Comfortable rows add a second line, here the branch.
+  it("applies Density and Branch line picked in the panel at once, each leaving the other, and keeps both for the next list", async () => {
     const threads = [makeThread({ id: "a", title: "Busy", ...working, environment: { branchName: "feature" } })];
     render(threads);
     const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
     await screen.findByRole("link", { name: /Open Busy/ });
-    const compact = row().textContent;
     const panel = await openSettings();
-    fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Comfortable" }));
-    await waitFor(() => expect(row().textContent).not.toBe(compact));
-    const comfortable = row().textContent;
-    expect(comfortable).toContain("feature");
+    const branchLine = () => within(panel).getByRole("checkbox", { name: /Branch line/ });
+    const comfortable = () => within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Comfortable" });
+    expect(row().textContent).not.toContain("feature");
+    // Density alone is spacing: the row stays one line.
+    fireEvent.click(comfortable());
+    await waitFor(() => expect(row().className).toContain("h-8"));
+    expect(row().textContent).not.toContain("feature");
+    expect(branchLine().getAttribute("aria-checked")).toBe("false");
+    // Branch line alone adds the branch, in either density.
+    fireEvent.click(branchLine());
+    await waitFor(() => expect(row().textContent).toContain("feature"));
+    expect(comfortable().getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: "Compact" }));
+    await waitFor(() => expect(row().className).toContain("h-11"));
+    expect(row().textContent).toContain("feature");
+    expect(branchLine().getAttribute("aria-checked")).toBe("true");
+    expect(JSON.parse(localStorage.getItem("bb.thread-glance.client.v1")!)).toEqual({ density: "compact", branchLine: true });
     cleanup();
     render(threads);
     await screen.findByRole("link", { name: /Open Busy/ });
-    expect(row().textContent).toBe(comfortable);
+    expect(row().textContent).toContain("feature");
+    expect(row().className).toContain("h-11");
+  });
+
+  it("opens a device that saved Comfortable on 0.5.0 with Branch line on, and one that saved Compact with it off", async () => {
+    const threads = [makeThread({ id: "a", title: "Busy", ...working, environment: { branchName: "feature" } })];
+    const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    render(threads);
+    await screen.findByRole("link", { name: /Open Busy/ });
+    expect(row().textContent).toContain("feature");
+    expect(row().className).toContain("h-12");
+    cleanup();
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "compact" }));
+    render(threads);
+    await screen.findByRole("link", { name: /Open Busy/ });
+    expect(row().textContent).not.toContain("feature");
+    expect(row().className).toContain("h-7");
   });
 
   it("finds the default branch through the project's default source, and draws no branch line until it knows it", async () => {
@@ -382,7 +411,7 @@ describe("Thread Glance slot", () => {
     expect(dot?.className).toContain("--timeline-accent");
   });
 
-  it("puts the pull request badge after the branch in Comfortable, on the title line in Compact, and names another machine beside the age", async () => {
+  it("puts the pull request badge after the branch with Branch line on, on the title line with it off, and names another machine beside the age", async () => {
     const threads = [
       makeThread({ id: "b", title: "Topic", environment: { branchName: "fix/login" }, host: { id: "host_2", name: "work" } }),
     ];
@@ -391,13 +420,13 @@ describe("Thread Glance slot", () => {
     const anchor = await screen.findByRole("link", { name: /Open Topic/ });
     const row = anchor.parentElement!;
     const badge = await within(row).findByLabelText(/Pull request #7/);
-    // Compact: one line, the badge beside the title, and no branch.
+    // Branch line off: one line, the badge beside the title, and no branch.
     expect(row.textContent).not.toContain("fix/login");
     expect(within(row).getByLabelText("On work").textContent).toBe("work");
     expect(within(row).getByLabelText(/ago|now/)).toBeTruthy();
     expect(badge.closest("span.flex-col")).toBeNull();
     cleanup();
-    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
+    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "compact", branchLine: true }));
     render(threads, { extra });
     const comfortable = (await screen.findByRole("link", { name: /Open Topic/ })).parentElement!;
     await waitFor(() => expect(comfortable.textContent).toContain("fix/login"));
@@ -407,7 +436,7 @@ describe("Thread Glance slot", () => {
     expect(within(comfortable).getByLabelText("On work")).toBeTruthy();
   });
 
-  it("keeps the pull request badge on the title line of a Comfortable row whose second line is a note", async () => {
+  it("keeps the pull request badge on the title line of a row whose second line is a note, with Branch line on", async () => {
     localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
     render(
       [makeThread({ id: "f", title: "Broke", status: "error", environment: { branchName: "fix/y" } })],

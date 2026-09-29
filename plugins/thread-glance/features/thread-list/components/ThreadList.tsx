@@ -222,7 +222,7 @@ function ThreadListBody({
             settle,
             defaultProviderId: system.defaultProviderId,
             primaryHostId: system.primaryHostId,
-            comfortable: client.density === "comfortable",
+            showBranchLine: client.branchLine,
             defaultBranchOf,
             needYouOnly: needYouActive(needYouOn, countNeedYou(forest)),
           })),
@@ -237,7 +237,7 @@ function ThreadListBody({
       settle,
       system.defaultProviderId,
       system.primaryHostId,
-      client.density,
+      client.branchLine,
       defaultBranchOf,
       needYouOn,
     ],
@@ -400,7 +400,8 @@ function ThreadListBody({
     if (!built) return null;
     return {
       compact: isCompactViewport,
-      comfortable: client.density === "comfortable",
+      density: client.density,
+      showBranchLine: client.branchLine,
       setEditingId,
       harnessIcon: prefs.harnessIcon,
       provider: providerDisplay,
@@ -445,6 +446,7 @@ function ThreadListBody({
     built,
     isCompactViewport,
     client.density,
+    client.branchLine,
     prefs.harnessIcon,
     prefs.organizationMode,
     providerDisplay,
@@ -741,10 +743,11 @@ function ThreadListBody({
           <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
-            {view.groups.map((group) => (
+            {view.groups.map((group, index) => (
               <GroupSection
                 key={group.descriptor.id}
                 group={group}
+                gapAbove={index > 0}
                 rowController={rowController}
                 groupController={groupController}
                 environmentProviders={environmentProviders}
@@ -772,10 +775,11 @@ function ThreadListBody({
                 </PopoverTrigger>
                 <PopoverContent side="right" align="end" className="max-h-[70vh] w-72 overflow-y-auto p-1">
                   <div data-sidebar-overflow="true" className="flex flex-col">
-                    {view.more.map((group) => (
+                    {view.more.map((group, index) => (
                       <GroupSection
                         key={group.descriptor.id}
                         group={group}
+                        gapAbove={index > 0}
                         rowController={rowController}
                         groupController={groupController}
                         environmentProviders={environmentProviders}

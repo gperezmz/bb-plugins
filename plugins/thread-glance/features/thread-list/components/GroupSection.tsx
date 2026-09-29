@@ -22,6 +22,7 @@ import { CounterStrip } from "./glyphs";
 import { visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
 import { HEADER_HOVER_HIDES, HEADER_HOVER_SHOWS } from "./input-modality";
+import { ESTIMATED_ROW_HEIGHT, GROUP_GAP } from "./row-heights";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
 
 export interface GroupController {
@@ -43,8 +44,6 @@ export interface GroupController {
 }
 
 export type DropStates = ReadonlyMap<string, "valid" | "blocked" | "unchanged" | "before" | "after">;
-
-const ROW_HEIGHT = { compact: 28, comfortable: 44 };
 
 function canRename(group: GroupView): boolean {
   return group.descriptor.kind === "section" || group.descriptor.kind === "machine";
@@ -311,14 +310,16 @@ function Rows({
   now,
   stamps,
 }: RowsProps) {
-  const rowHeight = rowController.comfortable ? ROW_HEIGHT.comfortable : ROW_HEIGHT.compact;
+  // A chunk measured under another density or Branch line would keep that
+  // height while off screen, so a change mounts every chunk afresh to measure.
+  const layout = `${rowController.density}:${rowController.showBranchLine}`;
   return (
     <div data-sidebar="group-content" className="flex w-full flex-col text-sm">
       {chunk(all).map((rows) => (
         <WindowedChunk
-          key={rowKey(rows[0]!)}
+          key={`${layout}:${rowKey(rows[0]!)}`}
           rows={rows}
-          rowHeight={rowHeight}
+          rowHeight={ESTIMATED_ROW_HEIGHT[rowController.density]}
           forceMount={
             forceMount ||
             rows.some(
@@ -370,12 +371,15 @@ export const GroupSection = memo(function GroupSection({
   groupController,
   dropTargetGroupId,
   inOverflow = false,
+  gapAbove,
   ...rest
 }: SectionProps & {
   group: GroupView;
   groupController: GroupController;
   dropTargetGroupId: string | null;
   inOverflow?: boolean;
+  /** Every group but the first shown gets space above its header. */
+  gapAbove: boolean;
 }) {
   const droppable = useDroppable({
     id: `drop-group:${group.descriptor.id}`,
@@ -387,7 +391,7 @@ export const GroupSection = memo(function GroupSection({
       aria-label={group.descriptor.label}
       data-sidebar-visibility-group={group.descriptor.id}
       data-sidebar-section-id={group.descriptor.kind === "section" ? group.descriptor.entityId ?? undefined : undefined}
-      className="relative flex w-full min-w-0 flex-col"
+      className={cn("relative flex w-full min-w-0 flex-col", gapAbove && GROUP_GAP[rest.rowController.density])}
     >
       <GroupHeader
         group={group}

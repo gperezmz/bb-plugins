@@ -4,7 +4,7 @@
 import { createContext } from "react";
 import type { PluginSidebarSection, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { Stamps } from "@/shared/contract";
-import type { HarnessIcon, OrganizationMode } from "@/shared/preferences";
+import type { ClientPreferences, HarnessIcon, OrganizationMode } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
 import type { ThreadTree } from "../model/trees";
 import type { RowMenuAction } from "../model/menu";
@@ -19,7 +19,9 @@ export interface ModelInfo {
 
 export interface RowController {
   compact: boolean;
-  comfortable: boolean;
+  density: ClientPreferences["density"];
+  /** The Branch line switch; rows read theirs off the row, the windowing re-measures on a change. */
+  showBranchLine: boolean;
   setEditingId(id: string | null): void;
   harnessIcon: HarnessIcon;
   /** One object per harness, the same one on every call. */
