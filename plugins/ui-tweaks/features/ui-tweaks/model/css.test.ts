@@ -32,8 +32,12 @@ const VIEW =
   `:is(:not(:has(${BOX} :is([contenteditable], textarea):not([data-queued-message-inline-editor] *))), :has(${BOX} ${WRAPPER}))`;
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
 const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
+const MENU =
+  `${VIEW} ${BOX} [data-follow-up-composer] [data-promptbox-input-region]:has([data-promptbox-editor-scroll]) ~ ` +
+  "[data-promptbox-typeahead-menu]:not([data-queued-message-inline-editor] *)";
 const NEW_THREAD = ".max-w-\\[760px\\]:has([data-promptbox-editor-scroll] #root-compose-prompt)";
 const NEW_THREAD_WRAPPER = `${NEW_THREAD} [data-promptbox-editor-scroll]:has(#root-compose-prompt)`;
+const NEW_THREAD_MENU = `${NEW_THREAD} [data-promptbox-input-region]:has(#root-compose-prompt) ~ [data-promptbox-typeahead-menu]`;
 
 describe("the tweaks stylesheet", () => {
   it("is empty for Medium and Medium, bb's own look", () => {
@@ -72,10 +76,10 @@ describe("the tweaks stylesheet", () => {
     expect(css).toContain(`--text-sm: ${sm}px;`);
     // A mention pill is text-xs with a fixed leading-4.
     expect(css).toContain(`${EDITOR} .leading-4 { --tw-leading: ${leading4}px; line-height: ${leading4}px; }`);
-    // Every rule reaching into the composer column is one for its editor.
+    // Every rule reaching into the composer column is one for its editor or its Typeahead menu.
     const inBox = css.split("\n").filter((rule) => rule.includes(`${VIEW} ${BOX}`));
     expect(inBox.length).toBeGreaterThan(0);
-    expect(inBox.filter((rule) => !rule.includes(EDITOR))).toEqual([]);
+    expect(inBox.filter((rule) => !rule.includes(EDITOR) && !rule.includes(MENU))).toEqual([]);
   });
 
   it("scales the New-thread screen's typed text by the same ratio, in its editor wrapper only", () => {
@@ -83,6 +87,20 @@ describe("the tweaks stylesheet", () => {
     expect(css).toContain(`${NEW_THREAD_WRAPPER} { --text-2xs: 12px;`);
     expect(css).toContain(`${NEW_THREAD_WRAPPER} .leading-4 { --tw-leading: 18px;`);
     expect(css).not.toContain(`${NEW_THREAD} {`);
+  });
+
+  it.each([
+    ["small", 11, 9],
+    ["large", 14, 12],
+  ] as const)("scales %s's text in the Typeahead menu the composer opens, in a thread view and on the New-thread screen", (textSize, xs, twoXs) => {
+    const css = tweaksCss({ textSize, width: "medium" }, ROOT);
+    for (const menu of [MENU, NEW_THREAD_MENU]) {
+      const rule = css.split("\n").find((line) => line.includes(`${menu} { `));
+      expect(rule).toContain(`--text-xs: ${xs}px;`);
+      expect(rule).toContain(`--text-2xs: ${twoXs}px;`);
+      // Its icons and width are set in --spacing and rem, never in a text variable.
+      expect(rule).not.toMatch(/--spacing|width|size-/);
+    }
   });
 
   it("puts bb's own sizes back in the editor bb moves into the transcript to edit a sent message", () => {

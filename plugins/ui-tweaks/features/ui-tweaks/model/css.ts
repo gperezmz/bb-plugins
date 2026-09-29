@@ -4,11 +4,13 @@ import {
   COLUMN,
   COMPOSER,
   COMPOSER_EDITOR,
+  COMPOSER_TYPEAHEAD_MENU,
   EDITABLE,
   hasTextTarget,
   NEW_THREAD_COLUMN,
   NEW_THREAD_EDITOR,
   NEW_THREAD_EDITOR_WRAPPER,
+  NEW_THREAD_TYPEAHEAD_MENU,
   SENT_MESSAGE_EDITOR_HOST,
   TEXT_VARIABLES,
   THREAD_VIEW,
@@ -26,10 +28,12 @@ const VIEW =
   `:is(:not(:has(${COMPOSER.selector} ${EDITABLE})), :has(${COMPOSER.selector} ${COMPOSER_EDITOR.selector}))`;
 const IN_COLUMN = `${VIEW} ${COLUMN.selector}`;
 const IN_COMPOSER_EDITOR = `${VIEW} ${COMPOSER.selector} ${COMPOSER_EDITOR.selector}`;
+const IN_COMPOSER_TYPEAHEAD_MENU = `${VIEW} ${COMPOSER.selector} ${COMPOSER_TYPEAHEAD_MENU}`;
 
 /** A New-thread screen's column holding its editor wrapper; one lacking either matches nothing. */
 const NEW_THREAD = `${NEW_THREAD_COLUMN.selector}:has(${NEW_THREAD_EDITOR_WRAPPER.selector} ${NEW_THREAD_EDITOR})`;
 const IN_NEW_THREAD_EDITOR_WRAPPER = `${NEW_THREAD} ${NEW_THREAD_EDITOR_WRAPPER.selector}:has(${NEW_THREAD_EDITOR})`;
+const IN_NEW_THREAD_TYPEAHEAD_MENU = `${NEW_THREAD} ${NEW_THREAD_TYPEAHEAD_MENU}`;
 
 // bb's text utilities that bypass the --text-* variables, with the font size
 // each one sets or the line height in steps of --spacing.
@@ -60,7 +64,8 @@ export function tweaksCss(tweaks: Tweaks, rootVariables: Readonly<Record<string,
   const rules: string[] = [];
   const scale = TEXT_SCALE[tweaks.textSize];
   if (scale !== 1) {
-    for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR, IN_NEW_THREAD_EDITOR_WRAPPER]) rules.push(...scaledTextRules(scope, scale, rootVariables, remPx));
+    const scopes = [IN_COLUMN, IN_COMPOSER_EDITOR, IN_COMPOSER_TYPEAHEAD_MENU, IN_NEW_THREAD_EDITOR_WRAPPER, IN_NEW_THREAD_TYPEAHEAD_MENU];
+    for (const scope of scopes) rules.push(...scaledTextRules(scope, scale, rootVariables, remPx));
     // Puts bb's own sizes back inside the column's scaled ones.
     rules.push(...scaledTextRules(`${IN_COLUMN} ${SENT_MESSAGE_EDITOR_HOST}`, 1, rootVariables, remPx));
   }
