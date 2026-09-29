@@ -28,7 +28,7 @@ const IN_COMPOSER_EDITOR = `${VIEW} ${COMPOSER.selector} ${COMPOSER_EDITOR.selec
 
 /** A New-thread screen's column holding its editor wrapper; one lacking either matches nothing. */
 const NEW_THREAD = `${NEW_THREAD_COLUMN.selector}:has(${NEW_THREAD_EDITOR_WRAPPER.selector} ${NEW_THREAD_EDITOR})`;
-const IN_NEW_THREAD_EDITOR = `${NEW_THREAD} ${NEW_THREAD_EDITOR_WRAPPER.selector}:has(${NEW_THREAD_EDITOR})`;
+const IN_NEW_THREAD_EDITOR_WRAPPER = `${NEW_THREAD} ${NEW_THREAD_EDITOR_WRAPPER.selector}:has(${NEW_THREAD_EDITOR})`;
 
 // bb's text utilities that bypass the --text-* variables, with the font size
 // or line height each one sets.
@@ -58,14 +58,15 @@ export function tweaksCss(tweaks: Tweaks, rootVariables: Readonly<Record<string,
   const rules: string[] = [];
   const scale = TEXT_SCALE[tweaks.textSize];
   if (scale !== 1) {
-    for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR, IN_NEW_THREAD_EDITOR]) rules.push(...scaledTextRules(scope, scale, rootVariables));
+    for (const scope of [IN_COLUMN, IN_COMPOSER_EDITOR, IN_NEW_THREAD_EDITOR_WRAPPER]) rules.push(...scaledTextRules(scope, scale, rootVariables));
   }
   const width = WIDTH_PX[tweaks.width];
   if (width !== WIDTH_PX.medium) {
-    // The inline --md-content-w bb sets on the column yields only to !important.
-    rules.push(`${IN_COLUMN} { max-width: ${width}px; --md-content-w: ${width}px !important; }`);
+    // The inline --md-content-w bb sets on a column yields only to !important.
+    const column = `max-width: ${width}px; --md-content-w: ${width}px !important;`;
+    rules.push(`${IN_COLUMN} { ${column} }`);
     rules.push(`${VIEW} ${COMPOSER.selector} { max-width: ${width}px; }`);
-    rules.push(`${NEW_THREAD} { max-width: ${width}px; --md-content-w: ${width}px !important; }`);
+    rules.push(`${NEW_THREAD} { ${column} }`);
   }
   if (rules.length === 0) return "";
   return `@media not (${PHONE_QUERY}) {\n${rules.map((rule) => `  ${rule}`).join("\n")}\n}\n`;

@@ -21,7 +21,7 @@ const VIEW =
 const COLUMN = `${VIEW} .max-w-\\[760px\\][style*="--md-content-w"]`;
 const EDITOR = `${VIEW} ${BOX} ${WRAPPER}`;
 const NEW_THREAD = '.max-w-\\[760px\\][style*="--md-content-w"]:has([data-promptbox-editor-scroll] #root-compose-prompt)';
-const NEW_THREAD_EDITOR = `${NEW_THREAD} [data-promptbox-editor-scroll]:has(#root-compose-prompt)`;
+const NEW_THREAD_WRAPPER = `${NEW_THREAD} [data-promptbox-editor-scroll]:has(#root-compose-prompt)`;
 
 describe("the tweaks stylesheet", () => {
   it("is empty for Medium and Medium, bb's own look", () => {
@@ -70,8 +70,8 @@ describe("the tweaks stylesheet", () => {
   it("scales the New-thread screen's typed text by the same ratio, in its editor wrapper only", () => {
     const css = tweaksCss({ textSize: "large", width: "medium" }, ROOT);
     const scale = 15 / 13;
-    expect(css).toContain(`${NEW_THREAD_EDITOR} { --text-2xs: calc(.625rem * ${scale});`);
-    expect(css).toContain(`${NEW_THREAD_EDITOR} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * ${scale});`);
+    expect(css).toContain(`${NEW_THREAD_WRAPPER} { --text-2xs: calc(.625rem * ${scale});`);
+    expect(css).toContain(`${NEW_THREAD_WRAPPER} .leading-4 { --tw-leading: calc(calc(var(--spacing) * 4) * ${scale});`);
     expect(css).not.toContain(`${NEW_THREAD} {`);
   });
 

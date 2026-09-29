@@ -25,6 +25,9 @@ export const COMPOSER: Target = {
   selector: ".chat-prompt-box.max-w-\\[760px\\]",
 };
 
+/** The wrapper around a prompt editor, which sets the size of its text. */
+const EDITOR_WRAPPER = "[data-promptbox-editor-scroll]";
+
 /**
  * The wrapper around the thread composer's editor, which sets the size of
  * its text. The editor for a queued message sits in the same composer column
@@ -32,7 +35,7 @@ export const COMPOSER: Target = {
  */
 export const COMPOSER_EDITOR: Target = {
   name: "the composer's editor wrapper ([data-follow-up-composer] [data-promptbox-editor-scroll])",
-  selector: "[data-follow-up-composer] [data-promptbox-editor-scroll]",
+  selector: `[data-follow-up-composer] ${EDITOR_WRAPPER}`,
 };
 
 /**
@@ -42,7 +45,8 @@ export const COMPOSER_EDITOR: Target = {
  */
 export const EDITABLE = ":is([contenteditable], textarea):not([data-queued-message-inline-editor] *)";
 
-export const VIEW_TARGETS: readonly Target[] = [COLUMN, COMPOSER];
+/** The thread view targets that must be there whatever its composer shows. */
+export const VIEW_COLUMNS: readonly Target[] = [COLUMN, COMPOSER];
 
 /** The New-thread screen's editor: a screen showing it is a New-thread screen. */
 export const NEW_THREAD_EDITOR = "#root-compose-prompt";
@@ -53,10 +57,9 @@ export const NEW_THREAD_COLUMN: Target = {
   selector: COLUMN.selector,
 };
 
-/** The wrapper around the New-thread screen's editor, which sets the size of its text. */
 export const NEW_THREAD_EDITOR_WRAPPER: Target = {
-  name: "its editor wrapper ([data-promptbox-editor-scroll])",
-  selector: "[data-promptbox-editor-scroll]",
+  name: `its editor wrapper (${EDITOR_WRAPPER})`,
+  selector: EDITOR_WRAPPER,
 };
 
 /** bb's text size variables, set at the root, that the text size tweak scales. */
@@ -72,7 +75,7 @@ export function hasTextTarget(rootVariables: Readonly<Record<string, string>>): 
 
 /** Names of the targets a thread view lacks, in a fixed order. */
 export function missingTargets(view: ParentNode, rootVariables: Readonly<Record<string, string>>): string[] {
-  const missing = VIEW_TARGETS.filter((target) => view.querySelector(target.selector) === null).map((target) => target.name);
+  const missing = VIEW_COLUMNS.filter((target) => view.querySelector(target.selector) === null).map((target) => target.name);
   const composer = view.querySelector(COMPOSER.selector);
   if (composer?.querySelector(EDITABLE) && !composer.querySelector(COMPOSER_EDITOR.selector)) {
     missing.push(COMPOSER_EDITOR.name);
@@ -81,12 +84,7 @@ export function missingTargets(view: ParentNode, rootVariables: Readonly<Record<
   return missing;
 }
 
-/**
- * Names of the targets the New-thread screen around `editor` lacks, in a
- * fixed order.
- *
- * @param editor The screen's `#root-compose-prompt`.
- */
+/** Names of the targets lacked by the New-thread screen around its `#root-compose-prompt`, in a fixed order. */
 export function missingNewThreadTargets(editor: Element, rootVariables: Readonly<Record<string, string>>): string[] {
   const missing: string[] = [];
   // The stylesheet reaches the editor as a descendant of each, never as either.

@@ -41,7 +41,7 @@ export function mountTweaks(): () => void {
   };
   const unsubscribe = tweakState.subscribe(render);
   phone.addEventListener("change", render);
-  const stopWatching = watchTargets((message) => console.warn(message));
+  const stopWatching = watchScreens((message) => console.warn(message));
 
   return () => {
     unsubscribe();
@@ -51,34 +51,24 @@ export function mountTweaks(): () => void {
   };
 }
 
-/** What the watcher looks for: the elements standing for one kind of screen, and what each lacks. */
-interface Watched {
+/** A kind of screen the watcher looks for: the element standing for each one, and what each lacks. */
+interface WatchedScreen {
+  kind: string;
   selector: string;
   missing(element: Element, rootVariables: Record<string, string>): string[];
-  warning(missing: string[]): string;
 }
 
-const WATCHED: readonly Watched[] = [
-  {
-    selector: THREAD_VIEW,
-    missing: missingTargets,
-    warning: (missing) =>
-      `UI Tweaks: a thread view lacks ${missing.join(", ")}, so neither tweak applies to it. bb may have changed its thread view.`,
-  },
-  {
-    // A New-thread screen is known by its editor, so the editor stands for it.
-    selector: NEW_THREAD_EDITOR,
-    missing: missingNewThreadTargets,
-    warning: (missing) =>
-      `UI Tweaks: a New-thread screen lacks ${missing.join(", ")}, so neither tweak applies to it. bb may have changed its New-thread screen.`,
-  },
+const WATCHED_SCREENS: readonly WatchedScreen[] = [
+  { kind: "thread view", selector: THREAD_VIEW, missing: missingTargets },
+  // A New-thread screen is known by its editor, so the editor stands for it.
+  { kind: "New-thread screen", selector: NEW_THREAD_EDITOR, missing: missingNewThreadTargets },
 ];
 
 /**
  * Warns once about each thread view and New-thread screen that has lacked a
  * target for {@link GRACE_MS}. Returns the function that stops watching.
  */
-export function watchTargets(warn: (message: string) => void): () => void {
+export function watchScreens(warn: (message: string) => void): () => void {
   const firstSeen = new WeakMap<Element, number>();
   const warned = new WeakSet<Element>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -97,8 +87,8 @@ export function watchTargets(warn: (message: string) => void): () => void {
     if (stopped) return;
     const now = Date.now();
     let rootVariables: Record<string, string> | null = null;
-    for (const watched of WATCHED) {
-      for (const element of document.querySelectorAll(watched.selector)) {
+    for (const screen of WATCHED_SCREENS) {
+      for (const element of document.querySelectorAll(screen.selector)) {
         if (warned.has(element)) continue;
         const seen = firstSeen.get(element);
         if (seen === undefined) {
@@ -108,10 +98,12 @@ export function watchTargets(warn: (message: string) => void): () => void {
         }
         if (now - seen < GRACE_MS) continue;
         rootVariables ??= readRootVariables();
-        const missing = watched.missing(element, rootVariables);
+        const missing = screen.missing(element, rootVariables);
         if (missing.length === 0) continue;
         warned.add(element);
-        warn(watched.warning(missing));
+        warn(
+          `UI Tweaks: a ${screen.kind} lacks ${missing.join(", ")}, so neither tweak applies to it. bb may have changed its ${screen.kind}.`,
+        );
       }
     }
   };
