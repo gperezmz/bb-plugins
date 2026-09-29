@@ -253,3 +253,7 @@ _Avoid_: Thread window, chat panel, thread surface
 **New-thread screen**:
 bb's page for starting a thread, with its composer, on the home page or in a split pane.
 _Avoid_: Home composer, root compose
+
+**Typeahead menu**:
+The menu bb opens above the composer while you type a slash command or a mention, listing what can be inserted.
+_Avoid_: Mention menu, popup, slash menu
