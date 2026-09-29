@@ -1,9 +1,10 @@
 // Realtime channels, their payloads and the schemas the app validates them
 // with. Nothing here imports the SDK, so the app bundle can use its values.
-import { z } from "zod";
+import * as z from "zod/mini";
 import type { PreferenceKey } from "./preferences";
 
-const stampMapSchema = z.record(z.string(), z.number());
+/** Epoch ms per thread id. */
+export const stampMapSchema = z.record(z.string(), z.number());
 
 /** Per-thread timestamps (epoch ms) kept by the server. */
 export const stampsSchema = z.object({
@@ -25,17 +26,17 @@ export const NOTE_MAX_LENGTH = 140;
 export const noteSchema = z.object({
   /** question: asks the user; approval: a command, file or permission; plan: plan review; input: other requests. */
   kind: z.enum(["question", "approval", "plan", "input", "failed", "done"]),
-  text: z.string().max(NOTE_MAX_LENGTH),
+  text: z.string().check(z.maxLength(NOTE_MAX_LENGTH)),
   at: z.number(),
 });
 export type Note = z.infer<typeof noteSchema>;
 export const threadNotesSchema = z.object({
   /** The latest pending interaction. */
-  pending: noteSchema.optional(),
+  pending: z.optional(noteSchema),
   /** The latest failure. */
-  failed: noteSchema.optional(),
+  failed: z.optional(noteSchema),
   /** The last assistant text when the thread went idle. */
-  done: noteSchema.optional(),
+  done: z.optional(noteSchema),
 });
 export type ThreadNotes = z.infer<typeof threadNotesSchema>;
 

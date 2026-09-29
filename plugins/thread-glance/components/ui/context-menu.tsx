@@ -10,7 +10,7 @@ import {
   useMenuItemHover,
 } from "./menu-item-hover.js";
 import { LIST_HOVER_TRANSITION } from "./motion.js";
-import { Icon } from "../../components/ui/icon.js";
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 type ContextMenuSubTriggerElement = React.ComponentRef<
   typeof ContextMenuPrimitive.SubTrigger

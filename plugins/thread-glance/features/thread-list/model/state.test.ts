@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ICON_NAMES } from "@/components/ui/icon";
 import { failedUnread, finishedUnread, makeThread, T0, working } from "../testing/fixtures";
+import { HOST_ICON_NAMES } from "../testing/host-icon-names";
 import {
   computeState,
   FLAG_GLYPHS,
@@ -178,7 +178,7 @@ describe("icon names", () => {
       ...ROW_ICON_NAMES,
       ...COUNTER_ICON_NAMES,
     ]);
-    const host = new Set<string>(ICON_NAMES);
+    const host = new Set<string>(HOST_ICON_NAMES);
     expect([...used].filter((name) => !host.has(name))).toEqual([]);
   });
 });
