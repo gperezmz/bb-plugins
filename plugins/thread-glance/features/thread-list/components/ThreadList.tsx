@@ -136,8 +136,6 @@ function ThreadListEdge({
   const draftIds = useSidebarThreadDraftIds();
   const splitLayout = useSidebarSplitLayout();
   const isIdleReporter = useIdleReporter();
-  // bb's calls change identity on every host update; commands read them when they run.
-  store.edge = { actions, sdk, rpc, onNavigate, isIdleReporter };
   const host = {
     status: sidebar.status,
     threads: sidebar.threads,
@@ -153,6 +151,10 @@ function ThreadListEdge({
   useState(() => {
     store.feedFocus(activeThreadId, isCompactViewport);
     store.feedHost(host);
+  });
+  // bb's calls change identity on every host update; commands read them when they run.
+  useLayoutEffect(() => {
+    store.edge = { actions, sdk, rpc, onNavigate, isIdleReporter };
   });
   useLayoutEffect(() => store.feedHost(host));
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);

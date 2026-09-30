@@ -2,8 +2,6 @@
 import { cn } from "@/lib/utils";
 import type { MiniMapPane } from "../model/split";
 
-export type { MiniMapPane };
-
 export function SplitMiniMap({
   panes,
   label,

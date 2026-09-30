@@ -126,7 +126,8 @@ export interface ListStore extends StoreApi<ListState> {
 const WRITE_DEBOUNCE_MS = 150;
 const EMPTY_STAMPS: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
 const STAMP_KINDS = new Set(Object.keys(EMPTY_STAMPS));
-const NO_DROPS: ReadonlyMap<string, DropState> = new Map();
+/** No drop feedback. */
+export const NO_DROPS: ReadonlyMap<string, DropState> = new Map();
 
 const unset = (): never => {
   throw new Error("the list store's edge is not set yet");
@@ -157,6 +158,13 @@ export const CLOSED_UI: ListUi = {
   dropStates: NO_DROPS,
   dropGroupId: null,
 };
+
+/** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */
+export function listStatusOf(state: ListState): "error" | "loading" | "ready" {
+  const { host, hydrated } = state.inputs;
+  if (host.status === "error") return "error";
+  return host.status === "loading" || !hydrated || state.model === null ? "loading" : "ready";
+}
 
 /** Stores with a mounted list, for tests to flush. */
 const attached = new Set<ListStore>();
@@ -244,7 +252,7 @@ export function createListStore(): ListStore {
   const pending = new Map<PreferenceKey, unknown>();
   let writeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const send = (request: () => void) => {
+  const whenMounted = (request: () => void) => {
     if (mounted) request();
     else waiting.push(request);
   };
@@ -256,7 +264,7 @@ export function createListStore(): ListStore {
     const current = api.getState();
     const deadline = current.model?.nextDeadline ?? null;
     api.setState({ inputs: step.inputs, model: step.model, layout: layoutOf(current.layout, step.inputs, compact) });
-    if (step.seen.length > 0) send(() => void store.edge.rpc.call("markSeen", { threadIds: step.seen }).catch(() => undefined));
+    if (step.seen.length > 0) whenMounted(() => void store.edge.rpc.call("markSeen", { threadIds: step.seen }).catch(() => undefined));
     if ((step.model?.nextDeadline ?? null) !== deadline) clock?.reschedule();
   };
 
@@ -292,7 +300,7 @@ export function createListStore(): ListStore {
         tracker = trackIdle(tracker, shared.threads, Date.now());
         const unannounced = [...tracker.unannounced];
         if (unannounced.length > 0) {
-          send(() => {
+          whenMounted(() => {
             if (store.edge.isIdleReporter()) store.edge.rpc.call("reportIdle", { threadIds: unannounced }).catch(() => undefined);
           });
         }

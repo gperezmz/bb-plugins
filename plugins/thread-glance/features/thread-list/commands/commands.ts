@@ -12,7 +12,7 @@ import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
-import type { DropState, ListModel, ListStore } from "../store/api";
+import { NO_DROPS, type DropState, type ListModel, type ListStore } from "../store/api";
 
 const PLUGIN_ID = "thread-glance";
 
@@ -87,8 +87,6 @@ async function copyText(text: string, message: string) {
 }
 
 const fail = (message: string) => (error: unknown) => toast.error(message, { description: describeError(error) });
-
-const NO_DROPS: ReadonlyMap<string, DropState> = new Map();
 
 /** Where each drawn thread is, for drop rules. */
 function dropContextOf(model: ListModel, mode: DropContext["mode"]): DropContext & { groupOfThread(id: string): string } {

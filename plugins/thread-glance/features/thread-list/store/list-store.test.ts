@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeThread, PROJECTS } from "../testing/fixtures";
 import { NO_HOST, type HostData } from "./derive";
-import { createListStore } from "./list-store";
+import { createListStore, listStatusOf } from "./list-store";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -90,5 +90,17 @@ describe("the list store", () => {
     store.setUi({ editingId: "a" });
     store.feedFocus("a", false);
     expect(updates()).toBe(3);
+  });
+
+  it("draws the list once bb's threads, the preferences and the model are all in", () => {
+    const store = createListStore();
+    expect(listStatusOf(store.getState())).toBe("loading");
+    store.feedHost(host());
+    expect(listStatusOf(store.getState())).toBe("loading");
+    store.feed({ hydrated: true });
+    expect(listStatusOf(store.getState())).toBe("ready");
+    const failed = createListStore();
+    failed.feedHost(host({ status: "error" }));
+    expect(listStatusOf(failed.getState())).toBe("error");
   });
 });

@@ -5,8 +5,6 @@ import { cn } from "@/lib/utils";
 import type { HarnessIcon } from "@/shared/preferences";
 import type { ProviderDisplay } from "../model/provider-mark";
 
-export type { ProviderDisplay };
-
 export function ProviderBadge({
   display,
   mode = "muted",

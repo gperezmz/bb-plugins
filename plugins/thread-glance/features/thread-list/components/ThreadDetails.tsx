@@ -8,7 +8,7 @@ import { lastReply } from "../model/notes";
 import { finishedAtFor, stateSince } from "../model/time";
 import { ICONS } from "../icons";
 import type { Commands, ModelInfo } from "../commands/commands";
-import { useClock, useCommands, useLayout, useNotesOf, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
+import { useCommands, useLayout, useNotesOf, useNow, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
 import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
@@ -70,7 +70,7 @@ export function ThreadDetails({
   const { harnessIcon } = useLayout();
   // What changes with every event: only an open card or dialog reads it.
   const stamps = useStampMaps();
-  const now = useClock();
+  const now = useNow();
   const notes = useNotesOf(thread.id);
   const tree = useTreeOf(thread.id);
   const model = useModel(commands, info);

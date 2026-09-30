@@ -1,5 +1,6 @@
 // Row age and working timer. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { Stamps } from "@/shared/contract";
 import type { ThreadInfo } from "./trees";
 
 const MINUTE = 60_000;
@@ -71,11 +72,7 @@ export function trailingTime(
  */
 export function rowTime(
   info: Pick<ThreadInfo, "thread" | "state" | "flags">,
-  stamps: {
-    startedAt: Readonly<Record<string, number>>;
-    finishedAt: Readonly<Record<string, number>>;
-    pendingAt: Readonly<Record<string, number>>;
-  },
+  stamps: Pick<Stamps, "startedAt" | "finishedAt" | "pendingAt">,
   now: number,
 ): TrailingTime | null {
   const thread = info.thread;

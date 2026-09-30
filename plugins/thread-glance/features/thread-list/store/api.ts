@@ -1,9 +1,13 @@
-// The list store's command API: what code outside store/ other than
-// components may use. Components read the store only through ./hooks.
+// The list store's command API: what code outside store/ may use to create,
+// feed and act on it (the list's edge, its data hooks and its commands).
+// Components read the store only through ./hooks. `flushListStores` and
+// `attachedListStores` are for tests, which apply bb's waiting updates
+// where they look instead of waiting for a frame.
 export {
   attachedListStores,
   createListStore,
   flushListStores,
+  NO_DROPS,
   type Confirm,
   type DropState,
   type Edge,

@@ -12,7 +12,7 @@ import type { MiniMapPane } from "../model/split";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView } from "../model/view";
 import type { HostData, ListModel } from "./derive";
-import type { DropState, ListLayout, ListState, ListStore, ListUi } from "./list-store";
+import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi } from "./list-store";
 
 export type { ListLayout };
 
@@ -22,6 +22,10 @@ export interface ListHandle {
   commands: Commands;
 }
 
+// Debt: a provider made outside an app root, which boundaries-frontend-react
+// refuses. The plugin has no app/ folder, and bb mounts the list itself
+// through its slot, so the list's edge is the root that assembles it. It
+// clears if the plugin gains an app root that mounts the list.
 export const ListContext = createContext<ListHandle | null>(null);
 
 function useHandle(): ListHandle {
@@ -49,22 +53,18 @@ const NO_PROVIDERS = providerDisplays([]);
 
 // ——— The list's edge, which holds its store before it provides it ———
 
+const showArchivedOf = (state: ListState) => state.inputs.prefs.showArchived;
+
 /** Show archived, which the edge passes to bb's thread hook. */
 export function useShowArchivedOf(store: ListStore): boolean {
-  return useSelect(store, (state) => state.inputs.prefs.showArchived);
+  return useSelect(store, showArchivedOf);
 }
 
 // ——— The list ———
 
-/** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */
+/** What the list draws (see `listStatusOf`). */
 export function useListStatus(): "error" | "loading" | "ready" {
-  return useListSelect((state) =>
-    state.inputs.host.status === "error"
-      ? "error"
-      : state.inputs.host.status === "loading" || !state.inputs.hydrated || state.model === null
-        ? "loading"
-        : "ready",
-  );
+  return useListSelect(listStatusOf);
 }
 
 export function useFocusedThreadId(): string | null {
@@ -100,7 +100,7 @@ export function useClient(): ClientPreferences {
 }
 
 export function useShowArchived(): boolean {
-  return useListSelect((state) => state.inputs.prefs.showArchived);
+  return useListSelect(showArchivedOf);
 }
 
 /** The list's dialogs and what they show. */
@@ -209,7 +209,8 @@ export function useStampMaps(): Stamps {
   return useListSelect((state) => state.inputs.stamps);
 }
 
-export function useClock(): number {
+/** The list clock's time. */
+export function useNow(): number {
   return useListSelect((state) => state.inputs.now);
 }
 
