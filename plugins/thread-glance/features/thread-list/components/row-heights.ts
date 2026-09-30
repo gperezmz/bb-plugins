@@ -4,9 +4,9 @@
 // height. Whole class names, so Tailwind finds them. model/heights.ts gives
 // the same heights in px, which the list lays rows out by; a browser test
 // holds the two together.
-import type { ClientPreferences } from "@/shared/preferences";
+import type { Density } from "../model/heights";
 
-export type Density = ClientPreferences["density"];
+export type { Density };
 
 /** A thread row, one line or two (a note's or a branch line's). */
 export const THREAD_ROW_HEIGHT: Record<Density, { one: string; two: string }> = {

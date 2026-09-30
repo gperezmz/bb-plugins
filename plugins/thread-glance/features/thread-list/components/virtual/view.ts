@@ -3,22 +3,13 @@
 // off-canvas or with no height, has an empty view. The tracker re-reads it
 // when the scroll area scrolls or resizes, when its intersection with the
 // viewport changes (a drawer opening), and when asked after a render.
-
-/** Rows are mounted this far above and below the view. */
-export const VIEW_MARGIN = 240;
+import type { View } from "../../model/windowing";
 
 export interface Box {
   top: number;
   bottom: number;
   left: number;
   right: number;
-}
-
-export interface View {
-  /** The view's top, from the top of the list's first group. */
-  top: number;
-  /** 0 for an empty view. */
-  height: number;
 }
 
 /**

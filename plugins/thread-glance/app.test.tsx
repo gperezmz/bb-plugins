@@ -1249,3 +1249,28 @@ describe("a child's failure while its parent is idle", () => {
     }
   });
 });
+
+describe("Enter on a row", () => {
+  const link = (title: string) => screen.findByRole("link", { name: new RegExp(`Open ${title}\\b`) });
+
+  it("leaves Enter and every other key on a row's link to the browser, and starts no drag with any", async () => {
+    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })]);
+    const anchor = await link("Alpha");
+    act(() => anchor.focus());
+    for (const key of ["Enter", " ", "ArrowDown", "Escape"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      anchor.dispatchEvent(event);
+      expect(event.defaultPrevented, key).toBe(false);
+    }
+    expect(anchor.parentElement!.className).not.toMatch(/opacity-50/);
+  });
+
+  it("opens the thread and closes the phone drawer when the link is activated, as Enter does", async () => {
+    const onNavigate = vi.fn();
+    // Its own thread: two clicks on one thread within 400 ms, across tests, start a rename.
+    render([makeThread({ id: "entered", title: "Alpha" })], { props: { isCompactViewport: true, onNavigate } });
+    // A browser activates a focused link on Enter with a click.
+    fireEvent.click(await link("Alpha"));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+});

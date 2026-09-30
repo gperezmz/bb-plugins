@@ -42,6 +42,16 @@ function ItemLabel({ item }: { item: Pick<RowMenuItem, "icon" | "label"> }) {
   );
 }
 
+/** A section Move to section offers: a check on the thread's own, room for one on the rest. */
+function SectionTarget({ name, current }: { name: string; current: boolean }) {
+  return (
+    <>
+      {current ? <Icon name={ICONS.check} aria-hidden className="size-4" /> : <span className="size-4" />}
+      {name}
+    </>
+  );
+}
+
 function sectionTargets(sections: readonly PluginSidebarSection[]) {
   return [{ id: null as string | null, name: "Threads" }, ...sections.map((s) => ({ id: s.id as string | null, name: s.name }))];
 }
@@ -146,12 +156,7 @@ export function RowDropdownMenuContent({ items, sections, currentSectionId, onAc
                   className="pl-8"
                   onSelect={() => onAction("move-to-section", target.id)}
                 >
-                  {target.id === currentSectionId ? (
-                    <Icon name={ICONS.check} aria-hidden className="size-4" />
-                  ) : (
-                    <span className="size-4" />
-                  )}
-                  {target.name}
+                  <SectionTarget name={target.name} current={target.id === currentSectionId} />
                 </DropdownMenuItem>
               ))}
             </div>
@@ -167,12 +172,7 @@ export function RowDropdownMenuContent({ items, sections, currentSectionId, onAc
                     disabled={target.id === currentSectionId}
                     onSelect={() => onAction("move-to-section", target.id)}
                   >
-                    {target.id === currentSectionId ? (
-                      <Icon name={ICONS.check} aria-hidden className="size-4" />
-                    ) : (
-                      <span className="size-4" />
-                    )}
-                    {target.name}
+                    <SectionTarget name={target.name} current={target.id === currentSectionId} />
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuSubContent>

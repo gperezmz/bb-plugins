@@ -8,7 +8,8 @@ import type { ThreadRow } from "../../model/view";
 import { useCommands, useRowAt } from "../../store/hooks";
 import { RowContextMenuContent, type ContextMenuInput } from "../RowMenu";
 import { useOverlays } from "./overlays";
-import { useRenameAfterClose, useShownMenu, useThreadMenu } from "./RowMenuHost";
+import { useRenameAfterClose, useShownMenu } from "./menu-state";
+import { useThreadMenu } from "./RowMenuHost";
 
 export function ContextMenuHost() {
   const commands = useCommands();

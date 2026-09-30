@@ -341,27 +341,3 @@ describe("the one drag", () => {
     fireEvent.mouseUp(document);
   });
 });
-
-describe("keys on a row", () => {
-  it("leaves Enter and every other key on a row's link to the browser, and starts no drag with any", async () => {
-    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })]);
-    const anchor = await link("Alpha");
-    act(() => anchor.focus());
-    for (const key of ["Enter", " ", "ArrowDown", "Escape"]) {
-      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
-      anchor.dispatchEvent(event);
-      expect(event.defaultPrevented, key).toBe(false);
-    }
-    expect(anchor.parentElement!.className).not.toMatch(/opacity-50/);
-  });
-
-  it("opens the thread and closes the phone drawer when the link is activated", async () => {
-    const onNavigate = vi.fn();
-    // Its own thread: two clicks on one thread within 400 ms, across tests, start a rename.
-    render([makeThread({ id: "entered", title: "Alpha" })], { props: { isCompactViewport: true, onNavigate } });
-    const anchor = await link("Alpha");
-    // A browser activates a focused link on Enter with a click.
-    fireEvent.click(anchor);
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-  });
-});

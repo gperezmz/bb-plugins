@@ -103,11 +103,25 @@ function acrossCells<T>(
 
 const AT_1500: Cell[] = ["1500/live", "1500/settled"];
 
+/** The commit B16's Baseline column was measured on: #159's merge base. */
+const B16_BASE = "8b75d8f";
+
 /** B16's Baseline column in ms: #159's merge base, the median of 3 runs. */
 const B16_BASELINE = {
   "1500/live": { mount: 618.3, scroll: 34.2 },
   "1500/settled": { mount: 69.6, scroll: 20.0 },
 } as const;
+
+/** #159's own medians in ms, from the runs that alternated with the baseline's. */
+const B16_HEAD = {
+  "1500/live": { mount: 98.1, scroll: 18.8 },
+  "1500/settled": { mount: 50.1, scroll: 17.8 },
+} as const;
+
+const b16Figures = (figures: Record<string, { mount: number; scroll: number }>) =>
+  Object.entries(figures)
+    .map(([cell, { mount, scroll }]) => `${cell} mount ${mount} ms, scroll ${scroll} ms`)
+    .join("; ");
 
 function events(names: readonly string[], rule: (event: EventFigure, name: string) => Reading) {
   return (figures: Figures, cells: readonly Cell[] = CELLS) =>
@@ -309,7 +323,8 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold:
       "exactly the rows intersecting the view extended 240 px above and below, plus the rows that must stay mounted (#159), plus each group's header",
     baseline: "most rows",
-    measuredBy: "Chromium, 1,500, mounted anchors against computed positions",
+    measuredBy:
+      "Chromium, 1,500, mounted anchors against computed positions. The rows that must stay mounted include the first nine thread rows, which bb 0.44's jump keys reach among mounted rows only",
     kind: "deterministic",
     switchedOnBy: 159,
     enforcing: true,
@@ -421,8 +436,7 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B16",
     bounds: "Mounting the list, and mounting the rows that 100 rows of scrolling bring into view",
     threshold: "each ≤ half of the figure recorded in the Baseline column",
-    baseline:
-      "#159's merge base (8b75d8f), median of 3 runs alternating with #159's own on one machine and Chromium: 1500/live mount 618.3 ms, scroll 34.2 ms; 1500/settled mount 69.6 ms, scroll 20.0 ms. #159's medians in the same runs: 1500/live 98.1 ms and 18.8 ms, 1500/settled 50.1 ms and 17.8 ms",
+    baseline: `#159's merge base (${B16_BASE}), median of 3 runs alternating with #159's own on one machine and Chromium: ${b16Figures(B16_BASELINE)}. #159's medians in the same runs: ${b16Figures(B16_HEAD)}`,
     measuredBy:
       "Chromium, 1,500 (production React). Scroll is from setting the scroll position to the first frame after a row lands fully in view, so it is never under one frame (about 17 ms)",
     kind: "timing",

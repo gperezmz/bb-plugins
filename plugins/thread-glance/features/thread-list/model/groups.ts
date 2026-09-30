@@ -31,7 +31,8 @@ export interface GroupingInputs {
 export const PINNED_GROUP_ID = "pinned";
 export const THREADS_GROUP_ID = "threads";
 
-function isPinnedThread(thread: PluginSidebarThread): boolean {
+/** The thread is pinned. */
+export function isPinnedThread(thread: PluginSidebarThread): boolean {
   return thread.pinnedAt !== null || thread.isPinned;
 }
 

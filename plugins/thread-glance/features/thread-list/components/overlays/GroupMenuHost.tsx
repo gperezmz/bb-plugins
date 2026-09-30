@@ -11,7 +11,7 @@ import { ICONS } from "../../icons";
 import { canRename, type GroupDescriptor } from "../../model/groups";
 import { useCommands, useGroup, useLayout, useShowArchived } from "../../store/hooks";
 import { Anchor } from "./Anchor";
-import { useRenameAfterClose, useShownMenu } from "./RowMenuHost";
+import { useRenameAfterClose, useShownMenu } from "./menu-state";
 
 export function GroupMenuHost() {
   const commands = useCommands();

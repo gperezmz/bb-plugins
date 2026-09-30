@@ -4,7 +4,7 @@
 // nothing. Never for the focused thread's row, never while a menu is open or
 // a row is being renamed, not after a press until the pointer leaves, and a
 // navigation drops a pending open. One controller serves every row.
-import type { ListStore, RowPlace } from "../store/api";
+import type { ListStore, OpenCard } from "../store/api";
 
 const OPEN_DELAY = 500;
 /** Leaving the row, or its focus, closes the card this long after, unless the pointer reaches the card. */
@@ -12,10 +12,8 @@ const CLOSE_DELAY = 100;
 /** Keys that move focus, so the focus they bring may show a card. */
 const FOCUS_KEYS = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 
-export interface CardTarget extends RowPlace {
-  threadId: string;
-  anchor: HTMLElement;
-}
+/** The row a card would open for, and the element it anchors to. */
+export type CardTarget = OpenCard;
 
 export interface RowCardController {
   pointerEnter(event: { clientX: number; clientY: number }): void;
@@ -84,7 +82,7 @@ export function createRowCard(store: ListStore): RowCardController {
       openTimer = null;
       if (epoch !== at || !cardAllowed(store, target.threadId) || !target.anchor.isConnected) return;
       keepOpen();
-      store.setUi({ card: { groupId: target.groupId, rowKey: target.rowKey, threadId: target.threadId, anchor: target.anchor } });
+      store.setUi({ card: target });
     }, OPEN_DELAY);
   };
 

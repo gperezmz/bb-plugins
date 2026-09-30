@@ -43,6 +43,11 @@ export interface ListItems {
   indicesOf: ReadonlyMap<string, readonly number[]>;
 }
 
+/** A row's key in the list: its group, then its key within the group. */
+export function itemKeyOf(groupId: string, rowKey: string): string {
+  return `${groupId}/${rowKey}`;
+}
+
 /** A group draws "No threads": open, with no rows and no tree behind a fold. */
 export function drawsEmpty(group: Pick<GroupView, "rows" | "collapsed" | "rootIds">): boolean {
   return group.rows.length === 0 && !group.collapsed && group.rootIds.length === 0;
@@ -63,7 +68,7 @@ export function layoutItems(groups: readonly GroupView[], context: HeightContext
     cursor = top + header;
     for (const row of group.rows) {
       const size = rowHeight(row, context);
-      items.push({ kind: "row", key: `${groupId}/${row.key}`, groupId, row, start: cursor, size });
+      items.push({ kind: "row", key: itemKeyOf(groupId, row.key), groupId, row, start: cursor, size });
       cursor += size;
     }
     if (drawsEmpty(group)) {

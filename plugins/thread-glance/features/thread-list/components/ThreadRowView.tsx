@@ -5,6 +5,8 @@ import { memo, useRef } from "react";
 import { experimental_Icon as Icon, useSidebarThreadShortcut } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
+import { isPinnedThread } from "../model/groups";
+import { hasTwoLines } from "../model/heights";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { noteText } from "../model/notes";
@@ -196,9 +198,8 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   const chip = row.chip;
   const indent = rowIndent(row.depth);
   const note = row.note;
-  const twoLines = note !== null || row.branchLine !== null;
+  const twoLines = hasTwoLines(row);
   const dimmed = row.dimmed && !editing;
-  const menuShowing = menuOpen;
   // A pressed shortcut's pill takes the machine's place, as it takes the time's.
   const showMachine = row.machine !== null && shortcut === null;
   const badgesShown = row.harness || showMachine;
@@ -207,7 +208,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   // Archive, and the time for "…". Compact: nothing fades.
   const fadeClass = compact
     ? ""
-    : menuShowing
+    : menuOpen
       ? "opacity-0"
       : ROW_HOVER_HIDES;
 
@@ -219,7 +220,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
           "data-drag-thread": thread.id,
           "data-drag-parent": thread.parentThreadId ?? "",
           "data-drag-section": thread.sectionId ?? "",
-          "data-drag-pinned": String(thread.pinnedAt !== null || thread.isPinned),
+          "data-drag-pinned": String(isPinnedThread(thread)),
           "data-drag-group": groupId,
           "data-drag-row": row.key,
         };
@@ -250,7 +251,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
         isActive
           ? "bg-state-active text-sidebar-foreground"
           : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        !isActive && menuShowing && "bg-sidebar-accent",
+        !isActive && menuOpen && "bg-sidebar-accent",
         miniMap && !isActive && "bb-sidebar-open-in-split-row",
         dragging && "opacity-50",
       )}
@@ -375,7 +376,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
             <span
               className={cn(
                 "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
-                menuShowing ? "flex" : ROW_HOVER_LAYS_OUT,
+                menuOpen ? "flex" : ROW_HOVER_LAYS_OUT,
               )}
             >
               {row.treeUnread ? (
@@ -482,7 +483,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
                     "flex items-center justify-self-end transition-opacity [grid-area:1/1]",
                     compact
                       ? "relative"
-                      : menuShowing
+                      : menuOpen
                         ? "opacity-100"
                         : ROW_HOVER_SHOWS,
                   )}

@@ -1,65 +1,15 @@
 // The list's one "…" menu for rows, thread and environment: anchored to the
 // button that opened it, a drawer on phones. Rename waits for the menu to
 // close, so the editor keeps the focus the closing menu would take back.
-import { useEffect, useRef } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ICONS } from "../../icons";
 import { rowMenuItems, type RowMenuAction } from "../../model/menu";
 import type { EnvironmentRow, ThreadRow } from "../../model/view";
-import type { OpenMenu } from "../../store/api";
-import { useCommands, useLayout, useOpenMenu, useRowAt, useSplitAvailable } from "../../store/hooks";
+import { useCommands, useLayout, useRowAt, useSplitAvailable } from "../../store/hooks";
 import { RowDropdownMenuContent } from "../RowMenu";
 import { Anchor } from "./Anchor";
-
-/** How long a closing menu's focus return may take before a rename starts anyway. */
-const RENAME_AFTER_CLOSE_MS = 60;
-
-/**
- * Starts a rename chosen in a menu once the menu has closed: at its focus
- * return, which it refuses, or shortly after it closes where no focus return
- * comes (a phone's drawer, a context menu opened from the keyboard).
- */
-export function useRenameAfterClose(open: boolean) {
-  const pending = useRef<(() => void) | null>(null);
-  const refuseFocus = useRef(false);
-  useEffect(() => {
-    if (open || pending.current === null) return;
-    const timer = setTimeout(() => {
-      const start = pending.current;
-      pending.current = null;
-      start?.();
-    }, RENAME_AFTER_CLOSE_MS);
-    return () => clearTimeout(timer);
-  }, [open]);
-  return {
-    /** Remembers the rename to start once the menu has closed. */
-    request(start: () => void) {
-      pending.current = start;
-      refuseFocus.current = true;
-      setTimeout(() => {
-        refuseFocus.current = false;
-      }, 1500);
-    },
-    onCloseAutoFocus(event: Event) {
-      if (!refuseFocus.current) return;
-      refuseFocus.current = false;
-      event.preventDefault();
-      const start = pending.current;
-      pending.current = null;
-      start?.();
-    },
-  };
-}
-
-/** The last menu of `kinds` opened, kept while it closes so its content stays for the exit. */
-export function useShownMenu<K extends OpenMenu["kind"]>(kinds: readonly K[]): { open: boolean; shown: Extract<OpenMenu, { kind: K }> | null } {
-  const menu = useOpenMenu();
-  const last = useRef<Extract<OpenMenu, { kind: K }> | null>(null);
-  const open = menu !== null && (kinds as readonly string[]).includes(menu.kind);
-  if (open) last.current = menu as Extract<OpenMenu, { kind: K }>;
-  return { open, shown: last.current };
-}
+import { useRenameAfterClose, useShownMenu } from "./menu-state";
 
 export function RowMenuHost() {
   const commands = useCommands();

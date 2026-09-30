@@ -11,6 +11,8 @@ import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import type { MiniMapPane } from "../model/split";
 import type { ThreadInfo, ThreadTree } from "../model/trees";
 import type { GroupView, Row } from "../model/view";
+import { itemKeyOf } from "../model/layout-items";
+import type { KeptRows } from "../model/windowing";
 import type { HostData, ListModel } from "./derive";
 import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi, type OpenCard, type OpenMenu, type RowPlace } from "./list-store";
 
@@ -157,10 +159,7 @@ export function useHoldsFocus(groupId: string): boolean {
 
 // ——— Rows ———
 
-/** A row's key in the list: its group, then its key within the group. */
-export function itemKeyOf(groupId: string, rowKey: string): string {
-  return `${groupId}/${rowKey}`;
-}
+export { itemKeyOf };
 
 /** A thread row's own part of the list: focus, rename, split mini-map, draft, row status, and its menu or drag. */
 export interface RowState {
@@ -218,11 +217,6 @@ export function useEnvironmentMenuOpen(groupId: string, rowKey: string): boolean
   return useListSelect((state) => state.ui.menu?.kind === "environment" && sameRow(state.ui.menu, groupId, rowKey));
 }
 
-/** Rows that stay mounted wherever the list is scrolled, as thread ids and as `groupId/rowKey` keys. */
-export interface KeptRows {
-  threadIds: readonly string[];
-  itemKeys: readonly string[];
-}
 
 const keptCache = new WeakMap<ListStore, KeptRows>();
 
