@@ -17,7 +17,7 @@ import {
   getOverlayTriggerClassName,
   preventOverlayTriggerSelection,
 } from "./overlay-trigger.js";
-import { Icon } from "../../components/ui/icon.js";
+import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 interface ResponsiveDialogContextValue extends ResponsiveOverlayContextValue {
   titleId: string;
