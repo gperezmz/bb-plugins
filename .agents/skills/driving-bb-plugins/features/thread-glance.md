@@ -23,6 +23,13 @@ window at once; Density and Branch line are kept per browser.
   surviving a reload.
 - `remount`: switching the sidebar thread list away from Thread Glance and
   back.
+- `window`: the list mounts only the rows near the sidebar's view, each run
+  of the rest a spacer bb's keyboard walk still reads.
+- `menus`: the list's one row menu, group menu, context menu and hover card.
+- `drag`: dragging rows and group headers with the pointer, and bb's
+  drag-to-split out of the sidebar.
+- `keys`: Enter on a row, the context-menu key, and bb's thread shortcuts.
+- `timings`: the budget ledger's rows a real drive measures (B11, B12, B13).
 
 ## How to get to it (user POV)
 
@@ -155,6 +162,56 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   load, a reload, a trip to Settings, the actions (such as `plugin reload
   thread-glance`) and a reload after them; `--fail-first` aborts the first
   import in the network, so the device has no answer yet.
+- **Window** (`window`): `thread-glance scroll` scrolls the sidebar top to
+  bottom and back; every step has `outside` and `missing` 0 (the first nine
+  rows, which bb's jump keys reach, stay mounted and count as neither), and
+  `walkAlwaysSame` is true: bb's next and previous walk reads the same
+  threads, in order, however far it scrolled. `--step <px>` sets the step.
+- **Menus** (`menus`): `thread-glance menu <title>` opens the row's "…" and
+  lists its items, then closes it with Escape; `focusAfterEscape` is the "…"
+  button. `--keyboard` opens it with Enter, `--context` by right-click and
+  `--keyboard-context` by Shift+F10 on the focused row, where focus goes back
+  to the row's link; `menu --group <label>` opens a group header's. A row the
+  sidebar has scrolled out of view is scrolled into it first.
+- **Drag** (`drag`): `thread-glance drag <title> --onto <title> [--zone
+  top|middle|bottom]` drops a row on another's zone, `--onto-group <label>` on
+  a group header, waiting at the sidebar's edge while it scrolls to a target
+  out of view; `feedback` is what was drawn while over it (`nest` `valid`,
+  `blocked` or `unchanged`, `placement` `before` or `after` in Pinned, or the
+  highlighted `header`), `after` the thread's parent, section and pin in bb.
+  Under Custom grouping (a fresh run's), `--onto-group` a section moves the
+  thread there; `--onto-group Pinned` pins it (`bb thread pin` one thread
+  first, for Pinned to show); a child dropped on its group's header leaves
+  its parent; a parent dropped on its own child shows `blocked` and changes
+  nothing. `thread-glance drag-group <label> --onto <label>` reorders groups
+  and reads the saved order back.
+- **Splits** (`drag`): `thread-glance split <title> --from <title>` opens
+  `--from`'s thread and drags the row onto the main area's right edge;
+  `--ctrl-click` Ctrl+clicks it instead. `composers` 2 is two panes, and
+  `rowsWithMiniMap` names both rows.
+- **Keys** (`keys`): `thread-glance enter <title>` focuses the row's link and
+  presses Enter, which opens the thread (`current` is its title).
+  `thread-glance shortcut <n> [--scroll <px>]` presses bb's web jump key,
+  Control+Shift+n, and `thread-glance shortcut next|previous --from <title>`
+  Control+Shift+] or [ from that thread's; `same` is true when bb opened the
+  thread its keyboard walk puts there.
+- **Phone** (`--mobile`): every verb first opens the sidebar's drawer, which
+  a phone keeps closed under the main area. `thread-glance long-press
+  <title>` opens the row's menu as a drawer after 700 ms, and lifting chooses
+  nothing (`openAfterLift` true, `navigated` and `detailsOpened` false);
+  `--move 12` cancels it (`items` null). `thread-glance menu <title>` opens it
+  from the screen reader's "…" with Enter. `thread-glance drawer` opens a
+  thread, which closes the drawer, and reports the rows mounted closed and
+  open again.
+- **Timings** (`timings`): `thread-glance perf-open [--parent <title>]` takes
+  Event Timing's INP at 1× and 4× CPU for opening the largest group and the
+  named parent's children chip (B11); `thread-glance perf-return` leaves for
+  Settings and comes back 10 times, with `toFirstRowMs` per return (B12) and,
+  after garbage collection, the heap and the live observer and detached-node
+  counts (B13). The heap is the whole page's: comparing it with bb's own
+  list (`bb settings ui set sidebar.threadListProvider '"__builtin__"'`)
+  tells the plugin's share. Seed about 50 threads first, with a tree of 8
+  children or more, and run nothing else on the machine while they time.
 - **Machine offline**: `drive-bb-plugins machine offline` under a `--hold`
   turn shows `Reconnecting` for bb's 30 s grace, then `Failed`; a `bb thread
   tell` while offline shows `Message waiting to send`. `machine online`
@@ -169,12 +226,10 @@ says.
 - The thread on screen, and any thread in a split pane, is never unread, so
   unread, `need you` and `Mark all read` show only for other threads. Mark
   all read asks for confirmation above 20 threads; the verb confirms.
-- Read state set elsewhere (`bb thread read`) reaches an open window only on
-  reload in bb 0.44, bb's own list included; a child marked read reaches it
-  live. Thread Glance's Mark all read and Mark read send bb's
-  `threads.markRead`: a second window follows them live, but bb's own list in
-  the window that sent them keeps those threads unread until a reload. Read
-  it back with `list` on a fresh load, not a second window.
+- Read state set elsewhere (another window's Mark all read, `bb thread read`)
+  reaches an open window only on reload in bb 0.44, bb's own list included;
+  a child marked read reaches it live. Read it back with `list` on a fresh
+  load, not a second window.
 - A turn in flight when its machine goes offline fails once bb's 30 s
   reconnect grace ends, so the `Machine offline` state and the chip's
   `, machine offline below` are not reachable on a run.
@@ -197,3 +252,7 @@ says.
   `thread.unarchived`; archiving a parent archives its children, unarchiving
   it does not bring them back.
 - The Branch line shows only for a thread off its project's default branch.
+- A verb that acts on one row scrolls it into view first (`reveal` in the
+  verbs file).
+- A phone's home screen lists threads under the same `Open <title> — …`
+  names as the list's rows; the verbs' `row` matches only the list's own.

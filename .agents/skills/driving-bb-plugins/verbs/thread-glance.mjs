@@ -22,13 +22,31 @@ export async function ready(page, url) {
   await page.goto(url);
   await header(page).waitFor();
   await page.waitForLoadState("networkidle");
+  await openDrawer(page);
+}
+
+/** On a phone, opens the sidebar's drawer, which is off-canvas until then; nothing on a desktop. */
+export async function openDrawer(page) {
+  // In view means on top: the closed drawer keeps its box, under the main area.
+  const inView = () =>
+    header(page).evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return top !== null && button.contains(top);
+    });
+  if (await inView()) return;
+  await page.getByRole("button", { name: /^Toggle sidebar/ }).click();
+  for (let i = 0; i < 20 && !(await inView()); i++) await sleep(100);
+  await sleep(400);
 }
 
 /** The settings button, which only Thread Glance's list header draws. */
 export const header = (page) => page.getByRole("button", { name: "Thread Glance settings" });
 
 /** A row's link, by thread title. */
-export const row = (page, title) => page.getByRole("link", { name: new RegExp(`^Open ${esc(title)} — `) });
+export const row = (page, title) =>
+  // Scoped to the list's own rows: a phone's home screen lists threads under the same names.
+  page.getByRole("link", { name: new RegExp(`^Open ${esc(title)} — `) }).and(page.locator("[data-sidebar-thread-id]"));
 
 /** A parent's children chip, by the parent's title, whatever its count and suffix. */
 export const chip = (page, title) =>
@@ -52,7 +70,7 @@ export async function readList(page) {
   const needYou = (await needYouButton.count()) > 0
     ? { count: Number((await needYouButton.textContent()).match(/\d+/)[0]), pressed: (await needYouButton.getAttribute("aria-pressed")) === "true" }
     : null;
-  const rows = await page.getByRole("link", { name: /^Open .+ — / }).evaluateAll((els) =>
+  const rows = await page.getByRole("link", { name: /^Open .+ — / }).and(page.locator("[data-sidebar-thread-id]")).evaluateAll((els) =>
     els.map((a) => ({
       name: a.getAttribute("aria-label") ?? a.textContent,
       current: a.getAttribute("aria-current") === "page",
@@ -219,6 +237,201 @@ async function drive(ctx, { name, prepare = async () => {}, observe, act, settle
   }
   return result;
 }
+
+
+// ——— The windowed list (#159): scrolling, menus, drag, keys and timings ———
+
+/** The sidebar's scroll area around the list: its nearest vertically scrolling ancestor. */
+const SCROLLER = `(() => {
+  const list = document.querySelector("[data-sidebar-virtual-list]");
+  for (let node = list?.parentElement; node && node !== document.body; node = node.parentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") return node;
+  }
+  return document.scrollingElement;
+})()`;
+
+/**
+ * What the window mounts against where the view is: rows mounted outside the
+ * view extended 240 px, rows inside it left to spacers, and bb's keyboard
+ * walk (anchors and spacers in DOM order, More aside) as thread ids.
+ */
+export async function readWindow(page) {
+  return page.evaluate((scroller) => {
+    const area = eval(scroller);
+    const box = area === document.scrollingElement ? { top: 0, bottom: innerHeight } : area.getBoundingClientRect();
+    const top = Math.max(box.top, 0) - 240;
+    const bottom = Math.min(box.bottom, innerHeight) + 240;
+    const list = document.querySelector("[data-sidebar-virtual-list]");
+    const anchors = [...list.querySelectorAll("[data-sidebar-thread-id]")];
+    // The first nine rows bb's jump keys reach stay mounted wherever the list is scrolled.
+    const jumps = new Set(anchors.slice(0, 9));
+    const outside = anchors.filter((a) => {
+      if (jumps.has(a)) return false;
+      const r = a.getBoundingClientRect();
+      return r.bottom < top || r.top > bottom;
+    }).length;
+    let missing = 0;
+    for (const spacer of list.querySelectorAll("[data-sidebar-windowed-nav]")) {
+      const r = spacer.getBoundingClientRect();
+      if (r.bottom > Math.max(box.top, 0) && r.top < Math.min(box.bottom, innerHeight)) missing += spacer.dataset.sidebarWindowedNav.split(" ").length;
+    }
+    const walk = [...document.querySelectorAll("[data-sidebar-thread-shortcut-target], [data-sidebar-windowed-nav]")]
+      .filter((e) => e.closest('[data-sidebar-overflow="true"]') === null)
+      .flatMap((e) => (e.hasAttribute("data-sidebar-windowed-nav") ? e.dataset.sidebarWindowedNav.split(" ").map((p) => p.split(":")[0]) : [e.dataset.sidebarThreadId]));
+    return {
+      scrollTop: Math.round(area.scrollTop),
+      scrollHeight: area.scrollHeight,
+      mounted: anchors.length,
+      outside,
+      missing,
+      spacers: list.querySelectorAll("[data-sidebar-windowed-nav]").length,
+      walk,
+    };
+  }, SCROLLER);
+}
+
+const scrollTo = (page, top) => page.evaluate(([scroller, y]) => { eval(scroller).scrollTop = y; }, [SCROLLER, top]);
+const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+/** Scrolls until `title`'s row is mounted and in view. */
+export async function reveal(page, title) {
+  const target = row(page, title);
+  if ((await target.count()) === 0) {
+    const height = await page.evaluate((s) => eval(s).scrollHeight, SCROLLER);
+    for (let y = 0; y <= height && (await target.count()) === 0; y += 300) {
+      await scrollTo(page, y);
+      await frames(page);
+    }
+  }
+  await target.scrollIntoViewIfNeeded();
+  await frames(page);
+  return target;
+}
+
+/** The DevTools protocol for the page, with its CPU throttle, garbage collection and counters. */
+async function devtools(page) {
+  const session = await page.context().newCDPSession(page);
+  await session.send("Runtime.enable");
+  const count = async (constructor) => {
+    const { result } = await session.send("Runtime.evaluate", { expression: `${constructor}.prototype` });
+    const { objects } = await session.send("Runtime.queryObjects", { prototypeObjectId: result.objectId });
+    const { result: length } = await session.send("Runtime.callFunctionOn", { objectId: objects.objectId, functionDeclaration: "function () { return this.length; }", returnByValue: true });
+    // A found array kept by the session keeps what it found alive: release both.
+    await session.send("Runtime.releaseObject", { objectId: objects.objectId });
+    await session.send("Runtime.releaseObject", { objectId: result.objectId });
+    return length.value;
+  };
+  return {
+    throttle: (rate) => session.send("Emulation.setCPUThrottlingRate", { rate }),
+    async gc() {
+      await session.send("HeapProfiler.collectGarbage");
+      await sleep(50);
+      await session.send("HeapProfiler.collectGarbage");
+    },
+    heap: async () => (await session.send("Runtime.getHeapUsage")).usedSize,
+    count,
+    detached: async () => (await session.send("DOM.getDetachedDomNodes")).detachedNodes.length,
+  };
+}
+
+/** INP of one click, as Event Timing reports it: the longest entry of the interaction, 0 under 16 ms. */
+async function inpOfClick(page, locator) {
+  await page.evaluate(() => {
+    window.__tgEvents = [];
+    window.__tgObserver = new PerformanceObserver((list) => window.__tgEvents.push(...list.getEntries().map((e) => ({ id: e.interactionId, d: e.duration }))));
+    window.__tgObserver.observe({ type: "event", durationThreshold: 16 });
+  });
+  await locator.click();
+  await frames(page);
+  await sleep(200);
+  return page.evaluate(() => {
+    window.__tgEvents.push(...window.__tgObserver.takeRecords().map((e) => ({ id: e.interactionId, d: e.duration })));
+    window.__tgObserver.disconnect();
+    const timed = window.__tgEvents.filter((e) => e.id > 0);
+    return timed.length === 0 ? 0 : Math.max(...timed.map((e) => e.d));
+  });
+}
+
+/** A group header's "…" or collapse button, by the group's label. */
+const groupButton = (page, label, what) =>
+  what === "menu"
+    ? page.getByRole("button", { name: `${label} actions`, exact: true })
+    : page.getByRole("button", { name: new RegExp(`^(Expand|Collapse) ${esc(label)} section$`) });
+
+/** Where on a row a drop lands: its top quarter, middle half or bottom quarter. */
+const ZONES = { top: 0.1, middle: 0.5, bottom: 0.9 };
+
+/**
+ * Presses on `from`, moves in steps to a point of `to`, and releases there,
+ * as a person drags. A target out of the sidebar's view is reached as a
+ * person reaches it: the pointer waits at the edge toward it while the list
+ * scrolls, then moves onto it.
+ */
+async function dragTo(page, from, to, at = 0.5, { during } = {}) {
+  const a = await from.boundingBox();
+  const start = { x: a.x + Math.min(40, a.width / 2), y: a.y + a.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x, start.y + 6, { steps: 3 });
+  const view = await page.evaluate((scroller) => {
+    const area = eval(scroller);
+    const box = area === document.scrollingElement ? { top: 0, bottom: innerHeight } : area.getBoundingClientRect();
+    return { top: Math.max(box.top, 0), bottom: Math.min(box.bottom, innerHeight) };
+  }, SCROLLER);
+  for (let i = 0; i < 80; i++) {
+    const b = await to.boundingBox();
+    const y = b === null ? null : b.y + b.height * at;
+    if (y !== null && y > view.top + 30 && y < view.bottom - 30) break;
+    const edge = y === null || y > view.bottom - 30 ? view.bottom - 3 : view.top + 3;
+    await page.mouse.move(start.x, edge + (i % 2), { steps: 2 });
+    await sleep(80);
+  }
+  // Off the edge, so auto-scroll stops before the target is measured.
+  await page.mouse.move(start.x, (view.top + view.bottom) / 2, { steps: 4 });
+  await sleep(300);
+  const b = await to.boundingBox();
+  const end = { x: b.x + Math.min(60, b.width / 2), y: b.y + b.height * at };
+  await page.mouse.move(end.x, end.y, { steps: 12 });
+  await frames(page);
+  const feedback = await page.evaluate(() => {
+    const drawn = document.querySelector("[data-sidebar-nest-target], [data-sidebar-reorder-placement]");
+    const header = document.querySelector('[data-sidebar="group-label"].bg-sidebar-accent');
+    return {
+      over: drawn?.getAttribute("data-drop-thread-id") ?? null,
+      nest: drawn?.getAttribute("data-sidebar-nest-target") ?? null,
+      placement: drawn?.getAttribute("data-sidebar-reorder-placement") ?? null,
+      header: header?.closest("section")?.getAttribute("aria-label") ?? null,
+      dimmed: document.querySelectorAll(".opacity-50[data-sidebar-rename-row], .opacity-50[data-sidebar='group-label']").length,
+    };
+  });
+  await during?.();
+  await page.mouse.up();
+  await frames(page);
+  return feedback;
+}
+
+/** A thread's place in bb: its parent, section and pin. */
+function placeOf(cli, label, title) {
+  const t = threads(cli, label).find((x) => x.title === title);
+  if (t === undefined) throw new Error(`no thread titled "${title}" in the run`);
+  return { id: t.id, parentThreadId: t.parentThreadId ?? null, sectionId: t.sectionId ?? null, pinned: t.pinnedAt != null || t.isPinned === true };
+}
+
+/** The menu open now, a menu or a phone's drawer: its items in order, with each one's disabled state and submenu. */
+async function readMenu(page) {
+  await page.getByRole("menuitem").first().waitFor();
+  return page.getByRole("menuitem").evaluateAll((items) =>
+    items.map((i) => ({ label: i.textContent.trim(), disabled: i.getAttribute("aria-disabled") === "true" || i.hasAttribute("data-disabled"), submenu: i.getAttribute("aria-haspopup") === "menu" })),
+  );
+}
+
+/** Where focus is: the element's role and accessible name. */
+const focused = (page) =>
+  page.evaluate(() => {
+    const e = document.activeElement;
+    return e === null || e === document.body ? null : { tag: e.tagName, role: e.getAttribute("role"), name: e.getAttribute("aria-label") ?? e.textContent.trim().slice(0, 60) };
+  });
 
 const toggleTarget = (arg, current) => (arg === undefined ? !current : ["expand", "on", "open"].includes(arg));
 
@@ -472,7 +685,12 @@ export const verbs = {
       };
       return drive(ctx, {
         name: `click the children chip of ${parent}`,
-        prepare: async (p) => chip(p, parent).waitFor({ timeout: 30_000 }),
+        // The list mounts only rows near the view: scroll the parent's into it.
+        prepare: async (p) => {
+          await row(p, parent).or(p.locator("[data-sidebar-virtual-list]")).first().waitFor({ timeout: 30_000 });
+          await reveal(p, parent);
+          await chip(p, parent).waitFor({ timeout: 30_000 });
+        },
         observe,
         act: async (p) => {
           want = toggleTarget(direction, (await observe(p)).expanded);
@@ -946,6 +1164,348 @@ export const verbs = {
       steps.push({ step: "reload after the actions", imports: imports(mark), stored: await stored() });
       await capture("end", "after the last reload");
       return { steps, allRpc: glanceRequests(rec.since(0)).rpc };
+    },
+  },
+
+  scroll: {
+    usage: "[--step <px>]: scroll the sidebar top to bottom and back; at each step the rows mounted outside the view and margin, rows left out inside it, and whether bb's keyboard walk matches the top's",
+    valued: ["step"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      const step = Number(flags.step ?? 400);
+      const first = await readWindow(page);
+      await capture("top", "the sidebar at its top");
+      const steps = [];
+      const tops = [];
+      for (let y = 0; y <= first.scrollHeight; y += step) tops.push(y);
+      for (const y of [...tops, ...[...tops].reverse()]) {
+        await scrollTo(page, y);
+        await frames(page);
+        await frames(page);
+        const seen = await readWindow(page);
+        steps.push({ scrollTop: seen.scrollTop, mounted: seen.mounted, outside: seen.outside, missing: seen.missing, spacers: seen.spacers, walkSame: JSON.stringify(seen.walk) === JSON.stringify(first.walk) });
+      }
+      await capture("bottom-and-back", "scrolled to the bottom and back to the top");
+      return {
+        threads: first.walk.length,
+        steps,
+        worst: { outside: Math.max(...steps.map((s) => s.outside)), missing: Math.max(...steps.map((s) => s.missing)), mounted: Math.max(...steps.map((s) => s.mounted)) },
+        walkAlwaysSame: steps.every((s) => s.walkSame),
+      };
+    },
+  },
+
+  menu: {
+    usage: "<row title> [--context|--keyboard-context|--keyboard] | --group <label>: open a row's \"…\" menu (or its context menu by right-click or Shift+F10, or \"…\" by Enter), or a group header's, read its items, close it with Escape and report where focus went",
+    valued: ["group"],
+    async run({ page, url, capture, args, flags }) {
+      await ready(page, url);
+      let opener;
+      if (flags.group) {
+        const header = page.locator('[data-sidebar="group-label"]').filter({ has: groupButton(page, flags.group, "toggle") });
+        await header.hover();
+        opener = groupButton(page, flags.group, "menu");
+        await opener.click();
+      } else {
+        const link = await reveal(page, args[0]);
+        const rowBox = link.locator("..");
+        if (flags.context) await rowBox.click({ button: "right", position: { x: 40, y: 8 } });
+        else if (flags["keyboard-context"]) {
+          await link.focus();
+          await page.keyboard.press("Shift+F10");
+        } else {
+          opener = rowBox.getByRole("button", { name: "Thread actions" });
+          // On a phone the button is for screen readers only: reach it from the keyboard.
+          if (!flags.mobile) await rowBox.hover();
+          if (flags.keyboard || flags.mobile) {
+            await opener.focus();
+            await page.keyboard.press("Enter");
+          } else await opener.click();
+        }
+      }
+      const items = await readMenu(page);
+      await capture("open", `open the ${flags.group ? `${flags.group} group's` : `${args[0]} row's`} ${flags.context || flags["keyboard-context"] ? "context menu" : "menu"}`);
+      await page.keyboard.press("Escape");
+      await page.getByRole("menuitem").first().waitFor({ state: "detached" });
+      await capture("closed", "Escape");
+      return { items, focusAfterEscape: await focused(page) };
+    },
+  },
+
+  drag: {
+    usage: "<title> (--onto <row title> [--zone top|middle|bottom] | --onto-group <label>): drag a row with the pointer onto another row's zone or a group header; the drop feedback while over it, and the thread's parent, section and pin in bb after",
+    valued: ["onto", "zone", "onto-group"],
+    async run({ page, url, capture, cli, args, flags }) {
+      const [title] = args;
+      await ready(page, url);
+      const label = "thread-glance.drag/cli";
+      const before = placeOf(cli, label, title);
+      const source = (await reveal(page, title)).locator("..");
+      const target = flags["onto-group"]
+        ? page.locator('[data-sidebar="group-label"]').filter({ has: groupButton(page, flags["onto-group"], "toggle") })
+        : row(page, flags.onto).locator("..");
+      await capture("before", `before dragging ${title}`);
+      const feedback = await dragTo(page, source, target, ZONES[flags.zone ?? "middle"]);
+      await capture("after", `drop ${title} on ${flags["onto-group"] ?? `${flags.onto} (${flags.zone ?? "middle"})`}`);
+      let after = before;
+      for (let i = 0; i < 20; i++) {
+        after = placeOf(cli, label, title);
+        if (JSON.stringify(after) !== JSON.stringify(before)) break;
+        await sleep(500);
+      }
+      return { feedback, before, after, list: await readList(page) };
+    },
+  },
+
+  "drag-group": {
+    usage: "<label> --onto <label> [--zone top|bottom]: drag a group header onto another's upper or lower half; the saved group order after",
+    valued: ["onto", "zone"],
+    async run({ page, url, capture, cli, args, flags }) {
+      await ready(page, url);
+      const header = (name) => page.locator('[data-sidebar="group-label"]').filter({ has: groupButton(page, name, "toggle") });
+      const order = async () =>
+        page.locator("section[data-sidebar-visibility-group]").evaluateAll((els) => els.filter((e) => !e.closest('[data-sidebar-overflow="true"]')).map((e) => e.getAttribute("aria-label")));
+      const before = await order();
+      await capture("before", `before dragging ${args[0]}`);
+      const feedback = await dragTo(page, header(args[0]), header(flags.onto), flags.zone === "bottom" ? 0.9 : 0.1);
+      await page.waitForFunction((was) => JSON.stringify([...document.querySelectorAll("section[data-sidebar-visibility-group]")].map((e) => e.getAttribute("aria-label"))) !== was, JSON.stringify(before), { timeout: 10_000 }).catch(() => {});
+      await capture("after", `drop the ${args[0]} header on ${flags.onto}`);
+      const mode = JSON.parse(cli("thread-glance.drag-group/cli", "thread-glance", "prefs", "get", "organizationMode"));
+      const key = { project: "sectionOrder", chronological: "manualSectionOrder", machine: "machineSectionOrder" }[mode];
+      return { feedback, before, after: await order(), stored: { key, value: await prefUntil(cli, "thread-glance.drag-group/cli", key) } };
+    },
+  },
+
+  enter: {
+    usage: "<title>: focus the row's link and press Enter; the row that is current after, and on a phone whether the drawer closed",
+    async run({ page, url, capture, args, flags }) {
+      await ready(page, url);
+      const link = await reveal(page, args[0]);
+      await link.focus();
+      await capture("before", `focus ${args[0]}`);
+      await page.keyboard.press("Enter");
+      await row(page, args[0]).and(page.locator('[aria-current="page"]')).waitFor({ state: "attached" });
+      await sleep(500);
+      await capture("after", "Enter");
+      // On a phone, opening a thread closes the drawer.
+      const listInView = await header(page).evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return top !== null && button.contains(top);
+      });
+      return { url: page.url(), current: (await readList(page)).rows.find((r) => r.current)?.title ?? null, listInView };
+    },
+  },
+
+  shortcut: {
+    usage: "<n>|next|previous [--from <title>] [--scroll <px>] [--keys <chord>]: with the sidebar scrolled, press bb's jump key n (Control+Shift+n on the web) or next or previous thread (Control+Shift+] or [) from --from's thread; the thread opened against bb's keyboard walk",
+    valued: ["from", "scroll", "keys"],
+    async run({ page, url, capture, args, flags }) {
+      await ready(page, url);
+      if (flags.from) {
+        await (await reveal(page, flags.from)).click();
+        await row(page, flags.from).and(page.locator('[aria-current="page"]')).waitFor();
+      }
+      await scrollTo(page, Number(flags.scroll ?? 0));
+      await frames(page);
+      await frames(page);
+      const { walk } = await readWindow(page);
+      const current = page.url().match(/threads\/([^/?#]+)/)?.[1] ?? null;
+      const step = { next: 1, previous: -1 }[args[0]];
+      const next = step !== undefined;
+      const chord = flags.keys ?? (step === 1 ? "Control+Shift+BracketRight" : step === -1 ? "Control+Shift+BracketLeft" : `Control+Shift+Digit${args[0]}`);
+      await capture("before", `before ${chord}`);
+      await page.keyboard.press(chord);
+      await page.waitForURL((u) => !current || !u.href.includes(current), { timeout: 5_000 }).catch(() => {});
+      await sleep(500);
+      await capture("after", chord);
+      const opened = page.url().match(/threads\/([^/?#]+)/)?.[1] ?? null;
+      const expected = next ? walk[(walk.indexOf(current) + step + walk.length) % walk.length] : walk[Number(args[0]) - 1];
+      const mounted = await page.locator(`[data-sidebar-thread-id="${expected}"]`).count();
+      return { chord, current, expected, expectedWasMounted: mounted > 0, opened, same: opened === expected };
+    },
+  },
+
+  split: {
+    usage: "<title> [--from <title>] [--ctrl-click]: with --from's thread open, drag the row out of the sidebar onto the main area's right edge (or Ctrl+click it); the rows drawing their split mini-map after",
+    valued: ["from"],
+    async run({ page, url, capture, args, flags }) {
+      await ready(page, url);
+      if (flags.from) {
+        await (await reveal(page, flags.from)).click();
+        await row(page, flags.from).and(page.locator('[aria-current="page"]')).waitFor();
+      }
+      const link = await reveal(page, args[0]);
+      await capture("before", `before splitting ${args[0]}`);
+      if (flags["ctrl-click"]) await link.click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] });
+      else {
+        const box = await link.boundingBox();
+        const viewport = page.viewportSize();
+        await page.mouse.move(box.x + 40, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + 60, box.y + box.height / 2, { steps: 4 });
+        await page.mouse.move(viewport.width - 60, viewport.height / 2, { steps: 20 });
+        await sleep(300);
+        await capture("dragging", "drag the row onto the main area's right edge");
+        await page.mouse.up();
+      }
+      await sleep(1500);
+      await capture("after", flags["ctrl-click"] ? "Ctrl+click" : "drop");
+      const miniMaps = await page.locator("[data-sidebar-thread-id]").evaluateAll((els) =>
+        els.filter((a) => a.parentElement.querySelector('[aria-label*="open in split"], [aria-label*="— open in split"]')).map((a) => a.getAttribute("aria-label")),
+      );
+      // bb's panes, one composer each.
+      const panes = await page.getByRole("textbox").count();
+      return { url: page.url(), rowsWithMiniMap: miniMaps, composers: panes };
+    },
+  },
+
+  "long-press": {
+    usage: "<title> [--move <px>]: on a phone (--mobile), press the row for 800 ms (moving the finger <px> first); the menu that opened, and what lifting chose",
+    valued: ["move"],
+    async run({ page, url, capture, args, flags }) {
+      await ready(page, url);
+      const link = await reveal(page, args[0]);
+      const box = await link.boundingBox();
+      const session = await page.context().newCDPSession(page);
+      const at = (dy) => [{ x: box.x + 40, y: box.y + box.height / 2 + dy }];
+      await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0) });
+      if (flags.move) await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(Number(flags.move)) });
+      await sleep(800);
+      const items = (await page.getByRole("menuitem").count()) > 0 ? await readMenu(page) : null;
+      await capture("pressed", `long-press ${args[0]}${flags.move ? `, moving ${flags.move} px` : ""}`);
+      const before = page.url();
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await sleep(400);
+      await capture("lifted", "lift the finger");
+      // Lifting chooses nothing: the menu stays open, no item ran, and no thread opened.
+      return { items, openAfterLift: (await page.getByRole("menuitem").count()) > 0, detailsOpened: (await page.getByRole("dialog", { name: args[0] }).count()) > 0, navigated: page.url() !== before };
+    },
+  },
+
+  drawer: {
+    usage: "[--open <title>]: on a phone (--mobile), open a thread from the sidebar's drawer, which closes it; the rows mounted with it closed, then open again",
+    valued: ["open"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      const title = flags.open ?? (await readList(page)).rows[0].title;
+      await (await reveal(page, title)).click();
+      await page.getByRole("dialog", { name: "Sidebar" }).waitFor({ state: "hidden" }).catch(() => {});
+      await sleep(800);
+      const mounted = () => page.locator("[data-sidebar-thread-id]").count();
+      const closed = {
+        mounted: await mounted(),
+        listOnTop: await header(page).evaluate((button) => {
+          const box = button.getBoundingClientRect();
+          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return top !== null && button.contains(top);
+        }),
+      };
+      await capture("closed", `open ${title}, which closes the drawer`);
+      await openDrawer(page);
+      await sleep(400);
+      const open = await readWindow(page);
+      await capture("open", "open the drawer");
+      return { closed, open: { mounted: open.mounted, outside: open.outside, missing: open.missing, walk: open.walk.length } };
+    },
+  },
+
+  "perf-open": {
+    usage: "[--group <label>] [--parent <title>]: INP (Event Timing, at 1× and 4× CPU) of opening the largest group and the largest children chip, or the ones named, closing each again",
+    valued: ["group", "parent"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      const tools = await devtools(page);
+      const sizes = await page.evaluate(() =>
+        [...document.querySelectorAll("section[data-sidebar-visibility-group]")]
+          .filter((s) => !s.closest('[data-sidebar-overflow="true"]'))
+          .map((s) => ({
+            label: s.getAttribute("aria-label"),
+            rows: s.querySelectorAll("[data-sidebar-thread-id]").length + [...s.querySelectorAll("[data-sidebar-windowed-nav]")].reduce((n, e) => n + e.dataset.sidebarWindowedNav.split(" ").length, 0),
+          })),
+      );
+      const group = flags.group ?? sizes.sort((a, b) => b.rows - a.rows)[0].label;
+      const chips = await page.getByRole("button", { name: /^(Show|Collapse) \d+ child threads? of / }).evaluateAll((els) =>
+        els.map((b) => ({ name: b.getAttribute("aria-label"), count: Number(b.getAttribute("aria-label").match(/\d+/)[0]), parent: b.getAttribute("aria-label").replace(/^(Show|Collapse) \d+ child threads? of /, "").split(",")[0] })),
+      );
+      const parent = flags.parent ?? chips.sort((a, b) => b.count - a.count)[0]?.parent;
+      const measure = async (open, close) => {
+        const figure = {};
+        for (const rate of [1, 4]) {
+          await close();
+          await frames(page);
+          await tools.throttle(rate);
+          figure[`x${rate}`] = await inpOfClick(page, open());
+          await tools.throttle(1);
+        }
+        return figure;
+      };
+      const collapseGroup = async () => {
+        const b = groupButton(page, group, "toggle");
+        if ((await b.getAttribute("aria-expanded")) === "true") await b.click();
+      };
+      const groupInp = await measure(() => groupButton(page, group, "toggle"), collapseGroup);
+      await capture("group", `open ${group} at 1× and 4×`);
+      let chipInp = null;
+      if (parent !== undefined) {
+        const find = () => chip(page, parent);
+        await reveal(page, parent);
+        chipInp = await measure(find, async () => {
+          if ((await find().getAttribute("aria-expanded")) === "true") await find().click();
+        });
+        await capture("chip", `open ${parent}'s children at 1× and 4×`);
+      }
+      return { group: { label: group, rows: sizes.find((s) => s.label === group)?.rows, inp: groupInp }, chip: parent === undefined ? null : { parent, inp: chipInp } };
+    },
+  },
+
+  "perf-return": {
+    usage: "[--cycles <n>]: leave for bb's Settings page and come back n times (10 by default); ms from coming back to the first row drawn, and after each return, with garbage collected, the heap, live IntersectionObserver and ResizeObserver and detached nodes",
+    valued: ["cycles"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      const tools = await devtools(page);
+      const cycles = Number(flags.cycles ?? 10);
+      const series = { toFirstRowMs: [], heap: [], intersectionObservers: [], resizeObservers: [], detachedNodes: [] };
+      const read = async () => {
+        await tools.gc();
+        series.heap.push(await tools.heap());
+        series.intersectionObservers.push(await tools.count("IntersectionObserver"));
+        series.resizeObservers.push(await tools.count("ResizeObserver"));
+        series.detachedNodes.push(await tools.detached());
+      };
+      await read();
+      for (let cycle = 0; cycle < cycles; cycle += 1) {
+        await page.evaluate(() => {
+          history.pushState({}, "", "/settings");
+          dispatchEvent(new PopStateEvent("popstate"));
+        });
+        await header(page).waitFor({ state: "detached" });
+        const ms = await page.evaluate(
+          () =>
+            new Promise((resolve) => {
+              const started = performance.now();
+              const done = () => document.querySelector("[data-sidebar-thread-id]") !== null;
+              const observer = new MutationObserver(() => {
+                if (!done()) return;
+                observer.disconnect();
+                requestAnimationFrame(() => resolve(performance.now() - started));
+              });
+              observer.observe(document.body, { childList: true, subtree: true });
+              history.back();
+            }),
+        );
+        series.toFirstRowMs.push(Math.round(ms));
+        await header(page).waitFor();
+        await sleep(300);
+        await read();
+      }
+      await capture("returned", `back from Settings ${cycles} times`);
+      return {
+        ...series,
+        heapGrowthBytes: series.heap.at(-1) - series.heap[0],
+        worstToFirstRowMs: Math.max(...series.toFirstRowMs),
+      };
     },
   },
 };
