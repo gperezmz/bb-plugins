@@ -376,6 +376,19 @@ export const SDK_FAKES = {
   },
 } as never;
 
+/** A sidebar's height: what the harness's jsdom runs give the window, as a user's list has in view. */
+export const SIDEBAR_HEIGHT = 800;
+
+/**
+ * Gives jsdom, which lays nothing out, a sidebar-tall window, so the list
+ * mounts about the rows a user's sidebar shows rather than every row the
+ * tests' tall default mounts. Nothing in Chromium, whose window is real.
+ */
+export function sidebarViewport(): void {
+  if (!navigator.userAgent.includes("jsdom")) return;
+  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: SIDEBAR_HEIGHT });
+}
+
 /** The sidebar's scroll area around the list, where a run lays it out. */
 export interface Frame {
   width: number;

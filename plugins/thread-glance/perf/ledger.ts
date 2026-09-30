@@ -18,7 +18,8 @@
 // Terms the rows use:
 // - harness: this ledger's synthetic run, over generated lists;
 // - jsdom: its render counts, taken on React's development build, which
-//   counts renders as the production build does;
+//   counts renders as the production build does, in an 800 px tall window,
+//   so the list mounts about the rows a sidebar shows;
 // - Chromium: its browser run (vitest browser mode, Playwright), which times
 //   React's production build, the build bb ships;
 // - fake host: its fake bb and plugin server, which count requests;

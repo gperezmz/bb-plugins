@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { generateList } from "../testing/fixtures";
+import { JSDOM_VIEWPORT_HEIGHT } from "../testing/jsdom-viewport";
 import { openList, settle } from "../../../perf/harness/jsdom-run";
 
 afterEach(() => {
@@ -26,6 +27,12 @@ function rowNodes(root: ParentNode): Map<string, HTMLElement> {
 it("keeps every row's DOM node through an insertion, a removal, an archive, a move and a group opening or closing above", async () => {
   const list = generateList({ size: 300, kind: "live" });
   const { host, slot } = await openList(list);
+  // The behaviour tests' tall window, rather than the harness's sidebar: every row stays in view.
+  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: JSDOM_VIEWPORT_HEIGHT });
+  await act(async () => {
+    window.dispatchEvent(new Event("resize"));
+  });
+  await settle(2);
   const root = slot.container;
   const thread = (id: string) => host.state().threads.find((candidate) => candidate.id === id)!;
   const roots = () => [...root.querySelectorAll<HTMLElement>("[data-sidebar-thread-id]")].map((anchor) => anchor.dataset.sidebarThreadId!).filter((id) => thread(id).parentThreadId === null);

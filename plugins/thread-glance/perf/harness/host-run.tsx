@@ -6,7 +6,7 @@ import { vi } from "vitest";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { markAllReadConfirm } from "./list-screen";
-import { createFakeHost, loadWithFakeHost, mountList, mountOverlay, PER_ROW_HOOKS, serverState, type FakeHost } from "./fake-host";
+import { createFakeHost, loadWithFakeHost, mountList, mountOverlay, PER_ROW_HOOKS, serverState, sidebarViewport, type FakeHost } from "./fake-host";
 
 /** Requests over one stretch. */
 export interface Requests {
@@ -73,6 +73,7 @@ async function drain(ms = 50): Promise<void> {
 }
 
 async function windows(list: GeneratedList, count: number, server = serverState()) {
+  sidebarViewport();
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "setTimeout", "clearInterval", "clearTimeout"] });
   vi.setSystemTime(list.now);
   const host = createFakeHost({ threads: list.threads, projects: list.projects, freshActions: true });
