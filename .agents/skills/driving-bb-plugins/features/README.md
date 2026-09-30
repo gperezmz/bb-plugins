@@ -28,8 +28,13 @@ drive starts only the plugins its feature file names.
   Where two groups share a name (`Medium` in UI Tweaks), scope to the group.
 - Take commands literally: quoted names, JSON inputs and flags stay as
   written. A JSON input goes in a file passed with `--input-file`.
-- UI actions go through `drive-bb-plugins ui`, CLI actions through
+- UI actions go through the plugin's verbs,
+  `drive-bb-plugins <plugin> <verb>`, CLI actions through
   `drive-bb-plugins bb`, threads through `drive-bb-plugins spawn`.
+- A drive that needs a UI step no verb covers adds the verb to
+  `verbs/<plugin>.mjs` (starting the file for a plugin that has none), runs
+  it, and names it in the feature file's recipe, in the same pull request as
+  the change it verified.
 - Wait on the state an action should reach (`waitFor`), never a fixed sleep,
   except where a gotcha names a delay the plugin itself imposes.
 
@@ -67,7 +72,8 @@ handles, required state, commands, and observable evidence.
 - [UI Tweaks](./ui-tweaks.md): text size and transcript width, from the
   settings section and from RPC, applied live to the New-thread screen.
 - [Thread Glance](./thread-glance.md): the sidebar thread list, its settings
-  popover and `prefs` CLI, child-thread chips.
+  popover and `prefs` CLI, child-thread chips, need you, the settled fold,
+  second windows and remounts, each a verb.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab, the
   Thread usage page and the `thread-usage` CLI over a parent and child
   thread.

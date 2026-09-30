@@ -21,9 +21,18 @@
 #   drive-bb-plugins doctor [--run <run>]           exit 0 only when the run is worth driving
 #   drive-bb-plugins bb [--run <run>] <label> -- <args>
 #                                                   run `bb <args>` against the run, logged as evidence
-#   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>]
+#   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]
 #                                                   make a Claude Code thread, print its id once its
-#                                                   first turn has ended and its runtime is released
+#                                                   first turn has ended and its runtime is released;
+#                                                   --fail ends that turn in error, --background leaves
+#                                                   a command running and the runtime loaded, --hold
+#                                                   prints the id while the turn works for <s> seconds
+#   drive-bb-plugins release [--run <run>] <thread>  stop a --background thread and free its session
+#   drive-bb-plugins machine [--run <run>] offline|online
+#                                                   stop the run's host daemon, or start it again
+#   drive-bb-plugins <plugin> [--run <run>] <verb> [<args>] [--second-window] [--reload] [--mobile] [--label <label>]
+#                                                   one of the plugin's feature verbs in verbs/<plugin>.mjs;
+#                                                   with no verb, lists them
 #   drive-bb-plugins ui [--run <run>] <label> <steps.mjs> [--mobile]
 #                                                   run a Playwright script against the bb web UI
 #   drive-bb-plugins stop [--run <run>]             stop the run, keep its evidence
@@ -212,7 +221,7 @@ ENV
   # systemd then stops the rest of the scope. The scope outlives the launch.
   if [[ -n $unit ]]; then
     systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
-      -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop \
+      -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop -p Delegate=yes \
       -- env DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
   else
     DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
@@ -294,19 +303,62 @@ cmd__launch() {
   echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
   wait_for "the bb server" "$server_url/health"
 
-  local enroll host_id
+  local enroll
   enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
   host_id=$(jq -r .hostId <<< "$enroll")
-  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" \
-    BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$host_id" \
-    ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
-    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
-    bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" > "$scratch/host-daemon.log" 2>&1 &
+  start_daemon BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" &
   echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
-  connected() { [[ $(tb bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]; }
   for _ in $(seq 60); do connected && break; sleep 1; done
   connected || fail "the host daemon did not connect to the bb server"
   echo "host_id=$host_id" >> "$ev/run.env"
+}
+
+# Execs the run's host daemon, as machine $host_id, with any extra environment
+# given. Run it in a subshell: it replaces the shell.
+start_daemon() {
+  exec env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" \
+    CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_HOST_ID="$host_id" "$@" \
+    ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
+    bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" >> "$scratch/host-daemon.log" 2>&1 < /dev/null
+}
+
+connected() { [[ $(tb bb machine list --json | jq --arg id "$host_id" '[.[] | select(.id == $id and .status == "connected")] | length') -gt 0 ]]; }
+
+# Takes the run's machine offline by stopping its host daemon, and with it
+# every Claude Code session and command it runs, or starts the daemon again
+# inside the run's scope. The machine reconnects as the same host.
+cmd_machine() {
+  load_run
+  local want=${1:?usage: drive-bb-plugins machine offline|online} pid
+  pid=$(sed -n 3p "$ev/launch-pids")
+  case $want in
+    offline)
+      if [[ -n $pid ]] && grep -qzxF "DBP_MARK=$scratch" "/proc/$pid/environ" 2> /dev/null; then kill "$pid"; fi
+      for _ in $(seq 30); do connected || break; sleep 1; done
+      ! connected || die "machine $host_id is still connected"
+      echo "machine $host_id offline"
+      ;;
+    online)
+      connected && { echo "machine $host_id online"; return 0; }
+      # Stopped before it runs, so it is inside the scope before it starts anything.
+      (kill -STOP "$BASHPID"; start_daemon) &
+      pid=$!
+      for _ in $(seq 50); do [[ $(awk '{ print $3 }' "/proc/$pid/stat" 2> /dev/null) == T ]] && break; sleep 0.1; done
+      if [[ -n ${unit:-} ]]; then
+        busctl --user call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager \
+          AttachProcessesToUnit ssau "$unit" / 1 "$pid" > /dev/null ||
+          { kill -9 "$pid"; die "could not move the host daemon into $unit; a run started before scopes were delegated cannot restart it: stop it and start again"; }
+      fi
+      kill -CONT "$pid"
+      sed -i "3s/.*/$pid/" "$ev/launch-pids"
+      echo "$pid" >> "$ev/pids"
+      for _ in $(seq 60); do connected && break; sleep 1; done
+      connected || die "the host daemon did not reconnect; see $scratch/host-daemon.log"
+      echo "machine $host_id online"
+      ;;
+    *) die "usage: drive-bb-plugins machine offline|online" ;;
+  esac
 }
 
 cmd_doctor() {
@@ -374,7 +426,23 @@ take_session_slot() {
 
 cmd_spawn() {
   load_run
-  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>]} title=${2:?} prompt=${3:?} parent=${4:-} args id idle=0
+  local mode="" hold="" pos=()
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      --fail | --background) mode=${1#--} ;;
+      --hold) mode=hold hold=${2:?--hold needs seconds} && shift ;;
+      *) pos+=("$1") ;;
+    esac
+    shift
+  done
+  set -- "${pos[@]}"
+  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]} title=${2:?} prompt=${3:?} parent=${4:-} args id idle=0 want=idle
+  # The fake API reads these markers in the prompt (plugins/cache-keeper/harness/README.md).
+  case $mode in
+    fail) prompt+=" [fake: fail]" want=error ;;
+    background) prompt+=" [fake: background]" ;;
+    hold) [[ $hold =~ ^[0-9]+$ ]] || die "--hold takes whole seconds"; prompt+=" [fake: hold=$hold]" ;;
+  esac
   args=(--project "$project" --provider claude-code --model "claude-opus-5-5[1m]" --title "$title" --json)
   if [[ -n $parent ]]; then
     args+=(--parent-thread "$parent" --environment "$(tb bb thread show "$parent" --json | jq -r .environment.id)")
@@ -396,10 +464,40 @@ cmd_spawn() {
     sleep 0.2
   done
   exec 8>&-
-  tb bb thread wait "$id" --status idle --timeout 60s > /dev/null 9>&- && idle=1
+  if [[ $mode == hold ]]; then
+    # The turn is working; a process that inherits the session slot releases
+    # the runtime, and the slot, once the turn ends.
+    tb bash -c 'bb thread wait "$1" --status idle --timeout "$2"; bb thread stop "$1"' _ "$id" "$((hold + 120))s" < /dev/null > /dev/null 2>&1 &
+    echo "$!" >> "$ev/pids"
+    echo "$id"
+    return 0
+  fi
+  tb bb thread wait "$id" --status "$want" --timeout 60s > /dev/null 9>&- && idle=1
+  if [[ $mode == background ]] && ((idle)); then
+    # The runtime stays loaded to keep the command running, so the session
+    # slot stays held, by a process that inherits it, until release.
+    (exec -a "dbp-slot-$id" env "DBP_MARK=$scratch" sleep infinity 8>&- < /dev/null > /dev/null 2>&1) &
+    echo "$id $!" >> "$ev/kept"
+    echo "$!" >> "$ev/pids"
+    echo "$id"
+    return 0
+  fi
   tb bb thread stop "$id" > /dev/null 9>&- || die "could not release $id's runtime"
-  ((idle)) || die "$id did not go idle within 60s; its runtime is released"
+  ((idle)) || die "$id did not reach $want within 60s; its runtime is released"
   echo "$id"
+}
+
+# Stops a --background thread's runtime, its command with it, and frees the
+# session slot it held.
+cmd_release() {
+  load_run
+  local id=${1:?usage: drive-bb-plugins release <thread>} holder
+  holder=$(awk -v id="$id" '$1 == id { print $2 }' "$ev/kept" 2> /dev/null)
+  [[ -n $holder ]] || die "$id was not spawned with --background in run $run"
+  tb bb thread stop "$id" > /dev/null || die "could not release $id's runtime"
+  grep -qzxF "DBP_MARK=$scratch" "/proc/$holder/environ" 2> /dev/null && kill "$holder"
+  sed -i "/^$id /d" "$ev/kept"
+  echo "released $id"
 }
 
 cmd_ui() {
@@ -410,8 +508,20 @@ cmd_ui() {
   [[ -d $playwright ]] || die "Playwright is missing: run 'npm install' in plugins/thread-glance"
   mkdir -p "$ev/ui/$label"
   cp "$steps" "$ev/ui/$label/steps.mjs"
-  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_RUN="$run" DBP_URL="$server_url/" DBP_OUT="$ev/ui/$label" DBP_PLAYWRIGHT="$playwright" DBP_MOBILE="${mobile:+1}" \
-    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" "$(realpath "$steps")"
+  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_RUN="$run" DBP_URL="$server_url/" DBP_OUT="$ev/ui/$label" DBP_PLAYWRIGHT="$playwright" DBP_MOBILE="${mobile:+1}" \
+    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" steps "$(realpath "$steps")"
+}
+
+# Runs one of a plugin's feature verbs from verbs/<plugin>.mjs; the verb picks
+# its own evidence directory under ui/ and prints what it saw as JSON.
+cmd_verb() {
+  load_run
+  local plugin=$1
+  shift
+  local playwright=$repo/plugins/thread-glance/node_modules/playwright
+  [[ -d $playwright ]] || die "Playwright is missing: run 'npm install' in plugins/thread-glance"
+  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_RUN="$run" DBP_URL="$server_url/" DBP_UI="$ev/ui" DBP_PLAYWRIGHT="$playwright" \
+    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" verb "$skill_dir/verbs/$plugin.mjs" "$@"
 }
 
 cmd_stop() {
@@ -455,7 +565,7 @@ cmd_stop() {
 }
 
 case ${1:-} in
-  start | doctor | bb | spawn | ui | stop | _launch)
+  start | doctor | bb | spawn | release | machine | ui | stop | _launch)
     c=$1
     shift
     if [[ ${1:-} == --run ]]; then
@@ -465,5 +575,18 @@ case ${1:-} in
     fi
     "cmd_$c" "$@"
     ;;
-  *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
+  *)
+    if [[ -n ${1:-} && -f $skill_dir/verbs/$1.mjs ]]; then
+      p=$1
+      shift
+      if [[ ${1:-} == --run ]]; then
+        export DBP_RUN=${2:?--run needs a run name}
+        shift 2
+      fi
+      cmd_verb "$p" "$@"
+      exit
+    fi
+    sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'
+    exit 2
+    ;;
 esac

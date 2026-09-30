@@ -104,15 +104,24 @@ Threads, for a feature that needs one, in the run's project, printing the id
 once the first turn has ended:
 
 ```bash
-.agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> <label> <title> <prompt> [<parent-thread>]
+.agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> <label> <title> <prompt> [<parent-thread>] [--fail|--hold <s>|--background]
 ```
 
 bb keeps a thread's Claude Code loaded after its turn, so `spawn` releases it
 with `bb thread stop` before returning; the thread still reads `idle`, and a
-later `bb thread tell` loads it again. At most `DBP_MAX_SESSIONS` (default
-4, fixed at `start`) `spawn`s of a run hold a session at once, and the rest
-wait for a slot; bb's own `concurrency-limit global` is set to the same
-number. `spawn` is the only way to make a thread in a run: the `bb` command
+later `bb thread tell` loads it again. A flag puts the thread in a state an
+ordinary turn never reaches:
+
+- `--fail`: the turn ends in error (bb status `error`, `Failed` in a list).
+- `--hold <s>`: `spawn` prints the id while the turn works, and the turn ends
+  `<s>` seconds later; its runtime is released then.
+- `--background`: the turn leaves a command running in the background, and
+  the runtime stays loaded to keep it running, holding its session slot until
+  `drive-bb-plugins release --run <run> <thread>` stops both.
+
+At most `DBP_MAX_SESSIONS` (default 4, fixed at `start`) `spawn`s of a run
+hold a session at once, and the rest wait for a slot; bb's own
+`concurrency-limit global` is set to the same number. `spawn` is the only way to make a thread in a run: the `bb` command
 refuses `thread spawn`.
 
 **Many threads** (a list, a sidebar, a performance audit): seed them through
@@ -130,7 +139,28 @@ thread's `spawn` in a bounded pool such as `xargs -P`, never one `&` per
 thread; a `bb thread tell` to many threads is sent the same way, each
 followed by `bb thread stop` once `bb thread wait <id> --status idle` returns.
 
-UI actions, run as a Playwright script against the run's web UI:
+The machine the run's threads work on goes away and comes back with
+`drive-bb-plugins machine --run <run> offline|online`. Offline stops the
+host daemon, and every session and command with it; online starts it again
+inside the run's scope, and doctor passes again once it is back.
+
+UI actions are **verbs**, one per step a feature file's recipe takes, each
+a Playwright drive carrying the plugin's own selectors:
+
+```bash
+.agents/skills/driving-bb-plugins/drive-bb-plugins <plugin> --run <run> <verb> [<args>] [--second-window] [--reload] [--mobile] [--label <label>]
+```
+
+The feature file names the verb for each step, and the command with no verb
+lists a plugin's verbs; they live in `verbs/<plugin>.mjs` beside this file.
+A verb captures before and after its action, reads back what bb stored, and
+prints JSON of all of it; `--second-window` adds what a window opened before
+the action showed with no reload, `--reload` what this window shows after
+one. A UI step no verb covers becomes a new verb, as the map's
+[driving conventions](features/README.md#driving-conventions) say;
+`browser.mjs`'s header says what a verb is given.
+
+Writing a verb starts from its screen, looked at with a Playwright script:
 
 ```bash
 .agents/skills/driving-bb-plugins/drive-bb-plugins ui --run <run> <label> <steps.mjs> [--mobile]
@@ -139,7 +169,8 @@ UI actions, run as a Playwright script against the run's web UI:
 `<steps.mjs>` default-exports `async ({ page, url, capture }) => {}`. The page
 has already loaded `url`, the web UI's root, and `process.env.DBP_HARNESS`
 is this harness's path and `process.env.DBP_RUN` the run, for a CLI action
-between two captures; `--mobile` makes it a 390×844
+between two captures, and a verbs file's helpers import from
+`process.env.DBP_SKILL + "/verbs/<plugin>.mjs"`; `--mobile` makes it a 390×844
 touch phone, the default is a 1440×900 desktop. `capture(name, action)` saves
 the page's state after `action`. A thrown error fails the command and
 captures `failure`. It uses `plugins/thread-glance`'s Playwright and
@@ -194,12 +225,15 @@ verify the settings screen that writes it.
 
 - `cli.md`: every `bb` and `spawn` command with its stdout, stderr and exit;
 - `ui/<label>/`: `NN-<name>.aria.yml`, `NN-<name>.png`, `actions.md`,
-  `console.log` and the `steps.mjs` that made them;
+  `console.log` and the `steps.mjs` that made them, or for a verb, in
+  `ui/<plugin>.<verb>[-N]/`, the `verb.txt` that made them and its
+  `result.json`;
 - after `stop`: `plugin-<id>.log`, `server.log`, `host-daemon.log`,
   `fake-anthropic.log` and `requests.jsonl`;
 - `pids`, `launch-pids`, `run.env` and `env.sh`: the handles `stop` kills by
   and the run's settings, its ports and scope included;
-- `slots/`: the locks `spawn` holds its session slots by.
+- `slots/`: the locks `spawn` holds its session slots by, and `kept`: each
+  `--background` thread with the process holding its slot.
 
 ## Cleanup
 
@@ -225,10 +259,11 @@ ps -p "$(paste -sd, - < .drives/<run>/pids)"
 
 ## Helpers
 
-- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|ui|stop`:
+- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|release|machine|<plugin>|ui|stop`:
   the harness above. Run with no arguments, it prints its usage.
-- `.agents/skills/driving-bb-plugins/browser.mjs`: what `ui` runs; not called
-  directly.
+- `.agents/skills/driving-bb-plugins/verbs/<plugin>.mjs`: a plugin's verbs.
+- `.agents/skills/driving-bb-plugins/browser.mjs`: what `ui` and the verbs
+  run; not called directly.
 - `plugins/cache-keeper/harness/`: Cache Keeper's own drives, on a separate
   throwaway bb with ports 40180 to 40187. Its README says when to reach for
   them.
