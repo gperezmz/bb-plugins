@@ -11,7 +11,7 @@ The row's **…** button, a right-click on the row, the context-menu key or Shif
 | Details | Always | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
 | Open in split | While bb offers split panes here | Opens the thread in a new pane |
 | Copy thread link, Copy thread ID | Always | Copies the link or the ID |
-| Mark read | On a root while its tree holds something unread, on any other row while the thread is unread | See [Marking threads read](#marking-threads-read); on a root, bb's own lists in the window show the tree unread until a reload ([known limitation](#known-limitation-bbs-own-lists-until-a-reload)) |
+| Mark read | On a root while its tree holds something unread, on any other row while the thread is unread | See [Marking threads read](#marking-threads-read) |
 | Mark unread | Otherwise | Marks the thread unread in bb |
 | Pin, Unpin | Always | Pins or unpins the thread in bb |
 | Move to section | On a root that is not archived, while the list has sections or groups by Custom | Moves the thread to Threads or one of bb's sections, with a check on its own. A phone's menu lists the sections under the label instead of in a submenu |
@@ -28,7 +28,7 @@ A worktree folder row, drawn while **Worktrees as folders** is on, has its own *
 
 | Item | Shown | Does |
 |---|---|---|
-| Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read); bb's own lists in the window show those threads unread until a reload ([known limitation](#known-limitation-bbs-own-lists-until-a-reload)) |
+| Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read) |
 | New thread | On a group that names a project, not on Pinned | Opens a new thread there |
 | New section | While grouped by Custom | Creates a bb section |
 | Rename | On a section or a machine | Renames it in bb |
@@ -64,7 +64,3 @@ Enter on a row opens its thread, as a click does, and the context-menu key or Sh
 **Mark all read** in the list header marks every unread thread in the list read: every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. A group's **Mark all read** does the same for that group. **Mark read** on a root marks its whole thread tree; on any other row, the thread alone. Above 20 threads, Mark all read asks first.
 
 The threads show read at once. Thread Glance then sends bb one read request per thread, six at a time, so bb is never sent them all at once. A thread whose request fails shows unread again, and a row's Mark read says it could not.
-
-### Known limitation: bb's own lists until a reload
-
-After Mark all read, or Mark read on a thread tree, bb's own thread lists in the same window still show those threads unread until the page is reloaded. In practice that is the phone home screen's **Recent** list. bb 0.44 updates its own copy of read state only through its own mark-read action, and sends no realtime update for read state, while Thread Glance sends its paced read requests instead so that it never sends them all at once. A window loaded afterwards shows them read. A window already open elsewhere, Thread Glance's list in it included, shows them read from its next reload, as it does for any read state set outside it in bb 0.44.
