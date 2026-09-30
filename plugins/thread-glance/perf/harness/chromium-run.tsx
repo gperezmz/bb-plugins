@@ -27,6 +27,16 @@ const click = (target: Element) => userEvent.click(target);
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Unmounts a list whose fake plugin server lives on, and stops the server
+ * publishing to it: a server still holding the window keeps its container,
+ * which B13 would read as a node the list left behind.
+ */
+function unmount(slot: RenderedSlot, server: ServerState): void {
+  slot.unmount();
+  server.detach(slot);
+}
+
 /** Resolves once the frame after the current one has been drawn. */
 async function drawn(): Promise<void> {
   await nextFrame();
@@ -238,7 +248,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   const rowsMounted = anchors(slot.container).length;
 
   // Remount to first row drawn.
-  slot.unmount();
+  unmount(slot, server);
   cleanup();
   await quiet();
   const again = await mountTimed(list, SIDEBAR, { host, app, server });
@@ -336,7 +346,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
     let firstHeap = 0;
     for (let cycle = 0; cycle <= 10; cycle += 1) {
       if (cycle > 0) {
-        slot.unmount();
+        unmount(slot, server);
         cleanup();
         await quiet();
         slot = (await mountTimed(list, SIDEBAR, { host, app, server })).slot;
@@ -356,7 +366,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   host.updateProps({ isCompactViewport: false });
   await quiet();
   const far = await dragFar(slot);
-  slot.unmount();
+  unmount(slot, server);
   cleanup();
 
   const phone = await runPhone(list, timing);
