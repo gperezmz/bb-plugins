@@ -45,7 +45,6 @@ runs:
           # The bb release whose `bb plugin types` reports each SDK pin. A
           # plugin repinned to an SDK missing here fails until it is added.
           case $sdk in
-            0.5.9) BB_VERSION=0.43.4 ;;
             0.5.29) BB_VERSION=0.44.0 ;;
             *) echo "::error::$PLUGIN pins @get-bb/plugin-sdk $sdk, which no bb release is listed for in .github/actions/setup/action.yml" >&2; exit 1 ;;
           esac
