@@ -4,8 +4,10 @@
 // mounted again draws first, and what it asks for, with and without the
 // plugin's component in bb's app overlay slot; a realtime reconnect; the
 // first-run import once per device; and the records `sync` leaves out.
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+// The clock is fake throughout, so what a test sees follows from how far it
+// moved the clock, whatever the machine's speed.
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, IMPORT_ANSWER_STORAGE_KEY } from "@/shared/preferences";
@@ -24,8 +26,13 @@ beforeAll(async () => {
   app = await loadPluginApp(() => import("../../../app"));
 });
 
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"] });
+});
+
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   localStorage.clear();
 });
 
@@ -80,16 +87,32 @@ function leave(server: FakeServer, list: RenderedSlot): void {
   list.unmount();
 }
 
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+/** Moves the fake clock on 20 ms and lets what it set off land. */
+const settle = () => act(() => vi.advanceTimersByTimeAsync(20));
+
+/**
+ * `query`'s answer once it gives one, moving the fake clock on 50 ms at a time
+ * for up to a second, as `findBy` and `waitFor` poll on a real one.
+ */
+async function find<T>(query: () => T): Promise<T> {
+  for (let waited = 0; ; waited += 50) {
+    try {
+      return query();
+    } catch (error) {
+      if (waited >= 1_000) throw error;
+    }
+    await act(() => vi.advanceTimersByTimeAsync(50));
+  }
+}
 
 /** Opens a row's Details dialog, where its done note shows. */
 async function details(title: string): Promise<HTMLElement> {
-  const row = (await screen.findByRole("link", { name: new RegExp(`Open ${title}\\b`) })).parentElement!;
+  const row = (await find(() => screen.getByRole("link", { name: new RegExp(`Open ${title}\\b`) }))).parentElement!;
   const trigger = within(row).getByRole("button", { name: "Thread actions" });
   fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
   fireEvent.click(trigger);
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
-  return screen.findByRole("dialog");
+  fireEvent.click(await find(() => screen.getByRole("menuitem", { name: "Details" })));
+  return find(() => screen.getByRole("dialog"));
 }
 
 const threads = () => [
@@ -109,7 +132,7 @@ describe("a list mounted again beside the app overlay's keeper", () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const overlay = mountOverlay(server);
     const first = mountList(server, threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     leave(server, first);
 
@@ -140,7 +163,7 @@ describe("a list mounted again beside the app overlay's keeper", () => {
     mountOverlay(server);
     const onBranch = [makeThread({ id: "b", title: "Topic", environment: { branchName: "fix/login" } })];
     const first = mountList(server, onBranch);
-    await waitFor(async () => expect((await screen.findByRole("link", { name: /Open Topic/ })).parentElement!.textContent).toContain("fix/login"));
+    await find(() => expect(screen.getByRole("link", { name: /Open Topic/ }).parentElement!.textContent).toContain("fix/login"));
     leave(server, first);
     const again = mountList(server, onBranch);
     expect(screen.getByRole("link", { name: /Open Topic/ }).parentElement!.textContent).toContain("fix/login");
@@ -153,7 +176,7 @@ describe("a list mounted again where bb has no app overlay slot", () => {
   it("asks one sync for what changed while it was away, and draws once it has it", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const first = mountList(server, threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     leave(server, first);
 
@@ -163,7 +186,7 @@ describe("a list mounted again where bb has no app overlay slot", () => {
     const again = mountList(server, finishedThreads());
     // It does not draw what it holds from before it left.
     expect(screen.queryByRole("link", { name: /Open Broken/ })).toBeNull();
-    expect(await screen.findByText("Out of credits")).toBeTruthy();
+    expect(await find(() => screen.getByText("Out of credits"))).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Machines" })).toBeTruthy();
     await settle();
     expect(again.inspection.rpcCalls.map((call) => call.method)).toEqual(["sync"]);
@@ -176,7 +199,7 @@ describe("a realtime reconnect", () => {
   it("shows every change made while the connection was down, without a reload", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const list = mountList(server, threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     await list.behavior.setRealtimeConnectionState("reconnecting");
     // Signals sent while the connection is down never arrive.
@@ -188,7 +211,7 @@ describe("a realtime reconnect", () => {
     expect(screen.queryByText("Out of credits")).toBeNull();
     const before = list.inspection.rpcCalls.length;
     await list.behavior.setRealtimeConnectionState("connected");
-    expect(await screen.findByText("Out of credits")).toBeTruthy();
+    expect(await find(() => screen.getByText("Out of credits"))).toBeTruthy();
     expect(screen.getAllByLabelText(/Scheduled message/).length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Machines" })).toBeTruthy();
     expect(list.inspection.rpcCalls.slice(before).map((call) => call.method)).toEqual(["sync"]);
@@ -219,7 +242,7 @@ describe("a first load", () => {
         },
       ),
     );
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect(page.inspection.rpcCalls.filter((call) => call.method === "sync")).toHaveLength(1);
   });
@@ -230,7 +253,7 @@ describe("a first load", () => {
     await settle();
     expect(list.inspection.rpcCalls.map((call) => call.method)).not.toContain("sync");
     await list.behavior.setRealtimeConnectionState("connected");
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect(list.inspection.rpcCalls.filter((call) => call.method === "sync")).toHaveLength(1);
   });
@@ -240,19 +263,19 @@ describe("the first-run import", () => {
   it("is sent once per device, across remounts and reloads, once an answer came", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const first = mountList(server, threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect(first.inspection.rpcCalls.map((call) => call.method).slice(0, 2)).toEqual(["importPreferences", "sync"]);
     expect(JSON.parse(localStorage.getItem(IMPORT_ANSWER_STORAGE_KEY)!)).toMatchObject({ status: "already-imported" });
     leave(server, first);
     const again = mountList(server, threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     leave(server, again);
     // A reload of the app, or of the plugin after an update, starts a new lifetime; the device keeps its record.
     endPluginLifetime();
     const reloaded = mountList(createFakeServer({ preferences: { settleAfter: "never" } }), threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect([...again.inspection.rpcCalls, ...reloaded.inspection.rpcCalls].map((call) => call.method)).not.toContain("importPreferences");
   });
@@ -266,13 +289,13 @@ describe("the first-run import", () => {
       },
     };
     const first = mountList(server, threads(), { rpc: failing });
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect(localStorage.getItem(IMPORT_ANSWER_STORAGE_KEY)).toBeNull();
     leave(server, first);
     endPluginLifetime();
     const next = mountList(createFakeServer({ preferences: { settleAfter: "never" } }), threads());
-    await screen.findByRole("link", { name: /Open Worker/ });
+    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
     expect(next.inspection.rpcCalls.map((call) => call.method)).toContain("importPreferences");
   });
@@ -293,8 +316,8 @@ describe("records sync leaves out", () => {
       makeThread({ id: "a2", title: "Old two", status: "error", isArchived: true, archivedAt: T0 + 10 }),
     ];
     const list = mountList(server, [...threads(), ...archived]);
-    expect(await screen.findByText("Out of credits")).toBeTruthy();
-    expect(await screen.findByText("Disk full")).toBeTruthy();
+    expect(await find(() => screen.getByText("Out of credits"))).toBeTruthy();
+    expect(await find(() => screen.getByText("Disk full"))).toBeTruthy();
     const fetches = list.inspection.rpcCalls.filter((call) => call.method === "fetchArchived");
     expect(fetches).toHaveLength(1);
     expect((fetches[0]!.input as { threadIds: string[] }).threadIds).toEqual(expect.arrayContaining(["a1", "a2"]));
@@ -305,8 +328,8 @@ describe("records sync leaves out", () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" }, notes: { c: failedNote }, archived: ["c"] });
     const unarchived = [makeThread({ id: "p", title: "Parent" }), makeThread({ id: "c", title: "Child", parentThreadId: "p", status: "error" })];
     const list = mountList(server, unarchived);
-    fireEvent.click(await screen.findByRole("button", { name: /Show 1 child thread of Parent/ }));
-    expect(await screen.findByText("Out of credits")).toBeTruthy();
+    fireEvent.click(await find(() => screen.getByRole("button", { name: /Show 1 child thread of Parent/ })));
+    expect(await find(() => screen.getByText("Out of credits"))).toBeTruthy();
     await settle();
     leave(server, list);
     mountList(server, unarchived);
