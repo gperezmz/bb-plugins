@@ -110,26 +110,60 @@ export function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
   return wasWorking && now.kind !== "offline";
 }
 
+/** Each thread object's busy state: bb hands over an unchanged thread as the same object. */
+const busyStates = new WeakMap<PluginSidebarThread, ThreadState>();
+
 function stateOf(thread: PluginSidebarThread): ThreadState {
-  return computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
+  let state = busyStates.get(thread);
+  if (state === undefined) {
+    state = computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
+    busyStates.set(thread, state);
+  }
+  return state;
+}
+
+/**
+ * The threads of `after` that are not the object `before` held in their
+ * place, or null when a thread was added, removed or moved.
+ */
+export function changedThreads<T extends { id: string }>(before: readonly T[] | null, after: readonly T[]): T[] | null {
+  if (before === null || before.length !== after.length) return null;
+  const changed: T[] = [];
+  for (let index = 0; index < after.length; index += 1) {
+    const [was, thread] = [before[index]!, after[index]!];
+    if (was === thread) continue;
+    if (was.id !== thread.id) return null;
+    changed.push(thread);
+  }
+  return changed;
 }
 
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
  * idle now went idle at `at`. A thread first seen idle has no time here; the
- * server's `idleAt` holds it.
+ * server's `idleAt` holds it. With `changed` (see `changedThreads`), only
+ * those threads are read, since every other one is as `previous` saw it.
  */
-export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
-  const busy = new Set<string>();
-  const working = new Set<string>();
-  const idleSince: Record<string, number> = {};
+export function trackIdle(
+  previous: IdleTracker | null,
+  threads: readonly PluginSidebarThread[],
+  at: number,
+  changed: readonly PluginSidebarThread[] | null = null,
+): IdleTracker {
+  const partial = previous !== null && changed !== null;
+  const busy = new Set<string>(partial ? previous.busy : []);
+  const working = new Set<string>(partial ? previous.working : []);
+  const idleSince: Record<string, number> = partial ? { ...previous.idleSince } : {};
   const unannounced: string[] = [];
-  for (const thread of threads) {
+  for (const thread of partial ? changed : threads) {
     const id = thread.id;
     const state = stateOf(thread);
+    busy.delete(id);
+    working.delete(id);
     if (!isParentIdle({ thread, state })) {
       busy.add(id);
       if (state.kind === "working") working.add(id);
+      delete idleSince[id];
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
       if (!isAnnounced(previous.working.has(id), state)) unannounced.push(id);

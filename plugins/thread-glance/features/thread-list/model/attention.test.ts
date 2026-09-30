@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { countNeedYou } from "./view";
-import { isOrphanedFailure, isParentIdle, attentionFlagsOf, orphanedAt, ORPHAN_WAIT_MS, revealsOn, trackIdle } from "./attention";
+import { changedThreads, isOrphanedFailure, isParentIdle, attentionFlagsOf, orphanedAt, ORPHAN_WAIT_MS, revealsOn, trackIdle } from "./attention";
 import type { Flag } from "./state";
 import type { ThreadRow } from "./view";
 
@@ -70,6 +70,17 @@ describe("the wait before a failure counts as orphaned", () => {
 describe("when a thread last became idle", () => {
   const idle = makeThread({ id: "p" });
   const busy = makeThread({ id: "p", ...working });
+  it("reads only the threads bb changed, to the same tracker as reading them all", () => {
+    const quiet = makeThread({ id: "q" });
+    const before = [busy, quiet, makeThread({ id: "r", ...working })];
+    const after = [idle, quiet, makeThread({ id: "r" })];
+    const changed = changedThreads(before, after);
+    expect(changed?.map((thread) => thread.id)).toEqual(["p", "r"]);
+    const first = trackIdle(null, before, T0);
+    expect(trackIdle(first, after, T0 + 1, changed)).toEqual(trackIdle(first, after, T0 + 1));
+    expect(changedThreads(before, [quiet, idle, after[2]!])).toBeNull();
+    expect(changedThreads(before, after.slice(1))).toBeNull();
+  });
   it("stamps a thread that goes from busy to idle, and nothing first seen idle", () => {
     const first = trackIdle(null, [idle], T0);
     expect(first.idleSince).toEqual({});
