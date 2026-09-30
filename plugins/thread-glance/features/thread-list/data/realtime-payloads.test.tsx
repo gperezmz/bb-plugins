@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 // What the app takes from each realtime channel: a valid payload lands, one of
 // the wrong type is dropped, and a note longer than NOTE_MAX_LENGTH is dropped.
+// Stamps and notes both come as thread records on the `records` channel.
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CHANNELS, NOTE_MAX_LENGTH } from "@/shared/signals";
 import { defaultPreferences, PREFERENCES_MIRROR_STORAGE_KEY } from "@/shared/preferences";
-import { makeThread, PROJECTS, T0, working } from "../testing/fixtures";
+import { createFakeServer, makeThread, type FakeServer, PROJECTS, T0, working } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -31,23 +32,15 @@ const threads = [
   makeThread({ id: "s", title: "Later", queuedWork: "waiting" }),
 ];
 
+let server: FakeServer;
+
 async function renderList() {
+  server = createFakeServer({ preferences: { settleAfter: "never" } });
   const slot = renderSlot(
     app.threadLists[0]!,
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
-      rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), settleAfter: "never" } }),
-        setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-        resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-        importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-        listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
-        markSeen: () => ({ at: Date.now() }),
-        reportIdle: () => ({ ok: true as const }),
-        clearSeen: () => ({ ok: true as const }),
-        listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-        listNotes: () => ({ notes: {} }),
-      } as never,
+      rpc: server.handlers as never,
       sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       sdk: {
@@ -74,19 +67,23 @@ function mirrored(): Record<string, unknown> {
 }
 
 describe("realtime payloads", () => {
+  /** A `records` signal from the server, at the next revision. */
+  let revision = 0;
+  const records = (records: unknown) => ({ epoch: server.epoch, revision: (revision += 1), records });
+
   it("notes: takes a valid note, drops one of the wrong type and one past the length cap", async () => {
     const slot = await renderList();
-    await slot.emitRealtime(CHANNELS.notes, { threadId: "f", notes: "Out of credits" });
-    await slot.emitRealtime(CHANNELS.notes, {
-      threadId: "f",
-      notes: { failed: { kind: "failed", text: "x".repeat(NOTE_MAX_LENGTH + 1), at: T0 } },
-    });
+    await slot.emitRealtime(CHANNELS.records, records({ f: { stamps: null, notes: "Out of credits" } }));
+    await slot.emitRealtime(
+      CHANNELS.records,
+      records({ f: { stamps: null, notes: { failed: { kind: "failed", text: "x".repeat(NOTE_MAX_LENGTH + 1), at: T0 } } } }),
+    );
     await settle();
     expect(screen.queryByText("x".repeat(NOTE_MAX_LENGTH + 1))).toBeNull();
-    await slot.emitRealtime(CHANNELS.notes, {
-      threadId: "f",
-      notes: { failed: { kind: "failed", text: "y".repeat(NOTE_MAX_LENGTH), at: T0 } },
-    });
+    await slot.emitRealtime(
+      CHANNELS.records,
+      records({ f: { stamps: null, notes: { failed: { kind: "failed", text: "y".repeat(NOTE_MAX_LENGTH), at: T0 } } } }),
+    );
     expect(await screen.findByText("y".repeat(NOTE_MAX_LENGTH))).toBeTruthy();
   });
 
@@ -103,11 +100,11 @@ describe("realtime payloads", () => {
   it("stamps: takes a valid stamp, drops one of the wrong type", async () => {
     const slot = await renderList();
     const startedAt = Date.now() - 5.5 * 60_000;
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: "w", value: startedAt });
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "begunAt", threadIds: ["w"], value: startedAt });
+    await slot.emitRealtime(CHANNELS.records, records({ w: { stamps: { startedAt: String(startedAt) }, notes: null } }));
+    await slot.emitRealtime(CHANNELS.records, records({ w: { stamps: startedAt, notes: null } }));
     await settle();
     expect(screen.queryByLabelText("Working for 5m")).toBeNull();
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: ["w"], value: startedAt });
+    await slot.emitRealtime(CHANNELS.records, records({ w: { stamps: { startedAt }, notes: null } }));
     expect(await screen.findByLabelText("Working for 5m")).toBeTruthy();
   });
 

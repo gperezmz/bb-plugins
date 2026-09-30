@@ -7,7 +7,8 @@ import { childSummary, descendantsOf, formatDateTime, sinceLabel } from "../mode
 import { lastReply } from "../model/notes";
 import { finishedAtFor, stateSince } from "../model/time";
 import { ICONS } from "../icons";
-import type { Commands, ModelInfo } from "../commands/commands";
+import type { Commands } from "../commands/commands";
+import type { ModelInfo } from "../sync";
 import { useCommands, useLayout, useNotesOf, useNow, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
 import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";

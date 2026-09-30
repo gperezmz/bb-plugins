@@ -6,9 +6,7 @@ import { useSyncExternalStore } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { defaultPreferences } from "@/shared/preferences";
-import type { Stamps } from "@/shared/signals";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
 
 // The SDK's fake pull request hook answers at once; this one reports a
 // lookup in flight until `answerPullRequests` runs.
@@ -82,23 +80,15 @@ function render() {
     makeThread({ id: "p", title: "Parent", createdAt: old, latestAttentionAt: old, lastReadAt: old }),
     makeThread({ id: "c", title: "Child", parentThreadId: "p", createdAt: old, ...finished }),
   ];
-  const stamps = deferred<{ stamps: Stamps }>();
+  // One `sync` brings the preferences and the stamps together, so the
+  // server holds these stamps back and sends them later, as a signal.
+  const server = createFakeServer({ preferences: { organizationMode: "project", settleAfter: "1d" } });
   const project = deferred<unknown>();
-  renderSlot(
+  server.attach(renderSlot(
     app.threadLists[0]!,
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
-      rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), organizationMode: "project", settleAfter: "1d" } }),
-        setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-        resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-        importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-        listStamps: () => stamps.promise,
-        markSeen: () => ({ at: Date.now() }),
-        clearSeen: () => ({ ok: true as const }),
-        listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-        listNotes: () => ({ notes: {} }),
-      } as never,
+      rpc: server.handlers as never,
       sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       // Every pull request state that once settled a thread, or kept one out.
@@ -115,12 +105,11 @@ function render() {
         providers: { models: async () => ({ models: [] }) } as never,
       },
     },
-  );
+  ));
   return {
     async answerAll() {
-      stamps.resolve({
-        stamps: { startedAt: { r: recent - HOUR, c: recent - HOUR }, finishedAt: { r: recent, c: recent }, pendingAt: {}, seenAt: {}, idleAt: {} },
-      });
+      await server.stamp("startedAt", ["r", "c"], recent - HOUR);
+      await server.stamp("finishedAt", ["r", "c"], recent);
       project.resolve({ sources: [{ hostId: "host_1", isDefault: true }] });
       pullRequestLookup.set(true);
       // The badge on Recent shows once its default branch and pull request answered.

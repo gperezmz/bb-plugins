@@ -482,15 +482,22 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "fake host",
     kind: "deterministic",
     switchedOnBy: 149,
-    enforcing: false,
+    enforcing: true,
     read: ({ host }) =>
-      acrossCells(CELLS, (cell) => host[cell], ({ remount }) => {
-        const other = Object.entries(remount.rpc).filter(([method]) => method !== "sync" && method !== "fetchArchived");
-        // The fake host has no app overlay slot, so this is the case without
-        // one: exactly one `sync`. The case with it is read once #149 adds it.
+      acrossCells(CELLS, (cell) => host[cell], ({ remount, remountWithOverlay }) => {
+        const besides = (requests: typeof remount, allowed: readonly string[]) =>
+          Object.keys(requests.rpc).filter((method) => !allowed.includes(method) && method !== "fetchArchived");
+        const fetches = (requests: typeof remount) => requests.rpc.fetchArchived ?? 0;
+        // Without the slot the list follows realtime itself, so it asks what
+        // it missed: exactly one `sync`. With it, the overlay's keeper followed
+        // throughout, so nothing.
+        const without = remount.bbTotal === 0 && besides(remount, ["sync"]).length === 0 && remount.rpc.sync === 1;
+        const withSlot = remountWithOverlay.bbTotal === 0 && besides(remountWithOverlay, []).length === 0;
         return {
-          figure: `${remount.rpcTotal} plugin RPC, ${remount.bbTotal} bb requests (no app overlay slot)`,
-          pass: remount.bbTotal === 0 && other.length === 0 && remount.rpc.sync === 1 && (remount.rpc.fetchArchived ?? 0) <= 1,
+          figure:
+            `with the app overlay slot ${remountWithOverlay.rpcTotal} plugin RPC, ${remountWithOverlay.bbTotal} bb requests; ` +
+            `without it ${remount.rpcTotal} plugin RPC, ${remount.bbTotal} bb requests`,
+          pass: without && withSlot && fetches(remount) <= 1 && fetches(remountWithOverlay) <= 1,
         };
       }),
   },
@@ -503,7 +510,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "fake host (a first load on a device that never got an import answer)",
     kind: "deterministic",
     switchedOnBy: 149,
-    enforcing: false,
+    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ firstLoad }) => {
         const counted = Object.entries(firstLoad.rpc)
@@ -542,7 +549,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "`server.test`; jsdom. Here: the plugin server on bb's fake plugin host",
     kind: "deterministic",
     switchedOnBy: 149,
-    enforcing: false,
+    enforcing: true,
     read: ({ server }) => {
       if (server === undefined) return NOT_MEASURED;
       const counts = Object.entries(server.signalsPerEvent);
@@ -557,35 +564,43 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "`sync` payload",
     threshold: "first `sync` carries stamps and notes of active threads only; with nothing changed since the given revision, no stamps, no notes, < 1 KB",
     baseline: "24.5 KB + 19 KB per mount",
-    measuredBy: "`server.test`. Until #149 adds `sync`, the figure is the `listStamps` and `listNotes` payload every mount loads, with every generated thread stamped and noted",
+    measuredBy:
+      "`server.test`. Here: the plugin server on bb's fake plugin host, every thread of the 1,500-thread generated list stamped and noted and a tenth of them archived",
     kind: "deterministic",
     switchedOnBy: 149,
-    enforcing: false,
-    read: ({ server }) =>
-      server === undefined
-        ? NOT_MEASURED
-        : {
-            figure: `${(server.mountPayloadBytes.stamps / KB).toFixed(1)} KB stamps + ${(server.mountPayloadBytes.notes / KB).toFixed(1)} KB notes per mount, ${server.mountPayloadBytes.threads} threads`,
-            pass: server.mountPayloadBytes.stamps + server.mountPayloadBytes.notes < KB,
-          },
+    enforcing: true,
+    read: ({ server }) => {
+      if (server === undefined) return NOT_MEASURED;
+      const payload = server.syncPayload;
+      return {
+        figure:
+          `first ${(payload.firstBytes / KB).toFixed(1)} KB, ${payload.firstRecords} records (${payload.firstArchivedRecords} archived) of ${payload.threads} threads; ` +
+          `unchanged ${payload.unchangedBytes} bytes, ${payload.unchangedRecords} records`,
+        pass:
+          payload.firstArchivedRecords === 0 &&
+          payload.firstRecords === payload.threads - payload.archived &&
+          payload.unchangedRecords === 0 &&
+          payload.unchangedBytes < KB,
+      };
+    },
   },
   {
     id: "B25",
     bounds: "First read of stamps and notes after a server start, 5,000 stored threads",
-    threshold: "< 10 ms each (`listStamps` and `listNotes` until #149, then the first `sync`)",
+    threshold: "< 10 ms (the first `sync`)",
     baseline:
       "15.6 / 18.3 ms (0.7.0); 16.2–17.2 / 16.2–16.4 ms after #147's batched reads, on bb 0.44's SQLite-backed KV (measured in PR #156)",
     measuredBy:
-      "`server.test` SQLite-backed benchmark (\"cold read benchmark\", which #147 added and which prints its figures). `npm run perf` reports bb's fake plugin host with its KV in memory. #149 moves stamps and notes into the plugin's own SQLite database, which is what makes the row reachable, and switches it on",
+      "The `sync` handler, from the request to its answer object, cold after a restart, over 5,000 stored threads in the plugin's own SQLite database: `server.test`'s \"cold read benchmark\", which prints its figures, and `npm run perf` on bb's fake plugin host. The host's whole call, with its checks of the answer and its JSON, is recorded beside it for information and is not held to the threshold",
     kind: "timing",
     switchedOnBy: 149,
-    enforcing: false,
+    enforcing: true,
     read: ({ server }) =>
       server === undefined
         ? NOT_MEASURED
         : {
-            figure: `listStamps ${server.firstRead.stampsMs} ms, listNotes ${server.firstRead.notesMs} ms`,
-            pass: server.firstRead.stampsMs < 10 && server.firstRead.notesMs < 10,
+            figure: `first sync ${server.firstRead.handlerMs} ms (host's whole call ${server.firstRead.callMs} ms)`,
+            pass: server.firstRead.handlerMs < 10,
           },
   },
   {

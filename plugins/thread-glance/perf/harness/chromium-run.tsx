@@ -8,7 +8,6 @@ import { cleanup } from "@testing-library/react";
 import { vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
-import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type Frame, type ServerState } from "./fake-host";
 import type { ChromiumFigures, InpFigure, MarkAllReadTiming } from "./chromium-figures";
@@ -312,7 +311,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
         const before = await scriptMs();
         const working = phase === "starts";
         host.updateThread(id, { status: working ? "active" : "idle", runtimeStatus: working ? "active" : "idle", updatedAt: Date.now() });
-        await slot.emitRealtime(CHANNELS.stamps, { kind: working ? "startedAt" : "finishedAt", threadIds: [id], value: Date.now() });
+        await server.stamp(working ? "startedAt" : "finishedAt", [id], Date.now());
         await quiet();
         eventJsMs[`turn ${phase} ${where}`] = Number(((await scriptMs()) - before).toFixed(2));
       }

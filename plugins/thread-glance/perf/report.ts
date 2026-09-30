@@ -89,8 +89,10 @@ export function formatReport(figures: Figures, verdicts: readonly Verdict[]): st
   if (mar.chromium) shared.push(["MAR list, Chromium", `INP ${inpValue(mar.chromium.inp.x1)} at 1×, ${inpValue(mar.chromium.inp.x4)} at 4×, main thread ${msValue(mar.chromium.mainThreadMs)}`]);
   if (server) {
     shared.push(["server: signals per thread event", Object.entries(server.signalsPerEvent).map(([name, count]) => `${name} ${count}`).join(", ")]);
-    shared.push(["server: stamps + notes per mount", `${server.mountPayloadBytes.stamps} + ${server.mountPayloadBytes.notes} bytes, ${server.mountPayloadBytes.threads} threads`]);
-    shared.push(["server: first read, 5,000 threads", `listStamps ${server.firstRead.stampsMs} ms, listNotes ${server.firstRead.notesMs} ms`]);
+    const payload = server.syncPayload;
+    shared.push(["server: first sync", `${payload.firstBytes} bytes, ${payload.firstRecords} records of ${payload.threads} threads, ${payload.archived} archived`]);
+    shared.push(["server: sync with nothing changed", `${payload.unchangedBytes} bytes, ${payload.unchangedRecords} records`]);
+    shared.push(["server: first sync, 5,000 stored threads", `handler ${server.firstRead.handlerMs} ms, host's whole call ${server.firstRead.callMs} ms`]);
   }
   if (bundle) shared.push(["app.js", `${bundle.rawBytes} bytes raw, ${bundle.gzipBytes} gzip, ${bundle.brotliBytes} brotli`]);
   if (shared.length > 0) sections.push(tabulate("Mark all read list, server and bundle", shared));

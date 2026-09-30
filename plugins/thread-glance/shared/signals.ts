@@ -6,7 +6,7 @@ import type { PreferenceKey } from "./preferences";
 /** Epoch ms per thread id. */
 export const stampMapSchema = z.record(z.string(), z.number());
 
-/** Per-thread timestamps (epoch ms) kept by the server. */
+/** Per-thread timestamps (epoch ms), one map per kind, as the list reads them. */
 export const stampsSchema = z.object({
   startedAt: stampMapSchema,
   finishedAt: stampMapSchema,
@@ -17,6 +17,17 @@ export const stampsSchema = z.object({
 });
 export type Stamps = z.infer<typeof stampsSchema>;
 export type StampKind = keyof Stamps;
+export const STAMP_KINDS: readonly StampKind[] = ["startedAt", "finishedAt", "pendingAt", "seenAt", "idleAt"];
+
+/** One thread's stamps, whichever kinds it has. */
+export const threadStampsSchema = z.object({
+  startedAt: z.optional(z.number()),
+  finishedAt: z.optional(z.number()),
+  pendingAt: z.optional(z.number()),
+  seenAt: z.optional(z.number()),
+  idleAt: z.optional(z.number()),
+});
+export type ThreadStamps = z.infer<typeof threadStampsSchema>;
 
 /**
  * Why a thread is blocked, failed or done, in one line: what the server saw
@@ -40,31 +51,47 @@ export const threadNotesSchema = z.object({
 });
 export type ThreadNotes = z.infer<typeof threadNotesSchema>;
 
+/** A thread record: one thread's stamps and notes, null where it has none. */
+export const threadRecordSchema = z.object({
+  stamps: z.nullable(threadStampsSchema),
+  notes: z.nullable(threadNotesSchema),
+});
+export type ThreadRecord = z.infer<typeof threadRecordSchema>;
+/** Thread records by thread id. */
+export const threadRecordsSchema = z.record(z.string(), threadRecordSchema);
+
+/**
+ * Where a window stands in the server's changes: the server's epoch, new on
+ * every server start, and the last revision it saw of that epoch.
+ */
+export const syncPointSchema = z.object({
+  epoch: z.string(),
+  revision: z.number(),
+});
+export type SyncPoint = z.infer<typeof syncPointSchema>;
+
 /** Realtime channels the server publishes on. */
 export const CHANNELS = {
   preferences: "preferences",
-  stamps: "stamps",
   scheduled: "scheduled",
-  notes: "notes",
+  records: "records",
 } as const;
 
-/** `notes` payload: one thread's notes replaced; null deletes them. */
-export interface NotesSignal {
-  threadId: string;
-  notes: ThreadNotes | null;
-}
+/**
+ * `records` payload: every thread record one change touched, whole, at the
+ * revision it made. A thread whose stamps and notes are gone has both null.
+ */
+export const recordsSignalSchema = z.object({
+  epoch: z.string(),
+  revision: z.number(),
+  records: threadRecordsSchema,
+});
+export type RecordsSignal = z.infer<typeof recordsSignalSchema>;
 
 /** `preferences` payload: one key changed. */
 export interface PreferenceSignal {
   key: PreferenceKey;
   value: unknown;
-}
-
-/** `stamps` payload: one thread's stamp changed; null deletes it. */
-export interface StampSignal {
-  kind: StampKind;
-  threadIds: string[];
-  value: number | null;
 }
 
 /** `scheduled` payload: the whole map, replaced. */

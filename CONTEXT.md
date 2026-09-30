@@ -98,6 +98,10 @@ _Avoid_: Branch row, subtitle
 A thread list the Thread Glance performance harness makes from a seed instead of real threads: the live list, with nothing settled yet, the settled list, two days on, or the MAR list (Mark all read, 1,500 threads with 443 unread).
 _Avoid_: Scenario, synthetic list, fixture list
 
+**Thread record**:
+One thread's stamps and notes as Thread Glance's server stores them, sent whole on the `records` channel and in `sync` answers.
+_Avoid_: Thread data, thread entry
+
 **Budget ledger**:
 Thread Glance's one list of performance budgets, one row per budget with its threshold, how it is measured and whether it is enforcing yet.
 _Avoid_: Budget table, perf budgets, budget file

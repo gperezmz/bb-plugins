@@ -7,6 +7,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
 import manifest from "./package.json";
 import {
+  createFakeServer,
   failedUnread,
   finishedUnread,
   makeThread,
@@ -45,22 +46,10 @@ function rpc(
   prefs: Partial<Preferences> = {},
   stamps: Partial<Record<string, Record<string, number>>> = {},
   notes: Record<string, unknown> = {},
+  scheduled: Record<string, number> = {},
 ) {
   // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...prefs };
-  return {
-    listPreferences: () => ({ preferences }),
-    setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-    resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-    importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-    listStamps: () => ({
-      stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {}, ...stamps },
-    }),
-    markSeen: () => ({ at: Date.now() }),
-    clearSeen: () => ({ ok: true as const }),
-    listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-    listNotes: () => ({ notes }),
-  };
+  return createFakeServer({ preferences: { settleAfter: "never", ...prefs }, stamps, notes: notes as never, scheduled }).handlers;
 }
 
 function render(
@@ -1093,7 +1082,7 @@ describe("the glyph is the thread, the children chip is its children", () => {
     ["Queued message failed to send", { queuedWork: "failed" }, {}],
     ["Machine offline", { status: "active", runtimeStatus: "waiting-for-host" }, {}],
     ["Background agent running", { activity: { backgroundAgents: 1 } }, {}],
-    ["Scheduled message", { queuedWork: "waiting" }, { rpc: { ...rpc(), listScheduled: () => ({ status: "ready" as const, scheduled: { p: future } }) } }],
+    ["Scheduled message", { queuedWork: "waiting" }, { rpc: rpc({}, {}, {}, { p: future }) }],
     ["Message waiting to send", { queuedWork: "waiting" }, {}],
     ["Unsubmitted draft", {}, { sidebarDraftThreadIds: ["p"] }],
   ];

@@ -22,14 +22,19 @@ describe("the ledger", () => {
     }
   });
 
-  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired, and those #148 and #153 switched on", () => {
+  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired, and those #148, #149 and #153 switched on", () => {
     expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual([
       "B2",
       "B3",
       "B5",
       "B6",
       "B8",
+      "B20",
+      "B21",
       "B22",
+      "B23",
+      "B24",
+      "B25",
       "B26",
       "B27",
       "B28",
@@ -74,10 +79,14 @@ function jsdomWith(events: Record<string, EventFigure>): JsdomFigures {
 
 const none: Requests = { rpc: {}, bb: {}, rpcTotal: 0, bbTotal: 0 };
 
+/** One `sync`: what a first load, or a remount without bb's app overlay slot, asks. */
+const oneSync: Requests = { rpc: { sync: 1 }, bb: {}, rpcTotal: 1, bbTotal: 0 };
+
 function hostWith(idle: Requests): HostFigures {
   return {
-    firstLoad: none,
-    remount: none,
+    firstLoad: oneSync,
+    remount: oneSync,
+    remountWithOverlay: none,
     idle: { "1": idle, "2": none, "3": none },
     idleAtWritesPerTransition: 0,
     hooksPerRow: { useSidebarThreadShortcut: 1 },
@@ -103,6 +112,16 @@ function chromiumWith(remountToFirstRowMs: number): ChromiumFigures {
 function withFigures(patch: Partial<Figures>): Figures {
   return { ...emptyFigures(), ...patch };
 }
+
+const SYNC_PAYLOAD = {
+  threads: 10,
+  archived: 1,
+  firstRecords: 9,
+  firstArchivedRecords: 0,
+  firstBytes: 900,
+  unchangedRecords: 0,
+  unchangedBytes: 200,
+};
 
 /**
  * One row per kind of measurement, each read once at its threshold and once
@@ -134,7 +153,7 @@ const CASES: { kind: string; id: string; within: Figures; over: Figures }[] = [
     kind: "fake host",
     id: "B22",
     within: withFigures({ host: { "300/live": hostWith(none) } }),
-    over: withFigures({ host: { "300/live": hostWith({ rpc: { listStamps: 1 }, bb: {}, rpcTotal: 1, bbTotal: 0 }) } }),
+    over: withFigures({ host: { "300/live": hostWith({ rpc: { sync: 1 }, bb: {}, rpcTotal: 1, bbTotal: 0 }) } }),
   },
   {
     kind: "server",
@@ -142,15 +161,15 @@ const CASES: { kind: string; id: string; within: Figures; over: Figures }[] = [
     within: withFigures({
       server: {
         signalsPerEvent: { "thread.active": 1, "thread.idle": 1 },
-        mountPayloadBytes: { stamps: 0, notes: 0, threads: 0 },
-        firstRead: { stampsMs: 1, notesMs: 1, threads: 5_000 },
+        syncPayload: SYNC_PAYLOAD,
+        firstRead: { handlerMs: 1, callMs: 2, threads: 5_000 },
       },
     }),
     over: withFigures({
       server: {
         signalsPerEvent: { "thread.active": 1, "thread.idle": 2 },
-        mountPayloadBytes: { stamps: 0, notes: 0, threads: 0 },
-        firstRead: { stampsMs: 1, notesMs: 1, threads: 5_000 },
+        syncPayload: SYNC_PAYLOAD,
+        firstRead: { handlerMs: 1, callMs: 2, threads: 5_000 },
       },
     }),
   },

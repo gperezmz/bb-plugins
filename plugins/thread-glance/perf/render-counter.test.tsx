@@ -7,7 +7,6 @@ import "./harness/render-counter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup } from "@testing-library/react";
 import { generateList } from "@/features/thread-list/testing/fixtures";
-import { CHANNELS } from "@/shared/contract";
 import { counterAttached, startCounting, stopCounting } from "./harness/render-counter";
 import { mountList, serverState } from "./harness/fake-host";
 import { openList, settle } from "./harness/jsdom-run";
@@ -62,13 +61,13 @@ describe("the render count", () => {
 
   it("reports one row and no header when a stamp redraws one row", async () => {
     const list = generateList({ size: 50 });
-    const { host, slot } = await openList(list);
+    const { host, server, slot } = await openList(list);
     const threadId = slot.container.querySelector("[data-sidebar-thread-id]")!.getAttribute("data-sidebar-thread-id")!;
     host.updateThread(threadId, { status: "active", runtimeStatus: "active" });
     await settle(2);
     host.resetCounts();
     startCounting();
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: [threadId], value: Date.now() - 5.5 * 60_000 });
+    await server.stamp("startedAt", [threadId], Date.now() - 5.5 * 60_000);
     await settle(2);
     const count = stopCounting();
     expect(count.rows).toBe(host.hookCalls.useSidebarThreadShortcut);

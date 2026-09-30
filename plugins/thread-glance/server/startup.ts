@@ -1,6 +1,7 @@
 // Work done once per server start, in a background service because `bb.sdk`
 // is bind-gated in the factory.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { ArchivedThreads } from "./archived";
 import type { ScheduledTracker } from "./scheduled";
 
 const THREAD_PAGE_SIZE = 500;
@@ -12,14 +13,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** Every thread bb has, hidden ones included, and which of them are archived. */
+export interface ThreadIds {
+  all: Set<string>;
+  archived: Set<string>;
+}
+
 /**
  * Returns the id of every thread bb has, archived and hidden ones included.
  *
  * It lists active and archived threads separately and pages each with
  * limit and offset, since the list is capped per call.
  */
-export async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<Set<string>> {
-  const ids = new Set<string>();
+export async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<ThreadIds> {
+  const ids: ThreadIds = { all: new Set(), archived: new Set() };
   for (const archived of [false, true]) {
     for (let offset = 0; ; offset += THREAD_PAGE_SIZE) {
       const page = await sdk.threads.list({
@@ -29,7 +36,10 @@ export async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<
         offset,
         signal,
       });
-      for (const thread of page) ids.add(thread.id);
+      for (const thread of page) {
+        ids.all.add(thread.id);
+        if (archived) ids.archived.add(thread.id);
+      }
       if (page.length < THREAD_PAGE_SIZE) break;
     }
   }
@@ -43,22 +53,29 @@ export interface PrunableStore {
   prune(liveIds: ReadonlySet<string>, before: number): Promise<string[]>;
 }
 
-/** Drops per-thread rows of threads bb no longer has. Logs and returns on failure. */
+/**
+ * Drops per-thread rows of threads bb no longer has, and tells `archived`
+ * which threads bb holds as archived. Logs and returns on failure.
+ */
 export async function pruneDeletedThreads(
   bb: Pick<BbPluginApi, "sdk" | "log">,
   stores: readonly PrunableStore[],
+  archived: ArchivedThreads,
   signal?: AbortSignal,
 ): Promise<void> {
   const before = Date.now();
-  let live: Set<string>;
+  let live: ThreadIds;
   try {
-    live = await listAllThreadIds(bb.sdk, signal);
+    const listing = listAllThreadIds(bb.sdk, signal);
+    archived.listing(listing);
+    live = await listing;
   } catch (error) {
     bb.log.warn(`could not list threads to prune deleted ones: ${errorMessage(error)}`);
     return;
   }
+  archived.replace(live.archived);
   for (const store of stores) {
-    const pruned = await store.prune(live, before);
+    const pruned = await store.prune(live.all, before);
     if (pruned.length > 0) {
       bb.log.info(`pruned ${store.name} of ${pruned.length} deleted threads`);
     }
@@ -100,17 +117,19 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
 
 /**
  * The `startup` service: seeds scheduled sends, retrying every minute until
- * one seed succeeds, prunes `stores` once, then waits for `signal` to abort.
+ * one seed succeeds, prunes `stores` and reads the archived threads once,
+ * then waits for `signal` to abort.
  */
 export async function runStartup(
   bb: Pick<BbPluginApi, "sdk" | "log">,
   stores: readonly PrunableStore[],
   tracker: ScheduledTracker,
+  archived: ArchivedThreads,
   signal: AbortSignal,
   retryMs = SEED_RETRY_MS,
 ): Promise<void> {
   const seeded = seedScheduled(bb, tracker, signal);
-  await pruneDeletedThreads(bb, stores, signal);
+  await pruneDeletedThreads(bb, stores, archived, signal);
   let ok = await seeded;
   while (!ok && !signal.aborted) {
     await sleep(retryMs, signal);

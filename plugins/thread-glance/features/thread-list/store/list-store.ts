@@ -4,6 +4,9 @@
 // renders only what it changed. bb's data and the plugin server's signals
 // are applied once per animation frame, so a turn's burst of them renders
 // once; everything else, and whatever a person does, is applied at once.
+// What the plugin server and bb's lookups answered comes from the plugin's
+// data (../sync), which outlives the store, so a list mounted again starts
+// from it.
 import type {
   PluginBrowserBbSdk,
   PluginRpcClient,
@@ -11,7 +14,7 @@ import type {
   PluginSidebarThreadActions,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import type { RpcContract, StampSignal, Stamps } from "@/shared/contract";
+import type { RpcContract } from "@/shared/contract";
 import {
   CLIENT_PREFERENCES_STORAGE_KEY,
   coercePreferences,
@@ -26,7 +29,7 @@ import {
 } from "@/shared/preferences";
 import { trackIdle, type IdleTracker } from "../model/attention";
 import { share } from "../model/share";
-import { readJson, writeJson } from "../data/storage";
+import { fetchMissing, pluginData, readJson, writeJson, type DataChange } from "../sync";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_STEP, NO_HOST, NO_PENDING_READ, onlyReadChanged, type DeriveMemory, type HostData, type ListInputs, type ListModel } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
@@ -117,11 +120,6 @@ export interface ListStore extends StoreApi<ListState> {
   /** Sends every preference write not yet sent. */
   flushPreferences(): void;
   updateClient(patch: Partial<ClientPreferences>): void;
-  receiveStamps(stamps: Stamps | null): void;
-  /** A stamp change this window made, applied at once. */
-  applyStamp(signal: StampSignal): void;
-  /** A stamp signal from the plugin server, applied with the next frame. */
-  receiveStamp(signal: StampSignal): void;
   /**
    * Shows `read` read at once, while their read requests are pending, and
    * marks `seen` seen, in one step.
@@ -130,13 +128,14 @@ export interface ListStore extends StoreApi<ListState> {
   /** Stops showing threads read whose read request failed: they show as bb has them. */
   revertRead(threadIds: readonly string[]): void;
   clearSeen(threadIds: readonly string[]): void;
-  /** Starts the clock and sends what waited for the list to mount; returns the call that stops them. */
+  /**
+   * Starts the clock, follows the plugin's data and sends what waited for the
+   * list to mount; returns the call that stops them.
+   */
   attach(): () => void;
 }
 
 const WRITE_DEBOUNCE_MS = 150;
-const EMPTY_STAMPS: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
-const STAMP_KINDS = new Set(Object.keys(EMPTY_STAMPS));
 /** No drop feedback. */
 export const NO_DROPS: ReadonlyMap<string, DropState> = new Map();
 
@@ -228,19 +227,30 @@ function layoutOf(previous: ListLayout | null, inputs: ListInputs, compact: bool
   return previous === null ? next : share(previous, next);
 }
 
+/** The inputs the plugin's data gives, as it stands. */
+function dataInputs(): Pick<ListInputs, "stamps" | "notes" | "scheduled" | "stampsLoaded" | "hydrated" | "system" | "defaultBranches"> {
+  const data = pluginData.get();
+  return {
+    stamps: data.records.stamps,
+    notes: data.records.notes,
+    scheduled: data.scheduled,
+    // Stamps held from an earlier answer are what the list was drawn from.
+    stampsLoaded: data.records.point !== null || data.status === "failed",
+    // A list mounted while realtime went unfollowed waits for what it missed.
+    hydrated: data.status !== "waiting",
+    system: data.system,
+    defaultBranches: data.defaultBranches,
+  };
+}
+
 export function createListStore(): ListStore {
+  const known = pluginData.get().preferences;
   const inputs: ListInputs = {
     host: NO_HOST,
     activeThreadId: null,
-    stamps: EMPTY_STAMPS,
-    stampsLoaded: false,
-    notes: {},
-    scheduled: {},
-    prefs: coercePreferences(readJson(PREFERENCES_MIRROR_STORAGE_KEY)),
-    hydrated: false,
+    prefs: known ?? coercePreferences(readJson(PREFERENCES_MIRROR_STORAGE_KEY)),
     client: parseClientPreferences(readJson(CLIENT_PREFERENCES_STORAGE_KEY)),
-    system: { defaultProviderId: null, primaryHostId: null },
-    defaultBranches: new Map(),
+    ...dataInputs(),
     now: Date.now(),
     idleSince: {},
     needYouOn: false,
@@ -304,15 +314,50 @@ export function createListStore(): ListStore {
   const requestFrame = () => {
     if (frame === null) frame = frames.request(applyFrame);
   };
-  const stampChange = (signal: StampSignal) => ({ stamps }: ListInputs) => {
-    const map = { ...stamps[signal.kind] };
-    for (const id of signal.threadIds) {
-      if (signal.value === null) delete map[id];
-      else map[id] = signal.value;
-    }
-    return { stamps: { ...stamps, [signal.kind]: map } };
+  /** The server's preferences, keeping any this window has not written yet. */
+  const withPending = (preferences: unknown): Preferences => {
+    const next = coercePreferences(preferences);
+    // Keys with a write in flight keep the local value.
+    for (const [key, value] of pending) (next as Record<string, unknown>)[key] = value;
+    writeJson(PREFERENCES_MIRROR_STORAGE_KEY, next);
+    return next;
   };
-  const isStampSignal = (signal: StampSignal) => STAMP_KINDS.has(signal.kind) && Array.isArray(signal.threadIds);
+  /** The plugin data's inputs, with its preferences over the list's, any this window has not written yet kept. */
+  const dataPatch = ({ prefs }: ListInputs) => {
+    const known = pluginData.get().preferences;
+    return { ...dataInputs(), prefs: known === null ? prefs : share(prefs, withPending(known)) };
+  };
+  const fetchMissingRecords = () => whenMounted(() => fetchMissing(store.edge.rpc, host.threads));
+  const records = () => {
+    const { stamps, notes } = pluginData.get().records;
+    return { stamps, notes };
+  };
+  /** Applies a change of the plugin's data: signals with the next frame, answers at once. */
+  const onData = (change: DataChange) => {
+    const data = pluginData.get();
+    switch (change.kind) {
+      case "synced":
+        store.feed(dataPatch);
+        fetchMissingRecords();
+        return;
+      case "failed":
+        store.feed({ hydrated: true, stampsLoaded: true });
+        return;
+      case "records":
+        if (change.at === "now") store.feed(records());
+        else store.feedSignal(records);
+        return;
+      case "scheduled":
+        store.feedSignal(() => ({ scheduled: pluginData.get().scheduled }));
+        return;
+      case "preference":
+        store.receivePreference(change.key, change.value);
+        return;
+      case "facts":
+        store.feed({ system: data.system, defaultBranches: data.defaultBranches });
+        return;
+    }
+  };
 
   const scheduleWrite = () => {
     if (writeTimer !== null) clearTimeout(writeTimer);
@@ -333,6 +378,7 @@ export function createListStore(): ListStore {
       host = shared;
       if (shared.threads !== tracked) {
         tracked = shared.threads;
+        fetchMissingRecords();
         // When the change was seen, not when it is drawn: the orphaned-failure
         // wait counts from here.
         tracker = trackIdle(tracker, shared.threads, Date.now());
@@ -381,10 +427,7 @@ export function createListStore(): ListStore {
     flush: applyFrame,
 
     receivePreferences(preferences) {
-      const next = coercePreferences(preferences);
-      // Keys with a write in flight keep the local value.
-      for (const [key, value] of pending) (next as Record<string, unknown>)[key] = value;
-      writeJson(PREFERENCES_MIRROR_STORAGE_KEY, next);
+      const next = withPending(preferences);
       store.feed(({ prefs }) => ({ prefs: share(prefs, next), hydrated: true }));
     },
 
@@ -429,31 +472,18 @@ export function createListStore(): ListStore {
       });
     },
 
-    receiveStamps(stamps) {
-      store.feed(stamps === null ? { stampsLoaded: true } : { stamps, stampsLoaded: true });
-    },
-
-    applyStamp(signal) {
-      if (isStampSignal(signal)) store.feed(stampChange(signal));
-    },
-
-    receiveStamp(signal) {
-      if (isStampSignal(signal)) store.feedSignal(stampChange(signal));
-    },
-
     showRead(read, seen) {
       if (read.length === 0 && seen.length === 0) return;
       const byId = api.getState().model?.byId;
-      const at = Date.now();
-      store.feed(({ pendingRead, stamps }) => {
+      // Held by the plugin's data, so a list mounted again shows them; applied here with the reads, in one step.
+      if (seen.length > 0) pluginData.stamped("seenAt", seen, Date.now(), { quiet: true });
+      store.feed(({ pendingRead }) => {
         const pending = new Map(pendingRead);
         for (const id of read) {
           const thread = byId?.get(id);
           if (thread !== undefined) pending.set(id, thread.latestAttentionAt);
         }
-        const seenAt = { ...stamps.seenAt };
-        for (const id of seen) seenAt[id] = at;
-        return { pendingRead: pending, ...(seen.length > 0 ? { stamps: { ...stamps, seenAt } } : {}) };
+        return { pendingRead: pending, ...(seen.length > 0 ? records() : {}) };
       });
       if (seen.length > 0) store.edge.rpc.call("markSeen", { threadIds: [...seen] }).catch(() => undefined);
     },
@@ -469,13 +499,16 @@ export function createListStore(): ListStore {
 
     clearSeen(threadIds) {
       if (threadIds.length === 0) return;
-      store.applyStamp({ kind: "seenAt", threadIds: [...threadIds], value: null });
+      pluginData.stamped("seenAt", threadIds, null);
       store.edge.rpc.call("clearSeen", { threadIds: [...threadIds] }).catch(() => undefined);
     },
 
     attach() {
       mounted = true;
       attached.add(store);
+      const unfollow = pluginData.subscribe(onData);
+      // What changed between the store's creation and its mount.
+      store.feed(dataPatch);
       const requests = waiting;
       waiting = [];
       for (const request of requests) request();
@@ -484,6 +517,7 @@ export function createListStore(): ListStore {
         nextDeadline: () => api.getState().model?.nextDeadline ?? null,
       });
       return () => {
+        unfollow();
         clock?.stop();
         clock = null;
         if (frame !== null) frames.cancel(frame);

@@ -7,7 +7,6 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { attachedListStores, flushListStores } from "@/features/thread-list/store/api";
 import { countComponents, startCounting, stopCounting, type RenderCount } from "./render-counter";
@@ -237,15 +236,16 @@ export async function openList(list: GeneratedList, options: { freshActions?: bo
     markReadMs: options.markReadMs,
   });
   const app = await loadWithFakeHost();
-  const slot = mountList(app, serverState());
+  const server = serverState();
+  const slot = mountList(app, server);
   await settle(5);
-  return { host, app, slot };
+  return { host, app, server, slot };
 }
 
 /** Every event of the jsdom run over one list. */
 export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}): Promise<JsdomFigures> {
   const samples = options.samples ?? 1;
-  const { host, app, slot } = await openList(list);
+  const { host, app, server, slot } = await openList(list);
   const container = slot.container;
   const mounted = anchors(container);
   const onScreen = mounted[0]!.dataset.sidebarThreadId!;
@@ -281,16 +281,11 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
     ...(offScreen === null ? {} : { "update off screen": { threadId: offScreen, run: () => turn(offScreen) } }),
     "stamp signal": {
       threadId: onScreen,
-      run: (index) =>
-        slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: [onScreen], value: Date.now() - (index + 1) * 60_000 }),
+      run: (index) => server.stamp("startedAt", [onScreen], Date.now() - (index + 1) * 60_000),
     },
     "note signal": {
       threadId: noted,
-      run: (index) =>
-        slot.emitRealtime(CHANNELS.notes, {
-          threadId: noted,
-          notes: { done: { kind: "done", text: `Done ${index}`, at: Date.now() } },
-        }),
+      run: (index) => server.note(noted, { done: { kind: "done", text: `Done ${index}`, at: Date.now() } }),
     },
     "read change": {
       threadId: onScreen,

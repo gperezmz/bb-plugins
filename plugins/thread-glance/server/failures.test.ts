@@ -128,10 +128,10 @@ describe("failed notes through the server", () => {
   }
 
   async function failedNote(harness: Awaited<ReturnType<typeof load>>["harness"]) {
-    const { notes } = (await harness.behavior.callRpc("listNotes", null)) as {
-      notes: Record<string, { failed?: { text: string } }>;
+    const { records } = (await harness.behavior.callRpc("sync", { since: null })) as {
+      records: Record<string, { notes: { failed?: { text: string } } | null }>;
     };
-    return notes.t1?.failed?.text;
+    return records.t1?.notes?.failed?.text;
   }
 
   const thread = makeThreadResponse({ id: "t1" });

@@ -31,13 +31,9 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { createCommands, type Dragged } from "../commands/commands";
-import { useDefaultBranches } from "../data/useDefaultBranches";
 import { useIdleReporter } from "../data/useIdleReporter";
-import { useNotes } from "../data/useNotes";
-import { usePreferences } from "../data/usePreferences";
-import { useScheduled } from "../data/useScheduled";
-import { useStamps } from "../data/useStamps";
-import { useSystemFacts } from "../data/useSystemFacts";
+import { lookUpDefaultBranches, lookUpSystem } from "../sync";
+import { ListSyncKeeper } from "../sync/SyncKeeper";
 import type { DropTarget } from "../model/drag";
 import { moveTargets } from "../model/move";
 import { createListStore, type ListStore } from "../store/api";
@@ -161,20 +157,19 @@ function ThreadListEdge({
   useEffect(() => store.attach(), [store]);
   return (
     <ListContext.Provider value={handle}>
-      <ServerFeed store={store} />
+      <ListSyncKeeper />
+      <Lookups />
       <ListBody attempt={attempt} onRetry={onRetry} />
     </ListContext.Provider>
   );
 }
 
-/** The plugin server's data, fed into the store. Draws nothing. */
-function ServerFeed({ store }: { store: ListStore }) {
-  usePreferences(store);
-  useStamps(store);
-  useScheduled(store);
-  useNotes(store);
-  useSystemFacts(store);
-  useDefaultBranches(store, useBranchedProjectIds());
+/** Asks bb what the list shows of it and has not asked in the plugin's lifetime. Draws nothing. */
+function Lookups() {
+  const sdk = useSdk();
+  const projectIds = useBranchedProjectIds();
+  useEffect(() => lookUpSystem(sdk), [sdk]);
+  useEffect(() => lookUpDefaultBranches(sdk, projectIds), [sdk, projectIds]);
   return null;
 }
 

@@ -10,7 +10,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { defaultPreferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/contract";
 import { startCounting, stopCounting } from "../../../perf/harness/render-counter";
-import { makeThread, PROJECTS, T0, working } from "../testing/fixtures";
+import { createFakeServer, makeThread, type FakeServer, PROJECTS, T0, working } from "../testing/fixtures";
 
 /** Row renders by thread id since the list settled. */
 function renders(): Record<string, number> {
@@ -45,22 +45,15 @@ const threads = [
   ...Array.from({ length: 20 }, (_, index) => makeThread({ id: `r${index}`, title: `Row ${index}`, createdAt: T0 - index })),
 ];
 
+let server: FakeServer;
+
 function render() {
-  return renderSlot(
+  server = createFakeServer({ preferences: { expandedChildren: ["p"], settleAfter: "never" } });
+  return server.attach(renderSlot(
     app.threadLists[0]!,
     { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
-      rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), expandedChildren: ["p"], settleAfter: "never" } }),
-        setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-        resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-        importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-        listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
-        markSeen: () => ({ at: Date.now() }),
-        clearSeen: () => ({ ok: true as const }),
-        listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-        listNotes: () => ({ notes: {} }),
-      } as never,
+      rpc: server.handlers as never,
       sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       sdk: {
@@ -72,7 +65,7 @@ function render() {
         providers: { models: async () => ({ models: [] }) } as never,
       },
     },
-  );
+  ));
 }
 
 async function settled() {
@@ -84,28 +77,25 @@ async function settled() {
 
 describe("render path", () => {
   it("renders only the stamped row on a stamp", async () => {
-    const slot = render();
+    render();
     await settled();
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: ["w"], value: Date.now() - 5.5 * 60_000 });
+    await server.stamp("startedAt", ["w"], Date.now() - 5.5 * 60_000);
     await waitFor(() => expect(screen.getByLabelText("Working for 5m")).toBeTruthy());
     expect(renders()).toEqual({ w: 1 });
   });
 
   it("renders only the row whose note changed", async () => {
-    const slot = render();
+    render();
     await settled();
-    await slot.emitRealtime(CHANNELS.notes, {
-      threadId: "f",
-      notes: { failed: { kind: "failed", text: "Out of credits", at: T0 } },
-    });
+    await server.note("f", { failed: { kind: "failed", text: "Out of credits", at: T0 } });
     await waitFor(() => expect(screen.getByText("Out of credits")).toBeTruthy());
     expect(renders()).toEqual({ f: 1 });
   });
 
   it("renders no row on a signal that changes nothing drawn", async () => {
-    const slot = render();
+    render();
     await settled();
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "seenAt", threadIds: ["r5"], value: T0 - 1 });
+    await server.stamp("seenAt", ["r5"], T0 - 1);
     expect(renders()).toEqual({});
   });
 });
@@ -114,7 +104,7 @@ describe("render path", () => {
 // an open card shows, must still be the latest state.
 describe("render path freshness", () => {
   it("keeps the details dialog current as notes and stamps arrive", async () => {
-    const slot = render();
+    render();
     await settled();
     const row = (await screen.findByRole("link", { name: /Open Row 1\b/ })).parentElement!;
     const trigger = within(row).getByRole("button", { name: "Thread actions" });
@@ -123,14 +113,11 @@ describe("render path freshness", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByText("Shipped the fix")).toBeNull();
-    await slot.emitRealtime(CHANNELS.notes, {
-      threadId: "r1",
-      notes: { done: { kind: "done", text: "Shipped the fix", at: T0 } },
-    });
+    await server.note("r1", { done: { kind: "done", text: "Shipped the fix", at: T0 } });
     expect(await within(dialog).findByText("Shipped the fix")).toBeTruthy();
     const finished = () => within(dialog).getByText("Finished").nextElementSibling!.textContent;
     const before = finished();
-    await slot.emitRealtime(CHANNELS.stamps, { kind: "finishedAt", threadIds: ["r1"], value: T0 + 3 * 86_400_000 });
+    await server.stamp("finishedAt", ["r1"], T0 + 3 * 86_400_000);
     await waitFor(() => expect(finished()).not.toBe(before));
   });
 

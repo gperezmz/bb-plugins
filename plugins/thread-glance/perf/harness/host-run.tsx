@@ -6,7 +6,7 @@ import { vi } from "vitest";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { markAllReadConfirm } from "./list-screen";
-import { createFakeHost, loadWithFakeHost, mountList, PER_ROW_HOOKS, serverState, type FakeHost } from "./fake-host";
+import { createFakeHost, loadWithFakeHost, mountList, mountOverlay, PER_ROW_HOOKS, serverState, type FakeHost } from "./fake-host";
 
 /** Requests over one stretch. */
 export interface Requests {
@@ -20,7 +20,10 @@ export interface Requests {
 
 export interface HostFigures {
   firstLoad: Requests;
+  /** A remount where bb has no app overlay slot, so the list follows realtime itself. */
   remount: Requests;
+  /** A remount beside the plugin's component in bb's app overlay slot, which follows realtime throughout. */
+  remountWithOverlay: Requests;
   /** Requests over 10 idle minutes, by the number of windows open. */
   idle: Record<"1" | "2" | "3", Requests>;
   /**
@@ -72,9 +75,17 @@ async function windows(list: GeneratedList, count: number, server = serverState(
   vi.setSystemTime(list.now);
   const host = createFakeHost({ threads: list.threads, projects: list.projects, freshActions: true });
   const app = await loadWithFakeHost();
-  const slots = Array.from({ length: count }, () => mountList(app, server));
-  await drain();
+  // A page just loaded: its realtime socket connects after the list mounts, as bb's does.
+  const slots = Array.from({ length: count }, () => mountList(app, server, undefined, "connecting"));
+  await connect(slots);
   return { host, app, server, slots };
+}
+
+/** Lets the list's first work land, then brings each page's realtime socket up. */
+async function connect(slots: RenderedSlot[]): Promise<void> {
+  await drain();
+  for (const slot of slots) await slot.behavior.setRealtimeConnectionState("connected");
+  await drain();
 }
 
 /**
@@ -82,14 +93,14 @@ async function windows(list: GeneratedList, count: number, server = serverState(
  * it was read: done-unseen, so Mark all read also marks them seen.
  */
 function withDoneUnseen(list: GeneratedList) {
-  const server = serverState();
+  const finishedAt: Record<string, number> = {};
   const unread = new Set(list.unreadIds);
   for (const thread of list.threads) {
     if (thread.parentThreadId !== null && thread.status === "idle" && unread.has(thread.id)) {
-      server.stamps.finishedAt[thread.id] = thread.latestAttentionAt;
+      finishedAt[thread.id] = thread.latestAttentionAt;
     }
   }
-  return server;
+  return serverState({}, { stamps: { finishedAt } });
 }
 
 export async function runHost(list: GeneratedList, { markAllRead = false } = {}): Promise<HostFigures> {
@@ -138,6 +149,22 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
   again.unmount();
   vi.useRealTimers();
 
+  // The same, with the plugin's keeper in bb's app overlay slot.
+  localStorage.clear();
+  const overlaid = await windows(list, 0);
+  const overlay = mountOverlay(overlaid.app, overlaid.server, "connecting");
+  const listed = mountList(overlaid.app, overlaid.server, undefined, "connecting");
+  await connect([overlay, listed]);
+  listed.unmount();
+  const overlayMark = markOf([overlay]);
+  const overlayActions = overlaid.host.actionCalls.length;
+  const remounted = mountList(overlaid.app, overlaid.server);
+  await drain();
+  const remountWithOverlay = since([overlay, remounted], [...overlayMark, { rpc: 0, sdk: 0 }], overlaid.host, overlayActions);
+  remounted.unmount();
+  overlay.unmount();
+  vi.useRealTimers();
+
   // Ten idle minutes with one, two and three windows.
   const idle = {} as HostFigures["idle"];
   for (const count of [1, 2, 3] as const) {
@@ -174,6 +201,7 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
   return {
     firstLoad,
     remount,
+    remountWithOverlay,
     idle,
     idleAtWritesPerTransition: writes,
     hooksPerRow,
