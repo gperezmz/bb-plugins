@@ -463,6 +463,21 @@ describe("stamps", () => {
     ]);
   });
 
+  it("reads a stamp the database holds as anything but a finite number as absent", async () => {
+    const first = await load();
+    await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
+    // Written from outside the plugin: an INTEGER column keeps text it cannot convert, and a REAL infinity.
+    first.bb.storage
+      .database()
+      .prepare("INSERT OR REPLACE INTO stamps (thread_id, started_at, finished_at, seen_at, idle_at) VALUES (?, ?, ?, ?, ?)")
+      .run("mixed", "soon", 2_000, Infinity, null);
+    first.bb.storage.database().prepare("INSERT OR REPLACE INTO stamps (thread_id, finished_at) VALUES (?, ?)").run("text", "yesterday");
+    const restarted = await first.harness.lifecycle.reload(plugin);
+    const records = (await sync(restarted.harness)).records;
+    expect(records.mixed?.stamps).toEqual({ finishedAt: 2_000 });
+    expect(records.text).toBeUndefined();
+  });
+
   it("reloads stored stamps after a restart", async () => {
     const first = await load();
     await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
