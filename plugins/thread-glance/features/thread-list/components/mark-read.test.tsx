@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 // Mark all read and Mark read on a thread tree: every thread they mark shows
 // read in the click's own commit, and bb is sent the reads behind it, six at
-// a time, on the harness's fake host, which holds reads until the test
-// releases them, fails a read, and changes a thread while its read is
-// pending. Once the list is mounted the clock is fake, so what the test sees
-// follows from what it released, whatever the machine's speed.
+// a time, on a fake host, which holds reads until the test releases them,
+// fails a read, and changes a thread while its read is pending. Once the list
+// is mounted the clock is fake, so what the test sees follows from what it
+// released, whatever the machine's speed.
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost } from "@/perf/harness/fake-host";
+import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost } from "../testing/fake-host";
 import { finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));

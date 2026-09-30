@@ -28,9 +28,6 @@ export default defineConfig({
       {
         extends: true,
         plugins: [tailwindcss()],
-        // The perf harness imports bb's SDK app module late, to put its fake
-        // host in first; found then, it would re-optimize and reload the page.
-        optimizeDeps: { include: ["@get-bb/plugin-sdk/app"] },
         test: {
           name: "browser",
           include: ["**/*.browser.test.{ts,tsx}"],

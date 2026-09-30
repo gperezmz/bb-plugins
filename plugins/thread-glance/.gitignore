@@ -3,6 +3,3 @@ node_modules/
 
 # Vitest browser-mode screenshots
 .vitest/
-
-# Figures and reports `npm run perf` writes
-perf/results/

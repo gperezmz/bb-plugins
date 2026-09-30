@@ -94,10 +94,6 @@ _Avoid_: Row size, zoom
 The second line of a Thread Glance row naming its thread's branch when that is not its project's default, shown while its switch is on.
 _Avoid_: Branch row, subtitle
 
-**Generated list**:
-A thread list the Thread Glance performance harness makes from a seed instead of real threads: the live list, with nothing settled yet, the settled list, two days on, or the MAR list (Mark all read, 1,500 threads with 443 unread).
-_Avoid_: Scenario, synthetic list, fixture list
-
 **Thread record**:
 One thread's stamps and notes as Thread Glance's server stores them, sent whole on the `records` channel and in `sync` answers.
 _Avoid_: Thread data, thread entry
@@ -105,10 +101,6 @@ _Avoid_: Thread data, thread entry
 **Spacer**:
 The empty block standing in for a run of a group's rows the list has not mounted, as tall as they are, naming their threads for bb's keyboard navigation.
 _Avoid_: Placeholder, chunk, filler
-
-**Budget ledger**:
-Thread Glance's one list of performance budgets, one row per budget with its threshold and how it is measured; a run that misses any row fails.
-_Avoid_: Budget table, perf budgets, budget file
 
 ### Thread Usage
 

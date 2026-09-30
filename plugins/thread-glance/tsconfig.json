@@ -31,7 +31,6 @@
     "components",
     "lib",
     "vitest.config.ts",
-    "perf",
     "types"
   ]
 }

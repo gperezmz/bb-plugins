@@ -1,8 +1,8 @@
 // The shipped app is built from the app's own code alone: `bb plugin build`
 // scans the plugin's folder for Tailwind class names, so a word in a test
 // file can add a rule to app.css. The app is built twice, once from the
-// folder as it is and once without its test-only files (perf/, testing/,
-// *.test.*), and app.js and app.css must come out byte-identical.
+// folder as it is and once without its test-only files (testing/, *.test.*),
+// and app.js and app.css must come out byte-identical.
 import { execFileSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +23,7 @@ const NOT_SOURCE = new Set(["node_modules", "dist", ".vitest", ".drives"]);
 
 function isTestOnly(path: string): boolean {
   const parts = path.split(sep);
-  return parts[0] === "perf" || parts.includes("testing") || /\.test\.[cm]?[jt]sx?$/.test(basename(path));
+  return parts.includes("testing") || /\.test\.[cm]?[jt]sx?$/.test(basename(path));
 }
 
 /** Copies the plugin's folder, with or without its test-only files, and builds it. */
