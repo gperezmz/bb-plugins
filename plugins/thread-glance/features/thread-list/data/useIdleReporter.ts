@@ -2,7 +2,7 @@
 // one list in this browser holding a Web Lock, so a browser with several
 // windows open sends each report once. Where the browser has no Web Locks,
 // every window reports and the server keeps the later moment.
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 const IDLE_REPORTER_LOCK = "bb.thread-glance.idle-reporter";
 
@@ -28,5 +28,5 @@ export function useIdleReporter(): () => boolean {
       release();
     };
   }, [locks]);
-  return useCallback(() => holding.current, []);
+  return () => holding.current;
 }

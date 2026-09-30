@@ -18,7 +18,7 @@ import {
   THREADS_GROUP_ID,
   type GroupDescriptor,
 } from "./groups";
-import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counters";
+import { addCounters, countTrees, EMPTY_COUNTERS, visibleCounters, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
 import { isOffDefaultBranch } from "./branches";
@@ -138,6 +138,8 @@ export type Row = TreeRow | SettledRow;
 export interface GroupView {
   descriptor: GroupDescriptor;
   counters: Counters;
+  /** The counters its header draws (see `visibleCounters`). */
+  headerCounters: Counters;
   /** What the user stored. */
   userCollapsed: boolean;
   /**
@@ -541,6 +543,7 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   return {
     descriptor,
     counters,
+    headerCounters: visibleCounters(counters, collapsed),
     userCollapsed,
     collapsed,
     hidden,
@@ -564,9 +567,11 @@ function sortTrees(context: Context, descriptor: GroupDescriptor, trees: readonl
 /** A group under the need-you filter: its header, and its trees that need attention, whatever its collapse. */
 function needYouGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
   const sorted = sortTrees(context, descriptor, trees);
+  const counters = countTrees(trees);
   return {
     descriptor,
-    counters: countTrees(trees),
+    counters,
+    headerCounters: visibleCounters(counters, false),
     userCollapsed: isGroupCollapsed(descriptor, context.prefs),
     collapsed: false,
     hidden,

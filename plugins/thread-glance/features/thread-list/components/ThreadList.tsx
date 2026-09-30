@@ -1,7 +1,7 @@
 // The sidebar list. Its edge feeds bb's hooks and the plugin server into the
 // list store and keeps bb's calls behind one reference; everything drawn
 // below reads its own part of the store and acts through its commands.
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   experimental_Icon as Icon,
   experimental_useProviders as useProviders,
@@ -272,17 +272,14 @@ function ListDialogs() {
   const commands = useCommands();
   const ui = useListUi();
   const model = useListModel();
-  const view = model?.view;
-  const customizeItems: CustomizeItem[] = useMemo(() => {
-    if (view === undefined) return [];
-    const all = new Map([...view.groups, ...view.more].map((group) => [group.descriptor.id, group]));
-    return view.order.flatMap((id) => {
-      const group = all.get(id);
-      if (group === undefined) return [];
-      return [{ id, label: group.descriptor.label, hidden: group.hidden, hideable: id !== "pinned" }];
-    });
-  }, [view]);
   if (model === null) return null;
+  const view = model.view;
+  const all = new Map([...view.groups, ...view.more].map((group) => [group.descriptor.id, group]));
+  const customizeItems: CustomizeItem[] = view.order.flatMap((id) => {
+    const group = all.get(id);
+    if (group === undefined) return [];
+    return [{ id, label: group.descriptor.label, hidden: group.hidden, hideable: id !== "pinned" }];
+  });
   const forest = model.forest;
   const details = ui.detailsId === null ? null : (forest.infos.get(ui.detailsId) ?? null);
   const moveThread = ui.moveId === null ? null : (model.byId.get(ui.moveId) ?? null);
