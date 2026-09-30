@@ -5,19 +5,26 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+import { perfCdp, perfLiveInstances } from "./harness/cdp-commands";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
 export default defineConfig({
   mode: "production",
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  // JSX compiled for the production runtime, which has no `jsxDEV`.
+  oxc: { jsx: { development: false } },
   plugins: [tailwindcss()],
+  // The fake host imports bb's SDK app module late, to put its hooks in
+  // first; found then, it would re-optimize and reload the page.
+  optimizeDeps: { include: ["@get-bb/plugin-sdk/app"] },
   resolve: {
     alias: { "@": root },
   },
   test: {
     root,
     include: ["perf/**/*.browser.perf.tsx"],
+    setupFiles: ["perf/harness/production-act.ts"],
     testTimeout: 3_600_000,
     hookTimeout: 600_000,
     browser: {
@@ -27,6 +34,7 @@ export default defineConfig({
         launchOptions: { executablePath: process.env.CHROMIUM_PATH || undefined },
       }),
       instances: [{ browser: "chromium" }],
+      commands: { perfCdp, perfLiveInstances },
     },
   },
 });

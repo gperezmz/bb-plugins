@@ -5,7 +5,7 @@
 // time). Runs in vitest browser mode; `deterministicOnly` takes the figures
 // that do not depend on timing, for `npm test`.
 import { cleanup } from "@testing-library/react";
-import { cdp, page, userEvent } from "vitest/browser";
+import { commands, page, userEvent } from "vitest/browser";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
@@ -50,85 +50,41 @@ function frameOf(slot: RenderedSlot): HTMLElement {
   return slot.container.querySelector<HTMLElement>("[data-perf-frame]")!;
 }
 
-// ——— The DevTools protocol, through vitest's session for this page ———
+// ——— The DevTools protocol, through the step's own browser commands ———
 
-interface Session {
-  send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
-  on(event: string, listener: (payload: Record<string, unknown>) => void): void;
+interface PerfCommands {
+  perfCdp(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  perfLiveInstances(constructorName: string): Promise<number>;
 }
 
-let session: Session | null = null;
-let testContextId: number | null = null;
-
-/** This test frame's execution context, where the list's objects live. */
-async function protocol(): Promise<{ session: Session; contextId: number }> {
-  if (session !== null && testContextId !== null) return { session, contextId: testContextId };
-  session = cdp() as unknown as Session;
-  const contexts: { id: number; auxData?: { frameId?: string; isDefault?: boolean } }[] = [];
-  session.on("Runtime.executionContextCreated", (event) => contexts.push(event.context as never));
-  await session.send("Runtime.enable");
-  await session.send("Performance.enable");
-  const marker = `__perf_${Math.random().toString(36).slice(2)}`;
-  (window as unknown as Record<string, boolean>)[marker] = true;
-  for (const context of contexts) {
-    const { result } = (await session.send("Runtime.evaluate", {
-      expression: `globalThis.${marker} === true`,
-      contextId: context.id,
-      returnByValue: true,
-    })) as { result: { value?: boolean } };
-    if (result.value === true) testContextId = context.id;
-  }
-  if (testContextId === null) throw new Error("no DevTools execution context for the test frame");
-  return { session, contextId: testContextId };
-}
+const devtools = commands as unknown as PerfCommands;
 
 async function collectGarbage(): Promise<void> {
-  const { session } = await protocol();
-  await session.send("HeapProfiler.collectGarbage");
+  await devtools.perfCdp("HeapProfiler.collectGarbage");
   await sleep(50);
-  await session.send("HeapProfiler.collectGarbage");
+  await devtools.perfCdp("HeapProfiler.collectGarbage");
 }
 
-async function liveInstances(constructorName: string): Promise<number> {
-  const { session, contextId } = await protocol();
-  const prototype = (await session.send("Runtime.evaluate", { expression: `${constructorName}.prototype`, contextId })) as {
-    result: { objectId: string };
-  };
-  const found = (await session.send("Runtime.queryObjects", { prototypeObjectId: prototype.result.objectId })) as {
-    objects: { objectId: string };
-  };
-  const length = (await session.send("Runtime.callFunctionOn", {
-    functionDeclaration: "function () { return this.length; }",
-    objectId: found.objects.objectId,
-    returnByValue: true,
-  })) as { result: { value: number } };
-  await session.send("Runtime.releaseObject", { objectId: found.objects.objectId });
-  await session.send("Runtime.releaseObject", { objectId: prototype.result.objectId });
-  return length.result.value;
-}
+const liveInstances = (constructorName: string) => devtools.perfLiveInstances(constructorName);
 
 async function heapUsed(): Promise<number> {
-  const { session } = await protocol();
-  const { usedSize } = (await session.send("Runtime.getHeapUsage")) as { usedSize: number };
+  const { usedSize } = (await devtools.perfCdp("Runtime.getHeapUsage")) as { usedSize: number };
   return usedSize;
 }
 
 async function detachedNodes(): Promise<number> {
-  const { session } = await protocol();
-  const { detachedNodes } = (await session.send("DOM.getDetachedDomNodes")) as { detachedNodes: unknown[] };
+  const { detachedNodes } = (await devtools.perfCdp("DOM.getDetachedDomNodes")) as { detachedNodes: unknown[] };
   return detachedNodes.length;
 }
 
 /** The page's JavaScript time so far, in ms. */
 async function scriptMs(): Promise<number> {
-  const { session } = await protocol();
-  const { metrics } = (await session.send("Performance.getMetrics")) as { metrics: { name: string; value: number }[] };
+  const { metrics } = (await devtools.perfCdp("Performance.getMetrics")) as { metrics: { name: string; value: number }[] };
   return (metrics.find((metric) => metric.name === "ScriptDuration")?.value ?? 0) * 1000;
 }
 
 async function throttle(rate: number): Promise<void> {
-  const { session } = await protocol();
-  await session.send("Emulation.setCPUThrottlingRate", { rate });
+  await devtools.perfCdp("Emulation.setCPUThrottlingRate", { rate });
 }
 
 // ——— Measurements ———
@@ -363,7 +319,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
 
   const phone = await runPhone(list, timing);
   return {
-    build: import.meta.env.PROD ? "production" : "development",
+    build: process.env.NODE_ENV === "production" ? "production" : "development",
     inp: { group: inpGroup ?? { x1: null, x4: null }, chip: inpChip ?? { x1: null, x4: null }, settledFold: inpFold },
     mountToFirstRowMs: Number(first.toFirstRowMs.toFixed(1)),
     remountToFirstRowMs: Number(again.toFirstRowMs.toFixed(1)),
