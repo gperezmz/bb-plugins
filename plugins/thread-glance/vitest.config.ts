@@ -14,6 +14,7 @@ export default defineConfig({
         test: {
           name: "unit",
           include: ["**/*.test.{ts,tsx}"],
+          setupFiles: ["features/thread-list/testing/jsdom-viewport.ts"],
           exclude: ["node_modules/**", "dist/**", "**/*.browser.test.{ts,tsx}"],
         },
       },

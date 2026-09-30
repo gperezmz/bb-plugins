@@ -7,6 +7,7 @@ import type {
   PluginSidebarSection,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
+  PluginSidebarThreadRowStatus,
   PluginSidebarThreadsState,
   PluginProvidersState,
 } from "@get-bb/plugin-sdk/app";
@@ -32,6 +33,8 @@ export interface HostData {
   providers: PluginProvidersState["providers"];
   environmentProviders: readonly PluginEnvironmentProvider[];
   draftIds: ReadonlySet<string>;
+  /** Other plugins' row statuses, by thread id. */
+  rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   splitLayout: PluginSidebarSplitLayout | null;
 }
 
@@ -47,6 +50,7 @@ export const NO_HOST: HostData = {
   providers: [],
   environmentProviders: [],
   draftIds: new Set(),
+  rowStatuses: new Map(),
   splitLayout: null,
 };
 

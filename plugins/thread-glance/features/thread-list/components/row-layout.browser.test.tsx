@@ -10,6 +10,8 @@ import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
 import { createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
+import { layoutItems } from "../model/layout-items";
+import { attachedListStores } from "../store/api";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -724,11 +726,38 @@ describe("Density and Branch line", () => {
   });
 
   /**
-   * Scrolls a list longer than the frame top to bottom, switches Density and
-   * then Branch line mid-scroll, and scrolls again after each: no chunk
-   * changes height as it mounts or unmounts, so nothing moves.
+   * Every item's height as the heights model gives it, against what is drawn:
+   * each group's header, then each of its rows in order, all mounted in a
+   * frame tall enough to hold them.
    */
-  async function expectSteadyScroll(
+  async function expectModelHeights(options: { density: "compact" | "comfortable"; branchLine: boolean }, phone: boolean, width: number) {
+    await renderKinds(options, width);
+    const store = attachedListStores().at(-1)!;
+    const model = store.getState().model!;
+    const groups = model.groupIds.map((id) => model.groupsById.get(id)!);
+    const layout = layoutItems(groups, { density: options.density, phone });
+    const sections = [...document.querySelectorAll<HTMLElement>("section[data-sidebar-visibility-group]")];
+    expect(sections.map((section) => section.dataset.sidebarVisibilityGroup)).toEqual(layout.groups.map((group) => group.groupId));
+    for (const [index, extent] of layout.groups.entries()) {
+      const section = sections[index]!;
+      const drawn = [
+        section.querySelector('[data-sidebar="group-label"]')!,
+        ...(section.querySelector('[data-sidebar="group-content"]')?.children ?? []),
+        ...section.querySelectorAll(":scope > p"),
+      ].map((element) => element.getBoundingClientRect().height);
+      const modelled = layout.items.slice(extent.first, extent.last + 1).map((item) => (item.kind === "header" ? item.size - item.gap : item.size));
+      expect(drawn, `${extent.groupId} at ${width} px`).toEqual(modelled);
+    }
+  }
+
+  /**
+   * Scrolls a list longer than the frame top to bottom and back in steps.
+   * At every step each mounted row's top is the bottom of the item before it,
+   * and the list keeps one height, the sum of its items' heights, each read
+   * off the step that drew it. Switching Density, then Branch line, while
+   * scrolled keeps the first visible row within 1 px of where it was.
+   */
+  async function expectAlignedScroll(
     from: { density: "compact" | "comfortable"; branchLine: boolean },
     organizationMode: OrganizationMode,
     width = 320,
@@ -744,36 +773,72 @@ describe("Density and Branch line", () => {
       }),
     );
     await render(width, { ...from, organizationMode, extraThreads: many, height: 600 });
-    await screen.findByRole("link", { name: /Open Long 0\b/ });
+    await screen.findAllByRole("link", { name: /Open Long \d+\b/ });
     fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
     const panel = await screen.findByRole("dialog");
-    const chunks = () => [...document.querySelectorAll<HTMLElement>("[data-sidebar-windowed-item]")];
     const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const list = () => document.querySelector<HTMLElement>("[data-sidebar-virtual-list]")!;
 
-    /** Scrolls top to bottom in steps: no chunk changes height as it mounts or unmounts. */
+    /** Each section's items in order are contiguous: header, then rows and spacers. */
+    function expectContiguous(at: string) {
+      for (const section of list().querySelectorAll<HTMLElement>("section")) {
+        const header = section.querySelector('[data-sidebar="group-label"]')!;
+        // A header sticks while its group is in view: its place in the flow is its section's top.
+        let bottom = section.getBoundingClientRect().top + header.getBoundingClientRect().height;
+        for (const item of section.querySelector('[data-sidebar="group-content"]')?.children ?? []) {
+          const rect = item.getBoundingClientRect();
+          expect(Math.abs(rect.top - bottom), `${section.ariaLabel} ${at}: an item starts where the one before ends`).toBeLessThan(0.5);
+          bottom = rect.bottom;
+        }
+      }
+    }
+
+    /** Scrolls top to bottom and back: the list keeps its height, and it is the sum of what was drawn. */
     async function scrollThrough() {
-      const heights = new Map<number, number>();
+      const total = list().getBoundingClientRect().height;
+      const drawn = new Map<string, number>();
       const scrollHeight = document.documentElement.scrollHeight;
-      for (let top = 0; top <= scrollHeight; top += 300) {
+      const tops: number[] = [];
+      for (let top = 0; top <= scrollHeight; top += 300) tops.push(top);
+      for (const top of [...tops, ...tops.reverse()]) {
         window.scrollTo(0, top);
         await settle();
         await settle();
-        expect(document.documentElement.scrollHeight, `list height at ${top}`).toBe(scrollHeight);
-        for (const [index, chunk] of chunks().entries()) {
-          const seen = heights.get(index);
-          const now = chunk.getBoundingClientRect().height;
-          if (seen === undefined) heights.set(index, now);
-          else expect(now, `chunk ${index} at ${top}`).toBe(seen);
+        expect(list().getBoundingClientRect().height, `list height at ${top}`).toBe(total);
+        expectContiguous(`at ${top}`);
+        for (const anchor of list().querySelectorAll<HTMLElement>("[data-sidebar-thread-id]")) {
+          const section = anchor.closest("section")!.dataset.sidebarVisibilityGroup!;
+          drawn.set(`${section}/${anchor.dataset.sidebarThreadId}`, anchor.parentElement!.getBoundingClientRect().height);
+        }
+        for (const item of list().querySelectorAll<HTMLElement>('[data-sidebar="group-content"] > button, [data-sidebar="group-content"] > div:not([data-sidebar-windowed-nav]):not(:has([data-sidebar-thread-id])):not([aria-hidden])')) {
+          const section = item.closest("section")!.dataset.sidebarVisibilityGroup!;
+          drawn.set(`${section}/${item.getAttribute("aria-label") ?? item.textContent}`, item.getBoundingClientRect().height);
         }
       }
+      const sections = [...list().querySelectorAll<HTMLElement>("section")];
+      const headers = sections.reduce((sum, section) => sum + section.querySelector('[data-sidebar="group-label"]')!.getBoundingClientRect().height, 0);
+      const gaps = sections.slice(1).reduce((sum, section) => sum + parseFloat(getComputedStyle(section).marginTop), 0);
+      const empty = sections.reduce((sum, section) => sum + (section.querySelector(":scope > p")?.getBoundingClientRect().height ?? 0), 0);
+      const rows = [...drawn.values()].reduce((sum, height) => sum + height, 0);
+      expect(headers + gaps + empty + rows, "the list's height is the sum of its items'").toBeCloseTo(total, 3);
+    }
+
+    /** The first row whose bottom is below the top of the frame, and its top. */
+    function firstVisible(): { id: string; top: number } {
+      for (const anchor of list().querySelectorAll<HTMLElement>("[data-sidebar-thread-id]")) {
+        const rect = anchor.parentElement!.getBoundingClientRect();
+        if (rect.bottom > 0) return { id: `${anchor.closest("section")!.dataset.sidebarVisibilityGroup}/${anchor.dataset.sidebarThreadId}`, top: rect.top };
+      }
+      throw new Error("no row in view");
     }
 
     await scrollThrough();
     const flip = (element: HTMLElement) => element.click();
     // Mid-scroll, switch Density, then Branch line, and scroll again after each.
     for (const change of ["density", "branchLine"] as const) {
-      window.scrollTo(0, document.documentElement.scrollHeight / 2);
+      window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2));
       await settle();
+      const before = firstVisible();
       if (change === "density") {
         const other = from.density === "compact" ? "Comfortable" : "Compact";
         flip(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: other }));
@@ -782,6 +847,9 @@ describe("Density and Branch line", () => {
       }
       await settle();
       await settle();
+      const [group, id] = before.id.split("/");
+      const row = document.querySelector(`section[data-sidebar-visibility-group="${group}"] [data-sidebar-thread-id="${id}"]`)!.parentElement!;
+      expect(Math.abs(row.getBoundingClientRect().top - before.top), `${change}: the first visible row stays put`).toBeLessThanOrEqual(1);
       await scrollThrough();
     }
     window.scrollTo(0, 0);
@@ -792,12 +860,18 @@ describe("Density and Branch line", () => {
   }
 
   it.each(
+    COMBINATIONS.flatMap((options) => ([240, 320, 400] as const).map((width) => ({ ...options, width }))),
+  )("draws every item at its model height under $density with Branch line $branchLine at $width px", async ({ width, ...options }) => {
+    await expectModelHeights(options, false, width);
+  });
+
+  it.each(
     COMBINATIONS.flatMap((from) =>
       (["project", "chronological", "machine"] as const).map((organizationMode) => ({ from, organizationMode })),
     ),
-  )("scrolls a long list with nothing moving, from $from.density and Branch line $from.branchLine, grouped by $organizationMode, after switching both mid-scroll", async ({ from, organizationMode }) => {
-    await expectSteadyScroll(from, organizationMode);
-  });
+  )("keeps every row aligned scrolling a long list, from $from.density and Branch line $from.branchLine, grouped by $organizationMode, and the first visible row still switching both mid-scroll", async ({ from, organizationMode }) => {
+    await expectAlignedScroll(from, organizationMode);
+  }, 60_000);
 
   // Last in the file: Chromium's touch emulation, which makes the pointer
   // coarse, leaves hover off once switched back, so no test may follow it.
@@ -813,8 +887,14 @@ describe("Density and Branch line", () => {
       await expectHeights(options, true);
     });
 
-    it.each(COMBINATIONS)("scrolls a long list with nothing moving, from $density and Branch line $branchLine, after switching both mid-scroll", async (from) => {
-      await expectSteadyScroll(from, "project", 390);
+    it.each(COMBINATIONS)("keeps every row aligned scrolling a long list, from $density and Branch line $branchLine, and the first visible row still switching both mid-scroll", async (from) => {
+      await expectAlignedScroll(from, "project", 390);
+    }, 60_000);
+
+    it.each(
+      COMBINATIONS.flatMap((options) => ([240, 320, 400] as const).map((width) => ({ ...options, width }))),
+    )("draws every item at its model height under $density with Branch line $branchLine at $width px", async ({ width, ...options }) => {
+      await expectModelHeights(options, true, width);
     });
   });
 });

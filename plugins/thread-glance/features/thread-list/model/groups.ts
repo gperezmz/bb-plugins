@@ -261,3 +261,8 @@ export function toggleGroupCollapse(
       return { collapsedMachines: toggle(prefs.collapsedMachines, group.entityId!) };
   }
 }
+
+/** Sections and machines take a name of their own. */
+export function canRename(descriptor: GroupDescriptor): boolean {
+  return descriptor.kind === "section" || descriptor.kind === "machine";
+}

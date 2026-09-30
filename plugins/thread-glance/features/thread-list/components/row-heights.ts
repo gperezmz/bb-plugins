@@ -1,7 +1,9 @@
 // Row heights and group gaps per density. Comfortable adds 4px to every
 // thread row and fold row that Compact draws, on every viewport, and doubles
 // the gap before a group header; headers and the Settled fold keep their
-// height. Whole class names, so Tailwind finds them.
+// height. Whole class names, so Tailwind finds them. model/heights.ts gives
+// the same heights in px, which the list lays rows out by; a browser test
+// holds the two together.
 import type { ClientPreferences } from "@/shared/preferences";
 
 export type Density = ClientPreferences["density"];
@@ -38,6 +40,3 @@ export const GROUP_GAP: Record<Density, string> = {
   compact: "mt-1",
   comfortable: "mt-2",
 };
-
-/** A one-line row's height in px on desktop, for a chunk never measured. */
-export const ESTIMATED_ROW_HEIGHT: Record<Density, number> = { compact: 28, comfortable: 32 };

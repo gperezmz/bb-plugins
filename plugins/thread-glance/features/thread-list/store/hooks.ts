@@ -1,18 +1,18 @@
 // How components read the list store: one hook per part they draw, each a
 // thin useSyncExternalStore over one selector, so a component renders only
 // when its part changes. Components read the store through these alone.
-import { createContext, useContext, useSyncExternalStore } from "react";
-import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
+import { createContext, useContext, useRef, useSyncExternalStore } from "react";
+import type { PluginEnvironmentProvider, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
 import type { Stamps, ThreadNotes } from "@/shared/contract";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import type { Commands } from "../commands/commands";
 import { EMPTY_COUNTERS, type Counters } from "../model/counters";
 import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import type { MiniMapPane } from "../model/split";
-import type { ThreadTree } from "../model/trees";
-import type { GroupView } from "../model/view";
+import type { ThreadInfo, ThreadTree } from "../model/trees";
+import type { GroupView, Row } from "../model/view";
 import type { HostData, ListModel } from "./derive";
-import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi } from "./list-store";
+import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi, type OpenCard, type OpenMenu, type RowPlace } from "./list-store";
 
 export type { ListLayout };
 
@@ -157,40 +157,149 @@ export function useHoldsFocus(groupId: string): boolean {
 
 // ——— Rows ———
 
-/** A thread row's own part of the list: focus, rename, drop feedback and split mini-map. */
+/** A row's key in the list: its group, then its key within the group. */
+export function itemKeyOf(groupId: string, rowKey: string): string {
+  return `${groupId}/${rowKey}`;
+}
+
+/** A thread row's own part of the list: focus, rename, drop feedback, split mini-map, draft, row status, and its menu or drag. */
 export interface RowState {
   focused: boolean;
   editing: boolean;
   dropState: DropState | null;
   miniMap: readonly MiniMapPane[] | null;
+  hasDraft: boolean;
+  rowStatus: PluginSidebarThreadRowStatus | null;
+  /** A menu or context menu is open from this row. */
+  menuOpen: boolean;
+  /** This row is being dragged. */
+  dragging: boolean;
 }
+
+const ROW_STATE_KEYS: readonly (keyof RowState)[] = ["focused", "editing", "dropState", "miniMap", "hasDraft", "rowStatus", "menuOpen", "dragging"];
 
 // One object per row while its parts hold, so the row's selector keeps its identity.
 const rowStates = new WeakMap<ListStore, Map<string, RowState>>();
 
-export function useRow(threadId: string): RowState {
+function sameRow(place: RowPlace, groupId: string, rowKey: string): boolean {
+  return place.groupId === groupId && place.rowKey === rowKey;
+}
+
+export function useRow(threadId: string, groupId: string, rowKey: string): RowState {
   const store = useHandle().store;
+  const key = itemKeyOf(groupId, rowKey);
   return useSelect(store, (state) => {
     let cache = rowStates.get(store);
     if (cache === undefined) rowStates.set(store, (cache = new Map()));
+    const { ui, inputs } = state;
+    const menu = ui.menu;
     const next: RowState = {
-      focused: state.inputs.activeThreadId === threadId,
-      editing: state.ui.editingId === threadId,
-      dropState: state.ui.dropStates.get(threadId) ?? null,
+      focused: inputs.activeThreadId === threadId,
+      editing: ui.editingId === threadId,
+      dropState: ui.dropStates.get(threadId) ?? null,
       miniMap: state.model?.miniMaps.get(threadId) ?? null,
+      hasDraft: inputs.host.draftIds.has(threadId),
+      rowStatus: inputs.host.rowStatuses.get(threadId) ?? null,
+      menuOpen: menu !== null && menu.kind !== "group" && sameRow(menu, groupId, rowKey),
+      dragging: ui.dragging?.kind === "thread" && sameRow(ui.dragging, groupId, rowKey),
     };
-    const last = cache.get(threadId);
-    if (
-      last !== undefined &&
-      last.focused === next.focused &&
-      last.editing === next.editing &&
-      last.dropState === next.dropState &&
-      last.miniMap === next.miniMap
-    ) {
-      return last;
-    }
-    cache.set(threadId, next);
+    const last = cache.get(key);
+    if (last !== undefined && ROW_STATE_KEYS.every((name) => last[name] === next[name])) return last;
+    cache.set(key, next);
     return next;
+  });
+}
+
+/** The group header, or with `rowKey` the environment row, is being renamed. */
+export function useRenaming(groupId: string, rowKey: string | null): boolean {
+  return useListSelect((state) => state.ui.renaming?.groupId === groupId && state.ui.renaming.rowKey === rowKey);
+}
+
+/** An environment row's menu is open. */
+export function useEnvironmentMenuOpen(groupId: string, rowKey: string): boolean {
+  return useListSelect((state) => state.ui.menu?.kind === "environment" && sameRow(state.ui.menu, groupId, rowKey));
+}
+
+/** Rows that stay mounted wherever the list is scrolled, as thread ids and as `groupId/rowKey` keys. */
+export interface KeptRows {
+  threadIds: readonly string[];
+  itemKeys: readonly string[];
+}
+
+const keptCache = new WeakMap<ListStore, KeptRows>();
+
+/**
+ * The focused thread's rows, the row being renamed, the row holding keyboard
+ * focus, the row a menu, context menu or hover card is open from, and the
+ * row being dragged.
+ */
+export function useKeptRows(): KeptRows {
+  const store = useHandle().store;
+  return useSelect(store, (state) => {
+    const { ui, inputs } = state;
+    const threadIds = [inputs.activeThreadId, ui.editingId].filter((id): id is string => id !== null);
+    const itemKeys: string[] = [];
+    if (ui.focusKey !== null) itemKeys.push(ui.focusKey);
+    if (ui.renaming !== null && ui.renaming.rowKey !== null) itemKeys.push(itemKeyOf(ui.renaming.groupId, ui.renaming.rowKey));
+    if (ui.menu !== null && ui.menu.kind !== "group") itemKeys.push(itemKeyOf(ui.menu.groupId, ui.menu.rowKey));
+    if (ui.card !== null) itemKeys.push(itemKeyOf(ui.card.groupId, ui.card.rowKey));
+    if (ui.dragging?.kind === "thread") itemKeys.push(itemKeyOf(ui.dragging.groupId, ui.dragging.rowKey));
+    const last = keptCache.get(store);
+    if (last !== undefined && last.threadIds.join(" ") === threadIds.join(" ") && last.itemKeys.join(" ") === itemKeys.join(" ")) return last;
+    const next = { threadIds, itemKeys };
+    keptCache.set(store, next);
+    return next;
+  });
+}
+
+/** The group header being dragged. */
+export function useIsGroupDragged(groupId: string): boolean {
+  return useListSelect((state) => state.ui.dragging?.kind === "group" && state.ui.dragging.groupId === groupId);
+}
+
+/** The group's menu is open. */
+export function useGroupMenuOpen(groupId: string): boolean {
+  return useListSelect((state) => state.ui.menu?.kind === "group" && state.ui.menu.groupId === groupId);
+}
+
+/** The menu open in the list, for its host. */
+export function useOpenMenu(): OpenMenu | null {
+  return useListSelect((state) => state.ui.menu);
+}
+
+/** The hover card open in the list, for its host. */
+export function useOpenCard(): OpenCard | null {
+  return useListSelect((state) => state.ui.card);
+}
+
+/** A row by its group and key, while it is drawn. */
+export function useRowAt(groupId: string, rowKey: string): Row | undefined {
+  return useListSelect((state) => state.model?.groupsById.get(groupId)?.rows.find((row) => row.key === rowKey));
+}
+
+/** The thread under the pointer, for bb's one drag-to-split hook. */
+export function useProbeId(): string | null {
+  return useListSelect((state) => state.ui.probeId ?? state.inputs.activeThreadId ?? state.inputs.host.threads[0]?.id ?? null);
+}
+
+/** bb offers splits here. */
+export function useSplitAvailable(): boolean {
+  return useListSelect((state) => state.ui.splitAvailable);
+}
+
+/** Groups' views for `ids`, the same array while every one of them holds. */
+export function useGroups(ids: readonly string[]): readonly GroupView[] {
+  const store = useHandle().store;
+  const last = useRef<readonly GroupView[]>([]);
+  return useSelect(store, (state) => {
+    const groups = ids.flatMap((id) => {
+      const group = state.model?.groupsById.get(id);
+      return group === undefined ? [] : [group];
+    });
+    const previous = last.current;
+    if (previous.length === groups.length && previous.every((group, index) => group === groups[index])) return previous;
+    last.current = groups;
+    return groups;
   });
 }
 
@@ -220,4 +329,23 @@ export function useNotesOf(threadId: string): ThreadNotes | undefined {
 
 export function useTreeOf(threadId: string): ThreadTree | undefined {
   return useListSelect((state) => state.model?.forest.treeOf.get(threadId));
+}
+
+/** A thread's info while it is loaded, for an open hover card. */
+export function useThreadInfo(threadId: string): ThreadInfo | undefined {
+  return useListSelect((state) => state.model?.forest.infos.get(threadId));
+}
+
+/** The drop feedback drawn while a thread is dragged over a row: the row's thread and what dropping does. */
+export function useDropFeedback(): { threadId: string; state: DropState } | null {
+  const store = useHandle().store;
+  const last = useRef<{ threadId: string; state: DropState } | null>(null);
+  return useSelect(store, (state) => {
+    const first = state.ui.dropStates.entries().next();
+    const next = first.done ? null : { threadId: first.value[0], state: first.value[1] };
+    const previous = last.current;
+    if (previous?.threadId === next?.threadId && previous?.state === next?.state) return previous;
+    last.current = next;
+    return next;
+  });
 }

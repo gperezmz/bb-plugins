@@ -3,38 +3,27 @@
 // below reads its own part of the store and acts through its commands.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  DndContext,
-  KeyboardSensor,
-  MouseSensor,
-  pointerWithin,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragMoveEvent,
-} from "@dnd-kit/core";
-import {
   experimental_Icon as Icon,
   experimental_useProviders as useProviders,
   experimental_useSidebarThreadActions as useThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
+  experimental_useSidebarThreadSplit as useThreadSplit,
   useEnvironmentProviders,
   useRpc,
   useSdk,
   useSidebarSplitLayout,
   useSidebarThreadDraftIds,
+  useSidebarThreadRowStatuses,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { createCommands, type Dragged } from "../commands/commands";
+import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
-import type { DropTarget } from "../model/drag";
 import { moveTargets } from "../model/move";
 import { createListStore, type ListStore } from "../store/api";
 import {
@@ -50,55 +39,22 @@ import {
   useListUi,
   useMoreCounters,
   useMoreIds,
+  useProbeId,
   useShowArchivedOf,
   type ListHandle,
 } from "../store/hooks";
 import { ConfirmDialog, CustomizeDialog, DetailsDialog, MoveDialog, NewSectionDialog, type CustomizeItem } from "./Dialogs";
+import { DragLayer } from "./drag/DragLayer";
 import { CounterStrip } from "./glyphs";
-import { cancelPendingCards } from "./row-card";
 import { useInputModality } from "./input-modality";
-import { GroupSection } from "./GroupSection";
-import { ThreadDetails } from "./ThreadDetails";
 import { ListHeader } from "./ListHeader";
-
-// Constant, so dnd-kit's sensors, and with them its context, stay put: new
-// options renew the context every draggable row reads, rendering every row.
-const MOUSE_SENSOR = { activationConstraint: { distance: 4 } };
-const TOUCH_SENSOR = { activationConstraint: { delay: 200, tolerance: 6 } };
-
-/** Prefers a thread row's drop zone over the group that contains it. */
-const collision: CollisionDetection = (args) => {
-  const kind = args.active.data.current?.kind;
-  const hits = pointerWithin(args);
-  if (kind === "group") return hits.filter((hit) => String(hit.id).startsWith("drop-group:"));
-  const rows = hits.filter((hit) => String(hit.id).startsWith("drop-thread:"));
-  return rows.length > 0 ? rows : hits;
-};
-
-function pointerY(event: DragMoveEvent | DragEndEvent): number | null {
-  const activator = event.activatorEvent;
-  let start: number | null = null;
-  if (activator instanceof MouseEvent) start = activator.clientY;
-  else if (typeof TouchEvent !== "undefined" && activator instanceof TouchEvent) start = activator.touches[0]?.clientY ?? null;
-  return start === null ? null : start + event.delta.y;
-}
-
-function dropTargetOf(event: DragMoveEvent | DragEndEvent): DropTarget | null {
-  const over = event.over;
-  if (over === null) return null;
-  const data = over.data.current as { kind: string; threadId?: string; groupId: string; inPinned?: boolean } | undefined;
-  if (data === undefined) return null;
-  if (data.kind === "group") return { kind: "group", groupId: data.groupId };
-  const y = pointerY(event);
-  const rect = over.rect;
-  const ratio = y === null ? 0.5 : (y - rect.top) / Math.max(rect.height, 1);
-  const zone = ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "middle";
-  return { kind: "thread", threadId: data.threadId!, zone, inPinned: data.inPinned ?? false };
-}
-
-function draggedOf(event: DragMoveEvent | DragEndEvent): Dragged | undefined {
-  return event.active.data.current as Dragged | undefined;
-}
+import { CardHost } from "./overlays/CardHost";
+import { ContextMenuHost } from "./overlays/ContextMenuHost";
+import { GroupMenuHost } from "./overlays/GroupMenuHost";
+import { createOverlays, OverlaysContext, useOverlays, type Overlays } from "./overlays/overlays";
+import { RowMenuHost } from "./overlays/RowMenuHost";
+import { ThreadDetails } from "./ThreadDetails";
+import { VirtualGroups } from "./virtual/VirtualGroups";
 
 export function ThreadList(props: PluginThreadListProps) {
   const [attempt, setAttempt] = useState(0);
@@ -117,9 +73,10 @@ function ThreadListEdge({
   attempt,
   onRetry,
 }: PluginThreadListProps & { attempt: number; onRetry(): void }) {
-  const [handle] = useState<ListHandle>(() => {
+  const [handle] = useState<ListHandle & { overlays: Overlays }>(() => {
     const store = createListStore();
-    return { store, commands: createCommands(store) };
+    const commands = createCommands(store);
+    return { store, commands, overlays: createOverlays(store, commands) };
   });
   const { store } = handle;
   const showArchived = useShowArchivedOf(store);
@@ -130,6 +87,7 @@ function ThreadListEdge({
   const { providers } = useProviders();
   const { providers: environmentProviders } = useEnvironmentProviders();
   const draftIds = useSidebarThreadDraftIds();
+  const rowStatuses = useSidebarThreadRowStatuses();
   const splitLayout = useSidebarSplitLayout();
   const isIdleReporter = useIdleReporter();
   const host = {
@@ -141,6 +99,7 @@ function ThreadListEdge({
     providers,
     environmentProviders,
     draftIds,
+    rowStatuses,
     splitLayout,
   };
   // The first data is fed before the first draw, so it is drawn at once.
@@ -157,9 +116,11 @@ function ThreadListEdge({
   useEffect(() => store.attach(), [store]);
   return (
     <ListContext.Provider value={handle}>
-      <ListSyncKeeper />
-      <Lookups />
-      <ListBody attempt={attempt} onRetry={onRetry} />
+      <OverlaysContext.Provider value={handle.overlays}>
+        <ListSyncKeeper />
+        <Lookups />
+        <ListBody attempt={attempt} onRetry={onRetry} />
+      </OverlaysContext.Provider>
     </ListContext.Provider>
   );
 }
@@ -178,9 +139,11 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
   const status = useListStatus();
   const root = useRef<HTMLDivElement>(null);
   useInputModality(root);
+  const overlays = useOverlays();
   const activeThreadId = useFocusedThreadId();
+  useEffect(() => overlays.card.attach(), [overlays]);
   // A navigation drops every pending hover card.
-  useEffect(() => cancelPendingCards(), [activeThreadId]);
+  useEffect(() => overlays.card.cancelPending(), [overlays, activeThreadId]);
 
   if (status === "error") {
     return (
@@ -210,38 +173,45 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
   return (
     <div ref={root} className="flex w-full min-w-0 flex-col px-1.5 pb-2">
       <ListHeader />
-      <Groups />
+      <DragLayer>
+        <Groups />
+      </DragLayer>
       <ArchivedFooter />
       <ListDialogs />
+      <RowMenuHost />
+      <GroupMenuHost />
+      <ContextMenuHost />
+      <CardHost />
+      <SplitProbe />
     </div>
   );
 });
 
-/** Every group, the hidden ones in More, inside dnd-kit's context. */
-function Groups() {
+/**
+ * bb's drag-to-split and "open in split" for the whole list: one call of its
+ * hook, for the row under the pointer, which each row's press is handed to.
+ */
+function SplitProbe() {
   const commands = useCommands();
+  const overlays = useOverlays();
+  const threadId = useProbeId();
+  const split = useThreadSplit(threadId ?? "");
+  useLayoutEffect(() => overlays.setSplit(threadId, split));
+  useLayoutEffect(() => commands.setSplitAvailable(split.isAvailable), [commands, split.isAvailable]);
+  return null;
+}
+
+/** Every group, the hidden ones in More. */
+function Groups() {
   const empty = useHasNoThreads();
   const groupIds = useGroupIds();
   const moreIds = useMoreIds();
   const moreCounters = useMoreCounters();
-  const sensors = useSensors(useSensor(MouseSensor, MOUSE_SENSOR), useSensor(TouchSensor, TOUCH_SENSOR), useSensor(KeyboardSensor));
-  const onDragMove = useCallback((event: DragMoveEvent) => commands.dragOver(draggedOf(event), dropTargetOf(event)), [commands]);
-  const onDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const y = pointerY(event);
-      const rect = event.over?.rect;
-      const placement = rect !== undefined && y !== null && y > rect.top + rect.height / 2 ? "after" : "before";
-      commands.drop(draggedOf(event), dropTargetOf(event), placement);
-    },
-    [commands],
-  );
   // bb's own pinned New thread button covers the empty list.
   if (empty) return <p className="px-3 py-4 text-sm text-muted-foreground">No threads yet.</p>;
   return (
-    <DndContext sensors={sensors} collisionDetection={collision} onDragMove={onDragMove} onDragEnd={onDragEnd} onDragCancel={commands.dragCancel}>
-      {groupIds.map((id, index) => (
-        <GroupSection key={id} groupId={id} gapAbove={index > 0} />
-      ))}
+    <>
+      <VirtualGroups groupIds={groupIds} />
       {moreIds.length > 0 ? (
         <Popover>
           <PopoverTrigger asChild>
@@ -258,14 +228,12 @@ function Groups() {
           </PopoverTrigger>
           <PopoverContent side="right" align="end" className="max-h-[70vh] w-72 overflow-y-auto p-1">
             <div data-sidebar-overflow="true" className="flex flex-col">
-              {moreIds.map((id, index) => (
-                <GroupSection key={id} groupId={id} gapAbove={index > 0} inOverflow />
-              ))}
+              <VirtualGroups groupIds={moreIds} inOverflow />
             </div>
           </PopoverContent>
         </Popover>
       ) : null}
-    </DndContext>
+    </>
   );
 }
 

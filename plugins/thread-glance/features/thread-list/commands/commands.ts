@@ -20,7 +20,7 @@ import {
 } from "../model/toggles";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
-import { NO_DROPS, type DropState, type ListModel, type ListStore } from "../store/api";
+import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu } from "../store/api";
 import { inPool } from "./pool";
 import { lookUpModel, type ModelInfo } from "../sync";
 
@@ -77,6 +77,19 @@ export interface Commands {
   /** Drops `dragged` on `target`; `placement` says which side of a group header. */
   drop(dragged: Dragged | undefined, target: DropTarget | null, placement: "before" | "after"): void;
   dragCancel(): void;
+  /** A drag began: the dragged row or header dims and stays mounted. */
+  dragStart(dragging: Dragging): void;
+  /** Opens one of the list's menus; any other closes. */
+  openMenu(menu: OpenMenu): void;
+  closeMenu(): void;
+  /** Starts renaming a group header (`rowKey` null) or an environment row. */
+  startRename(groupId: string, rowKey: string | null): void;
+  endRename(): void;
+  /** Keyboard focus is in the row `groupId/rowKey`; null when it left `from`. */
+  focusRow(key: string | null, from?: string): void;
+  /** The pointer is over this thread's row: bb's drag-to-split serves it. */
+  pointAt(threadId: string): void;
+  setSplitAvailable(available: boolean): void;
   reloadPlugin(): void;
 }
 
@@ -439,7 +452,7 @@ export function createCommands(store: ListStore): Commands {
     },
 
     drop(dragged, target, placement) {
-      store.setUi({ dropStates: NO_DROPS, dropGroupId: null });
+      store.setUi({ dropStates: NO_DROPS, dropGroupId: null, dragging: null });
       const model = store.getState().model;
       if (dragged === undefined || target === null || model === null) return;
       if (dragged.kind === "group") {
@@ -452,7 +465,18 @@ export function createCommands(store: ListStore): Commands {
       runDrop(action).catch(fail("Failed to move thread."));
     },
 
-    dragCancel: () => store.setUi({ dropStates: NO_DROPS, dropGroupId: null }),
+    dragCancel: () => store.setUi({ dropStates: NO_DROPS, dropGroupId: null, dragging: null }),
+    dragStart: (dragging) => store.setUi({ dragging, card: null }),
+    openMenu: (menu) => store.setUi({ menu, card: null }),
+    closeMenu: () => store.setUi({ menu: null }),
+    startRename: (groupId, rowKey) => store.setUi({ renaming: { groupId, rowKey } }),
+    endRename: () => store.setUi({ renaming: null }),
+    focusRow(key, from) {
+      if (key === null && store.getState().ui.focusKey !== from) return;
+      store.setUi({ focusKey: key });
+    },
+    pointAt: (threadId) => store.setUi({ probeId: threadId }),
+    setSplitAvailable: (available) => store.setUi({ splitAvailable: available }),
 
     reloadPlugin() {
       edge().sdk.plugins.reload({ pluginId: PLUGIN_ID }).catch(() => window.location.reload());
