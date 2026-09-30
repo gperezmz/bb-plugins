@@ -81,6 +81,7 @@ The pages each plugin's behaviour rests on:
 **Reference** lists every part, one entry each.
 
 - [Thread Glance: states and glyphs](reference/thread-glance-states.md)
+- [Thread Glance: menus, dragging and keys](reference/thread-glance-actions.md)
 - [Thread Glance: preferences and `bb thread-glance prefs`](reference/thread-glance-preferences.md)
 - [Thread Usage: settings](reference/thread-usage-settings.md)
 - [Thread Usage: `bb thread-usage`](reference/thread-usage-cli.md)
