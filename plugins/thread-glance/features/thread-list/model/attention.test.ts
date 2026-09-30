@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attentionRootIds, failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { countNeedYou } from "./view";
-import { changedThreads, isOrphanedFailure, isParentIdle, attentionFlagsOf, orphanedAt, ORPHAN_WAIT_MS, revealsOn, trackIdle } from "./attention";
+import { changedThreads, isParentIdle, attentionFlagsOf, orphanedAt, ORPHAN_WAIT_MS, revealsOn, trackIdle } from "./attention";
 import type { Flag } from "./state";
 import type { ThreadRow } from "./view";
 
@@ -9,19 +9,24 @@ const flags = (...list: Flag[]) => new Set<Flag>(list);
 const idleParent = { thread: { latestAttentionAt: T0 }, state: { kind: "idle" as const } };
 /** Well past every failure below and its wait. */
 const LATER = T0 + 60_000;
+/** Whether the failure counts as orphaned at `now`. */
+const orphanedBy = (...[thread, flags, parent, now]: [...Parameters<typeof orphanedAt>, number]) => {
+  const at = orphanedAt(thread, flags, parent);
+  return at !== null && at <= now;
+};
 
 describe("orphaned failures", () => {
   const failed = { latestAttentionAt: T0 + 10, updatedAt: T0 + 10 };
   it("counts a failure whose parent is idle and has not run since", () => {
-    expect(isOrphanedFailure(failed, flags("unread-failed"), idleParent, LATER)).toBe(true);
+    expect(orphanedBy(failed, flags("unread-failed"), idleParent, LATER)).toBe(true);
   });
   it("counts it when the parent last finished at the same moment", () => {
     const parent = { thread: { latestAttentionAt: T0 + 10 }, state: { kind: "idle" as const } };
-    expect(isOrphanedFailure(failed, flags("unread-failed"), parent, LATER)).toBe(true);
+    expect(orphanedBy(failed, flags("unread-failed"), parent, LATER)).toBe(true);
   });
   it("does not count it while the parent is busy, in any of the busy states", () => {
     for (const kind of ["working", "background", "queued", "scheduled"] as const) {
-      expect(isOrphanedFailure(failed, flags("unread-failed"), { ...idleParent, state: { kind } }, LATER)).toBe(false);
+      expect(orphanedBy(failed, flags("unread-failed"), { ...idleParent, state: { kind } }, LATER)).toBe(false);
     }
     for (const kind of ["idle", "unread", "draft", "waits-on-you", "failed", "offline"] as const) {
       expect(isParentIdle({ ...idleParent, state: { kind } })).toBe(true);
@@ -31,18 +36,18 @@ describe("orphaned failures", () => {
     // Its last finish is the later of its own attention time and the server's finishedAt stamp.
     for (const later of [{ thread: { latestAttentionAt: T0 + 11 } }, { finishedAt: T0 + 11 }]) {
       const parent = { ...idleParent, ...later };
-      expect(isOrphanedFailure(failed, flags("unread-failed"), parent, LATER)).toBe(false);
+      expect(orphanedBy(failed, flags("unread-failed"), parent, LATER)).toBe(false);
     }
   });
   it("is not cleared by opening or renaming the parent, which only move updatedAt", () => {
     const parent = { ...idleParent, thread: { latestAttentionAt: T0, updatedAt: T0 + 500 } };
-    expect(isOrphanedFailure(failed, flags("unread-failed"), parent, LATER)).toBe(true);
+    expect(orphanedBy(failed, flags("unread-failed"), parent, LATER)).toBe(true);
   });
   it("dates a failed queue by updatedAt, and ignores a thread that did not fail", () => {
     const queue = { latestAttentionAt: T0, updatedAt: T0 + 20 };
     const parent = { thread: { latestAttentionAt: T0 + 15 }, state: { kind: "idle" as const } };
-    expect(isOrphanedFailure(queue, flags("queue-failed"), parent, LATER)).toBe(true);
-    expect(isOrphanedFailure(failed, flags("unread"), idleParent, LATER)).toBe(false);
+    expect(orphanedBy(queue, flags("queue-failed"), parent, LATER)).toBe(true);
+    expect(orphanedBy(failed, flags("unread"), idleParent, LATER)).toBe(false);
   });
 });
 
@@ -51,8 +56,8 @@ describe("the wait before a failure counts as orphaned", () => {
   it("counts it only once the parent has been idle for 5 seconds from the failure", () => {
     expect(ORPHAN_WAIT_MS).toBe(5_000);
     expect(orphanedAt(failed, flags("unread-failed"), idleParent)).toBe(T0 + 10 + 5_000);
-    expect(isOrphanedFailure(failed, flags("unread-failed"), idleParent, T0 + 10 + 4_999)).toBe(false);
-    expect(isOrphanedFailure(failed, flags("unread-failed"), idleParent, T0 + 10 + 5_000)).toBe(true);
+    expect(orphanedBy(failed, flags("unread-failed"), idleParent, T0 + 10 + 4_999)).toBe(false);
+    expect(orphanedBy(failed, flags("unread-failed"), idleParent, T0 + 10 + 5_000)).toBe(true);
   });
   it("counts the 5 seconds from the parent last becoming idle when that came after the failure", () => {
     const parent = { ...idleParent, idleSince: T0 + 1_000 };

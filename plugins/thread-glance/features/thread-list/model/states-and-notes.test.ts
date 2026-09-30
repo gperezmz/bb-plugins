@@ -138,10 +138,9 @@ describe("trees that need attention", () => {
 
 describe("header counters", () => {
   const counters = { waitsOnYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
-  it("keep what needs action; working only when collapsed; unread only on More", () => {
-    expect(visibleCounters(counters, { collapsed: false, more: false })).toEqual({ ...counters, working: 0, unread: 0 });
-    expect(visibleCounters(counters, { collapsed: true, more: false })).toEqual({ ...counters, unread: 0 });
-    expect(visibleCounters(counters, { collapsed: false, more: true })).toEqual(counters);
+  it("keep what needs action; working only when collapsed; never unread", () => {
+    expect(visibleCounters(counters, false)).toEqual({ ...counters, working: 0, unread: 0 });
+    expect(visibleCounters(counters, true)).toEqual({ ...counters, unread: 0 });
   });
 });
 
@@ -169,7 +168,6 @@ describe("Move… (keyboard route to drag)", () => {
       splitAvailable: false,
       isRoot: true,
       hasSections: false,
-      compact: false,
     }).map((item) => item.action);
     expect(actions).toContain("move");
     expect(actions).toContain("details");

@@ -35,8 +35,6 @@ interface GroupExtent {
 export interface ListItems {
   items: readonly LayoutItem[];
   groups: readonly GroupExtent[];
-  /** The height of every group together. */
-  total: number;
   /** Item index by key. */
   indexOf: ReadonlyMap<string, number>;
   /** Indices of every thread row, by thread id: a thread may show in more than one group. */
@@ -87,7 +85,7 @@ export function layoutItems(groups: readonly GroupView[], context: HeightContext
     if (known === undefined) indicesOf.set(id, [index]);
     else known.push(index);
   });
-  return { items, groups: extents, total: cursor, indexOf, indicesOf };
+  return { items, groups: extents, indexOf, indicesOf };
 }
 
 /** The index of the item at `y`, or -1 above the first and past the last. */

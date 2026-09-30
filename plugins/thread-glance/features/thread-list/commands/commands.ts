@@ -39,7 +39,6 @@ export interface Commands {
   /** Starts renaming a thread, or stops with null. */
   editTitle(threadId: string | null): void;
   renameThread(threadId: string, title: string): Promise<void>;
-  openDetails(threadId: string): void;
   closeDetails(): void;
   /** Opens the thread the details dialog shows. */
   openFromDetails(threadId: string): void;
@@ -290,7 +289,6 @@ export function createCommands(store: ListStore): Commands {
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
     renameThread: (threadId, title) => edge().actions.rename(threadId, title),
-    openDetails: (threadId) => store.setUi({ detailsId: threadId }),
     closeDetails: () => store.setUi({ detailsId: null }),
     openFromDetails(threadId) {
       store.setUi({ detailsId: null });

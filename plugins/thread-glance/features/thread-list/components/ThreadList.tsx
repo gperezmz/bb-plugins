@@ -308,7 +308,7 @@ function ListDialogs() {
         onConfirm={commands.confirm}
       />
       {details !== null ? (
-        <DetailsDialog open title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
+        <DetailsDialog title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
           <ThreadDetails
             info={details}
             showPullRequest
@@ -321,7 +321,6 @@ function ListDialogs() {
       ) : null}
       {moveThread !== null ? (
         <MoveDialog
-          open
           title={moveThread.displayTitle}
           targets={moveTargets(moveThread.id, forest, ui.moveQuery)}
           query={ui.moveQuery}

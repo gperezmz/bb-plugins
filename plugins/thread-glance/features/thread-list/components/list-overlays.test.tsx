@@ -132,7 +132,6 @@ describe("the row menu", () => {
         splitAvailable: true,
         isRoot,
         hasSections: true,
-        compact,
       }).map((item) => item.label);
       expect(names).toEqual(expected);
     },

@@ -75,17 +75,6 @@ export function orphanedAt(
   return Math.max(failedAt, parent.idleSince ?? 0) + ORPHAN_WAIT_MS;
 }
 
-/** Whether a child's failure is an orphaned failure at `now` (see `orphanedAt`). */
-export function isOrphanedFailure(
-  thread: Pick<PluginSidebarThread, "latestAttentionAt" | "updatedAt">,
-  flags: ReadonlySet<Flag>,
-  parent: ParentThread,
-  now: number,
-): boolean {
-  const at = orphanedAt(thread, flags, parent);
-  return at !== null && at <= now;
-}
-
 /** Which threads the list last saw busy, and when each last went from busy to idle. */
 export interface IdleTracker {
   busy: ReadonlySet<string>;

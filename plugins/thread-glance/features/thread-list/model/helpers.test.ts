@@ -290,7 +290,6 @@ describe("drop target from positions", () => {
       ["project:b/header", 184, 32],
       ["project:b/empty", 216, 24],
     ]);
-    expect(layout.total).toBe(240);
   });
 
   it("splits a thread row into its top quarter, middle half and bottom quarter, in and out of Pinned", () => {

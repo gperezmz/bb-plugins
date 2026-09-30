@@ -46,16 +46,16 @@ export function addCounters(a: Counters, b: Counters): Counters {
 }
 
 /**
- * Which counters a header draws. waits-on-you, failed and offline
+ * Which counters a group header draws. waits-on-you, failed and offline
  * always; working only while collapsed, since the rows show it otherwise;
- * unread only on the More trigger, where the rows are out of sight.
+ * never unread.
  */
-export function visibleCounters(counters: Counters, where: { collapsed: boolean; more: boolean }): Counters {
+export function visibleCounters(counters: Counters, collapsed: boolean): Counters {
   return {
     waitsOnYou: counters.waitsOnYou,
     failed: counters.failed,
     offline: counters.offline,
-    working: where.collapsed || where.more ? counters.working : 0,
-    unread: where.more ? counters.unread : 0,
+    working: collapsed ? counters.working : 0,
+    unread: 0,
   };
 }

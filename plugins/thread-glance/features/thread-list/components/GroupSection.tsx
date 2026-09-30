@@ -176,7 +176,7 @@ export const GroupSection = memo(function GroupSection({
   const phone = useMediaQuery(PHONE_QUERY);
   // What the header draws of the counters: a count the rows already show
   // changing leaves the header as it is.
-  const shown = visibleCounters(group?.counters ?? EMPTY_COUNTERS, { collapsed: group?.collapsed ?? false, more: false });
+  const shown = visibleCounters(group?.counters ?? EMPTY_COUNTERS, group?.collapsed ?? false);
   const counters = useMemo(
     () => shown,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one object per drawn value

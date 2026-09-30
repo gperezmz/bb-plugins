@@ -36,8 +36,6 @@ export interface RowMenuInputs {
   /** True for a thread with no parent (bb: Move to section on roots only). */
   isRoot: boolean;
   hasSections: boolean;
-  /** Kept for callers; Details is on every viewport. */
-  compact: boolean;
 }
 
 export function rowMenuItems(inputs: RowMenuInputs): RowMenuItem[] {

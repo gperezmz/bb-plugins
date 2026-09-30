@@ -664,5 +664,3 @@ export function buildListView(inputs: ViewInputs): ListView {
 
   return { groups, more, moreCounters, order, needYouCount: countNeedYou(forest), hasUnread: anyUnread(forest.trees) };
 }
-
-/** Every thread row in visual order, for keyboard and windowing. */
