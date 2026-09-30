@@ -148,14 +148,14 @@ export function createCommands(store: ListStore): Commands {
    */
   const markPlanRead = (plan: MarkAllRead, onFail?: (error: unknown) => void) => {
     store.showRead(plan.read, plan.seen);
-    void inPool(plan.read, READS_IN_FLIGHT, (threadId) =>
-      edge()
-        .sdk.threads.markRead({ threadId })
-        .catch((error: unknown) => {
-          store.revertRead([threadId]);
-          onFail?.(error);
-        }),
-    );
+    void inPool(plan.read, READS_IN_FLIGHT, async (threadId) => {
+      try {
+        await edge().sdk.threads.markRead({ threadId });
+      } catch (error) {
+        store.revertRead([threadId]);
+        onFail?.(error);
+      }
+    });
   };
 
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */

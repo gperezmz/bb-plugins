@@ -165,7 +165,7 @@ async function render(
       ] as never,
     },
     sdk: {
-      threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
+      threads: { defaultExecutionOptions: async () => null, update: async () => ({}), markRead: async () => ({}) } as never,
       projects: {
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),

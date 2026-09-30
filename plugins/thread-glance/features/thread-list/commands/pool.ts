@@ -11,7 +11,9 @@ export async function inPool<T>(items: readonly T[], limit: number, task: (item:
     while (next < items.length) {
       const item = items[next]!;
       next += 1;
-      await task(item).catch(() => undefined);
+      await Promise.resolve()
+        .then(() => task(item))
+        .catch(() => undefined);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
