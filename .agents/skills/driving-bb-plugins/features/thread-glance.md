@@ -113,6 +113,48 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `Thread Glance` again, and prints the rows and chips before and after;
   `--via automatic` returns through `Automatic`. Server preferences, open
   chips included, survive; the need-you filter does not.
+- **Every row** (`list`): `thread-glance rows` scrolls the windowed list top
+  to bottom and prints each row's name, drawn text (title, note line, time)
+  and time label; `--details` hovers each row and adds its hover card (state
+  and since, note, `Last reply`, `Finished`), `--requests` the load's fetches
+  grouped by calling script (Thread Glance's bundle is a
+  `plugin-app-assets/<hash>/app.js`) with `threadGlance.calls` naming each
+  RPC and its body, `--first-draw` the list at each of its first DOM changes
+  (`firstDraw[]`, with `settled` folds), `--advance <h>` the page's clock
+  that many hours ahead from the load on. `--warm` loads once and measures a
+  reload (a browser holding its preferences mirror); `--delay-sync <ms>`,
+  `--delay-branches <ms>` and `--delay-ws <ms>` hold `sync` answers, bb's
+  project and branch lookups, or the realtime socket, and `held[]` says how
+  many list states were drawn before each was let through; `--idle <s>`
+  counts the requests of that many idle seconds after the load. Two `rows`
+  results compare row by row once relative times are masked.
+- **Leaving for Settings** (`remount`, `sync`): `thread-glance away` loads,
+  leaves by bb's sidebar `Settings` link (no reload: `trips[].sameRealm`
+  true), runs `--actions <json file>` while the sidebar is unmounted (each a
+  `bb` argument array, `{"sleep": ms}` or `{"harness": [...]}`), comes back by
+  history back, and prints `trips[].firstDraw` (the list as first drawn),
+  `trips[].requestsOnReturn` (fetches by calling script, `threadGlance.rpc`)
+  and `after` (the list once quiet); `--times <n>` makes n trips,
+  `--details <title,title>` adds those rows' hover cards, `--branch-line`
+  turns Branch line on first, `--settings` reads the popover's controls once
+  back. Unlike `remount`, which reloads the page, this
+  keeps the plugin's app loaded, as a user's trip to Settings does.
+- **Realtime reconnect** (`sync`): `thread-glance reconnect --actions <file>`
+  closes the page's realtime socket (`/ws`) and refuses it back while the
+  actions run, then lets it back and prints `during` (the list while down),
+  `after` (once reconnected, `sameRealm` true) and `requestsAfterReconnect`.
+- **Two windows, live** (`sync`): `thread-glance live --actions <file>
+  --until <regex> --second-window` runs the actions and waits, with no reload,
+  until a row's name matches the regex in every window
+  (`windows[].untilReachedMsAfterActions`), then prints each window's rows;
+  `--frames` adds each realtime frame naming thread-glance from the actions
+  on (a `records` signal per thread event). The actions block the verb while
+  they run, so frames and the wait are timed from their end.
+- **First-run import** (`settings`): `thread-glance import-once --actions
+  <file>` counts `importPreferences` on one browser profile through a first
+  load, a reload, a trip to Settings, the actions (such as `plugin reload
+  thread-glance`) and a reload after them; `--fail-first` aborts the first
+  import in the network, so the device has no answer yet.
 - **Machine offline**: `drive-bb-plugins machine offline` under a `--hold`
   turn shows `Reconnecting` for bb's 30 s grace, then `Failed`; a `bb thread
   tell` while offline shows `Message waiting to send`. `machine online`
@@ -146,3 +188,12 @@ says.
 - Popover writes reach the server after a 150 ms debounce; `set` polls `prefs
   get` for up to 10 seconds.
 - Times in rows are relative and tick; assert on names, not times.
+- The list is windowed: only rows near the viewport are in the DOM, so read
+  every row with `rows`, not `list`, and a hover card only while its row is
+  drawn.
+- Each verb run is a new browser profile, so a first load in any verb is a
+  device that never got an import answer; `import-once` keeps one profile.
+- bb 0.44's `thread unarchive` unarchives one thread and always sends
+  `thread.unarchived`; archiving a parent archives its children, unarchiving
+  it does not bring them back.
+- The Branch line shows only for a thread off its project's default branch.
