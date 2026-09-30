@@ -12,15 +12,12 @@ const CLOSE_DELAY = 100;
 /** Keys that move focus, so the focus they bring may show a card. */
 const FOCUS_KEYS = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 
-/** The row a card would open for, and the element it anchors to. */
-type CardTarget = OpenCard;
-
 export interface RowCardController {
   pointerEnter(event: { clientX: number; clientY: number }): void;
-  pointerMove(target: CardTarget, event: { clientX: number; clientY: number; pointerType: string }): void;
+  pointerMove(target: OpenCard, event: { clientX: number; clientY: number; pointerType: string }): void;
   pointerLeave(): void;
   press(): void;
-  focus(target: CardTarget): void;
+  focus(target: OpenCard): void;
   blur(): void;
   /** The pointer is on the card: it stays open. */
   holdOpen(): void;
@@ -70,7 +67,7 @@ export function createRowCard(store: ListStore): RowCardController {
       store.setUi({ card: null });
     }, CLOSE_DELAY);
   };
-  const schedule = (target: CardTarget) => {
+  const schedule = (target: OpenCard) => {
     const open = store.getState().ui.card;
     if (open !== null && open.groupId === target.groupId && open.rowKey === target.rowKey) {
       keepOpen();

@@ -15,4 +15,4 @@ export {
   type OpenMenu,
   type RowPlace,
 } from "./list-store";
-export type { DefaultBranches,  ListModel, SystemFacts } from "./derive";
+export type { DefaultBranches, ListModel, SystemFacts } from "./derive";

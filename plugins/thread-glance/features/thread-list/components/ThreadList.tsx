@@ -19,7 +19,6 @@ import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
@@ -258,7 +257,7 @@ function ArchivedFooter() {
           variant="ghost"
           aria-label="Load more archived threads"
           disabled={archived.isFetchingNextPage}
-          className={cn("h-7 text-xs text-muted-foreground")}
+          className="h-7 text-xs text-muted-foreground"
           onClick={() => void archived.fetchNextPage()}
         >
           {archived.isFetchingNextPage ? "Loading…" : archived.isFetchNextPageError ? "Retry loading" : "Show more"}

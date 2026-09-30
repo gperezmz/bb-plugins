@@ -155,8 +155,6 @@ export function useHoldsFocus(groupId: string): boolean {
 
 // ——— Rows ———
 
-export { itemKeyOf };
-
 /** A thread row's own part of the list: focus, rename, split mini-map, draft, row status, and its menu or drag. */
 export interface RowState {
   focused: boolean;

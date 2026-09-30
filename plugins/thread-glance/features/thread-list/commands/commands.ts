@@ -29,7 +29,6 @@ const PLUGIN_ID = "thread-glance";
 /** Read requests bb is sent at once by a bulk read. */
 const READS_IN_FLIGHT = 6;
 
-
 /** What is being dragged, as dnd-kit's active data carries it. */
 export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group"; groupId: string };
 

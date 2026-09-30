@@ -133,7 +133,6 @@ export function RowContextMenuContent({
       ))}
     </ContextMenuContent>
   );
-
 }
 
 export function RowDropdownMenuContent({ items, sections, currentSectionId, onAction, onCloseAutoFocus }: MenuProps) {
