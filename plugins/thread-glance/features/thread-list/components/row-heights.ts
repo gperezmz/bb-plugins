@@ -27,11 +27,8 @@ export const OLDER_ROW_HEIGHT: Record<Density, string> = {
   comfortable: THREAD_ROW_HEIGHT.comfortable.one,
 };
 
-/** The environment fold row, the same height on phones as on desktop. */
-export const ENVIRONMENT_ROW_HEIGHT: Record<Density, string> = {
-  compact: "h-7",
-  comfortable: "h-8",
-};
+/** The environment fold row, as tall as a one-line thread row. */
+export const ENVIRONMENT_ROW_HEIGHT: Record<Density, string> = OLDER_ROW_HEIGHT;
 
 /** The space above every group header but the first. */
 export const GROUP_GAP: Record<Density, string> = {

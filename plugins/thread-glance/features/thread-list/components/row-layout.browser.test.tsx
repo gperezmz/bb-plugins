@@ -653,8 +653,7 @@ describe("Density and Branch line", () => {
       branch: (branchLine ? (phone ? 48 : 44) : phone ? 36 : 28) + taller,
       noted: (phone ? 48 : 44) + taller,
       older: (phone ? 36 : 28) + taller,
-      // The environment fold row is 28 px on phones too.
-      environment: 28 + taller,
+      environment: (phone ? 36 : 28) + taller,
       settled: phone ? 36 : 24,
       header: phone ? 36 : 28,
     };
