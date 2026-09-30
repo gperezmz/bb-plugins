@@ -1,7 +1,7 @@
 // Server-side preferences in the plugin kv, the same pattern as bb's
 // own thread-list server: one row per key, validated on every read and write.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { CHANNELS, type PreferenceSignal } from "../shared/contract";
+import { CHANNELS, type PreferenceSignal } from "../shared/signals";
 import {
   PREFERENCE_KEYS,
   defaultPreferences,

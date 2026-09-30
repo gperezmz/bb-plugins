@@ -1,6 +1,6 @@
 // Row age and working timer. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import type { Stamps } from "@/shared/contract";
+import type { Stamps } from "@/shared/signals";
 import type { ThreadInfo } from "./trees";
 
 const MINUTE = 60_000;

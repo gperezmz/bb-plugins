@@ -4,7 +4,7 @@
 // The store publishes nothing: its caller publishes the thread records a
 // change touched.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { STAMP_KINDS, type StampKind, type ThreadStamps } from "../shared/contract";
+import { STAMP_KINDS, type StampKind, type ThreadStamps } from "../shared/signals";
 import { createSerialQueue } from "./serial";
 import type { ThreadTable } from "./thread-table";
 

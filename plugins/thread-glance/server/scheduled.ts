@@ -1,6 +1,6 @@
 // Scheduled sends: queued rows whose `sendAt` is in the future, kept in
 // memory and seeded again on every server start.
-import type { ScheduledSignal } from "../shared/contract";
+import type { ScheduledSignal } from "../shared/signals";
 
 /** The fields of a queued row the tracker reads. */
 export interface QueuedRow {

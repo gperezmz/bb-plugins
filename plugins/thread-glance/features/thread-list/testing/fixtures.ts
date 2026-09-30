@@ -120,7 +120,7 @@ export interface Scenario {
   seenAt?: Record<string, number>;
   scheduled?: Record<string, number>;
   draftIds?: string[];
-  notes?: Record<string, import("@/shared/contract").ThreadNotes>;
+  notes?: Record<string, import("@/shared/signals").ThreadNotes>;
   now?: number;
   startedAt?: Record<string, number>;
   pendingAt?: Record<string, number>;

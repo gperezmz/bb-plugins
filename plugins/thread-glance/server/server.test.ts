@@ -5,7 +5,7 @@ import { performance } from "node:perf_hooks";
 import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadRecord } from "../shared/contract";
+import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadRecord } from "../shared/signals";
 import { defaultPreferences } from "../shared/preferences";
 import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
 import { noteKvKey } from "./notes";

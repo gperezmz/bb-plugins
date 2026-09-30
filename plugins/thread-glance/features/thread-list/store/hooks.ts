@@ -3,7 +3,7 @@
 // when its part changes. Components read the store through these alone.
 import { createContext, useContext, useRef, useSyncExternalStore } from "react";
 import type { PluginEnvironmentProvider, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
-import type { Stamps, ThreadNotes } from "@/shared/contract";
+import type { Stamps, ThreadNotes } from "@/shared/signals";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import type { Commands } from "../commands/commands";
 import { EMPTY_COUNTERS, type Counters } from "../model/counters";

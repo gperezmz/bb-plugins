@@ -3,7 +3,7 @@
 // written through. The store publishes nothing: its caller publishes the
 // thread records a change touched.
 import type { BbPluginApi, PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
-import { NOTE_MAX_LENGTH, noteSchema, type Note, type ThreadNotes } from "../shared/contract";
+import { NOTE_MAX_LENGTH, noteSchema, type Note, type ThreadNotes } from "../shared/signals";
 import { createSerialQueue } from "./serial";
 import type { ThreadTable } from "./thread-table";
 

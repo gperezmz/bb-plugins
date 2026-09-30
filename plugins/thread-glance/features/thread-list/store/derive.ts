@@ -11,7 +11,7 @@ import type {
   PluginSidebarThreadsState,
   PluginProvidersState,
 } from "@get-bb/plugin-sdk/app";
-import type { Stamps, ThreadNotes } from "@/shared/contract";
+import type { Stamps, ThreadNotes } from "@/shared/signals";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { detectTransitions, mergeTargets, snapshotOf, type Snapshot, type Targets } from "../model/expansion";
 import { groupIdForRoot } from "../model/groups";

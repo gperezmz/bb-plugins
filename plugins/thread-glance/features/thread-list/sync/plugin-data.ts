@@ -5,7 +5,7 @@
 // window; lists created in it read it and follow its changes.
 import type { PluginRealtimeConnectionState, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { PreferenceKey, Preferences } from "@/shared/preferences";
-import type { RecordsSignal, StampKind, SyncPoint, ThreadRecord } from "@/shared/contract";
+import type { RecordsSignal, StampKind, SyncPoint, ThreadRecord } from "@/shared/signals";
 import type { DefaultBranches, SystemFacts } from "../store/api";
 import {
   applyFetched,

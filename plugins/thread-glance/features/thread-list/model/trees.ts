@@ -17,7 +17,7 @@ import { attentionFlagsOf, orphanedAt } from "./attention";
 import { isPinnedThread } from "./groups";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
-import type { ThreadNotes } from "@/shared/contract";
+import type { ThreadNotes } from "@/shared/signals";
 import type { ChildAttention } from "@/shared/preferences";
 
 /** States that keep a child out of an open tree's "N more child threads" fold with `childAttention` `blocked`: working, setting up, background work. */

@@ -11,7 +11,7 @@ import {
   type ThreadNotes,
   type ThreadRecord,
   type ThreadStamps,
-} from "../shared/contract";
+} from "../shared/signals";
 import type { ArchivedThreads } from "./archived";
 import type { NoteStore } from "./notes";
 import type { StampStore } from "./stamps";
