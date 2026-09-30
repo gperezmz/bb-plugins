@@ -21,14 +21,21 @@ export function importAnswered(): boolean {
 }
 
 /**
+ * Why a `sync` is asked: `current` to make what is held current, which one
+ * in flight already does, or `missed` for what realtime dropped, which one
+ * sent before it may not hold.
+ */
+export type SyncReason = "current" | "missed";
+
+/**
  * Asks for what changed since the window's revision, or everything when it
  * has seen nothing, importing bb's preferences first on a device that never
- * got an import answer. One at a time: a call while one runs runs once more
- * after it.
+ * got an import answer. One at a time: a call while one runs joins it, or,
+ * for what realtime dropped, runs once more after it.
  */
-export async function requestSync(rpc: Rpc): Promise<void> {
+export async function requestSync(rpc: Rpc, reason: SyncReason = "current"): Promise<void> {
   if (syncing) {
-    again = true;
+    if (reason === "missed") again = true;
     return;
   }
   syncing = true;

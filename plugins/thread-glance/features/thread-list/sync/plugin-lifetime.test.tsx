@@ -196,6 +196,34 @@ describe("a realtime reconnect", () => {
 });
 
 describe("a first load", () => {
+  it("asks one sync when the app overlay's keeper and the list mount in one commit, as bb mounts them", async () => {
+    const server = createFakeServer({ preferences: { settleAfter: "never" } });
+    const Overlay = app.appOverlays[0]!.component;
+    const List = app.threadLists[0]!.component;
+    const page = server.attach(
+      renderSlot(
+        {
+          component: () => (
+            <>
+              <Overlay />
+              <List {...props} />
+            </>
+          ),
+        },
+        {},
+        {
+          rpc: server.handlers as never,
+          sidebarThreads: { status: "ready", threads: threads(), projects: PROJECTS, sections: [] },
+          providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
+          sdk: sdk(),
+        },
+      ),
+    );
+    await screen.findByRole("link", { name: /Open Worker/ });
+    await settle();
+    expect(page.inspection.rpcCalls.filter((call) => call.method === "sync")).toHaveLength(1);
+  });
+
   it("asks one sync, once realtime connects, when the page loads before its socket is up", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const list = mountList(server, threads(), { realtimeConnectionState: "connecting" });

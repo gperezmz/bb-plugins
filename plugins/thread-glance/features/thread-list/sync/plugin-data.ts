@@ -18,6 +18,7 @@ import {
   type HeldRecords,
   type RecordsAt,
 } from "./records";
+import type { SyncReason } from "./requests";
 
 /**
  * The server's answer to `sync`, as this module reads it: the contract's own
@@ -166,21 +167,22 @@ export const pluginData = {
   },
   /**
    * Realtime's connection is in `state`, as a keeper following it hears it;
-   * returns true when a `sync` has to go now. One goes once the connection is
-   * up, so no signal is lost between the answer and the socket opening:
-   * while it was down, what was sent then no signal will bring, and before
-   * any answer, or after the list stopped following, what is held is not
-   * current.
+   * returns why a `sync` has to go now, or null. One goes once the
+   * connection is up, so no signal is lost between the answer and the socket
+   * opening: `missed` when it was down, since what was sent then no signal
+   * will bring, and `current` before any answer, or after the list stopped
+   * following, since what is held is not current.
    */
-  connection(state: PluginRealtimeConnectionState): boolean {
+  connection(state: PluginRealtimeConnectionState): SyncReason | null {
     if (state !== "connected") {
       if (data.status === "current") data = { ...data, status: "waiting" };
       realtime = "down";
-      return false;
+      return null;
     }
     const back = realtime === "down";
     realtime = "up";
-    return back || data.status !== "current";
+    if (back) return "missed";
+    return data.status === "current" ? null : "current";
   },
 
   isOverlayMounted: () => overlayMounted,

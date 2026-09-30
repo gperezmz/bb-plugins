@@ -40,7 +40,8 @@ function Following() {
   // Asks once realtime is up: on mount, and after a reconnect, since
   // realtime signals aren't replayed.
   useEffect(() => {
-    if (pluginData.connection(connection)) void requestSync(rpc);
+    const reason = pluginData.connection(connection);
+    if (reason !== null) void requestSync(rpc, reason);
   }, [connection, rpc]);
 
   // A connection that does not come up leaves the list drawn from the
@@ -48,7 +49,7 @@ function Following() {
   useEffect(() => {
     if (connection === "connected") return;
     const timer = setTimeout(() => {
-      if (pluginData.get().status === "waiting") void requestSync(rpc);
+      if (pluginData.get().status === "waiting") void requestSync(rpc, "missed");
     }, UNCONNECTED_WAIT_MS);
     return () => clearTimeout(timer);
   }, [connection, rpc]);
@@ -56,7 +57,7 @@ function Following() {
   useRealtime(CHANNELS.records, (payload) => {
     const parsed = recordsSignalSchema.safeParse(payload);
     if (!parsed.success) return;
-    if (!pluginData.signal(parsed.data)) void requestSync(rpc);
+    if (!pluginData.signal(parsed.data)) void requestSync(rpc, "missed");
   });
   useRealtime(CHANNELS.preferences, (payload) => {
     const signal = payload as PreferenceSignal;
