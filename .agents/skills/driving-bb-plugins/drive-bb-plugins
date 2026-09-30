@@ -17,7 +17,9 @@
 # stop), evidence and process handles in .drives/<run>/ at the repository root
 # (kept by stop), port claims in $DBP_SCRATCH_ROOT/ports (released by stop).
 #
-#   drive-bb-plugins start <plugin>...              start a run, print its name and URL
+#   drive-bb-plugins start [--fixture <name>] <plugin>...
+#                                                   start a run, print its name and URL; with
+#                                                   --fixture, on a copy of that saved bb
 #   drive-bb-plugins doctor [--run <run>]           exit 0 only when the run is worth driving
 #   drive-bb-plugins bb [--run <run>] <label> -- <args>
 #                                                   run `bb <args>` against the run, logged as evidence
@@ -27,6 +29,10 @@
 #                                                   --fail ends that turn in error, --background leaves
 #                                                   a command running and the runtime loaded, --hold
 #                                                   prints the id while the turn works for <s> seconds
+#   drive-bb-plugins seed [--run <run>] <shape.json> make the threads a shape file declares: quiet ones
+#                                                   pending over HTTP with no turn, finished and unread
+#                                                   ones forks, failed, working and background ones
+#                                                   real turns
 #   drive-bb-plugins release [--run <run>] <thread>  stop a --background thread and free its session
 #   drive-bb-plugins machine [--run <run>] offline|online
 #                                                   stop the run's host daemon, or start it again
@@ -36,6 +42,8 @@
 #   drive-bb-plugins ui [--run <run>] <label> <steps.mjs> [--mobile]
 #                                                   run a Playwright script against the bb web UI
 #   drive-bb-plugins stop [--run <run>]             stop the run, keep its evidence
+#   drive-bb-plugins save [--run <run>] <name>      stop the run and save its bb as fixture <name>
+#   drive-bb-plugins fixtures                       list the saved fixtures of the bb on PATH
 #
 # The run is --run's, else $DBP_RUN's, else the one .drives/latest points at.
 # start picks three free ports and claims them, so runs started at once from
@@ -48,6 +56,9 @@
 # where no systemd user manager can run the scope, unless DBP_UNCAPPED=1.
 # DBP_MAX_SESSIONS (default 4) is how many `spawn`s of the run hold a Claude
 # Code session at once; the rest wait for a slot.
+#
+# Fixtures live in $DBP_FIXTURE_ROOT (default ~/.cache/drive-bb-plugins/fixtures),
+# under the bb version that saved them, and are shared by every checkout.
 set -euo pipefail
 
 skill_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -55,6 +66,7 @@ repo=$(git -C "$skill_dir" rev-parse --show-toplevel)
 evidence_root=$repo/.drives
 scratch_root=${DBP_SCRATCH_ROOT:-${TMPDIR:-/tmp}/drive-bb-plugins}
 claims=$scratch_root/ports
+fixture_root=${DBP_FIXTURE_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/drive-bb-plugins/fixtures}
 unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI -u BB_HOST_DAEMON_PORT
   -u BB_THREAD_STORAGE -u BB_DATA_DIR -u CLAUDE_CONFIG_DIR -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN
   -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
@@ -66,6 +78,10 @@ iec() { numfmt --to=iec "$1"; }
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
+bb_version() { env "${unset_bb[@]}" bb --version; }
+# One value from a saved fixture's fixture.env.
+# shellcheck source=/dev/null
+fixture_value() { (source "$1/fixture.env" && printf '%s' "${!2}"); }
 
 # Resolves the run the command acts on into $run, $ev and $scratch, and loads
 # its recorded settings.
@@ -142,8 +158,16 @@ release_ports() {
 tb() { env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" "$@"; }
 
 cmd_start() {
-  [[ $# -gt 0 ]] || die "usage: drive-bb-plugins start <plugin>...  (plugins: $(ls "$repo/plugins" | tr '\n' ' '))"
-  local p
+  local fixture="" fixture_dir="" p
+  if [[ ${1:-} == --fixture ]]; then
+    fixture=${2:?--fixture needs a fixture name}
+    shift 2
+    fixture_dir=$fixture_root/bb-$(bb_version)/$fixture
+    [[ -f $fixture_dir/fixture.env ]] || die "no fixture '$fixture' for bb $(bb_version) under $fixture_root; list them with: drive-bb-plugins fixtures"
+    # shellcheck disable=SC2046 # the fixture's plugins are a space-separated list
+    [[ $# -gt 0 ]] || set -- $(fixture_value "$fixture_dir" plugins)
+  fi
+  [[ $# -gt 0 ]] || die "usage: drive-bb-plugins start [--fixture <name>] <plugin>...  (plugins: $(ls "$repo/plugins" | tr '\n' ' '))"
   for p in "$@"; do [[ -f $repo/plugins/$p/package.json ]] || die "no plugin plugins/$p"; done
   for tool in node jq curl git rsync bb bb-server bb-host-daemon; do
     command -v "$tool" > /dev/null || die "$tool is not on PATH"
@@ -211,7 +235,13 @@ plugins="$*"
 unit=$unit
 memory_max=$memory_max
 max_sessions=$max_sessions
+fixture=$fixture
 ENV
+  if [[ -n $fixture ]]; then
+    restore_fixture "$fixture_dir"
+    # The saved bb already knows its machine and project.
+    printf 'host_id=%s\nproject=%s\n' "$(fixture_value "$fixture_dir" host_id)" "$(fixture_value "$fixture_dir" project)" >> "$ev/run.env"
+  fi
   : > "$ev/pids"
   : > "$ev/launch-pids"
 
@@ -229,21 +259,31 @@ ENV
   exec 7>&-
   # shellcheck source=/dev/null
   source "$ev/run.env"
-  local project status
+  local status
   # bb-server hands the server to a detached child; record it by the run's mark.
   marked_procs | cut -f1 >> "$ev/pids"
   sort -u "$ev/pids" -o "$ev/pids"
   # bb's own limit on threads running at once, as a second bound under spawn's.
   tb bb concurrency-limit global "$max_sessions" > /dev/null || fail "could not limit the run to $max_sessions running threads"
 
-  GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
-    bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
-  project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
-  [[ $project == proj_* ]] || fail "could not create the drives' project"
+  if [[ -z $fixture ]]; then
+    GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
+      bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
+    project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
+    [[ $project == proj_* ]] || fail "could not create the drives' project"
+    echo "project=$project" >> "$ev/run.env"
+  else
+    # A plugin the fixture has and this run does not test would run from a
+    # copy that is not there.
+    for p in $(fixture_value "$fixture_dir" plugins); do
+      [[ " $* " == *" $p "* ]] || tb bb plugin uninstall "$p" --yes > /dev/null || fail "could not uninstall the fixture's $p"
+    done
+  fi
 
   for p in "$@"; do
     # A copy as the checkout has it, so bb builds what is checked out and
-    # writes nothing into the checkout.
+    # writes nothing into the checkout. On a fixture this reinstalls the
+    # plugin over the one the fixture saved.
     rsync -a --exclude node_modules --exclude dist --exclude harness "$repo/plugins/$p/" "$scratch/plugins/$p/"
     [[ -d $repo/plugins/$p/node_modules ]] && ln -s "$repo/plugins/$p/node_modules" "$scratch/plugins/$p/node_modules"
     tb bb plugin install "path:$scratch/plugins/$p" --yes > "$scratch/install-$p.log" 2>&1 || { cat "$scratch/install-$p.log" >&2; fail "could not install $p"; }
@@ -253,9 +293,6 @@ ENV
   marked_procs | cut -f1 >> "$ev/pids"
   sort -u "$ev/pids" -o "$ev/pids"
 
-  cat >> "$ev/run.env" << ENV
-project=$project
-ENV
   cat > "$ev/env.sh" << ENV
 # Points bb at run $run and nothing else. Source it in a subshell.
 unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
@@ -266,6 +303,7 @@ ENV
   echo "web UI   $server_url/"
   echo "project  $project   machine $host_id"
   echo "plugins  $*"
+  [[ -z $fixture ]] || echo "fixture  $fixture, restored from $fixture_dir"
   if [[ -n $unit ]]; then
     echo "memory   capped at $(iec "$memory_max"), no swap, in $unit; $max_sessions Claude Code sessions at once"
   else
@@ -304,13 +342,64 @@ cmd__launch() {
   wait_for "the bb server" "$server_url/health"
 
   local enroll
-  enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
-  host_id=$(jq -r .hostId <<< "$enroll")
-  start_daemon BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" &
+  if [[ -n ${host_id:-} ]]; then
+    # A restored fixture's daemon signs in with the credentials it saved.
+    start_daemon &
+  else
+    enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
+    host_id=$(jq -r .hostId <<< "$enroll")
+    echo "host_id=$host_id" >> "$ev/run.env"
+    start_daemon BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" &
+  fi
   echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
   for _ in $(seq 60); do connected && break; sleep 1; done
   connected || fail "the host daemon did not connect to the bb server"
-  echo "host_id=$host_id" >> "$ev/run.env"
+}
+
+# Copies a saved fixture into this run's scratch and points every absolute
+# path it saved at this run's scratch instead. bb.db keeps them in project,
+# environment, plugin and daemon rows and in event history; Claude Code keeps
+# its sessions under a directory named after the project path, with every /
+# and . turned to -.
+restore_fixture() {
+  local from=$1 old old_dashed new_dashed dir
+  old=$(fixture_value "$from" scratch)
+  [[ $old == */run.?????? ]] || fail "$from/fixture.env names no scratch directory"
+  old_dashed=${old//[^A-Za-z0-9]/-} new_dashed=${scratch//[^A-Za-z0-9]/-}
+  rm -rf "${scratch:?}/work"
+  # Shared with other starts, exclusive against a save replacing the fixture.
+  (
+    flock -s 6
+    cp -a "$from/bb" "$from/work" "$scratch/" && cp -a "$from/home/." "$scratch/home/"
+  ) 6> "${from%/*}/.lock" || fail "could not copy fixture $from"
+  # shellcheck disable=SC2016 # the script is JavaScript
+  node --no-warnings -e '
+    const { DatabaseSync } = require("node:sqlite");
+    const [file, ...pairs] = process.argv.slice(1);
+    const db = new DatabaseSync(file);
+    const q = (name) => `"${name.replaceAll(`"`, `""`)}"`;
+    for (const { name } of db.prepare("select name from sqlite_master where type = ? and name not like ?").all("table", "sqlite_%")) {
+      for (const col of db.prepare(`pragma table_info(${q(name)})`).all()) {
+        if (!/TEXT|CHAR|CLOB|JSON|^$/i.test(col.type)) continue;
+        try {
+          for (let i = 0; i < pairs.length; i += 2) {
+            const [from, to] = pairs.slice(i, i + 2);
+            db.prepare(`update ${q(name)} set ${q(col.name)} = replace(${q(col.name)}, ?, ?) where instr(${q(col.name)}, ?) > 0`).run(from, to, from);
+          }
+        } catch (e) {
+          // A full-text index table follows its content table and takes no writes.
+          if (!/may not be modified/.test(e.message)) throw e;
+        }
+      }
+    }
+    db.close();
+  ' "$scratch/bb/bb.db" "$old" "$scratch" "$old_dashed" "$new_dashed" || fail "could not point the fixture's bb.db at $scratch"
+  for dir in "$scratch/home/.claude/projects/$old_dashed"*; do
+    [[ -e $dir ]] && mv "$dir" "$scratch/home/.claude/projects/$new_dashed${dir#"$scratch/home/.claude/projects/$old_dashed"}"
+  done
+  { grep -rlIZF -e "$old" -e "$old_dashed" --exclude='bb.db*' "$scratch/bb" "$scratch/home" || true; } |
+    xargs -0 -r sed -i -e "s|$old|$scratch|g" -e "s|$old_dashed|$new_dashed|g"
+  return 0
 }
 
 # Execs the run's host daemon, as machine $host_id, with any extra environment
@@ -436,7 +525,7 @@ cmd_spawn() {
     shift
   done
   set -- "${pos[@]}"
-  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]} title=${2:?} prompt=${3:?} parent=${4:-} args id idle=0 want=idle
+  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]} title=${2:?} prompt=${3:?} parent=${4:-} parent_env="" args id idle=0 want=idle
   # The fake API reads these markers in the prompt (plugins/cache-keeper/harness/README.md).
   case $mode in
     fail) prompt+=" [fake: fail]" want=error ;;
@@ -444,8 +533,13 @@ cmd_spawn() {
     hold) [[ $hold =~ ^[0-9]+$ ]] || die "--hold takes whole seconds"; prompt+=" [fake: hold=$hold]" ;;
   esac
   args=(--project "$project" --provider claude-code --model "claude-opus-5-5[1m]" --title "$title" --json)
+  # A child shares its parent's checkout; a seeded parent never ran and has none.
   if [[ -n $parent ]]; then
-    args+=(--parent-thread "$parent" --environment "$(tb bb thread show "$parent" --json | jq -r .environment.id)")
+    args+=(--parent-thread "$parent")
+    parent_env=$(tb bb thread show "$parent" --json | jq -r '.environment.id // empty') || die "no parent thread $parent"
+  fi
+  if [[ -n ${parent_env:-} ]]; then
+    args+=(--environment "$parent_env")
   else
     args+=(--machine "$host_id" --environment-provider project-checkout)
   fi
@@ -485,6 +579,177 @@ cmd_spawn() {
   tb bb thread stop "$id" > /dev/null 9>&- || die "could not release $id's runtime"
   ((idle)) || die "$id did not reach $want within 60s; its runtime is released"
   echo "$id"
+}
+
+# Makes the threads a shape file declares; see SKILL.md for the shape. Quiet
+# threads come from seed.mjs with no turn. Finished and unread ones are forks
+# of one real turn: a fork runs no turn but loads a Claude Code session until
+# stopped, and bb 0.44 corrupts forks made 8 at once, so at most 4 fork at
+# once. Failed, working and background threads each run the real turn only
+# they can come from. Writes what it made to seed.json in the evidence.
+cmd_seed() {
+  load_run
+  local shape=${1:?usage: drive-bb-plugins seed <shape.json>} started=$SECONDS quiet made states failed working background finished unread hold width src="" i pid bad=0
+  [[ -f $shape ]] || die "no shape file $shape"
+  jq -e '(keys - ["trees", "states", "hold"] | length == 0)
+    and ((.states // {}) | keys - ["failed", "working", "background", "finished", "unread"] | length == 0)
+    and all((.trees // [])[]; keys - ["count", "children", "archived", "section", "title"] | length == 0)' "$shape" > /dev/null ||
+    die "$shape holds a key a shape does not have (trees[].count|children|archived|section|title, states.failed|working|background|finished|unread, hold)"
+  read -r failed working background finished unread hold < <(jq -r '[.states.failed, .states.working, .states.background, .states.finished, .states.unread, .hold // 600 | . // 0] | @tsv' "$shape")
+  for i in "$failed" "$working" "$background" "$finished" "$unread" "$hold"; do [[ $i =~ ^[0-9]+$ ]] || die "'$i' in $shape is not a whole number"; done
+  # A background thread keeps its session slot until released, and a working
+  # one until its turn ends, so more of them than free slots would wait forever.
+  local free=0
+  mkdir -p "$ev/slots"
+  for i in $(seq "$max_sessions"); do (exec 9> "$ev/slots/$i" && flock -n 9) && free=$((free + 1)); done
+  ((working + background <= free)) ||
+    die "$((working + background)) working and background threads need that many session slots, and $free of the run's $max_sessions are free; release --background threads or wait for working ones first"
+  made=$ev/seed.tsv
+  : > "$made"
+  # Titles number on past the ones the run already has, so each stays unique.
+  tb bb thread section list --json > "$ev/seed-existing.json"
+  tb bb thread list --json | jq --slurpfile sections "$ev/seed-existing.json" '{ titles: [.[].title], sections: $sections[0] }' > "$ev/seed-existing.json.new"
+  mv "$ev/seed-existing.json.new" "$ev/seed-existing.json"
+  next() { jq -r --arg s "$1" '[.titles[] | capture("^" + $s + " (?<n>[0-9]+)$") | .n | tonumber] | max // 0' "$ev/seed-existing.json"; }
+  local nf nw nb nd nu
+  nf=$(next failed) nw=$(next working) nb=$(next background) nd=$(next finished) nu=$(next unread)
+
+  quiet=$(env "${unset_bb[@]}" DBP_URL="$server_url/" DBP_PROJECT="$project" DBP_HOST="$host_id" DBP_EXISTING="$ev/seed-existing.json" node "$skill_dir/seed.mjs" "$(realpath "$shape")") ||
+    { rm -f "$made" "$ev/seed-existing.json"; die "seeding the quiet threads failed; any it made before failing are in the run, still pending with a message due in 2099"; }
+  echo "quiet      $(jq -r '"\(.created) threads, \(.archived) of them archived, in \(.ms / 1000) s"' <<< "$quiet")"
+
+  # Each state thread in its own process; spawn's session slots bound them.
+  spawn_state() {
+    local state=$1 title=$2 id
+    shift 2
+    id=$(cmd_spawn "seed/$state" "$title" hi "$@") && printf '%s\t%s\t%s\n' "$state" "$title" "$id" >> "$made"
+  }
+  # At most one process per session slot waits for one at a time.
+  local pids=()
+  start_state() {
+    if ((${#pids[@]} >= max_sessions)); then
+      wait "${pids[0]}" || bad=1
+      pids=("${pids[@]:1}")
+    fi
+    spawn_state "$@" &
+    pids+=($!)
+  }
+  finish_states() {
+    for pid in "${pids[@]}"; do wait "$pid" || bad=1; done
+    pids=()
+  }
+  for i in $(seq "$failed"); do start_state failed "failed $((nf + i))" --fail; done
+  if ((finished + unread > 0)); then
+    # The fork source is the first finished thread, or the first unread one.
+    if ((finished > 0)); then src="finished $((nd + 1))"; else src="unread $((nu + 1))"; fi
+    start_state "${src% *}" "$src"
+  fi
+  finish_states
+  if [[ -n $src ]]; then
+    src=$(awk -F '\t' -v t="$src" '$2 == t { print $3 }' "$made")
+    [[ $src == thr_* ]] || die "the fork source did not finish its turn"
+    # A turn ending leaves its thread unread.
+    ((finished > 0)) && { tb bb thread read "$src" > /dev/null || die "could not mark $src read"; }
+    width=$((max_sessions < 4 ? max_sessions : 4))
+    {
+      for i in $(seq 2 "$finished"); do printf 'finished %s\nfinished\n' "$((nd + i))"; done
+      for i in $(seq "$((finished > 0 ? 1 : 2))" "$unread"); do printf 'unread %s\nunread\n' "$((nu + i))"; done
+    } | xargs -d '\n' -r -n 2 -P "$width" bash "$skill_dir/drive-bb-plugins" _fork --run "$run" "$src" >> "$made" || bad=1
+  fi
+  for i in $(seq "$background"); do start_state background "background $((nb + i))" --background; done
+  for i in $(seq "$working"); do start_state working "working $((nw + i))" --hold "$hold"; done
+  finish_states
+
+  states=$(jq -Rn '[inputs | split("\t") | { state: .[0], title: .[1], id: .[2] }] | group_by(.state) | map({ (.[0].state): map({ title, id }) }) | add // {}' < "$made")
+  jq --argjson states "$states" --argjson seconds "$((SECONDS - started))" '{ seconds: $seconds, quiet: ., states: $states }' <<< "$quiet" > "$ev/seed.json"
+  rm -f "$made" "$ev/seed-existing.json"
+  echo "states     $(jq -r 'to_entries | map("\(.value | length) \(.key)") | join(", ") | if . == "" then "none" else . end' <<< "$states")"
+  echo "seeded in $((SECONDS - started)) s; ids in $ev/seed.json"
+  ((bad == 0)) || die "some state threads were not made; see $ev/cli.md"
+}
+
+# seed's fork worker: forks <source> as <title>, releases the fork's session,
+# and leaves it read (finished) or marks it unread. Prints
+# "<state><TAB><title><TAB><id>".
+cmd__fork() {
+  load_run
+  local src=$1 title=$2 state=$3 id
+  take_session_slot
+  id=$(cmd_bb seed/fork -- thread fork "$src" --title "$title" --json 9>&- | jq -r '.id // .thread.id')
+  [[ $id == thr_* ]] || die "bb made no fork of $src"
+  for _ in $(seq 300); do
+    [[ $(tb bb thread show "$id" --json 9>&- | jq -r .thread.status) != starting ]] && break
+    sleep 0.2
+  done
+  tb bb thread stop "$id" > /dev/null 9>&- || die "could not release $id's runtime"
+  [[ $state == finished ]] || tb bb thread unread "$id" > /dev/null || die "could not mark $id unread"
+  printf '%s\t%s\t%s\n' "$state" "$title" "$id"
+}
+
+# Stops the run and saves its bb as a fixture: the data directory, the
+# project's repository and Claude Code's sessions, with the scratch path they
+# name, so start --fixture can point them at another run's.
+cmd_save() {
+  load_run
+  local name=${1:?usage: drive-bb-plugins save <name>} busy counts
+  [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "a fixture name is letters, digits, '.', '_' and '-'"
+  [[ ! -s $ev/kept ]] || die "a --background thread is running a command a saved bb would lose; release it first"
+  busy=$(tb bb thread list --json | jq -r '[.[] | select(.status | IN("idle", "pending", "error") | not) | "\(.title) (\(.status))"] | join(", ")')
+  [[ -z $busy ]] || die "threads are still running, which a saved bb would lose: $busy"
+  counts=$(tb bb thread list --json | jq -r '"threads=\(length)\narchived=\([.[] | select(.archivedAt != null)] | length)"')
+  save_to=$fixture_root/bb-$(bb_version)/$name
+  mkdir -p "${save_to%/*}"
+  save_env="scratch=$scratch
+host_id=$host_id
+project=$project
+plugins=\"$plugins\"
+bb_version=$(bb_version)
+saved=$(date -Iseconds)
+from_run=$run
+$counts"
+  cmd_stop
+}
+
+# The part of stop that saves the fixture, once nothing of the run is left
+# running. Replaces a fixture of the same name.
+save_fixture() {
+  local tmp old=""
+  tmp=$(mktemp -d "${save_to%/*}/.saving.XXXXXX")
+  (
+    rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
+      rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
+    for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
+    printf '%s\n' "$save_env" > "$tmp/fixture.env"
+  ) || {
+    rm -rf "$tmp"
+    die "could not save the fixture; the run is stopped and its scratch kept: finish with drive-bb-plugins stop --run $run"
+  }
+  # Exclusive against a start copying the fixture and another save of it.
+  exec 6> "${save_to%/*}/.lock"
+  flock 6
+  if [[ -e $save_to ]]; then
+    old=$(mktemp -d "${save_to%/*}/.replaced.XXXXXX")
+    mv -T "$save_to" "$old/fixture"
+  fi
+  mv -T "$tmp" "$save_to"
+  exec 6>&-
+  [[ -z $old ]] || rm -rf "$old"
+  echo "saved fixture $(basename "$save_to") in $save_to ($(du -sh "$save_to" | cut -f1))"
+}
+
+cmd_fixtures() {
+  local version dir
+  version=$(bb_version)
+  for dir in "$fixture_root/bb-$version"/*/; do
+    [[ -f $dir/fixture.env ]] || continue
+    (
+      # shellcheck source=/dev/null
+      source "$dir/fixture.env"
+      # shellcheck disable=SC2154 # set by fixture.env
+      printf '%-24s %s threads, %s archived; plugins %s; saved %s from %s\n' "$(basename "$dir")" "$threads" "$archived" "$plugins" "$saved" "$from_run"
+    )
+  done
+  echo "(fixtures of bb $version in $fixture_root/bb-$version)"
 }
 
 # Stops a --background thread's runtime, its command with it, and frees the
@@ -559,13 +824,14 @@ cmd_stop() {
     echo "$left" >&2
     return 1
   fi
+  [[ -z ${save_to:-} ]] || save_fixture
   release_ports
   remove_scratch
   echo "run $run stopped; evidence kept in $ev"
 }
 
 case ${1:-} in
-  start | doctor | bb | spawn | release | machine | ui | stop | _launch)
+  start | doctor | bb | spawn | seed | release | machine | ui | stop | save | fixtures | _launch | _fork)
     c=$1
     shift
     if [[ ${1:-} == --run ]]; then

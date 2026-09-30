@@ -17,7 +17,8 @@ drive starts only the plugins its feature file names.
   `drive-bb-plugins doctor --run <run>` exits 0 on it.
 - A fresh run has no threads, every plugin at its install defaults, and bb's
   navigation and thread list on `__automatic__`, which takes the first
-  installed plugin offering one.
+  installed plugin offering one. A run started with `--fixture` has the
+  fixture's threads and settings instead.
 
 ## Driving conventions
 
@@ -30,7 +31,9 @@ drive starts only the plugins its feature file names.
   written. A JSON input goes in a file passed with `--input-file`.
 - UI actions go through the plugin's verbs,
   `drive-bb-plugins <plugin> <verb>`, CLI actions through
-  `drive-bb-plugins bb`, threads through `drive-bb-plugins spawn`.
+  `drive-bb-plugins bb`, threads through `drive-bb-plugins seed`, or
+  `drive-bb-plugins spawn` for a thread working, failed or running a
+  background command in a tree the recipe builds.
 - A drive that needs a UI step no verb covers adds the verb to
   `verbs/<plugin>.mjs` (starting the file for a plugin that has none), runs
   it, and names it in the feature file's recipe, in the same pull request as
