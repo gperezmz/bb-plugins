@@ -45,6 +45,14 @@ export interface RowCard {
 /** The card state for one row. Off for the active row and while `enabled` is false. */
 export function useRowCard(isActive: boolean, enabled: boolean): RowCard {
   const [open, setOpen] = useState(false);
+  // Closing a closed card sets no state: React keeps even an unchanged
+  // update, and renders the row for it on its own pass when the row next
+  // renders for something else.
+  const isOpen = useRef(false);
+  isOpen.current = open;
+  const close = () => {
+    if (isOpen.current) setOpen(false);
+  };
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Where the pointer entered: a move must leave this spot.
   const entry = useRef<{ x: number; y: number } | null>(null);
@@ -84,7 +92,7 @@ export function useRowCard(isActive: boolean, enabled: boolean): RowCard {
   // the row, closes the card and drops a pending open.
   useEffect(() => {
     cancel();
-    setOpen(false);
+    close();
   }, [isActive, enabled]);
 
   return {
@@ -92,7 +100,7 @@ export function useRowCard(isActive: boolean, enabled: boolean): RowCard {
     onOpenChange: (next) => {
       if (next) return;
       cancel();
-      setOpen(false);
+      close();
     },
     rowProps: {
       onPointerEnter: (event) => {
@@ -113,7 +121,7 @@ export function useRowCard(isActive: boolean, enabled: boolean): RowCard {
       onPointerDown: () => {
         pressed.current = true;
         cancel();
-        setOpen(false);
+        close();
       },
       onFocus: () => {
         // One key, one focus: focus moved by code afterwards opens nothing.
