@@ -4,7 +4,7 @@
 import "../testing/browser.css";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
-import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
@@ -775,8 +775,6 @@ describe("Density and Branch line", () => {
     );
     await render(width, { ...from, organizationMode, extraThreads: many, height: 600 });
     await screen.findAllByRole("link", { name: /Open Long \d+\b/ });
-    fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
-    const panel = await screen.findByRole("dialog");
     // A frame delivers the scroll event, and a task lets the list render for it.
     const settle = async () => {
       await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -860,18 +858,16 @@ describe("Density and Branch line", () => {
     }
 
     await scrollThrough();
-    const flip = (element: HTMLElement) => element.click();
-    // Mid-scroll, switch Density, then Branch line, and scroll again after each.
+    // Mid-scroll, switch Density, then Branch line, and scroll again after
+    // each. The settings popover closes once its button scrolls out of view,
+    // so the switch goes to the store the popover writes to.
+    const store = attachedListStores().at(-1)!;
     for (const change of ["density", "branchLine"] as const) {
       window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2));
       await settle();
       const before = firstVisible();
-      if (change === "density") {
-        const other = from.density === "compact" ? "Comfortable" : "Compact";
-        flip(within(within(panel).getByRole("radiogroup", { name: "Density" })).getByRole("radio", { name: other }));
-      } else {
-        flip(within(panel).getByRole("checkbox", { name: /Branch line/ }));
-      }
+      if (change === "density") store.updateClient({ density: from.density === "compact" ? "comfortable" : "compact" });
+      else store.updateClient({ branchLine: !from.branchLine });
       await settle();
       await settle();
       const [group, id] = before.id.split("/");
@@ -880,8 +876,6 @@ describe("Density and Branch line", () => {
       await scrollThrough();
     }
     window.scrollTo(0, 0);
-    await userEvent.keyboard("{Escape}");
-    await expect.poll(() => screen.queryByRole("dialog")).toBeNull();
     // Back to the frame every other test draws in.
     await page.viewport(320, 1600);
   }

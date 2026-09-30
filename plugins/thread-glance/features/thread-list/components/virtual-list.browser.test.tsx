@@ -385,3 +385,77 @@ describe("the More popover", () => {
     expect(walk().some((id) => seen.has(id))).toBe(false);
   });
 });
+
+describe("the settings popover", () => {
+  const settingsButton = () => screen.getByRole("button", { name: "Thread Glance settings" });
+  const panel = () => screen.queryByRole("dialog");
+  /** Scrolls the page so the list header, at its top, shows its lower half only. */
+  async function halfHideHeader(): Promise<number> {
+    window.scrollTo(0, Math.round(settingsButton().getBoundingClientRect().top + window.scrollY + 10));
+    await frames();
+    return window.scrollY;
+  }
+  async function open() {
+    // A click with no pointer move, which would scroll the button into view first.
+    fireEvent.click(settingsButton());
+    await screen.findByRole("dialog");
+    await frames();
+  }
+
+  it("stays open while the list scrolls with its button in view, and closes once it scrolls the button out of view", async () => {
+    await render(many(200));
+    await open();
+    await halfHideHeader();
+    await sleep(100);
+    expect(panel(), "button half in view").not.toBeNull();
+    window.scrollTo(0, 400);
+    await expect.poll(panel).toBeNull();
+    expect(window.scrollY, "closing leaves the scroll where it was").toBe(400);
+  });
+
+  it("stays open when something else takes focus on its own, and closes when a key was pressed first", async () => {
+    await render(many(20));
+    const elsewhere = document.body.appendChild(document.createElement("button"));
+    try {
+      await open();
+      // bb focuses its composer this way for about a second after a page loads.
+      elsewhere.focus({ preventScroll: true });
+      await sleep(100);
+      expect(panel()).not.toBeNull();
+      fireEvent.click(settingsButton());
+      await expect.poll(panel).toBeNull();
+      await open();
+      await userEvent.keyboard("a");
+      elsewhere.focus();
+      await expect.poll(panel).toBeNull();
+    } finally {
+      elsewhere.remove();
+    }
+  });
+
+  it("closes by Escape, by its button and by a press outside, leaving the scroll where it was, and focus on its button after the first two", async () => {
+    await render(many(200));
+    const top = await halfHideHeader();
+
+    await open();
+    await userEvent.keyboard("{Escape}");
+    await expect.poll(panel).toBeNull();
+    expect(window.scrollY, "Escape").toBe(top);
+    expect(document.activeElement, "Escape").toBe(settingsButton());
+
+    await open();
+    fireEvent.click(settingsButton());
+    await expect.poll(panel).toBeNull();
+    await frames();
+    expect(window.scrollY, "its button").toBe(top);
+    expect(document.activeElement, "its button").toBe(settingsButton());
+
+    await open();
+    const row = anchorOf("t10")!.getBoundingClientRect();
+    await mouse("mousePressed", row.left + 4, row.top + row.height / 2);
+    await mouse("mouseReleased", row.left + 4, row.top + row.height / 2);
+    await expect.poll(panel).toBeNull();
+    await frames();
+    expect(window.scrollY, "a press outside").toBe(top);
+  });
+});
