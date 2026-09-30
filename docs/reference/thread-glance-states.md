@@ -53,6 +53,8 @@ Left to right, from the title to the row's end. On hover the children chip stays
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 
+From the keyboard, Enter on a row opens its thread, as a click does, and the context-menu key or Shift+F10 opens its context menu. No key drags a row or a group header: **Move…** in the row's menu moves a thread under another, and **Customize list** reorders groups.
+
 On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
 
 ## The trailing slot

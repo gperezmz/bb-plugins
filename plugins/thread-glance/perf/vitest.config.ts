@@ -13,6 +13,7 @@ export default defineConfig({
   },
   test: {
     root,
+    setupFiles: ["features/thread-list/testing/jsdom-viewport.ts"],
     projects: [
       {
         extends: true,

@@ -1,6 +1,7 @@
 // Drag and drop outcomes. Pure: components report what was dropped
 // where, and this decides what it means.
 import type { OrganizationMode } from "@/shared/preferences";
+import { itemIndexAt, type ListItems } from "./layout-items";
 
 export interface DraggedThread {
   threadId: string;
@@ -101,4 +102,36 @@ export function resolveDrop(
     return { type: "reorder-pinned", threadId: source.threadId, previousThreadId, nextThreadId };
   }
   return dropOnGroup(source, context.groupOfThread(target.threadId), context);
+}
+
+/** What is under the pointer while dragging, and which half of its group for a group drop. */
+export interface PointedTarget {
+  target: DropTarget | null;
+  /** For a group target: the pointer is in the upper or lower half of the group. */
+  placement: "before" | "after";
+}
+
+const NOTHING: PointedTarget = { target: null, placement: "before" };
+
+/**
+ * The drop target at `y`, in px from the top of the first group, found from
+ * the list's positions, so a row that is not mounted is a target too. A
+ * dragged thread prefers the thread row under it, split into its top quarter,
+ * middle half and bottom quarter, over the group around it; a dragged group
+ * header targets whole groups. The gap above a header is no target.
+ */
+export function targetAt(layout: ListItems, y: number, dragged: "thread" | "group"): PointedTarget {
+  const index = itemIndexAt(layout.items, y);
+  if (index < 0) return NOTHING;
+  const item = layout.items[index]!;
+  if (item.kind === "header" && y < item.start + item.gap) return NOTHING;
+  const group = layout.groups.find((extent) => extent.groupId === item.groupId);
+  if (group === undefined) return NOTHING;
+  const placement = y > group.top + (group.bottom - group.top) / 2 ? "after" : "before";
+  if (dragged === "thread" && item.kind === "row" && item.row.type === "thread") {
+    const ratio = (y - item.start) / Math.max(item.size, 1);
+    const zone = ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "middle";
+    return { target: { kind: "thread", threadId: item.row.info.thread.id, zone, inPinned: item.groupId === "pinned" }, placement };
+  }
+  return { target: { kind: "group", groupId: item.groupId }, placement };
 }

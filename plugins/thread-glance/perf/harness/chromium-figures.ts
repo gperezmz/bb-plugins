@@ -37,6 +37,19 @@ export interface ChromiumFigures {
   eventJsMs: Record<string, number>;
   /** At 390×844: rows mounted with the drawer closed, and frame times scrolling it open. */
   phone: { rowsMountedClosed: number; rowHeightPx: number; openFrameMaxMs: number; openFrameP95Ms: number };
+  /**
+   * A drag held at the list's bottom edge and then its top edge: how far each
+   * scrolled the list, whether the dragged row stayed mounted, and whether the
+   * drop nested the thread under a row that was not mounted when it began.
+   */
+  dragFar?: {
+    scrolledDownPx: number;
+    scrolledUpPx: number;
+    draggedStayed: boolean;
+    targetId: string | null;
+    targetWasMounted: boolean;
+    nested: boolean;
+  };
 }
 
 export interface MarkAllReadTiming {

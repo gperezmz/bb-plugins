@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { mapBbPreferences, coercePreferences, defaultPreferences, parsePreference, parseStoredPreference } from "@/shared/preferences";
 import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
-import { resolveDrop, type DraggedThread } from "./drag";
+import { resolveDrop, targetAt, type DraggedThread } from "./drag";
+import { layoutItems } from "./layout-items";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText, settledRowText } from "./labels";
 import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, TRAILING_SLOT_SIZERS, trailingTime } from "./time";
-import type { OlderRow } from "./view";
-import { chunk, windowedNavValue } from "./windowing";
+import type { GroupView, OlderRow, Row } from "./view";
+import { keptIndexes, mountedByGroup, mountedIndexes, rangeKey, windowedNavValue } from "./windowing";
 
 describe("group order", () => {
   it("expands the legacy anchor and keeps Pinned and Threads", () => {
@@ -157,9 +158,6 @@ describe("windowed nav contract", () => {
       ]),
     ).toBe("thr_1:proj_a thr_2:proj_b");
   });
-  it("chunks keep order", () => {
-    expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
-  });
 });
 
 describe("default branch", () => {
@@ -263,5 +261,90 @@ describe("fold row text", () => {
     const settled = (count: number, expanded: boolean) => ({ type: "settled" as const, key: "k", groupId: "g", count, expanded });
     expect(settledRowText(settled(3, false))).toEqual({ label: "Settled (3)", ariaLabel: "Show 3 settled thread trees" });
     expect(settledRowText(settled(1, true))).toEqual({ label: "Settled", ariaLabel: "Hide 1 settled thread tree" });
+  });
+});
+
+describe("drop target from positions", () => {
+  const thread = (id: string, extra: object = {}): Row =>
+    ({ type: "thread", key: `thread:${id}`, info: { thread: { id } }, note: null, branchLine: null, ...extra }) as unknown as Row;
+  const group = (id: string, rows: Row[], extra: Partial<GroupView> = {}): GroupView =>
+    ({ descriptor: { id }, rows, collapsed: false, rootIds: rows.length > 0 ? ["x"] : [], ...extra }) as unknown as GroupView;
+  // Compact, desktop: headers 28 px, one-line rows 28, two-line 44, a 4 px gap above every header but the first.
+  const layout = layoutItems(
+    [
+      group("pinned", [thread("p1"), thread("p2")]),
+      group("project:a", [thread("a1", { branchLine: "fix/x" }), { type: "settled", key: "settled:project:a" } as unknown as Row]),
+      group("project:b", []),
+    ],
+    { density: "compact", phone: false },
+  );
+
+  it("lays every item out from the heights model, with the gap above every header but the first", () => {
+    expect(layout.items.map((item) => [item.key, item.start, item.size])).toEqual([
+      ["pinned/header", 0, 28],
+      ["pinned/thread:p1", 28, 28],
+      ["pinned/thread:p2", 56, 28],
+      ["project:a/header", 84, 32],
+      ["project:a/thread:a1", 116, 44],
+      ["project:a/settled:project:a", 160, 24],
+      ["project:b/header", 184, 32],
+      ["project:b/empty", 216, 24],
+    ]);
+    expect(layout.total).toBe(240);
+  });
+
+  it("splits a thread row into its top quarter, middle half and bottom quarter, in and out of Pinned", () => {
+    const zone = (y: number) => targetAt(layout, y, "thread").target;
+    expect(zone(28 + 6)).toEqual({ kind: "thread", threadId: "p1", zone: "before", inPinned: true });
+    expect(zone(28 + 14)).toEqual({ kind: "thread", threadId: "p1", zone: "middle", inPinned: true });
+    expect(zone(28 + 22)).toEqual({ kind: "thread", threadId: "p1", zone: "after", inPinned: true });
+    expect(zone(116 + 10)).toEqual({ kind: "thread", threadId: "a1", zone: "before", inPinned: false });
+    expect(zone(116 + 22)).toEqual({ kind: "thread", threadId: "a1", zone: "middle", inPinned: false });
+    expect(zone(116 + 40)).toEqual({ kind: "thread", threadId: "a1", zone: "after", inPinned: false });
+  });
+
+  it("targets the group around a header, a fold or No threads, and nothing in a gap or past the list", () => {
+    expect(targetAt(layout, 90, "thread").target).toEqual({ kind: "group", groupId: "project:a" });
+    expect(targetAt(layout, 170, "thread").target).toEqual({ kind: "group", groupId: "project:a" });
+    expect(targetAt(layout, 220, "thread").target).toEqual({ kind: "group", groupId: "project:b" });
+    expect(targetAt(layout, 85, "thread").target).toBeNull();
+    expect(targetAt(layout, 240, "thread").target).toBeNull();
+    expect(targetAt(layout, -1, "thread").target).toBeNull();
+  });
+
+  it("gives a dragged group header whole groups, and the half of the group under the pointer", () => {
+    expect(targetAt(layout, 40, "group")).toEqual({ target: { kind: "group", groupId: "pinned" }, placement: "before" });
+    expect(targetAt(layout, 150, "group")).toEqual({ target: { kind: "group", groupId: "project:a" }, placement: "after" });
+  });
+});
+
+describe("the rows the window mounts", () => {
+  const row = (id: string): Row => ({ type: "thread", key: `thread:${id}`, info: { thread: { id } }, note: null, branchLine: null }) as unknown as Row;
+  const group = (id: string, rows: Row[]): GroupView => ({ descriptor: { id }, rows, collapsed: false, rootIds: ["x"] }) as unknown as GroupView;
+  // Compact desktop rows are 28 px under a 28 px header: row n starts at 28 + 28n.
+  const layout = layoutItems([group("threads", Array.from({ length: 60 }, (_, n) => row(`t${n}`)))], { density: "compact", phone: false });
+  const keys = (indexes: readonly number[]) => indexes.map((index) => layout.items[index]!.key.replace("threads/", ""));
+
+  it("mounts every item within the margin of the view, and nothing for an unknown view but the kept rows", () => {
+    // The view is 868–1148 px; with the 240 px margin, 628–1388: rows t21 (616–644) to t48 (1372–1400).
+    const mounted = keys(mountedIndexes(layout, { top: 868, height: 280 }, []));
+    expect(mounted[0]).toBe("thread:t21");
+    expect(mounted.at(-1)).toBe("thread:t48");
+    expect(mounted).toHaveLength(28);
+    expect(mountedIndexes(layout, null, [5, 2])).toEqual([2, 5]);
+  });
+
+  it("keeps the first nine thread rows for bb's jump keys in the main list, and the kept threads and rows wherever they are", () => {
+    const kept = keptIndexes(layout, { threadIds: ["t40"], itemKeys: ["threads/thread:t50"] }, true);
+    expect(keys([...kept].sort((a, b) => a - b))).toEqual([...Array.from({ length: 9 }, (_, n) => `thread:t${n}`), "thread:t40", "thread:t50"]);
+    expect(keptIndexes(layout, { threadIds: [], itemKeys: [] }, false)).toEqual([]);
+  });
+
+  it("keeps each group's mounted set while it holds, and changes its range key only when the range does", () => {
+    const first = mountedByGroup(layout, [1, 2, 3], new Map());
+    expect(mountedByGroup(layout, [1, 2, 3], first).get("threads")).toBe(first.get("threads"));
+    expect(mountedByGroup(layout, [1, 2, 4], first).get("threads")).not.toBe(first.get("threads"));
+    expect(rangeKey(layout, { top: 1000, height: 100 })).toBe(rangeKey(layout, { top: 1001, height: 100 }));
+    expect(rangeKey(layout, { top: 1000, height: 100 })).not.toBe(rangeKey(layout, { top: 1040, height: 100 }));
   });
 });

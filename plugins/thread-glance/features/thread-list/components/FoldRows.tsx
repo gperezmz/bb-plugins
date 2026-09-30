@@ -1,19 +1,14 @@
 // The fold rows (a group's settled fold, `N more child threads` in a tree)
 // and the environment folder row.
-import { memo, useState } from "react";
+import { memo } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { olderRowText, settledRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import type { EnvironmentRow, OlderRow, SettledRow } from "../model/view";
-import { useCommands, useEnvironmentProviderList, useLayout } from "../store/hooks";
+import { useCommands, useEnvironmentMenuOpen, useEnvironmentProviderList, useLayout, useRenaming } from "../store/hooks";
+import { menuTriggerProps } from "./overlays/trigger";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
 import { ENVIRONMENT_ROW_HEIGHT, OLDER_ROW_HEIGHT } from "./row-heights";
@@ -64,11 +59,18 @@ export const SettledRowView = memo(function SettledRowView({ row }: { row: Settl
   );
 });
 
-export const EnvironmentRowView = memo(function EnvironmentRowView({ row }: { row: EnvironmentRow }) {
+export const EnvironmentRowView = memo(function EnvironmentRowView({ row, groupId }: { row: EnvironmentRow; groupId: string }) {
   const commands = useCommands();
   const { compact, density } = useLayout();
   const environmentProviders = useEnvironmentProviderList();
-  const [renaming, setRenaming] = useState(false);
+  const renaming = useRenaming(groupId, row.key);
+  const menuOpen = useEnvironmentMenuOpen(groupId, row.key);
+  const trigger = menuTriggerProps(
+    menuOpen,
+    compact,
+    (anchor) => commands.openMenu({ kind: "environment", groupId, rowKey: row.key, anchor }),
+    commands.closeMenu,
+  );
   const provider =
     row.environmentProviderId === null
       ? null
@@ -100,7 +102,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({ row }: { ro
           initial={row.label}
           label="Environment name"
           onSave={(name) => commands.renameEnvironment(row.environmentId, name)}
-          onDone={() => setRenaming(false)}
+          onDone={commands.endRename}
         />
       ) : (
         <span className="pointer-events-none relative min-w-0 flex-1 truncate">{row.label}</span>
@@ -112,33 +114,14 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({ row }: { ro
         aria-hidden
         className={cn("pointer-events-none relative size-3 transition-transform", !row.collapsed && "rotate-90")}
       />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label="Environment actions"
-            className={cn(ROW_ICON_BUTTON, !compact && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100")}
-          >
-            <Icon name={ICONS.more} aria-hidden className="size-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onSelect={() => commands.newThreadInEnvironment(row.environmentId, row.projectId, row.sectionId)}
-          >
-            <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-            New thread in environment
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setRenaming(true)}>
-            <Icon name={ICONS.rename} aria-hidden className="size-4" />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => commands.archiveEnvironment(row.environmentId)}>
-            <Icon name={ICONS.archive} aria-hidden className="size-4" />
-            Archive
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <button
+        type="button"
+        aria-label="Environment actions"
+        {...trigger}
+        className={cn(ROW_ICON_BUTTON, !compact && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100")}
+      >
+        <Icon name={ICONS.more} aria-hidden className="size-4" />
+      </button>
     </div>
   );
 });

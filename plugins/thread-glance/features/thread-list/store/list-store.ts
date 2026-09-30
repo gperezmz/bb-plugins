@@ -46,6 +46,32 @@ export interface Confirm {
   run(): void;
 }
 
+/** A row as the list draws it: its group, and its key within the group. */
+export interface RowPlace {
+  groupId: string;
+  rowKey: string;
+}
+
+/**
+ * The one menu open in the list, and the row or group it belongs to. The
+ * "…" menus anchor to the button that opened them; a context menu opens at
+ * a point.
+ */
+export type OpenMenu =
+  | (RowPlace & { kind: "row"; threadId: string; anchor: HTMLElement })
+  | (RowPlace & { kind: "environment"; anchor: HTMLElement })
+  | (RowPlace & { kind: "context"; threadId: string })
+  | { kind: "group"; groupId: string; anchor: HTMLElement };
+
+/** The row whose hover card is open, anchored to it. */
+export interface OpenCard extends RowPlace {
+  threadId: string;
+  anchor: HTMLElement;
+}
+
+/** What is being dragged: a thread's row or a group header. */
+export type Dragging = (RowPlace & { kind: "thread"; threadId: string }) | { kind: "group"; groupId: string };
+
 /** The list's own state: what it shows open, renamed or dragged over. */
 export interface ListUi {
   /** The thread whose title is being renamed. */
@@ -60,6 +86,17 @@ export interface ListUi {
   dropStates: ReadonlyMap<string, DropState>;
   /** The group a dragged group header would drop on. */
   dropGroupId: string | null;
+  menu: OpenMenu | null;
+  card: OpenCard | null;
+  dragging: Dragging | null;
+  /** A group header (`rowKey` null) or environment row being renamed. */
+  renaming: { groupId: string; rowKey: string | null } | null;
+  /** The row holding keyboard focus, as `groupId/rowKey`. */
+  focusKey: string | null;
+  /** The thread under the pointer, whose drag-to-split bb's one hook serves. */
+  probeId: string | null;
+  /** bb offers splits here: rows offer Open in split, and Ctrl or Cmd+click opens one. */
+  splitAvailable: boolean;
 }
 
 /** How every row is drawn: one object, the same while none of it changes. */
@@ -167,6 +204,13 @@ export const CLOSED_UI: ListUi = {
   confirm: null,
   dropStates: NO_DROPS,
   dropGroupId: null,
+  menu: null,
+  card: null,
+  dragging: null,
+  renaming: null,
+  focusKey: null,
+  probeId: null,
+  splitAvailable: false,
 };
 
 /** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */
@@ -198,8 +242,23 @@ function shareHost(previous: HostData, next: HostData): HostData {
     providers: share(previous.providers, next.providers),
     environmentProviders: share(previous.environmentProviders, next.environmentProviders),
     draftIds: share(previous.draftIds, next.draftIds),
+    rowStatuses: shareStatuses(previous.rowStatuses, next.rowStatuses),
     splitLayout: share(previous.splitLayout, next.splitLayout),
   };
+}
+
+/** Row statuses with each unchanged one kept, the previous map itself when nothing changed. */
+function shareStatuses(previous: HostData["rowStatuses"], next: HostData["rowStatuses"]): HostData["rowStatuses"] {
+  if (previous === next) return previous;
+  let changed = previous.size !== next.size;
+  const shared = new Map<string, NonNullable<ReturnType<HostData["rowStatuses"]["get"]>>>();
+  for (const [id, status] of next) {
+    const before = previous.get(id);
+    const kept = before === undefined ? status : share(before, status);
+    if (kept !== before) changed = true;
+    shared.set(id, kept);
+  }
+  return changed ? shared : previous;
 }
 
 function sameHost(a: HostData, b: HostData): boolean {

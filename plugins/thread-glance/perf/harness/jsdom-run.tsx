@@ -10,7 +10,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { attachedListStores, flushListStores } from "@/features/thread-list/store/api";
 import { countComponents, startCounting, stopCounting, type RenderCount } from "./render-counter";
-import { createFakeHost, loadWithFakeHost, mountList, serverState } from "./fake-host";
+import { createFakeHost, loadWithFakeHost, mountList, serverState, sidebarViewport } from "./fake-host";
 import { markAllReadConfirm } from "./list-screen";
 
 /** What one event rendered. */
@@ -163,10 +163,13 @@ function readRows(root: ParentNode): Map<string, string> {
   );
 }
 
-/** The drop feedback drawn: bb's nest and reorder attributes, by row. */
+/** The drop feedback drawn: bb's nest and reorder attributes, and the row they are drawn over. */
 function drawnFeedback(root: ParentNode): string {
   return [...root.querySelectorAll("[data-sidebar-nest-target],[data-sidebar-reorder-placement]")]
-    .map((node) => `${node.querySelector("[data-sidebar-thread-id]")?.getAttribute("data-sidebar-thread-id")}:${node.getAttribute("data-sidebar-nest-target")}:${node.getAttribute("data-sidebar-reorder-placement")}`)
+    .map((node) => {
+      const threadId = node.getAttribute("data-drop-thread-id") ?? node.querySelector("[data-sidebar-thread-id]")?.getAttribute("data-sidebar-thread-id");
+      return `${threadId}:${node.getAttribute("data-sidebar-nest-target")}:${node.getAttribute("data-sidebar-reorder-placement")}`;
+    })
     .join(" ");
 }
 
@@ -227,6 +230,7 @@ function setHidden(hidden: boolean): void {
 /** A mounted window over a generated list, with the clock faked from `list.now`. */
 export async function openList(list: GeneratedList, options: { freshActions?: boolean; markReadMs?: number } = {}) {
   ensureObservers();
+  sidebarViewport();
   vi.useFakeTimers({ toFake: ["Date", "setInterval"] });
   vi.setSystemTime(list.now);
   const host = createFakeHost({
@@ -253,7 +257,7 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
   const shown = new Set(mounted.map((anchor) => anchor.dataset.sidebarThreadId!));
   // Off screen in jsdom, which lays nothing out: a child thread behind its
   // closed children chip, which has no row mounted.
-  const offScreen = list.threads.find((thread) => !shown.has(thread.id))?.id ?? null;
+  const offScreen = list.threads.find((thread) => thread.parentThreadId !== null && shown.has(thread.parentThreadId) && !shown.has(thread.id))?.id ?? null;
   // A note draws on an unread row, so the signal has something to change.
   const noted = mounted.find((anchor) => list.unreadIds.includes(anchor.dataset.sidebarThreadId!))?.dataset.sidebarThreadId ?? onScreen;
   // The last root row of the first group, which a new turn moves to its top.

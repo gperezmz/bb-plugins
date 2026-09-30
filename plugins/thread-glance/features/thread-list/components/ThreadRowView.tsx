@@ -1,36 +1,26 @@
-// One thread row. It draws the row the model built and reports what
-// the user did; every decision was made before it rendered.
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
-import {
-  experimental_Icon as Icon,
-  experimental_useSidebarThreadSplit as useThreadSplit,
-  useSidebarThreadDraft,
-  useSidebarThreadRowStatus,
-  useSidebarThreadShortcut,
-} from "@get-bb/plugin-sdk/app";
-import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+// One thread row, as plain elements. It draws the row the model built and
+// reports what the user did; every decision was made before it rendered. Its
+// menu, context menu, hover card, drag and drag-to-split are the list's.
+import { memo, useRef } from "react";
+import { experimental_Icon as Icon, useSidebarThreadShortcut } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
+import { isPinnedThread } from "../model/groups";
+import { hasTwoLines } from "../model/heights";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import { rowMenuItems, type RowMenuAction } from "../model/menu";
 import { noteText } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS } from "../model/time";
 import type { ThreadRow } from "../model/view";
-import type { DraggedThread } from "../model/drag";
-import { useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
+import { itemKeyOf, useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
 import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
+import { useOverlays } from "./overlays/overlays";
+import { menuTriggerProps } from "./overlays/trigger";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
-import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } from "./RowMenu";
 import { SplitMiniMap } from "./SplitMiniMap";
-import { ThreadDetails } from "./ThreadDetails";
-import { useRowCard } from "./row-card";
 import { NESTED_MARK_TWO_LINES, THREAD_ROW_HEIGHT } from "./row-heights";
 import { ROW_HOVER_HIDES, ROW_HOVER_LAYS_OUT, ROW_HOVER_SHOWS } from "./input-modality";
 
@@ -71,111 +61,41 @@ export const ROW_ICON_BUTTON =
 export interface ThreadRowViewProps {
   row: ThreadRow;
   groupId: string;
-  inPinned: boolean;
 }
 
 /**
  * One thread row. It reads its own part of the list store (focus, rename,
- * drop feedback, mini-map, settings), so it renders when that part or its
- * row changes, and no other time.
+ * split mini-map, draft, row status, its menu and drag, settings), so it
+ * renders when that part or its row changes, and no other time. The only bb
+ * hook it calls is its shortcut.
  */
-export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinned }: ThreadRowViewProps) {
+export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: ThreadRowViewProps) {
   const { info } = row;
   const thread = info.thread;
   const archived = thread.archivedAt !== null || thread.isArchived;
   const commands = useCommands();
-  const { compact, density, harnessIcon, sections, hasSections } = useLayout();
-  const { focused: isActive, editing, dropState, miniMap } = useRow(thread.id);
+  const overlays = useOverlays();
+  const { compact, density, harnessIcon } = useLayout();
+  const { focused: isActive, editing, miniMap, hasDraft, rowStatus, menuOpen, dragging } = useRow(thread.id, groupId, row.key);
   const provider = useProviderDisplay(thread.providerId);
-
   const shortcut = useSidebarThreadShortcut(thread.id);
-  const rowStatus = useSidebarThreadRowStatus(thread.id);
-  const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
-  const split = useThreadSplit(thread.id);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
-  const card = useRowCard(isActive, !compact && !editing && !menuOpen && !contextOpen);
-  const contextInput = useRef<ContextMenuInput>({ pressed: false, keyed: false });
+  const element = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLAnchorElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-  const dragData: DraggedThread = {
-    threadId: thread.id,
-    parentThreadId: thread.parentThreadId,
-    sectionId: thread.sectionId,
-    pinned: thread.pinnedAt !== null || thread.isPinned,
-  };
-  const draggable = useDraggable({
-    id: `thread:${thread.id}:${groupId}`,
-    data: { kind: "thread", thread: dragData, groupId },
-    disabled: editing || compact,
-  });
-  const droppable = useDroppable({
-    id: `drop-thread:${thread.id}:${groupId}`,
-    data: { kind: "thread", threadId: thread.id, inPinned, groupId },
-  });
-  const setRefs = useCallback(
-    (node: HTMLDivElement | null) => {
-      draggable.setNodeRef(node);
-      droppable.setNodeRef(node);
-    },
-    [draggable.setNodeRef, droppable.setNodeRef],
-  );
+  const key = itemKeyOf(groupId, row.key);
+  const place = { groupId, rowKey: row.key, threadId: thread.id };
+  const cardTarget = () => ({ ...place, anchor: element.current! });
 
   const showPlugin = pluginStatusWins(info.state, rowStatus);
   const label = rowAriaLabel(row, {
     providerName: provider.name,
     pluginLabel: showPlugin ? rowStatus!.label : null,
-    hasDraft: hasUnsubmittedDraft,
+    hasDraft,
   });
   const time = row.time;
-  const menuItems = rowMenuItems({
-    thread,
-    unread: row.depth === 0 ? row.treeUnread : info.unread,
-    splitAvailable: split.isAvailable,
-    isRoot: thread.parentThreadId === null,
-    hasSections,
-    compact,
-  });
-  // Rename waits for the menu to close: an open menu traps focus and would
-  // take it back from the editor, and a closing one returns it to the row.
-  const renameFromMenu = useRef(false);
-  // Set until the closing menu's focus return has been refused, whichever
-  // path started the rename: a returned focus would blur and close the editor.
-  const refuseCloseFocus = useRef(false);
-  const onMenuAction = (action: RowMenuAction, sectionId?: string | null) => {
-    if (action === "rename") {
-      renameFromMenu.current = true;
-      refuseCloseFocus.current = true;
-      setTimeout(() => {
-        refuseCloseFocus.current = false;
-      }, 1500);
-      return;
-    }
-    commands.menuAction(action, thread, sectionId);
-  };
-  // Fallback for menus that close without a close-focus event (the compact
-  // drawer; a context menu opened from the keyboard): start once every menu
-  // has closed and its focus return has settled.
-  useEffect(() => {
-    if (menuOpen || contextOpen || !renameFromMenu.current) return;
-    const timer = setTimeout(() => {
-      if (!renameFromMenu.current) return;
-      renameFromMenu.current = false;
-      commands.editTitle(thread.id);
-    }, 60);
-    return () => clearTimeout(timer);
-  }, [menuOpen, contextOpen, commands, thread.id]);
-  const onMenuCloseAutoFocus = (event: Event) => {
-    if (!refuseCloseFocus.current) return;
-    refuseCloseFocus.current = false;
-    event.preventDefault();
-    if (!renameFromMenu.current) return;
-    renameFromMenu.current = false;
-    commands.editTitle(thread.id);
-  };
-
-  const showPullRequest = row.pullRequest !== null;
+  const openMenu = (button: HTMLElement) => commands.openMenu({ kind: "row", ...place, anchor: button });
+  const trigger = menuTriggerProps(menuOpen, compact, openMenu, commands.closeMenu);
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -192,7 +112,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
       event.preventDefault();
       return;
     }
-    if (split.isAvailable && (event.metaKey || event.ctrlKey)) {
+    if ((event.metaKey || event.ctrlKey) && commands.splitAvailable()) {
       event.preventDefault();
       commands.menuAction("open-in-split", thread);
       return;
@@ -227,7 +147,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
               press.current = null;
               longPressFired.current = true;
               swallowNextClick();
-              setMenuOpen(true);
+              if (menuButton.current !== null) openMenu(menuButton.current);
             }, LONG_PRESS_MS),
           };
         },
@@ -250,12 +170,36 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
       }
     : {};
 
+  // Desktop: the pointer and focus drive the hover card and bb's drag-to-split,
+  // and a right-click or the context-menu key opens the context menu.
+  const desktop = compact
+    ? {}
+    : {
+        onPointerEnter: (event: React.PointerEvent) => {
+          overlays.card.pointerEnter(event);
+          commands.pointAt(thread.id);
+        },
+        onPointerMove: (event: React.PointerEvent) => overlays.card.pointerMove(cardTarget(), event),
+        onPointerLeave: () => overlays.card.pointerLeave(),
+        onContextMenu: (event: React.MouseEvent) => {
+          // The rename editor keeps the browser's own menu.
+          if (editing) return;
+          event.preventDefault();
+          overlays.openContextMenu(place, { x: event.clientX, y: event.clientY });
+        },
+        onKeyDown: (event: React.KeyboardEvent) => {
+          if (editing || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+          event.preventDefault();
+          const box = element.current!.getBoundingClientRect();
+          overlays.openContextMenu(place, { x: box.left + 16, y: box.bottom });
+        },
+      };
+
   const chip = row.chip;
   const indent = rowIndent(row.depth);
   const note = row.note;
-  const twoLines = note !== null || row.branchLine !== null;
+  const twoLines = hasTwoLines(row);
   const dimmed = row.dimmed && !editing;
-  const menuShowing = menuOpen || contextOpen;
   // A pressed shortcut's pill takes the machine's place, as it takes the time's.
   const showMachine = row.machine !== null && shortcut === null;
   const badgesShown = row.harness || showMachine;
@@ -264,32 +208,42 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
   // Archive, and the time for "…". Compact: nothing fades.
   const fadeClass = compact
     ? ""
-    : menuShowing
+    : menuOpen
       ? "opacity-0"
       : ROW_HOVER_HIDES;
 
-  const body = (
+  // What a press on the row drags, read by the list's one drag.
+  const drag =
+    editing || compact
+      ? {}
+      : {
+          "data-drag-thread": thread.id,
+          "data-drag-parent": thread.parentThreadId ?? "",
+          "data-drag-section": thread.sectionId ?? "",
+          "data-drag-pinned": String(isPinnedThread(thread)),
+          "data-drag-group": groupId,
+          "data-drag-row": row.key,
+        };
+
+  return (
     <div
-      ref={setRefs}
+      ref={element}
       data-sidebar-rename-row=""
-      data-sidebar-nest-target={
-        dropState === "valid" || dropState === "blocked" || dropState === "unchanged" ? dropState : undefined
-      }
-      data-sidebar-reorder-placement={dropState === "before" || dropState === "after" ? dropState : undefined}
-      {...draggable.attributes}
-      {...draggable.listeners}
-      role={undefined}
-      tabIndex={undefined}
-      aria-roledescription={undefined}
-      onPointerEnter={card.rowProps.onPointerEnter}
-      onPointerMove={card.rowProps.onPointerMove}
+      {...drag}
+      {...desktop}
       onPointerDown={(event) => {
-        card.rowProps.onPointerDown();
-        if (!editing) split.splitProps.onPointerDown?.(event);
+        overlays.card.press();
+        if (!editing && !compact) overlays.forwardSplit(thread.id, event);
       }}
-      onPointerLeave={card.rowProps.onPointerLeave}
-      onFocus={card.rowProps.onFocus}
-      onBlur={card.rowProps.onBlur}
+      onFocus={() => {
+        commands.focusRow(key);
+        if (!compact) overlays.card.focus(cardTarget());
+      }}
+      onBlur={(event) => {
+        if (element.current?.contains(event.relatedTarget as Node | null)) return;
+        commands.focusRow(null, key);
+        overlays.card.blur();
+      }}
       {...longPress}
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
@@ -297,13 +251,9 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
         isActive
           ? "bg-state-active text-sidebar-foreground"
           : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        !isActive && menuShowing && "bg-sidebar-accent",
+        !isActive && menuOpen && "bg-sidebar-accent",
         miniMap && !isActive && "bb-sidebar-open-in-split-row",
-        draggable.isDragging && "opacity-50",
-        dropState === "valid" && "ring-1 ring-inset ring-sidebar-ring/80 bg-sidebar-accent/45",
-        dropState === "blocked" && "ring-1 ring-inset ring-destructive/60",
-        dropState === "before" && "shadow-[inset_0_2px_0_0_var(--sidebar-ring)]",
-        dropState === "after" && "shadow-[inset_0_-2px_0_0_var(--sidebar-ring)]",
+        dragging && "opacity-50",
       )}
       style={{ paddingLeft: indent }}
     >
@@ -426,7 +376,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
             <span
               className={cn(
                 "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
-                menuShowing ? "flex" : ROW_HOVER_LAYS_OUT,
+                menuOpen ? "flex" : ROW_HOVER_LAYS_OUT,
               )}
             >
               {row.treeUnread ? (
@@ -434,6 +384,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
                   type="button"
                   aria-label="Mark read"
                   title="Mark read"
+                  data-no-drag=""
                   className={ROW_ICON_BUTTON}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
@@ -449,6 +400,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
                 type="button"
                 aria-label={archived ? "Unarchive thread" : "Archive thread"}
                 title={archived ? "Unarchive" : "Archive"}
+                data-no-drag=""
                 className={ROW_ICON_BUTTON}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
@@ -473,6 +425,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
               aria-expanded={chip.expanded}
               aria-label={chipLabel(thread.displayTitle, chip)}
               title={chipLabel(thread.displayTitle, chip)}
+              data-no-drag=""
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -530,33 +483,22 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
                     "flex items-center justify-self-end transition-opacity [grid-area:1/1]",
                     compact
                       ? "relative"
-                      : menuShowing
+                      : menuOpen
                         ? "opacity-100"
                         : ROW_HOVER_SHOWS,
                   )}
                 >
-                  <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label="Thread actions"
-                        // Phones open the menu by long-press, as bb's lists do;
-                        // the button stays for keyboards and screen readers.
-                        className={compact ? "sr-only" : ROW_ICON_BUTTON}
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <Icon name={ICONS.more} aria-hidden className="size-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <RowDropdownMenuContent
-                      items={menuItems}
-                      sections={sections}
-                      currentSectionId={thread.sectionId}
-                      onAction={onMenuAction}
-                      onCloseAutoFocus={onMenuCloseAutoFocus}
-                    />
-                  </DropdownMenu>
+                  <button
+                    ref={menuButton}
+                    type="button"
+                    aria-label="Thread actions"
+                    {...trigger}
+                    // Phones open the menu by long-press, as bb's lists do;
+                    // the button stays for keyboards and screen readers.
+                    className={compact ? "sr-only" : ROW_ICON_BUTTON}
+                  >
+                    <Icon name={ICONS.more} aria-hidden className="size-4" />
+                  </button>
                 </span>
               </>
             )}
@@ -564,39 +506,6 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinne
         </span>
       ) : null}
     </div>
-  );
-
-  if (compact) return body;
-  return (
-    <ContextMenu
-      onOpenChange={(open) => {
-        if (open) contextInput.current = { pressed: false, keyed: false };
-        setContextOpen(open);
-      }}
-    >
-      <HoverCard
-        closeDelay={100}
-        open={card.open}
-        onOpenChange={card.onOpenChange}
-      >
-        <ContextMenuTrigger asChild disabled={editing}>
-          <HoverCardTrigger asChild>{body}</HoverCardTrigger>
-        </ContextMenuTrigger>
-        {!editing && !menuOpen && !contextOpen ? (
-          <HoverCardContent side="right" align="start" collisionPadding={8} className="z-[100] w-72 p-3">
-            <ThreadDetails info={info} showPullRequest={showPullRequest} />
-          </HoverCardContent>
-        ) : null}
-      </HoverCard>
-      <RowContextMenuContent
-        items={menuItems}
-        sections={sections}
-        currentSectionId={thread.sectionId}
-        onAction={onMenuAction}
-        onCloseAutoFocus={onMenuCloseAutoFocus}
-        input={contextInput}
-      />
-    </ContextMenu>
   );
 });
 

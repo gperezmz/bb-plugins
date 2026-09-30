@@ -31,7 +31,8 @@ export interface GroupingInputs {
 export const PINNED_GROUP_ID = "pinned";
 export const THREADS_GROUP_ID = "threads";
 
-function isPinnedThread(thread: PluginSidebarThread): boolean {
+/** The thread is pinned. */
+export function isPinnedThread(thread: PluginSidebarThread): boolean {
   return thread.pinnedAt !== null || thread.isPinned;
 }
 
@@ -260,4 +261,9 @@ export function toggleGroupCollapse(
     case "machine":
       return { collapsedMachines: toggle(prefs.collapsedMachines, group.entityId!) };
   }
+}
+
+/** Sections and machines take a name of their own. */
+export function canRename(descriptor: GroupDescriptor): boolean {
+  return descriptor.kind === "section" || descriptor.kind === "machine";
 }

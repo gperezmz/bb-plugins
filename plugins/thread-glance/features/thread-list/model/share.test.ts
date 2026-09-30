@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { finishedUnread, makeThread, viewOf, working, type Scenario } from "../testing/fixtures";
+import { finishedUnread, makeThread, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import { share, shareView } from "./share";
 import type { ListView, ThreadRow } from "./view";
 
@@ -89,5 +89,17 @@ describe("shareView", () => {
     expect(row(next, "c")).toBe(row(previous, "c"));
     expect(rows(next)).not.toBe(rows(previous));
     expect(shareView(next, viewOf({ ...scenario, threads: added })).groups).toBe(next.groups);
+  });
+});
+
+describe("a row through a read of a thread shown read", () => {
+  it("keeps its object when its thread changed only in the fields a read changes, and not once it reads unread", () => {
+    const previous = viewOf(scenario);
+    const readAgain = threads.map((thread) => (thread.id === "a" ? { ...thread, lastReadAt: T0 + 5, isUnread: false } : thread));
+    const next = shareView(previous, viewOf({ ...scenario, threads: readAgain }));
+    expect(threadRow(next, "a")).toBe(threadRow(previous, "a"));
+    const unread = threads.map((thread) => (thread.id === "a" ? { ...thread, ...finishedUnread, createdAt: 1, updatedAt: 1 } : thread));
+    const after = shareView(previous, viewOf({ ...scenario, threads: unread }));
+    expect(threadRow(after, "a")).not.toBe(threadRow(previous, "a"));
   });
 });

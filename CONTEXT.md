@@ -102,6 +102,10 @@ _Avoid_: Scenario, synthetic list, fixture list
 One thread's stamps and notes as Thread Glance's server stores them, sent whole on the `records` channel and in `sync` answers.
 _Avoid_: Thread data, thread entry
 
+**Spacer**:
+The empty block standing in for a run of a group's rows the list has not mounted, as tall as they are, naming their threads for bb's keyboard navigation.
+_Avoid_: Placeholder, chunk, filler
+
 **Budget ledger**:
 Thread Glance's one list of performance budgets, one row per budget with its threshold, how it is measured and whether it is enforcing yet.
 _Avoid_: Budget table, perf budgets, budget file
