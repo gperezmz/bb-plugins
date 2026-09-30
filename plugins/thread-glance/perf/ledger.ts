@@ -104,18 +104,18 @@ function acrossCells<T>(
 const AT_1500: Cell[] = ["1500/live", "1500/settled"];
 
 /** The commit B16's Baseline column was measured on: #159's merge base. */
-const B16_BASE = "8b75d8f";
+const B16_BASE = "8aab2ae";
 
 /** B16's Baseline column in ms: #159's merge base, the median of 3 runs. */
 const B16_BASELINE = {
-  "1500/live": { mount: 618.3, scroll: 34.2 },
-  "1500/settled": { mount: 69.6, scroll: 20.0 },
+  "1500/live": { mount: 624.7, scroll: 35.3 },
+  "1500/settled": { mount: 72.4, scroll: 20.2 },
 } as const;
 
 /** #159's own medians in ms, from the runs that alternated with the baseline's. */
 const B16_HEAD = {
-  "1500/live": { mount: 98.1, scroll: 18.8 },
-  "1500/settled": { mount: 50.1, scroll: 17.8 },
+  "1500/live": { mount: 103.6, scroll: 17.8 },
+  "1500/settled": { mount: 52.2, scroll: 17.1 },
 } as const;
 
 const b16Figures = (figures: Record<string, { mount: number; scroll: number }>) =>
