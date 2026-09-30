@@ -11,7 +11,7 @@ import {
   type SyncPoint,
   type ThreadNotes,
   type ThreadRecord,
-} from "@/shared/contract";
+} from "@/shared/signals";
 
 /** Thread records as the list reads them: stamps by kind, notes by thread. */
 export interface Records {
