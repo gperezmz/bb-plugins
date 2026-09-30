@@ -194,7 +194,7 @@ export const LEDGER: readonly LedgerRow[] = [
       "jsdom, 50/300/1,500, live and settled: events `update on screen`, `update off screen`, `stamp signal`, `note signal`, `read change`",
     kind: "deterministic",
     switchedOnBy: 148,
-    enforcing: false,
+    enforcing: true,
     // A thread off screen has no row to render; its parent's children chip may change.
     read: (figures) =>
       events(["update on screen", "update off screen", "stamp signal", "note signal", "read change"], (event, name) =>
@@ -209,7 +209,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "Chromium, 1,500, live and settled (production React; script time through the DevTools protocol)",
     kind: "timing",
     switchedOnBy: 148,
-    enforcing: false,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => {
         const worst = Math.max(...Object.values(figure.eventJsMs));
@@ -225,7 +225,7 @@ export const LEDGER: readonly LedgerRow[] = [
       "jsdom with fake timers, 1,500, against labels computed from the generated threads (a list mounted fresh at the later clock)",
     kind: "deterministic",
     switchedOnBy: 148,
-    enforcing: false,
+    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(AT_1500, (cell) => jsdom[cell], ({ minuteTick: tick }) => ({
         figure: `${tick.rendered} rendered for ${tick.expected} changed (${tick.extra} extra, ${tick.missed} missed), ${tick.hidden} while hidden`,
@@ -241,7 +241,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "jsdom with the fake host: events `new actions`, `new onNavigate`, `equal providers`",
     kind: "deterministic",
     switchedOnBy: 148,
-    enforcing: false,
+    enforcing: true,
     read: (figures) =>
       events(["new actions", "new onNavigate", "equal providers"], (event) => ({
         figure: `${event.distinctRows} rows`,
@@ -264,15 +264,14 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "Renders caused by the list's drop feedback",
     threshold: "≤ 2 rows per change of target, none when the target is unchanged",
     baseline: "every mounted row per move",
-    measuredBy:
-      "jsdom: 50 changes of the store's drop feedback with dnd-kit's state held constant. Until #148 builds that store, the figure is read off 50 drag moves over rows (the `drag` figures)",
+    measuredBy: "jsdom: 50 changes of the store's drop feedback with dnd-kit's state held constant (the `dropFeedback` figures)",
     kind: "deterministic",
     switchedOnBy: 148,
-    enforcing: false,
+    enforcing: true,
     read: ({ jsdom }) =>
-      acrossCells(CELLS, (cell) => jsdom[cell], ({ drag }) => ({
-        figure: `up to ${drag.maxRowsOnChange} rows per change of target, ${drag.rowsOnUnchanged} on unchanged moves`,
-        pass: drag.maxRowsOnChange <= 2 && drag.rowsOnUnchanged === 0,
+      acrossCells(CELLS, (cell) => jsdom[cell], ({ dropFeedback: feedback }) => ({
+        figure: `up to ${feedback.maxRowsOnChange} rows per change of target, ${feedback.rowsOnUnchanged} on unchanged steps`,
+        pass: feedback.maxRowsOnChange <= 2 && feedback.rowsOnUnchanged === 0,
       })),
   },
   {

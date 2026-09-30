@@ -21,8 +21,17 @@ describe("the ledger", () => {
     }
   });
 
-  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired", () => {
-    expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual(["B2", "B22", "B26"]);
+  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired, and those #148 switched on", () => {
+    expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual([
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "B6",
+      "B8",
+      "B22",
+      "B26",
+    ]);
     expect(LEDGER.find((candidate) => candidate.id === "B1")).toMatchObject({ switchedOnBy: 145, enforcing: false, retiredBy: "B2" });
   });
 
@@ -54,6 +63,7 @@ function jsdomWith(events: Record<string, EventFigure>): JsdomFigures {
     groups: 4,
     events,
     drag: { moves: 50, targetChanges: 25, maxRowsOnChange: 1, rowsOnUnchanged: 0, otherRows: 0, commits: 50, jsMs: 1 },
+    dropFeedback: { changes: 25, maxRowsOnChange: 2, rowsOnUnchanged: 0 },
     minuteTick: { rendered: 3, expected: 3, extra: 0, missed: 0, hidden: 0 },
     menuPrimitives: {},
   };
@@ -152,8 +162,8 @@ describe("a row switched on", () => {
   });
 
   it("is not held to its threshold before its slice switches it on", () => {
-    const over = CASES.find((candidate) => candidate.id === "B3")!.over;
-    expect(evaluate(over).find((verdict) => verdict.row.id === "B3")).toMatchObject({ enforcing: false, failed: false });
+    const over = withFigures({ jsdom: { "1500/live": jsdomWith({ "split layout": event({ rows: 2, rowIds: ["t0", "t1"], distinctRows: 2, extraRows: 1 }) }) } });
+    expect(evaluate(over).find((verdict) => verdict.row.id === "B7")).toMatchObject({ enforcing: false, failed: false });
   });
 
   it("fails the run that takes its kind, and only that run", () => {

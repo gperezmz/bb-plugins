@@ -9,7 +9,7 @@ import { vi } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
-import { flushListStores } from "@/features/thread-list/store/api";
+import { attachedListStores, flushListStores } from "@/features/thread-list/store/api";
 import { countComponents, startCounting, stopCounting, type RenderCount } from "./render-counter";
 import { createFakeHost, loadWithFakeHost, mountList, serverState } from "./fake-host";
 import { markAllReadConfirm } from "./list-screen";
@@ -61,12 +61,22 @@ export interface DragFigure {
   jsMs: number;
 }
 
+/** Changes of the list store's drop feedback, with dnd-kit's state held constant. */
+export interface DropFeedbackFigure {
+  /** Steps that changed the feedback drawn, and the most rows one of them rendered. */
+  changes: number;
+  maxRowsOnChange: number;
+  /** Rows rendered by steps that set the feedback it already held. */
+  rowsOnUnchanged: number;
+}
+
 export interface JsdomFigures {
   threads: number;
   mountedRows: number;
   groups: number;
   events: Record<string, EventFigure>;
   drag: DragFigure;
+  dropFeedback: DropFeedbackFigure;
   minuteTick: MinuteTickFigure;
   /** Radix menu, context menu, hover card and popover roots mounted at rest. */
   menuPrimitives: Record<string, number>;
@@ -260,9 +270,32 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
     });
   };
 
+  // Events that leave every thread in its place run before those that move
+  // one, so each in-place event finds its thread where the list drew it.
   const events: Record<string, { threadId: string | null; run: (index: number) => void | Promise<void> }> = {
     "update on screen": { threadId: onScreen, run: () => turn(onScreen) },
     ...(offScreen === null ? {} : { "update off screen": { threadId: offScreen, run: () => turn(offScreen) } }),
+    "stamp signal": {
+      threadId: onScreen,
+      run: (index) =>
+        slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: [onScreen], value: Date.now() - (index + 1) * 60_000 }),
+    },
+    "note signal": {
+      threadId: noted,
+      run: (index) =>
+        slot.emitRealtime(CHANNELS.notes, {
+          threadId: noted,
+          notes: { done: { kind: "done", text: `Done ${index}`, at: Date.now() } },
+        }),
+    },
+    "read change": {
+      threadId: onScreen,
+      run: () => {
+        const unread = !thread(onScreen).isUnread;
+        const at = Date.now() + ++serial;
+        host.updateThread(onScreen, unread ? { isUnread: true, latestAttentionAt: at } : { isUnread: false, lastReadAt: at });
+      },
+    },
     "new thread": {
       threadId: null,
       run: (index) => {
@@ -293,27 +326,6 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
           latestAttentionAt: Date.now(),
           lastReadAt: Date.now(),
         }),
-    },
-    "stamp signal": {
-      threadId: onScreen,
-      run: (index) =>
-        slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: [onScreen], value: Date.now() - (index + 1) * 60_000 }),
-    },
-    "note signal": {
-      threadId: noted,
-      run: (index) =>
-        slot.emitRealtime(CHANNELS.notes, {
-          threadId: noted,
-          notes: { done: { kind: "done", text: `Done ${index}`, at: Date.now() } },
-        }),
-    },
-    "read change": {
-      threadId: onScreen,
-      run: () => {
-        const unread = !thread(onScreen).isUnread;
-        const at = Date.now() + ++serial;
-        host.updateThread(onScreen, unread ? { isUnread: true, latestAttentionAt: at } : { isUnread: false, lastReadAt: at });
-      },
     },
     "split layout": {
       threadId: onScreen,
@@ -366,6 +378,7 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
     figures[name] = { ...first!, jsMs: Number(median(times).toFixed(2)) };
   }
   const drag = await dragMoves(container, onScreen);
+  const dropFeedback = await dropFeedbackChanges(container);
   const menuPrimitives = countComponents(MENU_PRIMITIVES);
   const minuteTick = await tick();
   const result: JsdomFigures = {
@@ -374,6 +387,7 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
     groups: container.querySelectorAll('[data-sidebar="group-label"]').length,
     events: figures,
     drag,
+    dropFeedback,
     minuteTick,
     menuPrimitives,
   };
@@ -408,6 +422,34 @@ export async function runJsdom(list: GeneratedList, options: JsdomOptions = {}):
       hidden: hiddenCount.rows,
     };
   }
+}
+
+/**
+ * 50 changes of the list store's drop feedback, as a drag over rows makes
+ * them, with dnd-kit's own state held constant: every other step moves the
+ * feedback to the next row, and the steps between set what it already holds.
+ */
+async function dropFeedbackChanges(container: HTMLElement): Promise<DropFeedbackFigure> {
+  const store = attachedListStores().at(-1)!;
+  const ids = anchors(container).map((anchor) => anchor.dataset.sidebarThreadId!);
+  const states = ["valid", "before", "after", "blocked"] as const;
+  const figure: DropFeedbackFigure = { changes: 0, maxRowsOnChange: 0, rowsOnUnchanged: 0 };
+  for (let index = 0; index < 50; index += 1) {
+    const step = Math.floor(index / 2);
+    const target = ids[step % ids.length]!;
+    const feedback = drawnFeedback(container);
+    const { count } = await measure(() => {
+      store.setUi({ dropStates: new Map([[target, states[step % states.length]!]]) });
+    });
+    if (drawnFeedback(container) !== feedback) {
+      figure.changes += 1;
+      figure.maxRowsOnChange = Math.max(figure.maxRowsOnChange, count.rows);
+    } else figure.rowsOnUnchanged += count.rows;
+  }
+  await act(async () => {
+    store.setUi({ dropStates: new Map() });
+  });
+  return figure;
 }
 
 const ROW_PX = 28;
