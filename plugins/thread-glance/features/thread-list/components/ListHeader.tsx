@@ -1,6 +1,6 @@
 // The list header: the grouping's name, the need-you filter, Mark all read
 // and the settings button, above every group.
-import { memo, useEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { memo, useRef } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { ICONS } from "../icons";
 import { groupingName } from "../model/labels";
 import { useClient, useCommands, useLayout, useListHasUnread, useNeedYouCount, useNeedYouOn, usePrefs } from "../store/hooks";
 import { SettingsPanel } from "./SettingsPanel";
+import { useSettingsPopover } from "./settings-popover";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 // bb's attention colour, thinned, as the need-you filter's own: the list's
@@ -67,54 +68,3 @@ export const ListHeader = memo(function ListHeader() {
     </div>
   );
 });
-
-/**
- * The settings popover's open state, and what it does beyond Radix's own:
- *
- * - Focus moving outside closes it only after a key was pressed while it was
- *   open. bb focuses its composer on its own for about a second after a page
- *   loads, and Radix took that for the user leaving the popover.
- * - It closes once its button is scrolled wholly out of view, where
- *   `following` is true: the popover form follows its button, the phone's
- *   drawer does not.
- * - Closing it returns focus to its button without scrolling the list to it,
- *   unless the user pressed or focused something outside it.
- */
-function useSettingsPopover(button: RefObject<HTMLButtonElement | null>, following: boolean) {
-  const [open, setOpen] = useState(false);
-  const keyPressed = useRef(false);
-  const leftOutside = useRef(false);
-
-  useEffect(() => {
-    if (!open) return;
-    keyPressed.current = false;
-    const onKey = () => (keyPressed.current = true);
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [open]);
-
-  useEffect(() => {
-    const target = button.current;
-    if (!open || !following || target === null || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => !entry.isIntersecting)) setOpen(false);
-    });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [open, following, button]);
-
-  const contentProps: Pick<ComponentProps<typeof PopoverContent>, "onFocusOutside" | "onInteractOutside" | "onCloseAutoFocus"> = {
-    onFocusOutside: (event) => {
-      if (!keyPressed.current) event.preventDefault();
-    },
-    onInteractOutside: (event) => {
-      if (!event.defaultPrevented && !button.current?.contains(event.target as Node)) leftOutside.current = true;
-    },
-    onCloseAutoFocus: (event) => {
-      event.preventDefault();
-      if (!leftOutside.current) button.current?.focus({ preventScroll: true });
-      leftOutside.current = false;
-    },
-  };
-  return { open, onOpenChange: setOpen, contentProps };
-}
