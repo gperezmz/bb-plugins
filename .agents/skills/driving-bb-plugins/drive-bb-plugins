@@ -303,7 +303,7 @@ ENV
   echo "web UI   $server_url/"
   echo "project  $project   machine $host_id"
   echo "plugins  $*"
-  [[ -z $snapshot ]] || echo "snapshot  $snapshot, restored from $snapshot_dir"
+  [[ -z $snapshot ]] || echo "snapshot $snapshot, restored from $snapshot_dir"
   if [[ -n $unit ]]; then
     echo "memory   capped at $(iec "$memory_max"), no swap, in $unit; $max_sessions Claude Code sessions at once"
   else

@@ -539,7 +539,7 @@ function runActions(ctx, label, actions) {
   for (const a of actions ?? []) {
     if (Array.isArray(a)) out.push({ bb: a, stdout: ctx.cli(label, ...a).slice(0, 2000) });
     else if (a.sleep) execFileSync("sleep", [String(a.sleep / 1000)]);
-    else if (a.harness) out.push({ harness: a.harness, stdout: execFileSync(process.env.DBP_HARNESS, [a.harness[0], "--run", process.env.DBP_RUN, ...a.harness.slice(1)], { encoding: "utf8" }).trim() });
+    else if (a.harness) out.push({ harness: a.harness, stdout: ctx.harness(...a.harness) });
   }
   return out;
 }
