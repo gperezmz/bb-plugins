@@ -96,9 +96,13 @@ async function capture(name, action = "", on = page) {
   log(`captured ${base}`);
 }
 
-/** Runs `bb <args>` against the run through the harness, logged in cli.md; its stdout. */
+/**
+ * Runs `bb <args>` against the run through the harness, logged in cli.md; its
+ * stdout, however long: execFileSync's default buffer of 1 MiB fails a
+ * `thread list --json` of several hundred threads.
+ */
 function cli(label, ...args) {
-  return execFileSync(DBP_HARNESS, ["bb", "--run", DBP_RUN, label, "--", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync(DBP_HARNESS, ["bb", "--run", DBP_RUN, label, "--", ...args], { encoding: "utf8", maxBuffer: Infinity, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 let code = 0;

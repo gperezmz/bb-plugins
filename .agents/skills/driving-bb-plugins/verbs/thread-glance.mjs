@@ -200,18 +200,9 @@ async function prefUntil(cli, label, key, want) {
   return value;
 }
 
-/**
- * The run's threads by title, from bb. Run through the harness as `cli` runs
- * it, with a larger buffer: at several hundred threads the list passes the
- * 1 MB that `cli`'s execFileSync holds.
- */
+/** The run's threads, from bb. */
 function threads(cli, label) {
-  const out = execFileSync(process.env.DBP_HARNESS, ["bb", "--run", process.env.DBP_RUN, label, "--", "thread", "list", "--json"], {
-    encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const listed = JSON.parse(out);
+  const listed = JSON.parse(cli(label, "thread", "list", "--json"));
   return Array.isArray(listed) ? listed : listed.threads;
 }
 
