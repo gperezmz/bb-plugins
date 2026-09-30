@@ -10,7 +10,7 @@ import { runChromium, runMarkAllReadChromium } from "./harness/chromium-run";
 const figures: Partial<Figures> = { chromium: {}, markAllRead: {} };
 
 afterAll(async () => {
-  await commands.writeFile("results/chromium.figures.json", JSON.stringify(figures, null, 2));
+  await commands.writeFile("perf/results/chromium.figures.json", JSON.stringify(figures, null, 2));
 });
 
 for (const cell of CELLS) {
