@@ -1,9 +1,9 @@
-// Prints a run's figures, one table per generated list, and the ledger's
+// Prints a run's figures, as tables, one per generated list, and the ledger's
 // reading of them.
 import { CELLS, type Cell, type Figures } from "./figures";
 import type { Verdict } from "./ledger";
 
-function table(title: string, rows: readonly (readonly [string, string])[]): string {
+function tabulate(title: string, rows: readonly (readonly [string, string])[]): string {
   const width = Math.max(...rows.map(([name]) => name.length), 6);
   const lines = rows.map(([name, value]) => `  ${name.padEnd(width)}  ${value}`);
   return [`${title}`, ...lines].join("\n");
@@ -74,14 +74,14 @@ function cellRows(figures: Figures, cell: Cell | "snapshot"): [string, string][]
   return rows;
 }
 
-/** Every table of a run, and the ledger's reading, as text. */
+/** Every one of a run's tables, and the ledger's reading, as text. */
 export function formatReport(figures: Figures, verdicts: readonly Verdict[]): string {
   const sections: string[] = [];
   for (const cell of CELLS) {
     const rows = cellRows(figures, cell);
-    if (rows.length > 0) sections.push(table(`${cell.replace("/", " threads, ")}`, rows));
+    if (rows.length > 0) sections.push(tabulate(`${cell.replace("/", " threads, ")}`, rows));
   }
-  if (figures.snapshot) sections.push(table("Snapshot (PERF_THREADS)", cellRows(figures, "snapshot")));
+  if (figures.snapshot) sections.push(tabulate("Snapshot (PERF_THREADS)", cellRows(figures, "snapshot")));
   const { markAllRead: mar, server, bundle } = figures;
   const shared: [string, string][] = [];
   if (mar.jsdom) shared.push(["MAR list, jsdom", `${mar.jsdom.unreadAfterClick} of ${mar.jsdom.counted} unread after the click, ${mar.jsdom.commits} commits, ${mar.jsdom.jsMs} ms`]);
@@ -93,9 +93,9 @@ export function formatReport(figures: Figures, verdicts: readonly Verdict[]): st
     shared.push(["server: first read, 5,000 threads", `listStamps ${server.firstRead.stampsMs} ms, listNotes ${server.firstRead.notesMs} ms`]);
   }
   if (bundle) shared.push(["app.js", `${bundle.rawBytes} bytes raw, ${bundle.gzipBytes} gzip, ${bundle.brotliBytes} brotli`]);
-  if (shared.length > 0) sections.push(table("Mark all read list, server and bundle", shared));
+  if (shared.length > 0) sections.push(tabulate("Mark all read list, server and bundle", shared));
   sections.push(
-    table(
+    tabulate(
       "Budget ledger (perf/ledger.ts)",
       verdicts.map(({ row, reading, enforcing }) => [
         `${row.id} ${row.kind}${enforcing ? ", enforcing" : ""}`,
