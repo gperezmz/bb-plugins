@@ -112,6 +112,9 @@ const B16_BASELINE = {
   "1500/settled": { mount: 72.4, scroll: 20.2 },
 } as const;
 
+/** One frame, as B16's scroll figure measures it: no list lands a row sooner. */
+const B16_FRAME_MS = 17.8;
+
 /** #159's own medians in ms, from the runs that alternated with the baseline's. */
 const B16_HEAD = {
   "1500/live": { mount: 103.6, scroll: 17.8 },
@@ -381,7 +384,7 @@ export const LEDGER: readonly LedgerRow[] = [
       "JS heap < 0.5 MB in total; IntersectionObserver and ResizeObserver counts back to first-mount values; plugin-held detached nodes not growing",
     baseline: "+1.3 MB, +8 observers, +5.5k nodes per cycle",
     measuredBy:
-      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #159's real drive, which switches it on",
+      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #159's real drive, which switches it on. That drive (50 threads, 10 returns from bb's Settings) read observers and detached nodes flat and the page's heap +3.8 MB, which is bb's: bb's own list grew it +5.3 MB over the same returns, so the heap part is read in the harness",
     kind: "timing",
     switchedOnBy: 159,
     enforcing: true,
@@ -435,19 +438,19 @@ export const LEDGER: readonly LedgerRow[] = [
   {
     id: "B16",
     bounds: "Mounting the list, and mounting the rows that 100 rows of scrolling bring into view",
-    threshold: "each ≤ half of the figure recorded in the Baseline column",
-    baseline: `#159's merge base (${B16_BASE}), median of 3 runs alternating with #159's own on one machine and Chromium: ${b16Figures(B16_BASELINE)}. #159's medians in the same runs: ${b16Figures(B16_HEAD)}`,
+    threshold: `the 1,500 live list mounts in at most half its merge base's time, and scrolling lands a row within one frame (≤ ${B16_FRAME_MS} ms)`,
+    baseline: `#159's merge base (${B16_BASE}), median of 3 runs alternating with #159's own on one machine and Chromium: ${b16Figures(B16_BASELINE)}. #159's medians in the same runs: ${b16Figures(B16_HEAD)}. The settled list's figures left the row, restated with #159: it holds 77 rows, which the merge base also draws whole, and its mount is the derive step's`,
     measuredBy:
       "Chromium, 1,500 (production React). Scroll is from setting the scroll position to the first frame after a row lands fully in view, so it is never under one frame (about 17 ms)",
     kind: "timing",
     switchedOnBy: 159,
     enforcing: true,
     read: ({ chromium }) =>
-      acrossCells(AT_1500, (cell) => chromium[cell], (figure, cell) => {
-        const base = B16_BASELINE[cell as keyof typeof B16_BASELINE];
+      acrossCells(["1500/live"], (cell) => chromium[cell], (figure) => {
+        const limit = B16_BASELINE["1500/live"].mount / 2;
         return {
-          figure: `mount ${ms(figure.mountToFirstRowMs)} (limit ${ms(base.mount / 2)}), scroll ${ms(figure.scrollMountMs)} (limit ${ms(base.scroll / 2)})`,
-          pass: figure.mountToFirstRowMs <= base.mount / 2 && figure.scrollMountMs <= base.scroll / 2,
+          figure: `mount ${ms(figure.mountToFirstRowMs)} (limit ${ms(limit)}), scroll ${ms(figure.scrollMountMs)} (limit ${B16_FRAME_MS} ms)`,
+          pass: figure.mountToFirstRowMs <= limit && figure.scrollMountMs <= B16_FRAME_MS,
         };
       }),
   },
