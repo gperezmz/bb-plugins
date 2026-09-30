@@ -1244,6 +1244,8 @@ export const verbs = {
       const order = async () =>
         page.locator("section[data-sidebar-visibility-group]").evaluateAll((els) => els.filter((e) => !e.closest('[data-sidebar-overflow="true"]')).map((e) => e.getAttribute("aria-label")));
       const before = await order();
+      await header(args[0]).scrollIntoViewIfNeeded();
+      await frames(page);
       await capture("before", `before dragging ${args[0]}`);
       const feedback = await dragTo(page, header(args[0]), header(flags.onto), flags.zone === "bottom" ? 0.9 : 0.1);
       await page.waitForFunction((was) => JSON.stringify([...document.querySelectorAll("section[data-sidebar-visibility-group]")].map((e) => e.getAttribute("aria-label"))) !== was, JSON.stringify(before), { timeout: 10_000 }).catch(() => {});
