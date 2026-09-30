@@ -21,8 +21,8 @@ describe("the ledger", () => {
     }
   });
 
-  it("enforces the rows of #145 and of #146, which merged before it, B1 aside, which B2 retired", () => {
-    expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual(["B2", "B22"]);
+  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired", () => {
+    expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual(["B2", "B22", "B26"]);
     expect(LEDGER.find((candidate) => candidate.id === "B1")).toMatchObject({ switchedOnBy: 145, enforcing: false, retiredBy: "B2" });
   });
 

@@ -48,7 +48,7 @@ function cellRows(figures: Figures, cell: Cell | "snapshot"): [string, string][]
     rows.push(requests("fake host: first load", host.firstLoad));
     rows.push(requests("fake host: remount", host.remount));
     for (const [windows, idle] of Object.entries(host.idle)) rows.push(requests(`fake host: 10 idle minutes, ${windows} window(s)`, idle));
-    rows.push(["fake host: idleAt writes per transition, 3 windows", String(host.idleAtWritesPerTransition)]);
+    rows.push(["fake host: idleAt requests when a turn ends, 3 windows", String(host.idleAtWritesPerTransition)]);
     rows.push(["fake host: per-row hooks per mounted row", Object.entries(host.hooksPerRow).map(([name, calls]) => `${name} ${calls}`).join(", ")]);
   }
   const chromium = figures.chromium[cell];

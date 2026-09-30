@@ -351,7 +351,7 @@ export function serverHandlers(server: ServerState) {
     listStamps: () => ({ stamps: server.stamps }),
     markSeen: () => ({ at: Date.now() }),
     clearSeen: () => ({ ok: true as const }),
-    markIdle: () => ({ at: Date.now() }),
+    reportIdle: () => ({ ok: true as const }),
     listScheduled: () => ({ status: "ready" as const, scheduled: server.scheduled }),
     listNotes: () => ({ notes: server.notes }),
   };

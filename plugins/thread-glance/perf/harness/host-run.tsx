@@ -23,7 +23,10 @@ export interface HostFigures {
   remount: Requests;
   /** Requests over 10 idle minutes, by the number of windows open. */
   idle: Record<"1" | "2" | "3", Requests>;
-  /** `markIdle` calls (one `idleAt` write each) for one thread going busy to idle, with 3 windows open. */
+  /**
+   * Window requests to record `idleAt` (`reportIdle`, or 0.7.0's `markIdle`)
+   * when a turn ends, which bb announces, with 3 windows open.
+   */
   idleAtWritesPerTransition: number;
   /** Calls to each of bb's per-row hooks per mounted row, over one mount. */
   hooksPerRow: Record<string, number>;
@@ -148,7 +151,8 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
     three.host.updateThread(threadId, { status: "idle", runtimeStatus: "idle", updatedAt: Date.now() });
   });
   await drain(200);
-  const writes = since(three.slots, before, three.host, three.host.actionCalls.length).rpc.markIdle ?? 0;
+  const idleRequests = since(three.slots, before, three.host, three.host.actionCalls.length).rpc;
+  const writes = (idleRequests.reportIdle ?? 0) + (idleRequests.markIdle ?? 0);
   for (const slot of three.slots) slot.unmount();
   vi.useRealTimers();
 

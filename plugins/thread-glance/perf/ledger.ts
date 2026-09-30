@@ -5,9 +5,9 @@
 // A row is enforcing while its `enforcing` field is true: the run that
 // measures it then fails when the row's threshold is missed. The slice named
 // in "Switched on by" sets it to true in the same change that makes the row
-// hold; the column itself only documents who does. Rows of #145 and of #146,
-// which merged before the ledger existed, start true, except B1, which B2
-// retired. Rows of kind "deterministic" (render counts, rows
+// hold; the column itself only documents who does. Rows of #145 and of #146
+// and #147, which merged before the ledger existed, start true, except B1,
+// which B2 retired. Rows of kind "deterministic" (render counts, rows
 // mounted, requests, signals, writes, bundle size) run in `npm test`, and so
 // in CI. Rows of kind "timing" (INP, milliseconds, heap) run in `npm run
 // perf`, outside CI: each slice records their output in its pull request, and
@@ -568,11 +568,12 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B25",
     bounds: "First read of stamps and notes after a server start, 5,000 stored threads",
     threshold: "< 10 ms each (`listStamps` and `listNotes` until #149, then the first `sync`)",
-    baseline: "15.6 / 18.3 ms",
+    baseline:
+      "15.6 / 18.3 ms (0.7.0); 16.2–17.2 / 16.2–16.4 ms after #147's batched reads, on bb 0.44's SQLite-backed KV (measured in PR #156)",
     measuredBy:
-      "`server.test` SQLite-backed benchmark, which #147 adds, run by `npm run perf`. Until then, bb's fake plugin host with its KV in memory",
+      "`server.test` SQLite-backed benchmark (\"cold read benchmark\", which #147 added and which prints its figures). `npm run perf` reports bb's fake plugin host with its KV in memory. #149 moves stamps and notes into the plugin's own SQLite database, which is what makes the row reachable, and switches it on",
     kind: "timing",
-    switchedOnBy: 147,
+    switchedOnBy: 149,
     enforcing: false,
     read: ({ server }) =>
       server === undefined
@@ -587,13 +588,14 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "`idleAt` writes per busy-to-idle transition",
     threshold: "one store and one signal, whatever the number of windows; no window request (apart from #147's missed-event case)",
     baseline: "one write per window",
-    measuredBy: "`server.test`; fake host with 3 windows (`markIdle` calls, one write each)",
+    measuredBy:
+      "`server.test` (the store and the signal: \"records a thread going idle once\", from #147); fake host with 3 windows (window requests, `reportIdle` or 0.7.0's `markIdle`, when a turn ends, which bb announces)",
     kind: "deterministic",
     switchedOnBy: 147,
-    enforcing: false,
+    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ idleAtWritesPerTransition: writes }) => ({
-        figure: `${writes} window writes with 3 windows (the server's store and signal: server.test, from #147)`,
+        figure: `${writes} window requests with 3 windows`,
         pass: writes === 0,
       })),
   },
