@@ -24,14 +24,25 @@ describe("the plugin's data", () => {
     expect(pluginData.get().records.point).toEqual({ epoch: "e1", revision: 2 });
   });
 
+  it("asks once realtime is up, not again for its first connection", () => {
+    const stop = pluginData.follow();
+    expect(pluginData.connection("connecting")).toBe(false);
+    expect(pluginData.connection("connected")).toBe(true);
+    pluginData.synced(answer(1, {}));
+    expect(pluginData.connection("connected")).toBe(false);
+    stop();
+  });
+
   it("asks for what it missed once realtime is back, and stops drawing as current while it is down", () => {
     const stop = pluginData.follow();
+    expect(pluginData.connection("connected")).toBe(true);
     pluginData.synced(answer(1, {}));
     expect(pluginData.connection("connected")).toBe(false);
     expect(pluginData.connection("reconnecting")).toBe(false);
     expect(pluginData.get().status).toBe("waiting");
     expect(pluginData.connection("reconnecting")).toBe(false);
     expect(pluginData.connection("connected")).toBe(true);
+    pluginData.synced(answer(2, {}));
     expect(pluginData.connection("connected")).toBe(false);
     stop();
   });

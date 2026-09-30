@@ -75,8 +75,8 @@ let data: PluginData = INITIAL;
 const listeners = new Set<(change: DataChange) => void>();
 /** How many components follow realtime for it now: the app overlay's, or a list's where bb has no overlay. */
 let following = 0;
-/** Whether realtime was connected when last heard. */
-let connected = true;
+/** Realtime's connection as a keeper last heard it; unknown until one does. */
+let realtime: "unknown" | "up" | "down" = "unknown";
 /** `records` signals that came before the first answer, applied once it lands. */
 let early: RecordsSignal[] = [];
 let overlayMounted = false;
@@ -165,19 +165,22 @@ export const pluginData = {
     };
   },
   /**
-   * Realtime's connection is in `state`; returns true when it has just come
-   * back, and a `sync` has to ask for what was sent while it was down, which
-   * no signal will bring.
+   * Realtime's connection is in `state`, as a keeper following it hears it;
+   * returns true when a `sync` has to go now. One goes once the connection is
+   * up, so no signal is lost between the answer and the socket opening:
+   * while it was down, what was sent then no signal will bring, and before
+   * any answer, or after the list stopped following, what is held is not
+   * current.
    */
   connection(state: PluginRealtimeConnectionState): boolean {
     if (state !== "connected") {
-      if (connected && data.status === "current") data = { ...data, status: "waiting" };
-      connected = false;
+      if (data.status === "current") data = { ...data, status: "waiting" };
+      realtime = "down";
       return false;
     }
-    const back = !connected;
-    connected = true;
-    return back;
+    const back = realtime === "down";
+    realtime = "up";
+    return back || data.status !== "current";
   },
 
   isOverlayMounted: () => overlayMounted,
@@ -195,7 +198,7 @@ export const pluginData = {
 export function forgetPluginData(): void {
   data = INITIAL;
   following = 0;
-  connected = true;
+  realtime = "unknown";
   early = [];
   overlayMounted = false;
   listeners.clear();

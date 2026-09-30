@@ -9,6 +9,8 @@ type Database = ReturnType<BbPluginApi["storage"]["database"]>;
 type Kv = BbPluginApi["storage"]["kv"];
 
 const KV_READ_BATCH = 50;
+/** KV rows deleted between yields to the event loop: each delete is a synchronous query in bb's server. */
+const KV_DELETE_BATCH = 50;
 
 /**
  * The schema, one statement per migration. Append-only: bb records each
@@ -38,7 +40,7 @@ export interface ThreadTable<T> {
    * deletes those KV rows. A row the table already holds keeps its value, so
    * a move a restart cut short, run again, duplicates and overwrites nothing.
    * `accept` turns a KV value into the table's, or null to drop it. Returns
-   * how many rows it moved.
+   * how many rows it added to the table.
    */
   moveFromKv(kv: Kv, prefix: string, accept: (threadId: string, value: unknown) => T | null): Promise<number>;
 }
@@ -68,8 +70,11 @@ function createTable<T>(
   const upsert = db.prepare(statements.upsert);
   const insertNew = db.prepare(statements.insertNew);
   const remove = db.prepare(statements.remove);
+  /** Inserts the rows the table lacks, and returns how many it inserted. */
   const insertAll = db.transaction((rows: [string, T][]) => {
-    for (const [threadId, value] of rows) insertNew.run(...toRow(threadId, value));
+    let inserted = 0;
+    for (const [threadId, value] of rows) inserted += insertNew.run(...toRow(threadId, value)).changes;
+    return inserted;
   });
   return {
     all: () => (select.all() as unknown[][]).map(fromRow),
@@ -82,9 +87,13 @@ function createTable<T>(
         const value = accept(threadId, raw);
         return value === null ? [] : [[threadId, value]];
       });
-      insertAll(accepted);
-      for (const key of keys) await kv.delete(key);
-      return accepted.length;
+      const inserted = insertAll(accepted);
+      for (let start = 0; start < keys.length; start += KV_DELETE_BATCH) {
+        for (const key of keys.slice(start, start + KV_DELETE_BATCH)) await kv.delete(key);
+        // Lets bb's server answer other requests while a large move runs.
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      return inserted;
     },
   };
 }

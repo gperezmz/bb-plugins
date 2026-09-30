@@ -195,6 +195,19 @@ describe("a realtime reconnect", () => {
   });
 });
 
+describe("a first load", () => {
+  it("asks one sync, once realtime connects, when the page loads before its socket is up", async () => {
+    const server = createFakeServer({ preferences: { settleAfter: "never" } });
+    const list = mountList(server, threads(), { realtimeConnectionState: "connecting" });
+    await settle();
+    expect(list.inspection.rpcCalls.map((call) => call.method)).not.toContain("sync");
+    await list.behavior.setRealtimeConnectionState("connected");
+    await screen.findByRole("link", { name: /Open Worker/ });
+    await settle();
+    expect(list.inspection.rpcCalls.filter((call) => call.method === "sync")).toHaveLength(1);
+  });
+});
+
 describe("the first-run import", () => {
   it("is sent once per device, across remounts and reloads, once an answer came", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });

@@ -13,6 +13,8 @@ import { pluginData } from "./plugin-data";
 import { requestSync } from "./requests";
 
 const NONE: Readonly<Record<string, number>> = {};
+/** How long a keeper waits for realtime to connect before it asks `sync` without it. */
+const UNCONNECTED_WAIT_MS = 3_000;
 
 /** The keeper for bb's app overlay slot. */
 export function OverlaySyncKeeper() {
@@ -33,15 +35,22 @@ function Following() {
   const rpc = useRpc<RpcContract>();
   const connection = useRealtimeConnectionState();
 
-  useEffect(() => {
-    const stop = pluginData.follow();
-    if (pluginData.get().status !== "current") void requestSync(rpc);
-    return stop;
-  }, [rpc]);
+  useEffect(() => pluginData.follow(), []);
 
-  // Realtime signals aren't replayed: ask for what changed after a reconnect.
+  // Asks once realtime is up: on mount, and after a reconnect, since
+  // realtime signals aren't replayed.
   useEffect(() => {
     if (pluginData.connection(connection)) void requestSync(rpc);
+  }, [connection, rpc]);
+
+  // A connection that does not come up leaves the list drawn from the
+  // answer alone, and asks again once it does.
+  useEffect(() => {
+    if (connection === "connected") return;
+    const timer = setTimeout(() => {
+      if (pluginData.get().status === "waiting") void requestSync(rpc);
+    }, UNCONNECTED_WAIT_MS);
+    return () => clearTimeout(timer);
   }, [connection, rpc]);
 
   useRealtime(CHANNELS.records, (payload) => {

@@ -384,8 +384,11 @@ export interface Frame {
   transform?: string;
 }
 
+/** How the page's realtime socket stands as a list mounts: connected, or, on a page just loaded, still connecting. */
+export type Realtime = "connected" | "connecting";
+
 /** The list as a window mounts it, fed props by the fake host, in `frame` when given. */
-export function mountList(app: PluginApp, server: ServerState, frame?: Frame): RenderedSlot {
+export function mountList(app: PluginApp, server: ServerState, frame?: Frame, realtime: Realtime = "connected"): RenderedSlot {
   const List = app.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
   const Window = () => {
     const list = <List {...useHost((state) => state.props)} />;
@@ -399,12 +402,14 @@ export function mountList(app: PluginApp, server: ServerState, frame?: Frame): R
       </div>
     );
   };
-  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: SDK_FAKES }));
+  return server.attach(
+    renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: SDK_FAKES, realtimeConnectionState: realtime }),
+  );
 }
 
 /** The component the plugin registers in bb's app overlay slot, mounted as bb mounts it, beside the list. */
-export function mountOverlay(app: PluginApp, server: ServerState): RenderedSlot {
+export function mountOverlay(app: PluginApp, server: ServerState, realtime: Realtime = "connected"): RenderedSlot {
   const overlay = app.appOverlays[0];
   if (overlay === undefined) throw new Error("the plugin registers no app overlay");
-  return server.attach(renderSlot(overlay, {}, { rpc: server.handlers as never, sdk: SDK_FAKES }));
+  return server.attach(renderSlot(overlay, {}, { rpc: server.handlers as never, sdk: SDK_FAKES, realtimeConnectionState: realtime }));
 }
