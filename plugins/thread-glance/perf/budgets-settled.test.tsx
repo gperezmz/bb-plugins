@@ -17,7 +17,7 @@ afterEach(() => {
 it("holds the enforcing deterministic budgets on the settled lists", async () => {
   const figures = emptyFigures();
   for (const size of SIZES) {
-    figures.jsdom[`${size}/settled`] = await runJsdom(generateList({ size, scenario: "settled" }));
+    figures.jsdom[`${size}/settled`] = await runJsdom(generateList({ size, kind: "settled" }));
     cleanup();
     localStorage.clear();
   }

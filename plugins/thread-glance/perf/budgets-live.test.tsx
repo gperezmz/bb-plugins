@@ -19,10 +19,10 @@ afterEach(() => {
 it("holds the enforcing deterministic budgets on the live lists", async () => {
   const figures = emptyFigures();
   for (const size of SIZES) {
-    figures.jsdom[`${size}/live`] = await runJsdom(generateList({ size, scenario: "live" }));
+    figures.jsdom[`${size}/live`] = await runJsdom(generateList({ size, kind: "live" }));
     cleanup();
     localStorage.clear();
   }
-  figures.host["300/live"] = await runHost(generateList({ size: 300, scenario: "live" }));
+  figures.host["300/live"] = await runHost(generateList({ size: 300, kind: "live" }));
   expect(missedBudgets(figures, ["deterministic", "both"])).toEqual([]);
 }, 900_000);

@@ -210,8 +210,8 @@ export function attentionRootIds(scenario: Scenario): string[] {
     .map((tree) => tree.root.thread.id);
 }
 
-/** The two lists the performance harness measures: nothing settled yet, or two days on. */
-export type GeneratedScenario = "live" | "settled";
+/** Which generated list: the live list, nothing settled yet, or the settled list, two days on. */
+export type GeneratedListKind = "live" | "settled";
 
 export interface GeneratedList {
   threads: PluginSidebarThread[];
@@ -225,7 +225,7 @@ export interface GeneratedList {
 export interface GenerateOptions {
   /** Threads in the list. */
   size: number;
-  scenario?: GeneratedScenario;
+  kind?: GeneratedListKind;
   /** Unread threads; about 5 % of the list when absent. */
   unread?: number;
   seed?: number;
@@ -257,7 +257,7 @@ export const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((inde
  * is settled at T0 ("live"), and every read, idle tree is settled two days on
  * ("settled").
  */
-export function generateList({ size, scenario = "live", unread, seed = 145 }: GenerateOptions): GeneratedList {
+export function generateList({ size, kind = "live", unread, seed = 145 }: GenerateOptions): GeneratedList {
   const random = seededRandom(seed);
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
   const rootCount = Math.round((size * 2) / 3);
@@ -310,7 +310,7 @@ export function generateList({ size, scenario = "live", unread, seed = 145 }: Ge
   return {
     threads,
     projects: GENERATED_PROJECTS,
-    now: scenario === "live" ? T0 + 60_000 : T0 + 2 * DAY,
+    now: kind === "live" ? T0 + 60_000 : T0 + 2 * DAY,
     unreadIds: threads.filter((thread) => thread.isUnread).map((thread) => thread.id),
   };
 }

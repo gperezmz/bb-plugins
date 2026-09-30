@@ -1,6 +1,6 @@
 // The generated lists the harness measures: the audit's shape, from a seed.
 import { describe, expect, it } from "vitest";
-import { generateList, markAllReadList, viewOf, type GeneratedScenario } from "@/features/thread-list/testing/fixtures";
+import { generateList, markAllReadList, viewOf, type GeneratedListKind } from "@/features/thread-list/testing/fixtures";
 
 describe("generateList", () => {
   it.each([50, 300, 1_500])("gives %i threads in the audit's shape", (size) => {
@@ -22,8 +22,8 @@ describe("generateList", () => {
   });
 
   it("settles nothing live, and every read tree two days on", () => {
-    const settledRows = (scenario: GeneratedScenario) => {
-      const { threads, projects, now } = generateList({ size: 300, scenario });
+    const settledRows = (kind: GeneratedListKind) => {
+      const { threads, projects, now } = generateList({ size: 300, kind });
       const view = viewOf({ threads, projects, now });
       return view.groups.flatMap((group) => group.rows.filter((row) => row.type === "settled"));
     };

@@ -90,6 +90,10 @@ _Avoid_: Row size, zoom
 The second line of a Thread Glance row naming its thread's branch when that is not its project's default, shown while its switch is on.
 _Avoid_: Branch row, subtitle
 
+**Generated list**:
+A thread list the Thread Glance performance harness makes from a seed instead of real threads: the live list, with nothing settled yet, the settled list, two days on, or the MAR list (Mark all read, 1,500 threads with 443 unread).
+_Avoid_: Scenario, synthetic list, fixture list
+
 **Budget ledger**:
 Thread Glance's one list of performance budgets, one row per budget with its threshold, how it is measured and whether it is enforcing yet.
 _Avoid_: Budget table, perf budgets, budget file

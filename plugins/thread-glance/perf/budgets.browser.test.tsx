@@ -4,15 +4,15 @@
 import "@/features/thread-list/testing/browser.css";
 import { expect, it } from "vitest";
 import { generateList } from "@/features/thread-list/testing/fixtures";
-import { emptyFigures, SCENARIOS } from "./figures";
+import { emptyFigures, LIST_KINDS } from "./figures";
 import { missedBudgets } from "./harness/enforce";
 import { atClockOf, runChromium } from "./harness/chromium-run";
 
 it("holds the enforcing deterministic Chromium budgets", async () => {
   const figures = emptyFigures();
-  for (const scenario of SCENARIOS) {
-    const list = generateList({ size: 1_500, scenario });
-    figures.chromium[`1500/${scenario}`] = await atClockOf(list, () => runChromium(list, { deterministicOnly: true }));
+  for (const kind of LIST_KINDS) {
+    const list = generateList({ size: 1_500, kind });
+    figures.chromium[`1500/${kind}`] = await atClockOf(list, () => runChromium(list, { deterministicOnly: true }));
   }
   expect(missedBudgets(figures, ["deterministic", "both"])).toEqual([]);
 }, 900_000);

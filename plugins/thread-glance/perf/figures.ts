@@ -3,21 +3,21 @@ import type { MarkAllReadFigure, JsdomFigures } from "./harness/jsdom-run";
 import type { HostFigures, MarkAllReadRequests } from "./harness/host-run";
 import type { ServerFigures } from "./harness/server-run";
 import type { ChromiumFigures, MarkAllReadTiming } from "./harness/chromium-figures";
-import type { GeneratedScenario } from "@/features/thread-list/testing/fixtures";
+import type { GeneratedListKind } from "@/features/thread-list/testing/fixtures";
 
 export const SIZES = [50, 300, 1_500] as const;
-export const SCENARIOS: readonly GeneratedScenario[] = ["live", "settled"];
+export const LIST_KINDS: readonly GeneratedListKind[] = ["live", "settled"];
 export type Size = (typeof SIZES)[number];
-export type Scenario = GeneratedScenario;
-/** A generated list: its size and scenario, as `1500/live`. */
-export type Cell = `${Size}/${Scenario}`;
+export type ListKind = GeneratedListKind;
+/** A generated list: its size and kind, as `1500/live`. */
+export type Cell = `${Size}/${ListKind}`;
 
-export const CELLS: Cell[] = SIZES.flatMap((size) => SCENARIOS.map((scenario) => `${size}/${scenario}` as Cell));
+export const CELLS: Cell[] = SIZES.flatMap((size) => LIST_KINDS.map((kind) => `${size}/${kind}` as Cell));
 
-/** A cell's size and scenario, as `generateList` takes them. */
-export function parseCell(cell: Cell): { size: Size; scenario: Scenario } {
-  const [size, scenario] = cell.split("/");
-  return { size: Number(size) as Size, scenario: scenario as Scenario };
+/** A cell's size and kind, as `generateList` takes them. */
+export function parseCell(cell: Cell): { size: Size; kind: ListKind } {
+  const [size, kind] = cell.split("/");
+  return { size: Number(size) as Size, kind: kind as ListKind };
 }
 
 export interface BundleFigures {
