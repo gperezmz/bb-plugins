@@ -10,7 +10,9 @@ import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/signals";
 import { createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
+import { PHONE_QUERY } from "../model/heights";
 import { layoutItems } from "../model/layout-items";
+import { rangeKey } from "../model/windowing";
 import { attachedListStores } from "../store/api";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -776,8 +778,37 @@ describe("Density and Branch line", () => {
     await screen.findAllByRole("link", { name: /Open Long \d+\b/ });
     fireEvent.click(screen.getByRole("button", { name: "Thread Glance settings" }));
     const panel = await screen.findByRole("dialog");
-    const settle = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // A frame delivers the scroll event, and a task lets the list render for it.
+    const settle = async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
     const list = () => document.querySelector<HTMLElement>("[data-sidebar-virtual-list]")!;
+
+    /**
+     * The page scroll positions that can show an item out of place: the top
+     * and the bottom, each side of every position where the mounted range's
+     * first or last item moves into another group, and one frame apart in
+     * between, so that every item is drawn at some position.
+     */
+    function positions(): number[] {
+      const state = attachedListStores().at(-1)!.getState();
+      const model = state.model!;
+      const groups = model.groupIds.map((id) => model.groupsById.get(id)!);
+      const layout = layoutItems(groups, { density: state.layout.density, phone: matchMedia(PHONE_QUERY).matches });
+      const listTop = list().getBoundingClientRect().top + window.scrollY;
+      const bottom = document.documentElement.scrollHeight - innerHeight;
+      const tops = new Set([0, bottom]);
+      for (let top = 0; top < bottom; top += innerHeight) tops.add(top);
+      let before = "";
+      for (let top = 0; top <= bottom; top += 1) {
+        const [first, last] = rangeKey(layout, { top: top - listTop, height: innerHeight }).split(":").map(Number);
+        const ends = `${layout.items[first!]!.groupId} ${layout.items[last!]!.groupId}`;
+        if (top > 0 && ends !== before) tops.add(top - 1).add(top);
+        before = ends;
+      }
+      return [...tops].sort((a, b) => a - b);
+    }
 
     /** Each section's items in order are contiguous: header, then rows and spacers. */
     function expectContiguous(at: string) {
@@ -797,12 +828,9 @@ describe("Density and Branch line", () => {
     async function scrollThrough() {
       const total = list().getBoundingClientRect().height;
       const drawn = new Map<string, number>();
-      const scrollHeight = document.documentElement.scrollHeight;
-      const tops: number[] = [];
-      for (let top = 0; top <= scrollHeight; top += 300) tops.push(top);
+      const tops = positions();
       for (const top of [...tops, ...tops.reverse()]) {
         window.scrollTo(0, top);
-        await settle();
         await settle();
         expect(list().getBoundingClientRect().height, `list height at ${top}`).toBe(total);
         expectContiguous(`at ${top}`);

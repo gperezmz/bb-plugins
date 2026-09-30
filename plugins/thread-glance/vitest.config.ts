@@ -8,9 +8,6 @@ export default defineConfig({
     alias: { "@": fileURLToPath(new URL("./", import.meta.url)) },
   },
   test: {
-    // Two workers keep a run under 4 GiB (a unit worker peaks near 1.8 GiB,
-    // a browser worker near 1.3 GiB) on a machine shared with other work.
-    maxWorkers: 2,
     projects: [
       {
         extends: true,
