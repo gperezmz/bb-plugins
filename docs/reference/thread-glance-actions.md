@@ -11,7 +11,7 @@ The row's **…** button, a right-click on the row, the context-menu key or Shif
 | Details | Always | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
 | Open in split | While bb offers split panes here | Opens the thread in a new pane |
 | Copy thread link, Copy thread ID | Always | Copies the link or the ID |
-| Mark read | On a root while its tree holds something unread, on any other row while the thread is unread | See [Marking threads read](#marking-threads-read) |
+| Mark read | On a root while its tree holds something unread, on any other row while the thread is unread | See [Marking threads read](#marking-threads-read); on a root, bb's own lists in the window show the tree unread until a reload ([known limitation](#known-limitation-bbs-own-lists-until-a-reload)) |
 | Mark unread | Otherwise | Marks the thread unread in bb |
 | Pin, Unpin | Always | Pins or unpins the thread in bb |
 | Move to section | On a root that is not archived, while the list has sections or groups by Custom | Moves the thread to Threads or one of bb's sections, with a check on its own. A phone's menu lists the sections under the label instead of in a submenu |
@@ -28,7 +28,7 @@ A worktree folder row, drawn while **Worktrees as folders** is on, has its own *
 
 | Item | Shown | Does |
 |---|---|---|
-| Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read) |
+| Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read); bb's own lists in the window show those threads unread until a reload ([known limitation](#known-limitation-bbs-own-lists-until-a-reload)) |
 | New thread | On a group that names a project, not on Pinned | Opens a new thread there |
 | New section | While grouped by Custom | Creates a bb section |
 | Rename | On a section or a machine | Renames it in bb |

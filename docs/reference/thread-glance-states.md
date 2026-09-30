@@ -110,7 +110,7 @@ The first row of the list, above every group:
 |---|---|
 | `Projects`, `Sections` or `Machines` | Names the current grouping. Clicking it does nothing: grouping changes in the settings panel |
 | `N need you` | The [need-you filter](../explanation/thread-glance-attention.md#the-need-you-filter), N being the thread trees that need attention in every group, hidden ones included. Absent when N is 0 |
-| Mark all read | [Marks every unread thread in the list read](thread-glance-actions.md#marking-threads-read), asking first above 20. Absent while no thread in the list is unread |
+| Mark all read | [Marks every unread thread in the list read](thread-glance-actions.md#marking-threads-read), asking first above 20. bb's own lists in the window show those threads unread until a reload ([known limitation](thread-glance-actions.md#known-limitation-bbs-own-lists-until-a-reload)). Absent while no thread in the list is unread |
 | Settings (sliders) | Opens the [settings panel](thread-glance-preferences.md#the-settings-panel) under the header, and closes it |
 
 ## Group header counters
