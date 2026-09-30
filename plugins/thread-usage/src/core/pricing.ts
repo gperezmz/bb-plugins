@@ -6,7 +6,7 @@
  * then LiteLLM's public list (the fetched copy, or the bundled snapshot when
  * none was ever fetched), then models.dev.
  */
-import { z } from "zod";
+import * as z from "zod/mini";
 import type { Tokens } from "./tokens";
 
 /** Per-token rates for one model. Absent rates are unknown, not zero. */
@@ -80,25 +80,24 @@ export function fromLiteLlmEntry(entry: LiteLlmPriceEntry): ModelPrice | null {
 }
 
 /** Settings value "Price overrides and aliases": rates per million tokens. */
-export const priceOverridesSchema = z
-  .object({
-    aliases: z.record(z.string().min(1), z.string().min(1)).optional(),
-    prices: z
-      .record(
-        z.string().min(1),
-        z
-          .object({
-            input: z.number().nonnegative(),
-            output: z.number().nonnegative(),
-            cacheRead: z.number().nonnegative().optional(),
-            cacheWrite: z.number().nonnegative().optional(),
-            cacheWrite1h: z.number().nonnegative().optional(),
-          })
-          .strict(),
-      )
-      .optional(),
-  })
-  .strict();
+const nonEmpty = () => z.string().check(z.minLength(1));
+const rate = () => z.number().check(z.nonnegative());
+
+export const priceOverridesSchema = z.strictObject({
+  aliases: z.optional(z.record(nonEmpty(), nonEmpty())),
+  prices: z.optional(
+    z.record(
+      nonEmpty(),
+      z.strictObject({
+        input: rate(),
+        output: rate(),
+        cacheRead: z.optional(rate()),
+        cacheWrite: z.optional(rate()),
+        cacheWrite1h: z.optional(rate()),
+      }),
+    ),
+  ),
+});
 export type PriceOverrides = z.infer<typeof priceOverridesSchema>;
 
 export const EXAMPLE_OVERRIDES = `{
@@ -120,7 +119,7 @@ export function priceOverridesError(text: string): string | null {
     return null;
   } catch (error) {
     if (error instanceof SyntaxError) return `Not valid JSON: ${error.message}`;
-    if (error instanceof z.ZodError) {
+    if (error instanceof z.core.$ZodError) {
       const issue = error.issues[0];
       return `${issue?.path.join(".") || "value"}: ${issue?.message ?? "invalid"}`;
     }

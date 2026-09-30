@@ -1,12 +1,13 @@
 // Thread Usage backend entry. Wires bb's events, settings, storage and host
 // entry to the pure modules under src/core and the engine under src/server.
+import "./src/zod-locale";
 import {
   cliCommand,
   defineCli,
   PluginCliError,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import * as z from "zod/mini";
 import { attributionEnv } from "./src/core/headers";
 import { testConnection } from "./src/core/litellm";
 import { PriceBook } from "./src/core/pricing";
@@ -647,7 +648,9 @@ export default async function plugin(bb: BbPluginApi) {
     name: "thread_usage",
     description: "Cost and tokens of this thread plus every thread it spawned, with cost source and billing mode.",
     presentation: { label: { pending: "Checking thread usage", completed: "Checked thread usage" } },
-    parameters: z.object({}).strict(),
+    // The SDK types a validated tool's parameters as full zod, but takes any
+    // schema with safeParse and validates the call with it, as for full zod.
+    parameters: z.strictObject({}) as unknown as Record<string, unknown>,
     async execute(_args, { threadId }) {
       await readSettings();
       await engine.catchUp(threadId);
