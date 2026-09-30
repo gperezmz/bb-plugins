@@ -90,6 +90,8 @@ export interface Commands {
   /** The pointer is over this thread's row: bb's drag-to-split serves it. */
   pointAt(threadId: string): void;
   setSplitAvailable(available: boolean): void;
+  /** bb offers splits here now: Ctrl or Cmd+click opens one. */
+  splitAvailable(): boolean;
   reloadPlugin(): void;
 }
 
@@ -477,6 +479,7 @@ export function createCommands(store: ListStore): Commands {
     },
     pointAt: (threadId) => store.setUi({ probeId: threadId }),
     setSplitAvailable: (available) => store.setUi({ splitAvailable: available }),
+    splitAvailable: () => store.getState().ui.splitAvailable,
 
     reloadPlugin() {
       edge().sdk.plugins.reload({ pluginId: PLUGIN_ID }).catch(() => window.location.reload());

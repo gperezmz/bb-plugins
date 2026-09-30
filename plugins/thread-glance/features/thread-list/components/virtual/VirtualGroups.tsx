@@ -39,9 +39,24 @@ export function mountedByGroup(
   return result;
 }
 
-/** The kept rows' indices in `layout`, in order. */
-function keptIndexes(layout: ListItems, kept: KeptRows): number[] {
+/**
+ * How many thread rows at the top of the list bb's jump keys reach. bb 0.44
+ * gives them to the first mounted row links in DOM order and reads no
+ * spacer, so the main list keeps these rows mounted wherever it is scrolled.
+ */
+export const JUMP_ROWS = 9;
+
+/** The kept rows' indices in `layout`, in order, and the jump keys' rows where `jumps`. */
+function keptIndexes(layout: ListItems, kept: KeptRows, jumps: boolean): number[] {
   const indexes = new Set<number>();
+  if (jumps) {
+    for (let index = 0, found = 0; index < layout.items.length && found < JUMP_ROWS; index += 1) {
+      const item = layout.items[index]!;
+      if (item.kind !== "row" || item.row.type !== "thread") continue;
+      indexes.add(index);
+      found += 1;
+    }
+  }
   for (const id of kept.threadIds) for (const index of layout.indicesOf.get(id) ?? []) indexes.add(index);
   for (const key of kept.itemKeys) {
     const index = layout.indexOf.get(key);
@@ -84,7 +99,8 @@ export const VirtualGroups = memo(function VirtualGroups({
   const [, rerender] = useReducer((count: number) => count + 1, 0);
   const tracker = useRef<ViewTracker | null>(null);
   const mounted = useRef<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
-  const pinned = useMemo(() => keptIndexes(layout, kept), [layout, kept]);
+  // Threads in the More popover take no key.
+  const pinned = useMemo(() => keptIndexes(layout, kept, !inOverflow), [layout, kept, inOverflow]);
   const view = tracker.current?.view ?? null;
   // What this render mounted, which a view change must move for the list to render again.
   const drawn = useRef({ layout, key: "" });

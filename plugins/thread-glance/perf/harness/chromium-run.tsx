@@ -149,7 +149,10 @@ function windowCheck(frame: HTMLElement): { excess: number; missing: number } {
   const top = view.top - OVERSCAN;
   const bottom = view.bottom + OVERSCAN;
   let excess = 0;
+  // The first nine rows bb's jump keys reach stay mounted wherever the list is scrolled.
+  const jumps = new Set(anchors(frame).filter((anchor) => anchor.closest('[data-sidebar-overflow="true"]') === null).slice(0, 9));
   for (const anchor of anchors(frame)) {
+    if (jumps.has(anchor)) continue;
     const rect = anchor.getBoundingClientRect();
     if (rect.bottom < top || rect.top > bottom) excess += 1;
   }

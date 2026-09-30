@@ -11,7 +11,7 @@ import { noteText } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS } from "../model/time";
 import type { ThreadRow } from "../model/view";
-import { itemKeyOf, useCommands, useLayout, useProviderDisplay, useRow, useSplitAvailable } from "../store/hooks";
+import { itemKeyOf, useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
 import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { useOverlays } from "./overlays/overlays";
 import { menuTriggerProps } from "./overlays/trigger";
@@ -75,7 +75,6 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   const overlays = useOverlays();
   const { compact, density, harnessIcon } = useLayout();
   const { focused: isActive, editing, miniMap, hasDraft, rowStatus, menuOpen, dragging } = useRow(thread.id, groupId, row.key);
-  const splitAvailable = useSplitAvailable();
   const provider = useProviderDisplay(thread.providerId);
   const shortcut = useSidebarThreadShortcut(thread.id);
   const element = useRef<HTMLDivElement>(null);
@@ -111,7 +110,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
       event.preventDefault();
       return;
     }
-    if (splitAvailable && (event.metaKey || event.ctrlKey)) {
+    if ((event.metaKey || event.ctrlKey) && commands.splitAvailable()) {
       event.preventDefault();
       commands.menuAction("open-in-split", thread);
       return;

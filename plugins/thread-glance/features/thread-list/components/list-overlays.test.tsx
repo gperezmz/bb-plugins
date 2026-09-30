@@ -357,7 +357,8 @@ describe("keys on a row", () => {
 
   it("opens the thread and closes the phone drawer when the link is activated", async () => {
     const onNavigate = vi.fn();
-    render([makeThread({ id: "a", title: "Alpha" })], { props: { isCompactViewport: true, onNavigate } });
+    // Its own thread: two clicks on one thread within 400 ms, across tests, start a rename.
+    render([makeThread({ id: "entered", title: "Alpha" })], { props: { isCompactViewport: true, onNavigate } });
     const anchor = await link("Alpha");
     // A browser activates a focused link on Enter with a click.
     fireEvent.click(anchor);

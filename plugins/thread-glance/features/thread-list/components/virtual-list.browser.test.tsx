@@ -138,6 +138,9 @@ describe("scrolling a windowed list", () => {
       await frames();
       await frames();
       expect(walk(), `at ${top}`).toEqual(full);
+      // bb's jump keys read only mounted row links, the first nine in DOM order.
+      const jumps = [...document.querySelectorAll<HTMLElement>("[data-sidebar-thread-shortcut-target]")].slice(0, 9).map((anchor) => anchor.dataset.sidebarThreadId);
+      expect(jumps, `keys 1–9 at ${top}`).toEqual(full.slice(0, 9));
       expect(document.querySelectorAll("[data-sidebar-windowed-nav]").length, `at ${top}`).toBeGreaterThan(0);
     }
   });
@@ -176,30 +179,31 @@ describe("scrolling a windowed list", () => {
 
   it("keeps the focused thread's row, the row renamed with its text and focus, and the row holding keyboard focus mounted however far it scrolls", async () => {
     await render(many(200), { height: 500, listProps: { activeThreadId: "t1" } });
-    fireEvent.doubleClick(anchorOf("t2")!);
+    // Rows past the nine bb's jump keys keep mounted anyway.
+    fireEvent.doubleClick(anchorOf("t24")!);
     const editor = await screen.findByRole("textbox", { name: "Thread name" });
     await userEvent.fill(editor, "Renamed");
     window.scrollTo(0, document.documentElement.scrollHeight);
     await frames();
     await frames();
-    expect(anchorOf("t150")).toBeNull();
+    expect(anchorOf("t40")).toBeNull();
     expect(anchorOf("t1")).not.toBeNull();
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Thread name" }).value).toBe("Renamed");
     expect(document.activeElement).toBe(editor);
     await userEvent.keyboard("{Escape}");
     window.scrollTo(0, 0);
     await frames();
-    anchorOf("t6")!.focus();
+    anchorOf("t26")!.focus();
     window.scrollTo(0, document.documentElement.scrollHeight);
     await frames();
     await frames();
-    expect(anchorOf("t8")).toBeNull();
-    expect(document.activeElement).toBe(anchorOf("t6"));
+    expect(anchorOf("t40")).toBeNull();
+    expect(document.activeElement).toBe(anchorOf("t26"));
   });
 
   it("keeps the row an open menu belongs to mounted, with the menu anchored to it", async () => {
     await render(many(200), { height: 500 });
-    const row = anchorOf("t4")!.parentElement!;
+    const row = anchorOf("t28")!.parentElement!;
     const trigger = within(row).getByRole("button", { name: "Thread actions" });
     trigger.focus();
     await userEvent.keyboard("{Enter}");
@@ -208,7 +212,8 @@ describe("scrolling a windowed list", () => {
     await frames();
     await frames();
     await sleep(50);
-    expect(anchorOf("t4")).not.toBeNull();
+    expect(anchorOf("t28")).not.toBeNull();
+    expect(anchorOf("t40")).toBeNull();
     const button = trigger.getBoundingClientRect();
     const content = menu.getBoundingClientRect();
     // Radix places it below or above its anchor, 4 px off.
@@ -217,25 +222,27 @@ describe("scrolling a windowed list", () => {
   });
 
   it("keeps the dragged row mounted while the list scrolls, and the drag goes on to its drop", async () => {
-    const slot = await render(many(200), { height: 500 });
-    const row = anchorOf("t0")!.parentElement!;
-    const target = anchorOf("t4")!.parentElement!;
+    // Tall enough that the target sits clear of dnd-kit's auto-scroll edge.
+    const slot = await render(many(200), { height: 900 });
+    const row = anchorOf("t22")!.parentElement!;
+    const target = anchorOf("t26")!.parentElement!;
     await drag(center(row), center(target), async () => {
       expect(row.className).toMatch(/opacity-50/);
       window.scrollTo(0, 4_000);
       await frames();
       await frames();
-      expect(anchorOf("t0")).not.toBeNull();
+      expect(anchorOf("t22")).not.toBeNull();
+      expect(anchorOf("t40")).toBeNull();
       window.scrollTo(0, 0);
       await frames();
       await frames();
       // Scrolled away and back, the target row is mounted afresh.
-      const again = anchorOf("t4")!.parentElement!;
+      const again = anchorOf("t26")!.parentElement!;
       await mouse("mouseMoved", center(again).x, center(again).y + 1);
       await frames();
     });
     await waitFor(() =>
-      expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.update", args: [{ threadId: "t0", parentThreadId: "t4" }] })),
+      expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.update", args: [{ threadId: "t22", parentThreadId: "t26" }] })),
     );
   });
 });
