@@ -1,4 +1,5 @@
 // What the Chromium run reports, per generated list.
+import type { ScriptAttribution } from "./cpu-profile";
 
 /** Interaction to Next Paint for one interaction, at 1× and 4× CPU slowdown, in ms. */
 export interface InpFigure {
@@ -54,6 +55,6 @@ export interface ChromiumFigures {
 
 export interface MarkAllReadTiming {
   inp: InpFigure;
-  /** Main-thread time from the click to the last `setRead` answer, in ms. */
-  mainThreadMs: number;
+  /** Script time from the click to the last `threads.markRead` answer, at 1×, by whose it was. */
+  script: ScriptAttribution;
 }

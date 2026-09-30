@@ -691,8 +691,8 @@ export const LEDGER: readonly LedgerRow[] = [
       if (chromium === undefined) return NOT_MEASURED;
       const inp = inpReading(chromium.inp);
       return {
-        figure: `INP ${inp.figure}, main thread ${ms(chromium.mainThreadMs)}`,
-        pass: inp.pass === null ? null : inp.pass && chromium.mainThreadMs < 200,
+        figure: `INP ${inp.figure}, plugin main thread ${ms(chromium.script.pluginMs)} (fake bb ${ms(chromium.script.fakeHostMs)}, rest ${ms(chromium.script.restMs)})`,
+        pass: inp.pass === null ? null : inp.pass && chromium.script.pluginMs < 200,
       };
     },
   },
