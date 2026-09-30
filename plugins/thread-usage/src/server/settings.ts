@@ -4,7 +4,7 @@
  * read key included) takes effect at once.
  */
 import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
-import { z } from "zod";
+import * as z from "zod/mini";
 import type { BillingSetting } from "../core/attribution";
 import { extraHeadersError } from "../core/headers";
 import { EXAMPLE_OVERRIDES, parsePriceOverrides, priceOverridesError, type PriceOverrides } from "../core/pricing";
@@ -27,7 +27,7 @@ export const SETTINGS = {
     default: "",
     experimental_schema: z
       .string()
-      .refine((v) => v.trim() === "" || /^https?:\/\/[^\s]+$/.test(v.trim()), "Must be an http(s) URL"),
+      .check(z.refine((v) => v.trim() === "" || /^https?:\/\/[^\s]+$/.test(v.trim()), "Must be an http(s) URL")),
   },
   readKey: {
     type: "string",
@@ -43,10 +43,12 @@ export const SETTINGS = {
       "Headers merged into ANTHROPIC_CUSTOM_HEADERS, one \"Name: Value\" per line. The plugin's value replaces the shell's, so list any you already set. Auth headers are refused: bb shows these values in the timeline.",
     experimental_multiline: true,
     default: "",
-    experimental_schema: z.string().superRefine((v, ctx) => {
-      const error = extraHeadersError(v);
-      if (error !== null) ctx.addIssue({ code: "custom", message: error });
-    }),
+    experimental_schema: z.string().check(
+      z.superRefine((v, ctx) => {
+        const error = extraHeadersError(v);
+        if (error !== null) ctx.addIssue({ code: "custom", message: error });
+      }),
+    ),
   },
   priceOverrides: {
     type: "string",
@@ -54,10 +56,12 @@ export const SETTINGS = {
     description: `JSON. Prices are USD per million tokens and beat the gateway's and the snapshot's. Aliases apply first. Example: ${EXAMPLE_OVERRIDES.replace(/\s+/g, " ")}`,
     experimental_multiline: true,
     default: "",
-    experimental_schema: z.string().superRefine((v, ctx) => {
-      const error = priceOverridesError(v);
-      if (error !== null) ctx.addIssue({ code: "custom", message: error });
-    }),
+    experimental_schema: z.string().check(
+      z.superRefine((v, ctx) => {
+        const error = priceOverridesError(v);
+        if (error !== null) ctx.addIssue({ code: "custom", message: error });
+      }),
+    ),
   },
   refreshPrices: {
     type: "boolean",
@@ -109,14 +113,14 @@ export const SETTINGS = {
     label: "Warn above",
     description: "Tint the header icon and show one toast when a thread tree's billed total crosses this amount. 0 turns it off.",
     default: 0,
-    experimental_schema: z.number().min(0),
+    experimental_schema: z.number().check(z.minimum(0)),
   },
   currency: {
     type: "string",
     label: "Currency label",
     description: "Figures are USD; change the label for internal chargeback (e.g. \"USD\" or \"credits\").",
     default: "$",
-    experimental_schema: z.string().refine((v) => v.trim().length >= 1 && v.trim().length <= 12, "1 to 12 characters"),
+    experimental_schema: z.string().check(z.refine((v) => v.trim().length >= 1 && v.trim().length <= 12, "1 to 12 characters")),
   },
 } satisfies PluginSettingDescriptors;
 
