@@ -59,7 +59,14 @@ window at once; Density and Branch line are kept per browser.
 ## Driving it with drive-bb-plugins
 
 Preconditions: `drive-bb-plugins start thread-glance`. Threads come from
-`drive-bb-plugins spawn`.
+`drive-bb-plugins seed` with a shape file (the skill's
+[Seeding](../SKILL.md#seeding)); only a thread working, failed or running a
+background command takes `drive-bb-plugins spawn` and its flag. A recipe
+over a long list (`rows`, `scroll`, archived, `away`, `live`) starts from
+`start --fixture user-800 thread-glance`, the user's 802 threads with 104
+live, saved once per bb version from
+[`shapes/user-800.json`](../shapes/user-800.json) with `seed` and `save`
+where `fixtures` does not list it.
 
 Every UI step is a verb, `drive-bb-plugins thread-glance --run <run> <verb>`,
 which prints JSON: `before` and `after` the action, `stored` (what bb or the
@@ -73,16 +80,18 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   true; `drive-bb-plugins bb thread-glance.list/cli -- settings ui get sidebar.threadListProvider`
   prints `"__automatic__"`. `list --wait <title>` waits for a row, `list
   --open <title>` opens a row on screen (a child only under an open chip).
-- **A tree in every state**:
-  `P=$(drive-bb-plugins spawn thread-glance.children/spawn parent hi)`, then
-  under it `spawn … child hi "$P"` and `spawn … busy hi "$P" --hold 60`
-  (`Working` for 60 s): `list` shows `Show 2 child threads of parent, working
-  below`. Then `spawn … broken hi "$P" --fail` (`Failed`) turns it to `Show 3
-  child threads of parent, failed below`, since the chip names its
-  highest-ranked state. Beside it, `spawn … deployer "Start the deploy."
-  --background` shows `Background command running` until
-  `drive-bb-plugins release <id>`; `needYou.count` is then 2.
-- **Children** (`children`): `thread-glance children parent expand
+- **A tree in every state**: `seed` a shape of
+  `{"trees": [{"count": 1, "children": 1, "title": "parent"}]}`, which makes
+  `parent 1` and its child `parent 1.1`; `P` is `parent 1`'s id from
+  `seed.json`. Under it `spawn thread-glance.children/spawn busy hi "$P"
+  --hold 60` (`Working` for 60 s): `list` shows `Show 2 child threads of
+  parent 1, working below`. Then `spawn … broken hi "$P" --fail` (`Failed`)
+  turns it to `Show 3 child threads of parent 1, failed below`, since the chip
+  names its highest-ranked state; `parent 1` stays `pending` and runs no
+  turn. Beside it, `spawn … deployer "Start the deploy." --background` shows
+  `Background command running` until `drive-bb-plugins release <id>`;
+  once `busy`'s turn has ended, `needYou.count` is 2 more than before.
+- **Children** (`children`): `thread-glance children "parent 1" expand
   --second-window --reload` turns the chip to `Collapse …`, lists every child
   under `after.children`, `stored.holdsParent` true (`prefs get
   expandedChildren` holds `$P`), and both `secondWindow.followed` and

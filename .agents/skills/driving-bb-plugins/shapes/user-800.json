@@ -1,0 +1,10 @@
+{
+  "trees": [
+    { "count": 139, "children": 4, "archived": true },
+    { "count": 3, "archived": true },
+    { "count": 50 },
+    { "count": 10, "children": 2 },
+    { "count": 4, "children": 3 }
+  ],
+  "states": { "failed": 2, "finished": 3, "unread": 3 }
+}

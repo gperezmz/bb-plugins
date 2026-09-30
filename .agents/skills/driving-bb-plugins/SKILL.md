@@ -18,11 +18,12 @@ the repository root.
 ## Launch
 
 ```bash
-.agents/skills/driving-bb-plugins/drive-bb-plugins start <plugin>...
+.agents/skills/driving-bb-plugins/drive-bb-plugins start [--fixture <name>] <plugin>...
 ```
 
 `<plugin>` is a directory name under `plugins/`: the one under test, plus any
-the feature file's preconditions name. Ready is the command exiting 0 after
+the feature file's preconditions name. `--fixture` starts the run on a copy
+of a saved bb, threads and all ([Fixtures](#fixtures)). Ready is the command exiting 0 after
 printing `run`, `web UI`, `project` and `evidence`, in about 10 seconds, or
 a minute more in a fresh checkout, where it runs `npm ci` in
 `plugins/thread-glance` for Playwright and in each plugin started that has
@@ -121,23 +122,79 @@ ordinary turn never reaches:
 
 At most `DBP_MAX_SESSIONS` (default 4, fixed at `start`) `spawn`s of a run
 hold a session at once, and the rest wait for a slot; bb's own
-`concurrency-limit global` is set to the same number. `spawn` is the only way to make a thread in a run: the `bb` command
-refuses `thread spawn`.
+`concurrency-limit global` is set to the same number. Threads are made by
+`spawn` and `seed` only: the `bb` command refuses `thread spawn`. A `bb thread
+tell` to many threads goes through a bounded pool such as `xargs -P
+<sessions>`, each followed by `bb thread stop` once `bb thread wait <id>
+--status idle` returns.
 
-**Many threads** (a list, a sidebar, a performance audit): seed them through
-`spawn`, from a file of titles, with parallelism no wider than the run's
-session cap:
+### Seeding
+
+More than a few threads (a list, a sidebar, a performance audit) come from
+`seed` and a shape file, never from `spawn` one by one:
 
 ```bash
-xargs -a titles.txt -d '\n' -P 4 -I{} \
-  .agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> seed/spawn {} hi
+.agents/skills/driving-bb-plugins/drive-bb-plugins seed --run <run> <shape.json>
 ```
 
-Each thread holds a session only for its turn, so a run seeds 40 threads in
-about 30 seconds and 300 in a few minutes on its default cap. Start every
-thread's `spawn` in a bounded pool such as `xargs -P`, never one `&` per
-thread; a `bb thread tell` to many threads is sent the same way, each
-followed by `bb thread stop` once `bb thread wait <id> --status idle` returns.
+A shape declares tree groups and a few threads in each state a drive needs;
+[`shapes/user-800.json`](shapes/user-800.json) is the user's own bb, 802
+threads with 104 live, seeded in about 20 seconds:
+
+```json
+{
+  "trees": [
+    { "count": 139, "children": 4, "archived": true },
+    { "count": 10, "children": 2, "section": "Reviews", "title": "review" }
+  ],
+  "states": { "failed": 2, "finished": 3, "unread": 3 }
+}
+```
+
+- `trees`: each group is `count` root threads with `children` child threads
+  each (default 0), in section `section` when it names one (made if the run
+  has none of that name), and archived, children too, when `archived` is
+  true. Roots are titled `<title> <n>` (`title` defaults
+  to `quiet`, or `archived`), children `<title> <n>.<k>`. These are **quiet
+  threads**: made over bb's HTTP API with no turn, they read `pending` in bb
+  and draw as a read `Idle` row finished when it was made, which settles like
+  any other; their hover card has no Last reply, Branch or Finished and
+  Model reads `Unknown`. A quiet thread has never run, so a drive that tells a
+  thread or reads its reply uses a `finished` one.
+- `states`: how many threads, titled `<state> <n>`, in each state only a turn
+  or a fork makes. `finished` and `unread` are forks of one real turn, `Idle`
+  read and `Unread`; `failed`, `working` (for `hold` seconds, default 600) and
+  `background` each run a real turn, as `spawn`'s flags do. Working and
+  background threads each hold a session slot, a working one until its turn
+  ends, so together they fit in the slots free when `seed` starts.
+
+Titles number on past the ones the run already has, so a second `seed` adds
+threads beside the first's. `seed` prints what it made and writes every id,
+by title, to `seed.json` in the evidence. A real-turn child spawned under a
+quiet parent leaves the parent `pending`, with no turn and no wake.
+
+### Fixtures
+
+A seeded bb is saved once per bb version and started from as often as
+wanted:
+
+```bash
+.agents/skills/driving-bb-plugins/drive-bb-plugins save --run <run> <name>
+.agents/skills/driving-bb-plugins/drive-bb-plugins fixtures
+.agents/skills/driving-bb-plugins/drive-bb-plugins start --fixture <name> [<plugin>...]
+```
+
+`save` stops the run, as `stop` does, and keeps its bb data directory, the
+project's repository and Claude Code's sessions as fixture `<name>` of the bb
+on `PATH`, in `$DBP_FIXTURE_ROOT` (default
+`~/.cache/drive-bb-plugins/fixtures`), shared by every checkout; it replaces
+a fixture of that name. It refuses while a thread is working or a
+`--background` thread is unreleased, since a saved bb loses both: seed those
+on the restored run. `start --fixture` copies the fixture into the run's own
+scratch, points every path it saved at that scratch, reinstalls the plugins
+named (or the fixture's) from this checkout and uninstalls any other it
+saved, in about 7 seconds for 802 threads. Any number of runs start from one
+fixture at once; a `save` over it waits until their copies are done. `fixtures` lists the bb version's fixtures.
 
 The machine the run's threads work on goes away and comes back with
 `drive-bb-plugins machine --run <run> offline|online`. Offline stops the
@@ -230,6 +287,7 @@ verify the settings screen that writes it.
   `result.json`;
 - after `stop`: `plugin-<id>.log`, `server.log`, `host-daemon.log`,
   `fake-anthropic.log` and `requests.jsonl`;
+- `seed.json`: the last `seed`'s threads, by title and id;
 - `pids`, `launch-pids`, `run.env` and `env.sh`: the handles `stop` kills by
   and the run's settings, its ports and scope included;
 - `slots/`: the locks `spawn` holds its session slots by, and `kept`: each
@@ -259,8 +317,11 @@ ps -p "$(paste -sd, - < .drives/<run>/pids)"
 
 ## Helpers
 
-- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|release|machine|<plugin>|ui|stop`:
+- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|seed|release|machine|<plugin>|ui|stop|save|fixtures`:
   the harness above. Run with no arguments, it prints its usage.
+- `.agents/skills/driving-bb-plugins/seed.mjs`: what `seed` runs for quiet
+  threads; not called directly.
+- `.agents/skills/driving-bb-plugins/shapes/`: shapes to seed from.
 - `.agents/skills/driving-bb-plugins/verbs/<plugin>.mjs`: a plugin's verbs.
 - `.agents/skills/driving-bb-plugins/browser.mjs`: what `ui` and the verbs
   run; not called directly.
