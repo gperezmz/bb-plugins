@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The ledger's deterministic rows over the live lists at 50, 300 and 1,500
-// threads, and the fake host's requests at 300: `npm test` fails when an
-// enforcing one is missed (perf/ledger.ts). `npm run perf` takes them all.
+// threads, and the fake host's requests at 300: `npm test` fails when a
+// row is missed (perf/ledger.ts). `npm run perf` takes them all.
 import "./harness/render-counter";
 import { afterEach, expect, it } from "vitest";
 import { cleanup } from "@testing-library/react";
@@ -16,7 +16,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("holds the enforcing deterministic budgets on the live lists", async () => {
+it("holds the deterministic budgets on the live lists", async () => {
   const figures = emptyFigures();
   for (const size of SIZES) {
     figures.jsdom[`${size}/live`] = await runJsdom(generateList({ size, kind: "live" }));

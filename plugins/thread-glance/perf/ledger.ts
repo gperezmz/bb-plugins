@@ -1,18 +1,10 @@
-// The budget ledger of the Thread Glance list rewrite (#145–#154, and #159,
-// which replaces the list's render path): every
-// budget of the rewrite, one row each. Nothing else holds a budget; a slice
-// names the ids it switches on.
-//
-// A row is enforcing while its `enforcing` field is true: the run that
-// measures it then fails when the row's threshold is missed. The slice named
-// in "Switched on by" sets it to true in the same change that makes the row
-// hold; the column itself only documents who does. Rows of #145 and of #146
-// and #147, which merged before the ledger existed, start true, except B1,
-// which B2 retired. Rows of kind "deterministic" (render counts, rows
-// mounted, requests, signals, writes, bundle size) run in `npm test`, and so
-// in CI. Rows of kind "timing" (INP, milliseconds, heap) run in `npm run
-// perf`, outside CI: each slice records their output in its pull request, and
-// a figure over its threshold blocks the merge as a failing check would. A
+// The budget ledger of the Thread Glance list: every performance budget the
+// list holds, one row each. Nothing else holds a budget, and every row
+// enforces: the run that measures a row fails when its threshold is missed.
+// Rows of kind "deterministic" (render counts, rows mounted, requests,
+// signals, writes, bundle size) run in `npm test`, and so in CI. Rows of kind
+// "timing" (INP, milliseconds, heap) run in `npm run perf`, outside CI, and a
+// change that touches the list records their output in its pull request. A
 // row of kind "both" has a part of each, taken by the run of each.
 //
 // Terms the rows use:
@@ -29,13 +21,12 @@
 //   on, where read thread trees sit behind their Settled fold;
 // - MAR list: the Mark all read list, 1,500 threads with 443 unread;
 // - real drive: a drive of real bb threads with the driving-bb-plugins
-//   skill (a slice's short drive of about 50, or #154's release drive of
-//   about 800).
+//   skill, which takes the rows its `timings` recipes name at its own size.
 // "Measured by" is the synthetic harness at the sizes it names, 1,500
 // included; any figure a real drive takes for a row is measured at that
 // drive's size, not at 1,500.
 //
-// Settled for every slice, so no slice re-decides them:
+// How the rows read what they measure:
 // - In jsdom, which lays nothing out, a thread "off screen" is a child thread
 //   behind its closed children chip, which has no row mounted. In Chromium it
 //   is a thread scrolled out of view.
@@ -45,10 +36,6 @@
 //   (`data-sidebar-thread-id`) runs; group headers and the list header
 //   likewise by `data-sidebar="group-label"` and `data-sidebar="list-header"`
 //   (perf/harness/render-counter.ts).
-// - A figure the harness cannot reproduce on the code it runs against is
-//   reported as measured, never tuned until it shows. Where that figure is
-//   one of the defects #145's acceptance criteria expect on 0.7.0, that part
-//   of the criterion stands as not met in #145's pull request.
 import type { Cell, Figures } from "./figures";
 import { CELLS } from "./figures";
 import type { InpFigure } from "./harness/chromium-figures";
@@ -69,12 +56,6 @@ export interface LedgerRow {
   baseline: string;
   measuredBy: string;
   kind: Kind;
-  /** The slice that switches the row on, by setting `enforcing`. */
-  switchedOnBy: number;
-  /** Whether a missed threshold fails the run. */
-  enforcing: boolean;
-  /** The row that took this one's place, when it was retired. */
-  retiredBy?: string;
   read(figures: Figures): Reading;
 }
 
@@ -187,26 +168,12 @@ function bundleReading({ bundle }: Figures, rawKb: number, gzipKb: number): Read
 
 export const LEDGER: readonly LedgerRow[] = [
   {
-    id: "B1",
-    bounds: "`app.js` size before #146",
-    threshold: "≤ 560 KB raw and ≤ 165 KB gzip",
-    baseline: "511 KB / 149 KB",
-    measuredBy: "bundle check (`bb plugin build`, KB = 1,000 bytes), in `npm test`",
-    kind: "deterministic",
-    switchedOnBy: 145,
-    enforcing: false,
-    retiredBy: "B2",
-    read: (figures) => bundleReading(figures, 560, 165),
-  },
-  {
     id: "B2",
     bounds: "`app.js` size",
     threshold: "≤ 250 KB raw and ≤ 80 KB gzip",
     baseline: "511 KB / 149 KB",
     measuredBy: "bundle check (`bb plugin build`, KB = 1,000 bytes), in `npm test`",
     kind: "deterministic",
-    switchedOnBy: 146,
-    enforcing: true,
     read: (figures) => bundleReading(figures, 250, 80),
   },
   {
@@ -218,8 +185,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "jsdom, 50/300/1,500, live and settled: events `update on screen`, `update off screen`, `stamp signal`, `note signal`, `read change`",
     kind: "deterministic",
-    switchedOnBy: 148,
-    enforcing: true,
     // A thread off screen has no row to render; its parent's children chip may change.
     read: (figures) =>
       events(["update on screen", "update off screen", "stamp signal", "note signal", "read change"], (event, name) =>
@@ -234,8 +199,6 @@ export const LEDGER: readonly LedgerRow[] = [
       "110–134 ms (0.7.0). After #148's list store, worst of the four events per cell, one sample each: 50/live 6 ms, 50/settled 3 ms, 300/live 13 ms, 300/settled 4 ms, 1500/live 13 ms, 1500/settled 10 ms; other runs of the same code put 1500/live at 20–21 ms and 1500/settled at 18 ms",
     measuredBy: "Chromium, 1,500, live and settled (production React; script time through the DevTools protocol)",
     kind: "timing",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => {
         const worst = Math.max(...Object.values(figure.eventJsMs));
@@ -250,8 +213,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "jsdom with fake timers, 1,500, against labels computed from the generated threads (a list mounted fresh at the later clock)",
     kind: "deterministic",
-    switchedOnBy: 148,
-    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(AT_1500, (cell) => jsdom[cell], ({ minuteTick: tick }) => ({
         figure: `${tick.rendered} rendered for ${tick.expected} changed (${tick.extra} extra, ${tick.missed} missed), ${tick.hidden} while hidden`,
@@ -266,8 +227,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "every mounted row",
     measuredBy: "jsdom with the fake host: events `new actions`, `new onNavigate`, `equal providers`",
     kind: "deterministic",
-    switchedOnBy: 148,
-    enforcing: true,
     read: (figures) =>
       events(["new actions", "new onNavigate", "equal providers"], (event) => ({
         figure: `${event.distinctRows} rows`,
@@ -281,8 +240,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "every mounted row",
     measuredBy: "jsdom: event `split layout`",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: (figures) => events(["split layout"], changedOnly)(figures),
   },
   {
@@ -292,8 +249,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "every mounted row per move",
     measuredBy: "jsdom: 50 changes of the store's drop feedback with dnd-kit's state held constant (the `dropFeedback` figures)",
     kind: "deterministic",
-    switchedOnBy: 148,
-    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(CELLS, (cell) => jsdom[cell], ({ dropFeedback: feedback }) => ({
         figure: `up to ${feedback.maxRowsOnChange} rows per change of target, ${feedback.rowsOnUnchanged} on unchanged steps`,
@@ -304,18 +259,13 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B9",
     bounds: "All renders over 50 drag moves",
     threshold:
-      "no thread row apart from the dragged row, once when the drag starts and once when it ends; feedback drawn only where the target changes. Under #159's fallback (a draggable per mounted row): no thread row renders on a move that leaves the target unchanged, and at most the mounted rows once per change of target",
+      "no thread row apart from the dragged row, once when the drag starts and once when it ends; feedback drawn only where the target changes",
     baseline: "every mounted row per move",
     measuredBy: "jsdom: 50 drag moves over rows (the `drag` figures)",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(CELLS, (cell) => jsdom[cell], ({ drag }) => ({
         figure: `${drag.otherRows} renders of other rows over ${drag.moves} moves (${drag.rowsOnUnchanged} on unchanged moves, up to ${drag.maxRowsOnChange} per change, ${drag.targetChanges} changes of target)`,
-        // One draggable for the list: the first threshold. The fallback's
-        // (a draggable per mounted row) would read `rowsOnUnchanged === 0
-        // && maxRowsOnChange <= mountedRows`.
         pass: drag.otherRows === 0 && drag.targetChanges > 0,
       })),
   },
@@ -324,13 +274,11 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds:
       'Rows mounted, however scrolled and after any group, children chip, "N more child threads", environment or Settled fold opens or closes',
     threshold:
-      "exactly the rows intersecting the view extended 240 px above and below, plus the rows that must stay mounted (#159), plus each group's header",
+      "exactly the rows intersecting the view extended 240 px above and below, plus the rows that must stay mounted, plus each group's header",
     baseline: "most rows",
     measuredBy:
       "Chromium, 1,500, mounted anchors against computed positions. The rows that must stay mounted include the first nine thread rows, which bb 0.44's jump keys reach among mounted rows only",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ window }) => ({
         figure: `${window.excess} rows mounted outside, ${window.missing} missing inside, over ${window.checks} checks`,
@@ -343,10 +291,8 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 100 ms at 1× CPU, < 200 ms at 4×",
     baseline: "416 / 384 / 376 ms; 1.7 s at 4×",
     measuredBy:
-      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. On 0.7.0 the harness puts a group's and a children chip's INP at 96–120 ms, on either side of 100 ms, where the audit measured about 400 ms in bb: those two rest on #159's real drive, which switches the row on",
+      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. A real drive takes the group's and a children chip's (`perf-open`), since on 0.7.0 the harness put them at 96–120 ms where bb measured about 400 ms",
     kind: "timing",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ inp }) => {
         const readings = [
@@ -367,10 +313,8 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 300 ms",
     baseline: "2.2 s",
     measuredBy:
-      "Chromium, 1,500 (production React). On 0.7.0 the harness puts it at about 0.6 s, where the audit measured 2.2 s in bb, so the row rests on #159's real drive, which switches it on",
+      "Chromium, 1,500 (production React). A real drive takes it too (`perf-return`), since on 0.7.0 the harness put it at about 0.6 s where bb measured 2.2 s",
     kind: "timing",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => ({
         figure: ms(figure.remountToFirstRowMs),
@@ -384,10 +328,8 @@ export const LEDGER: readonly LedgerRow[] = [
       "JS heap < 0.5 MB in total; IntersectionObserver and ResizeObserver counts back to first-mount values; plugin-held detached nodes not growing",
     baseline: "+1.3 MB, +8 observers, +5.5k nodes per cycle",
     measuredBy:
-      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #159's real drive, which switches it on. That drive (50 threads, 10 returns from bb's Settings) read observers and detached nodes flat and the page's heap +3.8 MB, which is bb's: bb's own list grew it +5.3 MB over the same returns, so the heap part is read in the harness",
+      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). A real drive takes the observers and detached nodes too (`perf-return`, 10 returns from bb's Settings). Its heap figure is the page's and depends on bb, not on Thread Glance: on a 50-thread drive the page's heap grew +3.8 MB with Thread Glance and +5.3 MB with bb's own list over the same returns, so the heap part is read in the harness only",
     kind: "timing",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ cycles }) => {
         const grew = (series: number[], from = 0) => series.length > from + 1 && series.at(-1)! > series[from]!;
@@ -398,8 +340,8 @@ export const LEDGER: readonly LedgerRow[] = [
             !grew(cycles.intersectionObservers) &&
             !grew(cycles.resizeObservers) &&
             // Growing, not a step: the test runtime keeps the empty container
-            // each list mounted in (one per mount, on #159's merge base as on
-            // its head), which the first remount adds, and the count holds from there.
+            // each list mounted in, which the first remount adds, and the
+            // count holds from there.
             !grew(cycles.detachedNodes, 1),
         };
       }),
@@ -412,8 +354,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "255 rows remounted",
     measuredBy: "jsdom, 1,500: events `new thread`, `thread moves`",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: (figures) => events(["new thread", "thread moves"], changedOnly)(figures, AT_1500),
   },
   {
@@ -424,8 +364,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "Chromium at 390×844, 1,500. Closed: the list in a 390×844 drawer moved off-canvas with `translateX(-100%)`. Open: the drawer on screen, scrolled. The closed count is deterministic, the frames timing",
     kind: "both",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ phone }) => {
         const fit = Math.ceil(480 / Math.max(phone.rowHeightPx, 1));
@@ -443,8 +381,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "Chromium, 1,500 (production React). Scroll is from setting the scroll position to the first frame after a row lands fully in view, so it is never under one frame (about 17 ms)",
     kind: "timing",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(["1500/live"], (cell) => chromium[cell], (figure) => {
         const limit = B16_BASELINE["1500/live"].mount / 2;
@@ -461,8 +397,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "that row (per-row hook)",
     measuredBy: "jsdom: events `draft change`, `row status change`",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: (figures) =>
       events(["draft change", "row status change"], (event) => {
         const others = event.rowIds === null ? event.distinctRows : event.rowIds.filter((id) => id !== event.threadId).length;
@@ -473,13 +407,11 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B18",
     bounds: "bb hooks per mounted row",
     threshold:
-      "only `useSidebarThreadShortcut` (plus a pull request badge's lookup); `experimental_useSidebarThreadSplit` once per list, unless #159's PR records the drive step that failed with one call per list and passed with one per row",
+      "only `useSidebarThreadShortcut` (plus a pull request badge's lookup); `experimental_useSidebarThreadSplit` once per list",
     baseline: "five per row",
     measuredBy:
       "fake host call counts over one mount. `experimental_useSidebarThreadSplit` counts as once per list while its calls over the mount stay at 2 or fewer, the list's own renders, whatever the number of rows",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ hooksPerRow, hookCalls }) => {
         const split = "experimental_useSidebarThreadSplit";
@@ -503,8 +435,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "about 4 providers per row",
     measuredBy: "jsdom, counting the third-party menu primitives' instances (Radix roots by their `<Root>Provider`)",
     kind: "deterministic",
-    switchedOnBy: 159,
-    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(CELLS, (cell) => jsdom[cell], ({ menuPrimitives: counts }) => ({
         figure: Object.entries(counts)
@@ -522,8 +452,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "8",
     measuredBy: "fake host",
     kind: "deterministic",
-    switchedOnBy: 149,
-    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ remount, remountWithOverlay }) => {
         const besides = (requests: typeof remount, allowed: readonly string[]) =>
@@ -550,8 +478,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "8",
     measuredBy: "fake host (a first load on a device that never got an import answer)",
     kind: "deterministic",
-    switchedOnBy: 149,
-    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ firstLoad }) => {
         const counted = Object.entries(firstLoad.rpc)
@@ -569,8 +495,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "0",
     measuredBy: "fake host with a fake clock, one to three windows",
     kind: "deterministic",
-    switchedOnBy: 145,
-    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ idle }) => {
         const total = Object.values(idle).reduce((sum, requests) => sum + requests.rpcTotal + requests.bbTotal, 0);
@@ -589,8 +513,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "up to 3 `stamps` + 1 `notes` per turn",
     measuredBy: "`server.test`; jsdom. Here: the plugin server on bb's fake plugin host",
     kind: "deterministic",
-    switchedOnBy: 149,
-    enforcing: true,
     read: ({ server }) => {
       if (server === undefined) return NOT_MEASURED;
       const counts = Object.entries(server.signalsPerEvent);
@@ -608,8 +530,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "`server.test`. Here: the plugin server on bb's fake plugin host, every thread of the 1,500-thread generated list stamped and noted and a tenth of them archived",
     kind: "deterministic",
-    switchedOnBy: 149,
-    enforcing: true,
     read: ({ server }) => {
       if (server === undefined) return NOT_MEASURED;
       const payload = server.syncPayload;
@@ -634,8 +554,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "The `sync` handler, from the request to its answer object, cold after a restart, over 5,000 stored threads in the plugin's own SQLite database: `server.test`'s \"cold read benchmark\", which prints its figures, and `npm run perf` on bb's fake plugin host. The host's whole call, with its checks of the answer and its JSON, is recorded beside it for information and is not held to the threshold",
     kind: "timing",
-    switchedOnBy: 149,
-    enforcing: true,
     read: ({ server }) =>
       server === undefined
         ? NOT_MEASURED
@@ -647,13 +565,11 @@ export const LEDGER: readonly LedgerRow[] = [
   {
     id: "B26",
     bounds: "`idleAt` writes per busy-to-idle transition",
-    threshold: "one store and one signal, whatever the number of windows; no window request (apart from #147's missed-event case)",
+    threshold: "one store and one signal, whatever the number of windows; no window request, apart from a change to idle bb sends the server no event for",
     baseline: "one write per window",
     measuredBy:
       "`server.test` (the store and the signal: \"records a thread going idle once\", from #147); fake host with 3 windows (window requests, `reportIdle` or 0.7.0's `markIdle`, when a turn ends, which bb announces)",
     kind: "deterministic",
-    switchedOnBy: 147,
-    enforcing: true,
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ idleAtWritesPerTransition: writes }) => ({
         figure: `${writes} window requests with 3 windows`,
@@ -668,8 +584,6 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "jsdom, MAR list, fake `threads.markRead` taking 50 ms. A list commit is one that renders a row, a group header or the list header: the list's edge renders on every update bb sends and draws nothing, so it is not counted",
     kind: "deterministic",
-    switchedOnBy: 153,
-    enforcing: true,
     read: ({ markAllRead: { jsdom } }) =>
       jsdom === undefined
         ? NOT_MEASURED
@@ -683,10 +597,9 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "Mark all read, responsiveness",
     threshold: "INP < 100 ms at 1×, < 200 ms at 4×; plugin main-thread time from click to last request < 200 ms",
     baseline: "360 ms; 4.9 s",
-    measuredBy: "Chromium, MAR list (production React)",
+    measuredBy:
+      "Chromium, MAR list (production React), fake `threads.markRead` taking 50 ms. The main-thread time is a CPU profile's samples from the click to the last answer, at 1×, in the plugin's modules, React and the libraries Vite bundles (shared chunks no URL names included, so it errs high); the fake bb's and the rest (test runner, native time) are reported beside it and not held to the threshold",
     kind: "timing",
-    switchedOnBy: 153,
-    enforcing: true,
     read: ({ markAllRead: { chromium } }) => {
       if (chromium === undefined) return NOT_MEASURED;
       const inp = inpReading(chromium.inp);
@@ -703,8 +616,6 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "448 `setRead` at once",
     measuredBy: "fake host, MAR list, with its unread child threads done-unseen",
     kind: "deterministic",
-    switchedOnBy: 153,
-    enforcing: true,
     read: ({ markAllRead: { host } }) =>
       host === undefined
         ? NOT_MEASURED
@@ -719,23 +630,15 @@ export const LEDGER: readonly LedgerRow[] = [
 export interface Verdict {
   row: LedgerRow;
   reading: Reading;
-  enforcing: boolean;
-  /** Enforcing and over its threshold: the run fails. */
+  /** Over its threshold: the run fails. */
   failed: boolean;
 }
 
-/**
- * Reads every row off one run's figures. `enforce` switches further rows on
- * for this reading only, as a check that a row would fail its run does.
- */
-export function evaluate(
-  figures: Figures,
-  { ledger = LEDGER, enforce = [] }: { ledger?: readonly LedgerRow[]; enforce?: readonly string[] } = {},
-): Verdict[] {
-  return ledger.map((row) => {
+/** Reads every row off one run's figures. */
+export function evaluate(figures: Figures): Verdict[] {
+  return LEDGER.map((row) => {
     const reading = row.read(figures);
-    const enforcing = row.enforcing || enforce.includes(row.id);
-    return { row, reading, enforcing, failed: enforcing && reading.pass === false };
+    return { row, reading, failed: reading.pass === false };
   });
 }
 

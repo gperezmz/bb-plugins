@@ -1,5 +1,5 @@
-// The bundle check: `app.js` within the enforcing size row (B2, which retired
-// B1), raw and gzip, as `bb plugin build` writes it.
+// The bundle check: `app.js` within the size row (B2), raw and gzip, as
+// `bb plugin build` writes it.
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { emptyFigures, type BundleFigures } from "./figures";
 import { evaluate } from "./ledger";
 import { buildAndMeasure, bundleFigures } from "./harness/bundle";
 
-/** The enforcing bundle rows these sizes miss. */
+/** The bundle rows these sizes miss. */
 function missed(bundle: BundleFigures): string[] {
   return evaluate({ ...emptyFigures(), bundle })
     .filter((verdict) => verdict.failed)

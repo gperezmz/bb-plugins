@@ -1,6 +1,6 @@
 // The ledger's deterministic Chromium rows (rows mounted, the closed phone
-// drawer) at 1,500 threads, live and settled, and a drag over rows not mounted when it began: `npm test` fails when an
-// enforcing one is missed (perf/ledger.ts). Timings run in `npm run perf`.
+// drawer) at 1,500 threads, live and settled, and a drag over rows not mounted when it began: `npm test` fails when a
+// row is missed (perf/ledger.ts). Timings run in `npm run perf`.
 import "@/features/thread-list/testing/browser.css";
 import { expect, it } from "vitest";
 import { generateList } from "@/features/thread-list/testing/fixtures";
@@ -8,7 +8,7 @@ import { emptyFigures, LIST_KINDS } from "./figures";
 import { missedBudgets } from "./harness/enforce";
 import { atClockOf, runChromium } from "./harness/chromium-run";
 
-it("holds the enforcing deterministic Chromium budgets", async () => {
+it("holds the deterministic Chromium budgets", async () => {
   const figures = emptyFigures();
   for (const kind of LIST_KINDS) {
     const list = generateList({ size: 1_500, kind });

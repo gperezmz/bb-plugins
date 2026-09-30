@@ -1,6 +1,5 @@
-// The budget ledger: its rows, which of them enforce, and that a row switched
-// on fails its run when a figure misses its threshold, for one row of each
-// kind of measurement.
+// The budget ledger: its rows, and that a row fails its run when a figure
+// misses its threshold, for one row of each kind of measurement.
 import { describe, expect, it } from "vitest";
 import { emptyFigures, type Figures } from "./figures";
 import { evaluate, failures, LEDGER } from "./ledger";
@@ -10,50 +9,13 @@ import type { HostFigures, Requests } from "./harness/host-run";
 import type { ChromiumFigures } from "./harness/chromium-figures";
 
 describe("the ledger", () => {
-  it("holds exactly B1 to B29, each with its threshold, baseline, measurement and switching slice", () => {
-    expect(LEDGER.map((candidate) => candidate.id)).toEqual(Array.from({ length: 29 }, (_, index) => `B${index + 1}`));
+  it("holds exactly B2 to B29, each with its threshold, baseline and measurement", () => {
+    expect(LEDGER.map((candidate) => candidate.id)).toEqual(Array.from({ length: 28 }, (_, index) => `B${index + 2}`));
     for (const candidate of LEDGER) {
       expect(candidate.threshold).not.toBe("");
       expect(candidate.baseline).not.toBe("");
       expect(candidate.measuredBy).not.toBe("");
-      // A slice of the rewrite (#145–#154), or #159, which replaces its render path.
-      const slice = candidate.switchedOnBy;
-      expect(slice === 159 || (slice >= 145 && slice <= 154)).toBe(true);
     }
-  });
-
-  it("enforces the rows of #145, #146 and #147, which merged before it, B1 aside, which B2 retired, and those #148, #149, #153 and #159 switched on", () => {
-    expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual([
-      "B2",
-      "B3",
-      "B4",
-      "B5",
-      "B6",
-      "B7",
-      "B8",
-      "B9",
-      "B10",
-      "B11",
-      "B12",
-      "B13",
-      "B14",
-      "B15",
-      "B16",
-      "B17",
-      "B18",
-      "B19",
-      "B20",
-      "B21",
-      "B22",
-      "B23",
-      "B24",
-      "B25",
-      "B26",
-      "B27",
-      "B28",
-      "B29",
-    ]);
-    expect(LEDGER.find((candidate) => candidate.id === "B1")).toMatchObject({ switchedOnBy: 145, enforcing: false, retiredBy: "B2" });
   });
 
   it("reads every row off a run that took nothing as not measured, failing none", () => {
@@ -138,7 +100,7 @@ const SYNC_PAYLOAD = {
 
 /**
  * One row per kind of measurement, each read once at its threshold and once
- * over it, switched on: bundle check, jsdom, Chromium, fake host, and the
+ * over it: bundle check, jsdom, Chromium, fake host, and the
  * plugin server (`server.test`'s rows).
  */
 const CASES: { kind: string; id: string; within: Figures; over: Figures }[] = [
@@ -188,19 +150,12 @@ const CASES: { kind: string; id: string; within: Figures; over: Figures }[] = [
   },
 ];
 
-describe("a row switched on", () => {
+describe("a row", () => {
   it.each(CASES)("fails its run when its $kind figure ($id) is over budget, and passes at it", ({ id, within, over }) => {
     const failed = (figures: Figures) =>
-      evaluate(figures, { enforce: [id] }).filter((verdict) => verdict.failed).map((verdict) => verdict.row.id);
+      evaluate(figures).filter((verdict) => verdict.failed).map((verdict) => verdict.row.id);
     expect(failed(within)).toEqual([]);
     expect(failed(over)).toEqual([id]);
-  });
-
-  it("is not held to its threshold before its slice switches it on", () => {
-    // Every row is on since #159 and #149: one switched off stands in for a slice yet to come.
-    const ledger = LEDGER.map((row) => (row.id === "B7" ? { ...row, enforcing: false } : row));
-    const over = withFigures({ jsdom: { "1500/live": jsdomWith({ "split layout": event({ rows: 2, rowIds: ["t0", "t1"], distinctRows: 2, extraRows: 1 }) }) } });
-    expect(evaluate(over, { ledger }).find((verdict) => verdict.row.id === "B7")).toMatchObject({ enforcing: false, failed: false });
   });
 
   it("fails the run that takes its kind, and only that run", () => {

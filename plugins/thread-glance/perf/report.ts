@@ -99,8 +99,8 @@ export function formatReport(figures: Figures, verdicts: readonly Verdict[]): st
   sections.push(
     tabulate(
       "Budget ledger (perf/ledger.ts)",
-      verdicts.map(({ row, reading, enforcing }) => [
-        `${row.id} ${row.kind}${enforcing ? ", enforcing" : ""}`,
+      verdicts.map(({ row, reading }) => [
+        `${row.id} ${row.kind}`,
         `${reading.pass === null ? "–" : reading.pass ? "met" : "missed"}: ${reading.figure}`,
       ]),
     ),
@@ -113,11 +113,9 @@ export function reportJson(figures: Figures, verdicts: readonly Verdict[]): stri
   return JSON.stringify(
     {
       figures,
-      ledger: verdicts.map(({ row, reading, enforcing, failed }) => ({
+      ledger: verdicts.map(({ row, reading, failed }) => ({
         id: row.id,
         kind: row.kind,
-        switchedOnBy: row.switchedOnBy,
-        enforcing,
         figure: reading.figure,
         pass: reading.pass,
         failed,

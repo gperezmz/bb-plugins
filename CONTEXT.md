@@ -107,7 +107,7 @@ The empty block standing in for a run of a group's rows the list has not mounted
 _Avoid_: Placeholder, chunk, filler
 
 **Budget ledger**:
-Thread Glance's one list of performance budgets, one row per budget with its threshold, how it is measured and whether it is enforcing yet.
+Thread Glance's one list of performance budgets, one row per budget with its threshold and how it is measured; a run that misses any row fails.
 _Avoid_: Budget table, perf budgets, budget file
 
 ### Thread Usage
