@@ -108,13 +108,26 @@ async function interaction(target: Element): Promise<number> {
   return timed.length === 0 ? 0 : Math.max(...timed.map((entry) => entry.duration));
 }
 
+/**
+ * Scrolls the list's frame to put `target` in its middle. Written out rather
+ * than through scrollIntoView, whose options would put Tailwind utility names
+ * in this file, which bb's build scans into the shipped app.css.
+ */
+function centerInFrame(target: HTMLElement): void {
+  const frame = target.closest<HTMLElement>("[data-perf-frame]");
+  if (frame === null) return;
+  const rect = target.getBoundingClientRect();
+  const view = frame.getBoundingClientRect();
+  frame.scrollTop += rect.top - view.top - (view.height - rect.height) / 2;
+}
+
 /** Opens what `find` returns at 1× and 4× CPU, closing it again between. */
 async function inpOf(slot: RenderedSlot, find: () => HTMLElement | undefined, close: () => HTMLElement | undefined): Promise<InpFigure | null> {
   const figure: InpFigure = { x1: null, x4: null };
   for (const rate of [1, 4] as const) {
     const target = find();
     if (target === undefined) return rate === 1 ? null : figure;
-    target.scrollIntoView({ block: "center" });
+    centerInFrame(target);
     await drawn();
     await throttle(rate);
     const value = await interaction(target);
