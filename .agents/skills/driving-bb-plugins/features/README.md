@@ -17,8 +17,8 @@ drive starts only the plugins its feature file names.
   `drive-bb-plugins doctor --run <run>` exits 0 on it.
 - A fresh run has no threads, every plugin at its install defaults, and bb's
   navigation and thread list on `__automatic__`, which takes the first
-  installed plugin offering one. A run started with `--fixture` has the
-  fixture's threads and settings instead.
+  installed plugin offering one. A run started with `--snapshot` has the
+  snapshot's threads and settings instead.
 
 ## Driving conventions
 

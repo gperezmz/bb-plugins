@@ -17,9 +17,9 @@
 # stop), evidence and process handles in .drives/<run>/ at the repository root
 # (kept by stop), port claims in $DBP_SCRATCH_ROOT/ports (released by stop).
 #
-#   drive-bb-plugins start [--fixture <name>] <plugin>...
+#   drive-bb-plugins start [--snapshot <name>] <plugin>...
 #                                                   start a run, print its name and URL; with
-#                                                   --fixture, on a copy of that saved bb
+#                                                   --snapshot, on a copy of that saved bb
 #   drive-bb-plugins doctor [--run <run>]           exit 0 only when the run is worth driving
 #   drive-bb-plugins bb [--run <run>] <label> -- <args>
 #                                                   run `bb <args>` against the run, logged as evidence
@@ -42,8 +42,8 @@
 #   drive-bb-plugins ui [--run <run>] <label> <steps.mjs> [--mobile]
 #                                                   run a Playwright script against the bb web UI
 #   drive-bb-plugins stop [--run <run>]             stop the run, keep its evidence
-#   drive-bb-plugins save [--run <run>] <name>      stop the run and save its bb as fixture <name>
-#   drive-bb-plugins fixtures                       list the saved fixtures of the bb on PATH
+#   drive-bb-plugins save [--run <run>] <name>      stop the run and save its bb as snapshot <name>
+#   drive-bb-plugins snapshots                      list the saved snapshots of the bb on PATH
 #
 # The run is --run's, else $DBP_RUN's, else the one .drives/latest points at.
 # start picks three free ports and claims them, so runs started at once from
@@ -57,7 +57,7 @@
 # DBP_MAX_SESSIONS (default 4) is how many `spawn`s of the run hold a Claude
 # Code session at once; the rest wait for a slot.
 #
-# Fixtures live in $DBP_FIXTURE_ROOT (default ~/.cache/drive-bb-plugins/fixtures),
+# Snapshots live in $DBP_SNAPSHOT_ROOT (default ~/.cache/drive-bb-plugins/snapshots),
 # under the bb version that saved them, and are shared by every checkout.
 set -euo pipefail
 
@@ -66,7 +66,7 @@ repo=$(git -C "$skill_dir" rev-parse --show-toplevel)
 evidence_root=$repo/.drives
 scratch_root=${DBP_SCRATCH_ROOT:-${TMPDIR:-/tmp}/drive-bb-plugins}
 claims=$scratch_root/ports
-fixture_root=${DBP_FIXTURE_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/drive-bb-plugins/fixtures}
+snapshot_root=${DBP_SNAPSHOT_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/drive-bb-plugins/snapshots}
 unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI -u BB_HOST_DAEMON_PORT
   -u BB_THREAD_STORAGE -u BB_DATA_DIR -u CLAUDE_CONFIG_DIR -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN
   -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
@@ -79,9 +79,9 @@ export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
 bb_version() { env "${unset_bb[@]}" bb --version; }
-# One value from a saved fixture's fixture.env.
+# One value from a saved snapshot's snapshot.env.
 # shellcheck source=/dev/null
-fixture_value() { (source "$1/fixture.env" && printf '%s' "${!2}"); }
+snapshot_value() { (source "$1/snapshot.env" && printf '%s' "${!2}"); }
 
 # Resolves the run the command acts on into $run, $ev and $scratch, and loads
 # its recorded settings.
@@ -158,16 +158,16 @@ release_ports() {
 tb() { env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" "$@"; }
 
 cmd_start() {
-  local fixture="" fixture_dir="" p
-  if [[ ${1:-} == --fixture ]]; then
-    fixture=${2:?--fixture needs a fixture name}
+  local snapshot="" snapshot_dir="" p
+  if [[ ${1:-} == --snapshot ]]; then
+    snapshot=${2:?--snapshot needs a snapshot name}
     shift 2
-    fixture_dir=$fixture_root/bb-$(bb_version)/$fixture
-    [[ -f $fixture_dir/fixture.env ]] || die "no fixture '$fixture' for bb $(bb_version) under $fixture_root; list them with: drive-bb-plugins fixtures"
-    # shellcheck disable=SC2046 # the fixture's plugins are a space-separated list
-    [[ $# -gt 0 ]] || set -- $(fixture_value "$fixture_dir" plugins)
+    snapshot_dir=$snapshot_root/bb-$(bb_version)/$snapshot
+    [[ -f $snapshot_dir/snapshot.env ]] || die "no snapshot '$snapshot' for bb $(bb_version) under $snapshot_root; list them with: drive-bb-plugins snapshots"
+    # shellcheck disable=SC2046 # the snapshot's plugins are a space-separated list
+    [[ $# -gt 0 ]] || set -- $(snapshot_value "$snapshot_dir" plugins)
   fi
-  [[ $# -gt 0 ]] || die "usage: drive-bb-plugins start [--fixture <name>] <plugin>...  (plugins: $(ls "$repo/plugins" | tr '\n' ' '))"
+  [[ $# -gt 0 ]] || die "usage: drive-bb-plugins start [--snapshot <name>] <plugin>...  (plugins: $(ls "$repo/plugins" | tr '\n' ' '))"
   for p in "$@"; do [[ -f $repo/plugins/$p/package.json ]] || die "no plugin plugins/$p"; done
   for tool in node jq curl git rsync bb bb-server bb-host-daemon; do
     command -v "$tool" > /dev/null || die "$tool is not on PATH"
@@ -235,12 +235,12 @@ plugins="$*"
 unit=$unit
 memory_max=$memory_max
 max_sessions=$max_sessions
-fixture=$fixture
+snapshot=$snapshot
 ENV
-  if [[ -n $fixture ]]; then
-    restore_fixture "$fixture_dir"
+  if [[ -n $snapshot ]]; then
+    restore_snapshot "$snapshot_dir"
     # The saved bb already knows its machine and project.
-    printf 'host_id=%s\nproject=%s\n' "$(fixture_value "$fixture_dir" host_id)" "$(fixture_value "$fixture_dir" project)" >> "$ev/run.env"
+    printf 'host_id=%s\nproject=%s\n' "$(snapshot_value "$snapshot_dir" host_id)" "$(snapshot_value "$snapshot_dir" project)" >> "$ev/run.env"
   fi
   : > "$ev/pids"
   : > "$ev/launch-pids"
@@ -266,24 +266,24 @@ ENV
   # bb's own limit on threads running at once, as a second bound under spawn's.
   tb bb concurrency-limit global "$max_sessions" > /dev/null || fail "could not limit the run to $max_sessions running threads"
 
-  if [[ -z $fixture ]]; then
+  if [[ -z $snapshot ]]; then
     GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
       bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
     project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
     [[ $project == proj_* ]] || fail "could not create the drives' project"
     echo "project=$project" >> "$ev/run.env"
   else
-    # A plugin the fixture has and this run does not test would run from a
+    # A plugin the snapshot has and this run does not test would run from a
     # copy that is not there.
-    for p in $(fixture_value "$fixture_dir" plugins); do
-      [[ " $* " == *" $p "* ]] || tb bb plugin uninstall "$p" --yes > /dev/null || fail "could not uninstall the fixture's $p"
+    for p in $(snapshot_value "$snapshot_dir" plugins); do
+      [[ " $* " == *" $p "* ]] || tb bb plugin uninstall "$p" --yes > /dev/null || fail "could not uninstall the snapshot's $p"
     done
   fi
 
   for p in "$@"; do
     # A copy as the checkout has it, so bb builds what is checked out and
-    # writes nothing into the checkout. On a fixture this reinstalls the
-    # plugin over the one the fixture saved.
+    # writes nothing into the checkout. On a snapshot this reinstalls the
+    # plugin over the one the snapshot saved.
     rsync -a --exclude node_modules --exclude dist --exclude harness "$repo/plugins/$p/" "$scratch/plugins/$p/"
     [[ -d $repo/plugins/$p/node_modules ]] && ln -s "$repo/plugins/$p/node_modules" "$scratch/plugins/$p/node_modules"
     tb bb plugin install "path:$scratch/plugins/$p" --yes > "$scratch/install-$p.log" 2>&1 || { cat "$scratch/install-$p.log" >&2; fail "could not install $p"; }
@@ -303,7 +303,7 @@ ENV
   echo "web UI   $server_url/"
   echo "project  $project   machine $host_id"
   echo "plugins  $*"
-  [[ -z $fixture ]] || echo "fixture  $fixture, restored from $fixture_dir"
+  [[ -z $snapshot ]] || echo "snapshot  $snapshot, restored from $snapshot_dir"
   if [[ -n $unit ]]; then
     echo "memory   capped at $(iec "$memory_max"), no swap, in $unit; $max_sessions Claude Code sessions at once"
   else
@@ -343,7 +343,7 @@ cmd__launch() {
 
   local enroll
   if [[ -n ${host_id:-} ]]; then
-    # A restored fixture's daemon signs in with the credentials it saved.
+    # A restored snapshot's daemon signs in with the credentials it saved.
     start_daemon &
   else
     enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
@@ -356,22 +356,22 @@ cmd__launch() {
   connected || fail "the host daemon did not connect to the bb server"
 }
 
-# Copies a saved fixture into this run's scratch and points every absolute
+# Copies a saved snapshot into this run's scratch and points every absolute
 # path it saved at this run's scratch instead. bb.db keeps them in project,
 # environment, plugin and daemon rows and in event history; Claude Code keeps
 # its sessions under a directory named after the project path, with every /
 # and . turned to -.
-restore_fixture() {
+restore_snapshot() {
   local from=$1 old old_dashed new_dashed dir
-  old=$(fixture_value "$from" scratch)
-  [[ $old == */run.?????? ]] || fail "$from/fixture.env names no scratch directory"
+  old=$(snapshot_value "$from" scratch)
+  [[ $old == */run.?????? ]] || fail "$from/snapshot.env names no scratch directory"
   old_dashed=${old//[^A-Za-z0-9]/-} new_dashed=${scratch//[^A-Za-z0-9]/-}
   rm -rf "${scratch:?}/work"
-  # Shared with other starts, exclusive against a save replacing the fixture.
+  # Shared with other starts, exclusive against a save replacing the snapshot.
   (
     flock -s 6
     cp -a "$from/bb" "$from/work" "$scratch/" && cp -a "$from/home/." "$scratch/home/"
-  ) 6> "${from%/*}/.lock" || fail "could not copy fixture $from"
+  ) 6> "${from%/*}/.lock" || fail "could not copy snapshot $from"
   # shellcheck disable=SC2016 # the script is JavaScript
   node --no-warnings -e '
     const { DatabaseSync } = require("node:sqlite");
@@ -393,7 +393,7 @@ restore_fixture() {
       }
     }
     db.close();
-  ' "$scratch/bb/bb.db" "$old" "$scratch" "$old_dashed" "$new_dashed" || fail "could not point the fixture's bb.db at $scratch"
+  ' "$scratch/bb/bb.db" "$old" "$scratch" "$old_dashed" "$new_dashed" || fail "could not point the snapshot's bb.db at $scratch"
   for dir in "$scratch/home/.claude/projects/$old_dashed"*; do
     [[ -e $dir ]] && mv "$dir" "$scratch/home/.claude/projects/$new_dashed${dir#"$scratch/home/.claude/projects/$old_dashed"}"
   done
@@ -686,18 +686,18 @@ cmd__fork() {
   printf '%s\t%s\t%s\n' "$state" "$title" "$id"
 }
 
-# Stops the run and saves its bb as a fixture: the data directory, the
+# Stops the run and saves its bb as a snapshot: the data directory, the
 # project's repository and Claude Code's sessions, with the scratch path they
-# name, so start --fixture can point them at another run's.
+# name, so start --snapshot can point them at another run's.
 cmd_save() {
   load_run
   local name=${1:?usage: drive-bb-plugins save <name>} busy counts
-  [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "a fixture name is letters, digits, '.', '_' and '-'"
+  [[ $name =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "a snapshot name is letters, digits, '.', '_' and '-'"
   [[ ! -s $ev/kept ]] || die "a --background thread is running a command a saved bb would lose; release it first"
   busy=$(tb bb thread list --json | jq -r '[.[] | select(.status | IN("idle", "pending", "error") | not) | "\(.title) (\(.status))"] | join(", ")')
   [[ -z $busy ]] || die "threads are still running, which a saved bb would lose: $busy"
   counts=$(tb bb thread list --json | jq -r '"threads=\(length)\narchived=\([.[] | select(.archivedAt != null)] | length)"')
-  save_to=$fixture_root/bb-$(bb_version)/$name
+  save_to=$snapshot_root/bb-$(bb_version)/$name
   mkdir -p "${save_to%/*}"
   save_env="scratch=$scratch
 host_id=$host_id
@@ -710,46 +710,46 @@ $counts"
   cmd_stop
 }
 
-# The part of stop that saves the fixture, once nothing of the run is left
-# running. Replaces a fixture of the same name.
-save_fixture() {
+# The part of stop that saves the snapshot, once nothing of the run is left
+# running. Replaces a snapshot of the same name.
+save_snapshot() {
   local tmp old=""
   tmp=$(mktemp -d "${save_to%/*}/.saving.XXXXXX")
   (
     rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
       rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
     for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
-    printf '%s\n' "$save_env" > "$tmp/fixture.env"
+    printf '%s\n' "$save_env" > "$tmp/snapshot.env"
   ) || {
     rm -rf "$tmp"
-    die "could not save the fixture; the run is stopped and its scratch kept: finish with drive-bb-plugins stop --run $run"
+    die "could not save the snapshot; the run is stopped and its scratch kept: finish with drive-bb-plugins stop --run $run"
   }
-  # Exclusive against a start copying the fixture and another save of it.
+  # Exclusive against a start copying the snapshot and another save of it.
   exec 6> "${save_to%/*}/.lock"
   flock 6
   if [[ -e $save_to ]]; then
     old=$(mktemp -d "${save_to%/*}/.replaced.XXXXXX")
-    mv -T "$save_to" "$old/fixture"
+    mv -T "$save_to" "$old/snapshot"
   fi
   mv -T "$tmp" "$save_to"
   exec 6>&-
   [[ -z $old ]] || rm -rf "$old"
-  echo "saved fixture $(basename "$save_to") in $save_to ($(du -sh "$save_to" | cut -f1))"
+  echo "saved snapshot $(basename "$save_to") in $save_to ($(du -sh "$save_to" | cut -f1))"
 }
 
-cmd_fixtures() {
+cmd_snapshots() {
   local version dir
   version=$(bb_version)
-  for dir in "$fixture_root/bb-$version"/*/; do
-    [[ -f $dir/fixture.env ]] || continue
+  for dir in "$snapshot_root/bb-$version"/*/; do
+    [[ -f $dir/snapshot.env ]] || continue
     (
       # shellcheck source=/dev/null
-      source "$dir/fixture.env"
-      # shellcheck disable=SC2154 # set by fixture.env
+      source "$dir/snapshot.env"
+      # shellcheck disable=SC2154 # set by snapshot.env
       printf '%-24s %s threads, %s archived; plugins %s; saved %s from %s\n' "$(basename "$dir")" "$threads" "$archived" "$plugins" "$saved" "$from_run"
     )
   done
-  echo "(fixtures of bb $version in $fixture_root/bb-$version)"
+  echo "(snapshots of bb $version in $snapshot_root/bb-$version)"
 }
 
 # Stops a --background thread's runtime, its command with it, and frees the
@@ -824,14 +824,14 @@ cmd_stop() {
     echo "$left" >&2
     return 1
   fi
-  [[ -z ${save_to:-} ]] || save_fixture
+  [[ -z ${save_to:-} ]] || save_snapshot
   release_ports
   remove_scratch
   echo "run $run stopped; evidence kept in $ev"
 }
 
 case ${1:-} in
-  start | doctor | bb | spawn | seed | release | machine | ui | stop | save | fixtures | _launch | _fork)
+  start | doctor | bb | spawn | seed | release | machine | ui | stop | save | snapshots | _launch | _fork)
     c=$1
     shift
     if [[ ${1:-} == --run ]]; then

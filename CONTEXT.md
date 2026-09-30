@@ -20,6 +20,10 @@ _Avoid_: Family, thread family, waiting tree
 The configuration and the assertions the npm-install check applies to one plugin after installing it, to exercise what the plugin registers.
 _Avoid_: Scenario, smoke config
 
+**Drive snapshot**:
+A throwaway bb the driving-bb-plugins skill saved, with its threads, settings, project repository and Claude Code sessions, which a drive starts from a copy of.
+_Avoid_: Saved run, drive fixture
+
 ### Thread Glance
 
 **Needs attention**:
