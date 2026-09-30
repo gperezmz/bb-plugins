@@ -25,7 +25,8 @@ window at once; Density and Branch line are kept per browser.
   back.
 - `window`: the list mounts only the rows near the sidebar's view, each run
   of the rest a spacer bb's keyboard walk still reads.
-- `menus`: the list's one row menu, group menu, context menu and hover card.
+- `menus`: the list's one row menu, group menu, environment row menu, context
+  menu and hover card.
 - `drag`: dragging rows and group headers with the pointer, and bb's
   drag-to-split out of the sidebar.
 - `keys`: Enter on a row, the context-menu key, and bb's thread shortcuts.
@@ -105,18 +106,23 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   per window and off on every load.
 - **Mark all read** (`need-you`): `thread-glance mark-all-read` turns every
   row's `unread` false and drops `markAllRead`; `stored` has each thread
-  `read` true in bb.
+  `read` true in bb. Above 20 unread threads (`seed` `{"states": {"unread":
+  21}}`) it confirms first: `confirm.title` is `Mark 21 threads read?`, and
+  `confirm.whileClosing` holds that same title alone, since the dialog keeps
+  its text while it animates out.
 - **Settings** (`settings`): `thread-glance settings` prints every control,
   `prefs list --json` and the browser's `bb.thread-glance.client.v1`.
-- **The popover itself** (`settings`): clicked as soon as the list header
-  shows on a load, it stays open until closed, though bb focuses its composer
-  for about a second after a load. It closes once the sidebar scrolls
-  `button "Thread Glance settings"` wholly out of view, and stays open while
-  any of it shows. Escape, a click outside and the button close it, none of
-  them moving the sidebar's scroll, and Escape and the button leave focus on
-  the button. No verb drives these yet: a `drive-bb-plugins ui` script does,
-  on a list long enough to scroll (`seed` 80 roots), scrolling the list
-  header's nearest scrolling ancestor.
+- **The popover itself** (`settings`): `thread-glance popover`, on a list
+  long enough to scroll (`seed` 80 roots, or the `user-800` snapshot). Opened
+  as soon as the list header shows on a load, `afterLoad.openAfter2s` is true,
+  though bb focuses its composer for about a second after a load. `halfOut.open`
+  is true (half of `button "Thread Glance settings"` scrolled away) and
+  `out.open` false (all of it). With half the button in view, `closers`
+  `Escape`, `button` and `outside` each close it with `scrollBefore` equal to
+  `scrollAfter`; Escape and the button leave `focusOnButton` true, a click
+  outside false. `closers.Tab.closed` is false: Tab cycles focus inside the
+  popover. With `--mobile` the settings open as a drawer, which `out.open`
+  shows staying open while the sidebar scrolls.
 - **One control** (`settings`, `sync`): `thread-glance set "Settle after" 12h
   --second-window --reload` checks `12h`, `stored.value` `"12h"`, and
   `followed`, `kept` true. `set Density Comfortable --second-window` stores
@@ -229,16 +235,16 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `Recent` list around Mark all read: `recentUnreadAfter` and
   `recentUnreadAfter6s` name the threads bb's own list still shows unread
   with no reload, `recentUnreadAfterReload` after one.
-- **Environment fold row** (`list`): with `Worktrees as folders` on, two
-  sibling threads in one worktree fold under a row whose `button` is named
-  `Collapse <branch> environment, 2 threads`; the row (the button's parent)
-  is as tall as a one-line thread row, 28 px Compact and 32 px Comfortable,
-  36 and 40 px on a phone. `seed` makes no worktree thread: a thread posted
-  to bb's HTTP API (`api/v1/threads`, as `seed.mjs` posts) with
-  `environmentProviderId` `git-worktree` runs a turn and gets one, and a
-  second posted with `environment` `{"type": "reuse", "environmentId": …}`
-  joins it. No verb reads the heights yet; a `drive-bb-plugins ui` script
-  does, scrolling the list until the row mounts.
+- **Environment fold row** (`list`, `menus`): `spawn … wt-one hi
+  --worktree` gives a thread a git worktree of its own, and `spawn … wt-two
+  hi --beside <wt-one's id>` puts a second in it; `seed` makes no worktree
+  thread. With `prefs set environmentGrouping true`, `thread-glance
+  fold-row` finds the row whose `button` is named `Collapse <branch>
+  environment, 2 threads` and prints its `height` beside `threadRowHeights`
+  (the one-line row is the smallest): 28 px, and 32 px with `--density
+  comfortable`; with `--mobile`, 36 and 40 px. `menu` is its
+  `Environment actions` menu: `New thread in environment`, `Rename`,
+  `Archive`.
 - **Archived** (`list`): with `prefs set showArchived true`, each group
   also lists archived threads, 50 at a time behind `button "Load more
   archived threads"`; any verb with `--all-archived` presses it until it is
