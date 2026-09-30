@@ -1,5 +1,6 @@
 // Structural sharing between two list views: whatever did not change keeps
 // the previous object, so memoized rows and groups skip their render. Pure.
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { GroupView, ListView, Row } from "./view";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -55,13 +56,40 @@ export function share<T>(previous: T, next: T): T {
   return next;
 }
 
+/**
+ * Fields bb changes when it marks a thread read, none of which the list draws
+ * but through `isUnread`. A field bb starts changing on a read that is not
+ * listed here only costs that update a full derive step, and the row a render.
+ */
+export const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
+
+/** Two objects of one thread that differ only in the fields a read changes. */
+function onlyReadFieldsDiffer(a: PluginSidebarThread, b: PluginSidebarThread): boolean {
+  const keys = Object.keys(b) as (keyof PluginSidebarThread)[];
+  return keys.length === Object.keys(a).length && keys.every((key) => READ_FIELDS.has(key) || Object.is(a[key], b[key]));
+}
+
+/**
+ * A row shared with its previous object. A thread row whose thread changed
+ * only in read fields, with nothing it draws changed, keeps its previous
+ * object: bb's reads of a thread already shown read skip the derive step, and
+ * the next step must not draw the row again for them.
+ */
+function shareRow(before: Row, row: Row): Row {
+  if (before.type === "thread" && row.type === "thread" && before.info.thread !== row.info.thread && onlyReadFieldsDiffer(before.info.thread, row.info.thread)) {
+    const kept = share<Row>(before, { ...row, info: { ...row.info, thread: before.info.thread } });
+    if (kept === before) return before;
+  }
+  return share(before, row);
+}
+
 /** Rows matched by key, so an insertion doesn't renew every row after it. */
 function shareRows(previous: readonly Row[], next: Row[]): Row[] {
   const byKey = new Map(previous.map((row) => [row.key, row]));
   let same = previous.length === next.length;
   const result = next.map((row, index) => {
     const before = byKey.get(row.key);
-    const shared = before === undefined ? row : share(before, row);
+    const shared = before === undefined ? row : shareRow(before, row);
     if (shared !== previous[index]) same = false;
     return shared;
   });

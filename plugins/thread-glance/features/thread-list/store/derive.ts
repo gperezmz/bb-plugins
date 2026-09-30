@@ -17,7 +17,7 @@ import { detectTransitions, mergeTargets, snapshotOf, type Snapshot, type Target
 import { groupIdForRoot } from "../model/groups";
 import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
-import { share, shareView } from "../model/share";
+import { READ_FIELDS, share, shareView } from "../model/share";
 import { miniMapsOf, openThreadIdsOf, type MiniMapPane } from "../model/split";
 import { isUnread } from "../model/state";
 import { buildForest, type Forest, type ThreadInfo } from "../model/trees";
@@ -299,13 +299,6 @@ export function settlePendingRead(
   }
   return left.size === pending.size ? pending : left.size === 0 ? NO_PENDING_READ : left;
 }
-
-/**
- * Fields bb changes when it marks a thread read, none of which the list draws
- * but through `isUnread`. A field bb starts changing on a read that is not
- * listed here only costs that update a full derive step.
- */
-const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
 
 function sameRecord(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): boolean {
   if (a === b) return true;

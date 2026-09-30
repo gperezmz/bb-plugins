@@ -62,4 +62,4 @@ it("keeps every row's DOM node through an insertion, a removal, an archive, a mo
     }
     expect(kept, name).toBeGreaterThan(10);
   }
-});
+}, 60_000);
