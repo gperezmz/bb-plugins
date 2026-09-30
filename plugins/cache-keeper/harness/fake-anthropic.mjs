@@ -9,6 +9,8 @@
 //
 //   `Reply with exactly "X"` (a keep-warm, a check-in)  -> X
 //   `[fake: background]`                               -> a Bash `sleep 1800` run in the background
+//   `[fake: fail]`                                     -> HTTP 400, so the turn ends failed
+//   `[fake: hold=N]`                                   -> the answer it would give, N seconds late
 //   `/compact`, or a summary request                    -> a short summary
 //   anything else, and every tool result                -> "OK"
 //
@@ -91,11 +93,13 @@ function settingsFor(body) {
   return out;
 }
 
+/** Titles, summaries of tool output and other side calls Claude Code makes on its small model. */
+const isSmall = (body) => (body.max_tokens ?? 0) < 1000 || String(body.model ?? "").includes("haiku");
+
 const isKeeperMessage = (text) => /Still waiting on |Don't wait for me either way\./.test(text);
 
 function usageFor(body, text, s) {
-  // Titles, summaries of tool output and other side calls Claude Code makes on its small model.
-  if ((body.max_tokens ?? 0) < 1000 || String(body.model ?? "").includes("haiku")) {
+  if (isSmall(body)) {
     return { input_tokens: 50, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   }
   const write = Math.min(s.context, isKeeperMessage(text) ? Math.max(s.write, Math.round(s.context * s.warmWrite)) : s.write);
@@ -109,8 +113,7 @@ function usageFor(body, text, s) {
 }
 
 function answerFor(body, text) {
-  const small = (body.max_tokens ?? 0) < 1000 || String(body.model ?? "").includes("haiku");
-  if (!small && /\[fake: background\]/.test(text)) {
+  if (!isSmall(body) && /\[fake: background\]/.test(text)) {
     const input = { command: "sleep 1800", description: "Wait for the fake deploy", run_in_background: true };
     return { stop: "tool_use", tool: { name: "Bash", input } };
   }
@@ -133,7 +136,24 @@ function json(res, status, value) {
 
 function messages(body, res) {
   const text = lastUserText(body);
+  const hold = /\[fake: hold=(\d+)\]/.exec(text)?.[1];
+  if (hold !== undefined && !isSmall(body)) {
+    setTimeout(() => reply(body, res, text), Number(hold) * 1000);
+    return;
+  }
+  reply(body, res, text);
+}
+
+function reply(body, res, text) {
   const s = settingsFor(body);
+  if (!isSmall(body) && /\[fake: fail\]/.test(text)) {
+    const entry = { at: new Date().toISOString(), model: body.model, settings: s, failed: true, text: text.slice(0, 300) };
+    recent.push(entry);
+    if (recent.length > 200) recent.shift();
+    if (requestLog !== null) appendFileSync(requestLog, `${JSON.stringify(entry)}\n`);
+    json(res, 400, { type: "error", error: { type: "invalid_request_error", message: "fake: this turn fails on purpose" } });
+    return;
+  }
   const usage = usageFor(body, text, s);
   const answer = answerFor(body, text);
   const id = `msg_fake_${Date.now()}_${n++}`;

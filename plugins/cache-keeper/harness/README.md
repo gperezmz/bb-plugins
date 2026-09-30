@@ -82,6 +82,8 @@ plugins/cache-keeper/harness/drives/run-all.sh
 
 - a message that says `Reply with exactly "X"`, as keep-warms and check-ins do, gets `X`;
 - `[fake: background]` gets a Bash `sleep 1800` run in the background, so the thread waits on a task that prints nothing;
+- `[fake: fail]` gets an HTTP 400, so the turn ends in error;
+- `[fake: hold=N]` gets its answer N seconds late, so the turn stays working that long;
 - `/compact`, or a request for a summary, gets a short summary;
 - anything else gets `OK`.
 
