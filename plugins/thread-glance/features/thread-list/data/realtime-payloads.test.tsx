@@ -43,7 +43,7 @@ async function renderList() {
         importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
         listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
         markSeen: () => ({ at: Date.now() }),
-        markIdle: () => ({ at: Date.now() }),
+        reportIdle: () => ({ ok: true as const }),
         clearSeen: () => ({ ok: true as const }),
         listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
         listNotes: () => ({ notes: {} }),

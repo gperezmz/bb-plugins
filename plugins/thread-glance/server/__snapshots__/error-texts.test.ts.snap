@@ -796,37 +796,6 @@ exports[`refusal texts > rpc listStamps refuses {"all":true} 1`] = `
 }
 `;
 
-exports[`refusal texts > rpc markIdle refuses {} 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected array, received undefined",
-      "path": [
-        "threadIds",
-      ],
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc markIdle refuses an id of 1025 characters 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Too big: expected string to have <=1024 characters",
-      "path": [
-        "threadIds",
-        0,
-      ],
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
 exports[`refusal texts > rpc markSeen refuses {"threadIds":[""]} 1`] = `
 {
   "code": "invalid_input",
@@ -851,6 +820,37 @@ exports[`refusal texts > rpc markSeen refuses 10001 ids 1`] = `
       "message": "Too big: expected array to have <=10000 items",
       "path": [
         "threadIds",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc reportIdle refuses {} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected array, received undefined",
+      "path": [
+        "threadIds",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc reportIdle refuses an id of 1025 characters 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Too big: expected string to have <=1024 characters",
+      "path": [
+        "threadIds",
+        0,
       ],
     },
   ],

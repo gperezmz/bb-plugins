@@ -12,9 +12,9 @@ export interface StampsState {
   /** The first listing came back, or failed: until then every map is empty for want of it. */
   loaded: boolean;
   markSeen(threadIds: string[]): void;
-  /** Records on the server that these threads were just seen going idle. */
-  markIdle(threadIds: string[]): void;
   clearSeen(threadIds: string[]): void;
+  /** Records on the server that these threads went idle with no bb event saying so. */
+  reportIdle(threadIds: string[]): void;
 }
 
 export function useStamps(): StampsState {
@@ -63,13 +63,6 @@ export function useStamps(): StampsState {
     },
     [apply, rpc],
   );
-  const markIdle = useCallback(
-    (threadIds: string[]) => {
-      if (threadIds.length === 0) return;
-      rpc.call("markIdle", { threadIds }).catch(() => undefined);
-    },
-    [rpc],
-  );
   const clearSeen = useCallback(
     (threadIds: string[]) => {
       if (threadIds.length === 0) return;
@@ -79,5 +72,13 @@ export function useStamps(): StampsState {
     [apply, rpc],
   );
 
-  return { stamps, loaded, markSeen, markIdle, clearSeen };
+  const reportIdle = useCallback(
+    (threadIds: string[]) => {
+      if (threadIds.length === 0) return;
+      rpc.call("reportIdle", { threadIds }).catch(() => undefined);
+    },
+    [rpc],
+  );
+
+  return { stamps, loaded, markSeen, clearSeen, reportIdle };
 }

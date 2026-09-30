@@ -79,12 +79,21 @@ describe("when a thread last became idle", () => {
     expect(done.idleSince).toEqual({ p: T0 + 2 });
     expect(trackIdle(done, [idle], T0 + 3).idleSince).toEqual({ p: T0 + 2 });
   });
-  it("names the threads each step saw go idle, once, for the server to record", () => {
-    const first = trackIdle(null, [idle], T0);
-    expect(first.wentIdle).toEqual([]);
-    const done = trackIdle(trackIdle(first, [busy], T0 + 1), [idle], T0 + 2);
-    expect(done.wentIdle).toEqual(["p"]);
-    expect(trackIdle(done, [idle], T0 + 3).wentIdle).toEqual([]);
+  it("names the threads that went idle from background work or a queued message, not from a turn", () => {
+    const background = makeThread({ id: "p", activity: { backgroundCommands: 1 } });
+    const queued = makeThread({ id: "p", queuedWork: "waiting" });
+    for (const thread of [background, queued]) {
+      const done = trackIdle(trackIdle(null, [thread], T0), [idle], T0 + 1);
+      expect(done.unannounced).toEqual(["p"]);
+      expect(trackIdle(done, [idle], T0 + 2).unannounced).toEqual([]);
+    }
+    expect(trackIdle(trackIdle(null, [busy], T0), [idle], T0 + 1).unannounced).toEqual([]);
+    expect(trackIdle(trackIdle(trackIdle(null, [busy], T0), [background], T0 + 1), [idle], T0 + 2).unannounced).toEqual(["p"]);
+    expect(trackIdle(trackIdle(null, [idle], T0), [idle], T0 + 1).unannounced).toEqual([]);
+  });
+  it("names a thread whose turn was cut off by its machine going offline", () => {
+    const offline = makeThread({ id: "p", status: "active", runtimeStatus: "waiting-for-host" });
+    expect(trackIdle(trackIdle(null, [busy], T0), [offline], T0 + 1).unannounced).toEqual(["p"]);
   });
   it("treats background work and a queued message as busy, and drops a thread that is gone", () => {
     for (const thread of [

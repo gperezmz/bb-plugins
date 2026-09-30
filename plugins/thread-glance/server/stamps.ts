@@ -3,6 +3,7 @@
 // and written through, so listing does not read every row per call.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { CHANNELS, type StampKind, type StampSignal, type Stamps } from "../shared/contract";
+import { readRows } from "./kv-rows";
 import { createSerialQueue } from "./serial";
 
 export const STAMP_KEY_PREFIX = "stamp:";
@@ -32,11 +33,14 @@ export interface StampStore {
   stamp(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
   /**
    * Sets `kind` to `at` for each thread whose stored value is earlier or
-   * absent, and publishes one signal for those. A later value is kept, so
-   * several windows reporting one moment cannot move it back.
+   * absent, and publishes one signal for those. A later value is kept, so an
+   * event carrying an earlier moment cannot move it back.
    */
   advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
-  /** Deletes `kind` for each thread and publishes one signal with `value: null`. */
+  /**
+   * Deletes `kind` for each thread that has it, and publishes one signal with
+   * `value: null` naming those threads, or none when no thread had it.
+   */
   clear(kind: StampKind, threadIds: readonly string[]): Promise<void>;
   /** Deletes every stamp of each thread. Publishes nothing. */
   forget(threadIds: readonly string[]): Promise<void>;
@@ -60,12 +64,11 @@ export function createStampStore(
   async function load(): Promise<Map<string, ThreadStamps>> {
     if (cache !== null) return cache;
     const loaded = new Map<string, ThreadStamps>();
-    for (const key of await kv.list(STAMP_KEY_PREFIX)) {
-      const threadId = key.slice(STAMP_KEY_PREFIX.length);
-      const stamps = parseThreadStamps(await kv.get<unknown>(key));
+    for (const [threadId, raw] of await readRows(kv, STAMP_KEY_PREFIX)) {
+      const stamps = parseThreadStamps(raw);
       if (stamps === null) {
         bb.log.warn(`stored stamps for ${threadId} are invalid; dropping them`);
-        await kv.delete(key);
+        await kv.delete(stampKvKey(threadId));
         continue;
       }
       loaded.set(threadId, stamps);
@@ -129,13 +132,15 @@ export function createStampStore(
       serial(async () => {
         if (threadIds.length === 0) return;
         const rows = await load();
+        const cleared: string[] = [];
         for (const threadId of new Set(threadIds)) {
           const current = rows.get(threadId);
           if (current?.[kind] === undefined) continue;
           const { [kind]: _removed, ...rest } = current;
           await save(rows, threadId, rest);
+          cleared.push(threadId);
         }
-        publish({ kind, threadIds: [...threadIds], value: null });
+        if (cleared.length > 0) publish({ kind, threadIds: cleared, value: null });
       }),
     forget: (threadIds) =>
       serial(async () => {

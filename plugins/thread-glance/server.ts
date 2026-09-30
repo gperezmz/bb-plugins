@@ -57,13 +57,12 @@ export default function threadGlance(bb: BbPluginApi): void {
       await stamps.stamp("seenAt", threadIds, at);
       return { at };
     },
-    async markIdle({ threadIds }) {
-      const at = Date.now();
-      await stamps.advance("idleAt", threadIds, at);
-      return { at };
-    },
     async clearSeen({ threadIds }) {
       await stamps.clear("seenAt", threadIds);
+      return { ok: true as const };
+    },
+    async reportIdle({ threadIds }) {
+      await stamps.advance("idleAt", threadIds, Date.now());
       return { ok: true as const };
     },
     async listNotes() {
@@ -77,18 +76,25 @@ export default function threadGlance(bb: BbPluginApi): void {
   bb.cli.register(createCli(preferences));
 
   const note = (draft: NoteDraft, at = Date.now()) => ({ ...draft, at });
+  // Each event that takes a thread from busy to not busy, as the list counts
+  // it, records idleAt here once, whatever the number of windows open.
+  const wentIdle = (threadId: string, at: number) => stamps.advance("idleAt", [threadId], at);
 
   bb.events.on("thread.active", async ({ thread }) => {
     await stamps.stamp("startedAt", [thread.id], Date.now());
     await notes.update(thread.id, { pending: null, failed: null });
   });
   bb.events.on("thread.idle", async ({ thread, lastAssistantText }) => {
-    await stamps.stamp("finishedAt", [thread.id], Date.now());
+    const at = Date.now();
+    await stamps.stamp("finishedAt", [thread.id], at);
+    await wentIdle(thread.id, at);
     const done = describeDone(lastAssistantText);
     await notes.update(thread.id, { pending: null, ...(done ? { done: note(done) } : {}) });
   });
   bb.events.on("thread.failed", async ({ thread, error }) => {
-    await stamps.stamp("finishedAt", [thread.id], Date.now());
+    const at = Date.now();
+    await stamps.stamp("finishedAt", [thread.id], at);
+    await wentIdle(thread.id, at);
     const text = await resolveFailureText(bb, {
       threadId: thread.id,
       error,
@@ -106,8 +112,12 @@ export default function threadGlance(bb: BbPluginApi): void {
     const text = await resolveFailureText(bb, { threadId, error: null, errorInfo, turnId });
     if (text !== null) await notes.update(threadId, { failed: note(describeFailure(text)) });
   });
+  // A thread waiting on the user is not busy, so the list counts this as
+  // going idle too.
   bb.events.on("interaction.pending", async ({ thread, interaction }) => {
-    await stamps.stamp("pendingAt", [thread.id], Date.now());
+    const at = Date.now();
+    await stamps.stamp("pendingAt", [thread.id], at);
+    await wentIdle(thread.id, at);
     await notes.update(thread.id, {
       pending: note(describeInteraction(interaction), interaction.createdAt),
     });

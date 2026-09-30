@@ -54,12 +54,13 @@ export const rpcContract = defineRpcContract({
     output: z.strictObject({ ok: z.literal(true) }),
   },
   /**
-   * Records `idleAt` for threads a window saw go from busy to idle. A thread
-   * keeps the later of its stored moment and this one.
+   * Records `idleAt` for threads one window saw go from busy to idle by a
+   * change bb sends no event for. A thread keeps the later of its stored
+   * moment and this one.
    */
-  markIdle: {
+  reportIdle: {
     input: z.strictObject({ threadIds: threadIdsSchema }),
-    output: z.strictObject({ at: z.number() }),
+    output: z.strictObject({ ok: z.literal(true) }),
   },
   /** Notes per thread id (see `noteSchema`). */
   listNotes: {

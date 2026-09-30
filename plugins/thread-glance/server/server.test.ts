@@ -1,6 +1,8 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
+import Database from "better-sqlite3";
 import {
   createFakePluginHost,
   makeQueueEntry,
@@ -11,8 +13,9 @@ import plugin from "../server";
 import { CHANNELS } from "../shared/contract";
 import { defaultPreferences } from "../shared/preferences";
 import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
+import { createNoteStore, noteKvKey } from "./notes";
 import { preferenceKvKey } from "./preference-store";
-import { stampKvKey } from "./stamps";
+import { createStampStore, stampKvKey } from "./stamps";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
@@ -26,6 +29,10 @@ function signalsOn(harness: Awaited<ReturnType<typeof load>>["harness"], channel
   return harness.inspection.realtimeSignals
     .filter((signal) => signal.channel === channel)
     .map((signal) => signal.payload);
+}
+
+function idleSignals(harness: Awaited<ReturnType<typeof load>>["harness"]) {
+  return signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt");
 }
 
 let tempDir: string;
@@ -321,14 +328,17 @@ describe("stamps", () => {
         finishedAt: { t1: 3_000, t2: 4_000 },
         pendingAt: { t1: 2_000 },
         seenAt: {},
-        idleAt: {},
+        idleAt: { t1: 3_000, t2: 4_000 },
       },
     });
     expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
       { kind: "startedAt", threadIds: ["t1"], value: 1_000 },
       { kind: "pendingAt", threadIds: ["t1"], value: 2_000 },
+      { kind: "idleAt", threadIds: ["t1"], value: 2_000 },
       { kind: "finishedAt", threadIds: ["t1"], value: 3_000 },
+      { kind: "idleAt", threadIds: ["t1"], value: 3_000 },
       { kind: "finishedAt", threadIds: ["t2"], value: 4_000 },
+      { kind: "idleAt", threadIds: ["t2"], value: 4_000 },
     ]);
   });
 
@@ -340,7 +350,7 @@ describe("stamps", () => {
       at: 5_000,
     });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ seenAt: 5_000 });
-    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a"] })).toEqual({ ok: true });
+    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "c"] })).toEqual({ ok: true });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
     expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
       { kind: "seenAt", threadIds: ["a", "b"], value: 5_000 },
@@ -348,23 +358,75 @@ describe("stamps", () => {
     ]);
   });
 
-  it("keeps the later idleAt, so a window reporting late cannot move it back", async () => {
+  it("publishes nothing when clearing seenAt finds none", async () => {
+    const { harness } = await load();
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
+    const before = harness.inspection.realtimeSignals.length;
+    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "b"] })).toEqual({ ok: true });
+    expect(harness.inspection.realtimeSignals.length).toBe(before);
+  });
+
+  it("keeps the later idleAt, so an event carrying an earlier moment cannot move it back", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(6_000);
     const { bb, harness } = await load();
-    expect(await harness.behavior.callRpc("markIdle", { threadIds: ["a"] })).toEqual({ at: 6_000 });
+    const a = makeThreadResponse({ id: "a" });
+    await harness.behavior.emitThreadEvent("thread.idle", { thread: a, lastAssistantText: null });
     vi.setSystemTime(8_000);
-    await harness.behavior.callRpc("markIdle", { threadIds: ["a", "b"] });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ idleAt: 8_000 });
+    await harness.behavior.emitThreadEvent("thread.failed", { thread: a, error: null });
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "b" }),
+      lastAssistantText: null,
+    });
+    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ finishedAt: 8_000, idleAt: 8_000 });
     vi.setSystemTime(7_000);
-    await harness.behavior.callRpc("markIdle", { threadIds: ["a"] });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ idleAt: 8_000 });
-    expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
+    await harness.behavior.emitThreadEvent("interaction.pending", { thread: a, interaction: {} as never });
+    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ finishedAt: 8_000, idleAt: 8_000, pendingAt: 7_000 });
+    expect(idleSignals(harness)).toEqual([
       { kind: "idleAt", threadIds: ["a"], value: 6_000 },
-      { kind: "idleAt", threadIds: ["a", "b"], value: 8_000 },
+      { kind: "idleAt", threadIds: ["a"], value: 8_000 },
+      { kind: "idleAt", threadIds: ["b"], value: 8_000 },
     ]);
-    await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
+    await harness.behavior.emitThreadEvent("thread.deleted", { thread: a });
     expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
+  });
+
+  // Row B26 of the performance ledger (#145): one idleAt write and one signal
+  // per busy-to-idle change, whatever the number of windows, none of which has
+  // a request to send for it.
+  it("records a thread going idle once, with no request from any window", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(9_000);
+    const { bb, harness } = await load();
+    const set = vi.spyOn(bb.storage.kv, "set");
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "p" }),
+      lastAssistantText: null,
+    });
+    for (let window = 0; window < 3; window++) {
+      await expect(harness.behavior.callRpc("markIdle", { threadIds: ["p"] })).rejects.toThrow();
+    }
+    expect(idleSignals(harness)).toEqual([
+      { kind: "idleAt", threadIds: ["p"], value: 9_000 },
+    ]);
+    expect(set.mock.calls.filter(([, value]) => (value as { idleAt?: number }).idleAt !== undefined)).toHaveLength(1);
+  });
+
+  it("records a reported idle moment only when it is later than the stored one", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { bb, harness } = await load();
+    await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "p" }), lastAssistantText: null });
+    vi.setSystemTime(9_000);
+    expect(await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] })).toEqual({ ok: true });
+    vi.setSystemTime(12_000);
+    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
+    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
+    expect(await bb.storage.kv.get(stampKvKey("p"))).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
+    expect(idleSignals(harness)).toEqual([
+      { kind: "idleAt", threadIds: ["p"], value: 10_000 },
+      { kind: "idleAt", threadIds: ["p"], value: 12_000 },
+    ]);
   });
 
   it("forgets a deleted thread's stamps without publishing", async () => {
@@ -377,6 +439,20 @@ describe("stamps", () => {
     expect(harness.inspection.realtimeSignals.length).toBe(before);
   });
 
+  it("drops an invalid stored row on a cold read and logs it", async () => {
+    const { bb, harness } = await load();
+    await bb.storage.kv.set(stampKvKey("good"), { finishedAt: 1_000 });
+    await bb.storage.kv.set(stampKvKey("bad"), { finishedAt: "yesterday" });
+    const { stamps } = (await harness.behavior.callRpc("listStamps", null)) as {
+      stamps: { finishedAt: Record<string, number> };
+    };
+    expect(stamps.finishedAt).toEqual({ good: 1_000 });
+    expect(await bb.storage.kv.get(stampKvKey("bad"))).toBeUndefined();
+    expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
+      "stored stamps for bad are invalid; dropping them",
+    ]);
+  });
+
   it("reloads stored stamps after a restart", async () => {
     const first = await load();
     await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
@@ -385,6 +461,82 @@ describe("stamps", () => {
       stamps: { seenAt: Record<string, number> };
     };
     expect(Object.keys(stamps.seenAt)).toEqual(["t1"]);
+  });
+});
+
+/**
+ * Plugin KV over SQLite, shaped as bb 0.44 keeps it: JSON rows namespaced by
+ * plugin in one table of a WAL database, each call a synchronous query in the
+ * server's own process behind a promise.
+ */
+function sqliteKv(file: string) {
+  const db = new Database(file);
+  db.pragma("journal_mode = WAL");
+  db.exec("CREATE TABLE IF NOT EXISTS plugin_kv (plugin_id TEXT, key TEXT, value TEXT, PRIMARY KEY (plugin_id, key))");
+  const plugin = "thread-glance";
+  const select = db.prepare("SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?");
+  const keys = db.prepare("SELECT key FROM plugin_kv WHERE plugin_id = ? AND key >= ? AND key < ? ORDER BY key");
+  const upsert = db.prepare("INSERT OR REPLACE INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, ?)");
+  const remove = db.prepare("DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?");
+  return {
+    db,
+    kv: {
+      async get<T>(key: string): Promise<T | undefined> {
+        const row = select.get(plugin, key) as { value: string } | undefined;
+        return row === undefined ? undefined : (JSON.parse(row.value) as T);
+      },
+      async set(key: string, value: unknown): Promise<void> {
+        upsert.run(plugin, key, JSON.stringify(value));
+      },
+      async delete(key: string): Promise<void> {
+        remove.run(plugin, key);
+      },
+      async list(prefix = ""): Promise<string[]> {
+        return (keys.all(plugin, prefix, `${prefix}\uffff`) as { key: string }[]).map((row) => row.key);
+      },
+    },
+  };
+}
+
+// Row B25 of the performance ledger (#145): the first listStamps and listNotes
+// after a server start, at 5,000 stored threads. It records the figures
+// without failing on them; the ledger enforces the threshold.
+describe("cold read benchmark", () => {
+  it("reads 1,500 and 5,000 stored threads' stamps and notes", async () => {
+    const { db, kv } = sqliteKv(join(tempDir, "bb.db"));
+    const bb = {
+      storage: { kv },
+      realtime: { publish: () => undefined },
+      log: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
+    } as unknown as Parameters<typeof createStampStore>[0];
+    const insert = db.transaction((from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        const id = `thr_${String(i).padStart(6, "0")}`;
+        void kv.set(stampKvKey(id), { startedAt: 1_000 + i, finishedAt: 2_000 + i, seenAt: 3_000 + i, idleAt: 2_000 + i });
+        void kv.set(noteKvKey(id), { done: { kind: "done", text: `Finished task ${i}.`, at: 2_000 + i } });
+      }
+    });
+    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    const time = async (read: () => Promise<unknown>) => {
+      const start = performance.now();
+      await read();
+      return performance.now() - start;
+    };
+    const figures: Record<string, string> = {};
+    for (const [from, to] of [[0, 1_500], [1_500, 5_000]]) {
+      insert(from, to);
+      const stampRuns: number[] = [];
+      const noteRuns: number[] = [];
+      for (let run = 0; run < 7; run++) {
+        stampRuns.push(await time(() => createStampStore(bb).list()));
+        noteRuns.push(await time(() => createNoteStore(bb).list()));
+      }
+      expect(Object.keys((await createStampStore(bb).list()).startedAt)).toHaveLength(to);
+      expect(Object.keys(await createNoteStore(bb).list())).toHaveLength(to);
+      figures[to] = `listStamps ${median(stampRuns).toFixed(1)} ms, listNotes ${median(noteRuns).toFixed(1)} ms`;
+    }
+    db.close();
+    process.stdout.write(`B25 cold read (median of 7): ${JSON.stringify(figures)}\n`);
   });
 });
 

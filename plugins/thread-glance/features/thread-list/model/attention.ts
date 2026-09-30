@@ -89,37 +89,55 @@ export function isOrphanedFailure(
 /** Which threads the list last saw busy, and when each last went from busy to idle. */
 export interface IdleTracker {
   busy: ReadonlySet<string>;
+  /** The busy threads that were running a turn. */
+  working: ReadonlySet<string>;
   idleSince: Readonly<Record<string, number>>;
-  /** The threads this step saw go idle, for the server's `idleAt`. */
-  wentIdle: readonly string[];
+  /**
+   * The threads this step saw go idle by a change bb sends the server no
+   * event for, so a window reports it (see `isAnnounced`).
+   */
+  unannounced: readonly string[];
 }
 
-function isBusyThread(thread: PluginSidebarThread): boolean {
-  const state = computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
-  return !isParentIdle({ thread, state });
+/**
+ * Whether bb sends the server an event for a thread going from busy to
+ * `now`. bb reports a turn ending, failing or waiting on you, so a change out
+ * of a working turn is announced unless the turn was cut off by the machine
+ * going offline. Every other change to idle, such as background work ending
+ * or a queued message being cancelled, is not.
+ */
+export function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
+  return wasWorking && now.kind !== "offline";
+}
+
+function stateOf(thread: PluginSidebarThread): ThreadState {
+  return computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
 }
 
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
  * idle now went idle at `at`. A thread first seen idle has no time here; the
- * server's `idleAt` holds what an earlier window saw.
+ * server's `idleAt` holds it.
  */
 export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
   const busy = new Set<string>();
+  const working = new Set<string>();
   const idleSince: Record<string, number> = {};
-  const wentIdle: string[] = [];
+  const unannounced: string[] = [];
   for (const thread of threads) {
     const id = thread.id;
-    if (isBusyThread(thread)) {
+    const state = stateOf(thread);
+    if (!isParentIdle({ thread, state })) {
       busy.add(id);
+      if (state.kind === "working") working.add(id);
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
-      wentIdle.push(id);
+      if (!isAnnounced(previous.working.has(id), state)) unannounced.push(id);
     } else if (previous?.idleSince[id] !== undefined) {
       idleSince[id] = previous.idleSince[id];
     }
   }
-  return { busy, idleSince, wentIdle };
+  return { busy, working, idleSince, unannounced };
 }
 
 /**

@@ -75,8 +75,8 @@ const RPC_CASES = ([
   ["markSeen", { threadIds: [""] }],
   ["markSeen", { threadIds: JSON.parse(TOO_MANY) as string[] }, "10001 ids"],
   ["clearSeen", { threadIds: "t1" }],
-  ["markIdle", { threadIds: [LONG_ID] }, "an id of 1025 characters"],
-  ["markIdle", {}],
+  ["reportIdle", { threadIds: [LONG_ID] }, "an id of 1025 characters"],
+  ["reportIdle", {}],
   ["listNotes", 1],
   ["listScheduled", []],
 ] as [string, unknown, string?][]).map(([method, input, label]) => ({
