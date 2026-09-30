@@ -200,8 +200,9 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   thread there; `--onto-group Pinned` pins it (`bb thread pin` one thread
   first, for Pinned to show); a child dropped on its group's header leaves
   its parent; a parent dropped on its own child shows `blocked` and changes
-  nothing. `thread-glance drag-group <label> --onto <label>` reorders groups
-  and reads the saved order back.
+  nothing. `thread-glance drag-group <label> --onto <label>` drops the header
+  on the upper half of `--onto`'s group, before it; `--zone bottom` on the
+  lower half, after it. It reads the saved order back.
 - **Splits** (`drag`): `thread-glance split <title> --from <title>` opens
   `--from`'s thread and drags the row onto the main area's right edge;
   `--ctrl-click` Ctrl+clicks it instead. `composers` 2 is two panes, and

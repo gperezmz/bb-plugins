@@ -147,16 +147,9 @@ const popover = (page) => page.getByRole("radiogroup", { name: "Group by" });
 
 /** Opens the settings popover, unless it is open. */
 export async function openSettings(page) {
-  // A popover opened as the list's data first lands closes again; reopen it.
-  for (let i = 0; i < 3; i++) {
-    if (!(await popover(page).isVisible())) {
-      await header(page).click();
-      await popover(page).waitFor();
-    }
-    await sleep(1000);
-    if (await popover(page).isVisible()) return;
-  }
-  throw new Error("the settings popover closed on its own three times");
+  if (await popover(page).isVisible()) return;
+  await header(page).click();
+  await popover(page).waitFor();
 }
 
 function locate(page, name) {
@@ -1236,7 +1229,7 @@ export const verbs = {
   },
 
   "drag-group": {
-    usage: "<label> --onto <label> [--zone top|bottom]: drag a group header onto another's upper or lower half; the saved group order after",
+    usage: "<label> --onto <label> [--zone top|bottom]: drag a group header onto another group's upper or lower half (its header, or its last row); the saved group order after",
     valued: ["onto", "zone"],
     async run({ page, url, capture, cli, args, flags }) {
       await ready(page, url);
@@ -1247,7 +1240,9 @@ export const verbs = {
       await header(args[0]).scrollIntoViewIfNeeded();
       await frames(page);
       await capture("before", `before dragging ${args[0]}`);
-      const feedback = await dragTo(page, header(args[0]), header(flags.onto), flags.zone === "bottom" ? 0.9 : 0.1);
+      // A group drop lands before or after by the half of the whole group the pointer is in, not of its header.
+      const group = page.locator(`section[data-sidebar-visibility-group][aria-label="${flags.onto}"]`);
+      const feedback = flags.zone === "bottom" ? await dragTo(page, header(args[0]), group, 0.95) : await dragTo(page, header(args[0]), header(flags.onto), 0.1);
       await page.waitForFunction((was) => JSON.stringify([...document.querySelectorAll("section[data-sidebar-visibility-group]")].map((e) => e.getAttribute("aria-label"))) !== was, JSON.stringify(before), { timeout: 10_000 }).catch(() => {});
       await capture("after", `drop the ${args[0]} header on ${flags.onto}`);
       const mode = JSON.parse(cli("thread-glance.drag-group/cli", "thread-glance", "prefs", "get", "organizationMode"));
@@ -1467,7 +1462,7 @@ export const verbs = {
       const button = page.getByRole("button", { name: "Mark all read", exact: true });
       await button.click();
       const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Mark all read" });
-      if (await confirm.isVisible({ timeout: 1000 }).catch(() => false)) await confirm.click();
+      if (await confirm.waitFor({ timeout: 1000 }).then(() => true, () => false)) await confirm.click();
       await button.waitFor({ state: "detached" });
       const listUnread = (await readList(page)).rows.filter((r) => r.unread).map((r) => r.title);
       await closeDrawer();
