@@ -93,11 +93,21 @@ export interface IdleTracker {
   working: ReadonlySet<string>;
   idleSince: Readonly<Record<string, number>>;
   /**
-   * The threads this step saw go idle from background work or a queued or
-   * scheduled message rather than from a turn. bb sends the server no event
-   * for that change, so a window reports it.
+   * The threads this step saw go idle by a change bb sends the server no
+   * event for, so a window reports it (see `isAnnounced`).
    */
   unannounced: readonly string[];
+}
+
+/**
+ * Whether bb sends the server an event for a thread going from busy to
+ * `now`. bb reports a turn ending, failing or waiting on you, so a change out
+ * of a working turn is announced unless the turn was cut off by the machine
+ * going offline. Every other change to idle, such as background work ending
+ * or a queued message being cancelled, is not.
+ */
+export function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
+  return wasWorking && now.kind !== "offline";
 }
 
 function stateOf(thread: PluginSidebarThread): ThreadState {
@@ -122,7 +132,7 @@ export function trackIdle(previous: IdleTracker | null, threads: readonly Plugin
       if (state.kind === "working") working.add(id);
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
-      if (!previous.working.has(id)) unannounced.push(id);
+      if (!isAnnounced(previous.working.has(id), state)) unannounced.push(id);
     } else if (previous?.idleSince[id] !== undefined) {
       idleSince[id] = previous.idleSince[id];
     }

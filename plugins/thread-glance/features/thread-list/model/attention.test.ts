@@ -91,6 +91,10 @@ describe("when a thread last became idle", () => {
     expect(trackIdle(trackIdle(trackIdle(null, [busy], T0), [background], T0 + 1), [idle], T0 + 2).unannounced).toEqual(["p"]);
     expect(trackIdle(trackIdle(null, [idle], T0), [idle], T0 + 1).unannounced).toEqual([]);
   });
+  it("names a thread whose turn was cut off by its machine going offline", () => {
+    const offline = makeThread({ id: "p", status: "active", runtimeStatus: "waiting-for-host" });
+    expect(trackIdle(trackIdle(null, [busy], T0), [offline], T0 + 1).unannounced).toEqual(["p"]);
+  });
   it("treats background work and a queued message as busy, and drops a thread that is gone", () => {
     for (const thread of [
       makeThread({ id: "p", activity: { backgroundCommands: 1 } }),
