@@ -14,6 +14,7 @@ import {
   type ThreadState,
 } from "./state";
 import { attentionFlagsOf, orphanedAt } from "./attention";
+import { isPinnedThread } from "./groups";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
 import type { ThreadNotes } from "@/shared/contract";
@@ -116,10 +117,6 @@ export interface ForestInputs extends ThreadContext {
   stampsLoaded?: boolean;
 }
 
-function isPinned(thread: PluginSidebarThread): boolean {
-  return thread.pinnedAt !== null || thread.isPinned;
-}
-
 /**
  * The visible loaded ancestor a thread attaches to, or null when it is
  * a root. A pinned thread with no pinned ancestor is a root. Cycles end
@@ -140,11 +137,11 @@ function attachParent(
     if (parent === undefined) break;
     if (!parent.isHidden) {
       attach ??= parent.id;
-      if (isPinned(parent)) pinnedAncestor = true;
+      if (isPinnedThread(parent)) pinnedAncestor = true;
     }
     parentId = parent.parentThreadId;
   }
-  if (!thread.isHidden && isPinned(thread) && !pinnedAncestor) return null;
+  if (!thread.isHidden && isPinnedThread(thread) && !pinnedAncestor) return null;
   return attach;
 }
 

@@ -7,7 +7,7 @@ import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { itemKeyOf } from "../model/layout-items";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
-import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
+import { isPinnedThread, moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import {
   markAllReadPlan,
@@ -416,7 +416,7 @@ export function createCommands(store: ListStore): Commands {
       if (thread === undefined) return;
       const { sdk } = edge();
       const move = async () => {
-        if (parentThreadId !== null && (thread.pinnedAt !== null || thread.isPinned)) {
+        if (parentThreadId !== null && isPinnedThread(thread)) {
           await sdk.threads.unpin({ threadId: thread.id });
         }
         await sdk.threads.update({ threadId: thread.id, parentThreadId });

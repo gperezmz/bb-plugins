@@ -61,10 +61,10 @@ export function share<T>(previous: T, next: T): T {
  * but through `isUnread`. A field bb starts changing on a read that is not
  * listed here only costs that update a full derive step, and the row a render.
  */
-export const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
+const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
 
 /** Two objects of one thread that differ only in the fields a read changes. */
-function onlyReadFieldsDiffer(a: PluginSidebarThread, b: PluginSidebarThread): boolean {
+export function onlyReadFieldsDiffer(a: PluginSidebarThread, b: PluginSidebarThread): boolean {
   const keys = Object.keys(b) as (keyof PluginSidebarThread)[];
   return keys.length === Object.keys(a).length && keys.every((key) => READ_FIELDS.has(key) || Object.is(a[key], b[key]));
 }

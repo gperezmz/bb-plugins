@@ -2,6 +2,7 @@
 // Worked out afresh on every build, so any activity unsettles a thread. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { SettleAfter } from "@/shared/preferences";
+import { isPinnedThread } from "./groups";
 import { isQuietThread } from "./state";
 import type { ThreadInfo, ThreadTree } from "./trees";
 
@@ -49,7 +50,7 @@ export function lastActivityAt(
  */
 export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean {
   const thread = info.thread;
-  if (thread.pinnedAt !== null || thread.isPinned) return false;
+  if (isPinnedThread(thread)) return false;
   if (!isQuietThread(info.state, info.unread, false) || info.attentionFlags.size > 0) return false;
   if (inputs.settleAfter === "never") return false;
   return inputs.now - lastActivityAt(thread, inputs) >= SETTLE_AFTER_MS[inputs.settleAfter];

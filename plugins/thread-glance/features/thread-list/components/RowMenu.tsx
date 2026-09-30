@@ -111,12 +111,7 @@ export function RowContextMenuContent({
                     disabled={target.id === currentSectionId}
                     onSelect={guard(() => onAction("move-to-section", target.id))}
                   >
-                    {target.id === currentSectionId ? (
-                      <Icon name={ICONS.check} aria-hidden className="size-4" />
-                    ) : (
-                      <span className="size-4" />
-                    )}
-                    {target.name}
+                    <SectionTarget name={target.name} current={target.id === currentSectionId} />
                   </ContextMenuItem>
                 ))}
               </ContextMenuSubContent>

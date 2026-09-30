@@ -17,7 +17,7 @@ import { detectTransitions, mergeTargets, snapshotOf, type Snapshot, type Target
 import { groupIdForRoot } from "../model/groups";
 import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
-import { READ_FIELDS, share, shareView } from "../model/share";
+import { onlyReadFieldsDiffer, share, shareView } from "../model/share";
 import { miniMapsOf, openThreadIdsOf, type MiniMapPane } from "../model/split";
 import { isUnread } from "../model/state";
 import { buildForest, type Forest, type ThreadInfo } from "../model/trees";
@@ -330,9 +330,7 @@ export function onlyReadChanged(current: ListInputs, next: ListInputs, model: Li
     const [was, thread] = [before.threads[index]!, after.threads[index]!];
     if (was === thread) continue;
     if (was.id !== thread.id || model.forest.infos.get(thread.id)?.unread !== false) return false;
-    const fields = Object.keys(thread) as (keyof PluginSidebarThread)[];
-    if (fields.length !== Object.keys(was).length) return false;
-    if (!fields.every((field) => READ_FIELDS.has(field) || Object.is(thread[field], was[field]))) return false;
+    if (!onlyReadFieldsDiffer(was, thread)) return false;
     if (isUnread(thread, context)) return false;
   }
   return true;

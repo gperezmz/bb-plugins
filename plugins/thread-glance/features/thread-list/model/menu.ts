@@ -2,6 +2,7 @@
 // the menu components render this list.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { ICONS } from "../icons";
+import { isPinnedThread } from "./groups";
 
 export type RowMenuAction =
   | "open-in-split"
@@ -41,7 +42,7 @@ export interface RowMenuInputs {
 export function rowMenuItems(inputs: RowMenuInputs): RowMenuItem[] {
   const { thread } = inputs;
   const archived = thread.archivedAt !== null || thread.isArchived;
-  const pinned = thread.pinnedAt !== null || thread.isPinned;
+  const pinned = isPinnedThread(thread);
   const items: RowMenuItem[] = [];
   items.push({ action: "details", label: "Details", icon: ICONS.details });
   if (inputs.splitAvailable) {
