@@ -90,6 +90,10 @@ _Avoid_: Row size, zoom
 The second line of a Thread Glance row naming its thread's branch when that is not its project's default, shown while its switch is on.
 _Avoid_: Branch row, subtitle
 
+**Budget ledger**:
+Thread Glance's one list of performance budgets, one row per budget with its threshold, how it is measured and whether it is enforcing yet.
+_Avoid_: Budget table, perf budgets, budget file
+
 ### Thread Usage
 
 **Header chip**:
