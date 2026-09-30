@@ -79,6 +79,8 @@ export interface FakeHostOptions {
   markReadMs?: number;
   /** Threads whose `threads.markRead` fails. */
   failRead?: (threadId: string) => boolean;
+  /** Hold every `threads.markRead` unanswered until `releaseReads`. */
+  holdReads?: boolean;
   isCompactViewport?: boolean;
 }
 
@@ -104,6 +106,8 @@ export interface FakeHost {
   markReadPeak: number;
   /** Resolves once no `threads.markRead` is in flight. */
   markReadSettled(): Promise<void>;
+  /** Answers every held `threads.markRead`, and stops holding. */
+  releaseReads(): void;
   resetCounts(): void;
   subscribe(listener: () => void): () => void;
 }
@@ -137,6 +141,8 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
   let inFlight = 0;
   let idle: (() => void)[] = [];
   const answered = new Set<string>();
+  let holding = options.holdReads ?? false;
+  let held: (() => void)[] = [];
   const applyAnswers = () => {
     const now = Date.now();
     const changes = new Set(answered);
@@ -201,6 +207,7 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     async markRead({ threadId }) {
       inFlight += 1;
       host.markReadPeak = Math.max(host.markReadPeak, inFlight);
+      if (holding) await new Promise<void>((resolve) => held.push(resolve));
       await new Promise((resolve) => setTimeout(resolve, options.markReadMs ?? 0));
       inFlight -= 1;
       if (options.failRead?.(threadId)) {
@@ -214,6 +221,12 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
       return { id: threadId };
     },
     markReadPeak: 0,
+    releaseReads() {
+      holding = false;
+      const waiting = held;
+      held = [];
+      for (const resolve of waiting) resolve();
+    },
     markReadSettled: () => (inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idle.push(resolve))),
     resetCounts() {
       for (const name of HOST_HOOKS) host.hookCalls[name] = 0;
