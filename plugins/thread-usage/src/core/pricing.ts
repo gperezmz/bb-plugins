@@ -79,10 +79,10 @@ export function fromLiteLlmEntry(entry: LiteLlmPriceEntry): ModelPrice | null {
   return price;
 }
 
-/** Settings value "Price overrides and aliases": rates per million tokens. */
 const nonEmpty = () => z.string().check(z.minLength(1));
 const rate = () => z.number().check(z.nonnegative());
 
+/** Settings value "Price overrides and aliases": rates per million tokens. */
 export const priceOverridesSchema = z.strictObject({
   aliases: z.optional(z.record(nonEmpty(), nonEmpty())),
   prices: z.optional(
