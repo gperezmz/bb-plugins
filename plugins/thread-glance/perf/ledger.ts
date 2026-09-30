@@ -608,11 +608,12 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B27",
     bounds: "Mark all read, one step",
     threshold: "every counted thread shown read in the first frame after the click; ≤ 2 list commits from click to the last request returning",
-    baseline: "75 commits",
-    measuredBy: "jsdom, MAR list, fake `setRead` taking 50 ms",
+    baseline: "75 commits (0.7.0, counting every React commit, the edge's included)",
+    measuredBy:
+      "jsdom, MAR list, fake `threads.markRead` taking 50 ms. A list commit is one that renders a row, a group header or the list header: the list's edge renders on every update bb sends and draws nothing, so it is not counted",
     kind: "deterministic",
     switchedOnBy: 153,
-    enforcing: false,
+    enforcing: true,
     read: ({ markAllRead: { jsdom } }) =>
       jsdom === undefined
         ? NOT_MEASURED
@@ -629,7 +630,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "Chromium, MAR list (production React)",
     kind: "timing",
     switchedOnBy: 153,
-    enforcing: false,
+    enforcing: true,
     read: ({ markAllRead: { chromium } }) => {
       if (chromium === undefined) return NOT_MEASURED;
       const inp = inpReading(chromium.inp);
@@ -642,18 +643,18 @@ export const LEDGER: readonly LedgerRow[] = [
   {
     id: "B29",
     bounds: "Mark all read, requests",
-    threshold: "at most six `setRead` in flight; one per counted thread; one `markSeen`",
-    baseline: "448 at once",
-    measuredBy: "fake host, MAR list",
+    threshold: "at most six `threads.markRead` in flight; one per counted thread; one `markSeen`",
+    baseline: "448 `setRead` at once",
+    measuredBy: "fake host, MAR list, with its unread child threads done-unseen",
     kind: "deterministic",
     switchedOnBy: 153,
-    enforcing: false,
+    enforcing: true,
     read: ({ markAllRead: { host } }) =>
       host === undefined
         ? NOT_MEASURED
         : {
-            figure: `${host.setRead} setRead for ${host.counted} counted, ${host.setReadPeak} in flight at once, ${host.markSeen} markSeen`,
-            pass: host.setReadPeak <= 6 && host.setRead === host.counted && host.markSeen === 1,
+            figure: `${host.markRead} markRead for ${host.counted} counted, ${host.markReadPeak} in flight at once, ${host.markSeen} markSeen`,
+            pass: host.markReadPeak <= 6 && host.markRead === host.counted && host.markSeen === 1,
           },
   },
 ];

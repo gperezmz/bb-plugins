@@ -54,6 +54,10 @@ _Avoid_: Active thread, current thread
 A thread shown in any pane of bb's window, the focused thread or one in another split pane. Thread Glance never counts it as unread.
 _Avoid_: Viewed thread, visible thread
 
+**Pending read**:
+A thread Thread Glance shows read while its request to bb to mark it read is still on its way. It shows unread again if the request fails or bb reports a newer finished turn.
+_Avoid_: Optimistic read, read override
+
 **Quiet thread**:
 A thread that is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 _Avoid_: Idle thread

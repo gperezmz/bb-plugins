@@ -35,9 +35,9 @@ export interface HostFigures {
 }
 
 export interface MarkAllReadRequests {
-  setRead: number;
-  /** Most `setRead` calls in flight at once. */
-  setReadPeak: number;
+  markRead: number;
+  /** Most `threads.markRead` calls in flight at once. */
+  markReadPeak: number;
   markSeen: number;
   counted: number;
 }
@@ -67,15 +67,29 @@ async function drain(ms = 50): Promise<void> {
   }
 }
 
-async function windows(list: GeneratedList, count: number) {
+async function windows(list: GeneratedList, count: number, server = serverState()) {
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "setTimeout", "clearInterval", "clearTimeout"] });
   vi.setSystemTime(list.now);
   const host = createFakeHost({ threads: list.threads, projects: list.projects, freshActions: true });
   const app = await loadWithFakeHost();
-  const server = serverState();
   const slots = Array.from({ length: count }, () => mountList(app, server));
   await drain();
   return { host, app, server, slots };
+}
+
+/**
+ * The plugin server with every unread child thread of `list` finished since
+ * it was read: done-unseen, so Mark all read also marks them seen.
+ */
+function withDoneUnseen(list: GeneratedList) {
+  const server = serverState();
+  const unread = new Set(list.unreadIds);
+  for (const thread of list.threads) {
+    if (thread.parentThreadId !== null && thread.status === "idle" && unread.has(thread.id)) {
+      server.stamps.finishedAt[thread.id] = thread.latestAttentionAt;
+    }
+  }
+  return server;
 }
 
 export async function runHost(list: GeneratedList, { markAllRead = false } = {}): Promise<HostFigures> {
@@ -87,7 +101,7 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
   localStorage.clear();
 
   // First load and remount, in one window.
-  const first = await windows(list, 1);
+  const first = await windows(list, 1, markAllRead ? withDoneUnseen(list) : serverState());
   const firstLoad = since(first.slots, [{ rpc: 0, sdk: 0 }], first.host, 0);
   const mountedRows = first.slots[0]!.container.querySelectorAll("[data-sidebar-thread-id]").length;
   const hooksPerRow = Object.fromEntries(
@@ -103,6 +117,7 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
   if (markAllRead) {
     first.host.resetCounts();
     const rpcMark = again.rpcCalls.length;
+    const sdkMark = again.sdkCalls.length;
     await act(async () => {
       again.getByRole("button", { name: "Mark all read" }).click();
     });
@@ -112,10 +127,10 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
       confirm.click();
     });
     await drain(200);
-    const setRead = first.host.actionCalls.filter((call) => call.method === "setRead").length;
+    const markRead = again.sdkCalls.slice(sdkMark).filter((call) => call.method === "threads.markRead").length;
     marked = {
-      setRead,
-      setReadPeak: first.host.setReadPeak,
+      markRead,
+      markReadPeak: first.host.markReadPeak,
       markSeen: again.rpcCalls.slice(rpcMark).filter((call) => call.method === "markSeen").length,
       counted: list.unreadIds.length,
     };

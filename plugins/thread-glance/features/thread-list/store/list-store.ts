@@ -28,7 +28,7 @@ import { trackIdle, type IdleTracker } from "../model/attention";
 import { share } from "../model/share";
 import { readJson, writeJson } from "../data/storage";
 import { startClock, type Clock } from "./clock";
-import { derive, FIRST_STEP, NO_HOST, type DeriveMemory, type HostData, type ListInputs, type ListModel } from "./derive";
+import { derive, FIRST_STEP, NO_HOST, NO_PENDING_READ, onlyReadChanged, type DeriveMemory, type HostData, type ListInputs, type ListModel } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
 
 /** A row's drop feedback while a thread is dragged over it. */
@@ -122,7 +122,13 @@ export interface ListStore extends StoreApi<ListState> {
   applyStamp(signal: StampSignal): void;
   /** A stamp signal from the plugin server, applied with the next frame. */
   receiveStamp(signal: StampSignal): void;
-  markSeen(threadIds: readonly string[]): void;
+  /**
+   * Shows `read` read at once, while their read requests are pending, and
+   * marks `seen` seen, in one step.
+   */
+  showRead(read: readonly string[], seen: readonly string[]): void;
+  /** Stops showing threads read whose read request failed: they show as bb has them. */
+  revertRead(threadIds: readonly string[]): void;
   clearSeen(threadIds: readonly string[]): void;
   /** Starts the clock and sends what waited for the list to mount; returns the call that stops them. */
   attach(): () => void;
@@ -239,6 +245,7 @@ export function createListStore(): ListStore {
     idleSince: {},
     needYouOn: false,
     targets: new Map(),
+    pendingRead: NO_PENDING_READ,
   };
   const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI, layout: layoutOf(null, inputs, false) });
   let memory: DeriveMemory = FIRST_STEP;
@@ -284,7 +291,15 @@ export function createListStore(): ListStore {
     const current = api.getState().inputs;
     let next = current.host === host ? current : { ...current, host, idleSince: tracker?.idleSince ?? current.idleSince };
     for (const change of waitingSignals) next = { ...next, ...change(next) };
-    if (next !== current) commit(next);
+    if (next === current) return;
+    // bb answering a read of a thread already shown read changes nothing
+    // drawn: the list keeps its model and takes bb's data for the next step.
+    const model = api.getState().model;
+    if (waitingSignals.length === 0 && model !== null && onlyReadChanged(current, next, model)) {
+      api.setState({ inputs: next });
+      return;
+    }
+    commit(next);
   };
   const requestFrame = () => {
     if (frame === null) frame = frames.request(applyFrame);
@@ -426,10 +441,30 @@ export function createListStore(): ListStore {
       if (isStampSignal(signal)) store.feedSignal(stampChange(signal));
     },
 
-    markSeen(threadIds) {
-      if (threadIds.length === 0) return;
-      store.applyStamp({ kind: "seenAt", threadIds: [...threadIds], value: Date.now() });
-      store.edge.rpc.call("markSeen", { threadIds: [...threadIds] }).catch(() => undefined);
+    showRead(read, seen) {
+      if (read.length === 0 && seen.length === 0) return;
+      const byId = api.getState().model?.byId;
+      const at = Date.now();
+      store.feed(({ pendingRead, stamps }) => {
+        const pending = new Map(pendingRead);
+        for (const id of read) {
+          const thread = byId?.get(id);
+          if (thread !== undefined) pending.set(id, thread.latestAttentionAt);
+        }
+        const seenAt = { ...stamps.seenAt };
+        for (const id of seen) seenAt[id] = at;
+        return { pendingRead: pending, ...(seen.length > 0 ? { stamps: { ...stamps, seenAt } } : {}) };
+      });
+      if (seen.length > 0) store.edge.rpc.call("markSeen", { threadIds: [...seen] }).catch(() => undefined);
+    },
+
+    revertRead(threadIds) {
+      store.feed(({ pendingRead }) => {
+        if (!threadIds.some((id) => pendingRead.has(id))) return {};
+        const pending = new Map(pendingRead);
+        for (const id of threadIds) pending.delete(id);
+        return { pendingRead: pending };
+      });
     },
 
     clearSeen(threadIds) {

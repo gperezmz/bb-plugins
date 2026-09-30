@@ -127,10 +127,12 @@ says.
 - The thread on screen, and any thread in a split pane, is never unread, so
   unread, `need you` and `Mark all read` show only for other threads. Mark
   all read asks for confirmation above 20 threads; the verb confirms.
-- Read state set elsewhere (another window's Mark all read, `bb thread read`)
-  reaches an open window only on reload in bb 0.44, bb's own list included;
-  a child marked read reaches it live. Read it back with `list` on a fresh
-  load, not a second window.
+- Read state set elsewhere (`bb thread read`) reaches an open window only on
+  reload in bb 0.44, bb's own list included; a child marked read reaches it
+  live. Thread Glance's Mark all read and Mark read send bb's
+  `threads.markRead`: a second window follows them live, but bb's own list in
+  the window that sent them keeps those threads unread until a reload. Read
+  it back with `list` on a fresh load, not a second window.
 - A turn in flight when its machine goes offline fails once bb's 30 s
   reconnect grace ends, so the `Machine offline` state and the chip's
   `, machine offline below` are not reachable on a run.

@@ -18,6 +18,7 @@ import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
 import { share, shareView } from "../model/share";
 import { miniMapsOf, openThreadIdsOf, type MiniMapPane } from "../model/split";
+import { isUnread } from "../model/state";
 import { buildForest, type Forest, type ThreadInfo } from "../model/trees";
 import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 
@@ -33,6 +34,9 @@ export interface HostData {
   draftIds: ReadonlySet<string>;
   splitLayout: PluginSidebarSplitLayout | null;
 }
+
+/** No thread pending read. */
+export const NO_PENDING_READ: ReadonlyMap<string, number> = new Map();
 
 export const NO_HOST: HostData = {
   status: "loading",
@@ -78,6 +82,8 @@ export interface ListInputs {
   needYouOn: boolean;
   /** Transient auto-expansion. */
   targets: Targets;
+  /** Threads shown read while their read request is pending (see `isPendingRead`). */
+  pendingRead: ReadonlyMap<string, number>;
 }
 
 /** The list model: what rows, group headers and the list header draw. */
@@ -128,7 +134,7 @@ export const FIRST_STEP: DeriveMemory = {
 };
 
 export interface Derived {
-  /** The inputs, with what the rules changed: seen stamps, targets, the filter. */
+  /** The inputs, with what the rules changed: seen stamps, targets, the filter, pending reads. */
   inputs: ListInputs;
   model: ListModel | null;
   memory: DeriveMemory;
@@ -167,6 +173,9 @@ export function derive(given: ListInputs, memory: DeriveMemory, at: number): Der
   const { host, prefs, stamps } = inputs;
   if (host.status !== "ready") return { inputs, model: null, memory: { ...next, model: null }, seen };
 
+  const pendingRead = settlePendingRead(inputs.pendingRead, host.threads);
+  if (pendingRead !== inputs.pendingRead) inputs = { ...inputs, pendingRead };
+
   const splitLayout = host.splitLayout;
   const sameLayout = memory.model !== null && memory.splitLayout === splitLayout;
   const openThreadIds = sameLayout ? memory.model!.openThreadIds : openThreadIdsOf(splitLayout);
@@ -184,6 +193,7 @@ export function derive(given: ListInputs, memory: DeriveMemory, at: number): Der
     idleSince: inputs.idleSince,
     idleAt: stamps.idleAt,
     stampsLoaded: inputs.stampsLoaded,
+    pendingRead,
   });
 
   // Auto-expansion, diffed against the last step, once the preferences are in.
@@ -265,6 +275,70 @@ export function derive(given: ListInputs, memory: DeriveMemory, at: number): Der
   next.threads = host.threads;
   next.splitLayout = splitLayout;
   return { inputs, model, memory: next, seen };
+}
+
+/**
+ * The threads still pending read: a thread leaves once bb reports it read,
+ * reports attention newer than when it was marked, or no longer lists it.
+ */
+export function settlePendingRead(
+  pending: ReadonlyMap<string, number>,
+  threads: readonly PluginSidebarThread[],
+): ReadonlyMap<string, number> {
+  if (pending.size === 0) return pending;
+  const left = new Map<string, number>();
+  for (const thread of threads) {
+    const markedAt = pending.get(thread.id);
+    if (markedAt === undefined) continue;
+    const readByBb = (thread.lastReadAt ?? 0) >= thread.latestAttentionAt;
+    if (!readByBb && thread.latestAttentionAt <= markedAt) left.set(thread.id, markedAt);
+  }
+  return left.size === pending.size ? pending : left.size === 0 ? NO_PENDING_READ : left;
+}
+
+/**
+ * Fields bb changes when it marks a thread read, none of which the list draws
+ * but through `isUnread`. A field bb starts changing on a read that is not
+ * listed here only costs that update a full derive step.
+ */
+const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
+
+function sameRecord(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(b);
+  return keys.length === Object.keys(a).length && keys.every((key) => a[key] === b[key]);
+}
+
+/**
+ * Whether `next` differs from `current` only by bb marking read threads the
+ * model already shows read, so the model drawn from `next` would look the
+ * same. Reads only the threads whose objects changed.
+ */
+export function onlyReadChanged(current: ListInputs, next: ListInputs, model: ListModel): boolean {
+  const keys = Object.keys(next) as (keyof ListInputs)[];
+  if (!keys.every((key) => key === "host" || key === "idleSince" || next[key] === current[key])) return false;
+  if (!sameRecord(current.idleSince, next.idleSince)) return false;
+  const [before, after] = [current.host, next.host];
+  const hostKeys = Object.keys(after) as (keyof HostData)[];
+  if (!hostKeys.every((key) => key === "threads" || after[key] === before[key])) return false;
+  if (before.threads.length !== after.threads.length) return false;
+  const context = {
+    activeThreadId: next.activeThreadId,
+    openThreadIds: model.openThreadIds,
+    finishedAt: next.stamps.finishedAt,
+    seenAt: next.stamps.seenAt,
+    pendingRead: next.pendingRead,
+  };
+  for (let index = 0; index < after.threads.length; index += 1) {
+    const [was, thread] = [before.threads[index]!, after.threads[index]!];
+    if (was === thread) continue;
+    if (was.id !== thread.id || model.forest.infos.get(thread.id)?.unread !== false) return false;
+    const fields = Object.keys(thread) as (keyof PluginSidebarThread)[];
+    if (fields.length !== Object.keys(was).length) return false;
+    if (!fields.every((field) => READ_FIELDS.has(field) || Object.is(thread[field], was[field]))) return false;
+    if (isUnread(thread, context)) return false;
+  }
+  return true;
 }
 
 function branchedProjectIdsOf(threads: readonly PluginSidebarThread[]): string[] {

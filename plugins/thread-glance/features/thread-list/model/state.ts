@@ -117,6 +117,11 @@ export interface ThreadContext {
   /** Stamps, from the plugin server. */
   finishedAt: Readonly<Record<string, number>>;
   seenAt: Readonly<Record<string, number>>;
+  /**
+   * Threads shown read while their read request is pending: each id with the
+   * `latestAttentionAt` it had when it was marked. Absent, none are.
+   */
+  pendingRead?: ReadonlyMap<string, number>;
 }
 
 /** Whether the thread is shown in a visible pane: the active one or another split pane. */
@@ -129,16 +134,27 @@ export function isOpenThread(thread: Pick<PluginSidebarThread, "id">, context: T
  * error) since it was last read. Children are also unread when they finished
  * after you last looked at them (done-unseen). An open thread is never
  * unread: bb marks it read moments after it finishes or fails, and counting
- * it until then only flashes the need-you filter.
+ * it until then only flashes the need-you filter. Nor is a thread whose read
+ * request is pending (`isPendingRead`).
  */
 export function isUnread(thread: PluginSidebarThread, context: ThreadContext): boolean {
   if (isOpenThread(thread, context)) return false;
+  if (isPendingRead(thread, context)) return false;
   const status = normalizeStatus(thread);
   const lastRead = thread.lastReadAt ?? 0;
   if ((status === "idle" || status === "error") && lastRead < thread.latestAttentionAt) {
     return true;
   }
   return isDoneUnseen(thread, context);
+}
+
+/**
+ * Shown read while its read request is pending, until bb reports attention
+ * newer than when it was marked (a new turn finishing).
+ */
+export function isPendingRead(thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt">, context: ThreadContext): boolean {
+  const markedAt = context.pendingRead?.get(thread.id);
+  return markedAt !== undefined && thread.latestAttentionAt <= markedAt;
 }
 
 /** Done-unseen: a child that finished after you last read or viewed it. */

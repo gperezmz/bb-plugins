@@ -84,7 +84,11 @@ function render(
       ] as never,
     },
     sdk: {
-      threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
+      threads: {
+        defaultExecutionOptions: async () => null,
+        update: async () => ({}),
+        markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
+      } as never,
       projects: {
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
@@ -100,6 +104,14 @@ function render(
     },
     ...options.extra,
   });
+}
+
+/** The threads bb was asked to mark read, sorted. */
+function markedRead(slot: ReturnType<typeof render>): string[] {
+  return slot.inspection.sdkCalls
+    .filter((call) => call.method === "threads.markRead")
+    .map((call) => (call.args[0] as { threadId: string }).threadId)
+    .sort();
 }
 
 /** Opens the settings panel from the list header of the list on screen, and returns it. */
@@ -310,10 +322,24 @@ describe("Thread Glance slot", () => {
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
     const panel = await openSettings();
-    fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
-    await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
-    await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
-    expect(order()).toEqual(["Open A old", "Open A new"]);
+    // The write waits out its debounce on this clock, so the echo lands before it goes out.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+      await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+      expect(list.inspection.rpcCalls.some((call) => call.method === "setPreference")).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(list.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: expect.objectContaining({ key: "sortDirection" }) }),
+      );
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("applies Density and Branch line picked in the panel at once, each leaving the other, and keeps both for the next list", async () => {
@@ -502,7 +528,7 @@ describe("Thread Glance slot", () => {
     expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
     fireEvent.click(button);
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "d"]),
+      expect(markedRead(slot)).toEqual(["c", "d"]),
     );
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
   });
@@ -516,7 +542,7 @@ describe("Thread Glance slot", () => {
     fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", threadId: "c", read: true })),
+      expect(markedRead(slot)).toEqual(["c"]),
     );
   });
 
@@ -526,16 +552,14 @@ describe("Thread Glance slot", () => {
     expect(within(row).queryByRole("button", { name: "Mark read" })).toBeNull();
   });
 
-  it("marks read through the host's action from the row menu", async () => {
+  it("marks read through bb's markRead from the row menu", async () => {
     const slot = render([makeThread({ id: "u", title: "Unread one", ...finishedUnread })]);
     const row = (await screen.findByRole("link", { name: /Open Unread one/ })).parentElement!;
     fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
     const item = await screen.findByRole("menuitem", { name: "Mark read" });
     fireEvent.click(item);
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toContainEqual(
-        expect.objectContaining({ method: "setRead", threadId: "u", read: true }),
-      ),
+      expect(markedRead(slot)).toEqual(["u"]),
     );
   });
 
@@ -654,7 +678,7 @@ describe("Thread Glance slot", () => {
     const slot = render(few, { prefs: { hiddenGroups: ["project:proj_b"] } });
     fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "setRead").map((call) => (call as { threadId: string }).threadId).sort()).toEqual(["c", "u1", "u2"]),
+      expect(markedRead(slot)).toEqual(["c", "u1", "u2"]),
     );
     cleanup();
     const many = Array.from({ length: 21 }, (_, n) => makeThread({ id: `m${n}`, title: `M${n}`, ...finishedUnread }));
@@ -662,9 +686,9 @@ describe("Thread Glance slot", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText("Mark 21 threads read?")).toBeTruthy();
-    expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toEqual([]);
+    expect(markedRead(big)).toEqual([]);
     fireEvent.click(within(dialog).getByRole("button", { name: "Mark all read" }));
-    await waitFor(() => expect(big.inspection.sidebarActionCalls.filter((call) => call.method === "setRead")).toHaveLength(21));
+    await waitFor(() => expect(markedRead(big)).toHaveLength(21));
   });
 
   it("draws Mark all read in the header only while something in the list is unread, live as that changes", async () => {
@@ -770,16 +794,16 @@ describe("context menu release guard", () => {
     fireEvent.contextMenu(anchor.parentElement!, { clientX: 20, clientY: 20 });
     const item = await screen.findByRole("menuitem", { name: "Mark read" });
     fireEvent.click(item);
-    expect(slot.inspection.sidebarActionCalls.some((call) => call.method === "setRead")).toBe(false);
+    expect(markedRead(slot)).toEqual([]);
     // However long the release took, only a new press in the menu chooses.
     await new Promise((resolve) => setTimeout(resolve, 200));
     fireEvent.click(screen.getByRole("menuitem", { name: "Mark read" }));
-    expect(slot.inspection.sidebarActionCalls.some((call) => call.method === "setRead")).toBe(false);
+    expect(markedRead(slot)).toEqual([]);
     const again = screen.getByRole("menuitem", { name: "Mark read" });
     fireEvent.pointerDown(again, { button: 0, pointerType: "mouse" });
     fireEvent.click(again);
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", read: true })),
+      expect(markedRead(slot)).toHaveLength(1),
     );
   });
 });
@@ -793,7 +817,7 @@ describe("context menu keyboard choice", () => {
     fireEvent.keyDown(item, { key: "ArrowDown" });
     fireEvent.click(item);
     await waitFor(() =>
-      expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setRead", read: true })),
+      expect(markedRead(slot)).toHaveLength(1),
     );
   });
 });

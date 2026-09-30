@@ -398,7 +398,7 @@ export async function runMarkAllReadChromium(makeList: () => GeneratedList): Pro
   for (const rate of [1, 4] as const) {
     localStorage.clear();
     const list = makeList();
-    const host = createFakeHost({ threads: list.threads, projects: list.projects, freshActions: true, setReadMs: 50 });
+    const host = createFakeHost({ threads: list.threads, projects: list.projects, freshActions: true, markReadMs: 50 });
     const app = await loadWithFakeHost();
     const slot = mountList(app, serverState(), SIDEBAR);
     await until(() => slot.container.querySelector("[data-sidebar-thread-id]") !== null);
@@ -409,7 +409,7 @@ export async function runMarkAllReadChromium(makeList: () => GeneratedList): Pro
     await throttle(rate);
     const before = await scriptMs();
     const value = await interaction(confirm);
-    await host.setReadSettled();
+    await host.markReadSettled();
     await quiet();
     const spent = (await scriptMs()) - before;
     await throttle(1);
