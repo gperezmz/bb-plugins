@@ -1,6 +1,6 @@
 // The list store's one derive step: from everything the list is built from,
-// the list model, with today's pure functions in today's order. Pure: what
-// it remembers between steps goes in and comes out as `memory`.
+// the list model, through the model's pure functions. Pure: what it
+// remembers between steps goes in and comes out as `memory`.
 import type {
   PluginEnvironmentProvider,
   PluginSidebarProject,

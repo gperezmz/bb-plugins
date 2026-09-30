@@ -1,6 +1,6 @@
-// A vanilla store with zustand/vanilla's surface (`getState`, `setState`,
-// `subscribe`), so the list store can move onto zustand's `createStore` by
-// changing this file alone.
+// A vanilla store: `getState` returns the current state, `setState` replaces
+// it with a new object and tells every listener the state before and after,
+// and `subscribe` adds a listener. The list store relies on this shape alone.
 
 type Listener<T> = (state: T, previous: T) => void;
 

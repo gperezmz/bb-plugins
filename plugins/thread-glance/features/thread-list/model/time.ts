@@ -34,8 +34,9 @@ export interface TrailingTime {
 }
 
 /**
- * The trailing slot: time since start for a working row, else the age
- *. A working row whose start wasn't stamped shows nothing.
+ * The trailing slot: the wait for a thread that waits on you, time since
+ * start for a working row, else the age. A working row whose start wasn't
+ * stamped, or a waiting one with no `pendingAt`, shows nothing.
  */
 export function trailingTime(
   thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "createdAt">,

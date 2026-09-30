@@ -206,10 +206,10 @@ export function coercePreferences(raw: unknown): Preferences {
 }
 
 /**
- * Maps bb's own thread-list preferences onto ours for the first-run import
- *. `environmentGrouping: "auto"` becomes off, `collapsedThreads` is
- * skipped because it means the inverse of `expandedChildren`, and invalid values
- * are skipped. Returns only the keys that parsed.
+ * Maps bb's own thread-list preferences onto ours for the first-run import.
+ * `environmentGrouping: "auto"` becomes off, `collapsedThreads` is skipped
+ * because it means the inverse of `expandedChildren`, and invalid values are
+ * skipped. Returns only the keys that parsed.
  */
 export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};

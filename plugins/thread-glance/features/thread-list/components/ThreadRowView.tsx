@@ -324,7 +324,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
                 dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
               )}
             >
-              {/* Plain text: mention pills lost the truncation fight. */}
+              {/* Plain text rather than mention pills, so the title truncates. */}
               {thread.displayTitle}
             </span>
             {/* On a two-line row the badge stays on the title's line, not centred beside both. */}

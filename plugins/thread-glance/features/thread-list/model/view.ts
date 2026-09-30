@@ -73,7 +73,8 @@ export interface ThreadRow {
   branchLine: string | null;
   /**
    * Where the pull request badge goes: after the branch on the second line,
-   * on the title line (a root off its default branch, as before), or nowhere.
+   * on the title line for a root off its default branch without a branch
+   * line, or nowhere.
    */
   pullRequest: "second-line" | "title" | null;
   /** The machine's name, beside the age, for a thread off bb's primary machine. */
