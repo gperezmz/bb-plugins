@@ -99,7 +99,7 @@ The second line of a Thread Glance row naming its thread's branch when that is n
 _Avoid_: Branch row, subtitle
 
 **Thread record**:
-One thread's stamps and notes as Thread Glance's server stores them, sent whole on the `records` channel and in `sync` answers.
+One thread's stamps and notes as Thread Glance's server stores them, sent whole in its `records` signals and `sync` answers.
 _Avoid_: Thread data, thread entry
 
 **Spacer**:
