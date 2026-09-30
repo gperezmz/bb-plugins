@@ -283,7 +283,6 @@ function ListDialogs() {
   const forest = model.forest;
   const details = ui.detailsId === null ? null : (forest.infos.get(ui.detailsId) ?? null);
   const moveThread = ui.moveId === null ? null : (model.byId.get(ui.moveId) ?? null);
-  const confirm = ui.confirm;
   return (
     <>
       <CustomizeDialog
@@ -295,11 +294,7 @@ function ListDialogs() {
       />
       <NewSectionDialog open={ui.newSectionOpen} onOpenChange={commands.setNewSectionOpen} onCreate={commands.createSection} />
       <ConfirmDialog
-        open={confirm !== null}
-        title={confirm?.title ?? ""}
-        description={confirm?.description ?? ""}
-        confirmLabel={confirm?.confirmLabel ?? "OK"}
-        destructive={confirm?.destructive}
+        confirm={ui.confirm}
         onOpenChange={(open) => !open && commands.dismissConfirm()}
         onConfirm={commands.confirm}
       />

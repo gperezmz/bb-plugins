@@ -184,6 +184,32 @@ it("asks first above 20 threads, and cancelling sends nothing and changes nothin
   expect(many.every((thread) => UNREAD.test(rowLabel(thread.displayTitle)))).toBe(true);
 });
 
+it.each(["Mark all read", "Cancel"])("shows the confirm it asked while it closes by %s", async (choice) => {
+  // bb's stylesheet animates a closing dialog out, and Radix keeps it drawn
+  // until the animation ends; jsdom applies no animation, so the dialog's style says it.
+  const computed = window.getComputedStyle;
+  const style = vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+    const real = computed(element, pseudo);
+    if (element.getAttribute("role") !== "alertdialog") return real;
+    return new Proxy(real, {
+      get: (target, key) =>
+        key === "animationName" ? (element.getAttribute("data-state") === "closed" ? "exit" : "none") : Reflect.get(target, key, target),
+    });
+  });
+  try {
+    await open(Array.from({ length: 21 }, (_, n) => unread(`m${n}`)));
+    await click(screen.getByRole("button", { name: "Mark all read" }));
+    await click(within(screen.getByRole("alertdialog")).getByRole("button", { name: choice }));
+    const closing = screen.getByRole("alertdialog", { hidden: true });
+    expect(closing.dataset.state).toBe("closed");
+    expect(within(closing).getByRole("heading", { hidden: true }).textContent).toBe("Mark 21 threads read?");
+    expect(within(closing).getByText("Every unread thread in the list, child threads included, will be marked read.")).toBeTruthy();
+    expect(within(closing).getAllByRole("button", { hidden: true }).map((button) => button.textContent)).toEqual(["Cancel", "Mark all read"]);
+  } finally {
+    style.mockRestore();
+  }
+});
+
 it("shows a thread whose read fails unread again, silently from Mark all read", async () => {
   const { host } = await open([unread("u1"), unread("u2")], { failRead: (id) => id === "u2" });
   await click(screen.getByRole("button", { name: "Mark all read" }));
