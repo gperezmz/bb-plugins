@@ -105,7 +105,7 @@ Threads, for a feature that needs one, in the run's project, printing the id
 once the first turn has ended:
 
 ```bash
-.agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> <label> <title> <prompt> [<parent-thread>] [--fail|--hold <s>|--background]
+.agents/skills/driving-bb-plugins/drive-bb-plugins spawn --run <run> <label> <title> <prompt> [<parent-thread>] [--fail|--hold <s>|--background] [--worktree|--beside <thread>]
 ```
 
 bb keeps a thread's Claude Code loaded after its turn, so `spawn` releases it
@@ -119,6 +119,10 @@ ordinary turn never reaches:
 - `--background`: the turn leaves a command running in the background, and
   the runtime stays loaded to keep it running, holding its session slot until
   `drive-bb-plugins release --run <run> <thread>` stops both.
+
+A thread works in the project's checkout, or its parent's where it has one;
+`--worktree` gives it a git worktree of its own instead, and `--beside
+<thread>` puts it in that thread's.
 
 At most `DBP_MAX_SESSIONS` (default 4, fixed at `start`) `spawn`s of a run
 hold a session at once, and the rest wait for a slot; bb's own

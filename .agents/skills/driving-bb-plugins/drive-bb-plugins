@@ -23,12 +23,14 @@
 #   drive-bb-plugins doctor [--run <run>]           exit 0 only when the run is worth driving
 #   drive-bb-plugins bb [--run <run>] <label> -- <args>
 #                                                   run `bb <args>` against the run, logged as evidence
-#   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]
+#   drive-bb-plugins spawn [--run <run>] <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>] [--worktree|--beside <thread>]
 #                                                   make a Claude Code thread, print its id once its
 #                                                   first turn has ended and its runtime is released;
 #                                                   --fail ends that turn in error, --background leaves
 #                                                   a command running and the runtime loaded, --hold
-#                                                   prints the id while the turn works for <s> seconds
+#                                                   prints the id while the turn works for <s> seconds;
+#                                                   --worktree gives it a git worktree of its own,
+#                                                   --beside shares that thread's checkout
 #   drive-bb-plugins seed [--run <run>] <shape.json> make the threads a shape file declares: quiet ones
 #                                                   pending over HTTP with no turn, finished and unread
 #                                                   ones forks, failed, working and background ones
@@ -515,17 +517,19 @@ take_session_slot() {
 
 cmd_spawn() {
   load_run
-  local mode="" hold="" pos=()
+  local mode="" hold="" provider=project-checkout beside="" pos=()
   while [[ $# -gt 0 ]]; do
     case $1 in
       --fail | --background) mode=${1#--} ;;
       --hold) mode=hold hold=${2:?--hold needs seconds} && shift ;;
+      --worktree) provider=git-worktree ;;
+      --beside) beside=${2:?--beside needs a thread} && shift ;;
       *) pos+=("$1") ;;
     esac
     shift
   done
   set -- "${pos[@]}"
-  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>]} title=${2:?} prompt=${3:?} parent=${4:-} parent_env="" args id idle=0 want=idle
+  local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>] [--worktree|--beside <thread>]} title=${2:?} prompt=${3:?} parent=${4:-} parent_env="" args id idle=0 want=idle
   # The fake API reads these markers in the prompt (plugins/cache-keeper/harness/README.md).
   case $mode in
     fail) prompt+=" [fake: fail]" want=error ;;
@@ -533,15 +537,19 @@ cmd_spawn() {
     hold) [[ $hold =~ ^[0-9]+$ ]] || die "--hold takes whole seconds"; prompt+=" [fake: hold=$hold]" ;;
   esac
   args=(--project "$project" --provider claude-code --model "claude-opus-5-5[1m]" --title "$title" --json)
-  # A child shares its parent's checkout; a seeded parent never ran and has none.
-  if [[ -n $parent ]]; then
-    args+=(--parent-thread "$parent")
+  # A child shares its parent's checkout, and --beside another thread's; a
+  # seeded parent never ran and has none.
+  [[ -n $parent ]] && args+=(--parent-thread "$parent")
+  if [[ -n $beside ]]; then
+    parent_env=$(tb bb thread show "$beside" --json | jq -r '.environment.id // empty') || die "no thread $beside"
+    [[ -n $parent_env ]] || die "$beside has no environment to share"
+  elif [[ -n $parent && $provider == project-checkout ]]; then
     parent_env=$(tb bb thread show "$parent" --json | jq -r '.environment.id // empty') || die "no parent thread $parent"
   fi
   if [[ -n ${parent_env:-} ]]; then
     args+=(--environment "$parent_env")
   else
-    args+=(--machine "$host_id" --environment-provider project-checkout)
+    args+=(--machine "$host_id" --environment-provider "$provider")
   fi
   # bb keeps a thread's Claude Code loaded after its turn; the slot bounds how
   # many run at once, and `thread stop` releases each before the slot frees.

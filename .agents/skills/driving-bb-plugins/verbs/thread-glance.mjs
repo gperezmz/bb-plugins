@@ -147,16 +147,9 @@ const popover = (page) => page.getByRole("radiogroup", { name: "Group by" });
 
 /** Opens the settings popover, unless it is open. */
 export async function openSettings(page) {
-  // A popover opened as the list's data first lands closes again; reopen it.
-  for (let i = 0; i < 3; i++) {
-    if (!(await popover(page).isVisible())) {
-      await header(page).click();
-      await popover(page).waitFor();
-    }
-    await sleep(1000);
-    if (await popover(page).isVisible()) return;
-  }
-  throw new Error("the settings popover closed on its own three times");
+  if (await popover(page).isVisible()) return;
+  await header(page).click();
+  await popover(page).waitFor();
 }
 
 function locate(page, name) {
@@ -703,22 +696,35 @@ export const verbs = {
   },
 
   "mark-all-read": {
-    usage: ": click Mark all read (and its confirmation above 20 threads)",
+    usage: ": click Mark all read (and its confirmation above 20 threads); `confirm` is the dialog's title, and each title it showed while closing",
     async run(ctx) {
       const button = (p) => p.getByRole("button", { name: "Mark all read", exact: true });
-      return drive(ctx, {
+      let confirmed = null;
+      const result = await drive(ctx, {
         name: "click Mark all read",
         prepare: async (p) => button(p).waitFor({ timeout: 30_000 }),
         observe: readList,
         act: async (p) => {
           await button(p).click();
-          const confirm = p.getByRole("alertdialog").getByRole("button", { name: "Mark all read" });
-          if (await confirm.isVisible({ timeout: 1000 }).catch(() => false)) await confirm.click();
+          const dialog = p.getByRole("alertdialog");
+          const confirm = dialog.getByRole("button", { name: "Mark all read" });
+          if (!(await confirm.waitFor({ timeout: 1000 }).then(() => true, () => false))) return;
+          const title = () => dialog.getByRole("heading").textContent({ timeout: 100 }).then((t) => t.trim(), () => null);
+          confirmed = { title: await title(), whileClosing: [] };
+          await ctx.capture("confirm", "the confirmation");
+          await confirm.click();
+          // The dialog animates out; read its title on each frame until it is gone.
+          while ((await dialog.count()) > 0) {
+            const t = await title();
+            if (t !== null && !confirmed.whileClosing.includes(t)) confirmed.whileClosing.push(t);
+            await frames(p);
+          }
         },
         settle: async (p) => button(p).waitFor({ state: "detached" }),
         stored: async () =>
           threads(ctx.cli, "thread-glance.mark-all-read/cli").map((t) => ({ title: t.title, read: (t.lastReadAt ?? 0) >= (t.latestAttentionAt ?? 0) })),
       });
+      return { ...result, confirm: confirmed };
     },
   },
 
@@ -1236,7 +1242,7 @@ export const verbs = {
   },
 
   "drag-group": {
-    usage: "<label> --onto <label> [--zone top|bottom]: drag a group header onto another's upper or lower half; the saved group order after",
+    usage: "<label> --onto <label> [--zone top|bottom]: drag a group header onto another group's upper or lower half (its header, or its last row); the saved group order after",
     valued: ["onto", "zone"],
     async run({ page, url, capture, cli, args, flags }) {
       await ready(page, url);
@@ -1247,7 +1253,9 @@ export const verbs = {
       await header(args[0]).scrollIntoViewIfNeeded();
       await frames(page);
       await capture("before", `before dragging ${args[0]}`);
-      const feedback = await dragTo(page, header(args[0]), header(flags.onto), flags.zone === "bottom" ? 0.9 : 0.1);
+      // A group drop lands before or after by the half of the whole group the pointer is in, not of its header.
+      const group = page.locator(`section[data-sidebar-visibility-group][aria-label="${flags.onto}"]`);
+      const feedback = flags.zone === "bottom" ? await dragTo(page, header(args[0]), group, 0.95) : await dragTo(page, header(args[0]), header(flags.onto), 0.1);
       await page.waitForFunction((was) => JSON.stringify([...document.querySelectorAll("section[data-sidebar-visibility-group]")].map((e) => e.getAttribute("aria-label"))) !== was, JSON.stringify(before), { timeout: 10_000 }).catch(() => {});
       await capture("after", `drop the ${args[0]} header on ${flags.onto}`);
       const mode = JSON.parse(cli("thread-glance.drag-group/cli", "thread-glance", "prefs", "get", "organizationMode"));
@@ -1467,7 +1475,7 @@ export const verbs = {
       const button = page.getByRole("button", { name: "Mark all read", exact: true });
       await button.click();
       const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Mark all read" });
-      if (await confirm.isVisible({ timeout: 1000 }).catch(() => false)) await confirm.click();
+      if (await confirm.waitFor({ timeout: 1000 }).then(() => true, () => false)) await confirm.click();
       await button.waitFor({ state: "detached" });
       const listUnread = (await readList(page)).rows.filter((r) => r.unread).map((r) => r.title);
       await closeDrawer();
@@ -1483,6 +1491,127 @@ export const verbs = {
       const reloaded = await recentUnread();
       await capture("reloaded", "the home screen after a reload");
       return { recentUnreadBefore: before, listUnreadAfter: listUnread, recentUnreadAfter: after, recentUnreadAfter6s: afterRefetch, recentUnreadAfterReload: reloaded };
+    },
+  },
+  popover: {
+    usage: ": the settings popover's own open and close: opened as soon as the list header shows on a load, then open or not after a scroll leaving half its button in view and one moving it wholly out; then, with half the button in view, closed by Escape, the button, Tab and a click outside, each with the sidebar's scroll before and after and where focus went. Needs a list that scrolls",
+    async run({ page, url, capture }) {
+      const open = () => popover(page).isVisible();
+      // The header's own scroll area, and the button's top and bottom within its view.
+      const where = () =>
+        header(page).evaluate((button) => {
+          let area = button.parentElement;
+          while (area && area !== document.body && !["auto", "scroll", "overlay"].includes(getComputedStyle(area).overflowY)) area = area.parentElement;
+          if (!area || area === document.body) area = document.scrollingElement;
+          const view = area === document.scrollingElement ? 0 : area.getBoundingClientRect().top;
+          const box = button.getBoundingClientRect();
+          return { scrollTop: Math.round(area.scrollTop), scrollHeight: area.scrollHeight, clientHeight: area.clientHeight, top: box.top - view, bottom: box.bottom - view };
+        });
+      const scrollBy = (dy) =>
+        header(page).evaluate((button, dy) => {
+          let area = button.parentElement;
+          while (area && area !== document.body && !["auto", "scroll", "overlay"].includes(getComputedStyle(area).overflowY)) area = area.parentElement;
+          (area && area !== document.body ? area : document.scrollingElement).scrollTop += dy;
+        }, dy);
+      const settle = async () => {
+        await frames(page);
+        await sleep(300);
+      };
+      // Clicked in the page, as Playwright's click would first scroll the button into view.
+      const pressButton = () => header(page).evaluate((b) => b.click());
+      const focusOnButton = () => header(page).evaluate((b) => document.activeElement === b);
+
+      await page.goto(url);
+      await header(page).waitFor();
+      await openDrawer(page);
+      await pressButton();
+      await popover(page).waitFor();
+      await sleep(2000);
+      const afterLoad = { openAfter2s: await open() };
+      await capture("after-load", "open the popover as soon as the list header shows, then wait 2 s");
+
+      const start = await where();
+      if (start.scrollHeight - start.clientHeight < start.bottom + 40) throw new Error(`the sidebar scrolls ${start.scrollHeight - start.clientHeight} px, too little to move the settings button out of view; seed more threads`);
+      const half = Math.ceil(start.bottom - (start.bottom - start.top) / 2);
+      await scrollBy(half);
+      await settle();
+      const partly = { ...(await where()), open: await open() };
+      await capture("half-out", "scroll the sidebar until half the settings button is out of view");
+      await scrollBy(Math.ceil(partly.bottom) + 20);
+      await settle();
+      const out = { ...(await where()), open: await open() };
+      await capture("out", "scroll the settings button wholly out of view");
+
+      const closers = {};
+      const ways = {
+        Escape: () => page.keyboard.press("Escape"),
+        button: pressButton,
+        Tab: async () => {
+          for (let i = 0; i < 40 && (await open()); i++) await page.keyboard.press("Tab");
+        },
+        outside: async () => {
+          const box = await page.locator("main").first().boundingBox();
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        },
+      };
+      for (const [way, act] of Object.entries(ways)) {
+        await scrollBy(-1e6);
+        await settle();
+        await scrollBy(half);
+        await settle();
+        if (!(await open())) {
+          await pressButton();
+          await popover(page).waitFor();
+        }
+        const before = (await where()).scrollTop;
+        await act();
+        const closed = await popover(page).waitFor({ state: "hidden", timeout: 2000 }).then(() => true, () => false);
+        await settle();
+        closers[way] = { closed, scrollBefore: before, scrollAfter: (await where()).scrollTop, focusOnButton: await focusOnButton(), focus: await focused(page) };
+        await capture(`closed-${way}`, `close the popover with ${way}`);
+      }
+      return { afterLoad, halfOut: partly, out, closers };
+    },
+  },
+
+  "fold-row": {
+    usage: "[--density compact|comfortable]: with Worktrees as folders on and two threads in one worktree, each environment fold row's button name, its height beside the one-line thread rows', the Density drawn (set first through the popover with --density), and its Environment actions menu",
+    valued: ["density"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      if (flags.density) {
+        const want = option("Density", flags.density);
+        await openSettings(page);
+        await locate(page, "Density").getByRole("radio", { name: want.label, exact: true }).click();
+        await awaitControl(page, "Density", want.label);
+        await page.keyboard.press("Escape");
+        await popover(page).waitFor({ state: "hidden" });
+      }
+      const fold = page.getByRole("button", { name: /^(Expand|Collapse) .+ environment, \d+ threads$/ });
+      const height = await page.evaluate((s) => eval(s).scrollHeight, SCROLLER);
+      for (let y = 0; y <= height && (await fold.count()) === 0; y += 300) {
+        await scrollTo(page, y);
+        await frames(page);
+      }
+      if ((await fold.count()) === 0) throw new Error("no environment fold row: turn Worktrees as folders on, and put two threads in one worktree (spawn --worktree, then --beside)");
+      await fold.first().scrollIntoViewIfNeeded();
+      await frames(page);
+      const rows = await fold.evaluateAll((buttons) =>
+        buttons.map((b) => ({ name: b.getAttribute("aria-label"), height: Math.round(b.parentElement.getBoundingClientRect().height) })),
+      );
+      // Thread rows by the height their link fills; a two-line row (Branch line) is the taller one.
+      const threadRowHeights = await page.locator("[data-sidebar-thread-id]").evaluateAll((links) =>
+        [...new Set(links.map((a) => Math.round(a.parentElement.getBoundingClientRect().height)))].sort((a, b) => a - b),
+      );
+      const density = (await clientPrefs(page))?.density ?? "compact";
+      await capture("rows", "the environment fold rows");
+      const row = fold.first().locator("..");
+      await row.hover();
+      await row.getByRole("button", { name: "Environment actions" }).click();
+      const menu = await readMenu(page);
+      await capture("menu", "open Environment actions");
+      await page.keyboard.press("Escape");
+      return { density, rows, threadRowHeights, menu };
     },
   },
 };
