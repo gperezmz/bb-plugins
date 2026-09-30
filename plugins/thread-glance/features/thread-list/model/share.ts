@@ -18,31 +18,39 @@ function sameSet(previous: ReadonlySet<unknown>, next: ReadonlySet<unknown>): bo
  * Returns `next` with every part that deep-equals the same part of
  * `previous` replaced by the previous object; `previous` itself when the two
  * are equal. Plain objects and arrays are compared by value, sets of
- * primitives by membership, anything else by identity.
+ * primitives by membership, anything else by identity. Nothing is allocated
+ * until a difference is found, since most of a list is unchanged each time.
  */
 export function share<T>(previous: T, next: T): T {
   if (Object.is(previous, next)) return previous;
   if (Array.isArray(previous) && Array.isArray(next)) {
-    let same = previous.length === next.length;
-    const result = next.map((value, index) => {
-      const shared = index < previous.length ? share(previous[index], value) : value;
-      if (shared !== previous[index]) same = false;
-      return shared;
-    });
-    return (same ? previous : result) as T;
+    let result: unknown[] | null = previous.length === next.length ? null : [];
+    for (let index = 0; index < next.length; index += 1) {
+      const shared = index < previous.length ? share(previous[index], next[index]) : next[index];
+      if (result === null && shared !== previous[index]) result = previous.slice(0, index);
+      result?.push(shared);
+    }
+    return (result ?? previous) as T;
   }
   if (previous instanceof Set && next instanceof Set) return (sameSet(previous, next) ? previous : next) as T;
   if (isPlainObject(previous) && isPlainObject(next)) {
     const keys = Object.keys(next);
-    let same = keys.length === Object.keys(previous).length;
-    const result: Record<string, unknown> = {};
-    for (const key of keys) {
-      if (!(key in previous)) same = false;
-      const shared = key in previous ? share(previous[key], next[key]) : next[key];
-      if (shared !== previous[key]) same = false;
-      result[key] = shared;
+    let result: Record<string, unknown> | null = null;
+    for (let index = 0; index < keys.length; index += 1) {
+      const key = keys[index]!;
+      const known = key in previous;
+      const shared = known ? share(previous[key], next[key]) : next[key];
+      if (result === null && (!known || shared !== previous[key])) {
+        result = {};
+        for (const before of keys.slice(0, index)) result[before] = previous[before];
+      }
+      if (result !== null) result[key] = shared;
     }
-    return (same ? previous : result) as T;
+    if (result === null && keys.length !== Object.keys(previous).length) {
+      result = {};
+      for (const key of keys) result[key] = previous[key];
+    }
+    return (result ?? previous) as T;
   }
   return next;
 }

@@ -36,6 +36,7 @@ export function useScheduled(store: ListStore): void {
   useRealtime(CHANNELS.scheduled, (payload) => {
     const signal = payload as ScheduledSignal;
     if (signal === null || typeof signal !== "object") return;
-    store.feed({ scheduled: signal.status === "ready" && signal.scheduled ? signal.scheduled : NONE });
+    const scheduled = signal.status === "ready" && signal.scheduled ? signal.scheduled : NONE;
+    store.feedSignal(() => ({ scheduled }));
   });
 }

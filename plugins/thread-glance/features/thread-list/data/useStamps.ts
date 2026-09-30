@@ -26,5 +26,5 @@ export function useStamps(store: ListStore): void {
     wasConnected.current = true;
   }, [connection, load]);
 
-  useRealtime(CHANNELS.stamps, (payload) => store.applyStamp(payload as StampSignal));
+  useRealtime(CHANNELS.stamps, (payload) => store.receiveStamp(payload as StampSignal));
 }

@@ -1,9 +1,9 @@
 // The list store: everything the sidebar list is built from, the list model
 // its derive step builds, and the list's own state, outside React. Rows,
 // group headers and the list header each read their own part, so an event
-// renders only what it changed. bb's data is applied once per animation
-// frame, so a burst of updates renders once; everything else, and whatever
-// a person does, is applied at once.
+// renders only what it changed. bb's data and the plugin server's signals
+// are applied once per animation frame, so a turn's burst of them renders
+// once; everything else, and whatever a person does, is applied at once.
 import type {
   PluginBrowserBbSdk,
   PluginRpcClient,
@@ -101,6 +101,8 @@ export interface ListStore extends StoreApi<ListState> {
   feedHost(host: HostData): void;
   /** The focused thread and the viewport, applied at once. */
   feedFocus(activeThreadId: string | null, compact: boolean): void;
+  /** A plugin server signal's change, applied with bb's data on the next animation frame. */
+  feedSignal(change: (inputs: ListInputs) => Partial<Omit<ListInputs, "host">>): void;
   /** Any other input, applied at once. */
   feed(change: Partial<Omit<ListInputs, "host">> | ((inputs: ListInputs) => Partial<Omit<ListInputs, "host">>)): void;
   setUi(change: Partial<ListUi> | ((ui: ListUi) => Partial<ListUi>)): void;
@@ -116,7 +118,10 @@ export interface ListStore extends StoreApi<ListState> {
   flushPreferences(): void;
   updateClient(patch: Partial<ClientPreferences>): void;
   receiveStamps(stamps: Stamps | null): void;
+  /** A stamp change this window made, applied at once. */
   applyStamp(signal: StampSignal): void;
+  /** A stamp signal from the plugin server, applied with the next frame. */
+  receiveStamp(signal: StampSignal): void;
   markSeen(threadIds: readonly string[]): void;
   clearSeen(threadIds: readonly string[]): void;
   /** Starts the clock and sends what waited for the list to mount; returns the call that stops them. */
@@ -241,6 +246,8 @@ export function createListStore(): ListStore {
   /** bb's latest data, applied or waiting for its frame. */
   let host: HostData = NO_HOST;
   let frame: number | null = null;
+  // Signals waiting for the frame, in the order they came.
+  let signals: ((inputs: ListInputs) => Partial<Omit<ListInputs, "host">>)[] = [];
   let tracker: IdleTracker | null = null;
   let tracked: HostData["threads"] | null = null;
   let clock: Clock | null = null;
@@ -268,13 +275,29 @@ export function createListStore(): ListStore {
     if ((step.model?.nextDeadline ?? null) !== deadline) clock?.reschedule();
   };
 
-  const applyHost = () => {
+  /** Applies bb's latest data and the signals waiting with it, as one step. */
+  const applyFrame = () => {
     if (frame !== null) frames.cancel(frame);
     frame = null;
+    const waitingSignals = signals;
+    signals = [];
     const current = api.getState().inputs;
-    if (current.host === host) return;
-    commit({ ...current, host, idleSince: tracker?.idleSince ?? current.idleSince });
+    let next = current.host === host ? current : { ...current, host, idleSince: tracker?.idleSince ?? current.idleSince };
+    for (const change of waitingSignals) next = { ...next, ...change(next) };
+    if (next !== current) commit(next);
   };
+  const requestFrame = () => {
+    if (frame === null) frame = frames.request(applyFrame);
+  };
+  const stampChange = (signal: StampSignal) => ({ stamps }: ListInputs) => {
+    const map = { ...stamps[signal.kind] };
+    for (const id of signal.threadIds) {
+      if (signal.value === null) delete map[id];
+      else map[id] = signal.value;
+    }
+    return { stamps: { ...stamps, [signal.kind]: map } };
+  };
+  const isStampSignal = (signal: StampSignal) => STAMP_KINDS.has(signal.kind) && Array.isArray(signal.threadIds);
 
   const scheduleWrite = () => {
     if (writeTimer !== null) clearTimeout(writeTimer);
@@ -306,8 +329,13 @@ export function createListStore(): ListStore {
         }
       }
       // Nothing is drawn yet, so the first data is drawn at once.
-      if (first) applyHost();
-      else if (frame === null) frame = frames.request(applyHost);
+      if (first) applyFrame();
+      else requestFrame();
+    },
+
+    feedSignal(change) {
+      signals.push(change);
+      requestFrame();
     },
 
     feedFocus(activeThreadId, nextCompact) {
@@ -335,7 +363,7 @@ export function createListStore(): ListStore {
       api.setState({ ui: { ...ui, ...patch } });
     },
 
-    flush: applyHost,
+    flush: applyFrame,
 
     receivePreferences(preferences) {
       const next = coercePreferences(preferences);
@@ -391,15 +419,11 @@ export function createListStore(): ListStore {
     },
 
     applyStamp(signal) {
-      if (!STAMP_KINDS.has(signal.kind) || !Array.isArray(signal.threadIds)) return;
-      store.feed(({ stamps }) => {
-        const map = { ...stamps[signal.kind] };
-        for (const id of signal.threadIds) {
-          if (signal.value === null) delete map[id];
-          else map[id] = signal.value;
-        }
-        return { stamps: { ...stamps, [signal.kind]: map } };
-      });
+      if (isStampSignal(signal)) store.feed(stampChange(signal));
+    },
+
+    receiveStamp(signal) {
+      if (isStampSignal(signal)) store.feedSignal(stampChange(signal));
     },
 
     markSeen(threadIds) {

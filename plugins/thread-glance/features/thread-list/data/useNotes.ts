@@ -30,7 +30,7 @@ export function useNotes(store: ListStore): void {
     if (signal === null || typeof signal !== "object" || typeof signal.threadId !== "string") return;
     const parsed = signal.notes === null ? null : threadNotesSchema.safeParse(signal.notes);
     if (parsed !== null && !parsed.success) return;
-    store.feed(({ notes: current }) => {
+    store.feedSignal(({ notes: current }) => {
       const notes = { ...current };
       if (parsed === null) delete notes[signal.threadId];
       else notes[signal.threadId] = parsed.data;
