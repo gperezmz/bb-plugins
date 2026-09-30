@@ -89,17 +89,20 @@ it("shows every thread Mark all read counts read in the click's commit, from the
   expect(rowLabel("U1")).not.toMatch(UNREAD);
 });
 
-it("shows a group's threads read in the click's commit, from its menu, and no other group's", async () => {
-  const { host, slot } = await open([unread("a1"), unread("b1", { projectId: "proj_b" })]);
+it("shows a group's threads read in the click's commit, from its menu, and no other group's, six reads at a time", async () => {
+  const beta = Array.from({ length: 8 }, (_, n) => unread(`b${n}`, { projectId: "proj_b" }));
+  const { host, slot } = await open([unread("a1"), ...beta]);
   fireEvent.pointerDown(screen.getByRole("button", { name: "Beta actions" }), { button: 0, pointerType: "mouse" });
   const item = await screen.findByRole("menuitem", { name: "Mark all read" });
   await act(async () => {
     fireEvent.click(item);
   });
-  expect(rowLabel("B1")).not.toMatch(UNREAD);
+  expect(beta.filter((thread) => UNREAD.test(rowLabel(thread.displayTitle)))).toEqual([]);
   expect(rowLabel("A1")).toMatch(UNREAD);
+  expect(reads(slot)).toHaveLength(6);
   await settled(host);
-  expect(reads(slot)).toEqual(["b1"]);
+  expect(host.markReadPeak).toBe(6);
+  expect(reads(slot)).toEqual(beta.map((thread) => thread.id).sort());
 });
 
 it("shows a tree read in the click's commit, from the root's hover action and from its menu", async () => {
@@ -204,4 +207,24 @@ it("shows a thread unread once bb says a new turn finished while its read was pe
   });
   await waitFor(() => expect(rowLabel("U1")).toMatch(UNREAD));
   expect(rowLabel("U2")).not.toMatch(UNREAD);
+});
+
+it("sends no queued read for a thread marked unread meanwhile, and shows it unread", async () => {
+  const threads = Array.from({ length: 8 }, (_, n) => unread(`m${n}`));
+  const { host, slot } = await open(threads, { markReadMs: 200 });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Mark all read" }));
+  });
+  // Two of the eight wait for a slot; mark one of them unread.
+  const queued = threads.find((thread) => !reads(slot).includes(thread.id))!;
+  const row = screen.getByRole("link", { name: new RegExp(`Open ${queued.displayTitle}\\b`) }).parentElement!;
+  fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+  const item = await screen.findByRole("menuitem", { name: "Mark unread" });
+  await act(async () => {
+    fireEvent.click(item);
+  });
+  expect(rowLabel(queued.displayTitle)).toMatch(UNREAD);
+  await settled(host);
+  expect(reads(slot)).not.toContain(queued.id);
+  expect(reads(slot)).toHaveLength(7);
 });

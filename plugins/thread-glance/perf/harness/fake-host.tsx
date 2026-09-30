@@ -1,9 +1,10 @@
 // The harness's fake bb and plugin server. bb's list hooks read a store the
 // harness drives, so bb can hand the list updates after mount (renderSlot's
 // own host is fixed at mount), a new `actions` object on every update as bb
-// 0.44 does, and a `threads.markRead` that takes time. Every hook call, plugin RPC and
-// bb request is counted. The list itself is mounted as bb mounts it: the
-// plugin's registered thread list component, through renderSlot.
+// 0.44 does, and a `threads.markRead` that takes time. Every hook call,
+// plugin RPC and bb request is counted. The list itself is mounted as bb
+// mounts it: the plugin's registered thread list component, through
+// renderSlot.
 import { useSyncExternalStore, type ComponentType } from "react";
 import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {

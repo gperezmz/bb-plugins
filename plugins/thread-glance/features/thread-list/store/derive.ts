@@ -296,7 +296,11 @@ export function settlePendingRead(
   return left.size === pending.size ? pending : left.size === 0 ? NO_PENDING_READ : left;
 }
 
-/** Fields bb changes when it marks a thread read, none of which the list draws but through `isUnread`. */
+/**
+ * Fields bb changes when it marks a thread read, none of which the list draws
+ * but through `isUnread`. A field bb starts changing on a read that is not
+ * listed here only costs that update a full derive step.
+ */
 const READ_FIELDS: ReadonlySet<string> = new Set(["lastReadAt", "isUnread", "indicator", "indicatorLabel"]);
 
 function sameRecord(a: Readonly<Record<string, number>>, b: Readonly<Record<string, number>>): boolean {

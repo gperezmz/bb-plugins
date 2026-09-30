@@ -608,7 +608,7 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B27",
     bounds: "Mark all read, one step",
     threshold: "every counted thread shown read in the first frame after the click; ≤ 2 list commits from click to the last request returning",
-    baseline: "75 commits",
+    baseline: "75 commits (0.7.0, counting every React commit, the edge's included)",
     measuredBy:
       "jsdom, MAR list, fake `threads.markRead` taking 50 ms. A list commit is one that renders a row, a group header or the list header: the list's edge renders on every update bb sends and draws nothing, so it is not counted",
     kind: "deterministic",
