@@ -16,8 +16,9 @@ describe("the ledger", () => {
       expect(candidate.threshold).not.toBe("");
       expect(candidate.baseline).not.toBe("");
       expect(candidate.measuredBy).not.toBe("");
-      expect(candidate.switchedOnBy).toBeGreaterThanOrEqual(145);
-      expect(candidate.switchedOnBy).toBeLessThanOrEqual(154);
+      // A slice of the rewrite (#145–#154), or #159, which replaces its render path.
+      const slice = candidate.switchedOnBy;
+      expect(slice === 159 || (slice >= 145 && slice <= 154)).toBe(true);
     }
   });
 
@@ -25,7 +26,6 @@ describe("the ledger", () => {
     expect(LEDGER.filter((candidate) => candidate.enforcing).map((candidate) => candidate.id)).toEqual([
       "B2",
       "B3",
-      "B4",
       "B5",
       "B6",
       "B8",

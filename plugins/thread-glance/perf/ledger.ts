@@ -1,4 +1,5 @@
-// The budget ledger of the Thread Glance list rewrite (#145–#154): every
+// The budget ledger of the Thread Glance list rewrite (#145–#154, and #159,
+// which replaces the list's render path): every
 // budget of the rewrite, one row each. Nothing else holds a budget; a slice
 // names the ids it switches on.
 //
@@ -205,11 +206,12 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B4",
     bounds: "The plugin's JavaScript per realtime event (a turn starting or finishing on one thread, on screen or off)",
     threshold: "< 16 ms",
-    baseline: "110–134 ms",
+    baseline:
+      "110–134 ms (0.7.0). After #148's list store, worst of the four events per cell, one sample each: 50/live 6 ms, 50/settled 3 ms, 300/live 13 ms, 300/settled 4 ms, 1500/live 13 ms, 1500/settled 10 ms; other runs of the same code put 1500/live at 20–21 ms and 1500/settled at 18 ms",
     measuredBy: "Chromium, 1,500, live and settled (production React; script time through the DevTools protocol)",
     kind: "timing",
-    switchedOnBy: 148,
-    enforcing: true,
+    switchedOnBy: 159,
+    enforcing: false,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => {
         const worst = Math.max(...Object.values(figure.eventJsMs));
