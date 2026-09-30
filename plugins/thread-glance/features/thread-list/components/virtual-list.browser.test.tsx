@@ -67,10 +67,16 @@ const many = (count: number, extra: (n: number) => Partial<PluginSidebarThread> 
 
 async function render(
   threads: PluginSidebarThread[],
-  { prefs = {}, height = 600, listProps = {}, sections = [] }: { prefs?: Partial<Preferences>; height?: number; listProps?: Partial<PluginThreadListProps>; sections?: PluginSidebarSection[] } = {},
+  {
+    prefs = {},
+    height = 600,
+    width = 1024,
+    listProps = {},
+    sections = [],
+  }: { prefs?: Partial<Preferences>; height?: number; width?: number; listProps?: Partial<PluginThreadListProps>; sections?: PluginSidebarSection[] } = {},
 ): Promise<RenderedSlot> {
-  // Wide enough that bb's menus stay menus rather than a phone's drawers.
-  await page.viewport(1024, height);
+  // By default wide enough that bb's menus stay menus rather than a phone's drawers.
+  await page.viewport(width, height);
   const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...prefs };
   const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
     rpc: {
@@ -339,6 +345,24 @@ describe("the one drag", () => {
     await userEvent.keyboard("{Enter}");
     expect(navigated).toBe(1);
     expect(rowOf("a").className).not.toMatch(/opacity-50/);
+  });
+});
+
+describe("a phone's row menu", () => {
+  it("opens as a drawer with sections, listing Move to section's targets under it, and moves the thread", async () => {
+    const sections: PluginSidebarSection[] = [{ id: "sec_1", name: "Later" } as PluginSidebarSection];
+    const slot = await render([makeThread({ id: "a", title: "Alpha" })], {
+      width: 390,
+      prefs: { organizationMode: "chronological" },
+      sections,
+      listProps: { isCompactViewport: true },
+    });
+    fireEvent.click(within(anchorOf("a")!.parentElement!).getByRole("button", { name: "Thread actions" }));
+    const later = await screen.findByRole("menuitem", { name: "Later" });
+    expect(screen.getByRole("group", { name: "Move to section" })).toBeTruthy();
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toContain("Details");
+    fireEvent.click(later);
+    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.update", args: [{ threadId: "a", sectionId: "sec_1" }] })));
   });
 });
 

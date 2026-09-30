@@ -19,6 +19,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import type { RowMenuAction, RowMenuItem } from "../model/menu";
@@ -126,12 +127,35 @@ export function RowContextMenuContent({
 }
 
 export function RowDropdownMenuContent({ items, sections, currentSectionId, onAction, onCloseAutoFocus }: MenuProps) {
+  // A phone's drawer holds no submenu: the sections follow their label.
+  const drawer = useIsCompactViewport();
   return (
     <DropdownMenuContent align="end" className="min-w-48" onCloseAutoFocus={onCloseAutoFocus}>
       {items.map((item) => (
         <Fragment key={item.action}>
           {item.separated ? <DropdownMenuSeparator /> : null}
-          {item.action === "move-to-section" ? (
+          {item.action === "move-to-section" && drawer ? (
+            <div role="group" aria-label={item.label}>
+              <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+                <ItemLabel item={item} />
+              </div>
+              {sectionTargets(sections).map((target) => (
+                <DropdownMenuItem
+                  key={target.id ?? "threads"}
+                  disabled={target.id === currentSectionId}
+                  className="pl-8"
+                  onSelect={() => onAction("move-to-section", target.id)}
+                >
+                  {target.id === currentSectionId ? (
+                    <Icon name={ICONS.check} aria-hidden className="size-4" />
+                  ) : (
+                    <span className="size-4" />
+                  )}
+                  {target.name}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          ) : item.action === "move-to-section" ? (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <ItemLabel item={item} />
