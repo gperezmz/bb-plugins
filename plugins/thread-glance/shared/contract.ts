@@ -3,7 +3,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
 import { PREFERENCE_KEYS, PREFERENCES, type PreferenceKey } from "./preferences";
-import { stampMapSchema, stampsSchema, threadNotesSchema } from "./signals";
+import { stampMapSchema, syncPointSchema, type ThreadRecord } from "./signals";
 
 export * from "./signals";
 
@@ -12,11 +12,40 @@ const preferencesSchema = z.object(
   Object.fromEntries(PREFERENCE_KEYS.map((key) => [key, PREFERENCES[key].schema])),
 );
 const threadIdsSchema = z.array(z.string().check(z.minLength(1), z.maxLength(1024))).check(z.maxLength(10_000));
+/**
+ * Thread records by thread id, checked only for being an object: the server
+ * builds them from rows its stores validated, and checking every record again
+ * would cost the first `sync` more than reading them.
+ */
+const recordsOutputSchema = z.custom<Record<string, ThreadRecord>>(
+  (value) => value !== null && typeof value === "object" && !Array.isArray(value),
+);
 
 export const rpcContract = defineRpcContract({
-  listPreferences: {
-    input: z.null(),
-    output: z.strictObject({ preferences: preferencesSchema }),
+  /**
+   * Everything the list reads from the server in one answer: preferences,
+   * scheduled sends, and the thread records that changed since `since`. With
+   * `since` null, or from another epoch, `full` is true and `records` holds
+   * every active thread's record, to replace what the window held.
+   */
+  sync: {
+    input: z.strictObject({ since: z.nullable(z.strictObject(syncPointSchema.shape)) }),
+    output: z.strictObject({
+      epoch: z.string(),
+      revision: z.number(),
+      full: z.boolean(),
+      preferences: preferencesSchema,
+      scheduled: z.strictObject({ status: z.enum(["ready", "error"]), scheduled: stampMapSchema }),
+      records: recordsOutputSchema,
+    }),
+  },
+  /**
+   * The records of the named threads, for those the server's scope leaves
+   * out of `sync`: archived threads. A thread with none is absent.
+   */
+  fetchArchived: {
+    input: z.strictObject({ threadIds: threadIdsSchema }),
+    output: z.strictObject({ epoch: z.string(), revision: z.number(), records: recordsOutputSchema }),
   },
   setPreference: {
     input: z.strictObject({ key: preferenceKeySchema, value: z.unknown() }),
@@ -39,10 +68,6 @@ export const rpcContract = defineRpcContract({
       keys: z.array(preferenceKeySchema),
     }),
   },
-  listStamps: {
-    input: z.null(),
-    output: z.strictObject({ stamps: stampsSchema }),
-  },
   /** Records `seenAt` for child threads the user viewed. */
   markSeen: {
     input: z.strictObject({ threadIds: threadIdsSchema }),
@@ -61,16 +86,6 @@ export const rpcContract = defineRpcContract({
   reportIdle: {
     input: z.strictObject({ threadIds: threadIdsSchema }),
     output: z.strictObject({ ok: z.literal(true) }),
-  },
-  /** Notes per thread id (see `noteSchema`). */
-  listNotes: {
-    input: z.null(),
-    output: z.strictObject({ notes: z.record(z.string(), threadNotesSchema) }),
-  },
-  /** Earliest future `sendAt` per thread (scheduled sends). */
-  listScheduled: {
-    input: z.null(),
-    output: z.strictObject({ status: z.enum(["ready", "error"]), scheduled: stampMapSchema }),
   },
 });
 

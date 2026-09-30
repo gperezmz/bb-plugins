@@ -2,12 +2,13 @@ import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS, NOTE_MAX_LENGTH } from "../shared/contract";
+import { CHANNELS, NOTE_MAX_LENGTH, threadNotesSchema, type RecordsSignal, type ThreadRecord } from "../shared/contract";
 import {
   describeDone,
   describeFailure,
   describeInteraction,
   noteKvKey,
+  parseStoredNotes,
   noteText,
 } from "./notes";
 
@@ -190,6 +191,29 @@ describe("describeFailure and describeDone", () => {
   });
 });
 
+describe("parseStoredNotes", () => {
+  const note = { kind: "done", text: "Done.", at: 1 };
+  it.each([
+    ["notes in every slot", { pending: { ...note, kind: "question" }, failed: { ...note, kind: "failed" }, done: note }],
+    ["no notes", {}],
+    ["an unknown key beside a note", { done: note, extra: 1 }],
+    ["an unknown key inside a note", { done: { ...note, extra: 1 } }],
+    ["text at the cap", { done: { ...note, text: "x".repeat(NOTE_MAX_LENGTH) } }],
+    ["text past the cap", { done: { ...note, text: "x".repeat(NOTE_MAX_LENGTH + 1) } }],
+    ["an unknown kind", { done: { ...note, kind: "maybe" } }],
+    ["a missing time", { done: { kind: "done", text: "Done." } }],
+    ["a time that is text", { done: { ...note, at: "1" } }],
+    ["a note that is text", { done: "Done." }],
+    ["a null note", { done: null }],
+    ["an array", [note]],
+    ["null", null],
+    ["text", "Done."],
+  ])("reads %s as threadNotesSchema does", (_, raw) => {
+    const parsed = threadNotesSchema.safeParse(raw);
+    expect(parseStoredNotes(raw)).toEqual(parsed.success ? parsed.data : null);
+  });
+});
+
 describe("notes through the server", () => {
   afterEach(() => vi.useRealTimers());
 
@@ -203,10 +227,23 @@ describe("notes through the server", () => {
 
   const thread = makeThreadResponse({ id: "t1" });
 
-  function noteSignals(harness: Awaited<ReturnType<typeof load>>["harness"]) {
+  type Harness = Awaited<ReturnType<typeof load>>["harness"];
+
+  /** Each thread's notes as the `records` signals carried them, in order. */
+  function noteSignals(harness: Harness) {
     return harness.inspection.realtimeSignals
-      .filter((signal) => signal.channel === CHANNELS.notes)
-      .map((signal) => signal.payload);
+      .filter((signal) => signal.channel === CHANNELS.records)
+      .flatMap((signal) =>
+        Object.entries((signal.payload as RecordsSignal).records).map(([threadId, record]) => ({ threadId, notes: record.notes })),
+      );
+  }
+
+  /** The notes a first `sync` carries, as `{ notes }` by thread. */
+  async function listNotes(harness: Harness) {
+    const { records } = (await harness.behavior.callRpc("sync", { since: null })) as { records: Record<string, ThreadRecord> };
+    return {
+      notes: Object.fromEntries(Object.entries(records).flatMap(([threadId, record]) => (record.notes ? [[threadId, record.notes]] : []))),
+    };
   }
 
   it("records a pending question at the interaction's time and lists it", async () => {
@@ -216,7 +253,7 @@ describe("notes through the server", () => {
       interaction: question("Which database?"),
     });
     const pending = { kind: "question", text: "Which database?", at: 1_000 };
-    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({
+    expect(await listNotes(harness)).toEqual({
       notes: { t1: { pending } },
     });
     expect(noteSignals(harness)).toEqual([{ threadId: "t1", notes: { pending } }]);
@@ -233,7 +270,7 @@ describe("notes through the server", () => {
       thread,
       lastAssistantText: "Published 1.2.0.",
     });
-    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({
+    expect(await listNotes(harness)).toEqual({
       notes: {
         t1: {
           failed: { kind: "failed", text: "Out of credits", at: 5_000 },
@@ -250,7 +287,7 @@ describe("notes through the server", () => {
       interaction: question("Go?"),
     });
     await harness.behavior.emitThreadEvent("thread.idle", { thread, lastAssistantText: null });
-    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({ notes: {} });
+    expect(await listNotes(harness)).toEqual({ notes: {} });
     expect(noteSignals(harness).at(-1)).toEqual({ threadId: "t1", notes: null });
   });
 
@@ -263,22 +300,22 @@ describe("notes through the server", () => {
       interaction: question("Go?"),
     });
     await harness.behavior.emitThreadEvent("thread.active", { thread });
-    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({
+    expect(await listNotes(harness)).toEqual({
       notes: { t1: { done: { kind: "done", text: "Done.", at: 5_000 } } },
     });
   });
 
-  it("publishes nothing when active finds nothing to clear", async () => {
+  it("leaves the notes as they are when active finds nothing to clear", async () => {
     const { harness } = await load();
     await harness.behavior.emitThreadEvent("thread.active", { thread });
-    expect(noteSignals(harness)).toEqual([]);
+    expect(noteSignals(harness)).toEqual([{ threadId: "t1", notes: null }]);
   });
 
   it("deletes a deleted thread's notes and publishes null", async () => {
-    const { bb, harness } = await load();
+    const { harness } = await load();
     await harness.behavior.emitThreadEvent("thread.failed", { thread, error: "boom" });
     await harness.behavior.emitThreadEvent("thread.deleted", { thread });
-    expect(await bb.storage.kv.get(noteKvKey("t1"))).toBeUndefined();
+    expect((await listNotes(harness)).notes).toEqual({});
     expect(noteSignals(harness).at(-1)).toEqual({ threadId: "t1", notes: null });
   });
 
@@ -287,7 +324,7 @@ describe("notes through the server", () => {
     const done = { kind: "done", text: "Done.", at: 1 };
     await bb.storage.kv.set(noteKvKey("good"), { done });
     await bb.storage.kv.set(noteKvKey("bad"), { done: { kind: "done" } });
-    expect(await harness.behavior.callRpc("listNotes", null)).toEqual({ notes: { good: { done } } });
+    expect(await listNotes(harness)).toEqual({ notes: { good: { done } } });
     expect(await bb.storage.kv.get(noteKvKey("bad"))).toBeUndefined();
     expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
       "stored notes for bad are invalid; dropping them",
@@ -309,11 +346,11 @@ describe("notes through the server", () => {
     const note = { kind: "failed", text: "x", at: 1 };
     await host.bb.storage.kv.set(noteKvKey("live"), { failed: note });
     await host.bb.storage.kv.set(noteKvKey("gone"), { failed: note });
+    const stored = () => host.bb.storage.database().prepare("SELECT thread_id, data FROM notes ORDER BY thread_id").all();
     const service = host.harness.behavior.runService("startup");
-    await vi.waitFor(async () => {
-      expect(await host.bb.storage.kv.get(noteKvKey("gone"))).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(stored()).toEqual([{ thread_id: "live", data: JSON.stringify({ failed: note }) }]);
     });
-    expect(await host.bb.storage.kv.get(noteKvKey("live"))).toEqual({ failed: note });
     service.controller.abort();
     await service.done;
   });

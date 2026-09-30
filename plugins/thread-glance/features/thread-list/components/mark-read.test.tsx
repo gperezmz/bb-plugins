@@ -42,8 +42,7 @@ interface Options {
 /** Mounts the list on a fake host that holds every read, then fakes the clock. */
 async function open(threads: PluginSidebarThread[], { failRead, finishedAt = {} }: Options = {}) {
   const host = createFakeHost({ threads, projects: PROJECTS, failRead, holdReads: true });
-  const server = serverState({ settleAfter: "never" });
-  server.stamps.finishedAt = finishedAt;
+  const server = serverState({ settleAfter: "never" }, { stamps: { finishedAt } });
   const slot = mountList(app, server);
   await screen.findAllByRole("link");
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "requestAnimationFrame", "cancelAnimationFrame"] });

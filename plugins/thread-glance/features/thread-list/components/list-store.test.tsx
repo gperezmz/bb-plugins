@@ -8,7 +8,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -48,18 +48,7 @@ function render(
     app.threadLists[0]!,
     { activeThreadId, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" },
     {
-      rpc: {
-        listPreferences: () => ({ preferences: { ...defaultPreferences(), settleAfter: "never", ...prefs } }),
-        setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-        resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-        importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-        listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {}, ...stamps } }),
-        markSeen: () => ({ at: Date.now() }),
-        clearSeen: () => ({ ok: true as const }),
-        reportIdle: () => ({ ok: true as const }),
-        listScheduled: () => ({ status: "ready" as const, scheduled }),
-        listNotes: () => ({ notes: {} }),
-      } as never,
+      rpc: createFakeServer({ preferences: { settleAfter: "never", ...prefs }, stamps, scheduled }).handlers as never,
       sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       sdk: {

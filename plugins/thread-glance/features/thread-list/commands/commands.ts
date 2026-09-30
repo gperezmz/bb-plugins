@@ -4,7 +4,6 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
-import { modelDisplayName } from "../model/details";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
@@ -23,16 +22,13 @@ import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
 import { NO_DROPS, type DropState, type ListModel, type ListStore } from "../store/api";
 import { inPool } from "./pool";
+import { lookUpModel, type ModelInfo } from "../sync";
 
 const PLUGIN_ID = "thread-glance";
 /** Read requests bb is sent at once by a bulk read. */
 const READS_IN_FLIGHT = 6;
 
-export interface ModelInfo {
-  /** The catalog's display name ("Haiku 4.5"), or the raw id when unknown. */
-  model: string;
-  reasoningLevel: string;
-}
+export type { ModelInfo };
 
 /** What is being dragged, as dnd-kit's active data carries it. */
 export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group"; groupId: string };
@@ -119,8 +115,6 @@ function dropContextOf(model: ListModel, mode: DropContext["mode"]): DropContext
 export function createCommands(store: ListStore): Commands {
   const edge = () => store.edge;
   const inputs = () => store.getState().inputs;
-  const models = new Map<string, Promise<ModelInfo | null>>();
-  const catalogs = new Map<string, Promise<readonly { id: string; model: string; displayName: string }[]>>();
   let dropContext: { model: ListModel; context: ReturnType<typeof dropContextOf> } | null = null;
   // Threads marked unread since a bulk read queued them: their queued read is not sent.
   const markedUnread = new Set<string>();
@@ -289,34 +283,7 @@ export function createCommands(store: ListStore): Commands {
       edge().onNavigate();
     },
 
-    loadModel(threadId, status) {
-      const key = `${threadId}:${status}`;
-      let pending = models.get(key);
-      if (pending === undefined) {
-        const { sdk } = edge();
-        const thread = store.getState().model?.byId.get(threadId);
-        const providerId = thread?.providerId ?? "";
-        // The catalog names the model as the composer does ("Haiku 4.5").
-        let catalog = catalogs.get(providerId);
-        if (catalog === undefined) {
-          catalog = sdk.providers
-            .models(thread?.host ? { providerId, hostId: thread.host.id } : { providerId })
-            .then(
-              (result) => result.models,
-              () => [],
-            );
-          catalogs.set(providerId, catalog);
-        }
-        const names = catalog;
-        pending = sdk.threads.defaultExecutionOptions({ threadId }).then(
-          async (options) =>
-            options === null ? null : { model: modelDisplayName(options.model, await names), reasoningLevel: options.reasoningLevel },
-          () => null,
-        );
-        models.set(key, pending);
-      }
-      return pending;
-    },
+    loadModel: (threadId, status) => lookUpModel(edge().sdk, store.getState().model?.byId.get(threadId), threadId, status),
 
     toggleChip(row) {
       const forest = store.getState().model?.forest;

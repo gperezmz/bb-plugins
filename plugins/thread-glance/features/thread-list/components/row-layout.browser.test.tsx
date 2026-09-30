@@ -9,7 +9,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/contract";
-import { finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
+import { createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -132,27 +132,16 @@ async function render(
   localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density, branchLine }));
   const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode, ...overrides };
   renderSlot(app.threadLists[0]!, props, {
-    rpc: {
-      listPreferences: () => ({ preferences }),
-      setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-      resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-      importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-      listStamps: () => ({
-        stamps: {
-          startedAt: {},
-          finishedAt: Object.fromEntries(
-            CASES.filter((c) => c.kind === "root").map((c, index) => [c.id, Date.now() - AGES[index % AGES.length]!]),
-          ),
-          pendingAt: Object.fromEntries(CASES.map((c) => [c.id, Date.now() - 59 * 60_000])),
-          seenAt: {},
-          idleAt: {},
-        },
-      }),
-      markSeen: () => ({ at: Date.now() }),
-      clearSeen: () => ({ ok: true as const }),
-      listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-      listNotes: () => ({ notes }),
-    } as never,
+    rpc: createFakeServer({
+      preferences,
+      stamps: {
+        finishedAt: Object.fromEntries(
+          CASES.filter((c) => c.kind === "root").map((c, index) => [c.id, Date.now() - AGES[index % AGES.length]!]),
+        ),
+        pendingAt: Object.fromEntries(CASES.map((c) => [c.id, Date.now() - 59 * 60_000])),
+      },
+      notes,
+    }).handlers as never,
     sidebarThreads: { status: "ready", threads: [...threads(), ...extraThreads], projects: PROJECTS, sections: [] },
     sidebarPullRequests: Object.fromEntries(
       CASES.map((c) => [c.id, { number: 1234, title: "Fix", url: "u", state: "open", attention: "none" }]),

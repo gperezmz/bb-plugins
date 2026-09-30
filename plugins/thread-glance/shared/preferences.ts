@@ -243,6 +243,8 @@ export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
 export const CLIENT_PREFERENCES_STORAGE_KEY = "bb.thread-glance.client.v1";
 export const PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-glance.preferences.v1";
 export const BB_PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1";
+/** The first answer this device got to `importPreferences`; once it is here, the device does not import again. */
+export const IMPORT_ANSWER_STORAGE_KEY = "bb.thread-glance.import.v1";
 
 export function parseClientPreferences(raw: unknown): ClientPreferences {
   const result = clientPreferencesSchema.safeParse(raw ?? {});

@@ -724,6 +724,34 @@ exports[`refusal texts > rpc clearSeen refuses {"threadIds":"t1"} 1`] = `
 }
 `;
 
+exports[`refusal texts > rpc fetchArchived refuses [] 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected object, received array",
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc fetchArchived refuses {"threadIds":[""]} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Too small: expected string to have >=1 characters",
+      "path": [
+        "threadIds",
+        0,
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
 exports[`refusal texts > rpc importPreferences refuses "mirror" 1`] = `
 {
   "code": "invalid_input",
@@ -742,54 +770,6 @@ exports[`refusal texts > rpc importPreferences refuses {"bbMirror":null,"extra":
   "issues": [
     {
       "message": "Unrecognized key: "extra"",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc listNotes refuses 1 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected null, received number",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc listPreferences refuses {} 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected null, received object",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc listScheduled refuses [] 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected null, received array",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc listStamps refuses {"all":true} 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected null, received object",
     },
   ],
   "message": "rpc input validation failed",
@@ -905,5 +885,48 @@ exports[`refusal texts > rpc setPreference refuses {"key":"organizationMode","va
   "code": "handler_error",
   "issues": undefined,
   "message": "Invalid value for organizationMode: Invalid option: expected one of "project"|"chronological"|"machine"",
+}
+`;
+
+exports[`refusal texts > rpc sync refuses {"since":{"epoch":"e","revision":"1"}} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected number, received string",
+      "path": [
+        "since",
+        "revision",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc sync refuses {} 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "since",
+      ],
+    },
+  ],
+  "message": "rpc input validation failed",
+}
+`;
+
+exports[`refusal texts > rpc sync refuses 1 1`] = `
+{
+  "code": "invalid_input",
+  "issues": [
+    {
+      "message": "Invalid input: expected object, received number",
+    },
+  ],
+  "message": "rpc input validation failed",
 }
 `;

@@ -1,17 +1,13 @@
-// One-line notes on why a thread is blocked, failed or done: one kv row per
-// thread, `note:<threadId>`, read into memory once and written through.
+// One-line notes on why a thread is blocked, failed or done: one row per
+// thread in the plugin database's `notes` table, read into memory once and
+// written through. The store publishes nothing: its caller publishes the
+// thread records a change touched.
 import type { BbPluginApi, PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
-import {
-  CHANNELS,
-  NOTE_MAX_LENGTH,
-  threadNotesSchema,
-  type Note,
-  type NotesSignal,
-  type ThreadNotes,
-} from "../shared/contract";
-import { readRows } from "./kv-rows";
+import { NOTE_MAX_LENGTH, type Note, type ThreadNotes } from "../shared/contract";
 import { createSerialQueue } from "./serial";
+import type { ThreadTable } from "./thread-table";
 
+/** The KV rows notes lived in up to 0.7.0, `note:<threadId>`. */
 export const NOTE_KEY_PREFIX = "note:";
 /** bb's builtin plugin that lets any provider ask a multiple-choice question. */
 export const ASK_USER_QUESTION_PLUGIN_ID = "ask-user-question";
@@ -142,16 +138,47 @@ export function describeDone(lastAssistantText: string | null): NoteDraft | null
   return text === "" ? null : { kind: "done", text };
 }
 
+const NOTE_KINDS: ReadonlySet<unknown> = new Set(["question", "approval", "plan", "input", "failed", "done"]);
+const NOTE_SLOTS: readonly NoteSlot[] = ["pending", "failed", "done"];
+
+/** A stored note as `noteSchema` reads it, or null where the schema refuses it. */
+function parseNote(raw: unknown): Note | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { kind, text, at } = raw as Record<string, unknown>;
+  if (!NOTE_KINDS.has(kind) || typeof text !== "string" || text.length > NOTE_MAX_LENGTH) return null;
+  if (typeof at !== "number" || !Number.isFinite(at)) return null;
+  return { kind: kind as Note["kind"], text, at };
+}
+
+/**
+ * A stored row's notes as `threadNotesSchema` reads them, or null where the
+ * schema refuses them. A cold read checks thousands of rows, and this check
+ * costs a fraction of the schema's; a test holds the two equal.
+ */
+export function parseStoredNotes(raw: unknown): ThreadNotes | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const notes: ThreadNotes = {};
+  for (const slot of NOTE_SLOTS) {
+    if (record[slot] === undefined) continue;
+    const note = parseNote(record[slot]);
+    if (note === null) return null;
+    notes[slot] = note;
+  }
+  return notes;
+}
+
 /** Per slot: a note to store, or null to delete it. Absent slots are kept. */
 export type NoteChanges = Partial<Record<NoteSlot, Note | null>>;
 
 export interface NoteStore {
-  list(): Promise<Record<string, ThreadNotes>>;
+  /** Every thread's notes. The map is the store's own: read it, do not change it. */
+  all(): Promise<ReadonlyMap<string, ThreadNotes>>;
   get(threadId: string): Promise<ThreadNotes | undefined>;
-  /** Applies the changes and publishes the thread's notes if they changed. */
-  update(threadId: string, changes: NoteChanges): Promise<void>;
-  /** Deletes every note of each thread, publishing `notes: null` for each. */
-  forget(threadIds: readonly string[]): Promise<void>;
+  /** Applies the changes, and returns whether the thread's notes changed. */
+  update(threadId: string, changes: NoteChanges): Promise<boolean>;
+  /** Deletes every note of each thread, and returns the threads that had any. */
+  forget(threadIds: readonly string[]): Promise<string[]>;
   /**
    * Forgets threads missing from `liveIds` whose newest note is older than
    * `before`, and returns their ids.
@@ -159,46 +186,41 @@ export interface NoteStore {
   prune(liveIds: ReadonlySet<string>, before: number): Promise<string[]>;
 }
 
-export function createNoteStore(bb: Pick<BbPluginApi, "storage" | "realtime" | "log">): NoteStore {
-  const { kv } = bb.storage;
+export function createNoteStore(bb: Pick<BbPluginApi, "storage" | "log">, table: ThreadTable<unknown>): NoteStore {
   const serial = createSerialQueue();
   let cache: Map<string, ThreadNotes> | null = null;
 
   async function load(): Promise<Map<string, ThreadNotes>> {
     if (cache !== null) return cache;
+    // Rows are checked as they are read, so KV rows move as they are.
+    const moved = await table.moveFromKv(bb.storage.kv, NOTE_KEY_PREFIX, (_threadId, raw) => raw);
+    if (moved > 0) bb.log.info(`moved the notes of ${moved} threads from KV into the plugin database`);
     const loaded = new Map<string, ThreadNotes>();
-    for (const [threadId, raw] of await readRows(kv, NOTE_KEY_PREFIX)) {
-      const parsed = threadNotesSchema.safeParse(raw);
-      if (!parsed.success || Object.keys(parsed.data).length === 0) {
+    for (const [threadId, raw] of table.all()) {
+      const notes = parseStoredNotes(raw);
+      if (notes === null || Object.keys(notes).length === 0) {
         bb.log.warn(`stored notes for ${threadId} are invalid; dropping them`);
-        await kv.delete(noteKvKey(threadId));
+        table.delete(threadId);
         continue;
       }
-      loaded.set(threadId, parsed.data);
+      loaded.set(threadId, notes);
     }
     cache = loaded;
     return loaded;
   }
 
-  async function save(
-    rows: Map<string, ThreadNotes>,
-    threadId: string,
-    notes: ThreadNotes,
-  ): Promise<void> {
-    const empty = Object.keys(notes).length === 0;
-    if (empty) {
+  function save(rows: Map<string, ThreadNotes>, threadId: string, notes: ThreadNotes): void {
+    if (Object.keys(notes).length === 0) {
       rows.delete(threadId);
-      await kv.delete(noteKvKey(threadId));
+      table.delete(threadId);
     } else {
       rows.set(threadId, notes);
-      await kv.set(noteKvKey(threadId), notes);
+      table.put(threadId, notes);
     }
-    const signal: NotesSignal = { threadId, notes: empty ? null : notes };
-    bb.realtime.publish(CHANNELS.notes, signal);
   }
 
   return {
-    list: () => serial(async () => Object.fromEntries(await load())),
+    all: () => serial(load),
     get: (threadId) => serial(async () => (await load()).get(threadId)),
     update: (threadId, changes) =>
       serial(async () => {
@@ -209,15 +231,16 @@ export function createNoteStore(bb: Pick<BbPluginApi, "storage" | "realtime" | "
           if (note === null) delete next[slot];
           else next[slot] = note;
         }
-        if (JSON.stringify(next) === JSON.stringify(current)) return;
-        await save(rows, threadId, next);
+        if (JSON.stringify(next) === JSON.stringify(current)) return false;
+        save(rows, threadId, next);
+        return true;
       }),
     forget: (threadIds) =>
       serial(async () => {
         const rows = await load();
-        for (const threadId of threadIds) {
-          if (rows.has(threadId)) await save(rows, threadId, {});
-        }
+        const forgotten = [...new Set(threadIds)].filter((threadId) => rows.has(threadId));
+        for (const threadId of forgotten) save(rows, threadId, {});
+        return forgotten;
       }),
     prune: (liveIds, before) =>
       serial(async () => {
@@ -227,7 +250,7 @@ export function createNoteStore(bb: Pick<BbPluginApi, "storage" | "realtime" | "
           if (liveIds.has(threadId)) continue;
           const newest = Math.max(...Object.values(notes).map((note) => note.at));
           if (newest >= before) continue;
-          await save(rows, threadId, {});
+          save(rows, threadId, {});
           pruned.push(threadId);
         }
         return pruned;

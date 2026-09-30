@@ -16,8 +16,8 @@ import type {
   PluginSidebarThreadRowStatus,
   PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences, type Preferences } from "@/shared/preferences";
-import type { Stamps, ThreadNotes } from "@/shared/contract";
+import type { Preferences } from "@/shared/preferences";
+import { createFakeServer, type FakeServer, type FakeServerOptions } from "@/features/thread-list/testing/fixtures";
 
 /** bb's list hooks the fake host serves; every call is counted by name. */
 export const HOST_HOOKS = [
@@ -344,40 +344,12 @@ export async function loadWithFakeHost(): Promise<PluginApp> {
   return app;
 }
 
-/** What the fake plugin server holds. */
-export interface ServerState {
-  preferences: Preferences;
-  stamps: Stamps;
-  notes: Record<string, ThreadNotes>;
-  scheduled: Record<string, number>;
-}
+/** The fake plugin server a run mounts its windows against (see `createFakeServer`). */
+export type ServerState = FakeServer;
 
-export function serverState(patch: Partial<Preferences> = {}): ServerState {
-  return {
-    preferences: { ...defaultPreferences(), ...patch },
-    stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} },
-    notes: {},
-    scheduled: {},
-  };
-}
-
-/** The plugin server's RPC handlers over `server`. */
-export function serverHandlers(server: ServerState) {
-  return {
-    listPreferences: () => ({ preferences: server.preferences }),
-    setPreference: ({ key, value }: { key: keyof Preferences; value: unknown }) => {
-      server.preferences = { ...server.preferences, [key]: value };
-      return { key, value };
-    },
-    resetPreference: ({ key }: { key: keyof Preferences }) => ({ key, value: null }),
-    importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-    listStamps: () => ({ stamps: server.stamps }),
-    markSeen: () => ({ at: Date.now() }),
-    clearSeen: () => ({ ok: true as const }),
-    reportIdle: () => ({ ok: true as const }),
-    listScheduled: () => ({ status: "ready" as const, scheduled: server.scheduled }),
-    listNotes: () => ({ notes: server.notes }),
-  };
+/** A fake plugin server with `patch` over the default preferences, holding what `held` gives it. */
+export function serverState(patch: Partial<Preferences> = {}, held: Omit<FakeServerOptions, "preferences"> = {}): ServerState {
+  return createFakeServer({ ...held, preferences: patch });
 }
 
 /** bb's SDK calls the list makes, answered at once. */
@@ -427,5 +399,12 @@ export function mountList(app: PluginApp, server: ServerState, frame?: Frame): R
       </div>
     );
   };
-  return renderSlot({ component: Window }, {}, { rpc: serverHandlers(server) as never, sdk: SDK_FAKES });
+  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: SDK_FAKES }));
+}
+
+/** The component the plugin registers in bb's app overlay slot, mounted as bb mounts it, beside the list. */
+export function mountOverlay(app: PluginApp, server: ServerState): RenderedSlot {
+  const overlay = app.appOverlays[0];
+  if (overlay === undefined) throw new Error("the plugin registers no app overlay");
+  return server.attach(renderSlot(overlay, {}, { rpc: server.handlers as never, sdk: SDK_FAKES }));
 }

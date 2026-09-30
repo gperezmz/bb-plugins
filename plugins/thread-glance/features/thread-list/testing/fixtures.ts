@@ -1,10 +1,14 @@
-// Test fixtures: sidebar threads, projects and a ready-made view builder.
+// Test fixtures: sidebar threads, projects, a ready-made view builder, and a
+// fake plugin server.
 import type {
   PluginSidebarProject,
   PluginSidebarSection,
   PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import { defaultPreferences, type PreferenceKey, type Preferences } from "@/shared/preferences";
+import { CHANNELS, type StampKind, type Stamps, type ThreadNotes } from "@/shared/signals";
+import { attachedListStores } from "../store/api";
+import { endPluginLifetime } from "../sync/lifetime";
 import { buildForest, type Forest } from "../model/trees";
 import { buildListView, type ListView, type Row } from "../model/view";
 import type { Targets } from "../model/expansion";
@@ -321,3 +325,179 @@ export function generateList({ size, kind = "live", unread, seed = 145 }: Genera
 export function markAllReadList(seed = 145): GeneratedList {
   return generateList({ size: 1_500, unread: 443, seed });
 }
+
+/** What a fake server's `records` signal and `sync` carry, per thread. */
+type FakeRecord = { stamps: Partial<Record<StampKind, number>> | null; notes: ThreadNotes | null };
+
+export interface FakeServerOptions {
+  /** Merged over the defaults. */
+  preferences?: Partial<Preferences>;
+  stamps?: Partial<Stamps>;
+  notes?: Record<string, ThreadNotes>;
+  scheduled?: Record<string, number>;
+  /** Threads the server holds as archived, which `sync` leaves out. */
+  archived?: readonly string[];
+}
+
+/** A window the fake server publishes to: a rendered slot. */
+interface FakeWindow {
+  emitRealtime(channel: string, payload: unknown): Promise<void>;
+}
+
+/**
+ * The plugin server as the app sees it: `sync` and the other RPC methods
+ * over what it holds, and realtime signals to the windows attached to it.
+ * Created while no list is mounted, it starts a new plugin lifetime in this
+ * test's window, as a reload of the app would, so nothing held from an
+ * earlier test carries over; created beside a mounted list, it is another
+ * window's server and leaves the lifetime alone.
+ */
+export function createFakeServer(options: FakeServerOptions = {}) {
+  if (attachedListStores().length === 0) endPluginLifetime();
+  const epoch = `fake-${(fakeServers += 1)}`;
+  let revision = 0;
+  const changed = new Map<string, number>();
+  const records = new Map<string, FakeRecord>();
+  const archived = new Set(options.archived ?? []);
+  const windows = new Set<FakeWindow>();
+  let preferences: Preferences = { ...defaultPreferences(), ...options.preferences };
+  let scheduled: Record<string, number> = { ...options.scheduled };
+
+  const recordOf = (threadId: string): FakeRecord => records.get(threadId) ?? { stamps: null, notes: null };
+  const put = (threadId: string, record: FakeRecord) => {
+    const stamps = record.stamps !== null && Object.keys(record.stamps).length > 0 ? record.stamps : null;
+    const notes = record.notes !== null && Object.keys(record.notes).length > 0 ? record.notes : null;
+    if (stamps === null && notes === null) records.delete(threadId);
+    else records.set(threadId, { stamps, notes });
+  };
+  for (const [kind, map] of Object.entries(options.stamps ?? {}) as [StampKind, Record<string, number>][]) {
+    for (const [threadId, value] of Object.entries(map)) {
+      const record = recordOf(threadId);
+      put(threadId, { ...record, stamps: { ...record.stamps, [kind]: value } });
+    }
+  }
+  for (const [threadId, notes] of Object.entries(options.notes ?? {})) put(threadId, { ...recordOf(threadId), notes });
+
+  const publish = async (channel: string, payload: unknown) => {
+    for (const window of [...windows]) await window.emitRealtime(channel, payload);
+  };
+  /** Takes a revision for the threads a change touched and publishes their records in one signal. */
+  const publishRecords = async (threadIds: readonly string[]) => {
+    if (threadIds.length === 0) return;
+    revision += 1;
+    for (const threadId of threadIds) changed.set(threadId, revision);
+    await publish(CHANNELS.records, {
+      epoch,
+      revision,
+      records: Object.fromEntries(threadIds.map((threadId) => [threadId, recordOf(threadId)])),
+    });
+  };
+  const stampLocally = (kind: StampKind, threadIds: readonly string[], value: number | null) => {
+    for (const threadId of threadIds) {
+      const { [kind]: _old, ...rest } = recordOf(threadId).stamps ?? {};
+      put(threadId, { ...recordOf(threadId), stamps: value === null ? rest : { ...rest, [kind]: value } });
+    }
+  };
+
+  const server = {
+    /** Every call the windows made, by method, in order. */
+    calls: [] as { method: string; input: unknown }[],
+    handlers: {
+      sync: ({ since }: { since: { epoch: string; revision: number } | null }) => {
+        server.calls.push({ method: "sync", input: { since } });
+        const full = since === null || since.epoch !== epoch;
+        const ids = full
+          ? [...records.keys()].filter((threadId) => !archived.has(threadId))
+          : [...changed].flatMap(([threadId, at]) => (at > since.revision ? [threadId] : []));
+        return {
+          epoch,
+          revision,
+          full,
+          preferences,
+          scheduled: { status: "ready" as const, scheduled },
+          records: Object.fromEntries(ids.map((threadId) => [threadId, recordOf(threadId)])),
+        };
+      },
+      fetchArchived: ({ threadIds }: { threadIds: string[] }) => {
+        server.calls.push({ method: "fetchArchived", input: { threadIds } });
+        return {
+          epoch,
+          revision,
+          records: Object.fromEntries(threadIds.flatMap((threadId) => (records.has(threadId) ? [[threadId, recordOf(threadId)]] : []))),
+        };
+      },
+      setPreference: ({ key, value }: { key: PreferenceKey; value: unknown }) => {
+        server.calls.push({ method: "setPreference", input: { key, value } });
+        preferences = { ...preferences, [key]: value };
+        return { key, value };
+      },
+      resetPreference: ({ key }: { key: PreferenceKey }) => {
+        server.calls.push({ method: "resetPreference", input: { key } });
+        preferences = { ...preferences, [key]: defaultPreferences()[key] };
+        return { key, value: preferences[key] };
+      },
+      importPreferences: (input: unknown) => {
+        server.calls.push({ method: "importPreferences", input });
+        return { status: "already-imported" as const, source: null, keys: [] as PreferenceKey[] };
+      },
+      markSeen: ({ threadIds }: { threadIds: string[] }) => {
+        server.calls.push({ method: "markSeen", input: { threadIds } });
+        const at = Date.now();
+        stampLocally("seenAt", threadIds, at);
+        return { at };
+      },
+      clearSeen: ({ threadIds }: { threadIds: string[] }) => {
+        server.calls.push({ method: "clearSeen", input: { threadIds } });
+        stampLocally("seenAt", threadIds, null);
+        return { ok: true as const };
+      },
+      reportIdle: ({ threadIds }: { threadIds: string[] }) => {
+        server.calls.push({ method: "reportIdle", input: { threadIds } });
+        return { ok: true as const };
+      },
+    },
+    get preferences() {
+      return preferences;
+    },
+    /** This server's epoch, which a `records` signal names. */
+    epoch,
+    /** Publishes to `window` from now on; returns it. */
+    attach<W extends FakeWindow>(window: W): W {
+      windows.add(window);
+      return window;
+    },
+    /** Stops publishing to `window`, as its list unmounting stops it hearing. */
+    detach(window: FakeWindow): void {
+      windows.delete(window);
+    },
+    /** Sets `kind` for each thread, or deletes it with null, and publishes their records. */
+    async stamp(kind: StampKind, threadIds: readonly string[], value: number | null): Promise<void> {
+      stampLocally(kind, threadIds, value);
+      await publishRecords(threadIds);
+    },
+    /** Replaces a thread's notes, or deletes them with null, and publishes its record. */
+    async note(threadId: string, notes: ThreadNotes | null): Promise<void> {
+      put(threadId, { ...recordOf(threadId), notes });
+      await publishRecords([threadId]);
+    },
+    /** Changes a preference, as another window or the CLI does, and publishes it. */
+    async setPreference(key: PreferenceKey, value: unknown): Promise<void> {
+      preferences = { ...preferences, [key]: value };
+      await publish(CHANNELS.preferences, { key, value });
+    },
+    async setScheduled(next: Record<string, number>): Promise<void> {
+      scheduled = next;
+      await publish(CHANNELS.scheduled, { status: "ready", scheduled });
+    },
+    archive(threadId: string): void {
+      archived.add(threadId);
+    },
+    unarchive(threadId: string): void {
+      archived.delete(threadId);
+    },
+  };
+  return server;
+}
+export type FakeServer = ReturnType<typeof createFakeServer>;
+
+let fakeServers = 0;

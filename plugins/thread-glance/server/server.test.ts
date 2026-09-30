@@ -2,7 +2,6 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import Database from "better-sqlite3";
 import {
   createFakePluginHost,
   makeQueueEntry,
@@ -10,12 +9,12 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS } from "../shared/contract";
+import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadNotes, type ThreadRecord } from "../shared/contract";
 import { defaultPreferences } from "../shared/preferences";
 import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
-import { createNoteStore, noteKvKey } from "./notes";
+import { noteKvKey } from "./notes";
 import { preferenceKvKey } from "./preference-store";
-import { createStampStore, stampKvKey } from "./stamps";
+import { stampKvKey } from "./stamps";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
@@ -31,8 +30,52 @@ function signalsOn(harness: Awaited<ReturnType<typeof load>>["harness"], channel
     .map((signal) => signal.payload);
 }
 
-function idleSignals(harness: Awaited<ReturnType<typeof load>>["harness"]) {
-  return signalsOn(harness, CHANNELS.stamps).filter((signal) => (signal as { kind: string }).kind === "idleAt");
+type Harness = Awaited<ReturnType<typeof load>>["harness"];
+
+interface SyncAnswer {
+  epoch: string;
+  revision: number;
+  full: boolean;
+  preferences: Record<string, unknown>;
+  scheduled: { status: string; scheduled: Record<string, number> };
+  records: Record<string, ThreadRecord>;
+}
+
+/** `sync` from a window that has seen nothing, or since the point of an earlier answer. */
+async function sync(harness: Harness, since: { epoch: string; revision: number } | null = null): Promise<SyncAnswer> {
+  const point = since === null ? null : { epoch: since.epoch, revision: since.revision };
+  return (await harness.behavior.callRpc("sync", { since: point })) as SyncAnswer;
+}
+
+/** The stamps a first `sync` carries, one map per kind. */
+async function stampsOf(harness: Harness): Promise<Stamps> {
+  const stamps: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
+  for (const [threadId, record] of Object.entries((await sync(harness)).records)) {
+    for (const kind of STAMP_KINDS) {
+      const value = record.stamps?.[kind];
+      if (value !== undefined) stamps[kind][threadId] = value;
+    }
+  }
+  return stamps;
+}
+
+/** The notes a first `sync` carries, by thread. */
+async function notesOf(harness: Harness): Promise<Record<string, ThreadNotes>> {
+  const notes: Record<string, ThreadNotes> = {};
+  for (const [threadId, record] of Object.entries((await sync(harness)).records)) {
+    if (record.notes !== null) notes[threadId] = record.notes;
+  }
+  return notes;
+}
+
+/** One thread's stamps as the server stores them, as a first `sync` carries them. */
+async function storedStamps(harness: Harness, threadId: string) {
+  return (await sync(harness)).records[threadId]?.stamps ?? undefined;
+}
+
+/** The records each `records` signal carried, in order. */
+function recordSignals(harness: Harness): Record<string, ThreadRecord>[] {
+  return signalsOn(harness, CHANNELS.records).map((signal) => (signal as RecordsSignal).records);
 }
 
 let tempDir: string;
@@ -84,9 +127,7 @@ function fakeTwoServerBbCli(ownUrl: string, own: string, other: string): void {
 describe("preferences", () => {
   it("lists the defaults when nothing is stored", async () => {
     const { harness } = await load();
-    expect(await harness.behavior.callRpc("listPreferences", null)).toEqual({
-      preferences: defaultPreferences(),
-    });
+    expect((await sync(harness)).preferences).toEqual(defaultPreferences());
   });
 
   it("stores, publishes and resets a value", async () => {
@@ -117,7 +158,7 @@ describe("preferences", () => {
   it("reads an invalid stored value as the default and warns", async () => {
     const { bb, harness } = await load();
     await bb.storage.kv.set(preferenceKvKey("settleAfter"), "2d");
-    const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
+    const { preferences } = (await sync(harness)) as unknown as {
       preferences: { settleAfter: string };
     };
     expect(preferences.settleAfter).toBe("1d");
@@ -131,7 +172,7 @@ describe("preferences", () => {
   it("reads a stored Hidden harness icon as Muted, without a warning", async () => {
     const { bb, harness } = await load();
     await bb.storage.kv.set(preferenceKvKey("harnessIcon"), "hidden");
-    const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
+    const { preferences } = (await sync(harness)) as unknown as {
       preferences: { harnessIcon: string };
     };
     expect(preferences.harnessIcon).toBe("muted");
@@ -144,7 +185,7 @@ describe("preferences", () => {
     await bb.storage.kv.set("preference:workingFirst", true);
     await bb.storage.kv.set("preference:showPullRequests", false);
     await bb.storage.kv.set("preference:threadLifecycles", ["active", "archived"]);
-    const { preferences } = (await harness.behavior.callRpc("listPreferences", null)) as {
+    const { preferences } = (await sync(harness)) as unknown as {
       preferences: Record<string, unknown>;
     };
     expect(preferences).toEqual(defaultPreferences());
@@ -304,7 +345,7 @@ describe("importPreferences", () => {
 });
 
 describe("stamps", () => {
-  it("stamps lifecycle events and publishes each change", async () => {
+  it("stamps lifecycle events and publishes each event's changes in one signal", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(1_000);
     const { harness } = await load();
@@ -322,39 +363,34 @@ describe("stamps", () => {
       thread: makeThreadResponse({ id: "t2" }),
       error: null,
     });
-    expect(await harness.behavior.callRpc("listStamps", null)).toEqual({
-      stamps: {
-        startedAt: { t1: 1_000 },
-        finishedAt: { t1: 3_000, t2: 4_000 },
-        pendingAt: { t1: 2_000 },
-        seenAt: {},
-        idleAt: { t1: 3_000, t2: 4_000 },
-      },
+    expect(await stampsOf(harness)).toEqual({
+      startedAt: { t1: 1_000 },
+      finishedAt: { t1: 3_000, t2: 4_000 },
+      pendingAt: { t1: 2_000 },
+      seenAt: {},
+      idleAt: { t1: 3_000, t2: 4_000 },
     });
-    expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
-      { kind: "startedAt", threadIds: ["t1"], value: 1_000 },
-      { kind: "pendingAt", threadIds: ["t1"], value: 2_000 },
-      { kind: "idleAt", threadIds: ["t1"], value: 2_000 },
-      { kind: "finishedAt", threadIds: ["t1"], value: 3_000 },
-      { kind: "idleAt", threadIds: ["t1"], value: 3_000 },
-      { kind: "finishedAt", threadIds: ["t2"], value: 4_000 },
-      { kind: "idleAt", threadIds: ["t2"], value: 4_000 },
+    expect(recordSignals(harness).map((records) => Object.fromEntries(Object.entries(records).map(([id, record]) => [id, record.stamps])))).toEqual([
+      { t1: { startedAt: 1_000 } },
+      { t1: { startedAt: 1_000, pendingAt: 2_000, idleAt: 2_000 } },
+      { t1: { startedAt: 1_000, pendingAt: 2_000, finishedAt: 3_000, idleAt: 3_000 } },
+      { t2: { finishedAt: 4_000, idleAt: 4_000 } },
     ]);
   });
 
   it("marks and clears seenAt", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(5_000);
-    const { bb, harness } = await load();
+    const { harness } = await load();
     expect(await harness.behavior.callRpc("markSeen", { threadIds: ["a", "b"] })).toEqual({
       at: 5_000,
     });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ seenAt: 5_000 });
+    expect(await storedStamps(harness, "a")).toEqual({ seenAt: 5_000 });
     expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "c"] })).toEqual({ ok: true });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
-    expect(signalsOn(harness, CHANNELS.stamps)).toEqual([
-      { kind: "seenAt", threadIds: ["a", "b"], value: 5_000 },
-      { kind: "seenAt", threadIds: ["a"], value: null },
+    expect(await storedStamps(harness, "a")).toBeUndefined();
+    expect(recordSignals(harness)).toEqual([
+      { a: { stamps: { seenAt: 5_000 }, notes: null }, b: { stamps: { seenAt: 5_000 }, notes: null } },
+      { a: { stamps: null, notes: null } },
     ]);
   });
 
@@ -369,7 +405,7 @@ describe("stamps", () => {
   it("keeps the later idleAt, so an event carrying an earlier moment cannot move it back", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(6_000);
-    const { bb, harness } = await load();
+    const { harness } = await load();
     const a = makeThreadResponse({ id: "a" });
     await harness.behavior.emitThreadEvent("thread.idle", { thread: a, lastAssistantText: null });
     vi.setSystemTime(8_000);
@@ -378,17 +414,18 @@ describe("stamps", () => {
       thread: makeThreadResponse({ id: "b" }),
       lastAssistantText: null,
     });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ finishedAt: 8_000, idleAt: 8_000 });
+    expect(await storedStamps(harness, "a")).toEqual({ finishedAt: 8_000, idleAt: 8_000 });
     vi.setSystemTime(7_000);
     await harness.behavior.emitThreadEvent("interaction.pending", { thread: a, interaction: {} as never });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toEqual({ finishedAt: 8_000, idleAt: 8_000, pendingAt: 7_000 });
-    expect(idleSignals(harness)).toEqual([
-      { kind: "idleAt", threadIds: ["a"], value: 6_000 },
-      { kind: "idleAt", threadIds: ["a"], value: 8_000 },
-      { kind: "idleAt", threadIds: ["b"], value: 8_000 },
+    expect(await storedStamps(harness, "a")).toEqual({ finishedAt: 8_000, idleAt: 8_000, pendingAt: 7_000 });
+    expect(recordSignals(harness).map((records) => Object.entries(records).map(([id, record]) => [id, record.stamps?.idleAt]))).toEqual([
+      [["a", 6_000]],
+      [["a", 8_000]],
+      [["b", 8_000]],
+      [["a", 8_000]],
     ]);
     await harness.behavior.emitThreadEvent("thread.deleted", { thread: a });
-    expect(await bb.storage.kv.get(stampKvKey("a"))).toBeUndefined();
+    expect(await storedStamps(harness, "a")).toBeUndefined();
   });
 
   // Row B26 of the performance ledger (#145): one idleAt write and one signal
@@ -398,7 +435,10 @@ describe("stamps", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(9_000);
     const { bb, harness } = await load();
-    const set = vi.spyOn(bb.storage.kv, "set");
+    const db = bb.storage.database();
+    const writes = () => (db.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
+    await sync(harness);
+    const before = writes();
     await harness.behavior.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "p" }),
       lastAssistantText: null,
@@ -406,46 +446,41 @@ describe("stamps", () => {
     for (let window = 0; window < 3; window++) {
       await expect(harness.behavior.callRpc("markIdle", { threadIds: ["p"] })).rejects.toThrow();
     }
-    expect(idleSignals(harness)).toEqual([
-      { kind: "idleAt", threadIds: ["p"], value: 9_000 },
+    expect(recordSignals(harness)).toEqual([
+      { p: { stamps: { finishedAt: 9_000, idleAt: 9_000 }, notes: null } },
     ]);
-    expect(set.mock.calls.filter(([, value]) => (value as { idleAt?: number }).idleAt !== undefined)).toHaveLength(1);
+    // One row write for finishedAt, then the one for idleAt.
+    expect(writes() - before).toBe(2);
   });
 
   it("records a reported idle moment only when it is later than the stored one", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(10_000);
-    const { bb, harness } = await load();
+    const { harness } = await load();
     await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "p" }), lastAssistantText: null });
     vi.setSystemTime(9_000);
     expect(await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] })).toEqual({ ok: true });
     vi.setSystemTime(12_000);
     await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
     await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
-    expect(await bb.storage.kv.get(stampKvKey("p"))).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
-    expect(idleSignals(harness)).toEqual([
-      { kind: "idleAt", threadIds: ["p"], value: 10_000 },
-      { kind: "idleAt", threadIds: ["p"], value: 12_000 },
-    ]);
+    expect(await storedStamps(harness, "p")).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
+    expect(recordSignals(harness).map((records) => records.p?.stamps?.idleAt)).toEqual([10_000, 12_000]);
   });
 
-  it("forgets a deleted thread's stamps without publishing", async () => {
-    const { bb, harness } = await load();
+  it("forgets a deleted thread's stamps, publishing its record as gone", async () => {
+    const { harness } = await load();
     const thread = makeThreadResponse({ id: "t1" });
     await harness.behavior.emitThreadEvent("thread.active", { thread });
-    const before = harness.inspection.realtimeSignals.length;
     await harness.behavior.emitThreadEvent("thread.deleted", { thread });
-    expect(await bb.storage.kv.get(stampKvKey("t1"))).toBeUndefined();
-    expect(harness.inspection.realtimeSignals.length).toBe(before);
+    expect(await storedStamps(harness, "t1")).toBeUndefined();
+    expect(recordSignals(harness).at(-1)).toEqual({ t1: { stamps: null, notes: null } });
   });
 
   it("drops an invalid stored row on a cold read and logs it", async () => {
     const { bb, harness } = await load();
     await bb.storage.kv.set(stampKvKey("good"), { finishedAt: 1_000 });
     await bb.storage.kv.set(stampKvKey("bad"), { finishedAt: "yesterday" });
-    const { stamps } = (await harness.behavior.callRpc("listStamps", null)) as {
-      stamps: { finishedAt: Record<string, number> };
-    };
+    const stamps = await stampsOf(harness);
     expect(stamps.finishedAt).toEqual({ good: 1_000 });
     expect(await bb.storage.kv.get(stampKvKey("bad"))).toBeUndefined();
     expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
@@ -456,87 +491,208 @@ describe("stamps", () => {
   it("reloads stored stamps after a restart", async () => {
     const first = await load();
     await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
-    await first.harness.lifecycle.reload(plugin);
-    const { stamps } = (await first.harness.behavior.callRpc("listStamps", null)) as {
-      stamps: { seenAt: Record<string, number> };
-    };
+    const restarted = await first.harness.lifecycle.reload(plugin);
+    const stamps = await stampsOf(restarted.harness);
     expect(Object.keys(stamps.seenAt)).toEqual(["t1"]);
   });
 });
 
+describe("sync", () => {
+  it("answers everything first, then only what changed since the window's revision", async () => {
+    const { harness } = await load();
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "b" }) });
+    const first = await sync(harness);
+    expect(first).toMatchObject({ full: true, preferences: defaultPreferences(), scheduled: { status: "error", scheduled: {} } });
+    expect(Object.keys(first.records).sort()).toEqual(["a", "b"]);
+
+    // Row B24 of the performance ledger: nothing changed, no records, under 1 KB.
+    const unchanged = await sync(harness, first);
+    expect(unchanged).toMatchObject({ full: false, records: {}, revision: first.revision });
+    expect(JSON.stringify(unchanged).length).toBeLessThan(1_000);
+
+    await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "b" }), lastAssistantText: "Done." });
+    await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
+    const delta = await sync(harness, first);
+    expect(delta.full).toBe(false);
+    expect(delta.records).toEqual({
+      a: { stamps: null, notes: null },
+      b: { stamps: expect.objectContaining({ finishedAt: expect.any(Number) }), notes: { done: expect.objectContaining({ text: "Done." }) } },
+    });
+    expect(delta.revision).toBeGreaterThan(first.revision);
+  });
+
+  it("answers in full to a window from an earlier server start", async () => {
+    const first = await load();
+    await first.harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
+    const seen = await sync(first.harness);
+    const { harness } = await first.harness.lifecycle.reload(plugin);
+    const answer = await sync(harness, seen);
+    expect(answer.epoch).not.toBe(seen.epoch);
+    expect(answer).toMatchObject({ full: true, records: { a: expect.any(Object) } });
+  });
+
+  // Row B23 of the performance ledger: one signal per thread event, with
+  // every stamp and note that event changed.
+  it.each([
+    ["thread.active", { thread: makeThreadResponse({ id: "t" }) }],
+    ["thread.idle", { thread: makeThreadResponse({ id: "t" }), lastAssistantText: "Done." }],
+    ["thread.failed", { thread: makeThreadResponse({ id: "t" }), error: "Disk full" }],
+    [
+      "interaction.pending",
+      {
+        thread: makeThreadResponse({ id: "t" }),
+        interaction: { createdAt: 1_000, payload: { kind: "user_question", questions: [{ id: "q", prompt: "Go?" }] } },
+      },
+    ],
+    ["turn.failed", { threadId: "t", turnId: "turn_1", errorInfo: { category: "billing", httpStatusCode: 402 } }],
+  ])("publishes one signal for %s", async (event, payload) => {
+    const { harness } = await load();
+    await harness.behavior.emitThreadEvent(event as never, payload as never);
+    expect(signalsOn(harness, CHANNELS.records)).toHaveLength(1);
+  });
+});
+
+/** Stores `count` threads' stamps and notes straight into the plugin database, as a long-used server holds them. */
+function storeThreads(bb: Awaited<ReturnType<typeof load>>["bb"], from: number, to: number) {
+  const db = bb.storage.database();
+  const stamps = db.prepare("INSERT OR REPLACE INTO stamps (thread_id, started_at, finished_at, seen_at, idle_at) VALUES (?, ?, ?, ?, ?)");
+  const notes = db.prepare("INSERT OR REPLACE INTO notes (thread_id, data) VALUES (?, ?)");
+  db.transaction(() => {
+    for (let i = from; i < to; i++) {
+      const id = `thr_${String(i).padStart(6, "0")}`;
+      stamps.run(id, 1_000 + i, 2_000 + i, 3_000 + i, 2_000 + i);
+      notes.run(id, JSON.stringify({ done: { kind: "done", text: `Finished task ${i}.`, at: 2_000 + i } }));
+    }
+  })();
+}
+
 /**
- * Plugin KV over SQLite, shaped as bb 0.44 keeps it: JSON rows namespaced by
- * plugin in one relation of a WAL database, each call a synchronous query in the
- * server's own process behind a promise.
+ * Loads the plugin through `factory`, keeping the handlers it registers, so a
+ * benchmark can time a handler alone, without the host's checks and JSON.
  */
-function sqliteKv(file: string) {
-  const db = new Database(file);
-  db.pragma("journal_mode = WAL");
-  db.exec("CREATE TABLE IF NOT EXISTS plugin_kv (plugin_id TEXT, key TEXT, value TEXT, PRIMARY KEY (plugin_id, key))");
-  const plugin = "thread-glance";
-  const select = db.prepare("SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?");
-  const keys = db.prepare("SELECT key FROM plugin_kv WHERE plugin_id = ? AND key >= ? AND key < ? ORDER BY key");
-  const upsert = db.prepare("INSERT OR REPLACE INTO plugin_kv (plugin_id, key, value) VALUES (?, ?, ?)");
-  const remove = db.prepare("DELETE FROM plugin_kv WHERE plugin_id = ? AND key = ?");
-  return {
-    db,
-    kv: {
-      async get<T>(key: string): Promise<T | undefined> {
-        const row = select.get(plugin, key) as { value: string } | undefined;
-        return row === undefined ? undefined : (JSON.parse(row.value) as T);
-      },
-      async set(key: string, value: unknown): Promise<void> {
-        upsert.run(plugin, key, JSON.stringify(value));
-      },
-      async delete(key: string): Promise<void> {
-        remove.run(plugin, key);
-      },
-      async list(prefix = ""): Promise<string[]> {
-        return (keys.all(plugin, prefix, `${prefix}\uffff`) as { key: string }[]).map((row) => row.key);
-      },
-    },
+function capturingHandlers(handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+  return (bb: Parameters<typeof plugin>[0]) => {
+    const register = bb.rpc.register.bind(bb.rpc);
+    bb.rpc.register = ((contract: unknown, registered: Record<string, (input: unknown) => Promise<unknown>>, ...rest: unknown[]) => {
+      Object.assign(handlers, registered);
+      return (register as (...args: unknown[]) => unknown)(contract, registered, ...rest);
+    }) as typeof bb.rpc.register;
+    return plugin(bb);
   };
 }
 
-// Row B25 of the performance ledger (#145): the first listStamps and listNotes
-// after a server start, at 5,000 stored threads. It records the figures
-// without failing on them; the ledger enforces the threshold.
+// Row B25 of the performance ledger (#145): the first sync after a server
+// start, at 5,000 stored threads, reading the plugin's own SQLite database:
+// the handler, from request to answer object, cold. The host's whole call,
+// with its checks and JSON, is printed beside it for information. It records
+// the figures without failing on them; the ledger enforces the threshold.
 describe("cold read benchmark", () => {
-  it("reads 1,500 and 5,000 stored threads' stamps and notes", async () => {
-    const { db, kv } = sqliteKv(join(tempDir, "bb.db"));
-    const bb = {
-      storage: { kv },
-      realtime: { publish: () => undefined },
-      log: { debug: () => undefined, info: () => undefined, warn: () => undefined, error: () => undefined },
-    } as unknown as Parameters<typeof createStampStore>[0];
-    const insert = db.transaction((from: number, to: number) => {
-      for (let i = from; i < to; i++) {
-        const id = `thr_${String(i).padStart(6, "0")}`;
-        void kv.set(stampKvKey(id), { startedAt: 1_000 + i, finishedAt: 2_000 + i, seenAt: 3_000 + i, idleAt: 2_000 + i });
-        void kv.set(noteKvKey(id), { done: { kind: "done", text: `Finished task ${i}.`, at: 2_000 + i } });
-      }
-    });
-    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
-    const time = async (read: () => Promise<unknown>) => {
-      const start = performance.now();
-      await read();
-      return performance.now() - start;
-    };
+  it("answers the first sync over 1,500 and 5,000 stored threads", async () => {
+    const handlers: Record<string, (input: unknown) => Promise<unknown>> = {};
+    const factory = capturingHandlers(handlers);
+    let host = await load();
+    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
     const figures: Record<string, string> = {};
     for (const [from, to] of [[0, 1_500], [1_500, 5_000]]) {
-      insert(from, to);
-      const stampRuns: number[] = [];
-      const noteRuns: number[] = [];
+      storeThreads(host.bb, from, to);
+      const handlerRuns: number[] = [];
+      const callRuns: number[] = [];
       for (let run = 0; run < 7; run++) {
-        stampRuns.push(await time(() => createStampStore(bb).list()));
-        noteRuns.push(await time(() => createNoteStore(bb).list()));
+        host = await host.harness.lifecycle.reload(factory);
+        let start = performance.now();
+        const answer = (await handlers.sync!({ since: null })) as SyncAnswer;
+        handlerRuns.push(performance.now() - start);
+        expect(Object.keys(answer.records)).toHaveLength(to);
+        host = await host.harness.lifecycle.reload(factory);
+        start = performance.now();
+        await sync(host.harness);
+        callRuns.push(performance.now() - start);
       }
-      expect(Object.keys((await createStampStore(bb).list()).startedAt)).toHaveLength(to);
-      expect(Object.keys(await createNoteStore(bb).list())).toHaveLength(to);
-      figures[to] = `listStamps ${median(stampRuns).toFixed(1)} ms, listNotes ${median(noteRuns).toFixed(1)} ms`;
+      figures[to] = `first sync ${median(handlerRuns).toFixed(1)} ms (host's whole call ${median(callRuns).toFixed(1)} ms)`;
     }
-    db.close();
     process.stdout.write(`B25 cold read (median of 7): ${JSON.stringify(figures)}\n`);
+  });
+});
+
+describe("the move from KV", () => {
+  // A 0.7.0 server's KV rows: stamps and notes, one of them invalid.
+  async function seedKv(bb: Awaited<ReturnType<typeof load>>["bb"]) {
+    await bb.storage.kv.set(stampKvKey("a"), { startedAt: 1_000, finishedAt: 2_000, seenAt: 3_000 });
+    await bb.storage.kv.set(stampKvKey("b"), { pendingAt: 4_000, idleAt: 4_000 });
+    await bb.storage.kv.set(noteKvKey("a"), { done: { kind: "done", text: "All done.", at: 2_000 } });
+    await bb.storage.kv.set(noteKvKey("c"), { failed: { kind: "failed", text: "Out of credits", at: 5_000 } });
+    await bb.storage.kv.set("preference:organizationMode", "machine");
+  }
+
+  it("moves every stamp and note into the database unchanged, then removes their KV rows", async () => {
+    const { bb, harness } = await load();
+    await seedKv(bb);
+    expect((await sync(harness)).records).toEqual({
+      a: {
+        stamps: { startedAt: 1_000, finishedAt: 2_000, seenAt: 3_000 },
+        notes: { done: { kind: "done", text: "All done.", at: 2_000 } },
+      },
+      b: { stamps: { pendingAt: 4_000, idleAt: 4_000 }, notes: null },
+      c: { stamps: null, notes: { failed: { kind: "failed", text: "Out of credits", at: 5_000 } } },
+    });
+    expect(await bb.storage.kv.list("stamp:")).toEqual([]);
+    expect(await bb.storage.kv.list("note:")).toEqual([]);
+    expect(await bb.storage.kv.get("preference:organizationMode")).toBe("machine");
+    const db = bb.storage.database();
+    expect(db.prepare("SELECT * FROM stamps ORDER BY thread_id").all()).toEqual([
+      { thread_id: "a", started_at: 1_000, finished_at: 2_000, seen_at: 3_000, idle_at: null, pending_at: null },
+      { thread_id: "b", started_at: null, finished_at: null, seen_at: null, idle_at: 4_000, pending_at: 4_000 },
+    ]);
+    expect(harness.inspection.logEntries.filter((entry) => entry.level === "info").map((entry) => entry.message)).toEqual([
+      "moved the stamps of 2 threads from KV into the plugin database",
+      "moved the notes of 2 threads from KV into the plugin database",
+    ]);
+  });
+
+  it("moves nothing on a second start", async () => {
+    const first = await load();
+    await seedKv(first.bb);
+    await sync(first.harness);
+    const { bb, harness } = await first.harness.lifecycle.reload(plugin);
+    const before = harness.inspection.logEntries.length;
+    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["a", "b", "c"]);
+    expect(harness.inspection.logEntries.slice(before).filter((entry) => entry.message.startsWith("moved"))).toEqual([]);
+    expect(bb.storage.database().prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 2 });
+  });
+
+  it("keeps every KV row when the move fails before it commits", async () => {
+    const { bb, harness } = await load();
+    await seedKv(bb);
+    const db = bb.storage.database();
+    // The insert fails midway, as a crash inside the transaction would leave it.
+    db.exec("CREATE TRIGGER fail_b BEFORE INSERT ON stamps WHEN NEW.thread_id = 'b' BEGIN SELECT RAISE(ABORT, 'disk gone'); END");
+    await expect(sync(harness)).rejects.toThrow();
+    expect(db.prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 0 });
+    expect((await bb.storage.kv.list("stamp:")).sort()).toEqual([stampKvKey("a"), stampKvKey("b")]);
+    db.exec("DROP TRIGGER fail_b");
+    const restarted = await harness.lifecycle.reload(plugin);
+    expect(Object.keys((await sync(restarted.harness)).records).sort()).toEqual(["a", "b", "c"]);
+    expect(await restarted.bb.storage.kv.list("stamp:")).toEqual([]);
+  });
+
+  it("neither loses nor duplicates when a restart comes after the commit and before the KV rows are removed", async () => {
+    const { bb, harness } = await load();
+    await seedKv(bb);
+    await sync(harness);
+    // The KV rows back, as a restart between the commit and their removal leaves them.
+    await seedKv(bb);
+    const db = bb.storage.database();
+    // A write after the commit that the KV copy must not overwrite.
+    db.prepare("UPDATE stamps SET started_at = 9000, finished_at = NULL, seen_at = NULL WHERE thread_id = 'a'").run();
+    const restarted = await harness.lifecycle.reload(plugin);
+    const { records } = await sync(restarted.harness);
+    expect(records.a?.stamps).toEqual({ startedAt: 9_000 });
+    expect(records.b?.stamps).toEqual({ pendingAt: 4_000, idleAt: 4_000 });
+    const reopened = restarted.bb.storage.database();
+    expect(reopened.prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 2 });
+    expect(reopened.prepare("SELECT count(*) AS n FROM notes").get()).toEqual({ n: 2 });
+    expect(await restarted.bb.storage.kv.list("stamp:")).toEqual([]);
   });
 });
 
@@ -561,19 +717,51 @@ describe("startup service", () => {
     await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
     await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 1 });
     await bb.storage.kv.set(stampKvKey("gone"), { finishedAt: 1 });
+    const stored = () =>
+      (bb.storage.database().prepare("SELECT thread_id FROM stamps ORDER BY thread_id").all() as { thread_id: string }[]).map(
+        (row) => row.thread_id,
+      );
     const service = harness.behavior.runService("startup");
-    await vi.waitFor(async () => {
-      expect(await bb.storage.kv.get(stampKvKey("gone"))).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(stored()).toEqual(["live", "old"]);
     });
-    expect(await bb.storage.kv.list("stamp:")).toEqual(
-      expect.arrayContaining([stampKvKey("live"), stampKvKey("old")]),
-    );
+    expect(recordSignals(harness).at(-1)).toEqual({ gone: { stamps: null, notes: null } });
     const listCalls = harness.inspection.sdk.callsTo("threads.list");
     expect(listCalls.map((args) => (args[0] as { archived: boolean }).archived)).toEqual([
       false,
       true,
     ]);
     expect(listCalls[0]?.[0]).toMatchObject({ includeHidden: true });
+    service.controller.abort();
+    await service.done;
+  });
+
+  it("leaves archived threads' records out of a full sync, and serves them by id", async () => {
+    const { bb, harness } = await load({
+      threads: {
+        list: threadsListStub(["live"], ["old"]) as never,
+        queue: { list: async () => [] },
+      },
+    });
+    await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
+    await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 2 });
+    // Until the startup listing arrives, nothing is known archived.
+    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["live", "old"]);
+    const service = harness.behavior.runService("startup");
+    await vi.waitFor(async () => {
+      expect(Object.keys((await sync(harness)).records)).toEqual(["live"]);
+    });
+    expect(await harness.behavior.callRpc("fetchArchived", { threadIds: ["old", "never"] })).toMatchObject({
+      records: { old: { stamps: { finishedAt: 2 }, notes: null } },
+    });
+    await harness.behavior.emitThreadEvent("thread.unarchived", { thread: makeThreadResponse({ id: "old" }) });
+    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["live", "old"]);
+    await harness.behavior.emitThreadEvent("thread.archived", { thread: makeThreadResponse({ id: "live" }) });
+    expect(Object.keys((await sync(harness)).records)).toEqual(["old"]);
+    // Archiving keeps the record, as it is.
+    expect((await harness.behavior.callRpc("fetchArchived", { threadIds: ["live"] })) as { records: unknown }).toMatchObject({
+      records: { live: { stamps: { finishedAt: 1 }, notes: null } },
+    });
     service.controller.abort();
     await service.done;
   });
@@ -590,7 +778,7 @@ describe("startup service", () => {
     });
     const service = harness.behavior.runService("startup");
     await vi.waitFor(async () => {
-      expect(await harness.behavior.callRpc("listScheduled", null)).toEqual({
+      expect((await sync(harness)).scheduled).toEqual({
         status: "ready",
         scheduled: { t1: future },
       });
@@ -629,7 +817,7 @@ describe("startup service", () => {
     await vi.waitFor(() => {
       expect(harness.inspection.sdk.callsTo("threads.queue.list")).toHaveLength(1);
     });
-    expect(await harness.behavior.callRpc("listScheduled", null)).toEqual({
+    expect((await sync(harness)).scheduled).toEqual({
       status: "error",
       scheduled: {},
     });

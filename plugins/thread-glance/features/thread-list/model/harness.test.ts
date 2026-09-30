@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeThread, T0, viewOf, type Scenario } from "../testing/fixtures";
-import { readSystemFacts } from "../data/useSystemFacts";
+import { readSystemFacts } from "../sync";
 import type { ThreadRow } from "./view";
 
 function harnessOf(scenario: Scenario): Record<string, boolean> {

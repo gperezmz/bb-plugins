@@ -64,21 +64,22 @@ const invalidCases = INVALID.map(([key, value]) => ({
 
 /** At least one invalid input per RPC method; a label stands in for a long one. */
 const RPC_CASES = ([
-  ["listPreferences", {}],
+  ["sync", {}],
+  ["sync", { since: { epoch: "e", revision: "1" } }],
   ["setPreference", { key: "colour", value: "red" }],
   ["setPreference", { key: "organizationMode", value: "sideways" }],
   ["setPreference", { key: "organizationMode", value: "machine", extra: 1 }],
   ["resetPreference", { key: 1 }],
   ["importPreferences", { bbMirror: null, extra: true }],
   ["importPreferences", "mirror"],
-  ["listStamps", { all: true }],
+  ["fetchArchived", { threadIds: [""] }],
   ["markSeen", { threadIds: [""] }],
   ["markSeen", { threadIds: JSON.parse(TOO_MANY) as string[] }, "10001 ids"],
   ["clearSeen", { threadIds: "t1" }],
   ["reportIdle", { threadIds: [LONG_ID] }, "an id of 1025 characters"],
   ["reportIdle", {}],
-  ["listNotes", 1],
-  ["listScheduled", []],
+  ["sync", 1],
+  ["fetchArchived", []],
 ] as [string, unknown, string?][]).map(([method, input, label]) => ({
   method,
   input,
@@ -112,7 +113,7 @@ describe("refusal texts", () => {
       stored = value;
     }
     await bb.storage.kv.set(preferenceKvKey(key), stored);
-    await harness.behavior.callRpc("listPreferences", null);
+    await harness.behavior.callRpc("sync", { since: null });
     const warnings = harness.inspection.logEntries
       .filter((entry) => entry.level === "warn")
       .map((entry) => entry.message);

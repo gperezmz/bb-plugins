@@ -1,15 +1,16 @@
-// Per-thread timestamps: one kv row per thread, `stamp:<threadId>`,
-// holding whichever of the kinds it has. Rows are read into memory once
-// and written through, so listing does not read every row per call.
+// Per-thread timestamps: one row per thread in the plugin database's `stamps`
+// table, a column per kind, NULL where the thread has none. Rows are read into memory
+// once and written through, so reading does not query every row per call.
+// The store publishes nothing: its caller publishes the thread records a
+// change touched.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { CHANNELS, type StampKind, type StampSignal, type Stamps } from "../shared/contract";
-import { readRows } from "./kv-rows";
+import { STAMP_KINDS, type StampKind, type ThreadStamps } from "../shared/contract";
 import { createSerialQueue } from "./serial";
+import type { ThreadTable } from "./thread-table";
 
+/** The KV rows stamps lived in up to 0.7.0, `stamp:<threadId>`. */
 export const STAMP_KEY_PREFIX = "stamp:";
-export const STAMP_KINDS: readonly StampKind[] = ["startedAt", "finishedAt", "pendingAt", "seenAt", "idleAt"];
-
-export type ThreadStamps = Partial<Record<StampKind, number>>;
+export { STAMP_KINDS, type ThreadStamps };
 
 export function stampKvKey(threadId: string): string {
   return `${STAMP_KEY_PREFIX}${threadId}`;
@@ -28,25 +29,24 @@ export function parseThreadStamps(raw: unknown): ThreadStamps | null {
 }
 
 export interface StampStore {
-  list(): Promise<Stamps>;
-  /** Sets `kind` to `at` for each thread and publishes one signal. */
-  stamp(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
+  /** Every thread's stamps. The map is the store's own: read it, do not change it. */
+  all(): Promise<ReadonlyMap<string, ThreadStamps>>;
+  get(threadId: string): Promise<ThreadStamps | undefined>;
+  /** Sets `kind` to `at` for each thread, and returns the threads it set. */
+  stamp(kind: StampKind, threadIds: readonly string[], at: number): Promise<string[]>;
   /**
    * Sets `kind` to `at` for each thread whose stored value is earlier or
-   * absent, and publishes one signal for those. A later value is kept, so an
-   * event carrying an earlier moment cannot move it back.
+   * absent, and returns those. A later value is kept, so an event carrying an
+   * earlier moment cannot move it back.
    */
-  advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<void>;
-  /**
-   * Deletes `kind` for each thread that has it, and publishes one signal with
-   * `value: null` naming those threads, or none when no thread had it.
-   */
-  clear(kind: StampKind, threadIds: readonly string[]): Promise<void>;
-  /** Deletes every stamp of each thread. Publishes nothing. */
-  forget(threadIds: readonly string[]): Promise<void>;
+  advance(kind: StampKind, threadIds: readonly string[], at: number): Promise<string[]>;
+  /** Deletes `kind` for each thread that has it, and returns those. */
+  clear(kind: StampKind, threadIds: readonly string[]): Promise<string[]>;
+  /** Deletes every stamp of each thread, and returns the threads that had any. */
+  forget(threadIds: readonly string[]): Promise<string[]>;
   /**
    * Forgets threads missing from `liveIds` whose newest stamp is older than
-   * `before`, and returns their ids. Publishes nothing.
+   * `before`, and returns their ids.
    *
    * `before` is when the caller started listing threads, so a thread created
    * after the list was read, and stamped since, is kept.
@@ -55,66 +55,49 @@ export interface StampStore {
 }
 
 export function createStampStore(
-  bb: Pick<BbPluginApi, "storage" | "realtime" | "log">,
+  bb: Pick<BbPluginApi, "storage" | "log">,
+  table: ThreadTable<ThreadStamps>,
 ): StampStore {
-  const { kv } = bb.storage;
   const serial = createSerialQueue();
   let cache: Map<string, ThreadStamps> | null = null;
 
   async function load(): Promise<Map<string, ThreadStamps>> {
     if (cache !== null) return cache;
-    const loaded = new Map<string, ThreadStamps>();
-    for (const [threadId, raw] of await readRows(kv, STAMP_KEY_PREFIX)) {
+    // The typed columns hold only valid stamps, so rows are checked once,
+    // on their way in from KV.
+    const moved = await table.moveFromKv(bb.storage.kv, STAMP_KEY_PREFIX, (threadId, raw) => {
       const stamps = parseThreadStamps(raw);
-      if (stamps === null) {
-        bb.log.warn(`stored stamps for ${threadId} are invalid; dropping them`);
-        await kv.delete(stampKvKey(threadId));
-        continue;
-      }
-      loaded.set(threadId, stamps);
+      if (stamps === null) bb.log.warn(`stored stamps for ${threadId} are invalid; dropping them`);
+      return stamps;
+    });
+    if (moved > 0) bb.log.info(`moved the stamps of ${moved} threads from KV into the plugin database`);
+    const loaded = new Map<string, ThreadStamps>();
+    for (const [threadId, stamps] of table.all()) {
+      if (Object.keys(stamps).length > 0) loaded.set(threadId, stamps);
     }
     cache = loaded;
     return loaded;
   }
 
-  async function save(
-    rows: Map<string, ThreadStamps>,
-    threadId: string,
-    stamps: ThreadStamps,
-  ): Promise<void> {
+  function save(rows: Map<string, ThreadStamps>, threadId: string, stamps: ThreadStamps): void {
     if (Object.keys(stamps).length === 0) {
       rows.delete(threadId);
-      await kv.delete(stampKvKey(threadId));
+      table.delete(threadId);
       return;
     }
     rows.set(threadId, stamps);
-    await kv.set(stampKvKey(threadId), stamps);
-  }
-
-  function publish(signal: StampSignal): void {
-    bb.realtime.publish(CHANNELS.stamps, signal);
+    table.put(threadId, stamps);
   }
 
   return {
-    list: () =>
-      serial(async () => {
-        const result: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
-        for (const [threadId, stamps] of await load()) {
-          for (const kind of STAMP_KINDS) {
-            const value = stamps[kind];
-            if (value !== undefined) result[kind][threadId] = value;
-          }
-        }
-        return result;
-      }),
+    all: () => serial(load),
+    get: (threadId) => serial(async () => (await load()).get(threadId)),
     stamp: (kind, threadIds, at) =>
       serial(async () => {
-        if (threadIds.length === 0) return;
         const rows = await load();
-        for (const threadId of new Set(threadIds)) {
-          await save(rows, threadId, { ...rows.get(threadId), [kind]: at });
-        }
-        publish({ kind, threadIds: [...threadIds], value: at });
+        const set = [...new Set(threadIds)];
+        for (const threadId of set) save(rows, threadId, { ...rows.get(threadId), [kind]: at });
+        return set;
       }),
     advance: (kind, threadIds, at) =>
       serial(async () => {
@@ -123,31 +106,30 @@ export function createStampStore(
         for (const threadId of new Set(threadIds)) {
           const current = rows.get(threadId);
           if ((current?.[kind] ?? -Infinity) >= at) continue;
-          await save(rows, threadId, { ...current, [kind]: at });
+          save(rows, threadId, { ...current, [kind]: at });
           moved.push(threadId);
         }
-        if (moved.length > 0) publish({ kind, threadIds: moved, value: at });
+        return moved;
       }),
     clear: (kind, threadIds) =>
       serial(async () => {
-        if (threadIds.length === 0) return;
         const rows = await load();
         const cleared: string[] = [];
         for (const threadId of new Set(threadIds)) {
           const current = rows.get(threadId);
           if (current?.[kind] === undefined) continue;
           const { [kind]: _removed, ...rest } = current;
-          await save(rows, threadId, rest);
+          save(rows, threadId, rest);
           cleared.push(threadId);
         }
-        if (cleared.length > 0) publish({ kind, threadIds: cleared, value: null });
+        return cleared;
       }),
     forget: (threadIds) =>
       serial(async () => {
         const rows = await load();
-        for (const threadId of threadIds) {
-          if (rows.has(threadId)) await save(rows, threadId, {});
-        }
+        const forgotten = [...new Set(threadIds)].filter((threadId) => rows.has(threadId));
+        for (const threadId of forgotten) save(rows, threadId, {});
+        return forgotten;
       }),
     prune: (liveIds, before) =>
       serial(async () => {
@@ -156,7 +138,7 @@ export function createStampStore(
         for (const [threadId, stamps] of [...rows]) {
           if (liveIds.has(threadId)) continue;
           if (Math.max(...Object.values(stamps)) >= before) continue;
-          await save(rows, threadId, {});
+          save(rows, threadId, {});
           pruned.push(threadId);
         }
         return pruned;
