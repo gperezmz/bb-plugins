@@ -53,7 +53,7 @@ Left to right, from the title to the row's end. On hover the children chip stays
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 
-What the menu, the keyboard and dragging do is in [menus, dragging and keys](thread-glance-actions.md).
+What the menu, the keyboard and dragging do is in [menus, dragging and keys](thread-glance-actions.md). After **Mark read** on a root, bb's own lists in the same window show the tree unread until a reload, as [its known limitation](thread-glance-actions.md#known-limitation-bbs-own-lists-until-a-reload) says.
 
 On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
 

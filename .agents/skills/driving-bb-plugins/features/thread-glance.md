@@ -97,7 +97,9 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   per window and off on every load.
 - **Mark all read** (`need-you`): `thread-glance mark-all-read` turns every
   row's `unread` false and drops `markAllRead`; `stored` has each thread
-  `read` true in bb.
+  `read` true in bb. bb's own lists in the same window (a phone's Recent
+  list) still show those threads unread until a reload, as
+  `docs/reference/thread-glance-actions.md` says.
 - **Settings** (`settings`): `thread-glance settings` prints every control,
   `prefs list --json` and the browser's `bb.thread-glance.client.v1`.
 - **One control** (`settings`, `sync`): `thread-glance set "Settle after" 12h
