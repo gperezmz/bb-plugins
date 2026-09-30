@@ -199,7 +199,8 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   a phone keeps closed under the main area. `thread-glance long-press
   <title>` opens the row's menu as a drawer after 700 ms, and lifting chooses
   nothing (`openAfterLift` true, `navigated` and `detailsOpened` false);
-  `--move 12` cancels it (`items` null). `thread-glance menu <title>` opens it
+  `--move 24` cancels it (`items` null): Chromium delivers no `touchmove`
+  inside its touch slop, about 15 px, so a smaller move drives nothing. `thread-glance menu <title>` opens it
   from the screen reader's "…" with Enter. `thread-glance drawer` opens a
   thread, which closes the drawer, and reports the rows mounted closed and
   open again.

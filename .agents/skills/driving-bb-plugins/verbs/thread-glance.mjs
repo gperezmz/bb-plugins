@@ -1368,7 +1368,8 @@ export const verbs = {
       const link = await reveal(page, args[0]);
       const box = await link.boundingBox();
       const session = await page.context().newCDPSession(page);
-      const at = (dy) => [{ x: box.x + 40, y: box.y + box.height / 2 + dy }];
+      // One finger throughout: a point with no id reads as a new touch, not a move.
+      const at = (dy) => [{ x: box.x + 40, y: box.y + box.height / 2 + dy, id: 1 }];
       await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(0) });
       if (flags.move) await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(Number(flags.move)) });
       await sleep(800);
