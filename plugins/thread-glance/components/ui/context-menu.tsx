@@ -16,9 +16,7 @@ type ContextMenuSubTriggerElement = React.ComponentRef<
 >;
 type ContextMenuSubTriggerProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.SubTrigger
-> & {
-  inset?: boolean;
-};
+>;
 
 type ContextMenuSubContentElement = React.ComponentRef<
   typeof ContextMenuPrimitive.SubContent
@@ -39,9 +37,7 @@ type ContextMenuItemElement = React.ComponentRef<
 >;
 type ContextMenuItemProps = React.ComponentPropsWithoutRef<
   typeof ContextMenuPrimitive.Item
-> & {
-  inset?: boolean;
-};
+>;
 
 type ContextMenuSeparatorElement = React.ComponentRef<
   typeof ContextMenuPrimitive.Separator
@@ -63,7 +59,6 @@ const ContextMenuSubTrigger = React.forwardRef<
   (
     {
       className,
-      inset,
       children,
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
@@ -83,7 +78,6 @@ const ContextMenuSubTrigger = React.forwardRef<
           "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
-          inset && "pl-8",
           className,
         )}
         {...props}
@@ -142,7 +136,6 @@ const ContextMenuItem = React.forwardRef<
   (
     {
       className,
-      inset,
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
       ...props
@@ -161,7 +154,6 @@ const ContextMenuItem = React.forwardRef<
           "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
-          inset && "pl-8",
           className,
         )}
         {...props}

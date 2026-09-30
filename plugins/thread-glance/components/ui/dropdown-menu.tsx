@@ -27,10 +27,6 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 const MENU_ITEM_NEUTRAL_STATE_CLASS =
   "focus:bg-state-hover focus:text-foreground data-[last-hovered]:bg-state-hover data-[last-hovered]:text-foreground";
-const MENU_ITEM_DESTRUCTIVE_STATE_CLASS =
-  "text-destructive focus:bg-destructive/15 focus:text-destructive data-[last-hovered]:bg-destructive/15";
-const MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS =
-  "text-destructive focus:bg-destructive/15 focus:text-destructive active:bg-destructive/20 active:text-destructive";
 
 const ResponsiveMenuContext =
   React.createContext<ResponsiveOverlayContextValue>({
@@ -120,16 +116,13 @@ DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 
 const DropdownMenuContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> & {
-    mobileTitle?: string;
-  }
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(
   (
     {
       className,
       sideOffset = 4,
       children,
-      mobileTitle,
       onCloseAutoFocus,
       ...props
     },
@@ -144,7 +137,7 @@ const DropdownMenuContent = React.forwardRef<
         <ResponsiveDrawerShell
           open={open}
           onOpenChange={onOpenChange}
-          srLabel={mobileTitle ?? "Menu"}
+          srLabel="Menu"
         >
           <div
             ref={ref}
@@ -195,8 +188,6 @@ type DropdownMenuItemProps = Omit<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>,
   "onBlur" | "onFocus"
 > & {
-  inset?: boolean;
-  variant?: "default" | "destructive";
   onBlur?: React.FocusEventHandler<HTMLElement>;
   onFocus?: React.FocusEventHandler<HTMLElement>;
 };
@@ -208,8 +199,6 @@ const DropdownMenuItem = React.forwardRef<
   (
     {
       className,
-      inset,
-      variant = "default",
       onSelect,
       disabled,
       role = "menuitem",
@@ -241,8 +230,6 @@ const DropdownMenuItem = React.forwardRef<
           aria-checked={ariaChecked}
           className={cn(
             "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-2 text-left text-xs outline-none transition-colors focus:bg-state-hover focus:text-foreground active:bg-state-active active:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
-            inset && "pl-8",
-            variant === "destructive" && MENU_ITEM_DESTRUCTIVE_TOUCH_CLASS,
             className,
           )}
           data-disabled={disabled ? "" : undefined}
@@ -268,10 +255,7 @@ const DropdownMenuItem = React.forwardRef<
         className={cn(
           "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-xs outline-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-icon-root]]:size-4 [&>[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
-          variant === "destructive"
-            ? MENU_ITEM_DESTRUCTIVE_STATE_CLASS
-            : MENU_ITEM_NEUTRAL_STATE_CLASS,
-          inset && "pl-8",
+          MENU_ITEM_NEUTRAL_STATE_CLASS,
           className,
         )}
         disabled={disabled}
@@ -320,14 +304,11 @@ const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
 const DropdownMenuSubTrigger = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
-    inset?: boolean;
-  }
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger>
 >(
   (
     {
       className,
-      inset,
       children,
       onPointerEnter: callerPointerEnter,
       onKeyDown: callerKeyDown,
@@ -347,7 +328,6 @@ const DropdownMenuSubTrigger = React.forwardRef<
           "flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[0.3125rem] text-xs outline-none focus:bg-state-hover focus:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground [&_[data-icon-root]]:pointer-events-none [&_[data-icon-root]]:size-4 [&_[data-icon-root]]:shrink-0",
           LIST_HOVER_TRANSITION,
           MENU_ITEM_LAST_HOVERED_CLASS,
-          inset && "pl-8",
           className,
         )}
         {...props}
