@@ -511,7 +511,7 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "Realtime signals per thread event (active, idle, failed, interaction pending, turn failed)",
     threshold: "exactly one, applied to the list as one update",
     baseline: "up to 3 `stamps` + 1 `notes` per turn",
-    measuredBy: "`server.test`; jsdom. Here: the plugin server on bb's fake plugin host",
+    measuredBy: "jsdom. Here: the plugin server on bb's fake plugin host, one of each event",
     kind: "deterministic",
     read: ({ server }) => {
       if (server === undefined) return NOT_MEASURED;
@@ -552,7 +552,7 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline:
       "15.6 / 18.3 ms (0.7.0); 16.2–17.2 / 16.2–16.4 ms after #147's batched reads, on bb 0.44's SQLite-backed KV (measured in PR #156)",
     measuredBy:
-      "The `sync` handler, from the request to its answer object, cold after a restart, over 5,000 stored threads in the plugin's own SQLite database: `server.test`'s \"cold read benchmark\", which prints its figures, and `npm run perf` on bb's fake plugin host. The host's whole call, with its checks of the answer and its JSON, is recorded beside it for information and is not held to the threshold",
+      "The `sync` handler, from the request to its answer object, cold after a restart, over 5,000 stored threads in the plugin's own SQLite database, by `npm run perf` on bb's fake plugin host. The host's whole call, with its checks of the answer and its JSON, is recorded beside it for information and is not held to the threshold",
     kind: "timing",
     read: ({ server }) =>
       server === undefined
@@ -568,7 +568,7 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "one store and one signal, whatever the number of windows; no window request, apart from a change to idle bb sends the server no event for",
     baseline: "one write per window",
     measuredBy:
-      "`server.test` (the store and the signal: \"records a thread going idle once\", from #147); fake host with 3 windows (window requests, `reportIdle` or 0.7.0's `markIdle`, when a turn ends, which bb announces)",
+      "`server.test` (the store and the signal: \"records a thread going idle once\"); fake host with 3 windows (window requests, `reportIdle`, when a turn ends, which bb announces)",
     kind: "deterministic",
     read: ({ host }) =>
       acrossCells(CELLS, (cell) => host[cell], ({ idleAtWritesPerTransition: writes }) => ({

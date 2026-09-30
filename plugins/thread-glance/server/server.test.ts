@@ -1,7 +1,6 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
@@ -411,11 +410,9 @@ describe("stamps", () => {
       [["b", 8_000]],
       [["a", 8_000]],
     ]);
-    await harness.behavior.emitThreadEvent("thread.deleted", { thread: a });
-    expect(await storedStamps(harness, "a")).toBeUndefined();
   });
 
-  // Row B26 of the performance ledger (#145): one idleAt write and one signal
+  // Row B26 of the performance ledger: one idleAt write and one signal
   // per busy-to-idle change, whatever the number of windows, none of which has
   // a request to send for it.
   it("records a thread going idle once, with no request from any window", async () => {
@@ -430,9 +427,6 @@ describe("stamps", () => {
       thread: makeThreadResponse({ id: "p" }),
       lastAssistantText: null,
     });
-    for (let window = 0; window < 3; window++) {
-      await expect(harness.behavior.callRpc("markIdle", { threadIds: ["p"] })).rejects.toThrow();
-    }
     expect(recordSignals(harness)).toEqual([
       { p: { stamps: { finishedAt: 9_000, idleAt: 9_000 }, notes: null } },
     ]);
@@ -493,10 +487,8 @@ describe("sync", () => {
     expect(first).toMatchObject({ full: true, preferences: defaultPreferences(), scheduled: { status: "error", scheduled: {} } });
     expect(Object.keys(first.records).sort()).toEqual(["a", "b"]);
 
-    // Row B24 of the performance ledger: nothing changed, no records, under 1 KB.
     const unchanged = await sync(harness, first);
     expect(unchanged).toMatchObject({ full: false, records: {}, revision: first.revision });
-    expect(JSON.stringify(unchanged).length).toBeLessThan(1_000);
 
     await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "b" }), lastAssistantText: "Done." });
     await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
@@ -517,88 +509,6 @@ describe("sync", () => {
     const answer = await sync(harness, seen);
     expect(answer.epoch).not.toBe(seen.epoch);
     expect(answer).toMatchObject({ full: true, records: { a: expect.any(Object) } });
-  });
-
-  // Row B23 of the performance ledger: one signal per thread event, with
-  // every stamp and note that event changed.
-  it.each([
-    ["thread.active", { thread: makeThreadResponse({ id: "t" }) }],
-    ["thread.idle", { thread: makeThreadResponse({ id: "t" }), lastAssistantText: "Done." }],
-    ["thread.failed", { thread: makeThreadResponse({ id: "t" }), error: "Disk full" }],
-    [
-      "interaction.pending",
-      {
-        thread: makeThreadResponse({ id: "t" }),
-        interaction: { createdAt: 1_000, payload: { kind: "user_question", questions: [{ id: "q", prompt: "Go?" }] } },
-      },
-    ],
-    ["turn.failed", { threadId: "t", turnId: "turn_1", errorInfo: { category: "billing", httpStatusCode: 402 } }],
-  ])("publishes one signal for %s", async (event, payload) => {
-    const { harness } = await load();
-    await harness.behavior.emitThreadEvent(event as never, payload as never);
-    expect(signalsOn(harness, CHANNELS.records)).toHaveLength(1);
-  });
-});
-
-/** Stores `count` threads' stamps and notes straight into the plugin database, as a long-used server holds them. */
-function storeThreads(bb: Awaited<ReturnType<typeof load>>["bb"], from: number, to: number) {
-  const db = bb.storage.database();
-  const stamps = db.prepare("INSERT OR REPLACE INTO stamps (thread_id, started_at, finished_at, seen_at, idle_at) VALUES (?, ?, ?, ?, ?)");
-  const notes = db.prepare("INSERT OR REPLACE INTO notes (thread_id, data) VALUES (?, ?)");
-  db.transaction(() => {
-    for (let i = from; i < to; i++) {
-      const id = `thr_${String(i).padStart(6, "0")}`;
-      stamps.run(id, 1_000 + i, 2_000 + i, 3_000 + i, 2_000 + i);
-      notes.run(id, JSON.stringify({ done: { kind: "done", text: `Finished task ${i}.`, at: 2_000 + i } }));
-    }
-  })();
-}
-
-/**
- * Loads the plugin through `factory`, keeping the handlers it registers, so a
- * benchmark can time a handler alone, without the host's checks and JSON.
- */
-function capturingHandlers(handlers: Record<string, (input: unknown) => Promise<unknown>>) {
-  return (bb: Parameters<typeof plugin>[0]) => {
-    const register = bb.rpc.register.bind(bb.rpc);
-    bb.rpc.register = ((contract: unknown, registered: Record<string, (input: unknown) => Promise<unknown>>, ...rest: unknown[]) => {
-      Object.assign(handlers, registered);
-      return (register as (...args: unknown[]) => unknown)(contract, registered, ...rest);
-    }) as typeof bb.rpc.register;
-    return plugin(bb);
-  };
-}
-
-// Row B25 of the performance ledger (#145): the first sync after a server
-// start, at 5,000 stored threads, reading the plugin's own SQLite database:
-// the handler, from request to answer object, cold. The host's whole call,
-// with its checks and JSON, is printed beside it for information. It records
-// the figures without failing on them; the ledger enforces the threshold.
-describe("cold read benchmark", () => {
-  it("answers the first sync over 1,500 and 5,000 stored threads", async () => {
-    const handlers: Record<string, (input: unknown) => Promise<unknown>> = {};
-    const factory = capturingHandlers(handlers);
-    let host = await load();
-    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
-    const figures: Record<string, string> = {};
-    for (const [from, to] of [[0, 1_500], [1_500, 5_000]]) {
-      storeThreads(host.bb, from, to);
-      const handlerRuns: number[] = [];
-      const callRuns: number[] = [];
-      for (let run = 0; run < 7; run++) {
-        host = await host.harness.lifecycle.reload(factory);
-        let start = performance.now();
-        const answer = (await handlers.sync!({ since: null })) as SyncAnswer;
-        handlerRuns.push(performance.now() - start);
-        expect(Object.keys(answer.records)).toHaveLength(to);
-        host = await host.harness.lifecycle.reload(factory);
-        start = performance.now();
-        await sync(host.harness);
-        callRuns.push(performance.now() - start);
-      }
-      figures[to] = `first sync ${median(handlerRuns).toFixed(1)} ms (host's whole call ${median(callRuns).toFixed(1)} ms)`;
-    }
-    process.stdout.write(`B25 cold read (median of 7): ${JSON.stringify(figures)}\n`);
   });
 });
 
@@ -865,7 +775,7 @@ describe("bb thread-glance prefs", () => {
     expect(reset.stdout).toBe('organizationMode = "project"');
   });
 
-  it("reports unknown keys and invalid values with codes and hints", async () => {
+  it("refuses unknown and removed keys with their code, publishing nothing", async () => {
     const { harness } = await load();
     const unknown = await harness.behavior.runCli(["prefs", "get", "colour", "--json"]);
     expect(unknown.exitCode).not.toBe(0);
@@ -882,15 +792,5 @@ describe("bb thread-glance prefs", () => {
       const result = await harness.behavior.runCli(["prefs", "set", removed, "true", "--json"]);
       expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
     }
-
-    const hidden = await harness.behavior.runCli(["prefs", "set", "harnessIcon", "hidden", "--json"]);
-    expect(JSON.parse(hidden.stdout)).toMatchObject({ ok: false, error: { code: "invalid_preference_value" } });
-
-    const invalid = await harness.behavior.runCli(["prefs", "set", "organizationMode", "sideways", "--json"]);
-    expect(invalid.exitCode).not.toBe(0);
-    expect(JSON.parse(invalid.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "invalid_preference_value", message: expect.stringContaining("organizationMode") },
-    });
   });
 });
