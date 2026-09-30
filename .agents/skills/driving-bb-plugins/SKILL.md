@@ -18,12 +18,12 @@ the repository root.
 ## Launch
 
 ```bash
-.agents/skills/driving-bb-plugins/drive-bb-plugins start [--fixture <name>] <plugin>...
+.agents/skills/driving-bb-plugins/drive-bb-plugins start [--snapshot <name>] <plugin>...
 ```
 
 `<plugin>` is a directory name under `plugins/`: the one under test, plus any
-the feature file's preconditions name. `--fixture` starts the run on a copy
-of a saved bb, threads and all ([Fixtures](#fixtures)). Ready is the command exiting 0 after
+the feature file's preconditions name. `--snapshot` starts the run on a copy
+of a saved bb, threads and all ([Snapshots](#snapshots)). Ready is the command exiting 0 after
 printing `run`, `web UI`, `project` and `evidence`, in about 10 seconds, or
 a minute more in a fresh checkout, where it runs `npm ci` in
 `plugins/thread-glance` for Playwright and in each plugin started that has
@@ -173,28 +173,28 @@ threads beside the first's. `seed` prints what it made and writes every id,
 by title, to `seed.json` in the evidence. A real-turn child spawned under a
 quiet parent leaves the parent `pending`, with no turn and no wake.
 
-### Fixtures
+### Snapshots
 
 A seeded bb is saved once per bb version and started from as often as
 wanted:
 
 ```bash
 .agents/skills/driving-bb-plugins/drive-bb-plugins save --run <run> <name>
-.agents/skills/driving-bb-plugins/drive-bb-plugins fixtures
-.agents/skills/driving-bb-plugins/drive-bb-plugins start --fixture <name> [<plugin>...]
+.agents/skills/driving-bb-plugins/drive-bb-plugins snapshots
+.agents/skills/driving-bb-plugins/drive-bb-plugins start --snapshot <name> [<plugin>...]
 ```
 
 `save` stops the run, as `stop` does, and keeps its bb data directory, the
-project's repository and Claude Code's sessions as fixture `<name>` of the bb
-on `PATH`, in `$DBP_FIXTURE_ROOT` (default
-`~/.cache/drive-bb-plugins/fixtures`), shared by every checkout; it replaces
-a fixture of that name. It refuses while a thread is working or a
+project's repository and Claude Code's sessions as snapshot `<name>` of the bb
+on `PATH`, in `$DBP_SNAPSHOT_ROOT` (default
+`~/.cache/drive-bb-plugins/snapshots`), shared by every checkout; it replaces
+a snapshot of that name. It refuses while a thread is working or a
 `--background` thread is unreleased, since a saved bb loses both: seed those
-on the restored run. `start --fixture` copies the fixture into the run's own
+on the restored run. `start --snapshot` copies the snapshot into the run's own
 scratch, points every path it saved at that scratch, reinstalls the plugins
-named (or the fixture's) from this checkout and uninstalls any other it
+named (or the snapshot's) from this checkout and uninstalls any other it
 saved, in about 7 seconds for 802 threads. Any number of runs start from one
-fixture at once; a `save` over it waits until their copies are done. `fixtures` lists the bb version's fixtures.
+snapshot at once; a `save` over it waits until their copies are done. `snapshots` lists the bb version's snapshots.
 
 The machine the run's threads work on goes away and comes back with
 `drive-bb-plugins machine --run <run> offline|online`. Offline stops the
@@ -317,7 +317,7 @@ ps -p "$(paste -sd, - < .drives/<run>/pids)"
 
 ## Helpers
 
-- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|seed|release|machine|<plugin>|ui|stop|save|fixtures`:
+- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|seed|release|machine|<plugin>|ui|stop|save|snapshots`:
   the harness above. Run with no arguments, it prints its usage.
 - `.agents/skills/driving-bb-plugins/seed.mjs`: what `seed` runs for quiet
   threads; not called directly.

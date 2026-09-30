@@ -9,7 +9,7 @@
 // default export gets { page, url, capture } after the page has loaded url.
 // A verbs module exports `verbs`, each { usage, valued?, run(ctx) }: valued
 // names the --flags that take a value; run gets
-// { page, url, capture, newPage, cli, args, flags } on a page that has loaded
+// { page, url, capture, newPage, cli, harness, args, flags } on a page that has loaded
 // nothing, and returns what it saw, which is printed as JSON.
 // capture(name, action) writes <n>-<name>.aria.yml (the page's ARIA snapshot)
 // and <n>-<name>.png into the evidence directory, and appends the action it
@@ -96,10 +96,17 @@ async function capture(name, action = "", on = page) {
   log(`captured ${base}`);
 }
 
-/** Runs `bb <args>` against the run through the harness, logged in cli.md; its stdout. */
-function cli(label, ...args) {
-  return execFileSync(DBP_HARNESS, ["bb", "--run", DBP_RUN, label, "--", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+/**
+ * Runs harness command `command` against the run; its stdout, however long:
+ * execFileSync's default buffer of 1 MiB fails a `thread list --json` of
+ * several hundred threads.
+ */
+function harness(command, ...args) {
+  return execFileSync(DBP_HARNESS, [command, "--run", DBP_RUN, ...args], { encoding: "utf8", maxBuffer: Infinity, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
+
+/** Runs `bb <args>` against the run through the harness, logged in cli.md; its stdout. */
+const cli = (label, ...args) => harness("bb", label, "--", ...args);
 
 let code = 0;
 try {
@@ -108,7 +115,7 @@ try {
     await page.goto(url);
     await steps({ page, url, capture });
   } else {
-    const result = await verb.run({ page, url, capture, newPage, cli, ...parsed });
+    const result = await verb.run({ page, url, capture, newPage, cli, harness, ...parsed });
     writeFileSync(join(out, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
     console.log(JSON.stringify(result, null, 2));
   }

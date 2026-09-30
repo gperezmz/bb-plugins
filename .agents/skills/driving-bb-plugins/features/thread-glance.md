@@ -63,10 +63,10 @@ Preconditions: `drive-bb-plugins start thread-glance`. Threads come from
 [Seeding](../SKILL.md#seeding)); only a thread working, failed or running a
 background command takes `drive-bb-plugins spawn` and its flag. A recipe
 over a long list (`rows`, `scroll`, archived, `away`, `live`) starts from
-`start --fixture user-800 thread-glance`, the user's 802 threads with 104
+`start --snapshot user-800 thread-glance`, the user's 802 threads with 104
 live, saved once per bb version from
 [`shapes/user-800.json`](../shapes/user-800.json) with `seed` and `save`
-where `fixtures` does not list it.
+where `snapshots` does not list it.
 
 Every UI step is a verb, `drive-bb-plugins thread-glance --run <run> <verb>`,
 which prints JSON: `before` and `after` the action, `stored` (what bb or the

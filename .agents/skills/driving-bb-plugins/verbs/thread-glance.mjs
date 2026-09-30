@@ -200,18 +200,9 @@ async function prefUntil(cli, label, key, want) {
   return value;
 }
 
-/**
- * The run's threads by title, from bb. Run through the harness as `cli` runs
- * it, with a larger buffer: at several hundred threads the list passes the
- * 1 MB that `cli`'s execFileSync holds.
- */
+/** The run's threads, from bb. */
 function threads(cli, label) {
-  const out = execFileSync(process.env.DBP_HARNESS, ["bb", "--run", process.env.DBP_RUN, label, "--", "thread", "list", "--json"], {
-    encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const listed = JSON.parse(out);
+  const listed = JSON.parse(cli(label, "thread", "list", "--json"));
   return Array.isArray(listed) ? listed : listed.threads;
 }
 
@@ -548,7 +539,7 @@ function runActions(ctx, label, actions) {
   for (const a of actions ?? []) {
     if (Array.isArray(a)) out.push({ bb: a, stdout: ctx.cli(label, ...a).slice(0, 2000) });
     else if (a.sleep) execFileSync("sleep", [String(a.sleep / 1000)]);
-    else if (a.harness) out.push({ harness: a.harness, stdout: execFileSync(process.env.DBP_HARNESS, [a.harness[0], "--run", process.env.DBP_RUN, ...a.harness.slice(1)], { encoding: "utf8" }).trim() });
+    else if (a.harness) out.push({ harness: a.harness, stdout: ctx.harness(...a.harness) });
   }
   return out;
 }
@@ -1253,6 +1244,8 @@ export const verbs = {
       const order = async () =>
         page.locator("section[data-sidebar-visibility-group]").evaluateAll((els) => els.filter((e) => !e.closest('[data-sidebar-overflow="true"]')).map((e) => e.getAttribute("aria-label")));
       const before = await order();
+      await header(args[0]).scrollIntoViewIfNeeded();
+      await frames(page);
       await capture("before", `before dragging ${args[0]}`);
       const feedback = await dragTo(page, header(args[0]), header(flags.onto), flags.zone === "bottom" ? 0.9 : 0.1);
       await page.waitForFunction((was) => JSON.stringify([...document.querySelectorAll("section[data-sidebar-visibility-group]")].map((e) => e.getAttribute("aria-label"))) !== was, JSON.stringify(before), { timeout: 10_000 }).catch(() => {});
