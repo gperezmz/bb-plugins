@@ -2,6 +2,7 @@
 // reading of them.
 import { CELLS, type Cell, type Figures } from "./figures";
 import type { Verdict } from "./ledger";
+import { scriptFigure } from "./harness/cpu-profile";
 
 function tabulate(title: string, rows: readonly (readonly [string, string])[]): string {
   const width = Math.max(...rows.map(([name]) => name.length), 6);
@@ -86,7 +87,7 @@ export function formatReport(figures: Figures, verdicts: readonly Verdict[]): st
   const shared: [string, string][] = [];
   if (mar.jsdom) shared.push(["MAR list, jsdom", `${mar.jsdom.unreadAfterClick} of ${mar.jsdom.counted} unread after the click, ${mar.jsdom.commits} commits, ${mar.jsdom.jsMs} ms`]);
   if (mar.host) shared.push(["MAR list, fake host", `${mar.host.markRead} markRead, ${mar.host.markReadPeak} in flight at once, ${mar.host.markSeen} markSeen`]);
-  if (mar.chromium) shared.push(["MAR list, Chromium", `INP ${inpValue(mar.chromium.inp.x1)} at 1×, ${inpValue(mar.chromium.inp.x4)} at 4×, plugin main thread ${msValue(mar.chromium.script.pluginMs)} (fake bb ${msValue(mar.chromium.script.fakeHostMs)}, rest ${msValue(mar.chromium.script.restMs)})`]);
+  if (mar.chromium) shared.push(["MAR list, Chromium", `INP ${inpValue(mar.chromium.inp.x1)} at 1×, ${inpValue(mar.chromium.inp.x4)} at 4×, ${scriptFigure(mar.chromium.script)}`]);
   if (server) {
     shared.push(["server: signals per thread event", Object.entries(server.signalsPerEvent).map(([name, count]) => `${name} ${count}`).join(", ")]);
     const payload = server.syncPayload;

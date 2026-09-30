@@ -8,6 +8,7 @@ const deps = "/node_modules/.vite/vitest/da39/deps";
 it("counts the plugin's modules, React and the libraries Vite bundles as the plugin's", () => {
   expect(at("/features/thread-list/store/list-store.ts")).toBe("pluginMs");
   expect(at("/components/ui/popover.tsx")).toBe("pluginMs");
+  expect(at("/app.tsx")).toBe("pluginMs");
   expect(at(`${deps}/react.esm-Bar33BbW.js`)).toBe("pluginMs");
   expect(at(`${deps}/dist-BQA0ApUO.js`)).toBe("pluginMs");
 });
@@ -32,4 +33,18 @@ it("sums each sample's time by owner, idle left out", () => {
     timeDeltas: [5_000, 1_000, 1_500, 700],
   };
   expect(attribute(profile)).toEqual({ pluginMs: 2.5, fakeHostMs: 0.7, restMs: 0 });
+});
+
+it("counts native time under a function as that function's owner's", () => {
+  const profile = {
+    nodes: [
+      { id: 1, callFrame: { url: "", functionName: "(root)" }, children: [2, 4] },
+      { id: 2, callFrame: { url: "http://h/features/x.ts", functionName: "a" }, children: [3] },
+      { id: 3, callFrame: { url: "", functionName: "removeChild" } },
+      { id: 4, callFrame: { url: "", functionName: "(garbage collector)" } },
+    ],
+    samples: [3, 4],
+    timeDeltas: [1_000, 2_000],
+  };
+  expect(attribute(profile)).toEqual({ pluginMs: 1, fakeHostMs: 0, restMs: 2 });
 });

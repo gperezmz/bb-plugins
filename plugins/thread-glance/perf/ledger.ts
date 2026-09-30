@@ -39,6 +39,7 @@
 import type { Cell, Figures } from "./figures";
 import { CELLS } from "./figures";
 import type { InpFigure } from "./harness/chromium-figures";
+import { scriptFigure } from "./harness/cpu-profile";
 import type { EventFigure } from "./harness/jsdom-run";
 
 export type Kind = "deterministic" | "timing" | "both";
@@ -291,7 +292,7 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 100 ms at 1× CPU, < 200 ms at 4×",
     baseline: "416 / 384 / 376 ms; 1.7 s at 4×",
     measuredBy:
-      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. A real drive takes the group's and a children chip's (`perf-open`), since on 0.7.0 the harness put them at 96–120 ms where bb measured about 400 ms",
+      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. A real drive takes the group's and a children chip's too (`perf-open`): the harness reads them lower than bb does (96–120 ms against about 400 ms, on 0.7.0)",
     kind: "timing",
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ inp }) => {
@@ -313,7 +314,7 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 300 ms",
     baseline: "2.2 s",
     measuredBy:
-      "Chromium, 1,500 (production React). A real drive takes it too (`perf-return`), since on 0.7.0 the harness put it at about 0.6 s where bb measured 2.2 s",
+      "Chromium, 1,500 (production React). A real drive takes it too (`perf-return`): the harness reads it lower than bb does (about 0.6 s against 2.2 s, on 0.7.0)",
     kind: "timing",
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => ({
@@ -598,13 +599,13 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "INP < 100 ms at 1×, < 200 ms at 4×; plugin main-thread time from click to last request < 200 ms",
     baseline: "360 ms; 4.9 s",
     measuredBy:
-      "Chromium, MAR list (production React), fake `threads.markRead` taking 50 ms. The main-thread time is a CPU profile's samples from the click to the last answer, at 1×, in the plugin's modules, React and the libraries Vite bundles (shared chunks no URL names included, so it errs high); the fake bb's and the rest (test runner, native time) are reported beside it and not held to the threshold",
+      "Chromium, MAR list (production React), fake `threads.markRead` taking 50 ms. The main-thread time is a CPU profile's samples from the click to the last answer, at 1×, in the plugin's modules, React and the libraries Vite bundles, native work (DOM calls, garbage collection) counted as its caller's, and shared Vite files no URL names counted as the plugin's, so it errs high; the fake bb's and the rest (test runner, native time) are reported beside it and not held to the threshold",
     kind: "timing",
     read: ({ markAllRead: { chromium } }) => {
       if (chromium === undefined) return NOT_MEASURED;
       const inp = inpReading(chromium.inp);
       return {
-        figure: `INP ${inp.figure}, plugin main thread ${ms(chromium.script.pluginMs)} (fake bb ${ms(chromium.script.fakeHostMs)}, rest ${ms(chromium.script.restMs)})`,
+        figure: `INP ${inp.figure}, ${scriptFigure(chromium.script)}`,
         pass: inp.pass === null ? null : inp.pass && chromium.script.pluginMs < 200,
       };
     },
