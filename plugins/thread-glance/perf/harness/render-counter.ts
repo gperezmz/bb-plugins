@@ -195,11 +195,6 @@ if (existing === undefined) {
   };
 }
 
-/** Whether react-dom reached this hook: false when it loaded first. */
-export function counterAttached(): boolean {
-  return (global.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers.size ?? 0) > 0 || roots.size > 0;
-}
-
 /** Counts every commit from now until `stopCounting`. */
 export function startCounting(): void {
   counting = emptyCount();

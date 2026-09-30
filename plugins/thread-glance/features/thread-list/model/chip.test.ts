@@ -69,7 +69,7 @@ describe("the children chip's state", () => {
     expect(chipState(hidden(failedUnread))).toBe("unread-failed");
     expect(chipState(hidden({ queuedWork: "failed" }))).toBe("queue-failed");
     expect(chipState(hidden({ status: "active", runtimeStatus: "waiting-for-host" }))).toBe("offline");
-    // A hidden offline or queue-failed thread still makes nothing need attention, as before.
+    // A hidden offline or queue-failed thread still makes nothing need attention.
     expect(attentionRootIds({ threads: [parent, hidden({ status: "active", runtimeStatus: "waiting-for-host" })] })).toEqual([]);
     expect(attentionRootIds({ threads: [parent, hidden({ queuedWork: "failed" })] })).toEqual([]);
   });

@@ -228,7 +228,7 @@ export interface GeneratedList {
   unreadIds: string[];
 }
 
-export interface GenerateOptions {
+interface GenerateOptions {
   /** Threads in the list. */
   size: number;
   kind?: GeneratedListKind;

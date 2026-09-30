@@ -349,7 +349,7 @@ describe("a child's failure reaches the need-you filter and the counters after t
     expect(forestOf({ threads: busy, now: failedAt + 1_000 }).nextOrphanAt).toBeNull();
   });
 
-  it("counts it at once when every child counts, as before", () => {
+  it("counts it at once when every child counts", () => {
     expect(at(failedAt + 1, { prefs: { childAttention: "everything" } }).needYouCount).toBe(1);
   });
 });

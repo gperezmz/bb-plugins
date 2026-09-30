@@ -39,7 +39,7 @@ describe("a row's second line", () => {
     expect(rowOf(off, "q").note).not.toBeNull();
   });
 
-  it("with Branch line off, draws no branch line and keeps the badge on a root's title line off the default branch, as before", () => {
+  it("with Branch line off, draws no branch line and keeps the badge on a root's title line off the default branch", () => {
     expect(rowOf(off, "b")).toMatchObject({ branchLine: null, pullRequest: "title" });
     expect(rowOf(off, "c")).toMatchObject({ branchLine: null, pullRequest: null });
     expect(rowOf(off, "m")).toMatchObject({ branchLine: null, pullRequest: null });

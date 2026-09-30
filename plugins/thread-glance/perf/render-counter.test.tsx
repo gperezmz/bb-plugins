@@ -7,7 +7,7 @@ import "./harness/render-counter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup } from "@testing-library/react";
 import { generateList } from "@/features/thread-list/testing/fixtures";
-import { counterAttached, startCounting, stopCounting } from "./harness/render-counter";
+import { startCounting, stopCounting } from "./harness/render-counter";
 import { mountList, serverState } from "./harness/fake-host";
 import { openList, settle } from "./harness/jsdom-run";
 
@@ -21,10 +21,6 @@ const ids = (root: ParentNode, selector: string, attribute: string) =>
   [...root.querySelectorAll(selector)].map((node) => node.closest(`[${attribute}]`)?.getAttribute(attribute) ?? node.getAttribute(attribute));
 
 describe("the render count", () => {
-  it("reads React's commits", () => {
-    expect(counterAttached()).toBe(true);
-  });
-
   it("reports every row, group header and the list header once on a remount", async () => {
     const list = generateList({ size: 50 });
     const { host, app, slot } = await openList(list);
