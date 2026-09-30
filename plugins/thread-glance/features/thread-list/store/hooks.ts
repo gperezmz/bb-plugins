@@ -162,11 +162,10 @@ export function itemKeyOf(groupId: string, rowKey: string): string {
   return `${groupId}/${rowKey}`;
 }
 
-/** A thread row's own part of the list: focus, rename, drop feedback, split mini-map, draft, row status, and its menu or drag. */
+/** A thread row's own part of the list: focus, rename, split mini-map, draft, row status, and its menu or drag. */
 export interface RowState {
   focused: boolean;
   editing: boolean;
-  dropState: DropState | null;
   miniMap: readonly MiniMapPane[] | null;
   hasDraft: boolean;
   rowStatus: PluginSidebarThreadRowStatus | null;
@@ -176,7 +175,7 @@ export interface RowState {
   dragging: boolean;
 }
 
-const ROW_STATE_KEYS: readonly (keyof RowState)[] = ["focused", "editing", "dropState", "miniMap", "hasDraft", "rowStatus", "menuOpen", "dragging"];
+const ROW_STATE_KEYS: readonly (keyof RowState)[] = ["focused", "editing", "miniMap", "hasDraft", "rowStatus", "menuOpen", "dragging"];
 
 // One object per row while its parts hold, so the row's selector keeps its identity.
 const rowStates = new WeakMap<ListStore, Map<string, RowState>>();
@@ -196,7 +195,6 @@ export function useRow(threadId: string, groupId: string, rowKey: string): RowSt
     const next: RowState = {
       focused: inputs.activeThreadId === threadId,
       editing: ui.editingId === threadId,
-      dropState: ui.dropStates.get(threadId) ?? null,
       miniMap: state.model?.miniMaps.get(threadId) ?? null,
       hasDraft: inputs.host.draftIds.has(threadId),
       rowStatus: inputs.host.rowStatuses.get(threadId) ?? null,

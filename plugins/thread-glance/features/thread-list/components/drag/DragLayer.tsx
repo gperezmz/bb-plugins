@@ -4,7 +4,7 @@
 // once scrolling brings it under the pointer. dnd-kit keeps its 4 px
 // activation and its auto-scroll near the list's edges. No key starts a drag.
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject, type SyntheticEvent } from "react";
-import { DndContext, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors, type DragStartEvent } from "@dnd-kit/core";
+import { DndContext, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { Dragged } from "../../commands/commands";
 import { targetAt, type PointedTarget } from "../../model/drag";
 import type { ListItems } from "../../model/layout-items";
@@ -59,8 +59,9 @@ export function DragLayer({ children }: { children: ReactNode }) {
   const { compact } = useLayout();
   const mouse = useSensor(MouseSensor, MOUSE_SENSOR);
   const touch = useSensor(TouchSensor, TOUCH_SENSOR);
-  // Phones have no drag.
-  const sensors = useSensors(...(compact ? [] : [mouse, touch]));
+  // Always both: dnd-kit memoizes on them, so a list mounted on a phone
+  // would keep none on a desktop. Phones have no drag: the draggable is off.
+  const sensors = useSensors(mouse, touch);
   const surfaces = useRef(new Set<Surface>());
   const pressed = useRef<{ dragged: Dragged; dragging: Dragging } | null>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -90,20 +91,18 @@ export function DragLayer({ children }: { children: ReactNode }) {
       const point = "touches" in event ? event.touches[0] : event;
       if (point !== undefined) pointer.current = { x: point.clientX, y: point.clientY };
     };
-    document.addEventListener("mousemove", track, true);
-    document.addEventListener("touchmove", track, true);
+    // The release point is the drop point: a release can land where no move did.
+    const events = ["mousemove", "mouseup", "touchmove"] as const;
+    for (const type of events) document.addEventListener(type, track, true);
     return () => {
-      document.removeEventListener("mousemove", track, true);
-      document.removeEventListener("touchmove", track, true);
+      for (const type of events) document.removeEventListener(type, track, true);
     };
   }, []);
 
   const onDragStart = useCallback(
-    (event: DragStartEvent) => {
+    () => {
       const start = pressed.current;
       if (start === null) return;
-      const activator = event.activatorEvent;
-      if (activator instanceof MouseEvent) pointer.current = { x: activator.clientX, y: activator.clientY };
       commands.dragStart(start.dragging);
       // Auto-scroll brings rows under a still pointer: they are targets too.
       document.addEventListener("scroll", aim, true);
@@ -115,12 +114,12 @@ export function DragLayer({ children }: { children: ReactNode }) {
     (drop: boolean) => {
       document.removeEventListener("scroll", aim, true);
       const start = pressed.current;
+      if (drop && start !== null) aim();
       pressed.current = null;
       if (!drop || start === null) {
         commands.dragCancel();
         return;
       }
-      aim();
       commands.drop(start.dragged, pointed.current.target, pointed.current.placement);
     },
     [aim, commands],
@@ -134,7 +133,7 @@ export function DragLayer({ children }: { children: ReactNode }) {
       onDragEnd={() => finish(true)}
       onDragCancel={() => finish(false)}
     >
-      <Draggable pressed={pressed} surfaces={surfaces} disabled={compact}>
+      <Draggable pressed={pressed} pointer={pointer} surfaces={surfaces} disabled={compact}>
         {children}
       </Draggable>
     </DndContext>
@@ -144,11 +143,13 @@ export function DragLayer({ children }: { children: ReactNode }) {
 /** The one draggable, whose press handlers go on each surface's root. */
 function Draggable({
   pressed,
+  pointer,
   surfaces,
   disabled,
   children,
 }: {
   pressed: { current: { dragged: Dragged; dragging: Dragging } | null };
+  pointer: { current: { x: number; y: number } | null };
   surfaces: { current: Set<Surface> };
   disabled: boolean;
   children: ReactNode;
@@ -164,11 +165,14 @@ function Draggable({
         const press = pressedAt(event.target);
         if (press === null) return;
         pressed.current = press;
+        const native = event.nativeEvent as MouseEvent | TouchEvent;
+        const point = "touches" in native ? native.touches[0] : native;
+        if (point !== undefined) pointer.current = { x: point.clientX, y: point.clientY };
         (listener as (event: SyntheticEvent) => void)(event);
       };
     }
     return wrapped;
-  }, [sensorListeners, pressed]);
+  }, [sensorListeners, pressed, pointer]);
   const api = useMemo<DragApi>(
     () => ({
       register(surface) {
