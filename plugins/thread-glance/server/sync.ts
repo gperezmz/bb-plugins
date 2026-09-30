@@ -16,10 +16,8 @@ import type { ArchivedThreads } from "./archived";
 import type { NoteStore } from "./notes";
 import type { StampStore } from "./stamps";
 
-export interface RecordsAnswer {
-  epoch: string;
-  revision: number;
-  /** True when `records` holds every active thread's record, to replace what the window held. */
+export interface RecordsAnswer extends SyncPoint {
+  /** True when `records` holds the record of every thread not archived, to replace what the window held. */
   full: boolean;
   records: Record<string, ThreadRecord>;
 }
@@ -28,9 +26,12 @@ export interface RecordLog {
   readonly epoch: string;
   /** Takes a revision for the changes to `threadIds` and publishes their records in one signal; nothing when empty. */
   publish(threadIds: readonly string[]): Promise<void>;
-  /** The records changed since `since`, or every active thread's when `since` is null or from another epoch. */
+  /**
+   * The records changed since `since`, or, when `since` is null or from
+   * another epoch, those of every thread not archived.
+   */
   since(since: SyncPoint | null): Promise<RecordsAnswer>;
-  /** The records of `threadIds` that have any, whatever the scope. */
+  /** The records of `threadIds` that have any, archived or not. */
   fetch(threadIds: readonly string[]): Promise<Omit<RecordsAnswer, "full">>;
 }
 
@@ -62,30 +63,25 @@ export function createRecordLog(
     async publish(threadIds) {
       if (threadIds.length === 0) return;
       revision += 1;
-      const at = revision;
-      for (const threadId of threadIds) changed.set(threadId, at);
-      const signal: RecordsSignal = { epoch, revision: at, records: await recordsOf(new Set(threadIds), true) };
+      const taken = revision;
+      for (const threadId of threadIds) changed.set(threadId, taken);
+      const signal: RecordsSignal = { epoch, revision: taken, records: await recordsOf(new Set(threadIds), true) };
       bb.realtime.publish(CHANNELS.records, signal);
     },
     async since(since) {
-      const at = revision;
-      if (since !== null && since.epoch === epoch && since.revision <= at) {
+      const current = revision;
+      if (since !== null && since.epoch === epoch && since.revision <= current) {
         const ids = [...changed].flatMap(([threadId, changedAt]) => (changedAt > since.revision ? [threadId] : []));
-        return { epoch, revision: at, full: false, records: await recordsOf(ids, true) };
+        return { epoch, revision: current, full: false, records: await recordsOf(ids, true) };
       }
+      await stores.archived.listed();
       const [stamps, notes] = await Promise.all([stores.stamps.all(), stores.notes.all()]);
-      const records: Record<string, ThreadRecord> = {};
-      for (const [threadId, value] of stamps) {
-        if (!stores.archived.has(threadId)) records[threadId] = recordOf(value, notes.get(threadId));
-      }
-      for (const [threadId, value] of notes) {
-        if (!stores.archived.has(threadId) && records[threadId] === undefined) records[threadId] = recordOf(undefined, value);
-      }
-      return { epoch, revision: at, full: true, records };
+      const ids = new Set([...stamps.keys(), ...notes.keys()].filter((threadId) => !stores.archived.has(threadId)));
+      return { epoch, revision: current, full: true, records: await recordsOf(ids, false) };
     },
     async fetch(threadIds) {
-      const at = revision;
-      return { epoch, revision: at, records: await recordsOf(new Set(threadIds), false) };
+      const current = revision;
+      return { epoch, revision: current, records: await recordsOf(new Set(threadIds), false) };
     },
   };
 }

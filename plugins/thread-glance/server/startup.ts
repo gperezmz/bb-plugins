@@ -66,7 +66,9 @@ export async function pruneDeletedThreads(
   const before = Date.now();
   let live: ThreadIds;
   try {
-    live = await listAllThreadIds(bb.sdk, signal);
+    const listing = listAllThreadIds(bb.sdk, signal);
+    archived.listing(listing);
+    live = await listing;
   } catch (error) {
     bb.log.warn(`could not list threads to prune deleted ones: ${errorMessage(error)}`);
     return;

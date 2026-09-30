@@ -44,14 +44,14 @@ export default function threadGlance(bb: BbPluginApi): void {
   const importOnce = createSerialQueue();
   // A change to thread records and the signal that carries it, one at a
   // time, so each signal carries the records as its revision left them.
-  const change = createSerialQueue();
+  const inOrder = createSerialQueue();
   /**
    * Runs `write`, which passes the threads each change touched to `changed`,
    * then publishes their records as one signal, even when a later step of
    * `write` fails.
    */
   const changeRecords = (write: (changed: (threadIds: readonly string[]) => void) => Promise<void>) =>
-    change(async () => {
+    inOrder(async () => {
       const touched = new Set<string>();
       try {
         await write((threadIds) => {
@@ -65,14 +65,14 @@ export default function threadGlance(bb: BbPluginApi): void {
   bb.rpc.register(rpcContract, {
     async sync({ since }) {
       const [answer, all, sends] = await Promise.all([
-        change(() => records.since(since)),
+        inOrder(() => records.since(since)),
         preferences.readAll(),
         scheduled.snapshot(),
       ]);
       return { ...answer, preferences: all, scheduled: sends };
     },
     fetchArchived({ threadIds }) {
-      return change(() => records.fetch(threadIds));
+      return inOrder(() => records.fetch(threadIds));
     },
     async setPreference({ key, value }) {
       return { key, value: await preferences.write(key, value) };
@@ -179,7 +179,7 @@ export default function threadGlance(bb: BbPluginApi): void {
   bb.events.on("message.cancelled", ({ entry }) => scheduled.removed(entry.id));
 
   /** Runs a prune and publishes the records it dropped, so windows drop them too. */
-  const pruned = async (prune: () => Promise<string[]>) => {
+  const pruneAndPublish = async (prune: () => Promise<string[]>) => {
     let threadIds: string[] = [];
     await changeRecords(async (changed) => {
       threadIds = await prune();
@@ -189,16 +189,21 @@ export default function threadGlance(bb: BbPluginApi): void {
   };
 
   bb.background.service("startup", {
-    start: (signal) =>
-      runStartup(
+    start: (signal) => {
+      // Reads stamps and notes in, moving 0.7.0's KV rows on the first start
+      // after the update, before a window asks. A failure here is retried by
+      // the first request that reads them.
+      Promise.all([stamps.all(), notes.all()]).catch(() => undefined);
+      return runStartup(
         bb,
         [
-          { name: "stamps", prune: (live, before) => pruned(() => stamps.prune(live, before)) },
-          { name: "notes", prune: (live, before) => pruned(() => notes.prune(live, before)) },
+          { name: "stamps", prune: (live, before) => pruneAndPublish(() => stamps.prune(live, before)) },
+          { name: "notes", prune: (live, before) => pruneAndPublish(() => notes.prune(live, before)) },
         ],
         scheduled,
         archived,
         signal,
-      ),
+      );
+    },
   });
 }

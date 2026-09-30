@@ -6,6 +6,7 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   STAMP_KINDS,
   type RecordsSignal,
+  type StampKind,
   type Stamps,
   type SyncPoint,
   type ThreadNotes,
@@ -37,6 +38,11 @@ export const NO_RECORDS: HeldRecords = {
   asked: new Set(),
 };
 
+/** Thread records at one revision of one epoch: what `sync`, a signal or a fetch by id brings. */
+export interface RecordsAt extends SyncPoint {
+  records: Readonly<Record<string, ThreadRecord>>;
+}
+
 /** `held` with each record of `records` put in place, at `revision`, unless a later one is already held. */
 function withRecords(held: HeldRecords, records: Readonly<Record<string, ThreadRecord>>, revision: number): HeldRecords {
   let stamps: Stamps | null = null;
@@ -67,10 +73,7 @@ function withRecords(held: HeldRecords, records: Readonly<Record<string, ThreadR
 }
 
 /** Takes a `sync` answer: a full one replaces what was held, a delta changes what it names. */
-export function applySync(
-  held: HeldRecords,
-  answer: { epoch: string; revision: number; full: boolean; records: Readonly<Record<string, ThreadRecord>> },
-): HeldRecords {
+export function applySync(held: HeldRecords, answer: RecordsAt & { full: boolean }): HeldRecords {
   const point = { epoch: answer.epoch, revision: Math.max(answer.revision, sameEpoch(held, answer.epoch) ? held.point!.revision : 0) };
   if (!answer.full) return { ...withRecords(held, answer.records, answer.revision), point };
   // Records that came by signal after this answer was made stay.
@@ -93,18 +96,9 @@ export function applySignal(held: HeldRecords, signal: RecordsSignal): HeldRecor
 }
 
 /** Takes the answer to a fetch by id of `threadIds`; a thread absent from it has no record. */
-export function applyFetched(
-  held: HeldRecords,
-  threadIds: readonly string[],
-  answer: { epoch: string; revision: number; records: Readonly<Record<string, ThreadRecord>> },
-): HeldRecords {
+export function applyFetched(held: HeldRecords, threadIds: readonly string[], answer: RecordsAt): HeldRecords {
   if (!sameEpoch(held, answer.epoch)) return held;
-  const records: Record<string, ThreadRecord> = {};
-  for (const [threadId, record] of Object.entries(answer.records)) records[threadId] = record;
-  const next = withRecords(held, records, answer.revision);
-  const asked = new Set(held.asked);
-  for (const threadId of threadIds) asked.add(threadId);
-  return { ...next, asked };
+  return markAsked(withRecords(held, answer.records, answer.revision), threadIds);
 }
 
 /** Marks `threadIds` asked, so a fetch in flight is not sent again. */
@@ -115,7 +109,7 @@ export function markAsked(held: HeldRecords, threadIds: readonly string[]): Held
 }
 
 /** A stamp this window changed before the server's signal confirms it. */
-export function applyLocalStamp(held: HeldRecords, kind: keyof Stamps, threadIds: readonly string[], value: number | null): HeldRecords {
+export function applyLocalStamp(held: HeldRecords, kind: StampKind, threadIds: readonly string[], value: number | null): HeldRecords {
   const map = { ...held.stamps[kind] };
   for (const threadId of threadIds) {
     if (value === null) delete map[threadId];
@@ -126,10 +120,10 @@ export function applyLocalStamp(held: HeldRecords, kind: keyof Stamps, threadIds
 
 /**
  * The threads in bb's list to fetch by id: those the window holds no record
- * of and has not asked about in this epoch, created before `liveSince`. The
- * server's scope leaves archived threads out of `sync`, and one unarchived
- * without an event reaching the server looks the same; a thread created since
- * the window went live gets its record by signal.
+ * of and has not asked about in this epoch, created before `liveSince`.
+ * `sync` leaves archived threads out, and one unarchived without an event
+ * reaching the server looks the same; a thread created since the window went
+ * live gets its record by signal.
  */
 export function threadsToFetch(held: HeldRecords, threads: readonly PluginSidebarThread[], liveSince: number): string[] {
   if (held.point === null) return [];

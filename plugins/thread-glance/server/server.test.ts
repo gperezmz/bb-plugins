@@ -736,6 +736,28 @@ describe("startup service", () => {
     await service.done;
   });
 
+  it("has a full sync wait for the startup listing, so archived records stay out right after a start", async () => {
+    let answerList: () => void = () => undefined;
+    const listed = new Promise<void>((resolve) => (answerList = resolve));
+    const { bb, harness } = await load({
+      threads: {
+        list: (async (args?: { archived?: boolean }) => {
+          await listed;
+          return args?.archived ? [makeThreadResponse({ id: "old" })] : [makeThreadResponse({ id: "live" })];
+        }) as never,
+        queue: { list: async () => [] },
+      },
+    });
+    await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
+    await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 2 });
+    const service = harness.behavior.runService("startup");
+    const answer = sync(harness);
+    answerList();
+    expect(Object.keys((await answer).records)).toEqual(["live"]);
+    service.controller.abort();
+    await service.done;
+  });
+
   it("leaves archived threads' records out of a full sync, and serves them by id", async () => {
     const { bb, harness } = await load({
       threads: {

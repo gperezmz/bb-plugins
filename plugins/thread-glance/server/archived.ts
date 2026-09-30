@@ -5,6 +5,14 @@
 export interface ArchivedThreads {
   /** Whether `threadId` is archived; false for every thread until the startup listing arrived. */
   has(threadId: string): boolean;
+  /**
+   * Resolves once the startup listing arrived or failed, or at once when no
+   * listing is under way, and after LISTING_WAIT_MS at most, so a full `sync`
+   * right after a server start leaves out what the listing names.
+   */
+  listed(): Promise<void>;
+  /** Marks the startup listing under way until `listing` settles. */
+  listing(listing: Promise<unknown>): void;
   archive(threadId: string): void;
   unarchive(threadId: string): void;
   /**
@@ -15,13 +23,34 @@ export interface ArchivedThreads {
   replace(threadIds: Iterable<string>): void;
 }
 
+/** Longest a full `sync` waits for the startup listing; past it, archived records go out with the rest. */
+export const LISTING_WAIT_MS = 3_000;
+
 export function createArchivedThreads(): ArchivedThreads {
   const archived = new Set<string>();
+  let pending: Promise<void> | null = null;
   // What events said since the server started, which a listing read before
   // them cannot overrule.
   const heard = new Map<string, boolean>();
   return {
     has: (threadId) => archived.has(threadId),
+    listed() {
+      if (pending === null) return Promise.resolve();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const waited = new Promise<void>((resolve) => (timer = setTimeout(resolve, LISTING_WAIT_MS)));
+      return Promise.race([pending, waited]).finally(() => clearTimeout(timer));
+    },
+    listing(listing) {
+      const current: Promise<void> = listing.then(
+        () => {
+          if (pending === current) pending = null;
+        },
+        () => {
+          if (pending === current) pending = null;
+        },
+      );
+      pending = current;
+    },
     archive(threadId) {
       heard.set(threadId, true);
       archived.add(threadId);

@@ -10,7 +10,6 @@ import type { ThreadTable } from "./thread-table";
 
 /** The KV rows stamps lived in up to 0.7.0, `stamp:<threadId>`. */
 export const STAMP_KEY_PREFIX = "stamp:";
-export { STAMP_KINDS, type ThreadStamps };
 
 export function stampKvKey(threadId: string): string {
   return `${STAMP_KEY_PREFIX}${threadId}`;
@@ -95,9 +94,9 @@ export function createStampStore(
     stamp: (kind, threadIds, at) =>
       serial(async () => {
         const rows = await load();
-        const set = [...new Set(threadIds)];
-        for (const threadId of set) save(rows, threadId, { ...rows.get(threadId), [kind]: at });
-        return set;
+        const stamped = [...new Set(threadIds)];
+        for (const threadId of stamped) save(rows, threadId, { ...rows.get(threadId), [kind]: at });
+        return stamped;
       }),
     advance: (kind, threadIds, at) =>
       serial(async () => {

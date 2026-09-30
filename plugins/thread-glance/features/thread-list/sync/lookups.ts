@@ -49,7 +49,10 @@ export function lookUpSystem(sdk: PluginBrowserBbSdk): void {
     .then(() => sdk.system.config())
     .then(
       (config) => pluginData.facts({ system: readSystemFacts(config) }),
-      () => undefined,
+      () => {
+        // Unknown is not an answer: the next list mounted asks again.
+        systemAsked = false;
+      },
     );
 }
 
@@ -68,7 +71,11 @@ export function lookUpDefaultBranches(sdk: PluginBrowserBbSdk, projectIds: reado
         const result = await sdk.projects.branches({ projectId, hostId, limit: "1" });
         return result.defaultBranch ?? null;
       })
-      .then(settle, () => settle(null));
+      .then(settle, () => {
+        // Drawn as no branch for now, and asked again by the next list mounted.
+        branchesAsked.delete(projectId);
+        settle(null);
+      });
   }
 }
 
@@ -98,7 +105,11 @@ export function lookUpModel(
     pending = sdk.threads.defaultExecutionOptions({ threadId }).then(
       async (options) =>
         options === null ? null : { model: modelDisplayName(options.model, await names), reasoningLevel: options.reasoningLevel },
-      () => null,
+      () => {
+        // A failed lookup is asked again the next time the thread's details show.
+        models.delete(key);
+        return null;
+      },
     );
     models.set(key, pending);
   }

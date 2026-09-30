@@ -322,6 +322,11 @@ export function createListStore(): ListStore {
     writeJson(PREFERENCES_MIRROR_STORAGE_KEY, next);
     return next;
   };
+  /** The plugin data's inputs, with its preferences over the list's, any this window has not written yet kept. */
+  const dataPatch = ({ prefs }: ListInputs) => {
+    const known = pluginData.get().preferences;
+    return { ...dataInputs(), prefs: known === null ? prefs : share(prefs, withPending(known)) };
+  };
   const fetchMissingRecords = () => whenMounted(() => fetchMissing(store.edge.rpc, host.threads));
   const records = () => {
     const { stamps, notes } = pluginData.get().records;
@@ -332,10 +337,7 @@ export function createListStore(): ListStore {
     const data = pluginData.get();
     switch (change.kind) {
       case "synced":
-        store.feed(({ prefs }) => ({
-          ...dataInputs(),
-          prefs: data.preferences === null ? prefs : share(prefs, withPending(data.preferences)),
-        }));
+        store.feed(dataPatch);
         fetchMissingRecords();
         return;
       case "failed":
@@ -506,10 +508,7 @@ export function createListStore(): ListStore {
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
       // What changed between the store's creation and its mount.
-      store.feed(({ prefs }) => {
-        const data = pluginData.get();
-        return { ...dataInputs(), prefs: data.preferences === null ? prefs : share(prefs, withPending(data.preferences)) };
-      });
+      store.feed(dataPatch);
       const requests = waiting;
       waiting = [];
       for (const request of requests) request();

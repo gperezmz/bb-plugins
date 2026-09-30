@@ -3,7 +3,7 @@
 // written through. The store publishes nothing: its caller publishes the
 // thread records a change touched.
 import type { BbPluginApi, PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
-import { NOTE_MAX_LENGTH, type Note, type ThreadNotes } from "../shared/contract";
+import { NOTE_MAX_LENGTH, noteSchema, type Note, type ThreadNotes } from "../shared/contract";
 import { createSerialQueue } from "./serial";
 import type { ThreadTable } from "./thread-table";
 
@@ -138,7 +138,7 @@ export function describeDone(lastAssistantText: string | null): NoteDraft | null
   return text === "" ? null : { kind: "done", text };
 }
 
-const NOTE_KINDS: ReadonlySet<unknown> = new Set(["question", "approval", "plan", "input", "failed", "done"]);
+const NOTE_KINDS: ReadonlySet<unknown> = new Set(noteSchema.shape.kind.options);
 const NOTE_SLOTS: readonly NoteSlot[] = ["pending", "failed", "done"];
 
 /** A stored note as `noteSchema` reads it, or null where the schema refuses it. */

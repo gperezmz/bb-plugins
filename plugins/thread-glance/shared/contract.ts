@@ -26,7 +26,7 @@ export const rpcContract = defineRpcContract({
    * Everything the list reads from the server in one answer: preferences,
    * scheduled sends, and the thread records that changed since `since`. With
    * `since` null, or from another epoch, `full` is true and `records` holds
-   * every active thread's record, to replace what the window held.
+   * the record of every thread not archived, to replace what the window held.
    */
   sync: {
     input: z.strictObject({ since: z.nullable(z.strictObject(syncPointSchema.shape)) }),
@@ -40,8 +40,8 @@ export const rpcContract = defineRpcContract({
     }),
   },
   /**
-   * The records of the named threads, for those the server's scope leaves
-   * out of `sync`: archived threads. A thread with none is absent.
+   * The records of the named threads, archived or not, for the archived ones
+   * `sync` leaves out. A thread with none is absent.
    */
   fetchArchived: {
     input: z.strictObject({ threadIds: threadIdsSchema }),

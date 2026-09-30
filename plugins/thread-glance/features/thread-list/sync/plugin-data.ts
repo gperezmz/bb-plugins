@@ -3,9 +3,9 @@
 // unmounts the sidebar while its Settings or Plugins page is open, and a list
 // mounted again draws from here and asks only for what it lacks. One per
 // window; lists created in it read it and follow its changes.
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { PluginRealtimeConnectionState, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { PreferenceKey, Preferences } from "@/shared/preferences";
-import type { RecordsSignal, ThreadRecord } from "@/shared/contract";
+import type { RecordsSignal, StampKind, SyncPoint, ThreadRecord } from "@/shared/contract";
 import type { DefaultBranches, SystemFacts } from "../store/api";
 import {
   applyFetched,
@@ -16,12 +16,14 @@ import {
   NO_RECORDS,
   threadsToFetch,
   type HeldRecords,
+  type RecordsAt,
 } from "./records";
 
-/** The server's answer to `sync`, as this module reads it. */
-export interface SyncAnswer {
-  epoch: string;
-  revision: number;
+/**
+ * The server's answer to `sync`, as this module reads it: the contract's own
+ * type leaves the preferences untyped, since it builds their schema per key.
+ */
+export interface SyncAnswer extends SyncPoint {
   full: boolean;
   preferences: Preferences;
   scheduled: { status: "ready" | "error"; scheduled: Record<string, number> };
@@ -73,6 +75,10 @@ let data: PluginData = INITIAL;
 const listeners = new Set<(change: DataChange) => void>();
 /** How many components follow realtime for it now: the app overlay's, or a list's where bb has no overlay. */
 let following = 0;
+/** Whether realtime was connected when last heard. */
+let connected = true;
+/** `records` signals that came before the first answer, applied once it lands. */
+let early: RecordsSignal[] = [];
 let overlayMounted = false;
 const overlayListeners = new Set<() => void>();
 
@@ -91,9 +97,13 @@ export const pluginData = {
   /** A `sync` answer: records, scheduled sends and preferences, and the data is current. */
   synced(answer: SyncAnswer): void {
     const first = data.records.point?.epoch !== answer.epoch;
+    // A signal the answer was made before came first; one it was made after is dropped by its revision.
+    let records = applySync(data.records, answer);
+    for (const signal of early) records = applySignal(records, signal) ?? records;
+    early = [];
     set(
       {
-        records: applySync(data.records, answer),
+        records,
         scheduled: answer.scheduled.status === "ready" ? answer.scheduled.scheduled : {},
         preferences: answer.preferences,
         status: following > 0 ? "current" : "waiting",
@@ -108,12 +118,16 @@ export const pluginData = {
   },
   /** A `records` signal; false when it is from another epoch, which needs a full `sync`. */
   signal(signal: RecordsSignal): boolean {
+    if (data.records.point === null) {
+      early.push(signal);
+      return true;
+    }
     const records = applySignal(data.records, signal);
     if (records === null) return false;
     if (records !== data.records) set({ records }, { kind: "records", at: "signal" });
     return true;
   },
-  fetched(threadIds: readonly string[], answer: Parameters<typeof applyFetched>[2]): void {
+  fetched(threadIds: readonly string[], answer: RecordsAt): void {
     set({ records: applyFetched(data.records, threadIds, answer) }, { kind: "records", at: "signal" });
   },
   /** The threads of bb's list to fetch by id, marked asked so none is sent twice. */
@@ -124,12 +138,7 @@ export const pluginData = {
     return ids;
   },
   /** A stamp this window changed, shown at once. */
-  stamped(
-    kind: Parameters<typeof applyLocalStamp>[1],
-    threadIds: readonly string[],
-    value: number | null,
-    { quiet = false } = {},
-  ): void {
+  stamped(kind: StampKind, threadIds: readonly string[], value: number | null, { quiet = false } = {}): void {
     // `quiet` tells no list: the one that changed it applies it with a change of its own.
     const records = applyLocalStamp(data.records, kind, threadIds, value);
     if (quiet) data = { ...data, records };
@@ -155,9 +164,20 @@ export const pluginData = {
       if (following === 0 && data.status === "current") data = { ...data, status: "waiting" };
     };
   },
-  /** Realtime dropped: what comes until it is back, and a `sync` asks for it, is lost. */
-  disconnected(): void {
-    if (data.status === "current") data = { ...data, status: "waiting" };
+  /**
+   * Realtime's connection is in `state`; returns true when it has just come
+   * back, and a `sync` has to ask for what was sent while it was down, which
+   * no signal will bring.
+   */
+  connection(state: PluginRealtimeConnectionState): boolean {
+    if (state !== "connected") {
+      if (connected && data.status === "current") data = { ...data, status: "waiting" };
+      connected = false;
+      return false;
+    }
+    const back = !connected;
+    connected = true;
+    return back;
   },
 
   isOverlayMounted: () => overlayMounted,
@@ -175,6 +195,8 @@ export const pluginData = {
 export function forgetPluginData(): void {
   data = INITIAL;
   following = 0;
+  connected = true;
+  early = [];
   overlayMounted = false;
   listeners.clear();
   overlayListeners.clear();

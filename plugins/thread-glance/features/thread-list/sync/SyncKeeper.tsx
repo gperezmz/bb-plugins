@@ -4,7 +4,7 @@
 // outlives the sidebar, so a list mounted again asks for nothing; where bb has
 // no such slot, the list mounts it, and a list mounted again asks for what
 // changed while it was gone.
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { CHANNELS, recordsSignalSchema, type PreferenceSignal, type ScheduledSignal } from "@/shared/signals";
@@ -32,7 +32,6 @@ export function ListSyncKeeper() {
 function Following() {
   const rpc = useRpc<RpcContract>();
   const connection = useRealtimeConnectionState();
-  const wasConnected = useRef(connection === "connected");
 
   useEffect(() => {
     const stop = pluginData.follow();
@@ -42,13 +41,7 @@ function Following() {
 
   // Realtime signals aren't replayed: ask for what changed after a reconnect.
   useEffect(() => {
-    if (connection !== "connected") {
-      if (wasConnected.current) pluginData.disconnected();
-      wasConnected.current = false;
-      return;
-    }
-    if (!wasConnected.current) void requestSync(rpc);
-    wasConnected.current = true;
+    if (pluginData.connection(connection)) void requestSync(rpc);
   }, [connection, rpc]);
 
   useRealtime(CHANNELS.records, (payload) => {
