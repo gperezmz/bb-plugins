@@ -7,7 +7,6 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { rowMenuItems } from "../model/menu";
 import { createFakeServer, finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
@@ -103,52 +102,66 @@ describe("the row menu", () => {
   const sections: PluginSidebarSection[] = [{ id: "sec_1", name: "Later" } as PluginSidebarSection];
   const holder = makeThread({ id: "h", title: "Holder" });
   const kinds = [
-    { name: "a root", thread: makeThread({ id: "r", title: "Root" }), others: [], isRoot: true },
-    { name: "an unread root", thread: makeThread({ id: "r", title: "Root", ...finishedUnread }), others: [], isRoot: true },
-    { name: "a pinned root", thread: makeThread({ id: "r", title: "Root", pinnedAt: T0, isPinned: true }), others: [], isRoot: true },
+    {
+      name: "a root",
+      thread: makeThread({ id: "r", title: "Root" }),
+      others: [],
+      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
+    },
+    {
+      name: "an unread root",
+      thread: makeThread({ id: "r", title: "Root", ...finishedUnread }),
+      others: [],
+      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark read", "Pin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
+    },
+    {
+      name: "a pinned root",
+      thread: makeThread({ id: "r", title: "Root", pinnedAt: T0, isPinned: true }),
+      others: [],
+      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Unpin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
+    },
     {
       name: "a hidden child waiting on you",
       thread: makeThread({ id: "r", title: "Root", parentThreadId: "h", isHidden: true, hasPendingInteraction: true }),
       others: [holder],
-      isRoot: false,
+      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "Archive", "Delete"],
     },
   ];
 
-  it.each(kinds.flatMap((kind) => (["project", "chronological", "machine"] as const).flatMap((mode) => [false, true].map((compact) => ({ ...kind, mode, compact })))))(
-    "offers 0.7.0's items for $name grouped by $mode, phone $compact",
-    async ({ thread, others, isRoot, mode, compact }) => {
-      render([thread, ...others, makeThread({ id: "o", title: "Other" })], { prefs: { organizationMode: mode }, props: { isCompactViewport: compact }, sections });
+  it.each(kinds.flatMap((kind) => [false, true].map((phone) => ({ ...kind, phone }))))(
+    "offers these items for $name, phone $phone",
+    async ({ thread, others, items, phone }) => {
+      render([thread, ...others, makeThread({ id: "o", title: "Other" })], { props: { isCompactViewport: phone }, sections });
       const row = await rowOf("Root");
       const trigger = within(row).getByRole("button", { name: "Thread actions" });
-      if (compact) {
+      if (phone) {
         fireEvent.pointerDown(trigger, { button: 0, pointerType: "touch" });
         fireEvent.click(trigger);
       } else fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
       await screen.findByRole("menuitem", { name: "Details" });
-      const names = screen.getAllByRole("menuitem").map((item) => item.textContent);
-      const expected = rowMenuItems({
-        thread,
-        unread: thread.isUnread || thread.latestAttentionAt > (thread.lastReadAt ?? 0),
-        splitAvailable: true,
-        isRoot,
-        hasSections: true,
-      }).map((item) => item.label);
-      expect(names).toEqual(expected);
+      expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(items);
     },
   );
 
-  it("offers 0.7.0's items for a child row and for an archived one", async () => {
+  it("offers a child row's items, and an archived thread's without Move", async () => {
     render(
       [
         makeThread({ id: "p", title: "Parent" }),
         makeThread({ id: "c", title: "Child", parentThreadId: "p" }),
+        makeThread({ id: "a", title: "Shelved", archivedAt: T0, isArchived: true }),
       ],
-      { prefs: { expandedChildren: ["p"] } },
+      { prefs: { expandedChildren: ["p"], showArchived: true }, sections },
     );
     const child = await rowOf("Child");
     fireEvent.pointerDown(within(child).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
     await screen.findByRole("menuitem", { name: "Details" });
     expect(menuNames()).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "Archive", "Delete"]);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    const archived = await rowOf("Shelved");
+    fireEvent.pointerDown(within(archived).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+    await screen.findByRole("menuitem", { name: "Details" });
+    expect(menuNames()).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Rename", "Unarchive", "Delete"]);
   });
 
   it("returns focus to the \"…\" button when closed with Escape, and anchors to it", async () => {

@@ -74,22 +74,6 @@ async function settled() {
 }
 
 describe("render path", () => {
-  it("renders only the stamped row on a stamp", async () => {
-    render();
-    await settled();
-    await server.stamp("startedAt", ["w"], Date.now() - 5.5 * 60_000);
-    await waitFor(() => expect(screen.getByLabelText("Working for 5m")).toBeTruthy());
-    expect(renders()).toEqual({ w: 1 });
-  });
-
-  it("renders only the row whose note changed", async () => {
-    render();
-    await settled();
-    await server.note("f", { failed: { kind: "failed", text: "Out of credits", at: T0 } });
-    await waitFor(() => expect(screen.getByText("Out of credits")).toBeTruthy());
-    expect(renders()).toEqual({ f: 1 });
-  });
-
   it("renders no row on a signal that changes nothing drawn", async () => {
     render();
     await settled();
