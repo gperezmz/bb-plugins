@@ -6,9 +6,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import type { Preferences } from "@/shared/preferences";
 import { rowMenuItems } from "../model/menu";
-import { finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
+import { createFakeServer, finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -45,23 +45,17 @@ function render(
     extra?: object;
   } = {},
 ) {
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...options.prefs };
   return renderSlot(app.threadLists[0]!, { ...props, ...options.props }, {
-    rpc: {
-      listPreferences: () => ({ preferences }),
-      setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-      resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-      importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-      listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
-      markSeen: () => ({ at: Date.now() }),
-      clearSeen: () => ({ ok: true as const }),
-      listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-      listNotes: () => ({ notes: {} }),
-    } as never,
+    // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
+    rpc: createFakeServer({ preferences: { settleAfter: "never", ...options.prefs } }).handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: options.sections ?? [] },
     providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
     sdk: {
-      threads: { defaultExecutionOptions: async () => null, update: async () => ({}) } as never,
+      threads: {
+        defaultExecutionOptions: async () => null,
+        update: async () => ({}),
+        markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
+      } as never,
       projects: {
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),

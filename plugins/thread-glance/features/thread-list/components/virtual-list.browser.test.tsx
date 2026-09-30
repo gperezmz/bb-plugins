@@ -9,8 +9,8 @@ import { cdp, page, userEvent } from "vitest/browser";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences, type Preferences } from "@/shared/preferences";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import type { Preferences } from "@/shared/preferences";
+import { createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -77,19 +77,9 @@ async function render(
 ): Promise<RenderedSlot> {
   // By default wide enough that bb's menus stay menus rather than a phone's drawers.
   await page.viewport(width, height);
-  const preferences = { ...defaultPreferences(), settleAfter: "never" as const, ...prefs };
   const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
-    rpc: {
-      listPreferences: () => ({ preferences }),
-      setPreference: ({ key, value }: { key: string; value: unknown }) => ({ key, value }),
-      resetPreference: ({ key }: { key: string }) => ({ key, value: null }),
-      importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
-      listStamps: () => ({ stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} } }),
-      markSeen: () => ({ at: Date.now() }),
-      clearSeen: () => ({ ok: true as const }),
-      listScheduled: () => ({ status: "ready" as const, scheduled: {} }),
-      listNotes: () => ({ notes: {} }),
-    } as never,
+    // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
+    rpc: createFakeServer({ preferences: { settleAfter: "never", ...prefs } }).handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections },
     providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
     sdk: {
@@ -98,6 +88,7 @@ async function render(
         update: async () => ({}),
         unpin: async () => ({}),
         reorderPinned: async () => ({}),
+        markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
       } as never,
       projects: {
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
