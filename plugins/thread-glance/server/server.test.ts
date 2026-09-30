@@ -466,7 +466,7 @@ describe("stamps", () => {
 
 /**
  * Plugin KV over SQLite, shaped as bb 0.44 keeps it: JSON rows namespaced by
- * plugin in one table of a WAL database, each call a synchronous query in the
+ * plugin in one relation of a WAL database, each call a synchronous query in the
  * server's own process behind a promise.
  */
 function sqliteKv(file: string) {

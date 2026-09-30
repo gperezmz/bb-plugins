@@ -82,7 +82,7 @@ git config core.hooksPath .githooks
 
 | Script | When to run it |
 |---|---|
-| `npm run perf` | After changing how the list renders. It mounts the list over a snapshot of your own threads and reports render time and rows rendered per event. Without a snapshot it skips; the commands that take one are in the header of `perf/list-render.perf.tsx`. |
+| `npm run perf` | After changing how the list renders, and before opening a pull request of the list rewrite. It mounts the list over generated lists of 50, 300 and 1,500 threads, in jsdom and in headless Chromium, prints a table per list and the reading of every row of the budget ledger (`perf/ledger.ts`), writes the same numbers to `perf/results/perf.json`, and fails when an enforcing row is missed. It needs no bb running and takes several minutes. `PERF_THREADS` and `PERF_PROJECTS` add a snapshot of your own threads; the commands that take one are in the header of `perf/list-render.perf.tsx`. The ledger's deterministic rows also run in `npm test`. |
 
 ### Thread Usage
 

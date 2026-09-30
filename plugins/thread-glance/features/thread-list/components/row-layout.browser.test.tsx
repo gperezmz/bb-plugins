@@ -654,14 +654,14 @@ describe("Density and Branch line", () => {
 
   /** Heights drawn under Compact with Branch line off in 0.5.0, then what each switch adds. */
   function expectedHeights(density: "compact" | "comfortable", branchLine: boolean, phone: boolean) {
-    const grow = density === "comfortable" ? 4 : 0;
+    const taller = density === "comfortable" ? 4 : 0;
     return {
-      one: (phone ? 36 : 28) + grow,
-      branch: (branchLine ? (phone ? 48 : 44) : phone ? 36 : 28) + grow,
-      noted: (phone ? 48 : 44) + grow,
-      older: (phone ? 36 : 28) + grow,
+      one: (phone ? 36 : 28) + taller,
+      branch: (branchLine ? (phone ? 48 : 44) : phone ? 36 : 28) + taller,
+      noted: (phone ? 48 : 44) + taller,
+      older: (phone ? 36 : 28) + taller,
       // The environment fold row is 28 px on phones too.
-      environment: 28 + grow,
+      environment: 28 + taller,
       settled: phone ? 36 : 24,
       header: phone ? 36 : 28,
     };

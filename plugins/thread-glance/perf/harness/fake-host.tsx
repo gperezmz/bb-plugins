@@ -1,0 +1,407 @@
+// The harness's fake bb and plugin server. bb's list hooks read a store the
+// harness drives, so bb can hand the list updates after mount (renderSlot's
+// own host is fixed at mount), a new `actions` object on every update as bb
+// 0.44 does, and a `setRead` that takes time. Every hook call, plugin RPC and
+// bb request is counted. The list itself is mounted as bb mounts it: the
+// plugin's registered thread list component, through renderSlot.
+import { useSyncExternalStore, type ComponentType } from "react";
+import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
+import type {
+  PluginEnvironmentProvider,
+  PluginSidebarProject,
+  PluginSidebarSection,
+  PluginSidebarSplitLayout,
+  PluginSidebarThread,
+  PluginSidebarThreadRowStatus,
+  PluginThreadListProps,
+} from "@get-bb/plugin-sdk/app";
+import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import type { Stamps, ThreadNotes } from "@/shared/contract";
+
+/** bb's list hooks the fake host serves; every call is counted by name. */
+export const HOST_HOOKS = [
+  "experimental_useSidebarThreads",
+  "experimental_useSidebarThreadActions",
+  "experimental_useProviders",
+  "useEnvironmentProviders",
+  "useSidebarThreadDraft",
+  "useSidebarThreadDraftIds",
+  "useSidebarThreadRowStatus",
+  "useSidebarThreadRowStatuses",
+  "useSidebarSplitLayout",
+  "useSidebarThreadShortcut",
+  "experimental_useSidebarThreadSplit",
+  "experimental_useSidebarThreadPullRequest",
+] as const;
+
+/** Hooks bb documents as called once per rendered row. */
+export const PER_ROW_HOOKS = [
+  "useSidebarThreadDraft",
+  "useSidebarThreadRowStatus",
+  "useSidebarThreadShortcut",
+  "experimental_useSidebarThreadSplit",
+  "experimental_useSidebarThreadPullRequest",
+] as const;
+
+type HookName = (typeof HOST_HOOKS)[number];
+
+interface Provider {
+  id: string;
+  displayName: string;
+  logoUrl: string | null;
+}
+
+interface HostState {
+  threads: PluginSidebarThread[];
+  projects: PluginSidebarProject[];
+  sections: PluginSidebarSection[];
+  providers: Provider[];
+  environmentProviders: PluginEnvironmentProvider[];
+  draftIds: ReadonlySet<string>;
+  rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
+  splitLayout: PluginSidebarSplitLayout | null;
+  props: PluginThreadListProps;
+}
+
+export interface ActionCall {
+  method: string;
+  threadId?: string;
+}
+
+export interface FakeHostOptions {
+  threads: PluginSidebarThread[];
+  projects: PluginSidebarProject[];
+  sections?: PluginSidebarSection[];
+  /** Hand the list a new `actions` object on every host update, as bb 0.44 does. */
+  freshActions?: boolean;
+  /** How long `setRead` takes to answer. */
+  setReadMs?: number;
+  isCompactViewport?: boolean;
+}
+
+const PROVIDERS: Provider[] = [
+  { id: "claude-code", displayName: "Claude Code", logoUrl: null },
+  { id: "codex", displayName: "Codex", logoUrl: null },
+  { id: "pi", displayName: "Pi", logoUrl: null },
+];
+
+export interface FakeHost {
+  state(): HostState;
+  /** Replaces what bb reports; one host update. */
+  update(patch: Partial<Omit<HostState, "props">>): void;
+  /** Replaces one thread, as bb does when it changes. */
+  updateThread(id: string, patch: Partial<PluginSidebarThread>): void;
+  /** Replaces the list's props; `onNavigate` gets a new identity. */
+  updateProps(patch?: Partial<PluginThreadListProps>): void;
+  hookCalls: Record<HookName, number>;
+  actionCalls: ActionCall[];
+  /** Most `setRead` calls bb held at once. */
+  setReadPeak: number;
+  /** Resolves once no `setRead` is in flight. */
+  setReadSettled(): Promise<void>;
+  resetCounts(): void;
+  subscribe(listener: () => void): () => void;
+}
+
+let active: FakeHost | null = null;
+
+function hostOrThrow(): FakeHost {
+  if (active === null) throw new Error("no fake host: call createFakeHost first");
+  return active;
+}
+
+export function createFakeHost(options: FakeHostOptions): FakeHost {
+  const listeners = new Set<() => void>();
+  let state: HostState = {
+    threads: options.threads,
+    projects: options.projects,
+    sections: options.sections ?? [],
+    providers: PROVIDERS,
+    environmentProviders: [],
+    draftIds: new Set(),
+    rowStatuses: new Map(),
+    splitLayout: null,
+    props: {
+      activeThreadId: null,
+      activeProjectId: null,
+      isCompactViewport: options.isCompactViewport ?? false,
+      onNavigate() {},
+      searchQuery: "",
+    },
+  };
+  let inFlight = 0;
+  let idle: (() => void)[] = [];
+  const answered = new Map<string, boolean>();
+  const applyAnswers = () => {
+    const now = Date.now();
+    const changes = new Map(answered);
+    answered.clear();
+    host.update({
+      threads: state.threads.map((thread) => {
+        const read = changes.get(thread.id);
+        return read === undefined ? thread : read ? { ...thread, isUnread: false, lastReadAt: now } : { ...thread, isUnread: true };
+      }),
+    });
+    if (inFlight === 0) {
+      const waiting = idle;
+      idle = [];
+      for (const resolve of waiting) resolve();
+    }
+  };
+  const makeActions = () => ({
+    open(threadId: string) {
+      host.actionCalls.push({ method: "open", threadId });
+    },
+    openNewThread() {
+      host.actionCalls.push({ method: "openNewThread" });
+    },
+    async setPinned(threadId: string) {
+      host.actionCalls.push({ method: "setPinned", threadId });
+    },
+    async setRead(threadId: string, read: boolean) {
+      host.actionCalls.push({ method: "setRead", threadId });
+      inFlight += 1;
+      host.setReadPeak = Math.max(host.setReadPeak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, options.setReadMs ?? 0));
+      inFlight -= 1;
+      answered.set(threadId, read);
+      // Answers that land together reach the list as one update, as a query
+      // cache batches its notifications.
+      if (answered.size === 1) setTimeout(applyAnswers, 0);
+    },
+    async rename(threadId: string) {
+      host.actionCalls.push({ method: "rename", threadId });
+    },
+    archive(threadId: string) {
+      host.actionCalls.push({ method: "archive", threadId });
+    },
+    requestDelete(threadId: string) {
+      host.actionCalls.push({ method: "requestDelete", threadId });
+    },
+  });
+  let actions = makeActions();
+  let sidebar = sidebarOf(state);
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  const host: FakeHost = {
+    state: () => state,
+    update(patch) {
+      state = { ...state, ...patch };
+      if (patch.threads !== undefined || patch.projects !== undefined || patch.sections !== undefined) {
+        sidebar = sidebarOf(state);
+      }
+      if (options.freshActions) actions = makeActions();
+      notify();
+    },
+    updateThread(id, patch) {
+      host.update({ threads: state.threads.map((thread) => (thread.id === id ? { ...thread, ...patch } : thread)) });
+    },
+    updateProps(patch = {}) {
+      state = { ...state, props: { ...state.props, onNavigate() {}, ...patch } };
+      notify();
+    },
+    hookCalls: Object.fromEntries(HOST_HOOKS.map((name) => [name, 0])) as Record<HookName, number>,
+    actionCalls: [],
+    setReadPeak: 0,
+    setReadSettled: () => (inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idle.push(resolve))),
+    resetCounts() {
+      for (const name of HOST_HOOKS) host.hookCalls[name] = 0;
+      host.actionCalls.length = 0;
+      host.setReadPeak = 0;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  hostActions = () => actions;
+  hostSidebar = () => sidebar;
+  active = host;
+  return host;
+}
+
+let hostActions: () => unknown = () => null;
+let hostSidebar: () => unknown = () => null;
+
+function sidebarOf(state: HostState) {
+  return {
+    status: "ready" as const,
+    threads: state.threads,
+    projects: state.projects,
+    sections: state.sections,
+    experimental_archived: null,
+  };
+}
+
+function useHost<T>(select: (state: HostState) => T): T {
+  const host = hostOrThrow();
+  return useSyncExternalStore(host.subscribe, () => select(host.state()));
+}
+
+function counted<Args extends unknown[], Result>(name: HookName, hook: (...args: Args) => Result) {
+  return (...args: Args): Result => {
+    hostOrThrow().hookCalls[name] += 1;
+    return hook(...args);
+  };
+}
+
+type Runtime = Record<string, (...args: never[]) => unknown>;
+
+function fakeHooks(testRuntime: Runtime): Runtime {
+  const passThrough = (name: HookName) =>
+    counted(name, (...args: unknown[]) => (testRuntime[name] as (...args: unknown[]) => unknown)(...args));
+  const noDraft = { hasUnsubmittedDraft: false };
+  const withDraft = { hasUnsubmittedDraft: true };
+  return {
+    experimental_useSidebarThreads: counted("experimental_useSidebarThreads", () => {
+      useHost((state) => state.threads);
+      return hostSidebar();
+    }),
+    experimental_useSidebarThreadActions: counted("experimental_useSidebarThreadActions", () => {
+      return useHost(() => hostActions());
+    }),
+    experimental_useProviders: counted("experimental_useProviders", () => {
+      const providers = useHost((state) => state.providers);
+      return useProvidersState(providers);
+    }),
+    useEnvironmentProviders: counted("useEnvironmentProviders", () => {
+      const providers = useHost((state) => state.environmentProviders);
+      return useEnvironmentState(providers);
+    }),
+    useSidebarThreadDraft: counted("useSidebarThreadDraft", (threadId: string) =>
+      useHost((state) => state.draftIds.has(threadId)) ? withDraft : noDraft,
+    ),
+    useSidebarThreadDraftIds: counted("useSidebarThreadDraftIds", () => useHost((state) => state.draftIds)),
+    useSidebarThreadRowStatus: counted("useSidebarThreadRowStatus", (threadId: string) =>
+      useHost((state) => state.rowStatuses.get(threadId) ?? null),
+    ),
+    useSidebarThreadRowStatuses: counted("useSidebarThreadRowStatuses", () => useHost((state) => state.rowStatuses)),
+    useSidebarSplitLayout: counted("useSidebarSplitLayout", () => useHost((state) => state.splitLayout)),
+    useSidebarThreadShortcut: passThrough("useSidebarThreadShortcut"),
+    experimental_useSidebarThreadSplit: passThrough("experimental_useSidebarThreadSplit"),
+    experimental_useSidebarThreadPullRequest: passThrough("experimental_useSidebarThreadPullRequest"),
+  };
+}
+
+// One state object per provider list, as bb's query cache hands out.
+const providerStates = new WeakMap<object, unknown>();
+function useProvidersState(providers: Provider[]) {
+  let value = providerStates.get(providers);
+  if (value === undefined) {
+    value = { status: "ready", providers };
+    providerStates.set(providers, value);
+  }
+  return value;
+}
+function useEnvironmentState(providers: PluginEnvironmentProvider[]) {
+  return useProvidersState(providers as never);
+}
+
+type PluginApp = Awaited<ReturnType<typeof loadPluginApp>>;
+let app: PluginApp | null = null;
+
+/**
+ * Loads the plugin app against the fake host. bb's SDK module binds its hooks
+ * when first imported, so the fake hooks go in before that import; a module
+ * that imported it earlier would have bound the test runtime's hooks instead,
+ * which this refuses rather than measure the wrong host.
+ */
+export async function loadWithFakeHost(): Promise<PluginApp> {
+  if (app !== null) return app;
+  installTestPluginRuntime();
+  const runtime = (globalThis as unknown as { __bbPluginRuntime: { pluginSdkApp: Runtime } }).__bbPluginRuntime;
+  const hooks = fakeHooks(runtime.pluginSdkApp);
+  runtime.pluginSdkApp = { ...runtime.pluginSdkApp, ...hooks };
+  const sdkApp = (await import("@get-bb/plugin-sdk/app")) as unknown as Runtime;
+  if (sdkApp.experimental_useSidebarThreads !== hooks.experimental_useSidebarThreads) {
+    throw new Error("@get-bb/plugin-sdk/app was imported before the fake host; load it first");
+  }
+  app = await loadPluginApp(() => import("../../app"));
+  return app;
+}
+
+/** What the fake plugin server holds. */
+export interface ServerState {
+  preferences: Preferences;
+  stamps: Stamps;
+  notes: Record<string, ThreadNotes>;
+  scheduled: Record<string, number>;
+}
+
+export function serverState(patch: Partial<Preferences> = {}): ServerState {
+  return {
+    preferences: { ...defaultPreferences(), ...patch },
+    stamps: { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} },
+    notes: {},
+    scheduled: {},
+  };
+}
+
+/** The plugin server's RPC handlers over `server`. */
+export function serverHandlers(server: ServerState) {
+  return {
+    listPreferences: () => ({ preferences: server.preferences }),
+    setPreference: ({ key, value }: { key: keyof Preferences; value: unknown }) => {
+      server.preferences = { ...server.preferences, [key]: value };
+      return { key, value };
+    },
+    resetPreference: ({ key }: { key: keyof Preferences }) => ({ key, value: null }),
+    importPreferences: () => ({ status: "already-imported" as const, source: null, keys: [] }),
+    listStamps: () => ({ stamps: server.stamps }),
+    markSeen: () => ({ at: Date.now() }),
+    clearSeen: () => ({ ok: true as const }),
+    reportIdle: () => ({ ok: true as const }),
+    listScheduled: () => ({ status: "ready" as const, scheduled: server.scheduled }),
+    listNotes: () => ({ notes: server.notes }),
+  };
+}
+
+/** bb's SDK calls the list makes, answered at once. */
+export const SDK_FAKES = {
+  threads: {
+    defaultExecutionOptions: async () => null,
+    update: async () => ({}),
+    unpin: async () => ({}),
+    unarchive: async () => ({}),
+    reorderPinned: async () => ({}),
+  },
+  projects: {
+    get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
+    branches: async () => ({ defaultBranch: "main" }),
+  },
+  providers: { models: async () => ({ models: [] }) },
+  system: {
+    config: async () => ({
+      primaryHostId: "host_1",
+      generalSettings: { defaultProviderId: "claude-code" },
+      serverAccess: { defaultProviderId: "claude-code" },
+    }),
+  },
+} as never;
+
+/** The sidebar's scroll area around the list, where a run lays it out. */
+export interface Frame {
+  width: number;
+  height: number;
+  /** A CSS transform, to move a phone drawer off-canvas. */
+  transform?: string;
+}
+
+/** The list as a window mounts it, fed props by the fake host, in `frame` when given. */
+export function mountList(app: PluginApp, server: ServerState, frame?: Frame): RenderedSlot {
+  const List = app.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
+  const Window = () => {
+    const list = <List {...useHost((state) => state.props)} />;
+    if (frame === undefined) return list;
+    return (
+      <div
+        data-perf-frame=""
+        style={{ width: frame.width, height: frame.height, overflowY: "auto", position: "relative", transform: frame.transform }}
+      >
+        {list}
+      </div>
+    );
+  };
+  return renderSlot({ component: Window }, {}, { rpc: serverHandlers(server) as never, sdk: SDK_FAKES });
+}

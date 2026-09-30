@@ -1,26 +1,23 @@
 // @vitest-environment jsdom
 // The render path: an event about one thread renders
-// that thread's row and no other.
-import { memo } from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+// that thread's row and no other. Rows are counted by the thread id on their
+// anchor, the harness's way (perf/harness/render-counter.ts), which must load
+// before react-dom.
+import "../../../perf/harness/render-counter";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { defaultPreferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/contract";
+import { startCounting, stopCounting } from "../../../perf/harness/render-counter";
 import { makeThread, PROJECTS, T0, working } from "../testing/fixtures";
 
-const renders = new Map<string, number>();
-
-vi.mock("./ThreadRowView", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./ThreadRowView")>();
-  const inner = (actual.ThreadRowView as unknown as { type: (props: never) => React.ReactNode }).type;
-  const Counting = (props: never) => {
-    const id = (props as { row: { info: { thread: { id: string } } } }).row.info.thread.id;
-    renders.set(id, (renders.get(id) ?? 0) + 1);
-    return inner(props);
-  };
-  return { ...actual, ThreadRowView: memo(Counting) };
-});
+/** Row renders by thread id since the list settled. */
+function renders(): Record<string, number> {
+  const count = stopCounting();
+  startCounting();
+  return Object.fromEntries(count.rowIds);
+}
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -35,9 +32,9 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  stopCounting();
   cleanup();
   localStorage.clear();
-  renders.clear();
 });
 
 const threads = [
@@ -82,7 +79,7 @@ async function settled() {
   await screen.findByRole("link", { name: /Row 19/ });
   // Let the initial loads land before counting.
   await new Promise((resolve) => setTimeout(resolve, 20));
-  renders.clear();
+  startCounting();
 }
 
 describe("render path", () => {
@@ -91,7 +88,7 @@ describe("render path", () => {
     await settled();
     await slot.emitRealtime(CHANNELS.stamps, { kind: "startedAt", threadIds: ["w"], value: Date.now() - 5.5 * 60_000 });
     await waitFor(() => expect(screen.getByLabelText("Working for 5m")).toBeTruthy());
-    expect(Object.fromEntries(renders)).toEqual({ w: 1 });
+    expect(renders()).toEqual({ w: 1 });
   });
 
   it("renders only the row whose note changed", async () => {
@@ -102,14 +99,14 @@ describe("render path", () => {
       notes: { failed: { kind: "failed", text: "Out of credits", at: T0 } },
     });
     await waitFor(() => expect(screen.getByText("Out of credits")).toBeTruthy());
-    expect(Object.fromEntries(renders)).toEqual({ f: 1 });
+    expect(renders()).toEqual({ f: 1 });
   });
 
   it("renders no row on a signal that changes nothing drawn", async () => {
     const slot = render();
     await settled();
     await slot.emitRealtime(CHANNELS.stamps, { kind: "seenAt", threadIds: ["r5"], value: T0 - 1 });
-    expect(renders.size).toBe(0);
+    expect(renders()).toEqual({});
   });
 });
 
