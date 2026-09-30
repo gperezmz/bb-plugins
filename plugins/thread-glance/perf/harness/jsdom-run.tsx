@@ -86,7 +86,11 @@ export interface MarkAllReadFigure {
   counted: number;
   /** Counted threads still drawn unread once the click's own commit is drawn. */
   unreadAfterClick: number;
-  /** List commits from the click to the last `setRead` answer. */
+  /**
+   * List commits from the click to the last `threads.markRead` answer: those
+   * that render a row, a group header or the list header. The list's edge
+   * renders on every update bb sends, drawing nothing, and is not counted.
+   */
   commits: number;
   jsMs: number;
 }
@@ -222,7 +226,7 @@ function setHidden(hidden: boolean): void {
 }
 
 /** A mounted window over a generated list, with the clock faked from `list.now`. */
-export async function openList(list: GeneratedList, options: { freshActions?: boolean; setReadMs?: number } = {}) {
+export async function openList(list: GeneratedList, options: { freshActions?: boolean; markReadMs?: number } = {}) {
   ensureObservers();
   vi.useFakeTimers({ toFake: ["Date", "setInterval"] });
   vi.setSystemTime(list.now);
@@ -230,7 +234,7 @@ export async function openList(list: GeneratedList, options: { freshActions?: bo
     threads: list.threads,
     projects: list.projects,
     freshActions: options.freshActions ?? true,
-    setReadMs: options.setReadMs,
+    markReadMs: options.markReadMs,
   });
   const app = await loadWithFakeHost();
   const slot = mountList(app, serverState());
@@ -525,9 +529,9 @@ async function dragMoves(container: HTMLElement, threadId: string): Promise<Drag
 /** A row whose label says it is unread (not "unread below", which is its children). */
 const UNREAD = /\bunread\b(?! below)/i;
 
-/** Mark all read on the MAR list, with each `setRead` answering after 50 ms. */
+/** Mark all read on the MAR list, with each `threads.markRead` answering after 50 ms. */
 export async function runMarkAllRead(list: GeneratedList): Promise<MarkAllReadFigure> {
-  const { host, slot } = await openList(list, { setReadMs: 50 });
+  const { host, slot } = await openList(list, { markReadMs: 50 });
   const counted = new Set(list.unreadIds);
   await act(async () => {
     slot.getByRole("button", { name: "Mark all read" }).click();
@@ -543,7 +547,7 @@ export async function runMarkAllRead(list: GeneratedList): Promise<MarkAllReadFi
     (anchor) => counted.has(anchor.dataset.sidebarThreadId!) && UNREAD.test(anchor.getAttribute("aria-label") ?? ""),
   ).length;
   await act(async () => {
-    await host.setReadSettled();
+    await host.markReadSettled();
   });
   await settle(3);
   const wallMs = performance.now() - started;
@@ -553,7 +557,7 @@ export async function runMarkAllRead(list: GeneratedList): Promise<MarkAllReadFi
   return {
     counted: counted.size,
     unreadAfterClick,
-    commits: count.commits,
+    commits: count.listCommits,
     jsMs: Number(Math.max(0, wallMs - count.overheadMs).toFixed(2)),
   };
 }

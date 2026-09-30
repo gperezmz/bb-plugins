@@ -9,12 +9,24 @@ import { resolveDrop, type DraggedThread, type DropAction, type DropContext, typ
 import { pruneTargets } from "../model/expansion";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
-import { markAllReadPlan, markReadPlanFor, toggleChip, toggleGroup, toggleOlder, toggleSettled, type ToggleOutcome } from "../model/toggles";
+import {
+  markAllReadPlan,
+  markReadPlanFor,
+  toggleChip,
+  toggleGroup,
+  toggleOlder,
+  toggleSettled,
+  type MarkAllRead,
+  type ToggleOutcome,
+} from "../model/toggles";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
 import { NO_DROPS, type DropState, type ListModel, type ListStore } from "../store/api";
+import { inPool } from "./pool";
 
 const PLUGIN_ID = "thread-glance";
+/** Read requests bb is sent at once by a bulk read. */
+export const READS_IN_FLIGHT = 6;
 
 export interface ModelInfo {
   /** The catalog's display name ("Haiku 4.5"), or the raw id when unknown. */
@@ -129,13 +141,28 @@ export function createCommands(store: ListStore): Commands {
     };
   };
 
+  /**
+   * Shows the plan's threads read at once and sends their read requests
+   * behind it, READS_IN_FLIGHT at a time. A thread whose request fails shows
+   * as bb has it again, and `onFail` reports it.
+   */
+  const markPlanRead = (plan: MarkAllRead, onFail?: (error: unknown) => void) => {
+    store.showRead(plan.read, plan.seen);
+    void inPool(plan.read, READS_IN_FLIGHT, (threadId) =>
+      edge()
+        .sdk.threads.markRead({ threadId })
+        .catch((error: unknown) => {
+          store.revertRead([threadId]);
+          onFail?.(error);
+        }),
+    );
+  };
+
   /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
   const markTreesRead = (trees: readonly ThreadTree[], where: string) => {
     const plan = markAllReadPlan(trees, readContext());
-    const run = () => {
-      if (plan.seen.length > 0) store.markSeen(plan.seen);
-      for (const id of plan.read) edge().actions.setRead(id, true).catch(() => undefined);
-    };
+    // Silent on failure, as Mark all read has always been.
+    const run = () => markPlanRead(plan);
     if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
       store.setUi({
         confirm: {
@@ -210,8 +237,7 @@ export function createCommands(store: ListStore): Commands {
         case "mark-read": {
           const forest = store.getState().model?.forest;
           const plan = forest === undefined ? { read: [thread.id], seen: [] } : markReadPlanFor(thread.id, forest, readContext());
-          if (plan.seen.length > 0) store.markSeen(plan.seen);
-          for (const id of plan.read) actions.setRead(id, true).catch(fail("Couldn't mark read"));
+          markPlanRead(plan, fail("Couldn't mark read"));
           return;
         }
         case "mark-unread":

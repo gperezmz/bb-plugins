@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { makeThread, PROJECTS, T0 } from "../testing/fixtures";
-import { derive, FIRST_STEP, NO_HOST, type DeriveMemory, type ListInputs } from "./derive";
+import { derive, FIRST_STEP, NO_HOST, NO_PENDING_READ, onlyReadChanged, type DeriveMemory, type ListInputs } from "./derive";
 
 const HOUR = 3_600_000;
 
@@ -25,6 +25,7 @@ function inputsOf(threads: PluginSidebarThread[], patch: Partial<ListInputs> = {
     idleSince: {},
     needYouOn: false,
     targets: new Map(),
+    pendingRead: NO_PENDING_READ,
     ...patch,
   };
 }
@@ -113,5 +114,37 @@ describe("the derive step", () => {
     expect(b(later)).not.toBe(b(first));
     expect(b(later)).toMatchObject({ time: { text: "1m" } });
     expect(later.model!.groupIds).toBe(first.model!.groupIds);
+  });
+
+  it("shows a thread pending read as read until bb reports it read or reports newer attention", () => {
+    const unread = makeThread({ id: "u", latestAttentionAt: T0 + 1_000, lastReadAt: T0 });
+    const host = (thread: PluginSidebarThread) => ({ ...NO_HOST, status: "ready" as const, projects: PROJECTS, threads: [thread] });
+    const step = steps(inputsOf([unread]));
+    expect(step().model!.forest.infos.get("u")!.unread).toBe(true);
+    const shown = step({ pendingRead: new Map([["u", T0 + 1_000]]) });
+    expect(shown.model!.forest.infos.get("u")!.unread).toBe(false);
+    // A new turn finishing while the request is pending shows it unread again.
+    const later = step({ host: host({ ...unread, latestAttentionAt: T0 + 2_000 }) });
+    expect(later.model!.forest.infos.get("u")!.unread).toBe(true);
+    expect(later.inputs.pendingRead.size).toBe(0);
+    // bb reporting it read ends the wait too.
+    const again = steps(inputsOf([unread], { pendingRead: new Map([["u", T0 + 1_000]]) }));
+    expect(again().inputs.pendingRead.size).toBe(1);
+    expect(again({ host: host({ ...unread, lastReadAt: T0 + 1_000 }) }).inputs.pendingRead).toBe(NO_PENDING_READ);
+  });
+
+  it("tells bb marking read a thread already shown read from a change the list draws", () => {
+    const unread = makeThread({ id: "u", latestAttentionAt: T0 + 1_000, lastReadAt: T0 });
+    const other = makeThread({ id: "o" });
+    const current = derive(inputsOf([unread, other], { pendingRead: new Map([["u", T0 + 1_000]]) }), FIRST_STEP, T0);
+    const withThreads = (threads: PluginSidebarThread[]) => ({ ...current.inputs, host: { ...current.inputs.host, threads } });
+    const read = { ...unread, lastReadAt: T0 + 5_000, isUnread: false };
+    expect(onlyReadChanged(current.inputs, withThreads([read, other]), current.model!)).toBe(true);
+    // A thread shown unread, another field, or a thread bb still has unread: all drawn.
+    const shownUnread = derive(inputsOf([unread, other]), FIRST_STEP, T0);
+    expect(onlyReadChanged(shownUnread.inputs, { ...shownUnread.inputs, host: { ...shownUnread.inputs.host, threads: [read, other] } }, shownUnread.model!)).toBe(false);
+    expect(onlyReadChanged(current.inputs, withThreads([{ ...read, title: "Renamed" }, other]), current.model!)).toBe(false);
+    expect(onlyReadChanged(current.inputs, withThreads([{ ...unread, latestAttentionAt: T0 + 9_000 }, other]), current.model!)).toBe(false);
+    expect(onlyReadChanged(current.inputs, { ...withThreads([read, other]), activeThreadId: "o" }, current.model!)).toBe(false);
   });
 });

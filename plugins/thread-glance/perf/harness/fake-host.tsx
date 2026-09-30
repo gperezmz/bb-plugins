@@ -1,7 +1,7 @@
 // The harness's fake bb and plugin server. bb's list hooks read a store the
 // harness drives, so bb can hand the list updates after mount (renderSlot's
 // own host is fixed at mount), a new `actions` object on every update as bb
-// 0.44 does, and a `setRead` that takes time. Every hook call, plugin RPC and
+// 0.44 does, and a `threads.markRead` that takes time. Every hook call, plugin RPC and
 // bb request is counted. The list itself is mounted as bb mounts it: the
 // plugin's registered thread list component, through renderSlot.
 import { useSyncExternalStore, type ComponentType } from "react";
@@ -74,8 +74,10 @@ export interface FakeHostOptions {
   sections?: PluginSidebarSection[];
   /** Hand the list a new `actions` object on every host update, as bb 0.44 does. */
   freshActions?: boolean;
-  /** How long `setRead` takes to answer. */
-  setReadMs?: number;
+  /** How long `threads.markRead` takes to answer. */
+  markReadMs?: number;
+  /** Threads whose `threads.markRead` fails. */
+  failRead?: (threadId: string) => boolean;
   isCompactViewport?: boolean;
 }
 
@@ -95,10 +97,12 @@ export interface FakeHost {
   updateProps(patch?: Partial<PluginThreadListProps>): void;
   hookCalls: Record<HookName, number>;
   actionCalls: ActionCall[];
-  /** Most `setRead` calls bb held at once. */
-  setReadPeak: number;
-  /** Resolves once no `setRead` is in flight. */
-  setReadSettled(): Promise<void>;
+  /** bb's `threads.markRead`: answers after `markReadMs`, and bb's list shows the thread read soon after. */
+  markRead(args: { threadId: string }): Promise<{ id: string }>;
+  /** Most `threads.markRead` calls bb held at once. */
+  markReadPeak: number;
+  /** Resolves once no `threads.markRead` is in flight. */
+  markReadSettled(): Promise<void>;
   resetCounts(): void;
   subscribe(listener: () => void): () => void;
 }
@@ -131,22 +135,20 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
   };
   let inFlight = 0;
   let idle: (() => void)[] = [];
-  const answered = new Map<string, boolean>();
+  const answered = new Set<string>();
   const applyAnswers = () => {
     const now = Date.now();
-    const changes = new Map(answered);
+    const changes = new Set(answered);
     answered.clear();
     host.update({
-      threads: state.threads.map((thread) => {
-        const read = changes.get(thread.id);
-        return read === undefined ? thread : read ? { ...thread, isUnread: false, lastReadAt: now } : { ...thread, isUnread: true };
-      }),
+      threads: state.threads.map((thread) => (changes.has(thread.id) ? { ...thread, isUnread: false, lastReadAt: now } : thread)),
     });
-    if (inFlight === 0) {
-      const waiting = idle;
-      idle = [];
-      for (const resolve of waiting) resolve();
-    }
+    if (inFlight === 0) settleIdle();
+  };
+  const settleIdle = () => {
+    const waiting = idle;
+    idle = [];
+    for (const resolve of waiting) resolve();
   };
   const makeActions = () => ({
     open(threadId: string) {
@@ -158,16 +160,8 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     async setPinned(threadId: string) {
       host.actionCalls.push({ method: "setPinned", threadId });
     },
-    async setRead(threadId: string, read: boolean) {
+    async setRead(threadId: string) {
       host.actionCalls.push({ method: "setRead", threadId });
-      inFlight += 1;
-      host.setReadPeak = Math.max(host.setReadPeak, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, options.setReadMs ?? 0));
-      inFlight -= 1;
-      answered.set(threadId, read);
-      // Answers that land together reach the list as one update, as a query
-      // cache batches its notifications.
-      if (answered.size === 1) setTimeout(applyAnswers, 0);
     },
     async rename(threadId: string) {
       host.actionCalls.push({ method: "rename", threadId });
@@ -203,12 +197,27 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     },
     hookCalls: Object.fromEntries(HOST_HOOKS.map((name) => [name, 0])) as Record<HookName, number>,
     actionCalls: [],
-    setReadPeak: 0,
-    setReadSettled: () => (inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idle.push(resolve))),
+    async markRead({ threadId }) {
+      inFlight += 1;
+      host.markReadPeak = Math.max(host.markReadPeak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, options.markReadMs ?? 0));
+      inFlight -= 1;
+      if (options.failRead?.(threadId)) {
+        if (inFlight === 0) settleIdle();
+        throw new Error("read failed");
+      }
+      answered.add(threadId);
+      // Answers that land together reach the list as one update, as bb's
+      // refresh after them does.
+      if (answered.size === 1) setTimeout(applyAnswers, 0);
+      return { id: threadId };
+    },
+    markReadPeak: 0,
+    markReadSettled: () => (inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idle.push(resolve))),
     resetCounts() {
       for (const name of HOST_HOOKS) host.hookCalls[name] = 0;
       host.actionCalls.length = 0;
-      host.setReadPeak = 0;
+      host.markReadPeak = 0;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -365,6 +374,7 @@ export const SDK_FAKES = {
     unpin: async () => ({}),
     unarchive: async () => ({}),
     reorderPinned: async () => ({}),
+    markRead: (args: { threadId: string }) => hostOrThrow().markRead(args),
   },
   projects: {
     get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),

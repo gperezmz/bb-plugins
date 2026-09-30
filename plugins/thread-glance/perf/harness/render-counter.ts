@@ -9,6 +9,8 @@
 /** What one stretch of commits rendered; each counts at most once per commit. */
 export interface RenderCount {
   commits: number;
+  /** Commits that rendered a row, a group header or the list header. */
+  listCommits: number;
   /** Row renders, summed over commits. */
   rows: number;
   /** Renders per thread id. */
@@ -45,7 +47,7 @@ const roots = new Set<FiberRoot>();
 let commitListeners: (() => void)[] = [];
 
 function emptyCount(): RenderCount {
-  return { commits: 0, rows: 0, rowIds: new Map(), groupHeaders: new Map(), listHeader: 0, overheadMs: 0 };
+  return { commits: 0, listCommits: 0, rows: 0, rowIds: new Map(), groupHeaders: new Map(), listHeader: 0, overheadMs: 0 };
 }
 
 function bump(map: Map<string, number>, key: string): void {
@@ -148,6 +150,7 @@ function onCommit(root: FiberRoot): void {
     for (const id of found.rows) bump(counting.rowIds, id);
     for (const id of found.labels) bump(counting.groupHeaders, id);
     counting.rows += found.rows.size;
+    if (found.rows.size > 0 || found.labels.size > 0 || found.list) counting.listCommits += 1;
     if (found.list) counting.listHeader += 1;
     counting.overheadMs += performance.now() - started;
   }

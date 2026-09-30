@@ -67,7 +67,7 @@ export function toggleGroup(group: GroupView, prefs: Preferences, forest: Forest
 }
 
 export interface MarkAllRead {
-  /** Threads bb's rule calls unread: `actions.setRead(id, true)`. */
+  /** Threads bb's rule calls unread: `sdk.threads.markRead`. */
   read: string[];
   /** Done-unseen children: stamp `seenAt`. */
   seen: string[];
