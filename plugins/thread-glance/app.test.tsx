@@ -322,10 +322,24 @@ describe("Thread Glance slot", () => {
     const order = () => screen.getAllByRole("link").map((link) => link.getAttribute("aria-label")!.split(" — ")[0]);
     await screen.findByRole("link", { name: /Open A new/ });
     const panel = await openSettings();
-    fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
-    await waitFor(() => expect(order()).toEqual(["Open A old", "Open A new"]));
-    await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
-    expect(order()).toEqual(["Open A old", "Open A new"]);
+    // The write waits out its debounce on this clock, so the echo lands before it goes out.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.click(within(panel).getByRole("button", { name: /Sort order: Newest first/ }));
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+      await list.emitRealtime(CHANNELS.preferences, { key: "sortDirection", value: "default" });
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+      expect(list.inspection.rpcCalls.some((call) => call.method === "setPreference")).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(list.inspection.rpcCalls).toContainEqual(
+        expect.objectContaining({ method: "setPreference", input: expect.objectContaining({ key: "sortDirection" }) }),
+      );
+      expect(order()).toEqual(["Open A old", "Open A new"]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("applies Density and Branch line picked in the panel at once, each leaving the other, and keeps both for the next list", async () => {
