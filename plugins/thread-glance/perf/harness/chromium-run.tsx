@@ -157,9 +157,9 @@ function windowCheck(frame: HTMLElement): { excess: number; missing: number } {
     if (rect.bottom < top || rect.top > bottom) excess += 1;
   }
   let missing = 0;
-  for (const placeholder of frame.querySelectorAll<HTMLElement>("[data-sidebar-windowed-nav]")) {
-    const rect = placeholder.getBoundingClientRect();
-    if (rect.bottom > view.top && rect.top < view.bottom) missing += (placeholder.dataset.sidebarWindowedNav ?? "").split(" ").filter(Boolean).length;
+  for (const spacer of frame.querySelectorAll<HTMLElement>("[data-sidebar-windowed-nav]")) {
+    const rect = spacer.getBoundingClientRect();
+    if (rect.bottom > view.top && rect.top < view.bottom) missing += (spacer.dataset.sidebarWindowedNav ?? "").split(" ").filter(Boolean).length;
   }
   return { excess, missing };
 }
