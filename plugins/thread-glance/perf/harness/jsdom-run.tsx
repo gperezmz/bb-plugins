@@ -9,6 +9,7 @@ import { vi } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
+import { flushListStores } from "@/features/thread-list/store/api";
 import { countComponents, startCounting, stopCounting, type RenderCount } from "./render-counter";
 import { createFakeHost, loadWithFakeHost, mountList, serverState } from "./fake-host";
 import { markAllReadConfirm } from "./list-screen";
@@ -99,10 +100,16 @@ function ensureObservers(): void {
   } as unknown as typeof ResizeObserver;
 }
 
-/** Lets loads and effects queued by the last change land. */
+/**
+ * Lets loads and effects queued by the last change land, bb's updates
+ * waiting in the list store for their animation frame among them.
+ */
 export async function settle(rounds = 3): Promise<void> {
   for (let index = 0; index < rounds; index += 1) {
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    await act(async () => {
+      flushListStores();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   }
 }
 
@@ -153,6 +160,8 @@ function drawnFeedback(root: ParentNode): string {
 /**
  * Runs one event and counts what it rendered. `steps` runs it outside act,
  * for an event that is a series of acts: nested acts batch into one commit.
+ * bb's updates wait in the list store for an animation frame; the event's
+ * own act applies them, as the next frame would.
  */
 export async function measure(
   run: () => void | Promise<void>,
@@ -164,6 +173,7 @@ export async function measure(
   else
     await act(async () => {
       await run();
+      flushListStores();
     });
   await settle(2);
   const wallMs = performance.now() - started;

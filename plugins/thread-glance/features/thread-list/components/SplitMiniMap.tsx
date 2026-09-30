@@ -1,12 +1,8 @@
 // bb's 14×14 split mini-map: outranks the state glyph, as in bb's list.
 import { cn } from "@/lib/utils";
+import type { MiniMapPane } from "../model/split";
 
-export interface MiniMapPane {
-  paneId: string;
-  rect: { x: number; y: number; width: number; height: number };
-  isMe: boolean;
-  isFocused: boolean;
-}
+export type { MiniMapPane };
 
 export function SplitMiniMap({
   panes,

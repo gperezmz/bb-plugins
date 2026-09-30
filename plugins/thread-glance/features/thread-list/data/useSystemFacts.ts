@@ -1,14 +1,11 @@
 // What Thread Glance reads of bb's own configuration: its default harness
-// and its primary machine. Asked once per list; null until answered.
-import { useEffect, useState } from "react";
+// and its primary machine. Asked once per list and fed into the list store;
+// null until answered.
+import { useEffect } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
+import type { ListStore, SystemFacts } from "../store/api";
 
-export interface SystemFacts {
-  /** The harness a new thread starts with, when bb says. */
-  defaultProviderId: string | null;
-  /** The machine bb itself runs on, when one is connected. */
-  primaryHostId: string | null;
-}
+export type { SystemFacts };
 
 export const UNKNOWN_SYSTEM: SystemFacts = { defaultProviderId: null, primaryHostId: null };
 
@@ -29,9 +26,8 @@ export function readSystemFacts(config: SystemConfig): SystemFacts {
   };
 }
 
-export function useSystemFacts(): SystemFacts {
+export function useSystemFacts(store: ListStore): void {
   const sdk = useSdk();
-  const [facts, setFacts] = useState<SystemFacts>(UNKNOWN_SYSTEM);
   useEffect(() => {
     let cancelled = false;
     // Called inside the chain, so a host that throws for an area it lacks
@@ -40,13 +36,12 @@ export function useSystemFacts(): SystemFacts {
       .then(() => sdk.system.config())
       .then(
         (config) => {
-          if (!cancelled) setFacts(readSystemFacts(config));
+          if (!cancelled) store.feed({ system: readSystemFacts(config) });
         },
         () => undefined,
       );
     return () => {
       cancelled = true;
     };
-  }, [sdk]);
-  return facts;
+  }, [sdk, store]);
 }

@@ -2,7 +2,6 @@
 // and the environment folder row.
 import { memo, useState } from "react";
 import { experimental_Icon as Icon, experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
-import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,13 +13,15 @@ import { ICONS } from "../icons";
 import { olderRowText, settledRowText } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import type { EnvironmentRow, OlderRow, SettledRow } from "../model/view";
-import type { RowController } from "./controller";
+import { useCommands, useEnvironmentProviderList, useLayout } from "../store/hooks";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
 import { ENVIRONMENT_ROW_HEIGHT, OLDER_ROW_HEIGHT } from "./row-heights";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
-export const OlderRowView = memo(function OlderRowView({ row, controller }: { row: OlderRow; controller: RowController }) {
+export const OlderRowView = memo(function OlderRowView({ row }: { row: OlderRow }) {
+  const commands = useCommands();
+  const { density } = useLayout();
   const { label, ariaLabel } = olderRowText(row);
   // It sits where the children do, with a dots glyph in the Status column.
   return (
@@ -28,10 +29,10 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
       type="button"
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
-      onClick={() => controller.onToggleOlder(row)}
+      onClick={() => commands.toggleOlder(row)}
       className={cn(
         "relative flex w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        OLDER_ROW_HEIGHT[controller.density],
+        OLDER_ROW_HEIGHT[density],
       )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
@@ -44,14 +45,15 @@ export const OlderRowView = memo(function OlderRowView({ row, controller }: { ro
 });
 
 /** The settled fold: a muted label, a hairline to the row's end, and a chevron. */
-export const SettledRowView = memo(function SettledRowView({ row, controller }: { row: SettledRow; controller: RowController }) {
+export const SettledRowView = memo(function SettledRowView({ row }: { row: SettledRow }) {
+  const commands = useCommands();
   const { label, ariaLabel } = settledRowText(row);
   return (
     <button
       type="button"
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
-      onClick={() => controller.onToggleSettled(row)}
+      onClick={() => commands.toggleSettled(row)}
       className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
       style={{ paddingLeft: rowIndent(0) }}
     >
@@ -62,15 +64,10 @@ export const SettledRowView = memo(function SettledRowView({ row, controller }: 
   );
 });
 
-export const EnvironmentRowView = memo(function EnvironmentRowView({
-  row,
-  controller,
-  environmentProviders,
-}: {
-  row: EnvironmentRow;
-  controller: RowController;
-  environmentProviders: readonly PluginEnvironmentProvider[];
-}) {
+export const EnvironmentRowView = memo(function EnvironmentRowView({ row }: { row: EnvironmentRow }) {
+  const commands = useCommands();
+  const { compact, density } = useLayout();
+  const environmentProviders = useEnvironmentProviderList();
   const [renaming, setRenaming] = useState(false);
   const provider =
     row.environmentProviderId === null
@@ -80,7 +77,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
     <div
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent",
-        ENVIRONMENT_ROW_HEIGHT[controller.density],
+        ENVIRONMENT_ROW_HEIGHT[density],
       )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
@@ -88,7 +85,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
         type="button"
         aria-expanded={!row.collapsed}
         aria-label={`${row.collapsed ? "Expand" : "Collapse"} ${row.label} environment, ${row.threadIds.length} threads`}
-        onClick={() => controller.onToggleEnvironment(row.environmentId)}
+        onClick={() => commands.toggleEnvironment(row.environmentId)}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
       <span className="pointer-events-none relative inline-flex size-4 shrink-0 items-center justify-center">
@@ -102,7 +99,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
         <RenameEditor
           initial={row.label}
           label="Environment name"
-          onSave={(name) => controller.onRenameEnvironment(row.environmentId, name)}
+          onSave={(name) => commands.renameEnvironment(row.environmentId, name)}
           onDone={() => setRenaming(false)}
         />
       ) : (
@@ -120,14 +117,14 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
           <button
             type="button"
             aria-label="Environment actions"
-            className={cn(ROW_ICON_BUTTON, !controller.compact && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100")}
+            className={cn(ROW_ICON_BUTTON, !compact && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100")}
           >
             <Icon name={ICONS.more} aria-hidden className="size-4" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
-            onSelect={() => controller.onNewThreadInEnvironment(row.environmentId, row.projectId, row.sectionId)}
+            onSelect={() => commands.newThreadInEnvironment(row.environmentId, row.projectId, row.sectionId)}
           >
             <Icon name={ICONS.newThread} aria-hidden className="size-4" />
             New thread in environment
@@ -136,7 +133,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({
             <Icon name={ICONS.rename} aria-hidden className="size-4" />
             Rename
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => controller.onArchiveEnvironment(row.environmentId)}>
+          <DropdownMenuItem onSelect={() => commands.archiveEnvironment(row.environmentId)}>
             <Icon name={ICONS.archive} aria-hidden className="size-4" />
             Archive
           </DropdownMenuItem>

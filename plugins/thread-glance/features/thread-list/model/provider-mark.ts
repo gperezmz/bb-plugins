@@ -1,8 +1,49 @@
-// Two-letter provider marks when a provider has no logo. Pure.
+// Two-letter provider marks when a provider has no logo, and what a row
+// draws for its harness. Pure.
 
 export interface ProviderLike {
   id: string;
   displayName?: string | null;
+}
+
+/** What a row draws for its harness: its logo, or its mark. */
+export interface ProviderDisplay {
+  id: string;
+  name: string;
+  /** The roster entry, when the provider is known and has a logo. */
+  provider: {
+    id: string;
+    logoUrl?: string | null;
+    icon?: { glyph: string } | null;
+    strings?: { iconTint?: { light: string; dark: string } | null } | null;
+  } | null;
+  mark: string;
+}
+
+/**
+ * One display per harness, made on first ask and the same object on every
+ * later one, so rows can compare it by identity.
+ */
+export function providerDisplays(
+  roster: readonly (ProviderLike & { logoUrl?: string | null } & NonNullable<ProviderDisplay["provider"]>)[],
+): (providerId: string) => ProviderDisplay {
+  const marks = assignProviderMarks(roster);
+  const byProvider = new Map(roster.map((info) => [info.id, info]));
+  const displays = new Map<string, ProviderDisplay>();
+  return (providerId) => {
+    let display = displays.get(providerId);
+    if (display === undefined) {
+      const info = byProvider.get(providerId);
+      display = {
+        id: providerId,
+        name: info?.displayName ?? providerId,
+        provider: info?.logoUrl ? info : null,
+        mark: providerMark(providerId, marks),
+      };
+      displays.set(providerId, display);
+    }
+    return display;
+  };
 }
 
 function words(text: string): string[] {

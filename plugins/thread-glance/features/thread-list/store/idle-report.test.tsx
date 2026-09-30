@@ -2,8 +2,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { useIdleReporter } from "../data/useIdleReporter";
 import { makeThread, working } from "../testing/fixtures";
-import { useIdleSince } from "./useIdleSince";
+import { NO_HOST } from "./derive";
+import { createListStore, type Edge } from "./list-store";
 
 /** Web Locks for one browser: the first request holds the lock until it releases. */
 function fakeLocks() {
@@ -36,10 +38,31 @@ function fakeLocks() {
   };
 }
 
+/** One window's list store, fed `threads` by bb; `reportIdle` sees what it reports. */
 function openWindow(threads: readonly PluginSidebarThread[]) {
   const reportIdle = vi.fn();
-  const hook = renderHook(({ list }) => useIdleSince(list, reportIdle), { initialProps: { list: threads } });
-  return { reportIdle, show: (list: readonly PluginSidebarThread[]) => hook.rerender({ list }), close: hook.unmount };
+  const store = createListStore();
+  const reporter = renderHook(() => useIdleReporter());
+  store.edge = {
+    rpc: {
+      call: async (method: string, input: { threadIds: string[] }) => {
+        if (method === "reportIdle") reportIdle(input.threadIds);
+        return { ok: true };
+      },
+    },
+    isIdleReporter: () => reporter.result.current(),
+  } as unknown as Edge;
+  const detach = store.attach();
+  const show = (list: readonly PluginSidebarThread[]) => store.feedHost({ ...NO_HOST, status: "ready", threads: list });
+  show(threads);
+  return {
+    reportIdle,
+    show,
+    close: () => {
+      detach();
+      reporter.unmount();
+    },
+  };
 }
 
 const idle = makeThread({ id: "p" });
