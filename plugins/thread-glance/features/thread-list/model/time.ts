@@ -1,6 +1,6 @@
 // Row age and working timer. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import type { Stamps } from "@/shared/contract";
+import type { Stamps } from "@/shared/signals";
 import type { ThreadInfo } from "./trees";
 
 const MINUTE = 60_000;
@@ -19,7 +19,7 @@ export function formatDuration(ms: number): string {
 }
 
 /** When the thread last finished: max(latestAttentionAt, finishedAt ?? createdAt). */
-export function lastFinishedAt(
+function lastFinishedAt(
   thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "createdAt">,
   finishedAt: Readonly<Record<string, number>>,
 ): number {
@@ -34,8 +34,9 @@ export interface TrailingTime {
 }
 
 /**
- * The trailing slot: time since start for a working row, else the age
- *. A working row whose start wasn't stamped shows nothing.
+ * The trailing slot: the wait for a thread that waits on you, time since
+ * start for a working row, else the age. A working row whose start wasn't
+ * stamped, or a waiting one with no `pendingAt`, shows nothing.
  */
 export function trailingTime(
   thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "createdAt">,

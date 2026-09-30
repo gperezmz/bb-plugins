@@ -13,9 +13,13 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Set by a verb's --all-archived: each load presses Load more archived threads until every archived thread is drawn. */
+let allArchived = false;
 
 /** Loads the web UI and waits for Thread Glance's list header. */
 export async function ready(page, url) {
@@ -23,6 +27,24 @@ export async function ready(page, url) {
   await header(page).waitFor();
   await page.waitForLoadState("networkidle");
   await openDrawer(page);
+  if (allArchived) await loadAllArchived(page);
+}
+
+/** With Show archived on, presses Load more archived threads until it is gone; how many times. */
+export async function loadAllArchived(page) {
+  const more = page.getByRole("button", { name: "Load more archived threads" });
+  // A window behind another draws no frames, so the list never loads more there.
+  await page.bringToFront();
+  let presses = 0;
+  for (; presses < 100 && (await more.count()) > 0; presses++) {
+    await more.click();
+    await page.waitForLoadState("networkidle");
+    await sleep(300);
+  }
+  // Pressing scrolled the list to its end; a load starts at the top.
+  await scrollTo(page, 0);
+  await sleep(300);
+  return presses;
 }
 
 /** On a phone, opens the sidebar's drawer, which is off-canvas until then; nothing on a desktop. */
@@ -179,9 +201,18 @@ async function prefUntil(cli, label, key, want) {
   return value;
 }
 
-/** The run's threads by title, from bb. */
+/**
+ * The run's threads by title, from bb. Run through the harness as `cli` runs
+ * it, with a larger buffer: at several hundred threads the list passes the
+ * 1 MB that `cli`'s execFileSync holds.
+ */
 function threads(cli, label) {
-  const listed = JSON.parse(cli(label, "thread", "list", "--json"));
+  const out = execFileSync(process.env.DBP_HARNESS, ["bb", "--run", process.env.DBP_RUN, label, "--", "thread", "list", "--json"], {
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const listed = JSON.parse(out);
   return Array.isArray(listed) ? listed : listed.threads;
 }
 
@@ -647,6 +678,110 @@ async function leaveForSettings(page) {
   await page.getByRole("link", { name: /^Settings/ }).first().click();
   await page.waitForURL(/\/settings/);
   await header(page).waitFor({ state: "detached" });
+}
+
+const round1 = (n) => Number(n.toFixed(1));
+
+/**
+ * A CPU profile of the page, sampled every 0.1 ms, and the page's script time
+ * beside it. `stop` attributes the samples: Thread Glance's are those in its
+ * bundle (`plugin-app-assets/<hash>/app.js`, the only plugin a Thread Glance
+ * run loads) and native calls under them, idle left out; bursts are its
+ * samples grouped where 100 ms pass with none.
+ */
+async function profiler(page) {
+  const session = await page.context().newCDPSession(page);
+  await session.send("Performance.enable");
+  const scriptMs = async () => ((await session.send("Performance.getMetrics")).metrics.find((m) => m.name === "ScriptDuration")?.value ?? 0) * 1000;
+  let scriptBefore = 0;
+  return {
+    async start() {
+      await session.send("Profiler.enable");
+      await session.send("Profiler.setSamplingInterval", { interval: 100 });
+      scriptBefore = await scriptMs();
+      await session.send("Profiler.start");
+    },
+    async stop() {
+      const { profile } = await session.send("Profiler.stop");
+      const pageScriptMs = (await scriptMs()) - scriptBefore;
+      const parents = new Map();
+      for (const node of profile.nodes) for (const child of node.children ?? []) parents.set(child, node);
+      const byId = new Map(profile.nodes.map((node) => [node.id, node]));
+      const owners = new Map();
+      const ownerOf = (node) => {
+        if (owners.has(node.id)) return owners.get(node.id);
+        const { functionName, url } = node.callFrame;
+        const parent = parents.get(node.id);
+        const owner =
+          functionName === "(idle)" ? "idle"
+          : url === "" && parent !== undefined ? ownerOf(parent)
+          : url.includes("/plugin-app-assets/") ? "plugin"
+          : "rest";
+        owners.set(node.id, owner);
+        return owner;
+      };
+      const totals = { plugin: 0, rest: 0, idle: 0 };
+      const bursts = [];
+      let at = 0;
+      profile.samples.forEach((id, i) => {
+        const delta = (profile.timeDeltas[i] ?? 0) / 1000;
+        at += delta;
+        const owner = byId.has(id) ? ownerOf(byId.get(id)) : "rest";
+        totals[owner] += delta;
+        if (owner !== "plugin") return;
+        const last = bursts.at(-1);
+        if (last !== undefined && at - last.endMs < 100) {
+          last.pluginMs += delta;
+          last.endMs = at;
+        } else bursts.push({ atMs: at, endMs: at, pluginMs: delta });
+      });
+      return {
+        pluginMs: round1(totals.plugin),
+        restMs: round1(totals.rest),
+        pageScriptMs: round1(pageScriptMs),
+        bursts: bursts.map((b) => ({ atMs: Math.round(b.atMs), pluginMs: round1(b.pluginMs) })),
+        worstBurstMs: bursts.length === 0 ? 0 : round1(Math.max(...bursts.map((b) => b.pluginMs))),
+      };
+    },
+  };
+}
+
+/** Each request's path with thread ids written `:id`, so one endpoint reads as one. */
+const endpoint = (method, path) => `${method} ${path.replace(/\?.*/, "").replace(/thr_[a-z0-9]+/g, ":id")}`;
+
+/** Every request the page makes from now on, with when it started and ended, and the most of each endpoint in flight at once. */
+function requestLog(page) {
+  const log = [];
+  const open = new Map();
+  page.on("request", (r) => {
+    if (!["fetch", "xhr"].includes(r.resourceType())) return;
+    const entry = { endpoint: endpoint(r.method(), new URL(r.url()).pathname), start: Date.now(), end: null };
+    open.set(r, entry);
+    log.push(entry);
+  });
+  const done = (r) => {
+    const entry = open.get(r);
+    if (entry) entry.end = Date.now();
+    open.delete(r);
+  };
+  page.on("requestfinished", done);
+  page.on("requestfailed", done);
+  return {
+    mark: () => log.length,
+    inFlight: () => open.size,
+    lastEnd: (from = 0) => Math.max(0, ...log.slice(from).map((e) => e.end ?? 0)),
+    summary(from = 0) {
+      const byEndpoint = {};
+      const entries = log.slice(from);
+      for (const e of entries) {
+        const s = (byEndpoint[e.endpoint] ??= { count: 0, peakInFlight: 0 });
+        s.count += 1;
+        const overlapping = entries.filter((o) => o.endpoint === e.endpoint && o.start <= e.start && (o.end === null || o.end > e.start)).length;
+        s.peakInFlight = Math.max(s.peakInFlight, overlapping);
+      }
+      return byEndpoint;
+    },
+  };
 }
 
 /** Marks the page's JavaScript realm, so a later check tells whether it reloaded. */
@@ -1412,9 +1547,10 @@ export const verbs = {
   },
 
   "perf-open": {
-    usage: "[--group <label>] [--parent <title>]: INP (Event Timing, at 1× and 4× CPU) of opening the largest group and the largest children chip, or the ones named, closing each again",
-    valued: ["group", "parent"],
+    usage: "[--group <label>] [--parent <title>] [--advance <hours>]: INP (Event Timing, at 1× and 4× CPU) of opening the largest group and the largest children chip, or the ones named, and the largest Settled fold where one shows, closing each again; --advance starts the page's clock that many hours ahead",
+    valued: ["group", "parent", "advance"],
     async run({ page, url, capture, flags }) {
+      if (flags.advance) await page.clock.install({ time: Date.now() + Number(flags.advance) * 3_600_000 });
       await ready(page, url);
       const tools = await devtools(page);
       const sizes = await page.evaluate(() =>
@@ -1456,7 +1592,21 @@ export const verbs = {
         });
         await capture("chip", `open ${parent}'s children at 1× and 4×`);
       }
-      return { group: { label: group, rows: sizes.find((s) => s.label === group)?.rows, inp: groupInp }, chip: parent === undefined ? null : { parent, inp: chipInp } };
+      const folds = page.getByRole("button", { name: /^(Show|Hide) \d+ settled thread trees?$/ });
+      // The largest fold: the one whose opening draws the most rows.
+      const largest = await folds.evaluateAll((els) => els.reduce((best, b, i, all) => (Number(b.getAttribute("aria-label").match(/\d+/)[0]) > Number(all[best].getAttribute("aria-label").match(/\d+/)[0]) ? i : best), 0)).catch(() => 0);
+      const fold = () => folds.nth(largest);
+      let settled = null;
+      if ((await folds.count()) > 0) {
+        await fold().scrollIntoViewIfNeeded();
+        const name = (await fold().getAttribute("aria-label")).replace(/^Hide/, "Show");
+        const inp = await measure(fold, async () => {
+          if ((await fold().getAttribute("aria-expanded")) === "true") await fold().click();
+        });
+        await capture("settled", `open ${name} at 1× and 4×`);
+        settled = { fold: name, inp };
+      }
+      return { group: { label: group, rows: sizes.find((s) => s.label === group)?.rows, inp: groupInp }, chip: parent === undefined ? null : { parent, inp: chipInp }, settled };
     },
   },
 
@@ -1509,4 +1659,324 @@ export const verbs = {
       };
     },
   },
+  bundle: {
+    usage: ": the size of the Thread Glance app.js the run's bb serves, raw and gzip (KB = 1,000 bytes)",
+    async run({ page, url, capture }) {
+      const served = new Set();
+      page.on("response", (r) => {
+        if (/\/plugin-app-assets\/[^/]+\/app\.js(\?|$)/.test(r.url())) served.add(r.url());
+      });
+      await ready(page, url);
+      await capture("list", "the list, loaded");
+      const bundles = [];
+      for (const u of served) {
+        const body = await (await page.request.get(u)).body();
+        bundles.push({ url: new URL(u).pathname, rawKB: round1(body.length / 1000), gzipKB: round1(gzipSync(body).length / 1000) });
+      }
+      return { bundles };
+    },
+  },
+
+  "perf-scroll": {
+    usage: "[--mobile]: on a desktop, ms from Thread Glance's app.js arriving to its first row drawn on a first load, and from scrolling 100 rows down to a row fully in view and drawn; on a phone (--mobile), rows mounted with the drawer closed and the row height, then each frame's ms scrolling the open drawer 40 px a frame for 90 frames",
+    async run({ page, url, capture, flags }) {
+      await page.addInitScript(() => {
+        const start = () => {
+          const obs = new MutationObserver(() => {
+            if (document.querySelector("[data-sidebar-thread-id]") === null) return;
+            obs.disconnect();
+            requestAnimationFrame(() => (window.__dbpFirstRow = performance.now()));
+          });
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+        };
+        if (document.documentElement) start();
+        else document.addEventListener("readystatechange", start, { once: true });
+      });
+      await page.goto(url);
+      await header(page).waitFor();
+      await page.waitForLoadState("networkidle");
+      await sleep(1000);
+      const load = await page.evaluate(() => {
+        const bundle = performance.getEntriesByType("resource").find((e) => /\/plugin-app-assets\/[^/]+\/app\.js/.test(e.name));
+        return { appJsArrivedMs: bundle ? Math.round(bundle.responseEnd) : null, firstRowMs: window.__dbpFirstRow ? Math.round(window.__dbpFirstRow) : null };
+      });
+      const mountMs = load.appJsArrivedMs !== null && load.firstRowMs !== null ? load.firstRowMs - load.appJsArrivedMs : null;
+      if (flags.mobile) {
+        const closed = await page.evaluate(() => {
+          const anchors = [...document.querySelectorAll("[data-sidebar-thread-id]")];
+          return { rowsMountedClosed: anchors.length, rowHeightPx: Math.round(anchors[0]?.parentElement?.getBoundingClientRect().height ?? 0) };
+        });
+        await capture("closed", "a phone's first load, the drawer closed");
+        await openDrawer(page);
+        const frameMs = await page.evaluate(async (scroller) => {
+          const el = eval(scroller);
+          const next = () => new Promise((r) => requestAnimationFrame(r));
+          let last = await next();
+          const out = [];
+          for (let i = 0; i < 90; i++) {
+            el.scrollTop += 40;
+            const now = await next();
+            out.push(Number((now - last).toFixed(1)));
+            last = now;
+          }
+          return out;
+        }, SCROLLER);
+        await capture("open-scrolled", "the drawer open, scrolled 90 frames");
+        const sorted = [...frameMs].sort((a, b) => a - b);
+        return { load, ...closed, fitIn480: Math.ceil(480 / Math.max(closed.rowHeightPx, 1)), openFrameMaxMs: sorted.at(-1), openFrameP95Ms: sorted[Math.floor(sorted.length * 0.95)], frameMs };
+      }
+      const archivedPresses = allArchived ? await loadAllArchived(page) : 0;
+      await scrollTo(page, 0);
+      await frames(page);
+      await sleep(500);
+      await capture("loaded", "first load");
+      const scroll = await page.evaluate(async (scroller) => {
+        const el = eval(scroller);
+        const anchors = () => [...document.querySelectorAll("[data-sidebar-thread-id]")];
+        const rowHeight = anchors()[0].parentElement.getBoundingClientRect().height || 28;
+        const next = () => new Promise((r) => requestAnimationFrame(r));
+        await next();
+        const from = el.scrollTop;
+        const started = performance.now();
+        el.scrollTop += 100 * rowHeight;
+        const view = el === document.scrollingElement ? { top: 0, bottom: innerHeight } : el.getBoundingClientRect();
+        const inView = () => anchors().some((a) => {
+          const r = a.getBoundingClientRect();
+          return r.top >= Math.max(view.top, 0) && r.bottom <= Math.min(view.bottom, innerHeight);
+        });
+        // As the ledger's harness times it: polled every millisecond, then one frame.
+        while (!inView()) await new Promise((r) => setTimeout(r, 1));
+        await next();
+        await new Promise((r) => setTimeout(r, 0));
+        return { rowHeightPx: Math.round(rowHeight), scrolledRows: Math.round((el.scrollTop - from) / rowHeight), scrollMountMs: Number((performance.now() - started).toFixed(1)) };
+      }, SCROLLER);
+      await capture("scrolled", "scrolled 100 rows down");
+      return { load, mountToFirstRowMs: mountMs, archivedPresses, rows: await page.locator("[data-sidebar-virtual-list]").evaluate((l) => [...l.querySelectorAll("[data-sidebar-thread-id]")].length + [...l.querySelectorAll("[data-sidebar-windowed-nav]")].reduce((n, e) => n + e.dataset.sidebarWindowedNav.split(" ").length, 0)), ...scroll };
+    },
+  },
+
+  "perf-event": {
+    usage: "--actions <json file> --until <regex>: profile the page from the actions until a row's name matches --until and 1.5 s more; Thread Glance's script time (its bundle's samples and native calls under them) in all and per burst, and the page's",
+    valued: ["actions", "until"],
+    async run(ctx) {
+      const { page, url, capture, flags } = ctx;
+      await ready(page, url);
+      await sleep(1500);
+      const prof = await profiler(page);
+      await capture("before", "before the actions");
+      await prof.start();
+      const actions = runActions(ctx, "thread-glance.perf-event/cli", readActions(flags));
+      const acted = Date.now();
+      const until = new RegExp(flags.until ?? ".");
+      const hit = await page
+        .waitForFunction((src) => [...document.querySelectorAll("a[data-sidebar-thread-id]")].some((a) => new RegExp(src).test(a.getAttribute("aria-label") ?? "")), until.source, { timeout: 90_000, polling: 100 })
+        .then(() => true, () => false);
+      const untilReachedMs = hit ? Date.now() - acted : null;
+      await sleep(1500);
+      const script = await prof.stop();
+      await capture("after", `the actions, until ${until.source}`);
+      return { actions, untilReachedMs, script };
+    },
+  },
+
+  "perf-mark-all-read": {
+    usage: "[--throttle <rate>]: click Mark all read and confirm it at that CPU rate (1 by default): INP of the confirming click, rows still unread in the first frame after it, a CPU profile from the click until the last request answered, and each endpoint's requests with the most in flight at once",
+    valued: ["throttle"],
+    async run(ctx) {
+      const { page, url, capture, cli, flags } = ctx;
+      const rate = Number(flags.throttle ?? 1);
+      await ready(page, url);
+      const button = page.getByRole("button", { name: "Mark all read", exact: true });
+      await button.waitFor({ timeout: 30_000 });
+      await sleep(1500);
+      const before = await readList(page);
+      const unreadBefore = threads(cli, "thread-glance.perf-mark-all-read/cli").filter((t) => t.archivedAt == null && (t.lastReadAt ?? 0) < (t.latestAttentionAt ?? 0)).length;
+      await capture("before", "before Mark all read");
+      await button.click();
+      const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Mark all read" });
+      const confirming = await confirm.isVisible({ timeout: 2000 }).catch(() => false);
+      const target = confirming ? confirm : button;
+      if (!confirming) throw new Error("no confirmation opened: the verb times the confirming click, which shows above 20 threads");
+      await capture("confirm", "the confirmation");
+      const tools = await devtools(page);
+      const prof = await profiler(page);
+      const log = requestLog(page);
+      // The rows still unread as the first frame after the click paints.
+      await page.evaluate(() => {
+        window.__dbpFirstFrame = null;
+        document.addEventListener("click", () => requestAnimationFrame(() => {
+          window.__dbpFirstFrame = [...document.querySelectorAll("a[data-sidebar-thread-id]")].filter((a) => /(— Unread|; unread)(;|$)/.test(a.getAttribute("aria-label") ?? "")).length;
+        }), { capture: true, once: true });
+      });
+      await tools.throttle(rate);
+      await prof.start();
+      const mark = log.mark();
+      const clicked = Date.now();
+      const inp = await inpOfClick(page, target);
+      // Until nothing is in flight for a second: the last request has answered.
+      let quietSince = null;
+      for (let i = 0; i < 600; i++) {
+        if (log.inFlight() === 0) quietSince ??= Date.now();
+        else quietSince = null;
+        if (quietSince !== null && Date.now() - quietSince >= 1000) break;
+        await sleep(50);
+      }
+      const script = await prof.stop();
+      await tools.throttle(1);
+      const lastAnswerMs = log.lastEnd(mark) - clicked;
+      await button.waitFor({ state: "detached", timeout: 30_000 }).catch(() => {});
+      await capture("after", "confirm Mark all read");
+      const stored = threads(cli, "thread-glance.perf-mark-all-read/cli");
+      return {
+        rate,
+        unreadBefore,
+        rowsUnreadBefore: before.rows.filter((r) => r.unread).length,
+        rowsUnreadInFirstFrame: await page.evaluate(() => window.__dbpFirstFrame),
+        inpMs: inp,
+        lastAnswerMs,
+        script,
+        requests: log.summary(mark),
+        stillUnreadInBb: stored.filter((t) => t.archivedAt == null && (t.lastReadAt ?? 0) < (t.latestAttentionAt ?? 0)).map((t) => t.title),
+      };
+    },
+  },
+
+  "event-requests": {
+    usage: "--actions <json file> --until <regex> [--windows <n>]: n windows (3 by default) recording requests; run the actions, wait until a row's name matches --until in every window, 3 s more, and report each window's requests from the actions on: Thread Glance's RPC and bb's by calling script",
+    valued: ["actions", "until", "windows"],
+    async run(ctx) {
+      const { page, url, capture, newPage, flags } = ctx;
+      const windows = [page];
+      for (let i = 1; i < Number(flags.windows ?? 3); i++) windows.push(await newPage());
+      const recs = [];
+      for (const w of windows) {
+        recs.push(await recordRequests(w));
+        await ready(w, url);
+      }
+      await sleep(2000);
+      const marks = recs.map((r) => r.mark());
+      await capture("before", "before the actions");
+      const actions = runActions(ctx, "thread-glance.event-requests/cli", readActions(flags));
+      const acted = Date.now();
+      const until = new RegExp(flags.until ?? ".");
+      const reached = [];
+      for (const w of windows) {
+        const hit = await w
+          .waitForFunction((src) => [...document.querySelectorAll("a[data-sidebar-thread-id]")].some((a) => new RegExp(src).test(a.getAttribute("aria-label") ?? "")), until.source, { timeout: 90_000, polling: 100 })
+          .then(() => true, () => false);
+        reached.push(hit ? Date.now() - acted : null);
+      }
+      await sleep(3000);
+      const states = [];
+      for (const [i, w] of windows.entries()) {
+        const since = recs[i].since(marks[i]);
+        states.push({ window: i + 1, untilReachedMsAfterActions: reached[i], threadGlance: glanceRequests(since), ...byCaller(since) });
+        await capture(`window-${i + 1}`, `window ${i + 1} after the actions`, w);
+      }
+      return { actions, windows: states };
+    },
+  },
+  "key-drag": {
+    usage: "<title> | --group <label>: focus a row's link (or a group header's collapse button) and press what starts a drag by keyboard (Space, then Enter on a header), arrows and Space again, then Escape; whether any drag feedback or pick-up was drawn, whether the thread's place or the group order changed, and every element in the list that carries aria-disabled",
+    valued: ["group"],
+    async run({ page, url, capture, cli, args, flags }) {
+      await ready(page, url);
+      const label = "thread-glance.key-drag/cli";
+      const order = () =>
+        page.locator("section[data-sidebar-visibility-group]").evaluateAll((els) => els.filter((e) => !e.closest('[data-sidebar-overflow="true"]')).map((e) => e.getAttribute("aria-label")));
+      const ariaDisabled = () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll("[aria-disabled]")]
+            .filter((e) => e.closest("[data-sidebar-virtual-list], [data-sidebar='group-label'], section[data-sidebar-visibility-group]") !== null)
+            .map((e) => ({ tag: e.tagName, role: e.getAttribute("role"), name: (e.getAttribute("aria-label") ?? e.textContent.trim()).slice(0, 80), value: e.getAttribute("aria-disabled") })),
+        );
+      const feedback = () =>
+        page.evaluate(() => ({
+          drop: document.querySelectorAll("[data-sidebar-nest-target], [data-sidebar-reorder-placement]").length,
+          header: document.querySelectorAll('[data-sidebar="group-label"].bg-sidebar-accent').length,
+          overlay: document.querySelectorAll("[data-dnd-overlay], [data-sidebar-drag-overlay]").length,
+          announced: [...document.querySelectorAll('[role="status"], [aria-live]')].map((e) => e.textContent.trim()).filter((t) => /pick|drag|drop/i.test(t)),
+        }));
+      const before = flags.group ? { order: await order() } : placeOf(cli, label, args[0]);
+      const target = flags.group ? groupButton(page, flags.group, "toggle") : await reveal(page, args[0]);
+      await target.focus();
+      const focusedBefore = await focused(page);
+      await capture("focused", `focus ${flags.group ? `the ${flags.group} header` : args[0]}`);
+      const seen = [];
+      const keys = flags.group ? ["Space", "ArrowDown", "ArrowDown", "Space", "Enter", "ArrowUp", "Enter"] : ["Space", "ArrowDown", "ArrowDown", "Space"];
+      for (const key of keys) {
+        await page.keyboard.press(key);
+        await frames(page);
+        seen.push({ key, ...(await feedback()) });
+      }
+      await capture("pressed", `press ${keys.join(", ")}`);
+      await page.keyboard.press("Escape");
+      await sleep(1500);
+      let after;
+      if (flags.group) after = { order: await order() };
+      else after = placeOf(cli, label, args[0]);
+      // A header's Space and Enter toggle it; toggle it back where it moved.
+      if (flags.group && (await groupButton(page, flags.group, "toggle").getAttribute("aria-expanded")) === "false") await groupButton(page, flags.group, "toggle").click();
+      return {
+        focusedBefore,
+        steps: seen,
+        dragStarted: seen.some((s) => s.drop > 0 || s.header > 0 || s.overlay > 0 || s.announced.length > 0),
+        before,
+        after,
+        changed: JSON.stringify(before) !== JSON.stringify(after),
+        url: page.url(),
+        ariaDisabled: await ariaDisabled(),
+      };
+    },
+  },
+  "mark-all-read-home": {
+    usage: "(--mobile): the phone home screen's Recent list, the unread threads it shows before Mark all read, right after it and 6 s later with no reload, and after a reload, beside the list's own",
+    async run({ page, url, capture }) {
+      const recentUnread = () =>
+        page
+          .getByRole("region", { name: "Recent" })
+          .getByRole("link")
+          .evaluateAll((els) => els.map((a) => a.getAttribute("aria-label") ?? "").filter((n) => / — Unread/.test(n)).map((n) => n.replace(/^Open /, "").replace(/ — .*/, "")));
+      const closeDrawer = async () => {
+        await page.keyboard.press("Escape");
+        await page.getByRole("dialog", { name: "Sidebar" }).waitFor({ state: "hidden" }).catch(() => {});
+        await sleep(400);
+      };
+      await page.goto(url);
+      await header(page).waitFor();
+      await page.waitForLoadState("networkidle");
+      await sleep(1000);
+      const before = await recentUnread();
+      await capture("before", "the home screen before Mark all read");
+      await openDrawer(page);
+      const button = page.getByRole("button", { name: "Mark all read", exact: true });
+      await button.click();
+      const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Mark all read" });
+      if (await confirm.isVisible({ timeout: 1000 }).catch(() => false)) await confirm.click();
+      await button.waitFor({ state: "detached" });
+      const listUnread = (await readList(page)).rows.filter((r) => r.unread).map((r) => r.title);
+      await closeDrawer();
+      const after = await recentUnread();
+      await capture("after", "Mark all read in the drawer, then the home screen with no reload");
+      // bb refetches its sidebar data every few seconds, which also brings read state.
+      await sleep(6000);
+      const afterRefetch = await recentUnread();
+      await page.reload();
+      await header(page).waitFor();
+      await page.waitForLoadState("networkidle");
+      await sleep(1000);
+      const reloaded = await recentUnread();
+      await capture("reloaded", "the home screen after a reload");
+      return { recentUnreadBefore: before, listUnreadAfter: listUnread, recentUnreadAfter: after, recentUnreadAfter6s: afterRefetch, recentUnreadAfterReload: reloaded };
+    },
+  },
 };
+
+// --all-archived on any verb: each load draws every archived thread first.
+for (const verb of Object.values(verbs)) {
+  const run = verb.run;
+  verb.run = (ctx) => {
+    allArchived = Boolean(ctx.flags["all-archived"]);
+    return run(ctx);
+  };
+}

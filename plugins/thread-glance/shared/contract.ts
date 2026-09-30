@@ -5,8 +5,6 @@ import * as z from "zod/mini";
 import { PREFERENCE_KEYS, PREFERENCES, type PreferenceKey } from "./preferences";
 import { stampMapSchema, syncPointSchema, type ThreadRecord } from "./signals";
 
-export * from "./signals";
-
 const preferenceKeySchema = z.enum(PREFERENCE_KEYS as [PreferenceKey, ...PreferenceKey[]]);
 const preferencesSchema = z.object(
   Object.fromEntries(PREFERENCE_KEYS.map((key) => [key, PREFERENCES[key].schema])),

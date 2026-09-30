@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CHANNELS, NOTE_MAX_LENGTH } from "@/shared/signals";
-import { defaultPreferences, PREFERENCES_MIRROR_STORAGE_KEY } from "@/shared/preferences";
+import { PREFERENCES_MIRROR_STORAGE_KEY } from "@/shared/preferences";
 import { createFakeServer, makeThread, type FakeServer, PROJECTS, T0, working } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;

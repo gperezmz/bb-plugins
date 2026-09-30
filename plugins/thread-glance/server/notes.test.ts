@@ -2,7 +2,7 @@ import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS, NOTE_MAX_LENGTH, threadNotesSchema, type RecordsSignal, type ThreadRecord } from "../shared/contract";
+import { CHANNELS, NOTE_MAX_LENGTH, threadNotesSchema, type RecordsSignal, type ThreadRecord } from "../shared/signals";
 import {
   describeDone,
   describeFailure,

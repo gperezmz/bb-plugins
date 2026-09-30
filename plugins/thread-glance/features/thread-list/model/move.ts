@@ -2,6 +2,9 @@
 import type { Forest } from "./trees";
 import { isInSubtree } from "./drag";
 
+/** The most threads Move… offers as parents. */
+const MOVE_TARGET_LIMIT = 50;
+
 export interface MoveTarget {
   /** null moves the thread to the top level. */
   parentThreadId: string | null;
@@ -16,7 +19,7 @@ export interface MoveTarget {
  * of `query` first. The current parent is left out: moving there changes
  * nothing.
  */
-export function moveTargets(threadId: string, forest: Forest, query = "", limit = 50): MoveTarget[] {
+export function moveTargets(threadId: string, forest: Forest, query = ""): MoveTarget[] {
   const self = forest.infos.get(threadId);
   if (self === undefined) return [];
   const parentOf = (id: string) => forest.infos.get(id)?.thread.parentThreadId ?? null;
@@ -34,7 +37,7 @@ export function moveTargets(threadId: string, forest: Forest, query = "", limit 
       return needle === "" || thread.displayTitle.toLowerCase().includes(needle);
     })
     .sort((a, b) => b.thread.latestAttentionAt - a.thread.latestAttentionAt);
-  for (const info of candidates.slice(0, limit)) {
+  for (const info of candidates.slice(0, MOVE_TARGET_LIMIT)) {
     const parent = info.parentId === null ? null : forest.infos.get(info.parentId);
     targets.push({
       parentThreadId: info.thread.id,

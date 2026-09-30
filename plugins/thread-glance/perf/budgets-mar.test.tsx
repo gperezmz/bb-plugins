@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The ledger's deterministic rows over the Mark all read list and the plugin
-// server: `npm test` fails when an enforcing one is missed (perf/ledger.ts).
+// server: `npm test` fails when one is missed (perf/ledger.ts).
 import "./harness/render-counter";
 import { afterEach, expect, it } from "vitest";
 import { cleanup } from "@testing-library/react";
@@ -16,7 +16,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("holds the enforcing deterministic budgets of Mark all read and the server", async () => {
+it("holds the deterministic budgets of Mark all read and the server", async () => {
   const figures = emptyFigures();
   figures.markAllRead.jsdom = await runMarkAllRead(markAllReadList());
   cleanup();

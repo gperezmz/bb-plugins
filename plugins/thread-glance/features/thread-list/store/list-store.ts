@@ -27,7 +27,7 @@ import {
   type PreferenceKey,
   type Preferences,
 } from "@/shared/preferences";
-import { trackIdle, type IdleTracker } from "../model/attention";
+import { changedThreads, trackIdle, type IdleTracker } from "../model/attention";
 import { share } from "../model/share";
 import { fetchMissing, pluginData, readJson, writeJson, type DataChange } from "../sync";
 import { startClock, type Clock } from "./clock";
@@ -38,7 +38,7 @@ import { createStore, type StoreApi } from "./vanilla";
 export type DropState = "valid" | "blocked" | "unchanged" | "before" | "after";
 
 /** A confirmation the list asks for before it acts. */
-export interface Confirm {
+interface Confirm {
   title: string;
   description: string;
   confirmLabel: string;
@@ -194,7 +194,7 @@ const UNSET_EDGE: Edge = {
   isIdleReporter: () => false,
 };
 
-export const CLOSED_UI: ListUi = {
+const CLOSED_UI: ListUi = {
   editingId: null,
   detailsId: null,
   moveId: null,
@@ -436,11 +436,15 @@ export function createListStore(): ListStore {
       const first = host === NO_HOST;
       host = shared;
       if (shared.threads !== tracked) {
+        // Only the threads bb changed are read again, so bb answering reads
+        // one by one costs no pass over the whole list.
+        const changed = changedThreads(tracked, shared.threads);
         tracked = shared.threads;
-        fetchMissingRecords();
+        // A thread already listed was checked when it came, or by the last sync.
+        if (changed === null) fetchMissingRecords();
         // When the change was seen, not when it is drawn: the orphaned-failure
         // wait counts from here.
-        tracker = trackIdle(tracker, shared.threads, Date.now());
+        tracker = trackIdle(tracker, shared.threads, Date.now(), changed);
         const unannounced = [...tracker.unannounced];
         if (unannounced.length > 0) {
           whenMounted(() => {

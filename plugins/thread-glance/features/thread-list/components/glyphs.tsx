@@ -26,7 +26,7 @@ const SPIN = "animate-spin motion-reduce:animate-none";
 
 // The unread dot takes bb's timeline accent, the one blue bb has, so unread
 // reads against the neutral list; bb's own list draws it in the grey primary.
-export function UnreadDot({ label, className }: { label?: string; className?: string }) {
+function UnreadDot({ label, className }: { label?: string; className?: string }) {
   return (
     <span
       role={label ? "img" : undefined}
@@ -41,7 +41,7 @@ export function UnreadDot({ label, className }: { label?: string; className?: st
 // it reads as status yet stays fainter than every other glyph. Its tone alone
 // sets its colour, so it keeps 3:1 against the sidebar. Screen readers skip
 // it, so an Idle row announces what it did before.
-export function IdleRing({ className }: { className?: string }) {
+function IdleRing({ className }: { className?: string }) {
   return (
     <span
       aria-hidden

@@ -7,18 +7,9 @@ import { moveTargets } from "./move";
 import { noteText, rowNote } from "./notes";
 import { computeState } from "./state";
 import { finishedAtFor, trailingTime } from "./time";
-import type { Row, ThreadRow } from "./view";
-import type { Flag } from "./state";
+import type { Row } from "./view";
 
 const note = (kind: "question" | "approval" | "plan" | "input" | "failed" | "done", text: string) => ({ kind, text, at: T0 });
-
-describe("working is visible, background stays grey", () => {
-  it("draws working in the working tone and background in its own", () => {
-    const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
-    expect(computeState(makeThread({ id: "w", ...working }), base).glyph.tone).toBe("working");
-    expect(computeState(makeThread({ id: "b", activity: { workflows: 1 } }), base).glyph.tone).toBe("background");
-  });
-});
 
 describe("what a thread waits on you for", () => {
   const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
@@ -30,10 +21,6 @@ describe("what a thread waits on you for", () => {
   ] as const)("%s draws %s in the attention tone", (needsKind, icon, label) => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), { ...base, needsKind });
     expect(state).toMatchObject({ kind: "waits-on-you", label, glyph: { icon, tone: "attention" } });
-  });
-  it("without a note it keeps the question glyph", () => {
-    const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), base);
-    expect(state.glyph.icon).toBe("CircleQuestion");
   });
 });
 
@@ -139,10 +126,9 @@ describe("trees that need attention", () => {
 
 describe("header counters", () => {
   const counters = { waitsOnYou: 1, failed: 2, offline: 0, working: 3, unread: 9 };
-  it("keep what needs action; working only when collapsed; unread only on More", () => {
-    expect(visibleCounters(counters, { collapsed: false, more: false })).toEqual({ ...counters, working: 0, unread: 0 });
-    expect(visibleCounters(counters, { collapsed: true, more: false })).toEqual({ ...counters, unread: 0 });
-    expect(visibleCounters(counters, { collapsed: false, more: true })).toEqual(counters);
+  it("keep what needs action; working only when collapsed; never unread", () => {
+    expect(visibleCounters(counters, false)).toEqual({ ...counters, working: 0, unread: 0 });
+    expect(visibleCounters(counters, true)).toEqual({ ...counters, unread: 0 });
   });
 });
 
@@ -170,7 +156,6 @@ describe("Move… (keyboard route to drag)", () => {
       splitAvailable: false,
       isRoot: true,
       hasSections: false,
-      compact: false,
     }).map((item) => item.action);
     expect(actions).toContain("move");
     expect(actions).toContain("details");

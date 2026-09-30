@@ -1,6 +1,6 @@
 // The list store's one derive step: from everything the list is built from,
-// the list model, with today's pure functions in today's order. Pure: what
-// it remembers between steps goes in and comes out as `memory`.
+// the list model, through the model's pure functions. Pure: what it
+// remembers between steps goes in and comes out as `memory`.
 import type {
   PluginEnvironmentProvider,
   PluginSidebarProject,
@@ -11,13 +11,13 @@ import type {
   PluginSidebarThreadsState,
   PluginProvidersState,
 } from "@get-bb/plugin-sdk/app";
-import type { Stamps, ThreadNotes } from "@/shared/contract";
+import type { Stamps, ThreadNotes } from "@/shared/signals";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { detectTransitions, mergeTargets, snapshotOf, type Snapshot, type Targets } from "../model/expansion";
 import { groupIdForRoot } from "../model/groups";
 import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
-import { READ_FIELDS, share, shareView } from "../model/share";
+import { onlyReadFieldsDiffer, share, shareView } from "../model/share";
 import { miniMapsOf, openThreadIdsOf, type MiniMapPane } from "../model/split";
 import { isUnread } from "../model/state";
 import { buildForest, type Forest, type ThreadInfo } from "../model/trees";
@@ -285,7 +285,7 @@ export function derive(given: ListInputs, memory: DeriveMemory, at: number): Der
  * The threads still pending read: a thread leaves once bb reports it read,
  * reports attention newer than when it was marked, or no longer lists it.
  */
-export function settlePendingRead(
+function settlePendingRead(
   pending: ReadonlyMap<string, number>,
   threads: readonly PluginSidebarThread[],
 ): ReadonlyMap<string, number> {
@@ -330,9 +330,7 @@ export function onlyReadChanged(current: ListInputs, next: ListInputs, model: Li
     const [was, thread] = [before.threads[index]!, after.threads[index]!];
     if (was === thread) continue;
     if (was.id !== thread.id || model.forest.infos.get(thread.id)?.unread !== false) return false;
-    const fields = Object.keys(thread) as (keyof PluginSidebarThread)[];
-    if (fields.length !== Object.keys(was).length) return false;
-    if (!fields.every((field) => READ_FIELDS.has(field) || Object.is(thread[field], was[field]))) return false;
+    if (!onlyReadFieldsDiffer(was, thread)) return false;
     if (isUnread(thread, context)) return false;
   }
   return true;

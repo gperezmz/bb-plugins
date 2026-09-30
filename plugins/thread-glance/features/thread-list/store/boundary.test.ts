@@ -1,7 +1,6 @@
 // The list store's boundary: code outside store/ reaches it only through its
-// selector hooks (./hooks) and its command API (./api), so its internals can
-// change, onto zustand's vanilla store for one, without touching anything
-// outside it.
+// selector hooks (./hooks) and its command API (./api), so nothing outside
+// depends on how the store holds or derives its state.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";

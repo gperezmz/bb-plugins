@@ -11,6 +11,7 @@ import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type Frame, type ServerState } from "./fake-host";
 import type { ChromiumFigures, InpFigure, MarkAllReadTiming } from "./chromium-figures";
+import { attribute, type CpuProfile, type ScriptAttribution } from "./cpu-profile";
 import { markAllReadConfirm } from "./list-screen";
 
 type PluginApp = Awaited<ReturnType<typeof loadWithFakeHost>>;
@@ -25,6 +26,16 @@ const click = (target: Element) => userEvent.click(target);
 
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Unmounts a list whose fake plugin server lives on, and stops the server
+ * publishing to it: a server still holding the window keeps its container,
+ * which B13 would read as a node the list left behind.
+ */
+function unmount(slot: RenderedSlot, server: ServerState): void {
+  slot.unmount();
+  server.detach(slot);
+}
 
 /** Resolves once the frame after the current one has been drawn. */
 async function drawn(): Promise<void> {
@@ -79,6 +90,17 @@ async function detachedNodes(): Promise<number> {
 async function scriptMs(): Promise<number> {
   const { metrics } = (await devtools.perfCdp("Performance.getMetrics")) as { metrics: { name: string; value: number }[] };
   return (metrics.find((metric) => metric.name === "ScriptDuration")?.value ?? 0) * 1000;
+}
+
+async function startProfile(): Promise<void> {
+  await devtools.perfCdp("Profiler.enable");
+  await devtools.perfCdp("Profiler.setSamplingInterval", { interval: 100 });
+  await devtools.perfCdp("Profiler.start");
+}
+
+async function stopProfile(): Promise<CpuProfile> {
+  const { profile } = (await devtools.perfCdp("Profiler.stop")) as { profile: CpuProfile };
+  return profile;
 }
 
 async function throttle(rate: number): Promise<void> {
@@ -226,7 +248,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   const rowsMounted = anchors(slot.container).length;
 
   // Remount to first row drawn.
-  slot.unmount();
+  unmount(slot, server);
   cleanup();
   await quiet();
   const again = await mountTimed(list, SIDEBAR, { host, app, server });
@@ -324,7 +346,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
     let firstHeap = 0;
     for (let cycle = 0; cycle <= 10; cycle += 1) {
       if (cycle > 0) {
-        slot.unmount();
+        unmount(slot, server);
         cleanup();
         await quiet();
         slot = (await mountTimed(list, SIDEBAR, { host, app, server })).slot;
@@ -344,7 +366,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   host.updateProps({ isCompactViewport: false });
   await quiet();
   const far = await dragFar(slot);
-  slot.unmount();
+  unmount(slot, server);
   cleanup();
 
   const phone = await runPhone(list, timing);
@@ -482,11 +504,14 @@ async function runPhone(list: GeneratedList, timing: boolean): Promise<ChromiumF
   return { rowsMountedClosed, rowHeightPx, openFrameMaxMs, openFrameP95Ms };
 }
 
-/** Mark all read on the MAR list: INP of the click at 1× and 4×, and main-thread time until the last answer. */
+/**
+ * Mark all read on the MAR list: INP of the click at 1× and 4×, and at 1×
+ * whose script ran from the click until the last answer, by a CPU profile.
+ */
 export async function runMarkAllReadChromium(makeList: () => GeneratedList): Promise<MarkAllReadTiming> {
   await page.viewport(DESKTOP.width, DESKTOP.height);
   const inp: InpFigure = { x1: null, x4: null };
-  let mainThreadMs = 0;
+  let script: ScriptAttribution = { pluginMs: 0, fakeHostMs: 0, restMs: 0 };
   for (const rate of [1, 4] as const) {
     localStorage.clear();
     const list = makeList();
@@ -499,18 +524,17 @@ export async function runMarkAllReadChromium(makeList: () => GeneratedList): Pro
     await quiet();
     const confirm = markAllReadConfirm(slot);
     await throttle(rate);
-    const before = await scriptMs();
+    const profiling = rate === 1;
+    if (profiling) await startProfile();
     const value = await interaction(confirm);
     await host.markReadSettled();
     await quiet();
-    const spent = (await scriptMs()) - before;
+    if (profiling) script = attribute(await stopProfile());
     await throttle(1);
-    if (rate === 1) {
-      inp.x1 = value;
-      mainThreadMs = Number(spent.toFixed(1));
-    } else inp.x4 = value;
+    if (rate === 1) inp.x1 = value;
+    else inp.x4 = value;
     slot.unmount();
     cleanup();
   }
-  return { inp, mainThreadMs };
+  return { inp, script };
 }

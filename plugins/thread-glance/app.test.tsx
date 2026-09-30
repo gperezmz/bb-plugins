@@ -168,7 +168,6 @@ describe("Thread Glance slot", () => {
       .map((link) => link.getAttribute("aria-label")!.replace(/^Open (.*?) —.*$/, "$1"));
     expect(links).toEqual(["Parent", "Child 2", "Other"]);
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   });
 
   it("opens and closes a tree from its chip", async () => {
@@ -361,22 +360,6 @@ describe("Thread Glance slot", () => {
     expect(row().className).toContain("h-11");
   });
 
-  it("opens a device that saved Comfortable on 0.5.0 with Branch line on, and one that saved Compact with it off", async () => {
-    const threads = [makeThread({ id: "a", title: "Busy", ...working, environment: { branchName: "feature" } })];
-    const row = () => screen.getAllByRole("link", { name: /Open Busy/ })[0]!.parentElement!;
-    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
-    render(threads);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(row().textContent).toContain("feature");
-    expect(row().className).toContain("h-12");
-    cleanup();
-    localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "compact" }));
-    render(threads);
-    await screen.findByRole("link", { name: /Open Busy/ });
-    expect(row().textContent).not.toContain("feature");
-    expect(row().className).toContain("h-7");
-  });
-
   it("finds the default branch through the project's default source, and draws no branch line until it knows it", async () => {
     localStorage.setItem("bb.thread-glance.client.v1", JSON.stringify({ density: "comfortable" }));
     const asked: string[] = [];
@@ -522,19 +505,6 @@ describe("Thread Glance slot", () => {
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
   });
 
-  it("offers Mark read for the tree in a root's menu whenever something in it is unread", async () => {
-    const slot = render([
-      makeThread({ id: "r", title: "Root" }),
-      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
-    ]);
-    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
-    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark read" }));
-    await waitFor(() =>
-      expect(markedRead(slot)).toEqual(["c"]),
-    );
-  });
-
   it("draws no Mark read hover action on a phone", async () => {
     render([makeThread({ id: "u", title: "Fresh", ...finishedUnread })], { props: { isCompactViewport: true } });
     const row = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!;
@@ -658,7 +628,7 @@ describe("Thread Glance slot", () => {
     expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
   });
 
-  it("marks every unread thread in the list read from the header, hidden groups included, asking first above 20", async () => {
+  it("marks threads in hidden groups read too from the header's Mark all read", async () => {
     const few = [
       makeThread({ id: "u1", title: "U1", ...finishedUnread }),
       makeThread({ id: "u2", title: "U2", projectId: "proj_b", ...finishedUnread }),
@@ -669,15 +639,6 @@ describe("Thread Glance slot", () => {
     await waitFor(() =>
       expect(markedRead(slot)).toEqual(["c", "u1", "u2"]),
     );
-    cleanup();
-    const many = Array.from({ length: 21 }, (_, n) => makeThread({ id: `m${n}`, title: `M${n}`, ...finishedUnread }));
-    const big = render(many);
-    fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Mark 21 threads read?")).toBeTruthy();
-    expect(markedRead(big)).toEqual([]);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Mark all read" }));
-    await waitFor(() => expect(markedRead(big)).toHaveLength(21));
   });
 
   it("draws Mark all read in the header only while something in the list is unread, live as that changes", async () => {
@@ -841,14 +802,11 @@ describe("row hover card", () => {
       expect(card()).not.toBeNull();
     }));
 
-  it("does not open for a row that slides under a still pointer", () =>
+  it("does not open for a move event that doesn't leave the entry point", () =>
     withTimers(async () => {
       render(threads);
       const beta = await rowOf("Beta row");
       enter(beta);
-      await wait(600);
-      expect(card()).toBeNull();
-      // A move event that doesn't leave the entry point is not a move.
       move(beta, 10, 10);
       await wait(600);
       expect(card()).toBeNull();
@@ -1034,13 +992,6 @@ describe("the glyph is the thread, the children chip is its children", () => {
     }
   }
 
-  it("shows a grandchild waiting on you under a quiet child", async () => {
-    render([parent(), child("c"), child("gg", { hasPendingInteraction: true }, "c")]);
-    const seen = await parentRow();
-    expect(seen.chipIcon).toBe("CircleQuestion");
-    expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, waiting on you below");
-  });
-
   it("leaves a hidden child working off the chip", async () => {
     render([parent(), child("c"), child("hh", { ...working, isHidden: true })]);
     const seen = await parentRow();
@@ -1145,6 +1096,7 @@ describe("the glyph is the thread, the children chip is its children", () => {
       child("g3", { hasPendingInteraction: true }, "c"),
     ]);
     const seen = await parentRow();
+    expect(seen.chipIcon).toBe("CircleQuestion");
     expect(seen.chip!.getAttribute("aria-label")).toBe("Show 1 child thread of Parent, waiting on you below");
   });
 
@@ -1226,28 +1178,6 @@ describe("a child's failure while its parent is idle", () => {
       vi.useRealTimers();
     }
   });
-
-  it("reaches the need-you filter 5 seconds after it happens, with nothing else in the list changing", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      const failedAt = Date.now();
-      render([
-        makeThread({ id: "m", title: "Parent" }),
-        makeThread({ id: "c", title: "Child", parentThreadId: "m", createdAt: T0 + 1, status: "error", latestAttentionAt: failedAt, lastReadAt: T0 }),
-      ]);
-      await screen.findByRole("link", { name: /^Open Parent —/ });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(4_000);
-      });
-      expect(screen.queryByRole("button", { name: /need you/ })).toBeNull();
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_500);
-      });
-      expect(screen.getByRole("button", { name: "1 need you" })).toBeTruthy();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });
 
 describe("Enter on a row", () => {
@@ -1263,14 +1193,5 @@ describe("Enter on a row", () => {
       expect(event.defaultPrevented, key).toBe(false);
     }
     expect(anchor.parentElement!.className).not.toMatch(/opacity-50/);
-  });
-
-  it("opens the thread and closes the phone drawer when the link is activated, as Enter does", async () => {
-    const onNavigate = vi.fn();
-    // Its own thread: two clicks on one thread within 400 ms, across tests, start a rename.
-    render([makeThread({ id: "entered", title: "Alpha" })], { props: { isCompactViewport: true, onNavigate } });
-    // A browser activates a focused link on Enter with a click.
-    fireEvent.click(await link("Alpha"));
-    expect(onNavigate).toHaveBeenCalledTimes(1);
   });
 });

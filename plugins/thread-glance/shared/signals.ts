@@ -7,7 +7,7 @@ import type { PreferenceKey } from "./preferences";
 export const stampMapSchema = z.record(z.string(), z.number());
 
 /** Per-thread timestamps (epoch ms), one map per kind, as the list reads them. */
-export const stampsSchema = z.object({
+const stampsSchema = z.object({
   startedAt: stampMapSchema,
   finishedAt: stampMapSchema,
   pendingAt: stampMapSchema,
@@ -20,7 +20,7 @@ export type StampKind = keyof Stamps;
 export const STAMP_KINDS: readonly StampKind[] = ["startedAt", "finishedAt", "pendingAt", "seenAt", "idleAt"];
 
 /** One thread's stamps, whichever kinds it has. */
-export const threadStampsSchema = z.object({
+const threadStampsSchema = z.object({
   startedAt: z.optional(z.number()),
   finishedAt: z.optional(z.number()),
   pendingAt: z.optional(z.number()),
@@ -52,13 +52,13 @@ export const threadNotesSchema = z.object({
 export type ThreadNotes = z.infer<typeof threadNotesSchema>;
 
 /** A thread record: one thread's stamps and notes, null where it has none. */
-export const threadRecordSchema = z.object({
+const threadRecordSchema = z.object({
   stamps: z.nullable(threadStampsSchema),
   notes: z.nullable(threadNotesSchema),
 });
 export type ThreadRecord = z.infer<typeof threadRecordSchema>;
 /** Thread records by thread id. */
-export const threadRecordsSchema = z.record(z.string(), threadRecordSchema);
+const threadRecordsSchema = z.record(z.string(), threadRecordSchema);
 
 /**
  * Where a window stands in the server's changes: the server's epoch, new on

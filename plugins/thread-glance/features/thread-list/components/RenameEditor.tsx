@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const SETTLE_MS = 600;
 
-export function isEditable(target: EventTarget | null): boolean {
+function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "INPUT";
 }

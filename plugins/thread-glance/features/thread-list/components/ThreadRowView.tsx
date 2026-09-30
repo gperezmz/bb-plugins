@@ -9,11 +9,12 @@ import { isPinnedThread } from "../model/groups";
 import { hasTwoLines } from "../model/heights";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
+import { itemKeyOf } from "../model/layout-items";
 import { noteText } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS } from "../model/time";
 import type { ThreadRow } from "../model/view";
-import { itemKeyOf, useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
+import { useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
 import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { useOverlays } from "./overlays/overlays";
 import { menuTriggerProps } from "./overlays/trigger";
@@ -323,7 +324,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
                 dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
               )}
             >
-              {/* Plain text: mention pills lost the truncation fight. */}
+              {/* Plain text rather than mention pills, so the title truncates. */}
               {thread.displayTitle}
             </span>
             {/* On a two-line row the badge stays on the title's line, not centred beside both. */}

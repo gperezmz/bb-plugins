@@ -1,9 +1,10 @@
-// The generated lists the harness measures: the audit's shape, from a seed.
+// The generated lists the harness measures, from a seed: two-thirds roots,
+// children in fives, 4 projects and 5% unread.
 import { describe, expect, it } from "vitest";
 import { generateList, markAllReadList, viewOf, type GeneratedListKind } from "@/features/thread-list/testing/fixtures";
 
 describe("generateList", () => {
-  it.each([50, 300, 1_500])("gives %i threads in the audit's shape", (size) => {
+  it.each([50, 300, 1_500])("gives %i threads, two-thirds roots with children in fives over 4 projects, 5% unread", (size) => {
     const { threads, projects } = generateList({ size });
     const roots = threads.filter((thread) => thread.parentThreadId === null);
     const children = threads.length - roots.length;

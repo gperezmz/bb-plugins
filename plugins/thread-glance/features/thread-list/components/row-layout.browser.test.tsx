@@ -8,7 +8,7 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
-import type { ThreadNotes } from "@/shared/contract";
+import type { ThreadNotes } from "@/shared/signals";
 import { createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 import { layoutItems } from "../model/layout-items";
 import { attachedListStores } from "../store/api";

@@ -3,7 +3,7 @@
 // when its part changes. Components read the store through these alone.
 import { createContext, useContext, useRef, useSyncExternalStore } from "react";
 import type { PluginEnvironmentProvider, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
-import type { Stamps, ThreadNotes } from "@/shared/contract";
+import type { Stamps, ThreadNotes } from "@/shared/signals";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import type { Commands } from "../commands/commands";
 import { EMPTY_COUNTERS, type Counters } from "../model/counters";
@@ -71,10 +71,6 @@ export function useListStatus(): "error" | "loading" | "ready" {
 
 export function useFocusedThreadId(): string | null {
   return useListSelect((state) => state.inputs.activeThreadId);
-}
-
-export function useEditingId(): string | null {
-  return useListSelect((state) => state.ui.editingId);
 }
 
 export function useHasNoThreads(): boolean {
@@ -159,8 +155,6 @@ export function useHoldsFocus(groupId: string): boolean {
 
 // ——— Rows ———
 
-export { itemKeyOf };
-
 /** A thread row's own part of the list: focus, rename, split mini-map, draft, row status, and its menu or drag. */
 export interface RowState {
   focused: boolean;
@@ -176,19 +170,15 @@ export interface RowState {
 
 const ROW_STATE_KEYS: readonly (keyof RowState)[] = ["focused", "editing", "miniMap", "hasDraft", "rowStatus", "menuOpen", "dragging"];
 
-// One object per row while its parts hold, so the row's selector keeps its identity.
-const rowStates = new WeakMap<ListStore, Map<string, RowState>>();
-
 function sameRow(place: RowPlace, groupId: string, rowKey: string): boolean {
   return place.groupId === groupId && place.rowKey === rowKey;
 }
 
+/** A thread row's state, one object while its parts hold. */
 export function useRow(threadId: string, groupId: string, rowKey: string): RowState {
   const store = useHandle().store;
-  const key = itemKeyOf(groupId, rowKey);
+  const last = useRef<RowState | null>(null);
   return useSelect(store, (state) => {
-    let cache = rowStates.get(store);
-    if (cache === undefined) rowStates.set(store, (cache = new Map()));
     const { ui, inputs } = state;
     const menu = ui.menu;
     const next: RowState = {
@@ -200,9 +190,9 @@ export function useRow(threadId: string, groupId: string, rowKey: string): RowSt
       menuOpen: menu !== null && menu.kind !== "group" && sameRow(menu, groupId, rowKey),
       dragging: ui.dragging?.kind === "thread" && sameRow(ui.dragging, groupId, rowKey),
     };
-    const last = cache.get(key);
-    if (last !== undefined && ROW_STATE_KEYS.every((name) => last[name] === next[name])) return last;
-    cache.set(key, next);
+    const previous = last.current;
+    if (previous !== null && ROW_STATE_KEYS.every((name) => previous[name] === next[name])) return previous;
+    last.current = next;
     return next;
   });
 }
@@ -217,9 +207,6 @@ export function useEnvironmentMenuOpen(groupId: string, rowKey: string): boolean
   return useListSelect((state) => state.ui.menu?.kind === "environment" && sameRow(state.ui.menu, groupId, rowKey));
 }
 
-
-const keptCache = new WeakMap<ListStore, KeptRows>();
-
 /**
  * The focused thread's rows, the row being renamed, the row holding keyboard
  * focus, the row a menu, context menu or hover card is open from, and the
@@ -227,6 +214,7 @@ const keptCache = new WeakMap<ListStore, KeptRows>();
  */
 export function useKeptRows(): KeptRows {
   const store = useHandle().store;
+  const last = useRef<KeptRows | null>(null);
   return useSelect(store, (state) => {
     const { ui, inputs } = state;
     const threadIds = [inputs.activeThreadId, ui.editingId].filter((id): id is string => id !== null);
@@ -236,10 +224,10 @@ export function useKeptRows(): KeptRows {
     if (ui.menu !== null && ui.menu.kind !== "group") itemKeys.push(itemKeyOf(ui.menu.groupId, ui.menu.rowKey));
     if (ui.card !== null) itemKeys.push(itemKeyOf(ui.card.groupId, ui.card.rowKey));
     if (ui.dragging?.kind === "thread") itemKeys.push(itemKeyOf(ui.dragging.groupId, ui.dragging.rowKey));
-    const last = keptCache.get(store);
-    if (last !== undefined && last.threadIds.join(" ") === threadIds.join(" ") && last.itemKeys.join(" ") === itemKeys.join(" ")) return last;
+    const previous = last.current;
+    if (previous !== null && previous.threadIds.join(" ") === threadIds.join(" ") && previous.itemKeys.join(" ") === itemKeys.join(" ")) return previous;
     const next = { threadIds, itemKeys };
-    keptCache.set(store, next);
+    last.current = next;
     return next;
   });
 }

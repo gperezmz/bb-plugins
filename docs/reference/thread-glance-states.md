@@ -53,7 +53,7 @@ Left to right, from the title to the row's end. On hover the children chip stays
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 
-From the keyboard, Enter on a row opens its thread, as a click does, and the context-menu key or Shift+F10 opens its context menu. No key drags a row or a group header: **Move…** in the row's menu moves a thread under another, and **Customize list** reorders groups.
+What the menu, the keyboard and dragging do is in [menus, dragging and keys](thread-glance-actions.md).
 
 On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
 
@@ -110,7 +110,7 @@ The first row of the list, above every group:
 |---|---|
 | `Projects`, `Sections` or `Machines` | Names the current grouping. Clicking it does nothing: grouping changes in the settings panel |
 | `N need you` | The [need-you filter](../explanation/thread-glance-attention.md#the-need-you-filter), N being the thread trees that need attention in every group, hidden ones included. Absent when N is 0 |
-| Mark all read | Marks every unread thread in the list read: in every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. Above 20 threads it asks first. Absent while no such thread is unread. A group's menu has the same **Mark all read** for the threads in that group, absent on the same terms |
+| Mark all read | [Marks every unread thread in the list read](thread-glance-actions.md#marking-threads-read), asking first above 20. Absent while no thread in the list is unread |
 | Settings (sliders) | Opens the [settings panel](thread-glance-preferences.md#the-settings-panel) under the header, and closes it |
 
 ## Group header counters

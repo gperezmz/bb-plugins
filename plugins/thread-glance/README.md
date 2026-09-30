@@ -11,6 +11,7 @@ Then choose **Thread Glance** under Settings → Appearance → Sidebar.
 - [First run](../../docs/tutorials/thread-glance-first-run.md)
 - [Switch the sidebar between Thread Glance and bb's list](../../docs/how-to/thread-glance-switch-sidebar.md)
 - [States and glyphs](../../docs/reference/thread-glance-states.md)
+- [Menus, dragging and keys](../../docs/reference/thread-glance-actions.md)
 - [Preferences and `bb thread-glance prefs`](../../docs/reference/thread-glance-preferences.md)
 - [What "Needs attention" means](../../docs/explanation/thread-glance-attention.md)
 - [Develop](../../docs/how-to/develop-plugins.md)

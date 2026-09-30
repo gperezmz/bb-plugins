@@ -120,7 +120,7 @@ export interface Scenario {
   seenAt?: Record<string, number>;
   scheduled?: Record<string, number>;
   draftIds?: string[];
-  notes?: Record<string, import("@/shared/contract").ThreadNotes>;
+  notes?: Record<string, import("@/shared/signals").ThreadNotes>;
   now?: number;
   startedAt?: Record<string, number>;
   pendingAt?: Record<string, number>;
@@ -228,7 +228,7 @@ export interface GeneratedList {
   unreadIds: string[];
 }
 
-export interface GenerateOptions {
+interface GenerateOptions {
   /** Threads in the list. */
   size: number;
   kind?: GeneratedListKind;
@@ -252,7 +252,7 @@ function seededRandom(seed: number): () => number {
 }
 
 /** Projects of a generated list: one group each under project grouping. */
-export const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((index) =>
+const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((index) =>
   makeProject(`proj_${index}`, `Project ${index}`),
 );
 

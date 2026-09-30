@@ -7,7 +7,7 @@ import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { itemKeyOf } from "../model/layout-items";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
-import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
+import { isPinnedThread, moveGroup, ORDER_PREFERENCE } from "../model/groups";
 import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import {
   markAllReadPlan,
@@ -29,7 +29,6 @@ const PLUGIN_ID = "thread-glance";
 /** Read requests bb is sent at once by a bulk read. */
 const READS_IN_FLIGHT = 6;
 
-
 /** What is being dragged, as dnd-kit's active data carries it. */
 export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group"; groupId: string };
 
@@ -39,7 +38,6 @@ export interface Commands {
   /** Starts renaming a thread, or stops with null. */
   editTitle(threadId: string | null): void;
   renameThread(threadId: string, title: string): Promise<void>;
-  openDetails(threadId: string): void;
   closeDetails(): void;
   /** Opens the thread the details dialog shows. */
   openFromDetails(threadId: string): void;
@@ -290,7 +288,6 @@ export function createCommands(store: ListStore): Commands {
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
     renameThread: (threadId, title) => edge().actions.rename(threadId, title),
-    openDetails: (threadId) => store.setUi({ detailsId: threadId }),
     closeDetails: () => store.setUi({ detailsId: null }),
     openFromDetails(threadId) {
       store.setUi({ detailsId: null });
@@ -419,7 +416,7 @@ export function createCommands(store: ListStore): Commands {
       if (thread === undefined) return;
       const { sdk } = edge();
       const move = async () => {
-        if (parentThreadId !== null && (thread.pinnedAt !== null || thread.isPinned)) {
+        if (parentThreadId !== null && isPinnedThread(thread)) {
           await sdk.threads.unpin({ threadId: thread.id });
         }
         await sdk.threads.update({ threadId: thread.id, parentThreadId });

@@ -1,21 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import {
-  failedUnread,
-  finishedUnread,
-  forestOf,
-  makeThread,
-  attentionRootIds,
-  rowIds,
-  T0,
-  viewOf,
-  working,
-  type Scenario,
-} from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, attentionRootIds, rowIds, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import { detectTransitions, mergeTargets, pruneTargets, snapshotOf, type Targets } from "./expansion";
 import type { ThreadRow } from "./view";
-import { toggleChip } from "./toggles";
-import { defaultPreferences } from "@/shared/preferences";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -60,7 +47,6 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
     expect(attentionRootIds({ threads })).toEqual(["m"]);
     const root = threadRow(view, "m");
     expect(root.chip).toEqual({ count: 5, expanded: false, flag: "waits-on-you" });
-    expect(root.chip?.flag).toBe("waits-on-you");
     expect(root.info.state.kind).toBe("idle");
     expect(threadRow(view, "c3")).toMatchObject({ depth: 1 });
     expect(rowIds(view, "project:proj_a")).toEqual(["other", "m", "c3", "older:4"]);
@@ -155,7 +141,6 @@ describe("scenario 6: pinned thread while its child is active", () => {
   it("Pinned shows the chip with a working state, and counts working 1", () => {
     const view = viewOf({ threads });
     expect(threadRow(view, "p").chip).toEqual({ count: 2, expanded: false, flag: "working" });
-    expect(threadRow(view, "p").chip?.flag ?? null).toBe("working");
     expect(group(view, "pinned").counters.working).toBe(1);
     expect(view.groups.find((g) => g.descriptor.id === "project:proj_a")?.rows ?? []).toEqual([]);
   });
@@ -409,7 +394,6 @@ describe("hidden threads", () => {
     expect(rowIds(calm, "project:proj_a")).toEqual(["p", "w"]);
     expect(threadRow(calm, "w").nested).toBe(false);
     expect(threadRow(calm, "p").chip).toEqual({ count: 1, expanded: true, flag: null });
-    expect(threadRow(calm, "p").chip?.flag ?? null).toBeNull();
   });
   it("hidden working threads don't count", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "h", parentThreadId: "p", isHidden: true, ...working })];
@@ -541,7 +525,6 @@ describe("transitions", () => {
     const { view, targets } = render({ threads, finishedAt: { c: T0 + 5 } }, null, new Map());
     expect(targets.has("c")).toBe(false);
     expect(threadRow(view, "p").chip).toEqual({ count: 1, expanded: false, flag: "unread" });
-    expect(threadRow(view, "p").chip?.flag ?? null).toBe("unread");
   });
 });
 

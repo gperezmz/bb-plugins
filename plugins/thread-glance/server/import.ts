@@ -12,7 +12,7 @@ export const IMPORT_MARKER_KEY = "migration:import:v1";
 const CLI_TIMEOUT_MS = 5_000;
 const CLI_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 
-export type ImportSource = "local-storage" | "cli" | "none";
+type ImportSource = "local-storage" | "cli" | "none";
 
 export interface ImportResult {
   status: "already-imported" | "imported" | "defaults";
@@ -43,7 +43,7 @@ export interface ImportDeps {
  * unwrapped too, so an app that sends the raw localStorage string or a newer
  * bb that wraps the object still imports.
  */
-export function unwrapBbPreferences(raw: unknown): Record<string, unknown> | null {
+function unwrapBbPreferences(raw: unknown): Record<string, unknown> | null {
   let value = raw;
   if (typeof value === "string") {
     try {
@@ -62,7 +62,7 @@ export function unwrapBbPreferences(raw: unknown): Record<string, unknown> | nul
 }
 
 /** The bb binary: `BB_CLI` when the server has it, else `bb` on PATH. */
-export function bbCliPath(env: NodeJS.ProcessEnv = process.env): string {
+function bbCliPath(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.BB_CLI?.trim();
   return configured ? configured : "bb";
 }

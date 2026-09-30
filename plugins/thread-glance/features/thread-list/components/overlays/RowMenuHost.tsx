@@ -38,7 +38,7 @@ interface ContentProps {
 /** A thread row's menu items and what each does, from the keyboard or the pointer. */
 export function useThreadMenu(row: ThreadRow, onRename: ContentProps["onRename"]) {
   const commands = useCommands();
-  const { compact, sections, hasSections } = useLayout();
+  const { sections, hasSections } = useLayout();
   const splitAvailable = useSplitAvailable();
   const thread = row.info.thread;
   const items = rowMenuItems({
@@ -47,7 +47,6 @@ export function useThreadMenu(row: ThreadRow, onRename: ContentProps["onRename"]
     splitAvailable,
     isRoot: thread.parentThreadId === null,
     hasSections,
-    compact,
   });
   const onAction = (action: RowMenuAction, sectionId?: string | null) => {
     if (action === "rename") onRename(() => commands.editTitle(thread.id));

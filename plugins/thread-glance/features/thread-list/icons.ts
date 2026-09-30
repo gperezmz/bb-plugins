@@ -27,13 +27,10 @@ export const ICONS = {
   customize: "SlidersHorizontal",
   settings: "SlidersHorizontal",
   check: "Check",
-  pullRequest: "GitPullRequest",
   branch: "GitBranch",
   worktree: "FolderGit",
   machine: "Laptop",
   environmentFallback: "Zap",
-  filter: "FilterHorizontal",
-  drag: "DragDropVertical",
   move: "MoveTo",
   open: "ArrowUpRight",
 } as const;

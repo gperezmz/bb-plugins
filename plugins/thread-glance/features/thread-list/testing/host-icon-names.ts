@@ -1,6 +1,7 @@
-// bb's host icon names, the ones experimental_Icon draws, copied from the
-// icon set 0.7.0 vendored from bb. Tests check the list's glyph names against
-// them; the app never imports this file, so it stays out of the bundle.
+// bb's host icon names, the ones experimental_Icon draws: the names in bb's
+// icon registry (its components/ui/icon.tsx and icon-registry.ts). Tests check
+// the list's glyph names against them; the app never imports this file, so it
+// stays out of the bundle.
 
 export const HOST_ICON_NAMES: readonly string[] = [
   "AlertCircle",

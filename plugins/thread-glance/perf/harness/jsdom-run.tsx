@@ -35,7 +35,7 @@ export interface EventFigure {
   threadId: string | null;
 }
 
-export interface MinuteTickFigure {
+interface MinuteTickFigure {
   rendered: number;
   /** Rows whose drawn time or label changes with the minute; -1 when not checked. */
   expected: number;
@@ -47,7 +47,7 @@ export interface MinuteTickFigure {
   hidden: number;
 }
 
-export interface DragFigure {
+interface DragFigure {
   moves: number;
   /** Moves that changed the drop feedback drawn, and the most rows one of them rendered. */
   targetChanges: number;
@@ -61,7 +61,7 @@ export interface DragFigure {
 }
 
 /** Changes of the list store's drop feedback, with dnd-kit's state held constant. */
-export interface DropFeedbackFigure {
+interface DropFeedbackFigure {
   /** Steps that changed the feedback drawn, and the most rows one of them rendered. */
   changes: number;
   maxRowsOnChange: number;
@@ -98,7 +98,7 @@ export interface MarkAllReadFigure {
  * Radix's menu, context menu, hover card and popover roots, by the provider
  * each mounts (Radix names them `<Root>Provider`).
  */
-export const MENU_PRIMITIVES = ["DropdownMenuProvider", "ContextMenuProvider", "HoverCardProvider", "PopoverProvider"] as const;
+const MENU_PRIMITIVES = ["DropdownMenuProvider", "ContextMenuProvider", "HoverCardProvider", "PopoverProvider"] as const;
 
 export interface JsdomOptions {
   /** Timed samples per event; counts come from the first. */
@@ -179,7 +179,7 @@ function drawnFeedback(root: ParentNode): string {
  * bb's updates wait in the list store for an animation frame; the event's
  * own act applies them, as the next frame would.
  */
-export async function measure(
+async function measure(
   run: () => void | Promise<void>,
   { steps = false }: { steps?: boolean } = {},
 ): Promise<{ count: RenderCount; wallMs: number }> {

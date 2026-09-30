@@ -14,9 +14,10 @@ import {
   type ThreadState,
 } from "./state";
 import { attentionFlagsOf, orphanedAt } from "./attention";
+import { isPinnedThread } from "./groups";
 import { compareCreationAscending } from "./sort";
 import { needsKindOf, rowNote, type RowNote } from "./notes";
-import type { ThreadNotes } from "@/shared/contract";
+import type { ThreadNotes } from "@/shared/signals";
 import type { ChildAttention } from "@/shared/preferences";
 
 /** States that keep a child out of an open tree's "N more child threads" fold with `childAttention` `blocked`: working, setting up, background work. */
@@ -63,8 +64,6 @@ export interface Subtree {
   flags: ReadonlySet<Flag>;
   /** Union of the descendants' `chipFlags`, archived ones left out: the chip's state. */
   chipFlags: ReadonlySet<Flag>;
-  /** Visible descendants at any depth. */
-  visibleCount: number;
   /** Visible direct children: the chip's number. */
   childCount: number;
   /** Every visible descendant is quiet, as if no thread were focused, so the subtree adds nothing to see when folded. */
@@ -75,23 +74,14 @@ export interface ThreadTree {
   root: ThreadInfo;
   /** Descendants, depth-first in creation order, hidden ones included. */
   descendants: ThreadInfo[];
-  /** Union of the descendants' Needs attention flags and working (the chip rollup). */
-  descendantFlags: ReadonlySet<Flag>;
   /** The same over root and descendants (rollup, folder rows). */
   flags: ReadonlySet<Flag>;
   /** Needs attention flags over root and descendants: the tree needs attention when any is set. */
   attentionFlags: ReadonlySet<Flag>;
-  /** Visible descendants: the chip's number. */
-  visibleDescendantCount: number;
   /** Largest latestAttentionAt over the tree. */
   latestAttentionAt: number;
   /** Every thread quiet and the active thread not in it. */
   quiet: boolean;
-  /**
-   * The quiet test without the focused thread's exemption. A group's fold reads
-   * this, so opening a thread never changes which roots stay shown.
-   */
-  quietIgnoringOpen: boolean;
   containsActive: boolean;
 }
 
@@ -127,16 +117,12 @@ export interface ForestInputs extends ThreadContext {
   stampsLoaded?: boolean;
 }
 
-function isPinned(thread: PluginSidebarThread): boolean {
-  return thread.pinnedAt !== null || thread.isPinned;
-}
-
 /**
  * The visible loaded ancestor a thread attaches to, or null when it is
  * a root. A pinned thread with no pinned ancestor is a root. Cycles end
  * the walk and make the thread a root.
  */
-export function attachParent(
+function attachParent(
   thread: PluginSidebarThread,
   byId: ReadonlyMap<string, PluginSidebarThread>,
 ): string | null {
@@ -151,11 +137,11 @@ export function attachParent(
     if (parent === undefined) break;
     if (!parent.isHidden) {
       attach ??= parent.id;
-      if (isPinned(parent)) pinnedAncestor = true;
+      if (isPinnedThread(parent)) pinnedAncestor = true;
     }
     parentId = parent.parentThreadId;
   }
-  if (!thread.isHidden && isPinned(thread) && !pinnedAncestor) return null;
+  if (!thread.isHidden && isPinnedThread(thread) && !pinnedAncestor) return null;
   return attach;
 }
 
@@ -248,7 +234,6 @@ export function buildForest(inputs: ForestInputs): Forest {
     const descendants: ThreadInfo[] = [];
     const flags = new Set<Flag>();
     const chipFlags = new Set<Flag>();
-    let visibleCount = 0;
     let childCount = 0;
     let quietIgnoringOpen = true;
     path.add(id);
@@ -265,15 +250,11 @@ export function buildForest(inputs: ForestInputs): Forest {
       for (const flag of below.flags) flags.add(flag);
       for (const flag of below.chipFlags) chipFlags.add(flag);
       if (child.thread.isHidden ? child.attentionFlags.size > 0 : !child.quietIgnoringOpen) quietIgnoringOpen = false;
-      if (!child.thread.isHidden) {
-        visibleCount += 1;
-        childCount += 1;
-      }
-      visibleCount += below.visibleCount;
+      if (!child.thread.isHidden) childCount += 1;
       if (!below.quietIgnoringOpen) quietIgnoringOpen = false;
     }
     path.delete(id);
-    const subtree: Subtree = { descendants, flags, chipFlags, visibleCount, childCount, quietIgnoringOpen };
+    const subtree: Subtree = { descendants, flags, chipFlags, childCount, quietIgnoringOpen };
     subtrees.set(id, subtree);
     return subtree;
   };
@@ -282,10 +263,9 @@ export function buildForest(inputs: ForestInputs): Forest {
   const trees: ThreadTree[] = [];
   const treeOf = new Map<string, ThreadTree>();
   for (const root of roots) {
-    const { descendants, flags: descendantFlags, visibleCount: visibleDescendantCount } = subtrees.get(root.thread.id)!;
+    const { descendants, flags: descendantFlags } = subtrees.get(root.thread.id)!;
     let latestAttentionAt = root.thread.latestAttentionAt;
     let quiet = root.quiet;
-    let quietIgnoringOpen = isQuietThread(root.state, root.unread, false);
     let containsActive = root.isActive;
     const attentionFlags = new Set<Flag>();
     for (const info of descendants) {
@@ -293,13 +273,8 @@ export function buildForest(inputs: ForestInputs): Forest {
       latestAttentionAt = Math.max(latestAttentionAt, info.thread.latestAttentionAt);
       if (info.isActive) containsActive = true;
       if (info.thread.isHidden) {
-        if (info.attentionFlags.size > 0) quiet = quietIgnoringOpen = false;
-      } else {
-        if (!info.quiet) quiet = false;
-        // A child reads as its own fold does, so with `blocked` an unread child
-        // does not keep an old tree out of the group's fold.
-        if (!info.quietIgnoringOpen) quietIgnoringOpen = false;
-      }
+        if (info.attentionFlags.size > 0) quiet = false;
+      } else if (!info.quiet) quiet = false;
     }
     const flags = new Set<Flag>(descendantFlags);
     if (!root.thread.isArchived) {
@@ -312,13 +287,10 @@ export function buildForest(inputs: ForestInputs): Forest {
     const tree: ThreadTree = {
       root,
       descendants,
-      descendantFlags,
       flags,
       attentionFlags,
-      visibleDescendantCount,
       latestAttentionAt,
       quiet: quiet && !containsActive,
-      quietIgnoringOpen,
       containsActive,
     };
     trees.push(tree);
@@ -337,16 +309,12 @@ export function anyUnread(trees: readonly ThreadTree[]): boolean {
   return trees.some((tree) => tree.root.unread || tree.descendants.some((info) => info.unread));
 }
 
-/** Ids from `id` up to (not including) `stopAt`, nearest first. */
-export function ancestorsOf(
-  id: string,
-  infos: ReadonlyMap<string, ThreadInfo>,
-  stopAt: string | null = null,
-): string[] {
+/** Ids of `id`'s ancestors, nearest first. */
+export function ancestorsOf(id: string, infos: ReadonlyMap<string, ThreadInfo>): string[] {
   const path: string[] = [];
   const seen = new Set<string>([id]);
   let current = infos.get(id)?.parentId ?? null;
-  while (current !== null && current !== stopAt && !seen.has(current)) {
+  while (current !== null && !seen.has(current)) {
     path.push(current);
     seen.add(current);
     current = infos.get(current)?.parentId ?? null;

@@ -1,7 +1,7 @@
 // The sidebar list. Its edge feeds bb's hooks and the plugin server into the
 // list store and keeps bb's calls behind one reference; everything drawn
 // below reads its own part of the store and acts through its commands.
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   experimental_Icon as Icon,
   experimental_useProviders as useProviders,
@@ -19,13 +19,12 @@ import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
 import { moveTargets } from "../model/move";
-import { createListStore, type ListStore } from "../store/api";
+import { createListStore } from "../store/api";
 import {
   ListContext,
   useArchived,
@@ -258,7 +257,7 @@ function ArchivedFooter() {
           variant="ghost"
           aria-label="Load more archived threads"
           disabled={archived.isFetchingNextPage}
-          className={cn("h-7 text-xs text-muted-foreground")}
+          className="h-7 text-xs text-muted-foreground"
           onClick={() => void archived.fetchNextPage()}
         >
           {archived.isFetchingNextPage ? "Loading…" : archived.isFetchNextPageError ? "Retry loading" : "Show more"}
@@ -273,17 +272,14 @@ function ListDialogs() {
   const commands = useCommands();
   const ui = useListUi();
   const model = useListModel();
-  const view = model?.view;
-  const customizeItems: CustomizeItem[] = useMemo(() => {
-    if (view === undefined) return [];
-    const all = new Map([...view.groups, ...view.more].map((group) => [group.descriptor.id, group]));
-    return view.order.flatMap((id) => {
-      const group = all.get(id);
-      if (group === undefined) return [];
-      return [{ id, label: group.descriptor.label, hidden: group.hidden, hideable: id !== "pinned" }];
-    });
-  }, [view]);
   if (model === null) return null;
+  const view = model.view;
+  const all = new Map([...view.groups, ...view.more].map((group) => [group.descriptor.id, group]));
+  const customizeItems: CustomizeItem[] = view.order.flatMap((id) => {
+    const group = all.get(id);
+    if (group === undefined) return [];
+    return [{ id, label: group.descriptor.label, hidden: group.hidden, hideable: id !== "pinned" }];
+  });
   const forest = model.forest;
   const details = ui.detailsId === null ? null : (forest.infos.get(ui.detailsId) ?? null);
   const moveThread = ui.moveId === null ? null : (model.byId.get(ui.moveId) ?? null);
@@ -308,7 +304,7 @@ function ListDialogs() {
         onConfirm={commands.confirm}
       />
       {details !== null ? (
-        <DetailsDialog open title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
+        <DetailsDialog title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
           <ThreadDetails
             info={details}
             showPullRequest
@@ -321,7 +317,6 @@ function ListDialogs() {
       ) : null}
       {moveThread !== null ? (
         <MoveDialog
-          open
           title={moveThread.displayTitle}
           targets={moveTargets(moveThread.id, forest, ui.moveQuery)}
           query={ui.moveQuery}

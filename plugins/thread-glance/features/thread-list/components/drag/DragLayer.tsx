@@ -32,7 +32,7 @@ interface DragApi {
 const DragContext = createContext<DragApi | null>(null);
 
 /** What a press on `target` would drag, read off the row or header it is in. */
-export function pressedAt(target: EventTarget | null): { dragged: Dragged; dragging: Dragging } | null {
+function pressedAt(target: EventTarget | null): { dragged: Dragged; dragging: Dragging } | null {
   if (!(target instanceof Element)) return null;
   if (target.closest("[data-no-drag], input, textarea") !== null) return null;
   const row = target.closest<HTMLElement>("[data-drag-thread]");
@@ -99,31 +99,25 @@ export function DragLayer({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const onDragStart = useCallback(
-    () => {
-      const start = pressed.current;
-      if (start === null) return;
-      commands.dragStart(start.dragging);
-      // Auto-scroll brings rows under a still pointer: they are targets too.
-      document.addEventListener("scroll", aim, true);
-      aim();
-    },
-    [aim, commands],
-  );
-  const finish = useCallback(
-    (drop: boolean) => {
-      document.removeEventListener("scroll", aim, true);
-      const start = pressed.current;
-      if (drop && start !== null) aim();
-      pressed.current = null;
-      if (!drop || start === null) {
-        commands.dragCancel();
-        return;
-      }
-      commands.drop(start.dragged, pointed.current.target, pointed.current.placement);
-    },
-    [aim, commands],
-  );
+  const onDragStart = () => {
+    const start = pressed.current;
+    if (start === null) return;
+    commands.dragStart(start.dragging);
+    // Auto-scroll brings rows under a still pointer: they are targets too.
+    document.addEventListener("scroll", aim, true);
+    aim();
+  };
+  const finish = (drop: boolean) => {
+    document.removeEventListener("scroll", aim, true);
+    const start = pressed.current;
+    if (drop && start !== null) aim();
+    pressed.current = null;
+    if (!drop || start === null) {
+      commands.dragCancel();
+      return;
+    }
+    commands.drop(start.dragged, pointed.current.target, pointed.current.placement);
+  };
 
   return (
     <DndContext

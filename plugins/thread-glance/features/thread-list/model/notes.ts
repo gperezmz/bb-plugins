@@ -1,7 +1,7 @@
 // One-line reasons under blocked and failed rows. Pure:
 // the server stores what it saw; this decides what a row says.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import type { Note, ThreadNotes } from "@/shared/contract";
+import type { Note, ThreadNotes } from "@/shared/signals";
 import { normalizeQueued, normalizeStatus, type NeedsKind } from "./state";
 
 export interface RowNote {

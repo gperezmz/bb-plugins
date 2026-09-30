@@ -22,7 +22,7 @@ export type StateKind =
 export type Flag = "waits-on-you" | "unread-failed" | "queue-failed" | "offline" | "working" | "unread";
 
 /** Flags, most urgent first. */
-export const FLAG_ORDER: readonly Flag[] = [
+const FLAG_ORDER: readonly Flag[] = [
   "waits-on-you",
   "unread-failed",
   "queue-failed",
@@ -83,7 +83,7 @@ export function normalizeStatus(thread: Pick<PluginSidebarThread, "status">): st
 }
 
 /** `runtimeStatus`, with unknown values read as the thread's status. */
-export function normalizeRuntime(
+function normalizeRuntime(
   thread: Pick<PluginSidebarThread, "status" | "runtimeStatus">,
 ): string {
   return KNOWN_RUNTIME.has(thread.runtimeStatus) ? thread.runtimeStatus : normalizeStatus(thread);
@@ -98,11 +98,11 @@ export function normalizeQueued(
     : "none";
 }
 
-export function isWorking(thread: Pick<PluginSidebarThread, "status" | "runtimeStatus">): boolean {
+function isWorking(thread: Pick<PluginSidebarThread, "status" | "runtimeStatus">): boolean {
   return WORKING_RUNTIME.has(normalizeRuntime(thread));
 }
 
-export function isOffline(thread: Pick<PluginSidebarThread, "status" | "runtimeStatus">): boolean {
+function isOffline(thread: Pick<PluginSidebarThread, "status" | "runtimeStatus">): boolean {
   return normalizeRuntime(thread) === "waiting-for-host";
 }
 
@@ -125,7 +125,7 @@ export interface ThreadContext {
 }
 
 /** Whether the thread is shown in a visible pane: the active one or another split pane. */
-export function isOpenThread(thread: Pick<PluginSidebarThread, "id">, context: ThreadContext): boolean {
+function isOpenThread(thread: Pick<PluginSidebarThread, "id">, context: ThreadContext): boolean {
   return thread.id === context.activeThreadId || (context.openThreadIds?.has(thread.id) ?? false);
 }
 
@@ -152,7 +152,7 @@ export function isUnread(thread: PluginSidebarThread, context: ThreadContext): b
  * Shown read while its read request is pending, until bb reports attention
  * newer than when it was marked (a new turn finishing).
  */
-export function isPendingRead(thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt">, context: ThreadContext): boolean {
+function isPendingRead(thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt">, context: ThreadContext): boolean {
   const markedAt = context.pendingRead?.get(thread.id);
   return markedAt !== undefined && thread.latestAttentionAt <= markedAt;
 }

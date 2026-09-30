@@ -4,7 +4,7 @@ import type { Flag } from "./state";
 import { formatDateTime } from "./details";
 import type { OrganizationMode } from "@/shared/preferences";
 
-export function stateText(row: ThreadRow, pluginLabel: string | null): string {
+function stateText(row: ThreadRow, pluginLabel: string | null): string {
   const state = row.info.state;
   const base = pluginLabel ?? state.label;
   if (state.kind === "scheduled" && state.sendAt !== null) {

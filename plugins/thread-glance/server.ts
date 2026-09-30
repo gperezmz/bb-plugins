@@ -1,10 +1,12 @@
 // Thread Glance server: preferences, first-run import, thread stamps, thread
 // notes and scheduled sends, served to the app through `sync` and realtime.
-// The app imports the contract's types from shared/contract.ts.
+// The app imports the RPC contract's types from shared/contract.ts and the
+// signals' from shared/signals.ts.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { en } from "zod/locales";
 import { config } from "zod/mini";
-import { CHANNELS, rpcContract } from "./shared/contract";
+import { rpcContract } from "./shared/contract";
+import { CHANNELS } from "./shared/signals";
 import { createCli } from "./server/cli";
 import { resolveFailureText } from "./server/failures";
 import { createBbCliReader, importPreferences } from "./server/import";

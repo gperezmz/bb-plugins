@@ -12,15 +12,12 @@ const CLOSE_DELAY = 100;
 /** Keys that move focus, so the focus they bring may show a card. */
 const FOCUS_KEYS = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 
-/** The row a card would open for, and the element it anchors to. */
-export type CardTarget = OpenCard;
-
 export interface RowCardController {
   pointerEnter(event: { clientX: number; clientY: number }): void;
-  pointerMove(target: CardTarget, event: { clientX: number; clientY: number; pointerType: string }): void;
+  pointerMove(target: OpenCard, event: { clientX: number; clientY: number; pointerType: string }): void;
   pointerLeave(): void;
   press(): void;
-  focus(target: CardTarget): void;
+  focus(target: OpenCard): void;
   blur(): void;
   /** The pointer is on the card: it stays open. */
   holdOpen(): void;
@@ -32,7 +29,7 @@ export interface RowCardController {
 }
 
 /** The card may open for `threadId` now: see the rules above. */
-export function cardAllowed(store: ListStore, threadId: string): boolean {
+function cardAllowed(store: ListStore, threadId: string): boolean {
   const { ui, inputs, layout } = store.getState();
   return !layout.compact && ui.menu === null && ui.editingId === null && ui.renaming === null && inputs.activeThreadId !== threadId;
 }
@@ -70,7 +67,7 @@ export function createRowCard(store: ListStore): RowCardController {
       store.setUi({ card: null });
     }, CLOSE_DELAY);
   };
-  const schedule = (target: CardTarget) => {
+  const schedule = (target: OpenCard) => {
     const open = store.getState().ui.card;
     if (open !== null && open.groupId === target.groupId && open.rowKey === target.rowKey) {
       keepOpen();

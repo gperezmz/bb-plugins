@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScheduledSignal } from "../shared/contract";
+import type { ScheduledSignal } from "../shared/signals";
 import { createScheduledTracker, type QueuedRow } from "./scheduled";
 
 function setup(start = 1_000) {

@@ -18,7 +18,7 @@ import {
   THREADS_GROUP_ID,
   type GroupDescriptor,
 } from "./groups";
-import { addCounters, countTrees, EMPTY_COUNTERS, type Counters } from "./counters";
+import { addCounters, countTrees, EMPTY_COUNTERS, visibleCounters, type Counters } from "./counters";
 import { comparePinned, effectiveSortField, makeComparator, type SortKey } from "./sort";
 import { isSettledTree, type SettleInputs } from "./settled";
 import { isOffDefaultBranch } from "./branches";
@@ -28,7 +28,7 @@ import type { RowNote } from "./notes";
 import { rowTime, type TrailingTime } from "./time";
 
 /** How many quiet children stay in an expanded tree. */
-export const KEEP_QUIET_CHILDREN = 3;
+const KEEP_QUIET_CHILDREN = 3;
 
 /** The children chip: the count of a parent's direct children and its chevron, after the state of its descendants. */
 export interface Chip {
@@ -73,7 +73,8 @@ export interface ThreadRow {
   branchLine: string | null;
   /**
    * Where the pull request badge goes: after the branch on the second line,
-   * on the title line (a root off its default branch, as before), or nowhere.
+   * on the title line for a root off its default branch without a branch
+   * line, or nowhere.
    */
   pullRequest: "second-line" | "title" | null;
   /** The machine's name, beside the age, for a thread off bb's primary machine. */
@@ -130,13 +131,15 @@ export interface SettledRow {
 }
 
 /** The rows a tree and its folders draw. */
-export type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
+type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
 
 export type Row = TreeRow | SettledRow;
 
 export interface GroupView {
   descriptor: GroupDescriptor;
   counters: Counters;
+  /** The counters its header draws (see `visibleCounters`). */
+  headerCounters: Counters;
   /** What the user stored. */
   userCollapsed: boolean;
   /**
@@ -243,7 +246,6 @@ function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolea
   if (info.parentId === null && chip !== null) return context.forest.treeOf.get(info.thread.id)?.quiet ?? info.quiet;
   return info.quiet;
 }
-
 
 /** A root draws its harness when it differs from bb's default; a child, when it differs from its parent thread's. */
 function drawsHarness(context: Context, info: ThreadInfo): boolean {
@@ -487,7 +489,7 @@ function focusedPath(context: Context, tree: ThreadTree, focusedId: string): Thr
 }
 
 /** Whether a thread in the tree needs attention: it stays drawn when its group is collapsed. */
-export function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
+function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
   return tree.attentionFlags.size > 0;
 }
 
@@ -514,7 +516,6 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   const opened =
     activeId !== null && context.targets.has(activeId) && trees.some((tree) => tree.containsActive);
   const collapsed = userCollapsed && !opened;
-  const isPinned = descriptor.id === PINNED_GROUP_ID;
 
   const sorted = sortTrees(context, descriptor, trees);
 
@@ -542,6 +543,7 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   return {
     descriptor,
     counters,
+    headerCounters: visibleCounters(counters, collapsed),
     userCollapsed,
     collapsed,
     hidden,
@@ -565,9 +567,11 @@ function sortTrees(context: Context, descriptor: GroupDescriptor, trees: readonl
 /** A group under the need-you filter: its header, and its trees that need attention, whatever its collapse. */
 function needYouGroup(context: Context, descriptor: GroupDescriptor, trees: ThreadTree[], hidden: boolean): GroupView {
   const sorted = sortTrees(context, descriptor, trees);
+  const counters = countTrees(trees);
   return {
     descriptor,
-    counters: countTrees(trees),
+    counters,
+    headerCounters: visibleCounters(counters, false),
     userCollapsed: isGroupCollapsed(descriptor, context.prefs),
     collapsed: false,
     hidden,
@@ -665,9 +669,4 @@ export function buildListView(inputs: ViewInputs): ListView {
   }
 
   return { groups, more, moreCounters, order, needYouCount: countNeedYou(forest), hasUnread: anyUnread(forest.trees) };
-}
-
-/** Every thread row in visual order, for keyboard and windowing. */
-export function threadRowsOf(rows: readonly Row[]): ThreadRow[] {
-  return rows.filter((row): row is ThreadRow => row.type === "thread");
 }

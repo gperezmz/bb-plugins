@@ -6,8 +6,6 @@
 // holds the two together.
 import type { Density } from "../model/heights";
 
-export type { Density };
-
 /** A thread row, one line or two (a note's or a branch line's). */
 export const THREAD_ROW_HEIGHT: Record<Density, { one: string; two: string }> = {
   compact: { one: "h-7 max-md:pointer-coarse:h-9", two: "h-11 max-md:pointer-coarse:h-12" },

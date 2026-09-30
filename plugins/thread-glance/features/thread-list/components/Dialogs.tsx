@@ -193,18 +193,16 @@ export function ConfirmDialog({
 }
 
 export function DetailsDialog({
-  open,
   title,
   onOpenChange,
   children,
 }: {
-  open: boolean;
   title: string;
   onOpenChange(open: boolean): void;
   children: React.ReactNode;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="sr-only">{title}</DialogTitle>
@@ -220,7 +218,6 @@ export function DetailsDialog({
  * level, from the keyboard. Arrow keys pick, Enter moves.
  */
 export function MoveDialog({
-  open,
   title,
   targets,
   query,
@@ -228,7 +225,6 @@ export function MoveDialog({
   onOpenChange,
   onMove,
 }: {
-  open: boolean;
   title: string;
   targets: readonly { parentThreadId: string | null; label: string; detail: string | null }[];
   query: string;
@@ -237,14 +233,14 @@ export function MoveDialog({
   onMove(parentThreadId: string | null): void;
 }) {
   const [index, setIndex] = useState(0);
-  useEffect(() => setIndex(0), [query, open]);
+  useEffect(() => setIndex(0), [query]);
   const choose = (target: (typeof targets)[number] | undefined) => {
     if (target === undefined) return;
     onMove(target.parentThreadId);
     onOpenChange(false);
   };
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Move “{title}”</DialogTitle>

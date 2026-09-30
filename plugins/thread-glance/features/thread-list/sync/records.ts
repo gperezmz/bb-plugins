@@ -14,7 +14,7 @@ import {
 } from "@/shared/signals";
 
 /** Thread records as the list reads them: stamps by kind, notes by thread. */
-export interface Records {
+interface Records {
   stamps: Stamps;
   notes: Readonly<Record<string, ThreadNotes>>;
 }
@@ -28,7 +28,7 @@ export interface HeldRecords extends Records {
   asked: ReadonlySet<string>;
 }
 
-export const NO_STAMPS: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
+const NO_STAMPS: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
 
 export const NO_RECORDS: HeldRecords = {
   stamps: NO_STAMPS,

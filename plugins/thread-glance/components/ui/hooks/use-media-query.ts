@@ -1,8 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-export const DARK_COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)";
-export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
 type MediaQueryRef = {
   mql: MediaQueryList;
   subscribe: (notify: () => void) => () => void;
@@ -43,14 +40,14 @@ function createMediaQueryRef(query: string): MediaQueryRef | null {
   return ref;
 }
 
-export function subscribeMediaQuery(
+function subscribeMediaQuery(
   query: string,
   notify: () => void,
 ): () => void {
   return createMediaQueryRef(query)?.subscribe(notify) ?? (() => {});
 }
 
-export function getMediaQuerySnapshot(query: string): boolean {
+function getMediaQuerySnapshot(query: string): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return (
     mediaQueryCache.get(query)?.mql.matches ?? window.matchMedia(query).matches
@@ -65,6 +62,3 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
-export function usePrefersReducedMotion(): boolean {
-  return useMediaQuery(REDUCED_MOTION_QUERY);
-}

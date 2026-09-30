@@ -30,7 +30,7 @@ export function toggleChip(row: ThreadRow, prefs: Preferences, forest: Forest): 
 }
 
 /** Opens a parent's children, as its chip does, from an auto-reveal's fold. */
-export function openChildren(parentId: string, prefs: Preferences): ToggleOutcome {
+function openChildren(parentId: string, prefs: Preferences): ToggleOutcome {
   return { patch: { expandedChildren: [...without(prefs.expandedChildren, parentId), parentId] }, drop: null };
 }
 

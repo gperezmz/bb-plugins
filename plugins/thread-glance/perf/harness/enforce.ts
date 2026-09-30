@@ -1,4 +1,4 @@
-// What fails a run: an enforcing ledger row missed, among the rows that run
+// What fails a run: a ledger row missed, among the rows that run
 // takes. `npm test` takes the deterministic rows (and the deterministic part
 // of a row of kind "both"); `npm run perf` takes every row.
 import type { Figures } from "../figures";

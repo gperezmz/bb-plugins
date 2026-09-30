@@ -1,13 +1,12 @@
 // A top-level group: its sticky header with counters, always mounted, and
 // the rows the list has mounted, each run of the rest standing in as one
 // spacer of their height that carries their threads for bb's navigation.
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import type { Counters } from "../model/counters";
-import { EMPTY_COUNTERS, visibleCounters } from "../model/counters";
 import { canRename, type GroupDescriptor } from "../model/groups";
 import { PHONE_QUERY, rowHeight } from "../model/heights";
 import { drawsEmpty } from "../model/layout-items";
@@ -174,14 +173,6 @@ export const GroupSection = memo(function GroupSection({
   const group = useGroup(groupId);
   const { density } = useLayout();
   const phone = useMediaQuery(PHONE_QUERY);
-  // What the header draws of the counters: a count the rows already show
-  // changing leaves the header as it is.
-  const shown = visibleCounters(group?.counters ?? EMPTY_COUNTERS, { collapsed: group?.collapsed ?? false, more: false });
-  const counters = useMemo(
-    () => shown,
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one object per drawn value
-    [shown.waitsOnYou, shown.failed, shown.offline, shown.working, shown.unread],
-  );
   if (group === undefined) return null;
   const descriptor = group.descriptor;
   const content: ReactNode[] = [];
@@ -209,7 +200,7 @@ export const GroupSection = memo(function GroupSection({
       data-sidebar-section-id={descriptor.kind === "section" ? descriptor.entityId ?? undefined : undefined}
       className={cn("relative flex w-full min-w-0 flex-col", gapAbove && GROUP_GAP[density])}
     >
-      <GroupHeader descriptor={descriptor} counters={counters} collapsed={group.collapsed} inOverflow={inOverflow} />
+      <GroupHeader descriptor={descriptor} counters={group.headerCounters} collapsed={group.collapsed} inOverflow={inOverflow} />
       {drawsEmpty(group) ? (
         <p className="h-6 py-1 pl-8 text-xs text-muted-foreground">
           No threads

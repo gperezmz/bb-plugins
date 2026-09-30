@@ -24,7 +24,7 @@ export interface ArchivedThreads {
 }
 
 /** Longest a full `sync` waits for the startup listing; past it, archived records go out with the rest. */
-export const LISTING_WAIT_MS = 3_000;
+const LISTING_WAIT_MS = 3_000;
 
 export function createArchivedThreads(): ArchivedThreads {
   const archived = new Set<string>();

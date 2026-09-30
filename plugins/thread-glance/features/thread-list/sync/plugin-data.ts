@@ -5,7 +5,7 @@
 // window; lists created in it read it and follow its changes.
 import type { PluginRealtimeConnectionState, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import type { PreferenceKey, Preferences } from "@/shared/preferences";
-import type { RecordsSignal, StampKind, SyncPoint, ThreadRecord } from "@/shared/contract";
+import type { RecordsSignal, StampKind, SyncPoint, ThreadRecord } from "@/shared/signals";
 import type { DefaultBranches, SystemFacts } from "../store/api";
 import {
   applyFetched,
@@ -37,7 +37,7 @@ export interface SyncAnswer extends SyncPoint {
  * followed since, `failed` when the last `sync` failed (what is held, or the
  * browser's mirror of the preferences, stands in).
  */
-export type DataStatus = "waiting" | "current" | "failed";
+type DataStatus = "waiting" | "current" | "failed";
 
 export interface PluginData {
   records: HeldRecords;
@@ -60,7 +60,7 @@ export type DataChange =
   | { kind: "preference"; key: PreferenceKey; value: unknown }
   | { kind: "facts" };
 
-export const UNKNOWN_SYSTEM: SystemFacts = { defaultProviderId: null, primaryHostId: null };
+const UNKNOWN_SYSTEM: SystemFacts = { defaultProviderId: null, primaryHostId: null };
 
 const INITIAL: PluginData = {
   records: NO_RECORDS,

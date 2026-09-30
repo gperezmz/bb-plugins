@@ -91,7 +91,7 @@ function render() {
       rpc: server.handlers as never,
       sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
-      // Every pull request state that once settled a thread, or kept one out.
+      // Pull request states, which do not settle a thread.
       sidebarPullRequests: {
         s: { number: 1, title: "Open", url: "https://example.test/1", state: "open", attention: "none" },
         r: { number: 2, title: "Merged", url: "https://example.test/2", state: "merged", attention: "merged" },

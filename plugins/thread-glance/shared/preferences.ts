@@ -6,12 +6,12 @@ const MAX_ITEMS = 10_000;
 const idSchema = z.string().check(z.minLength(1), z.maxLength(1024));
 const idListSchema = z.array(idSchema).check(z.maxLength(MAX_ITEMS));
 
-export const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
-export const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
-export const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
-export const harnessIconSchema = z.enum(["muted", "colour"]);
-export const settleAfterSchema = z.enum(["12h", "1d", "3d", "1w", "never"]);
-export const childAttentionSchema = z.enum(["blocked", "everything"]);
+const organizationModeSchema = z.enum(["project", "chronological", "machine"]);
+const sortFieldSchema = z.enum(["updated", "created", "alpha", "none"]);
+const sortDirectionSchema = z.enum(["default", "ascending", "descending"]);
+const harnessIconSchema = z.enum(["muted", "colour"]);
+const settleAfterSchema = z.enum(["12h", "1d", "3d", "1w", "never"]);
+const childAttentionSchema = z.enum(["blocked", "everything"]);
 
 const hiddenGroupsSchema = z.pipe(
   z
@@ -206,10 +206,10 @@ export function coercePreferences(raw: unknown): Preferences {
 }
 
 /**
- * Maps bb's own thread-list preferences onto ours for the first-run import
- *. `environmentGrouping: "auto"` becomes off, `collapsedThreads` is
- * skipped because it means the inverse of `expandedChildren`, and invalid values
- * are skipped. Returns only the keys that parsed.
+ * Maps bb's own thread-list preferences onto ours for the first-run import.
+ * `environmentGrouping: "auto"` becomes off, `collapsedThreads` is skipped
+ * because it means the inverse of `expandedChildren`, and invalid values are
+ * skipped. Returns only the keys that parsed.
  */
 export function mapBbPreferences(raw: unknown): Partial<Preferences> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -231,7 +231,7 @@ export function mapBbPreferences(raw: unknown): Partial<Preferences> {
  * where 0.5.0 or earlier saved the density, whose Comfortable drew branch
  * lines, so it is read off the density there.
  */
-export const clientPreferencesSchema = z.pipe(
+const clientPreferencesSchema = z.pipe(
   z.object({
     density: z.catch(z.enum(["compact", "comfortable"]), "compact"),
     branchLine: z.catch(z.optional(z.boolean()), undefined),

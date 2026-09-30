@@ -24,6 +24,8 @@ export default defineConfig({
   },
   test: {
     root,
+    // One file at a time: timings taken side by side would slow each other.
+    maxWorkers: 1,
     include: ["perf/**/*.browser.perf.tsx"],
     setupFiles: ["perf/harness/production-act.ts"],
     testTimeout: 3_600_000,

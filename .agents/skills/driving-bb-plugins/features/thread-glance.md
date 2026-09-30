@@ -29,7 +29,8 @@ window at once; Density and Branch line are kept per browser.
 - `drag`: dragging rows and group headers with the pointer, and bb's
   drag-to-split out of the sidebar.
 - `keys`: Enter on a row, the context-menu key, and bb's thread shortcuts.
-- `timings`: the budget ledger's rows a real drive measures (B11, B12, B13).
+- `timings`: the budget ledger's rows a real drive measures (B2, B4, B10–B13,
+  B15, B16, B20–B24, B26–B29).
 
 ## How to get to it (user POV)
 
@@ -191,6 +192,9 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `rowsWithMiniMap` names both rows.
 - **Keys** (`keys`): `thread-glance enter <title>` focuses the row's link and
   presses Enter, which opens the thread (`current` is its title).
+  `thread-glance key-drag <title>` (or `--group <label>`) presses Space,
+  arrows and Enter on the focused row or header: `dragStarted` and `changed`
+  are false, since no key starts a drag, and `ariaDisabled` is empty.
   `thread-glance shortcut <n> [--scroll <px>]` presses bb's web jump key,
   Control+Shift+n, and `thread-glance shortcut next|previous --from <title>`
   Control+Shift+] or [ from that thread's; `same` is true when bb opened the
@@ -204,6 +208,10 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   from the screen reader's "…" with Enter. `thread-glance drawer` opens a
   thread, which closes the drawer, and reports the rows mounted closed and
   open again.
+  `thread-glance mark-all-read-home --mobile` reads the home screen's
+  `Recent` list around Mark all read: `recentUnreadAfter` and
+  `recentUnreadAfter6s` name the threads bb's own list still shows unread
+  with no reload, `recentUnreadAfterReload` after one.
 - **Timings** (`timings`): `thread-glance perf-open [--parent <title>]` takes
   Event Timing's INP at 1× and 4× CPU for opening the largest group and the
   named parent's children chip (B11); `thread-glance perf-return` leaves for
@@ -213,6 +221,24 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   list (`bb settings ui set sidebar.threadListProvider '"__builtin__"'`)
   tells the plugin's share. Seed about 50 threads first, with a tree of 8
   children or more, and run nothing else on the machine while they time.
+  `perf-open --advance <h>` also times the largest `Settled (N)` fold (B11).
+  `thread-glance bundle` prints the served `app.js` raw and gzip (B2).
+  `thread-glance perf-scroll` prints `mountToFirstRowMs`, from `app.js`
+  arriving to the first row drawn, and `scrollMountMs`, 100 rows of
+  scrolling to a row in view (B16); with `--mobile`, `rowsMountedClosed`,
+  `fitIn480` and `openFrameMaxMs` (B15). `thread-glance perf-event --actions
+  <file> --until <regex>` profiles the page from the actions until a row's
+  name matches: `script.bursts[]` is Thread Glance's script per burst (B4).
+  `thread-glance perf-mark-all-read [--throttle 4]` confirms Mark all read
+  with `inpMs`, `rowsUnreadInFirstFrame` (B27), `script.pluginMs` from the
+  click to `lastAnswerMs` (B28), and `requests` with each endpoint's
+  `peakInFlight` (B29); it needs more than 20 unread threads.
+  `thread-glance event-requests --actions <file> --until <regex>` opens 3
+  windows and prints each one's requests from the actions on (B26).
+- **Archived** (`list`): with `prefs set showArchived true`, each group
+  also lists archived threads, 50 at a time behind `button "Load more
+  archived threads"`; any verb with `--all-archived` presses it until it is
+  gone on each load, so every archived thread is drawn.
 - **Machine offline**: `drive-bb-plugins machine offline` under a `--hold`
   turn shows `Reconnecting` for bb's 30 s grace, then `Failed`; a `bb thread
   tell` while offline shows `Message waiting to send`. `machine online`

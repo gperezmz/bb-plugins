@@ -195,11 +195,6 @@ if (existing === undefined) {
   };
 }
 
-/** Whether react-dom reached this hook: false when it loaded first. */
-export function counterAttached(): boolean {
-  return (global.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers.size ?? 0) > 0 || roots.size > 0;
-}
-
 /** Counts every commit from now until `stopCounting`. */
 export function startCounting(): void {
   counting = emptyCount();
@@ -212,9 +207,6 @@ export function stopCounting(): RenderCount {
 }
 
 /** Resolves after the next commit of any root. */
-export function nextCommit(): Promise<void> {
-  return new Promise((resolve) => commitListeners.push(resolve));
-}
 
 /**
  * Fibers in every mounted root whose component carries one of `names` as its
@@ -235,6 +227,3 @@ export function countComponents(names: readonly string[]): Record<string, number
 }
 
 /** Forgets roots that have unmounted, so `countComponents` sees only live ones. */
-export function forgetRoots(): void {
-  roots.clear();
-}

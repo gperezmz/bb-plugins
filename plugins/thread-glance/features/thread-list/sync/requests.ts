@@ -16,7 +16,7 @@ let syncing = false;
 let again = false;
 
 /** Whether this device already got an answer to `importPreferences`, whatever it said. */
-export function importAnswered(): boolean {
+function importAnswered(): boolean {
   return readJson(IMPORT_ANSWER_STORAGE_KEY) !== null;
 }
 
@@ -33,7 +33,7 @@ export type SyncReason = "current" | "missed";
  * got an import answer. One at a time: a call while one runs joins it, or,
  * for what realtime dropped, runs once more after it.
  */
-export async function requestSync(rpc: Rpc, reason: SyncReason = "current"): Promise<void> {
+export async function requestSync(rpc: Rpc, reason: SyncReason): Promise<void> {
   if (syncing) {
     if (reason === "missed") again = true;
     return;

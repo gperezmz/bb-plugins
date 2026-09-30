@@ -13,6 +13,8 @@ export default defineConfig({
   },
   test: {
     root,
+    // One file at a time: timings taken side by side would slow each other.
+    maxWorkers: 1,
     setupFiles: ["features/thread-list/testing/jsdom-viewport.ts"],
     projects: [
       {

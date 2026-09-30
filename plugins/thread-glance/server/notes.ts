@@ -3,18 +3,18 @@
 // written through. The store publishes nothing: its caller publishes the
 // thread records a change touched.
 import type { BbPluginApi, PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
-import { NOTE_MAX_LENGTH, noteSchema, type Note, type ThreadNotes } from "../shared/contract";
+import { NOTE_MAX_LENGTH, noteSchema, type Note, type ThreadNotes } from "../shared/signals";
 import { createSerialQueue } from "./serial";
 import type { ThreadTable } from "./thread-table";
 
 /** The KV rows notes lived in up to 0.7.0, `note:<threadId>`. */
-export const NOTE_KEY_PREFIX = "note:";
+const NOTE_KEY_PREFIX = "note:";
 /** bb's builtin plugin that lets any provider ask a multiple-choice question. */
-export const ASK_USER_QUESTION_PLUGIN_ID = "ask-user-question";
+const ASK_USER_QUESTION_PLUGIN_ID = "ask-user-question";
 const FALLBACK_PENDING_TEXT = "Needs your input";
 
 type PendingInteraction = PluginThreadEventPayloads["interaction.pending"]["interaction"];
-export type NoteSlot = keyof ThreadNotes;
+type NoteSlot = keyof ThreadNotes;
 export type NoteDraft = Pick<Note, "kind" | "text">;
 
 export function noteKvKey(threadId: string): string {

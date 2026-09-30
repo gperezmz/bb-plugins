@@ -14,7 +14,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** Every thread bb has, hidden ones included, and which of them are archived. */
-export interface ThreadIds {
+interface ThreadIds {
   all: Set<string>;
   archived: Set<string>;
 }
@@ -25,7 +25,7 @@ export interface ThreadIds {
  * It lists active and archived threads separately and pages each with
  * limit and offset, since the list is capped per call.
  */
-export async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<ThreadIds> {
+async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<ThreadIds> {
   const ids: ThreadIds = { all: new Set(), archived: new Set() };
   for (const archived of [false, true]) {
     for (let offset = 0; ; offset += THREAD_PAGE_SIZE) {
@@ -57,7 +57,7 @@ export interface PrunableStore {
  * Drops per-thread rows of threads bb no longer has, and tells `archived`
  * which threads bb holds as archived. Logs and returns on failure.
  */
-export async function pruneDeletedThreads(
+async function pruneDeletedThreads(
   bb: Pick<BbPluginApi, "sdk" | "log">,
   stores: readonly PrunableStore[],
   archived: ArchivedThreads,
@@ -83,7 +83,7 @@ export async function pruneDeletedThreads(
 }
 
 /** Seeds the scheduled-send tracker from every queued row in bb. */
-export function seedScheduled(
+function seedScheduled(
   bb: Pick<BbPluginApi, "sdk" | "log">,
   tracker: ScheduledTracker,
   signal?: AbortSignal,

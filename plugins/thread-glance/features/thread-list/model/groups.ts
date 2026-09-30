@@ -7,7 +7,7 @@ import type {
 } from "@get-bb/plugin-sdk/app";
 import type { OrganizationMode, Preferences } from "@/shared/preferences";
 
-export type GroupKind = "pinned" | "threads" | "project" | "section" | "machine";
+type GroupKind = "pinned" | "threads" | "project" | "section" | "machine";
 
 export interface GroupDescriptor {
   /** `pinned`, `threads`, `project:<id>`, `section:<id>` or `machine:<id>`. */
@@ -37,7 +37,7 @@ export function isPinnedThread(thread: PluginSidebarThread): boolean {
 }
 
 /** The personal project the loose Threads bucket stands for in project mode. */
-export function personalProject(
+function personalProject(
   projects: readonly PluginSidebarProject[],
 ): PluginSidebarProject | null {
   return projects.find((project) => project.isPersonal) ?? null;

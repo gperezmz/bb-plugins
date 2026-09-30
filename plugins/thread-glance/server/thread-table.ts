@@ -3,7 +3,7 @@
 // and `notes` one JSON value, whose shape varies. Both lived in KV rows up to
 // 0.7.0, and `moveFromKv` brings those over once.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { STAMP_KINDS, type StampKind, type ThreadStamps } from "../shared/contract";
+import { STAMP_KINDS, type StampKind, type ThreadStamps } from "../shared/signals";
 
 type Database = ReturnType<BbPluginApi["storage"]["database"]>;
 type Kv = BbPluginApi["storage"]["kv"];

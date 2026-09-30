@@ -11,7 +11,7 @@ export function childAttentionFor(everyChild: boolean): ChildAttention {
   return everyChild ? "everything" : "blocked";
 }
 
-/** Choosing a field starts it in its own direction, as a saved `default` did. */
+/** Choosing a field starts it in its own direction, which is how a saved `default` reads. */
 export function sortFieldPatch(field: Exclude<SortField, "none">): Partial<Preferences> {
   return { chronologicalSort: field, sortDirection: naturalDirection(field) };
 }

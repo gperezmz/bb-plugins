@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { defaultPreferences, type Preferences } from "@/shared/preferences";
+import { type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
 import { createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
 

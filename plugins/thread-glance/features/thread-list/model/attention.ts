@@ -6,7 +6,7 @@ import type { ChildAttention } from "@/shared/preferences";
 import { computeState, type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
-export const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
+const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
   "waits-on-you",
   "unread-failed",
   "queue-failed",
@@ -43,7 +43,7 @@ export function isParentIdle(parent: ParentThread): boolean {
 }
 
 /** When the thread's failure happened: an error bumps `latestAttentionAt`, a failed queue only `updatedAt`. */
-export function failureTime(
+function failureTime(
   thread: Pick<PluginSidebarThread, "latestAttentionAt" | "updatedAt">,
   flags: ReadonlySet<Flag>,
 ): number {
@@ -75,17 +75,6 @@ export function orphanedAt(
   return Math.max(failedAt, parent.idleSince ?? 0) + ORPHAN_WAIT_MS;
 }
 
-/** Whether a child's failure is an orphaned failure at `now` (see `orphanedAt`). */
-export function isOrphanedFailure(
-  thread: Pick<PluginSidebarThread, "latestAttentionAt" | "updatedAt">,
-  flags: ReadonlySet<Flag>,
-  parent: ParentThread,
-  now: number,
-): boolean {
-  const at = orphanedAt(thread, flags, parent);
-  return at !== null && at <= now;
-}
-
 /** Which threads the list last saw busy, and when each last went from busy to idle. */
 export interface IdleTracker {
   busy: ReadonlySet<string>;
@@ -106,30 +95,64 @@ export interface IdleTracker {
  * going offline. Every other change to idle, such as background work ending
  * or a queued message being cancelled, is not.
  */
-export function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
+function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
   return wasWorking && now.kind !== "offline";
 }
 
+/** Each thread object's busy state: bb hands over an unchanged thread as the same object. */
+const busyStates = new WeakMap<PluginSidebarThread, ThreadState>();
+
 function stateOf(thread: PluginSidebarThread): ThreadState {
-  return computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
+  let state = busyStates.get(thread);
+  if (state === undefined) {
+    state = computeState(thread, { unread: false, hasDraft: false, scheduledAt: null, now: 0 });
+    busyStates.set(thread, state);
+  }
+  return state;
+}
+
+/**
+ * The threads of `after` that are not the object `before` held in their
+ * place, or null when a thread was added, removed or moved.
+ */
+export function changedThreads<T extends { id: string }>(before: readonly T[] | null, after: readonly T[]): T[] | null {
+  if (before === null || before.length !== after.length) return null;
+  const changed: T[] = [];
+  for (let index = 0; index < after.length; index += 1) {
+    const [was, thread] = [before[index]!, after[index]!];
+    if (was === thread) continue;
+    if (was.id !== thread.id) return null;
+    changed.push(thread);
+  }
+  return changed;
 }
 
 /**
  * The tracker after the list sees `threads` at `at`: a thread busy before and
  * idle now went idle at `at`. A thread first seen idle has no time here; the
- * server's `idleAt` holds it.
+ * server's `idleAt` holds it. With `changed` (see `changedThreads`), only
+ * those threads are read, since every other one is as `previous` saw it.
  */
-export function trackIdle(previous: IdleTracker | null, threads: readonly PluginSidebarThread[], at: number): IdleTracker {
-  const busy = new Set<string>();
-  const working = new Set<string>();
-  const idleSince: Record<string, number> = {};
+export function trackIdle(
+  previous: IdleTracker | null,
+  threads: readonly PluginSidebarThread[],
+  at: number,
+  changed: readonly PluginSidebarThread[] | null = null,
+): IdleTracker {
+  const partial = previous !== null && changed !== null;
+  const busy = new Set<string>(partial ? previous.busy : []);
+  const working = new Set<string>(partial ? previous.working : []);
+  const idleSince: Record<string, number> = partial ? { ...previous.idleSince } : {};
   const unannounced: string[] = [];
-  for (const thread of threads) {
+  for (const thread of partial ? changed : threads) {
     const id = thread.id;
     const state = stateOf(thread);
+    busy.delete(id);
+    working.delete(id);
     if (!isParentIdle({ thread, state })) {
       busy.add(id);
       if (state.kind === "working") working.add(id);
+      delete idleSince[id];
     } else if (previous?.busy.has(id)) {
       idleSince[id] = at;
       if (!isAnnounced(previous.working.has(id), state)) unannounced.push(id);
