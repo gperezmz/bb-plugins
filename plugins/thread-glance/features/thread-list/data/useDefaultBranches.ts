@@ -1,25 +1,24 @@
 // Each project's default branch, looked up once per list through the
-// machine of the project's default source.
+// machine of the project's default source, and fed into the list store.
 //
-// Debt: the answers are kept in component state, with no refresh, because
+// Debt: the answers are kept for the list's life, with no refresh, because
 // the SDK offers no cached query for a project's branches. It clears when
 // the SDK does, or when a default branch changing mid-session matters.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 import { defaultSourceHostId } from "../model/branches";
+import type { ListStore } from "../store/api";
 
-/** Project id → default branch; undefined while unknown, null when the lookup found none. */
-export type DefaultBranches = ReadonlyMap<string, string | null>;
-
-export function useDefaultBranches(projectIds: readonly string[]): DefaultBranches {
+/** Looks up the default branch of each project in `projectIds` not asked about yet. */
+export function useDefaultBranches(store: ListStore, projectIds: readonly string[]): void {
   const sdk = useSdk();
-  const [branches, setBranches] = useState<DefaultBranches>(() => new Map());
   const requested = useRef(new Set<string>());
   useEffect(() => {
     for (const projectId of projectIds) {
       if (requested.current.has(projectId)) continue;
       requested.current.add(projectId);
-      const settle = (branch: string | null) => setBranches((current) => new Map(current).set(projectId, branch));
+      const settle = (branch: string | null) =>
+        store.feed(({ defaultBranches }) => ({ defaultBranches: new Map(defaultBranches).set(projectId, branch) }));
       sdk.projects
         .get({ projectId })
         .then(async (project) => {
@@ -30,6 +29,5 @@ export function useDefaultBranches(projectIds: readonly string[]): DefaultBranch
         })
         .then(settle, () => settle(null));
     }
-  }, [projectIds, sdk]);
-  return branches;
+  }, [projectIds, sdk, store]);
 }

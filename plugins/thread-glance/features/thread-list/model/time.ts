@@ -1,5 +1,7 @@
 // Row age and working timer. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { Stamps } from "@/shared/contract";
+import type { ThreadInfo } from "./trees";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -62,6 +64,21 @@ export function trailingTime(
   }
   const text = formatDuration(now - lastFinishedAt(thread, stamps.finishedAt));
   return { text, label: text === "now" ? "Finished just now" : `Finished ${text} ago`, kind: "age" };
+}
+
+/**
+ * What a row's Trailing slot shows: nothing for an archived thread, the wait
+ * for one that waits on you, else `trailingTime`.
+ */
+export function rowTime(
+  info: Pick<ThreadInfo, "thread" | "state" | "flags">,
+  stamps: Pick<Stamps, "startedAt" | "finishedAt" | "pendingAt">,
+  now: number,
+): TrailingTime | null {
+  const thread = info.thread;
+  if (thread.archivedAt !== null || thread.isArchived) return null;
+  const waitingSince = info.state.kind === "waits-on-you" ? (stamps.pendingAt[thread.id] ?? null) : undefined;
+  return trailingTime(thread, info.flags.has("working"), stamps, now, waitingSince);
 }
 
 /**

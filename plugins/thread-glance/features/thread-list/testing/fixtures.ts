@@ -119,6 +119,7 @@ export interface Scenario {
   notes?: Record<string, import("@/shared/contract").ThreadNotes>;
   now?: number;
   startedAt?: Record<string, number>;
+  pendingAt?: Record<string, number>;
   /** When this list saw each thread go idle, and the server's idleAt stamps. */
   idleSince?: Record<string, number>;
   idleAt?: Record<string, number>;
@@ -169,6 +170,7 @@ export function viewOf(scenario: Scenario): ListView {
     primaryHostId: scenario.primaryHostId === undefined ? "host_1" : scenario.primaryHostId,
     showBranchLine: scenario.showBranchLine ?? false,
     needYouOnly: scenario.needYouOnly ?? false,
+    pendingAt: scenario.pendingAt ?? {},
     defaultBranchOf: (thread) =>
       scenario.defaultBranches === undefined ? "main" : scenario.defaultBranches[thread.projectId],
   });

@@ -3,19 +3,7 @@
 import { experimental_ProviderIcon as ProviderIcon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import type { HarnessIcon } from "@/shared/preferences";
-
-export interface ProviderDisplay {
-  id: string;
-  name: string;
-  /** The roster entry, when the provider is known and has a logo. */
-  provider: {
-    id: string;
-    logoUrl?: string | null;
-    icon?: { glyph: string } | null;
-    strings?: { iconTint?: { light: string; dark: string } | null } | null;
-  } | null;
-  mark: string;
-}
+import type { ProviderDisplay } from "../model/provider-mark";
 
 export function ProviderBadge({
   display,

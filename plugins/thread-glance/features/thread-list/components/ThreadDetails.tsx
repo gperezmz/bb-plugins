@@ -1,5 +1,5 @@
 // Hover card and details dialog content.
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { experimental_Icon as Icon, experimental_useSidebarThreadPullRequest as usePullRequest } from "@get-bb/plugin-sdk/app";
 import { Button } from "@/components/ui/button";
 import type { ThreadInfo } from "../model/trees";
@@ -7,7 +7,8 @@ import { childSummary, descendantsOf, formatDateTime, sinceLabel } from "../mode
 import { lastReply } from "../model/notes";
 import { finishedAtFor, stateSince } from "../model/time";
 import { ICONS } from "../icons";
-import { ListLiveContext, type ModelInfo, type RowController } from "./controller";
+import type { Commands, ModelInfo } from "../commands/commands";
+import { useCommands, useLayout, useNotesOf, useNow, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
 import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
@@ -21,20 +22,20 @@ function Line({ label, title, children }: { label: string; title?: string; child
   );
 }
 
-function useModel(controller: RowController, info: ThreadInfo): ModelInfo | null | "loading" {
+function useModel(commands: Commands, info: ThreadInfo): ModelInfo | null | "loading" {
   const [model, setModel] = useState<ModelInfo | null | "loading">("loading");
   const { id, status } = info.thread;
   useEffect(() => {
     let cancelled = false;
     setModel("loading");
-    controller.loadModel(id, status).then(
+    commands.loadModel(id, status).then(
       (result) => !cancelled && setModel(result),
       () => !cancelled && setModel(null),
     );
     return () => {
       cancelled = true;
     };
-  }, [controller, id, status]);
+  }, [commands, id, status]);
   return model;
 }
 
@@ -55,25 +56,29 @@ export interface DetailsActions {
 
 export function ThreadDetails({
   info,
-  controller,
   showPullRequest,
   actions,
 }: {
   info: ThreadInfo;
-  controller: RowController;
   showPullRequest: boolean;
   /** Present in the details dialog, absent in the hover card. */
   actions?: DetailsActions;
 }) {
   const thread = info.thread;
-  const provider = controller.provider(thread.providerId);
-  const model = useModel(controller, info);
-  const live = useContext(ListLiveContext);
-  const since = sinceLabel(info.state.kind, stateSince(info.state.kind, thread.id, live.stamps, live.now));
-  const children = childSummary(descendantsOf(live.treeOf(thread.id), thread.id));
+  const commands = useCommands();
+  const provider = useProviderDisplay(thread.providerId);
+  const { harnessIcon } = useLayout();
+  // What changes with every event: only an open card or dialog reads it.
+  const stamps = useStampMaps();
+  const now = useNow();
+  const notes = useNotesOf(thread.id);
+  const tree = useTreeOf(thread.id);
+  const model = useModel(commands, info);
+  const since = sinceLabel(info.state.kind, stateSince(info.state.kind, thread.id, stamps, now));
+  const children = childSummary(descendantsOf(tree, thread.id));
   const environment = thread.environment;
-  const finished = finishedAtFor(thread, live.stamps.finishedAt);
-  const reply = lastReply(live.notes[thread.id]);
+  const finished = finishedAtFor(thread, stamps.finishedAt);
+  const reply = lastReply(notes);
   return (
     <div className="flex flex-col gap-2 text-xs">
       <p className="text-sm font-medium leading-snug break-words">{thread.displayTitle}</p>
@@ -93,7 +98,7 @@ export function ThreadDetails({
       <dl className="flex flex-col gap-1">
         <Line label="Harness">
           <span className="inline-flex items-center gap-1.5">
-            <ProviderBadge display={provider} mode={controller.harnessIcon} />
+            <ProviderBadge display={provider} mode={harnessIcon} />
             {provider.name}
           </span>
         </Line>

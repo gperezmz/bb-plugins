@@ -25,6 +25,7 @@ import { isOffDefaultBranch } from "./branches";
 import { mostUrgent, type Flag } from "./state";
 import type { Targets } from "./expansion";
 import type { RowNote } from "./notes";
+import { rowTime, type TrailingTime } from "./time";
 
 /** How many quiet children stay in an expanded tree. */
 export const KEEP_QUIET_CHILDREN = 3;
@@ -84,6 +85,11 @@ export interface ThreadRow {
   /** "In project X" when the thread is outside its tree's group. */
   crossGroupLabel: string | null;
   projectId: string;
+  /**
+   * What the Trailing slot shows at rest, as of the list's clock: a row
+   * whose text and label hold across a minute keeps its object.
+   */
+  time: TrailingTime | null;
 }
 
 /** The fold inside an open tree: "N more child threads". */
@@ -183,6 +189,8 @@ export interface ViewInputs {
    * its trees that need attention, and a group with none is left out.
    */
   needYouOnly: boolean;
+  /** The server's `pendingAt` stamps, for a waiting row's time; none when absent. */
+  pendingAt?: Readonly<Record<string, number>>;
 }
 
 interface Context extends ViewInputs {
@@ -198,6 +206,8 @@ interface Context extends ViewInputs {
   activePath: ReadonlySet<string>;
   projectNames: ReadonlyMap<string, string>;
   sectionNames: ReadonlyMap<string, string>;
+  /** The stamps a row's time reads. */
+  timeStamps: Parameters<typeof rowTime>[1];
 }
 
 function titleOf(context: Context, id: string | null): string | null {
@@ -281,6 +291,7 @@ function threadRow(
     hiddenBadge: info.thread.isHidden,
     crossGroupLabel: crossGroupLabel(context, info, root),
     projectId: info.thread.projectId,
+    time: rowTime(info, context.timeStamps, context.settle.now),
   };
 }
 
@@ -592,6 +603,11 @@ export function buildListView(inputs: ViewInputs): ListView {
     activePath,
     projectNames: new Map(inputs.projects.map((project) => [project.id, project.name])),
     sectionNames: new Map(inputs.sections.map((section) => [section.id, section.name])),
+    timeStamps: {
+      startedAt: inputs.settle.startedAt,
+      finishedAt: inputs.settle.finishedAt,
+      pendingAt: inputs.pendingAt ?? {},
+    },
   };
 
   const byGroup = new Map<string, ThreadTree[]>();

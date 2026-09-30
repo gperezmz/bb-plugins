@@ -1,11 +1,10 @@
 // One thread row. It draws the row the model built and reports what
 // the user did; every decision was made before it rendered.
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   experimental_Icon as Icon,
   experimental_useSidebarThreadSplit as useThreadSplit,
-  useSidebarSplitLayout,
   useSidebarThreadDraft,
   useSidebarThreadRowStatus,
   useSidebarThreadShortcut,
@@ -17,19 +16,19 @@ import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
-import { rowMenuItems } from "../model/menu";
+import { rowMenuItems, type RowMenuAction } from "../model/menu";
 import { noteText } from "../model/notes";
 import { chipTone, pluginStatusWins } from "../model/state";
-import { TRAILING_SLOT_SIZERS, trailingTime } from "../model/time";
+import { TRAILING_SLOT_SIZERS } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import type { DraggedThread } from "../model/drag";
-import type { RowController } from "./controller";
+import { useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
 import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
 import { RowContextMenuContent, RowDropdownMenuContent, type ContextMenuInput } from "./RowMenu";
-import { SplitMiniMap, type MiniMapPane } from "./SplitMiniMap";
+import { SplitMiniMap } from "./SplitMiniMap";
 import { ThreadDetails } from "./ThreadDetails";
 import { useRowCard } from "./row-card";
 import { NESTED_MARK_TWO_LINES, THREAD_ROW_HEIGHT } from "./row-heights";
@@ -69,62 +68,30 @@ const QUIET_TEXT = "text-[color:color-mix(in_oklch,var(--foreground)_68%,var(--s
 export const ROW_ICON_BUTTON =
   "pointer-events-auto relative z-10 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring data-[state=open]:bg-state-active";
 
-function useMiniMap(threadId: string): MiniMapPane[] | null {
-  const layout = useSidebarSplitLayout();
-  return useMemo(() => {
-    if (layout === null) return null;
-    const panes = layout.panes.map((pane) => ({
-      paneId: pane.paneId,
-      rect: pane.rect,
-      isMe: pane.threadId === threadId,
-      isFocused: pane.isFocused,
-    }));
-    return panes.some((pane) => pane.isMe) ? panes : null;
-  }, [layout, threadId]);
-}
-
 export interface ThreadRowViewProps {
   row: ThreadRow;
-  controller: RowController;
   groupId: string;
   inPinned: boolean;
-  /** Drop feedback from the list's drag state. */
-  dropState: "valid" | "blocked" | "unchanged" | "before" | "after" | null;
-  /** The focused thread is this one. */
-  active: boolean;
-  /** Its title is being renamed. */
-  editing: boolean;
-  /** The list clock, for the trailing age and timer. */
-  now: number;
-  /** This thread's stamps, for the trailing time. */
-  startedAt: number | undefined;
-  finishedAt: number | undefined;
-  pendingAt: number | undefined;
 }
 
-export const ThreadRowView = memo(function ThreadRowView({
-  row,
-  controller,
-  groupId,
-  inPinned,
-  dropState,
-  active: isActive,
-  editing,
-  now,
-  startedAt,
-  finishedAt,
-  pendingAt,
-}: ThreadRowViewProps) {
+/**
+ * One thread row. It reads its own part of the list store (focus, rename,
+ * drop feedback, mini-map, settings), so it renders when that part or its
+ * row changes, and no other time.
+ */
+export const ThreadRowView = memo(function ThreadRowView({ row, groupId, inPinned }: ThreadRowViewProps) {
   const { info } = row;
   const thread = info.thread;
   const archived = thread.archivedAt !== null || thread.isArchived;
-  const compact = controller.compact;
+  const commands = useCommands();
+  const { compact, density, harnessIcon, sections, hasSections } = useLayout();
+  const { focused: isActive, editing, dropState, miniMap } = useRow(thread.id);
+  const provider = useProviderDisplay(thread.providerId);
 
   const shortcut = useSidebarThreadShortcut(thread.id);
   const rowStatus = useSidebarThreadRowStatus(thread.id);
   const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
   const split = useThreadSplit(thread.id);
-  const miniMap = useMiniMap(thread.id);
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const card = useRowCard(isActive, !compact && !editing && !menuOpen && !contextOpen);
@@ -155,31 +122,19 @@ export const ThreadRowView = memo(function ThreadRowView({
     [draggable.setNodeRef, droppable.setNodeRef],
   );
 
-  const provider = controller.provider(thread.providerId);
   const showPlugin = pluginStatusWins(info.state, rowStatus);
   const label = rowAriaLabel(row, {
     providerName: provider.name,
     pluginLabel: showPlugin ? rowStatus!.label : null,
     hasDraft: hasUnsubmittedDraft,
   });
-  const time = archived
-    ? null
-    : trailingTime(
-        thread,
-        info.flags.has("working"),
-        {
-          startedAt: startedAt === undefined ? {} : { [thread.id]: startedAt },
-          finishedAt: finishedAt === undefined ? {} : { [thread.id]: finishedAt },
-        },
-        now,
-        info.state.kind === "waits-on-you" ? (pendingAt ?? null) : undefined,
-      );
+  const time = row.time;
   const menuItems = rowMenuItems({
     thread,
     unread: row.depth === 0 ? row.treeUnread : info.unread,
     splitAvailable: split.isAvailable,
     isRoot: thread.parentThreadId === null,
-    hasSections: controller.mode === "chronological" || controller.sections.length > 0,
+    hasSections,
     compact,
   });
   // Rename waits for the menu to close: an open menu traps focus and would
@@ -188,7 +143,7 @@ export const ThreadRowView = memo(function ThreadRowView({
   // Set until the closing menu's focus return has been refused, whichever
   // path started the rename: a returned focus would blur and close the editor.
   const refuseCloseFocus = useRef(false);
-  const onMenuAction = (action: Parameters<RowController["onMenuAction"]>[0], sectionId?: string | null) => {
+  const onMenuAction = (action: RowMenuAction, sectionId?: string | null) => {
     if (action === "rename") {
       renameFromMenu.current = true;
       refuseCloseFocus.current = true;
@@ -197,7 +152,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       }, 1500);
       return;
     }
-    controller.onMenuAction(action, thread, sectionId);
+    commands.menuAction(action, thread, sectionId);
   };
   // Fallback for menus that close without a close-focus event (the compact
   // drawer; a context menu opened from the keyboard): start once every menu
@@ -207,17 +162,17 @@ export const ThreadRowView = memo(function ThreadRowView({
     const timer = setTimeout(() => {
       if (!renameFromMenu.current) return;
       renameFromMenu.current = false;
-      controller.setEditingId(thread.id);
+      commands.editTitle(thread.id);
     }, 60);
     return () => clearTimeout(timer);
-  }, [menuOpen, contextOpen, controller, thread.id]);
+  }, [menuOpen, contextOpen, commands, thread.id]);
   const onMenuCloseAutoFocus = (event: Event) => {
     if (!refuseCloseFocus.current) return;
     refuseCloseFocus.current = false;
     event.preventDefault();
     if (!renameFromMenu.current) return;
     renameFromMenu.current = false;
-    controller.setEditingId(thread.id);
+    commands.editTitle(thread.id);
   };
 
   const showPullRequest = row.pullRequest !== null;
@@ -239,18 +194,18 @@ export const ThreadRowView = memo(function ThreadRowView({
     }
     if (split.isAvailable && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
-      controller.onMenuAction("open-in-split", thread);
+      commands.menuAction("open-in-split", thread);
       return;
     }
     const now = Date.now();
     if (lastClick !== null && lastClick.threadId === thread.id && now - lastClick.at < RENAME_CLICK_MS) {
       lastClick = null;
       event.preventDefault();
-      controller.setEditingId(thread.id);
+      commands.editTitle(thread.id);
       return;
     }
     lastClick = { threadId: thread.id, at: now };
-    controller.onNavigate();
+    commands.navigate();
   };
 
   const cancelPress = () => {
@@ -338,7 +293,7 @@ export const ThreadRowView = memo(function ThreadRowView({
       {...longPress}
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
-        THREAD_ROW_HEIGHT[controller.density][twoLines ? "two" : "one"],
+        THREAD_ROW_HEIGHT[density][twoLines ? "two" : "one"],
         isActive
           ? "bg-state-active text-sidebar-foreground"
           : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -364,7 +319,7 @@ export const ThreadRowView = memo(function ThreadRowView({
         onClick={onAnchorClick}
         onDoubleClick={(event) => {
           event.preventDefault();
-          controller.setEditingId(thread.id);
+          commands.editTitle(thread.id);
         }}
         className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       />
@@ -379,7 +334,7 @@ export const ThreadRowView = memo(function ThreadRowView({
           className={cn(
             "pointer-events-none relative -ml-[3px] -mr-px w-1.5 shrink-0 text-center text-[10px] leading-none text-muted-foreground",
             // On two-line rows it sits beside the title, not between the lines.
-            twoLines && NESTED_MARK_TWO_LINES[controller.density],
+            twoLines && NESTED_MARK_TWO_LINES[density],
           )}
         >
           ↳
@@ -401,9 +356,9 @@ export const ThreadRowView = memo(function ThreadRowView({
           <RenameEditor
             initial={thread.displayTitle}
             label="Thread name"
-            onSave={(title) => controller.onRename(thread.id, title)}
+            onSave={(title) => commands.renameThread(thread.id, title)}
             onDone={() => {
-              controller.setEditingId(null);
+              commands.editTitle(null);
               anchor.current?.focus();
             }}
           />
@@ -453,7 +408,7 @@ export const ThreadRowView = memo(function ThreadRowView({
             <span className={cn("flex items-center gap-1.5 pl-1.5 [grid-area:1/1] transition-opacity", shortcut === null && fadeClass)}>
               {row.harness ? (
                 <span className="pointer-events-none relative inline-flex shrink-0">
-                  <ProviderBadge display={provider} mode={controller.harnessIcon} />
+                  <ProviderBadge display={provider} mode={harnessIcon} />
                 </span>
               ) : null}
               {showMachine ? (
@@ -484,7 +439,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    controller.onMenuAction("mark-read", thread);
+                    commands.menuAction("mark-read", thread);
                   }}
                 >
                   <Icon name={ICONS.markRead} aria-hidden className="size-4" />
@@ -499,7 +454,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  controller.onMenuAction(archived ? "unarchive" : "archive", thread);
+                  commands.menuAction(archived ? "unarchive" : "archive", thread);
                 }}
               >
                 <Icon name={archived ? ICONS.unarchive : ICONS.archive} aria-hidden className="size-4" />
@@ -521,7 +476,7 @@ export const ThreadRowView = memo(function ThreadRowView({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                controller.onToggleChip(row);
+                commands.toggleChip(row);
               }}
               onPointerDown={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
@@ -596,7 +551,7 @@ export const ThreadRowView = memo(function ThreadRowView({
                     </DropdownMenuTrigger>
                     <RowDropdownMenuContent
                       items={menuItems}
-                      sections={controller.sections}
+                      sections={sections}
                       currentSectionId={thread.sectionId}
                       onAction={onMenuAction}
                       onCloseAutoFocus={onMenuCloseAutoFocus}
@@ -629,13 +584,13 @@ export const ThreadRowView = memo(function ThreadRowView({
         </ContextMenuTrigger>
         {!editing && !menuOpen && !contextOpen ? (
           <HoverCardContent side="right" align="start" collisionPadding={8} className="z-[100] w-72 p-3">
-            <ThreadDetails info={info} controller={controller} showPullRequest={showPullRequest} />
+            <ThreadDetails info={info} showPullRequest={showPullRequest} />
           </HoverCardContent>
         ) : null}
       </HoverCard>
       <RowContextMenuContent
         items={menuItems}
-        sections={controller.sections}
+        sections={sections}
         currentSectionId={thread.sectionId}
         onAction={onMenuAction}
         onCloseAutoFocus={onMenuCloseAutoFocus}

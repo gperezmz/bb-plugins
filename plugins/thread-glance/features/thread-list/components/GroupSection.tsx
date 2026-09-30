@@ -1,10 +1,8 @@
 // A top-level group: its header with counters, and its rows, windowed
 // in chunks.
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import type { PluginEnvironmentProvider } from "@get-bb/plugin-sdk/app";
-import type { Stamps } from "@/shared/contract";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,61 +12,124 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import type { GroupView, Row } from "../model/view";
+import type { Counters } from "../model/counters";
+import type { GroupDescriptor } from "../model/groups";
+import type { Row } from "../model/view";
 import { chunk, windowedNavValue } from "../model/windowing";
-import type { RowController } from "./controller";
+import { useCommands, useEditingId, useFocusedThreadId, useGroup, useHoldsFocus, useIsGroupDropTarget, useLayout, useShowArchived } from "../store/hooks";
 import { EnvironmentRowView, OlderRowView, SettledRowView } from "./FoldRows";
 import { CounterStrip } from "./glyphs";
-import { visibleCounters } from "../model/counters";
+import { EMPTY_COUNTERS, visibleCounters } from "../model/counters";
 import { RenameEditor } from "./RenameEditor";
 import { HEADER_HOVER_HIDES, HEADER_HOVER_SHOWS } from "./input-modality";
 import { ESTIMATED_ROW_HEIGHT, GROUP_GAP } from "./row-heights";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
 
-export interface GroupController {
-  compact: boolean;
-  /** The group holding the active thread: on phones only it shows `+`. */
-  activeGroupId: string | null;
-  showArchived: boolean;
-  onToggleArchived(): void;
-  canCreateSections: boolean;
-  onToggleCollapse(group: GroupView): void;
-  onNewThread(group: GroupView): void;
-  onHide(group: GroupView): void;
-  onShow(group: GroupView): void;
-  onCustomize(): void;
-  onRename(group: GroupView, name: string): Promise<void>;
-  onRemove(group: GroupView): void;
-  onMarkAllRead(group: GroupView): void;
-  onNewSection(): void;
+function canRename(descriptor: GroupDescriptor): boolean {
+  return descriptor.kind === "section" || descriptor.kind === "machine";
 }
 
-export type DropStates = ReadonlyMap<string, "valid" | "blocked" | "unchanged" | "before" | "after">;
-
-function canRename(group: GroupView): boolean {
-  return group.descriptor.kind === "section" || group.descriptor.kind === "machine";
+/** A group's header: its label, counters, `+` and its menu. It reads only what it draws. */
+/**
+ * A group header's menu items. Mounted only while the menu is open, they
+ * read what only the menu draws, so the header does not render for it.
+ */
+function GroupMenuItems({ descriptor, onRename }: { descriptor: GroupDescriptor; onRename(): void }) {
+  const commands = useCommands();
+  const group = useGroup(descriptor.id);
+  const { mode } = useLayout();
+  const showArchived = useShowArchived();
+  const groupId = descriptor.id;
+  const hasUnread = group?.hasUnread ?? false;
+  const hidden = group?.hidden ?? false;
+  const canCreateSections = mode === "chronological";
+  return (
+    <>
+      {hasUnread ? (
+        <DropdownMenuItem onSelect={() => commands.markGroupRead(groupId)}>
+          <Icon name={ICONS.markRead} aria-hidden className="size-4" />
+          Mark all read
+        </DropdownMenuItem>
+      ) : null}
+      {descriptor.kind !== "pinned" && descriptor.newThreadProjectId !== null ? (
+        <DropdownMenuItem onSelect={() => commands.newThreadInGroup(groupId)}>
+          <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+          New thread
+        </DropdownMenuItem>
+      ) : null}
+      {canCreateSections ? (
+        <DropdownMenuItem onSelect={() => commands.setNewSectionOpen(true)}>
+          <Icon name={ICONS.newSection} aria-hidden className="size-4" />
+          New section
+        </DropdownMenuItem>
+      ) : null}
+      {canRename(descriptor) ? (
+        <DropdownMenuItem onSelect={onRename}>
+          <Icon name={ICONS.rename} aria-hidden className="size-4" />
+          Rename
+        </DropdownMenuItem>
+      ) : null}
+      <DropdownMenuSeparator />
+      {descriptor.kind !== "pinned" ? (
+        hidden ? (
+          <DropdownMenuItem onSelect={() => commands.showGroup(groupId)}>
+            <Icon name={ICONS.show} aria-hidden className="size-4" />
+            Show in list
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => commands.hideGroup(groupId)}>
+            <Icon name={ICONS.hidden} aria-hidden className="size-4" />
+            Hide from list
+          </DropdownMenuItem>
+        )
+      ) : null}
+      <DropdownMenuItem onSelect={() => commands.toggleArchived()}>
+        <Icon name={showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
+        Show archived threads
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => commands.setCustomizeOpen(true)}>
+        <Icon name={ICONS.customize} aria-hidden className="size-4" />
+        Customize list
+      </DropdownMenuItem>
+      {descriptor.kind === "section" ? (
+        <DropdownMenuItem
+          className="text-destructive focus:text-destructive"
+          onSelect={() => commands.removeSection(groupId)}
+        >
+          <Icon name={ICONS.remove} aria-hidden className="size-4" />
+          Remove section
+        </DropdownMenuItem>
+      ) : null}
+    </>
+  );
 }
 
 const GroupHeader = memo(function GroupHeader({
-  group,
-  controller,
+  descriptor,
+  counters,
+  collapsed,
   inOverflow,
-  dropActive,
 }: {
-  group: GroupView;
-  controller: GroupController;
+  descriptor: GroupDescriptor;
+  /** The counters it draws, the same object while they hold. */
+  counters: Counters;
+  collapsed: boolean;
   inOverflow: boolean;
-  dropActive: boolean;
 }) {
+  const commands = useCommands();
+  const { compact } = useLayout();
+  const dropActive = useIsGroupDropTarget(descriptor.id);
+  // On phones only the group holding the focused thread shows `+`.
+  const holdsActive = useHoldsFocus(descriptor.id);
+  const groupId = descriptor.id;
   const [renaming, setRenaming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const label = group.descriptor.label;
+  const label = descriptor.label;
   const draggable = useDraggable({
-    id: `group:${group.descriptor.id}`,
-    data: { kind: "group", groupId: group.descriptor.id },
-    disabled: controller.compact || inOverflow || renaming,
+    id: `group:${groupId}`,
+    data: { kind: "group", groupId },
+    disabled: compact || inOverflow || renaming,
   });
-  const compact = controller.compact;
   // Desktop: the counter sits flush right, and "+" and "…" fade in over its
   // place on hover or keyboard focus, as a row's actions fade over its age. Nothing is
   // kept for them otherwise. Phones keep them in line, always shown.
@@ -98,25 +159,25 @@ const GroupHeader = memo(function GroupHeader({
         "group/header sticky top-0 z-20 flex h-7 items-center gap-1 rounded-md bg-sidebar pl-2 pr-1 text-xs text-muted-foreground max-md:pointer-coarse:h-9",
         dropActive && "bg-sidebar-accent",
         draggable.isDragging && "opacity-50",
-        !controller.compact && !inOverflow && "select-none",
+        !compact && !inOverflow && "select-none",
       )}
     >
       {renaming ? (
         <RenameEditor
           initial={label}
-          label={group.descriptor.kind === "section" ? "Section name" : "Machine name"}
-          onSave={(name) => controller.onRename(group, name)}
+          label={descriptor.kind === "section" ? "Section name" : "Machine name"}
+          onSave={(name) => commands.renameGroup(groupId, name)}
           onDone={() => setRenaming(false)}
           className="text-xs"
         />
       ) : (
         <button
           type="button"
-          aria-expanded={!group.collapsed}
-          aria-label={`${group.collapsed ? "Expand" : "Collapse"} ${label} section`}
-          onClick={() => controller.onToggleCollapse(group)}
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${label} section`}
+          onClick={() => commands.toggleGroup(groupId)}
           onPointerDown={(event) => event.stopPropagation()}
-          onDoubleClick={() => canRename(group) && setRenaming(true)}
+          onDoubleClick={() => canRename(descriptor) && setRenaming(true)}
           className="flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
         >
           <span className="min-w-0 truncate" title={label}>
@@ -125,28 +186,28 @@ const GroupHeader = memo(function GroupHeader({
           <Icon
             name={ICONS.expand}
             aria-hidden
-            className={cn("size-3 shrink-0 transition-transform duration-150", !group.collapsed && "rotate-90")}
+            className={cn("size-3 shrink-0 transition-transform duration-150", !collapsed && "rotate-90")}
           />
         </button>
       )}
       {!renaming ? (
         <span className="relative ml-auto flex shrink-0 items-center">
           <CounterStrip
-            counters={visibleCounters(group.counters, { collapsed: group.collapsed, more: false })}
+            counters={counters}
             className={cn("transition-opacity", counterFade)}
           />
           <span className={cn("flex items-center transition-opacity", actionsFade)}>
-            {group.descriptor.kind !== "pinned" &&
-            (group.descriptor.newThreadProjectId !== null || group.descriptor.kind === "machine") &&
-            (!controller.compact || controller.activeGroupId === group.descriptor.id) ? (
+            {descriptor.kind !== "pinned" &&
+            (descriptor.newThreadProjectId !== null || descriptor.kind === "machine") &&
+            (!compact || holdsActive) ? (
               <button
                 type="button"
                 aria-label={`New thread in ${label}`}
                 title={`New thread in ${label}`}
-                data-sidebar-hover-actions-mobile={controller.compact ? "always" : undefined}
+                data-sidebar-hover-actions-mobile={compact ? "always" : undefined}
                 className={ROW_ICON_BUTTON}
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => controller.onNewThread(group)}
+                onClick={() => commands.newThreadInGroup(groupId)}
               >
                 <Icon name={ICONS.newThread} aria-hidden className="size-4" />
               </button>
@@ -163,61 +224,7 @@ const GroupHeader = memo(function GroupHeader({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="min-w-48">
-                {group.hasUnread ? (
-                  <DropdownMenuItem onSelect={() => controller.onMarkAllRead(group)}>
-                    <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-                    Mark all read
-                  </DropdownMenuItem>
-                ) : null}
-                {group.descriptor.kind !== "pinned" && group.descriptor.newThreadProjectId !== null ? (
-                  <DropdownMenuItem onSelect={() => controller.onNewThread(group)}>
-                    <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-                    New thread
-                  </DropdownMenuItem>
-                ) : null}
-                {controller.canCreateSections ? (
-                  <DropdownMenuItem onSelect={() => controller.onNewSection()}>
-                    <Icon name={ICONS.newSection} aria-hidden className="size-4" />
-                    New section
-                  </DropdownMenuItem>
-                ) : null}
-                {canRename(group) ? (
-                  <DropdownMenuItem onSelect={() => setRenaming(true)}>
-                    <Icon name={ICONS.rename} aria-hidden className="size-4" />
-                    Rename
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuSeparator />
-                {group.descriptor.kind !== "pinned" ? (
-                  group.hidden ? (
-                    <DropdownMenuItem onSelect={() => controller.onShow(group)}>
-                      <Icon name={ICONS.show} aria-hidden className="size-4" />
-                      Show in list
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onSelect={() => controller.onHide(group)}>
-                      <Icon name={ICONS.hidden} aria-hidden className="size-4" />
-                      Hide from list
-                    </DropdownMenuItem>
-                  )
-                ) : null}
-                <DropdownMenuItem onSelect={() => controller.onToggleArchived()}>
-                  <Icon name={controller.showArchived ? ICONS.check : ICONS.archive} aria-hidden className="size-4" />
-                  Show archived threads
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => controller.onCustomize()}>
-                  <Icon name={ICONS.customize} aria-hidden className="size-4" />
-                  Customize list
-                </DropdownMenuItem>
-                {group.descriptor.kind === "section" ? (
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onSelect={() => controller.onRemove(group)}
-                  >
-                    <Icon name={ICONS.remove} aria-hidden className="size-4" />
-                    Remove section
-                  </DropdownMenuItem>
-                ) : null}
+                <GroupMenuItems descriptor={descriptor} onRename={() => setRenaming(true)} />
               </DropdownMenuContent>
             </DropdownMenu>
           </span>
@@ -231,18 +238,32 @@ function rowKey(row: Row): string {
   return row.key;
 }
 
-/** Mounts its rows while near the viewport; otherwise a sized placeholder. */
-function WindowedChunk({
-  rows,
-  forceMount,
-  rowHeight,
-  children,
-}: {
+interface ChunkProps {
   rows: readonly Row[];
+  groupId: string;
+  inPinned: boolean;
   forceMount: boolean;
   rowHeight: number;
-  children: React.ReactNode;
-}) {
+}
+
+/** The same rows, by identity, with the same settings: a chunk renders nothing new. */
+function sameChunk(previous: ChunkProps, next: ChunkProps): boolean {
+  return (
+    previous.groupId === next.groupId &&
+    previous.inPinned === next.inPinned &&
+    previous.forceMount === next.forceMount &&
+    previous.rowHeight === next.rowHeight &&
+    previous.rows.length === next.rows.length &&
+    previous.rows.every((row, index) => row === next.rows[index])
+  );
+}
+
+/**
+ * Mounts its rows while near the viewport; otherwise a sized placeholder.
+ * It renders only when one of its rows or settings changes, so a group
+ * drawing one changed row leaves every other chunk alone.
+ */
+const WindowedChunk = memo(function WindowedChunk({ rows, groupId, inPinned, forceMount, rowHeight }: ChunkProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(true);
   const measured = useRef<number | null>(null);
@@ -274,10 +295,22 @@ function WindowedChunk({
       data-sidebar-windowed-nav={mounted || nav.length === 0 ? undefined : windowedNavValue(nav)}
       style={mounted ? undefined : { height: measured.current ?? rows.length * rowHeight }}
     >
-      {mounted ? children : null}
+      {mounted
+        ? rows.map((row) =>
+            row.type === "thread" ? (
+              <ThreadRowView key={row.key} row={row} groupId={groupId} inPinned={inPinned} />
+            ) : row.type === "older" ? (
+              <OlderRowView key={row.key} row={row} />
+            ) : row.type === "settled" ? (
+              <SettledRowView key={row.key} row={row} />
+            ) : (
+              <EnvironmentRowView key={row.key} row={row} />
+            ),
+          )
+        : null}
     </div>
   );
-}
+}, sameChunk);
 
 interface RowsProps {
   rows: readonly Row[];
@@ -286,40 +319,25 @@ interface RowsProps {
   inPinned: boolean;
   /** Mount every chunk, whatever is on screen (the More popover). */
   forceMount: boolean;
-  rowController: RowController;
-  environmentProviders: readonly PluginEnvironmentProvider[];
-  dropStates: DropStates;
-  activeThreadId: string | null;
-  editingId: string | null;
-  now: number;
-  /** Rows get their own stamps as props, so a stamp renders one row. */
-  stamps: Stamps;
 }
 
 /** A group's rows, windowed in chunks. */
-function Rows({
-  rows: all,
-  groupId,
-  inPinned,
-  forceMount,
-  rowController,
-  environmentProviders,
-  dropStates,
-  activeThreadId,
-  editingId,
-  now,
-  stamps,
-}: RowsProps) {
+function Rows({ rows: all, groupId, inPinned, forceMount }: RowsProps) {
+  const { density, branchLine } = useLayout();
+  const activeThreadId = useFocusedThreadId();
+  const editingId = useEditingId();
   // A chunk measured under another density or Branch line would keep that
   // height while off screen, so a change mounts every chunk afresh to measure.
-  const layout = `${rowController.density}:${rowController.showBranchLine}`;
+  const layout = `${density}:${branchLine}`;
   return (
     <div data-sidebar="group-content" className="flex w-full flex-col text-sm">
       {chunk(all).map((rows) => (
         <WindowedChunk
           key={`${layout}:${rowKey(rows[0]!)}`}
           rows={rows}
-          rowHeight={ESTIMATED_ROW_HEIGHT[rowController.density]}
+          groupId={groupId}
+          inPinned={inPinned}
+          rowHeight={ESTIMATED_ROW_HEIGHT[density]}
           forceMount={
             forceMount ||
             rows.some(
@@ -328,87 +346,57 @@ function Rows({
                 (row.info.thread.id === activeThreadId || row.info.thread.id === editingId),
             )
           }
-        >
-          {rows.map((row) =>
-            row.type === "thread" ? (
-              <ThreadRowView
-                key={row.key}
-                row={row}
-                controller={rowController}
-                groupId={groupId}
-                inPinned={inPinned}
-                dropState={dropStates.get(row.info.thread.id) ?? null}
-                active={row.info.thread.id === activeThreadId}
-                editing={row.info.thread.id === editingId}
-                now={now}
-                startedAt={stamps.startedAt[row.info.thread.id]}
-                finishedAt={stamps.finishedAt[row.info.thread.id]}
-                pendingAt={stamps.pendingAt[row.info.thread.id]}
-              />
-            ) : row.type === "older" ? (
-              <OlderRowView key={row.key} row={row} controller={rowController} />
-            ) : row.type === "settled" ? (
-              <SettledRowView key={row.key} row={row} controller={rowController} />
-            ) : (
-              <EnvironmentRowView
-                key={row.key}
-                row={row}
-                controller={rowController}
-                environmentProviders={environmentProviders}
-              />
-            ),
-          )}
-        </WindowedChunk>
+        />
       ))}
     </div>
   );
 }
 
-type SectionProps = Omit<RowsProps, "rows" | "groupId" | "inPinned" | "forceMount">;
-
+/** A top-level group by id: it renders when its own part of the list model changes. */
 export const GroupSection = memo(function GroupSection({
-  group,
-  groupController,
-  dropTargetGroupId,
+  groupId,
   inOverflow = false,
   gapAbove,
-  ...rest
-}: SectionProps & {
-  group: GroupView;
-  groupController: GroupController;
-  dropTargetGroupId: string | null;
+}: {
+  groupId: string;
   inOverflow?: boolean;
   /** Every group but the first shown gets space above its header. */
   gapAbove: boolean;
 }) {
+  const group = useGroup(groupId);
+  const { density } = useLayout();
+  // What the header draws of the counters: a count the rows already show
+  // changing leaves the header as it is.
+  const shown = visibleCounters(group?.counters ?? EMPTY_COUNTERS, { collapsed: group?.collapsed ?? false, more: false });
+  const counters = useMemo(
+    () => shown,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one object per drawn value
+    [shown.waitsOnYou, shown.failed, shown.offline, shown.working, shown.unread],
+  );
   const droppable = useDroppable({
-    id: `drop-group:${group.descriptor.id}`,
-    data: { kind: "group", groupId: group.descriptor.id },
+    id: `drop-group:${groupId}`,
+    data: { kind: "group", groupId },
   });
+  if (group === undefined) return null;
+  const descriptor = group.descriptor;
   return (
     <section
       ref={droppable.setNodeRef}
-      aria-label={group.descriptor.label}
-      data-sidebar-visibility-group={group.descriptor.id}
-      data-sidebar-section-id={group.descriptor.kind === "section" ? group.descriptor.entityId ?? undefined : undefined}
-      className={cn("relative flex w-full min-w-0 flex-col", gapAbove && GROUP_GAP[rest.rowController.density])}
+      aria-label={descriptor.label}
+      data-sidebar-visibility-group={descriptor.id}
+      data-sidebar-section-id={descriptor.kind === "section" ? descriptor.entityId ?? undefined : undefined}
+      className={cn("relative flex w-full min-w-0 flex-col", gapAbove && GROUP_GAP[density])}
     >
       <GroupHeader
-        group={group}
-        controller={groupController}
+        descriptor={descriptor}
+        counters={counters}
+        collapsed={group.collapsed}
         inOverflow={inOverflow}
-        dropActive={dropTargetGroupId === group.descriptor.id}
       />
       {group.rows.length === 0 ? (
         group.collapsed || group.rootIds.length > 0 ? null : <p className="py-1 pl-8 text-xs text-muted-foreground">No threads</p>
       ) : (
-        <Rows
-          {...rest}
-          rows={group.rows}
-          groupId={group.descriptor.id}
-          inPinned={group.descriptor.id === "pinned"}
-          forceMount={inOverflow}
-        />
+        <Rows rows={group.rows} groupId={descriptor.id} inPinned={descriptor.id === "pinned"} forceMount={inOverflow} />
       )}
     </section>
   );
