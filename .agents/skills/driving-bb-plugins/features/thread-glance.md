@@ -108,6 +108,15 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `read` true in bb.
 - **Settings** (`settings`): `thread-glance settings` prints every control,
   `prefs list --json` and the browser's `bb.thread-glance.client.v1`.
+- **The popover itself** (`settings`): clicked as soon as the list header
+  shows on a load, it stays open until closed, though bb focuses its composer
+  for about a second after a load. It closes once the sidebar scrolls
+  `button "Thread Glance settings"` wholly out of view, and stays open while
+  any of it shows. Escape, a click outside and the button close it, none of
+  them moving the sidebar's scroll, and Escape and the button leave focus on
+  the button. No verb drives these yet: a `drive-bb-plugins ui` script does,
+  on a list long enough to scroll (`seed` 80 roots), scrolling the list
+  header's nearest scrolling ancestor.
 - **One control** (`settings`, `sync`): `thread-glance set "Settle after" 12h
   --second-window --reload` checks `12h`, `stored.value` `"12h"`, and
   `followed`, `kept` true. `set Density Comfortable --second-window` stores
@@ -219,6 +228,16 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `Recent` list around Mark all read: `recentUnreadAfter` and
   `recentUnreadAfter6s` name the threads bb's own list still shows unread
   with no reload, `recentUnreadAfterReload` after one.
+- **Environment fold row** (`list`): with `Worktrees as folders` on, two
+  sibling threads in one worktree fold under a row whose `button` is named
+  `Collapse <branch> environment, 2 threads`; the row (the button's parent)
+  is as tall as a one-line thread row, 28 px Compact and 32 px Comfortable,
+  36 and 40 px on a phone. `seed` makes no worktree thread: a thread posted
+  to bb's HTTP API (`api/v1/threads`, as `seed.mjs` posts) with
+  `environmentProviderId` `git-worktree` runs a turn and gets one, and a
+  second posted with `environment` `{"type": "reuse", "environmentId": …}`
+  joins it. No verb reads the heights yet; a `drive-bb-plugins ui` script
+  does, scrolling the list until the row mounts.
 - **Archived** (`list`): with `prefs set showArchived true`, each group
   also lists archived threads, 50 at a time behind `button "Load more
   archived threads"`; any verb with `--all-archived` presses it until it is
@@ -246,8 +265,8 @@ says.
   `, machine offline below` are not reachable on a run.
 - Settle after is at least 12 hours, and settling reads bb's thread times, so
   only the page clock (`settled --advance`) reaches the fold.
-- The settings popover closes itself when opened in the first half-second
-  after load; the verbs wait for the page to go quiet and reopen it.
+- The settings popover closes once the sidebar scrolls its button out of
+  view, so a step that scrolls the list closes it.
 - Density and Branch line live in the browser's `localStorage`
   (`bb.thread-glance.client.v1`); the need-you filter lives only in the page.
   The CLI reads neither.
