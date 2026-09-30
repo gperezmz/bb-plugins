@@ -209,3 +209,113 @@ export function attentionRootIds(scenario: Scenario): string[] {
     .trees.filter((tree) => tree.attentionFlags.size > 0)
     .map((tree) => tree.root.thread.id);
 }
+
+/** The two lists the performance harness measures: nothing settled yet, or two days on. */
+export type GeneratedScenario = "live" | "settled";
+
+export interface GeneratedList {
+  threads: PluginSidebarThread[];
+  projects: PluginSidebarProject[];
+  /** The clock the list is mounted at. */
+  now: number;
+  /** Threads bb reports unread, in list order. */
+  unreadIds: string[];
+}
+
+export interface GenerateOptions {
+  /** Threads in the list. */
+  size: number;
+  scenario?: GeneratedScenario;
+  /** Unread threads; about 5 % of the list when absent. */
+  unread?: number;
+  seed?: number;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** A seeded pseudo-random source (mulberry32), so a seed always gives one list. */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+}
+
+/** Projects of a generated list: one group each under project grouping. */
+export const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((index) =>
+  makeProject(`proj_${index}`, `Project ${index}`),
+);
+
+/**
+ * A list shaped like the seeded bb the audit measured: two thirds top-level
+ * threads, five child threads per parent thread, four groups and about 95 %
+ * read. Every thread's last activity falls in the day before T0, so nothing
+ * is settled at T0 ("live"), and every read, idle tree is settled two days on
+ * ("settled").
+ */
+export function generateList({ size, scenario = "live", unread, seed = 145 }: GenerateOptions): GeneratedList {
+  const random = seededRandom(seed);
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
+  const rootCount = Math.round((size * 2) / 3);
+  const childCount = size - rootCount;
+  const parentCount = Math.ceil(childCount / 5);
+  const threads: PluginSidebarThread[] = [];
+  const roots: PluginSidebarThread[] = [];
+  for (let index = 0; index < rootCount; index += 1) {
+    // Newest first: the list sorts by activity, so ids read top to bottom.
+    const at = T0 - Math.floor(((index + random()) / rootCount) * 20 * 60 * 60 * 1000);
+    const root = makeThread({
+      id: `t${index}`,
+      title: `Thread ${index}`,
+      projectId: pick(GENERATED_PROJECTS).id,
+      createdAt: at - 60_000,
+      updatedAt: at,
+      latestAttentionAt: at,
+      lastReadAt: at,
+    });
+    roots.push(root);
+    threads.push(root);
+  }
+  // Parents spread through the list rather than bunched at its top.
+  const stride = rootCount / parentCount;
+  for (let parent = 0; parent < parentCount; parent += 1) {
+    const root = roots[Math.floor(parent * stride)]!;
+    for (let child = 0; child < 5 && threads.length < size; child += 1) {
+      const at = root.updatedAt - (child + 1) * 1_000;
+      threads.push(
+        makeThread({
+          id: `${root.id}c${child}`,
+          title: `${root.title} child ${child}`,
+          projectId: root.projectId,
+          parentThreadId: root.id,
+          createdAt: at - 60_000,
+          updatedAt: at,
+          latestAttentionAt: at,
+          lastReadAt: at,
+        }),
+      );
+    }
+  }
+  const unreadCount = unread ?? Math.round(size * 0.05);
+  const order = threads.map((_, index) => index).sort(() => random() - 0.5);
+  const unreadIndexes = new Set(order.slice(0, unreadCount));
+  for (const index of unreadIndexes) {
+    const thread = threads[index]!;
+    threads[index] = { ...thread, isUnread: true, lastReadAt: thread.latestAttentionAt - 1 };
+  }
+  return {
+    threads,
+    projects: GENERATED_PROJECTS,
+    now: scenario === "live" ? T0 + 60_000 : T0 + 2 * DAY,
+    unreadIds: threads.filter((thread) => thread.isUnread).map((thread) => thread.id),
+  };
+}
+
+/** The Mark all read list: 1,500 threads, 443 of them unread. */
+export function markAllReadList(seed = 145): GeneratedList {
+  return generateList({ size: 1_500, unread: 443, seed });
+}
