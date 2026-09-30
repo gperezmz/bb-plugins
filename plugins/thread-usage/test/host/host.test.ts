@@ -1,12 +1,11 @@
 import { join } from "node:path";
+import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
 import { describe, expect, it } from "vitest";
 import { hostContract } from "../../src/host/contract.js";
 import { createHandlers } from "../../src/host/handlers.js";
 
 const logs = join(import.meta.dirname, "..", "fixtures", "logs");
-// `@get-bb/plugin-sdk/host` (0.5.9) cannot be imported by native ESM, so the
-// entry object that `experimental_defineHostEntry` builds is written out here.
 const entry = (roots = {
   claude: [join(logs, "claude", "projects")],
   pi: [join(logs, "pi", "sessions")],
@@ -14,11 +13,7 @@ const entry = (roots = {
   codex: [join(logs, "codex", "sessions")],
 }) =>
   experimental_createHostEntryHarness(
-    {
-      experimental_apiVersion: 1,
-      contract: hostContract,
-      handlers: createHandlers(roots, "/home/demo"),
-    },
+    experimental_defineHostEntry({ contract: hostContract, handlers: createHandlers(roots, "/home/demo") }),
   );
 
 const base = { sinceMs: null, untilMs: null, includeSubagents: true, offset: 0, limit: 100 };
