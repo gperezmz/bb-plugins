@@ -15,9 +15,10 @@ export default defineConfig({
   // JSX compiled for the production runtime, which has no `jsxDEV`.
   oxc: { jsx: { development: false } },
   plugins: [tailwindcss()],
-  // The fake host imports bb's SDK app module late, to put its hooks in
-  // first; found then, it would re-optimize and reload the page.
-  optimizeDeps: { include: ["@get-bb/plugin-sdk/app"] },
+  // Found mid-run, either would make Vite re-optimize and reload the page:
+  // the fake host imports bb's SDK app module late, to put its hooks in
+  // first, and production JSX needs the runtime the development build skips.
+  optimizeDeps: { include: ["@get-bb/plugin-sdk/app", "react/jsx-runtime"] },
   resolve: {
     alias: { "@": root },
   },
