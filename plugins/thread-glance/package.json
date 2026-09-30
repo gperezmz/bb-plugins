@@ -77,7 +77,7 @@
     "typecheck": "tsc --noEmit",
     "build": "bb plugin build",
     "notices": "node scripts/third-party-notices.mjs",
-    "perf": "vitest run --config perf/vitest.config.ts"
+    "perf": "node -e \"require('node:fs').rmSync('perf/results',{recursive:true,force:true})\" && vitest run -c perf/vitest.config.ts --project harness && vitest run -c perf/vitest.browser.config.ts && vitest run -c perf/vitest.config.ts --project ledger"
   },
   "files": [
     "dist",
