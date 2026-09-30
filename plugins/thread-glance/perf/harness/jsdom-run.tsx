@@ -457,8 +457,12 @@ async function dragMoves(container: HTMLElement, threadId: string): Promise<Drag
     figure.jsMs = Number(figure.jsMs.toFixed(2));
     return figure;
   } finally {
+    // Cancel, then release and click as a mouse would: dnd-kit swallows the
+    // click that follows a drag, which would otherwise be the next event's.
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, button: 0 }));
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, button: 0 }));
     });
     await settle(2);
     restore();
