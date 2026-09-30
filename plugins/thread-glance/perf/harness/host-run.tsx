@@ -33,6 +33,8 @@ export interface HostFigures {
   idleAtWritesPerTransition: number;
   /** Calls to each of bb's per-row hooks per mounted row, over one mount. */
   hooksPerRow: Record<string, number>;
+  /** Calls to each of bb's per-row hooks over one mount, whatever the rows. */
+  hookCalls?: Record<string, number>;
   /** Mark all read on the MAR list; absent on other lists. */
   markAllRead?: MarkAllReadRequests;
 }
@@ -118,6 +120,7 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
   const hooksPerRow = Object.fromEntries(
     PER_ROW_HOOKS.map((name) => [name, Number((first.host.hookCalls[name] / Math.max(mountedRows, 1)).toFixed(2))]),
   );
+  const hookCalls = Object.fromEntries(PER_ROW_HOOKS.map((name) => [name, first.host.hookCalls[name]]));
   first.slots[0]!.unmount();
   const actionMark = first.host.actionCalls.length;
   const again = mountList(first.app, first.server);
@@ -205,6 +208,7 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
     idle,
     idleAtWritesPerTransition: writes,
     hooksPerRow,
+    hookCalls,
     ...(marked ? { markAllRead: marked } : {}),
   };
 }

@@ -6,7 +6,7 @@
 // that do not depend on timing, for `npm test`.
 import { cleanup } from "@testing-library/react";
 import { vi } from "vitest";
-import { commands, page, userEvent } from "vitest/browser";
+import { cdp, commands, page, userEvent } from "vitest/browser";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type Frame, type ServerState } from "./fake-host";
@@ -20,11 +20,8 @@ const SIDEBAR: Frame = { width: 280, height: 860 };
 const PHONE = { width: 390, height: 844 };
 const OVERSCAN = 240;
 
-/**
- * A real click. Forced, because dnd-kit marks a draggable header or row
- * `aria-disabled`, which Playwright reads as a disabled button.
- */
-const click = (target: Element) => userEvent.click(target, { force: true });
+/** A real click. */
+const click = (target: Element) => userEvent.click(target);
 
 const nextFrame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -339,6 +336,11 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
       cycles.detachedNodes.push(await detachedNodes());
     }
   }
+  // The sidebar frame is under 500 px, which the fake host hands the list as
+  // a phone, and phones have no drag: this step is a desktop's.
+  host.updateProps({ isCompactViewport: false });
+  await quiet();
+  const far = await dragFar(slot);
   slot.unmount();
   cleanup();
 
@@ -354,8 +356,96 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
     cycles,
     eventJsMs,
     phone,
+    dragFar: far,
   };
 }
+
+/**
+ * #145's run at its size: a drag held at the list's bottom edge scrolls the
+ * list down, and at its top edge back up; the dragged row stays mounted; and
+ * dropping onto a row that was not mounted when the drag began nests there.
+ */
+async function dragFar(slot: RenderedSlot): Promise<ChromiumFigures["dragFar"]> {
+  const frame = frameOf(slot);
+  frame.scrollTop = 0;
+  await quiet();
+  const mouse = (type: "mousePressed" | "mouseMoved" | "mouseReleased", x: number, y: number) =>
+    cdp().send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1 });
+  const view = frame.getBoundingClientRect();
+  const mountedAtStart = new Set(anchors(frame).map((anchor) => anchor.dataset.sidebarThreadId!));
+  const dragged = anchors(frame).find((anchor) => {
+    const rect = anchor.getBoundingClientRect();
+    return rect.top > view.top + 40 && rect.bottom < view.top + 200;
+  })!;
+  const draggedId = dragged.dataset.sidebarThreadId!;
+  const start = dragged.getBoundingClientRect();
+  const x = start.left + 40;
+  await mouse("mouseMoved", x, start.top + start.height / 2);
+  await mouse("mousePressed", x, start.top + start.height / 2);
+  for (let step = 1; step <= 6; step += 1) {
+    await mouse("mouseMoved", x, start.top + start.height / 2 + step * 4);
+    await nextFrame();
+  }
+  // Held at the bottom edge, the list scrolls down.
+  const edge = view.bottom - 4;
+  for (let step = 0; step < 30; step += 1) {
+    await mouse("mouseMoved", x, edge - (step % 2));
+    await sleep(40);
+  }
+  const scrolledDown = frame.scrollTop;
+  const draggedStayed = frame.querySelector(`[data-sidebar-thread-id="${draggedId}"]`) !== null;
+  // Back off the edge onto a row that was not mounted when the drag began.
+  const middle = view.top + view.height / 2;
+  await mouse("mouseMoved", x, middle);
+  await quiet();
+  const under = anchors(frame).find((anchor) => {
+    const rect = anchor.getBoundingClientRect();
+    return rect.top <= middle && rect.bottom >= middle;
+  });
+  const targetId = under?.dataset.sidebarThreadId ?? null;
+  let dropY = middle;
+  if (under !== undefined) {
+    const rect = under.getBoundingClientRect();
+    dropY = rect.top + rect.height / 2;
+    await mouse("mouseMoved", x, dropY);
+    await quiet();
+  }
+  const calls = slot.sdkCalls.length;
+  await mouse("mouseReleased", x, dropY);
+  await quiet();
+  const nested = slot.sdkCalls
+    .slice(calls)
+    .some((call) => call.method === "threads.update" && JSON.stringify(call.args).includes(`"parentThreadId":"${targetId}"`) && JSON.stringify(call.args).includes(draggedId));
+  // Held at the top edge, it scrolls back up.
+  const topRow = anchors(frame).find((anchor) => anchor.getBoundingClientRect().top > view.top + 60)!;
+  const from = topRow.getBoundingClientRect();
+  await mouse("mouseMoved", x, from.top + from.height / 2);
+  await mouse("mousePressed", x, from.top + from.height / 2);
+  for (let step = 1; step <= 6; step += 1) {
+    await mouse("mouseMoved", x, from.top + from.height / 2 - step * 4);
+    await nextFrame();
+  }
+  const beforeUp = frame.scrollTop;
+  for (let step = 0; step < 30; step += 1) {
+    await mouse("mouseMoved", x, view.top + 4 + (step % 2));
+    await sleep(40);
+  }
+  const scrolledUp = beforeUp - frame.scrollTop;
+  await mouse("mouseMoved", x + 400, view.top + 4);
+  await nextFrame();
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await mouse("mouseReleased", x + 400, view.top + 4);
+  await quiet();
+  return {
+    scrolledDownPx: Math.round(scrolledDown),
+    scrolledUpPx: Math.round(scrolledUp),
+    draggedStayed,
+    targetId,
+    targetWasMounted: targetId !== null && mountedAtStart.has(targetId),
+    nested,
+  };
+}
+
 
 /** At 390×844: rows mounted in the closed drawer, then frame times scrolling it open. */
 async function runPhone(list: GeneratedList, timing: boolean): Promise<ChromiumFigures["phone"]> {

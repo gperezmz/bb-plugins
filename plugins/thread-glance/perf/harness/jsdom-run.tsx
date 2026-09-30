@@ -163,10 +163,13 @@ function readRows(root: ParentNode): Map<string, string> {
   );
 }
 
-/** The drop feedback drawn: bb's nest and reorder attributes, by row. */
+/** The drop feedback drawn: bb's nest and reorder attributes, and the row they are drawn over. */
 function drawnFeedback(root: ParentNode): string {
   return [...root.querySelectorAll("[data-sidebar-nest-target],[data-sidebar-reorder-placement]")]
-    .map((node) => `${node.querySelector("[data-sidebar-thread-id]")?.getAttribute("data-sidebar-thread-id")}:${node.getAttribute("data-sidebar-nest-target")}:${node.getAttribute("data-sidebar-reorder-placement")}`)
+    .map((node) => {
+      const threadId = node.getAttribute("data-drop-thread-id") ?? node.querySelector("[data-sidebar-thread-id]")?.getAttribute("data-sidebar-thread-id");
+      return `${threadId}:${node.getAttribute("data-sidebar-nest-target")}:${node.getAttribute("data-sidebar-reorder-placement")}`;
+    })
     .join(" ");
 }
 

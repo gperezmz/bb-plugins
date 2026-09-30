@@ -102,6 +102,12 @@ function acrossCells<T>(
 
 const AT_1500: Cell[] = ["1500/live", "1500/settled"];
 
+/** B16's Baseline column in ms: #159's merge base, the median of 3 runs. */
+const B16_BASELINE = {
+  "1500/live": { mount: 618.3, scroll: 34.2 },
+  "1500/settled": { mount: 69.6, scroll: 20.0 },
+} as const;
+
 function events(names: readonly string[], rule: (event: EventFigure, name: string) => Reading) {
   return (figures: Figures, cells: readonly Cell[] = CELLS) =>
     acrossCells(
@@ -211,7 +217,7 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy: "Chromium, 1,500, live and settled (production React; script time through the DevTools protocol)",
     kind: "timing",
     switchedOnBy: 159,
-    enforcing: false,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => {
         const worst = Math.max(...Object.values(figure.eventJsMs));
@@ -257,8 +263,8 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "every mounted row",
     measuredBy: "jsdom: event `split layout`",
     kind: "deterministic",
-    switchedOnBy: 151,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: (figures) => events(["split layout"], changedOnly)(figures),
   },
   {
@@ -280,16 +286,19 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B9",
     bounds: "All renders over 50 drag moves",
     threshold:
-      "no thread row apart from the dragged row, once when the drag starts and once when it ends; feedback drawn only where the target changes. Under #152's fallback (a draggable per mounted row): no thread row renders on a move that leaves the target unchanged, and at most the mounted rows once per change of target",
+      "no thread row apart from the dragged row, once when the drag starts and once when it ends; feedback drawn only where the target changes. Under #159's fallback (a draggable per mounted row): no thread row renders on a move that leaves the target unchanged, and at most the mounted rows once per change of target",
     baseline: "every mounted row per move",
     measuredBy: "jsdom: 50 drag moves over rows (the `drag` figures)",
     kind: "deterministic",
-    switchedOnBy: 152,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ jsdom }) =>
-      acrossCells(CELLS, (cell) => jsdom[cell], ({ drag, mountedRows }) => ({
-        figure: `${drag.otherRows} renders of other rows over ${drag.moves} moves (${drag.rowsOnUnchanged} on unchanged moves, up to ${drag.maxRowsOnChange} per change)`,
-        pass: drag.otherRows === 0 || (drag.rowsOnUnchanged === 0 && drag.maxRowsOnChange <= mountedRows),
+      acrossCells(CELLS, (cell) => jsdom[cell], ({ drag }) => ({
+        figure: `${drag.otherRows} renders of other rows over ${drag.moves} moves (${drag.rowsOnUnchanged} on unchanged moves, up to ${drag.maxRowsOnChange} per change, ${drag.targetChanges} changes of target)`,
+        // One draggable for the list: the first threshold. The fallback's
+        // (a draggable per mounted row) would read `rowsOnUnchanged === 0
+        // && maxRowsOnChange <= mountedRows`.
+        pass: drag.otherRows === 0 && drag.targetChanges > 0,
       })),
   },
   {
@@ -297,12 +306,12 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds:
       'Rows mounted, however scrolled and after any group, children chip, "N more child threads", environment or Settled fold opens or closes',
     threshold:
-      "exactly the rows intersecting the view extended 240 px above and below, plus the rows that must stay mounted (#150), plus each group's header",
+      "exactly the rows intersecting the view extended 240 px above and below, plus the rows that must stay mounted (#159), plus each group's header",
     baseline: "most rows",
     measuredBy: "Chromium, 1,500, mounted anchors against computed positions",
     kind: "deterministic",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ window }) => ({
         figure: `${window.excess} rows mounted outside, ${window.missing} missing inside, over ${window.checks} checks`,
@@ -315,10 +324,10 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 100 ms at 1× CPU, < 200 ms at 4×",
     baseline: "416 / 384 / 376 ms; 1.7 s at 4×",
     measuredBy:
-      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. On 0.7.0 the harness puts a group's and a children chip's INP at 96–120 ms, on either side of 100 ms, where the audit measured about 400 ms in bb: those two rest on #150's real drive, which switches the row on",
+      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. On 0.7.0 the harness puts a group's and a children chip's INP at 96–120 ms, on either side of 100 ms, where the audit measured about 400 ms in bb: those two rest on #159's real drive, which switches the row on",
     kind: "timing",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ inp }) => {
         const readings = [
@@ -339,10 +348,10 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 300 ms",
     baseline: "2.2 s",
     measuredBy:
-      "Chromium, 1,500 (production React). On 0.7.0 the harness puts it at about 0.6 s, where the audit measured 2.2 s in bb, so the row rests on #150's real drive, which switches it on",
+      "Chromium, 1,500 (production React). On 0.7.0 the harness puts it at about 0.6 s, where the audit measured 2.2 s in bb, so the row rests on #159's real drive, which switches it on",
     kind: "timing",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], (figure) => ({
         figure: ms(figure.remountToFirstRowMs),
@@ -356,20 +365,23 @@ export const LEDGER: readonly LedgerRow[] = [
       "JS heap < 0.5 MB in total; IntersectionObserver and ResizeObserver counts back to first-mount values; plugin-held detached nodes not growing",
     baseline: "+1.3 MB, +8 observers, +5.5k nodes per cycle",
     measuredBy:
-      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #150's real drive, which switches it on",
+      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #159's real drive, which switches it on",
     kind: "timing",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ cycles }) => {
-        const grew = (series: number[]) => series.length > 1 && series.at(-1)! > series[0]!;
+        const grew = (series: number[], from = 0) => series.length > from + 1 && series.at(-1)! > series[from]!;
         return {
           figure: `heap +${(cycles.heapGrowthBytes / 1_000_000).toFixed(2)} MB, IntersectionObserver ${cycles.intersectionObservers.join("→")}, ResizeObserver ${cycles.resizeObservers.join("→")}, detached nodes ${cycles.detachedNodes.join("→")}`,
           pass:
             cycles.heapGrowthBytes < 500_000 &&
             !grew(cycles.intersectionObservers) &&
             !grew(cycles.resizeObservers) &&
-            !grew(cycles.detachedNodes),
+            // Growing, not a step: the test runtime keeps the empty container
+            // each list mounted in (one per mount, on #159's merge base as on
+            // its head), which the first remount adds, and the count holds from there.
+            !grew(cycles.detachedNodes, 1),
         };
       }),
   },
@@ -377,12 +389,12 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B14",
     bounds: "Renders for a new thread, or a thread moving up or down",
     threshold:
-      "its own row plus rows whose drawn content changed; a row whose only change is its position does not render; its group header and the list header only when a count or flag they show changed",
+      "its own row, rows whose drawn content changed, and rows the change brings into the mounted range; a row mounted before and after whose only change is its position does not render; its group header and the list header only when a count or flag they show changed",
     baseline: "255 rows remounted",
     measuredBy: "jsdom, 1,500: events `new thread`, `thread moves`",
     kind: "deterministic",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: (figures) => events(["new thread", "thread moves"], changedOnly)(figures, AT_1500),
   },
   {
@@ -393,8 +405,8 @@ export const LEDGER: readonly LedgerRow[] = [
     measuredBy:
       "Chromium at 390×844, 1,500. Closed: the list in a 390×844 drawer moved off-canvas with `translateX(-100%)`. Open: the drawer on screen, scrolled. The closed count is deterministic, the frames timing",
     kind: "both",
-    switchedOnBy: 150,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
       acrossCells(AT_1500, (cell) => chromium[cell], ({ phone }) => {
         const fit = Math.ceil(480 / Math.max(phone.rowHeightPx, 1));
@@ -408,16 +420,21 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B16",
     bounds: "Mounting the list, and mounting the rows that 100 rows of scrolling bring into view",
     threshold: "each ≤ half of the figure recorded in the Baseline column",
-    baseline: "#151 writes its merge base's two figures, measured in the same run, here; B16 then enforces against those recorded numbers",
-    measuredBy: "Chromium, 1,500 (production React)",
+    baseline:
+      "#159's merge base (8b75d8f), median of 3 runs alternating with #159's own on one machine and Chromium: 1500/live mount 618.3 ms, scroll 34.2 ms; 1500/settled mount 69.6 ms, scroll 20.0 ms. #159's medians in the same runs: 1500/live 98.1 ms and 18.8 ms, 1500/settled 50.1 ms and 17.8 ms",
+    measuredBy:
+      "Chromium, 1,500 (production React). Scroll is from setting the scroll position to the first frame after a row lands fully in view, so it is never under one frame (about 17 ms)",
     kind: "timing",
-    switchedOnBy: 151,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ chromium }) =>
-      acrossCells(AT_1500, (cell) => chromium[cell], (figure) => ({
-        figure: `mount ${ms(figure.mountToFirstRowMs)}, scroll ${ms(figure.scrollMountMs)} (no baseline recorded yet)`,
-        pass: null,
-      })),
+      acrossCells(AT_1500, (cell) => chromium[cell], (figure, cell) => {
+        const base = B16_BASELINE[cell as keyof typeof B16_BASELINE];
+        return {
+          figure: `mount ${ms(figure.mountToFirstRowMs)} (limit ${ms(base.mount / 2)}), scroll ${ms(figure.scrollMountMs)} (limit ${ms(base.scroll / 2)})`,
+          pass: figure.mountToFirstRowMs <= base.mount / 2 && figure.scrollMountMs <= base.scroll / 2,
+        };
+      }),
   },
   {
     id: "B17",
@@ -426,8 +443,8 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "that row (per-row hook)",
     measuredBy: "jsdom: events `draft change`, `row status change`",
     kind: "deterministic",
-    switchedOnBy: 151,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: (figures) =>
       events(["draft change", "row status change"], (event) => {
         const others = event.rowIds === null ? event.distinctRows : event.rowIds.filter((id) => id !== event.threadId).length;
@@ -438,19 +455,25 @@ export const LEDGER: readonly LedgerRow[] = [
     id: "B18",
     bounds: "bb hooks per mounted row",
     threshold:
-      "only `useSidebarThreadShortcut` (plus a pull request badge's lookup); `experimental_useSidebarThreadSplit` once per list, unless #151's PR records the drive step that failed with one call per list and passed with one per row",
+      "only `useSidebarThreadShortcut` (plus a pull request badge's lookup); `experimental_useSidebarThreadSplit` once per list, unless #159's PR records the drive step that failed with one call per list and passed with one per row",
     baseline: "five per row",
-    measuredBy: "fake host call counts over one mount",
+    measuredBy:
+      "fake host call counts over one mount. `experimental_useSidebarThreadSplit` counts as once per list while its calls over the mount stay at 2 or fewer, the list's own renders, whatever the number of rows",
     kind: "deterministic",
-    switchedOnBy: 151,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ host }) =>
-      acrossCells(CELLS, (cell) => host[cell], ({ hooksPerRow }) => {
-        const used = Object.entries(hooksPerRow).filter(([, calls]) => calls > 0);
+      acrossCells(CELLS, (cell) => host[cell], ({ hooksPerRow, hookCalls }) => {
+        const split = "experimental_useSidebarThreadSplit";
+        const used = Object.entries(hooksPerRow).filter(([name, calls]) => calls > 0 || (name === split && (hookCalls?.[split] ?? 0) > 0));
         const allowed = new Set(["useSidebarThreadShortcut", "experimental_useSidebarThreadPullRequest"]);
+        const oncePerList = (name: string) => name === split && hookCalls !== undefined && hookCalls[split]! <= 2;
         return {
-          figure: used.map(([name, calls]) => `${name} ${calls}`).join(", ") || "none",
-          pass: used.every(([name]) => allowed.has(name)),
+          figure:
+            used
+              .map(([name, calls]) => (name === split && hookCalls !== undefined ? `${name} ${hookCalls[split]} over the mount` : `${name} ${calls}`))
+              .join(", ") || "none",
+          pass: used.every(([name]) => allowed.has(name) || oncePerList(name)),
         };
       }),
   },
@@ -462,8 +485,8 @@ export const LEDGER: readonly LedgerRow[] = [
     baseline: "about 4 providers per row",
     measuredBy: "jsdom, counting the third-party menu primitives' instances (Radix roots by their `<Root>Provider`)",
     kind: "deterministic",
-    switchedOnBy: 151,
-    enforcing: false,
+    switchedOnBy: 159,
+    enforcing: true,
     read: ({ jsdom }) =>
       acrossCells(CELLS, (cell) => jsdom[cell], ({ menuPrimitives: counts }) => ({
         figure: Object.entries(counts)
