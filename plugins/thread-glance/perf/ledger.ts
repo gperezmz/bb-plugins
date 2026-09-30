@@ -15,13 +15,16 @@
 // row of kind "both" has a part of each, taken by the run of each.
 //
 // Terms the rows use:
-// - harness: this ledger's synthetic run, over lists generated from a seed
-//   (`generateList` in features/thread-list/testing/fixtures.ts);
+// - harness: this ledger's synthetic run, over generated lists;
 // - jsdom: its render counts, taken on React's development build, which
 //   counts renders as the production build does;
 // - Chromium: its browser run (vitest browser mode, Playwright), which times
 //   React's production build, the build bb ships;
 // - fake host: its fake bb and plugin server, which count requests;
+// - generated list: a list the harness makes from a seed (`generateList` in
+//   features/thread-list/testing/fixtures.ts), of 50, 300 or 1,500 threads:
+//   the live list, with nothing settled yet, or the settled list, two days
+//   on, where read thread trees sit behind their Settled fold;
 // - MAR list: the Mark all read list, 1,500 threads with 443 unread;
 // - real drive: a drive of real bb threads with the driving-bb-plugins
 //   skill (a slice's short drive of about 50, or #154's release drive of
@@ -35,7 +38,7 @@
 //   behind its closed children chip, which has no row mounted. In Chromium it
 //   is a thread scrolled out of view.
 // - The Settled fold exists only where something is settled, so its INP is
-//   taken in the settled scenario; the live scenario reports n/a.
+//   taken on the settled list; the live list reports n/a.
 // - A row "renders" when the outermost component around its anchor
 //   (`data-sidebar-thread-id`) runs; group headers and the list header
 //   likewise by `data-sidebar="group-label"` and `data-sidebar="list-header"`
@@ -311,7 +314,7 @@ export const LEDGER: readonly LedgerRow[] = [
     threshold: "< 100 ms at 1× CPU, < 200 ms at 4×",
     baseline: "416 / 384 / 376 ms; 1.7 s at 4×",
     measuredBy:
-      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken in the settled scenario only; live reports n/a",
+      "Chromium Event Timing, 1,500 (production React). The Settled fold's is taken on the settled list only; the live list reports n/a. On 0.7.0 the harness puts a group's and a children chip's INP at 96–120 ms, on either side of 100 ms, where the audit measured about 400 ms in bb: those two rest on #150's real drive, which switches the row on",
     kind: "timing",
     switchedOnBy: 150,
     enforcing: false,
@@ -334,7 +337,8 @@ export const LEDGER: readonly LedgerRow[] = [
     bounds: "Remount to first row drawn",
     threshold: "< 300 ms",
     baseline: "2.2 s",
-    measuredBy: "Chromium, 1,500 (production React)",
+    measuredBy:
+      "Chromium, 1,500 (production React). On 0.7.0 the harness puts it at about 0.6 s, where the audit measured 2.2 s in bb, so the row rests on #150's real drive, which switches it on",
     kind: "timing",
     switchedOnBy: 150,
     enforcing: false,
@@ -351,7 +355,7 @@ export const LEDGER: readonly LedgerRow[] = [
       "JS heap < 0.5 MB in total; IntersectionObserver and ResizeObserver counts back to first-mount values; plugin-held detached nodes not growing",
     baseline: "+1.3 MB, +8 observers, +5.5k nodes per cycle",
     measuredBy:
-      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). The slice that switches it on also confirms it with its short real drive",
+      "Chromium through the DevTools protocol, 1,500 (HeapProfiler.collectGarbage, Runtime.queryObjects, DOM.getDetachedDomNodes). On 0.7.0 the harness shows none of the audit's growth (observer counts flat, detached nodes up 2 once), so the row rests on #150's real drive, which switches it on",
     kind: "timing",
     switchedOnBy: 150,
     enforcing: false,
