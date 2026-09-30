@@ -4,6 +4,7 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
+import { itemKeyOf } from "../model/layout-items";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
 import { moveGroup, ORDER_PREFERENCE } from "../model/groups";
@@ -470,7 +471,13 @@ export function createCommands(store: ListStore): Commands {
     dragCancel: () => store.setUi({ dropStates: NO_DROPS, dropGroupId: null, dragging: null }),
     dragStart: (dragging) => store.setUi({ dragging, card: null }),
     openMenu: (menu) => store.setUi({ menu, card: null }),
-    closeMenu: () => store.setUi({ menu: null }),
+    closeMenu() {
+      const { menu } = store.getState().ui;
+      // The menu's row stays mounted for the focus a closing menu returns to
+      // it, wherever the list is scrolled: it is the row holding focus now.
+      const focusKey = menu === null || menu.kind === "group" ? store.getState().ui.focusKey : itemKeyOf(menu.groupId, menu.rowKey);
+      store.setUi({ menu: null, focusKey });
+    },
     startRename: (groupId, rowKey) => store.setUi({ renaming: { groupId, rowKey } }),
     endRename: () => store.setUi({ renaming: null }),
     focusRow(key, from) {

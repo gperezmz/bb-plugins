@@ -215,7 +215,14 @@ describe("scrolling a windowed list", () => {
     const content = menu.getBoundingClientRect();
     // Radix places it below or above its anchor, 4 px off.
     expect(Math.min(Math.abs(content.top - button.bottom), Math.abs(content.bottom - button.top))).toBeLessThan(6);
+    // Closed from the keyboard far from its row, focus still returns to the row's "…".
+    window.scrollTo(0, 5_000);
+    await frames();
     await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await frames();
+    await sleep(100);
+    expect(document.activeElement).toBe(within(anchorOf("t28")!.parentElement!).getByRole("button", { name: "Thread actions" }));
   });
 
   it("keeps the dragged row mounted while the list scrolls, and the drag goes on to its drop", async () => {
