@@ -78,12 +78,6 @@ git config core.hooksPath .githooks
 
 ## Scripts only one plugin has
 
-### Thread Glance
-
-| Script | When to run it |
-|---|---|
-| `npm run perf` | After changing how the list renders, and before opening a pull request that does. It mounts the list over generated lists of 50, 300 and 1,500 threads, in jsdom and in headless Chromium, prints a table per list and the reading of every row of the budget ledger (`perf/ledger.ts`), writes the same numbers to `perf/results/perf.json`, and fails when any row is missed. It needs no bb running, takes several minutes, and runs one file at a time, since timings taken side by side slow each other. `PERF_THREADS` and `PERF_PROJECTS` add a snapshot of your own threads; the commands that take one are in the header of `perf/list-render.perf.tsx`. The ledger's deterministic rows also run in `npm test`. |
-
 ### Thread Usage
 
 | Script | When to run it |

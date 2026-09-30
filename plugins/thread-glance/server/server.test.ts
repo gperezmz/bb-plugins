@@ -412,17 +412,13 @@ describe("stamps", () => {
     ]);
   });
 
-  // Row B26 of the performance ledger: one idleAt write and one signal
-  // per busy-to-idle change, whatever the number of windows, none of which has
-  // a request to send for it.
+  // One signal per busy-to-idle change, whatever the number of windows, none
+  // of which has a request to send for it.
   it("records a thread going idle once, with no request from any window", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(9_000);
-    const { bb, harness } = await load();
-    const db = bb.storage.database();
-    const writes = () => (db.prepare("SELECT total_changes() AS n").get() as { n: number }).n;
+    const { harness } = await load();
     await sync(harness);
-    const before = writes();
     await harness.behavior.emitThreadEvent("thread.idle", {
       thread: makeThreadResponse({ id: "p" }),
       lastAssistantText: null,
@@ -430,8 +426,6 @@ describe("stamps", () => {
     expect(recordSignals(harness)).toEqual([
       { p: { stamps: { finishedAt: 9_000, idleAt: 9_000 }, notes: null } },
     ]);
-    // One row write for finishedAt, then the one for idleAt.
-    expect(writes() - before).toBe(2);
   });
 
   it("records a reported idle moment only when it is later than the stored one", async () => {

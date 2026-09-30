@@ -1,10 +1,8 @@
-// The harness's fake bb and plugin server. bb's list hooks read a store the
-// harness drives, so bb can hand the list updates after mount (renderSlot's
-// own host is fixed at mount), a new `actions` object on every update as bb
-// 0.44 does, and a `threads.markRead` that takes time. Every hook call,
-// plugin RPC and bb request is counted. The list itself is mounted as bb
-// mounts it: the plugin's registered thread list component, through
-// renderSlot.
+// A fake bb and plugin server. bb's list hooks read a store the test drives,
+// so bb can hand the list updates after mount (renderSlot's own host is fixed
+// at mount), a new `actions` object on every update as bb 0.44 does, and a
+// `threads.markRead` that takes time. The list itself is mounted as bb mounts
+// it: the plugin's registered thread list component, through renderSlot.
 import { useSyncExternalStore, type ComponentType } from "react";
 import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {
@@ -17,34 +15,7 @@ import type {
   PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { createFakeServer, type FakeServer, type FakeServerOptions } from "@/features/thread-list/testing/fixtures";
-
-/** bb's list hooks the fake host serves; every call is counted by name. */
-const HOST_HOOKS = [
-  "experimental_useSidebarThreads",
-  "experimental_useSidebarThreadActions",
-  "experimental_useProviders",
-  "useEnvironmentProviders",
-  "useSidebarThreadDraft",
-  "useSidebarThreadDraftIds",
-  "useSidebarThreadRowStatus",
-  "useSidebarThreadRowStatuses",
-  "useSidebarSplitLayout",
-  "useSidebarThreadShortcut",
-  "experimental_useSidebarThreadSplit",
-  "experimental_useSidebarThreadPullRequest",
-] as const;
-
-/** Hooks bb documents as called once per rendered row. */
-export const PER_ROW_HOOKS = [
-  "useSidebarThreadDraft",
-  "useSidebarThreadRowStatus",
-  "useSidebarThreadShortcut",
-  "experimental_useSidebarThreadSplit",
-  "experimental_useSidebarThreadPullRequest",
-] as const;
-
-type HookName = (typeof HOST_HOOKS)[number];
+import { createFakeServer, type FakeServer, type FakeServerOptions } from "./fixtures";
 
 interface Provider {
   id: string;
@@ -62,11 +33,6 @@ interface HostState {
   rowStatuses: ReadonlyMap<string, PluginSidebarThreadRowStatus>;
   splitLayout: PluginSidebarSplitLayout | null;
   props: PluginThreadListProps;
-}
-
-interface ActionCall {
-  method: string;
-  threadId?: string;
 }
 
 export interface FakeHostOptions {
@@ -98,8 +64,6 @@ export interface FakeHost {
   updateThread(id: string, patch: Partial<PluginSidebarThread>): void;
   /** Replaces the list's props; `onNavigate` gets a new identity. */
   updateProps(patch?: Partial<PluginThreadListProps>): void;
-  hookCalls: Record<HookName, number>;
-  actionCalls: ActionCall[];
   /** bb's `threads.markRead`: answers after `markReadMs`, and bb's list shows the thread read soon after. */
   markRead(args: { threadId: string }): Promise<{ id: string }>;
   /** Most `threads.markRead` calls bb held at once. */
@@ -108,7 +72,6 @@ export interface FakeHost {
   markReadSettled(): Promise<void>;
   /** Answers every held `threads.markRead`, and stops holding. */
   releaseReads(): void;
-  resetCounts(): void;
   subscribe(listener: () => void): () => void;
 }
 
@@ -158,27 +121,13 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     for (const resolve of waiting) resolve();
   };
   const makeActions = () => ({
-    open(threadId: string) {
-      host.actionCalls.push({ method: "open", threadId });
-    },
-    openNewThread() {
-      host.actionCalls.push({ method: "openNewThread" });
-    },
-    async setPinned(threadId: string) {
-      host.actionCalls.push({ method: "setPinned", threadId });
-    },
-    async setRead(threadId: string) {
-      host.actionCalls.push({ method: "setRead", threadId });
-    },
-    async rename(threadId: string) {
-      host.actionCalls.push({ method: "rename", threadId });
-    },
-    archive(threadId: string) {
-      host.actionCalls.push({ method: "archive", threadId });
-    },
-    requestDelete(threadId: string) {
-      host.actionCalls.push({ method: "requestDelete", threadId });
-    },
+    open() {},
+    openNewThread() {},
+    async setPinned() {},
+    async setRead() {},
+    async rename() {},
+    archive() {},
+    requestDelete() {},
   });
   let actions = makeActions();
   let sidebar = sidebarOf(state);
@@ -202,8 +151,6 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
       state = { ...state, props: { ...state.props, onNavigate() {}, ...patch } };
       notify();
     },
-    hookCalls: Object.fromEntries(HOST_HOOKS.map((name) => [name, 0])) as Record<HookName, number>,
-    actionCalls: [],
     async markRead({ threadId }) {
       inFlight += 1;
       host.markReadPeak = Math.max(host.markReadPeak, inFlight);
@@ -228,11 +175,6 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
       for (const resolve of waiting) resolve();
     },
     markReadSettled: () => (inFlight === 0 ? Promise.resolve() : new Promise((resolve) => idle.push(resolve))),
-    resetCounts() {
-      for (const name of HOST_HOOKS) host.hookCalls[name] = 0;
-      host.actionCalls.length = 0;
-      host.markReadPeak = 0;
-    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -262,45 +204,38 @@ function useHost<T>(select: (state: HostState) => T): T {
   return useSyncExternalStore(host.subscribe, () => select(host.state()));
 }
 
-function counted<Args extends unknown[], Result>(name: HookName, hook: (...args: Args) => Result) {
-  return (...args: Args): Result => {
-    hostOrThrow().hookCalls[name] += 1;
-    return hook(...args);
-  };
-}
-
 type Runtime = Record<string, (...args: never[]) => unknown>;
 
 function fakeHooks(testRuntime: Runtime): Runtime {
-  const passThrough = (name: HookName) =>
-    counted(name, (...args: unknown[]) => (testRuntime[name] as (...args: unknown[]) => unknown)(...args));
+  const passThrough =
+    (name: string) =>
+    (...args: unknown[]) =>
+      (testRuntime[name] as (...args: unknown[]) => unknown)(...args);
   const noDraft = { hasUnsubmittedDraft: false };
   const withDraft = { hasUnsubmittedDraft: true };
   return {
-    experimental_useSidebarThreads: counted("experimental_useSidebarThreads", () => {
+    experimental_useSidebarThreads: () => {
       useHost((state) => state.threads);
       return hostSidebar();
-    }),
-    experimental_useSidebarThreadActions: counted("experimental_useSidebarThreadActions", () => {
+    },
+    experimental_useSidebarThreadActions: () => {
       return useHost(() => hostActions());
-    }),
-    experimental_useProviders: counted("experimental_useProviders", () => {
+    },
+    experimental_useProviders: () => {
       const providers = useHost((state) => state.providers);
       return useProvidersState(providers);
-    }),
-    useEnvironmentProviders: counted("useEnvironmentProviders", () => {
+    },
+    useEnvironmentProviders: () => {
       const providers = useHost((state) => state.environmentProviders);
       return useEnvironmentState(providers);
-    }),
-    useSidebarThreadDraft: counted("useSidebarThreadDraft", (threadId: string) =>
+    },
+    useSidebarThreadDraft: (threadId: string) =>
       useHost((state) => state.draftIds.has(threadId)) ? withDraft : noDraft,
-    ),
-    useSidebarThreadDraftIds: counted("useSidebarThreadDraftIds", () => useHost((state) => state.draftIds)),
-    useSidebarThreadRowStatus: counted("useSidebarThreadRowStatus", (threadId: string) =>
+    useSidebarThreadDraftIds: () => useHost((state) => state.draftIds),
+    useSidebarThreadRowStatus: (threadId: string) =>
       useHost((state) => state.rowStatuses.get(threadId) ?? null),
-    ),
-    useSidebarThreadRowStatuses: counted("useSidebarThreadRowStatuses", () => useHost((state) => state.rowStatuses)),
-    useSidebarSplitLayout: counted("useSidebarSplitLayout", () => useHost((state) => state.splitLayout)),
+    useSidebarThreadRowStatuses: () => useHost((state) => state.rowStatuses),
+    useSidebarSplitLayout: () => useHost((state) => state.splitLayout),
     useSidebarThreadShortcut: passThrough("useSidebarThreadShortcut"),
     experimental_useSidebarThreadSplit: passThrough("experimental_useSidebarThreadSplit"),
     experimental_useSidebarThreadPullRequest: passThrough("experimental_useSidebarThreadPullRequest"),
@@ -328,7 +263,7 @@ let app: PluginApp | null = null;
  * Loads the plugin app against the fake host. bb's SDK module binds its hooks
  * when first imported, so the fake hooks go in before that import; a module
  * that imported it earlier would have bound the test runtime's hooks instead,
- * which this refuses rather than measure the wrong host.
+ * which this refuses rather than test the wrong host.
  */
 export async function loadWithFakeHost(): Promise<PluginApp> {
   if (app !== null) return app;
@@ -340,7 +275,7 @@ export async function loadWithFakeHost(): Promise<PluginApp> {
   if (sdkApp.experimental_useSidebarThreads !== hooks.experimental_useSidebarThreads) {
     throw new Error("@get-bb/plugin-sdk/app was imported before the fake host; load it first");
   }
-  app = await loadPluginApp(() => import("../../app"));
+  app = await loadPluginApp(() => import("../../../app"));
   return app;
 }
 
@@ -376,53 +311,9 @@ const SDK_FAKES = {
   },
 } as never;
 
-/** A sidebar's height: what the harness's jsdom runs give the window, as a user's list has in view. */
-const SIDEBAR_HEIGHT = 800;
-
-/**
- * Gives jsdom, which lays nothing out, a sidebar-tall window, so the list
- * mounts about the rows a user's sidebar shows rather than every row the
- * tests' tall default mounts. Nothing in Chromium, whose window is real.
- */
-export function sidebarViewport(): void {
-  if (!navigator.userAgent.includes("jsdom")) return;
-  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: SIDEBAR_HEIGHT });
-}
-
-/** The sidebar's scroll area around the list, where a run lays it out. */
-export interface Frame {
-  width: number;
-  height: number;
-  /** A CSS transform, to move a phone drawer off-canvas. */
-  transform?: string;
-}
-
-/** How the page's realtime socket stands as a list mounts: connected, or, on a page just loaded, still connecting. */
-export type Realtime = "connected" | "connecting";
-
-/** The list as a window mounts it, fed props by the fake host, in `frame` when given. */
-export function mountList(app: PluginApp, server: ServerState, frame?: Frame, realtime: Realtime = "connected"): RenderedSlot {
+/** The list as a window mounts it, fed props by the fake host. */
+export function mountList(app: PluginApp, server: ServerState): RenderedSlot {
   const List = app.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
-  const Window = () => {
-    const list = <List {...useHost((state) => state.props)} />;
-    if (frame === undefined) return list;
-    return (
-      <div
-        data-perf-frame=""
-        style={{ width: frame.width, height: frame.height, overflowY: "auto", position: "relative", transform: frame.transform }}
-      >
-        {list}
-      </div>
-    );
-  };
-  return server.attach(
-    renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: SDK_FAKES, realtimeConnectionState: realtime }),
-  );
-}
-
-/** The component the plugin registers in bb's app overlay slot, mounted as bb mounts it, beside the list. */
-export function mountOverlay(app: PluginApp, server: ServerState, realtime: Realtime = "connected"): RenderedSlot {
-  const overlay = app.appOverlays[0];
-  if (overlay === undefined) throw new Error("the plugin registers no app overlay");
-  return server.attach(renderSlot(overlay, {}, { rpc: server.handlers as never, sdk: SDK_FAKES, realtimeConnectionState: realtime }));
+  const Window = () => <List {...useHost((state) => state.props)} />;
+  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: SDK_FAKES, realtimeConnectionState: "connected" }));
 }

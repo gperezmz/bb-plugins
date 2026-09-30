@@ -1,19 +1,44 @@
 // @vitest-environment jsdom
 // Rows are keyed by what they show: a row mounted before a change and still
 // mounted after it keeps its DOM node, whatever is inserted, removed or
-// reordered around it, through bb's own updates on the harness's fake host.
+// reordered around it, through bb's own updates on a fake host.
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import { generateList } from "../testing/fixtures";
-import { JSDOM_VIEWPORT_HEIGHT } from "../testing/jsdom-viewport";
-import { openList, settle } from "../../../perf/harness/jsdom-run";
+import { flushListStores } from "../store/api";
+import { createFakeHost, loadWithFakeHost, mountList, serverState } from "../testing/fake-host";
+import { makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.useRealTimers();
 });
+
+/** Lets loads and effects queued by the last change land, bb's updates waiting in the list store among them. */
+async function settle(rounds: number): Promise<void> {
+  for (let index = 0; index < rounds; index += 1) {
+    await act(async () => {
+      flushListStores();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
+
+/** 60 read root threads over every project, newest first, each tenth with two child threads; nothing settled at T0. */
+function threadList(): PluginSidebarThread[] {
+  const threads: PluginSidebarThread[] = [];
+  for (let index = 0; index < 60; index += 1) {
+    const at = T0 - index * 60_000;
+    const root = makeThread({ id: `t${index}`, title: `Thread ${index}`, projectId: PROJECTS[index % PROJECTS.length]!.id, createdAt: at - 60_000, updatedAt: at, latestAttentionAt: at, lastReadAt: at });
+    threads.push(root);
+    if (index % 10 !== 0) continue;
+    for (let child = 0; child < 2; child += 1) {
+      threads.push(makeThread({ id: `${root.id}c${child}`, title: `${root.title} child ${child}`, projectId: root.projectId, parentThreadId: root.id, createdAt: at - 60_000, updatedAt: at - child - 1, latestAttentionAt: at - child - 1, lastReadAt: at - child - 1 }));
+    }
+  }
+  return threads;
+}
 
 function rowNodes(root: ParentNode): Map<string, HTMLElement> {
   return new Map(
@@ -25,14 +50,16 @@ function rowNodes(root: ParentNode): Map<string, HTMLElement> {
 }
 
 it("keeps every row's DOM node through an insertion, a removal, an archive, a move and a group opening or closing above", async () => {
-  const list = generateList({ size: 300, kind: "live" });
-  const { host, slot } = await openList(list);
-  // The behaviour tests' tall window, rather than the harness's sidebar: every row stays in view.
-  Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: JSDOM_VIEWPORT_HEIGHT });
-  await act(async () => {
-    window.dispatchEvent(new Event("resize"));
-  });
-  await settle(2);
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  vi.useFakeTimers({ toFake: ["Date", "setInterval"] });
+  vi.setSystemTime(T0 + 60_000);
+  const host = createFakeHost({ threads: threadList(), projects: PROJECTS, freshActions: true });
+  const slot = mountList(await loadWithFakeHost(), serverState());
+  await settle(5);
   const root = slot.container;
   const thread = (id: string) => host.state().threads.find((candidate) => candidate.id === id)!;
   const roots = () => [...root.querySelectorAll<HTMLElement>("[data-sidebar-thread-id]")].map((anchor) => anchor.dataset.sidebarThreadId!).filter((id) => thread(id).parentThreadId === null);
