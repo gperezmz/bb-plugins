@@ -38,7 +38,7 @@ import { createStore, type StoreApi } from "./vanilla";
 export type DropState = "valid" | "blocked" | "unchanged" | "before" | "after";
 
 /** A confirmation the list asks for before it acts. */
-export interface Confirm {
+interface Confirm {
   title: string;
   description: string;
   confirmLabel: string;
@@ -194,7 +194,7 @@ const UNSET_EDGE: Edge = {
   isIdleReporter: () => false,
 };
 
-export const CLOSED_UI: ListUi = {
+const CLOSED_UI: ListUi = {
   editingId: null,
   detailsId: null,
   moveId: null,

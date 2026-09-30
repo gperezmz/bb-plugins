@@ -5,7 +5,7 @@
 // viewport changes (a drawer opening), and when asked after a render.
 import type { View } from "../../model/windowing";
 
-export interface Box {
+interface Box {
   top: number;
   bottom: number;
   left: number;
@@ -17,7 +17,7 @@ export interface Box {
  * scrolled in `scroller` (its client box; null for the page) inside a
  * `viewport` of the given size. Pure.
  */
-export function viewOf(scroller: Box | null, listTop: number, viewport: { width: number; height: number }): View {
+function viewOf(scroller: Box | null, listTop: number, viewport: { width: number; height: number }): View {
   const area = scroller ?? { top: 0, bottom: viewport.height, left: 0, right: viewport.width };
   const top = Math.max(area.top, 0);
   const bottom = Math.min(area.bottom, viewport.height);

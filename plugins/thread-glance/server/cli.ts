@@ -10,7 +10,7 @@ import {
 import { PreferenceValidationError, type PreferenceStore } from "./preference-store";
 
 /** Parses a CLI value as JSON; a bare word such as `machine` is read as a string. */
-export function parseCliValue(raw: string): unknown {
+function parseCliValue(raw: string): unknown {
   try {
     return JSON.parse(raw) as unknown;
   } catch {

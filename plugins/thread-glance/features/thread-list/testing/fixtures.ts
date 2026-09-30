@@ -252,7 +252,7 @@ function seededRandom(seed: number): () => number {
 }
 
 /** Projects of a generated list: one group each under project grouping. */
-export const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((index) =>
+const GENERATED_PROJECTS: PluginSidebarProject[] = [1, 2, 3, 4].map((index) =>
   makeProject(`proj_${index}`, `Project ${index}`),
 );
 

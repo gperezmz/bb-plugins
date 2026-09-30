@@ -4,19 +4,12 @@ import { Slot } from "@radix-ui/react-slot";
 
 import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
-import { useBrowserDimmingModal } from "../../hooks/useBrowserDimmingModal";
 import {
   type ResponsiveOverlayContextValue,
   useResponsiveRoot,
-  MobileTrigger,
   ResponsiveDrawerShell,
   stripRadixContentProps,
 } from "./responsive-overlay.js";
-import {
-  blurActiveKeyboardInputBeforeOverlayOpen,
-  getOverlayTriggerClassName,
-  preventOverlayTriggerSelection,
-} from "./overlay-trigger.js";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 interface ResponsiveDialogContextValue extends ResponsiveOverlayContextValue {
@@ -104,86 +97,6 @@ function Dialog({
   );
 }
 
-const DialogTrigger = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Trigger>
->(({ asChild, children, className, ...props }, ref) => {
-  const { isCompactViewport, open, onOpenChange } = useResponsiveDialog();
-
-  if (isCompactViewport) {
-    return (
-      <MobileTrigger
-        ref={ref}
-        asChild={asChild}
-        open={open}
-        onOpenChange={onOpenChange}
-        haspopup="dialog"
-        className={className}
-        {...props}
-      >
-        {children}
-      </MobileTrigger>
-    );
-  }
-
-  return (
-    <DialogPrimitive.Trigger
-      ref={ref}
-      asChild={asChild}
-      className={getOverlayTriggerClassName(className)}
-      onMouseDown={(event) => {
-        if (!open) {
-          blurActiveKeyboardInputBeforeOverlayOpen();
-        }
-        preventOverlayTriggerSelection(event);
-      }}
-      {...props}
-    >
-      {children}
-    </DialogPrimitive.Trigger>
-  );
-});
-DialogTrigger.displayName = "DialogTrigger";
-
-interface DialogCloseProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  asChild?: boolean;
-}
-
-const DialogClose = React.forwardRef<HTMLButtonElement, DialogCloseProps>(
-  ({ asChild, onClick, children, ...props }, ref) => {
-    const { isCompactViewport, onOpenChange } = useResponsiveDialog();
-
-    if (isCompactViewport) {
-      const Comp = asChild ? Slot : "button";
-      const handleClick: React.MouseEventHandler<HTMLButtonElement> = (
-        event,
-      ) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) {
-          onOpenChange(false);
-        }
-      };
-      return (
-        <Comp ref={ref} onClick={handleClick} {...props}>
-          {children}
-        </Comp>
-      );
-    }
-
-    return (
-      <DialogPrimitive.Close
-        ref={ref}
-        asChild={asChild}
-        onClick={onClick}
-        {...props}
-      >
-        {children}
-      </DialogPrimitive.Close>
-    );
-  },
-);
-DialogClose.displayName = "DialogClose";
-
 const DialogOverlay = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -221,7 +134,6 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ) => {
     const { isCompactViewport, open, onOpenChange, titleId, descriptionId } =
       useResponsiveDialog();
-    useBrowserDimmingModal(open);
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
@@ -405,9 +317,6 @@ DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
   Dialog,
-  DialogOverlay,
-  DialogTrigger,
-  DialogClose,
   DialogContent,
   DialogHeader,
   DialogFooter,

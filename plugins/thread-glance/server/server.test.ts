@@ -2,14 +2,10 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import {
-  createFakePluginHost,
-  makeQueueEntry,
-  makeThreadResponse,
-} from "@get-bb/plugin-sdk/testing";
+import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadNotes, type ThreadRecord } from "../shared/contract";
+import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadRecord } from "../shared/contract";
 import { defaultPreferences } from "../shared/preferences";
 import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
 import { noteKvKey } from "./notes";
@@ -57,15 +53,6 @@ async function stampsOf(harness: Harness): Promise<Stamps> {
     }
   }
   return stamps;
-}
-
-/** The notes a first `sync` carries, by thread. */
-async function notesOf(harness: Harness): Promise<Record<string, ThreadNotes>> {
-  const notes: Record<string, ThreadNotes> = {};
-  for (const [threadId, record] of Object.entries((await sync(harness)).records)) {
-    if (record.notes !== null) notes[threadId] = record.notes;
-  }
-  return notes;
 }
 
 /** One thread's stamps as the server stores them, as a first `sync` carries them. */

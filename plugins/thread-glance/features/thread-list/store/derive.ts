@@ -285,7 +285,7 @@ export function derive(given: ListInputs, memory: DeriveMemory, at: number): Der
  * The threads still pending read: a thread leaves once bb reports it read,
  * reports attention newer than when it was marked, or no longer lists it.
  */
-export function settlePendingRead(
+function settlePendingRead(
   pending: ReadonlyMap<string, number>,
   threads: readonly PluginSidebarThread[],
 ): ReadonlyMap<string, number> {

@@ -212,9 +212,6 @@ export function stopCounting(): RenderCount {
 }
 
 /** Resolves after the next commit of any root. */
-export function nextCommit(): Promise<void> {
-  return new Promise((resolve) => commitListeners.push(resolve));
-}
 
 /**
  * Fibers in every mounted root whose component carries one of `names` as its
@@ -235,6 +232,3 @@ export function countComponents(names: readonly string[]): Record<string, number
 }
 
 /** Forgets roots that have unmounted, so `countComponents` sees only live ones. */
-export function forgetRoots(): void {
-  roots.clear();
-}

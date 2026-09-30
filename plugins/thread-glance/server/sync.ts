@@ -16,7 +16,7 @@ import type { ArchivedThreads } from "./archived";
 import type { NoteStore } from "./notes";
 import type { StampStore } from "./stamps";
 
-export interface RecordsAnswer extends SyncPoint {
+interface RecordsAnswer extends SyncPoint {
   /** True when `records` holds the record of every thread not archived, to replace what the window held. */
   full: boolean;
   records: Record<string, ThreadRecord>;

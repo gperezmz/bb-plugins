@@ -7,8 +7,7 @@ import { moveTargets } from "./move";
 import { noteText, rowNote } from "./notes";
 import { computeState } from "./state";
 import { finishedAtFor, trailingTime } from "./time";
-import type { Row, ThreadRow } from "./view";
-import type { Flag } from "./state";
+import type { Row } from "./view";
 
 const note = (kind: "question" | "approval" | "plan" | "input" | "failed" | "done", text: string) => ({ kind, text, at: T0 });
 

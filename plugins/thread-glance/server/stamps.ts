@@ -9,14 +9,14 @@ import { createSerialQueue } from "./serial";
 import type { ThreadTable } from "./thread-table";
 
 /** The KV rows stamps lived in up to 0.7.0, `stamp:<threadId>`. */
-export const STAMP_KEY_PREFIX = "stamp:";
+const STAMP_KEY_PREFIX = "stamp:";
 
 export function stampKvKey(threadId: string): string {
   return `${STAMP_KEY_PREFIX}${threadId}`;
 }
 
 /** Keeps the known kinds whose value is a finite number; null if none. */
-export function parseThreadStamps(raw: unknown): ThreadStamps | null {
+function parseThreadStamps(raw: unknown): ThreadStamps | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   const result: ThreadStamps = {};

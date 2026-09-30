@@ -3,7 +3,7 @@
 import { itemsBetween, type ListItems } from "./layout-items";
 
 /** Rows are mounted this far above and below the view. */
-export const VIEW_MARGIN = 240;
+const VIEW_MARGIN = 240;
 
 /** The part of the list in view, in px from the top of its first group; 0 tall when nothing is. */
 export interface View {
@@ -64,7 +64,7 @@ export function mountedByGroup(
  * gives them to the first mounted row links in DOM order and reads no
  * spacer, so the main list keeps these rows mounted wherever it is scrolled.
  */
-export const JUMP_ROWS = 9;
+const JUMP_ROWS = 9;
 
 /** The kept rows' indices in `layout`, in order, and the jump keys' rows where `jumps`. */
 export function keptIndexes(layout: ListItems, kept: KeptRows, jumps: boolean): number[] {

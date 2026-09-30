@@ -1,21 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
-import {
-  failedUnread,
-  finishedUnread,
-  forestOf,
-  makeThread,
-  attentionRootIds,
-  rowIds,
-  T0,
-  viewOf,
-  working,
-  type Scenario,
-} from "../testing/fixtures";
+import { failedUnread, finishedUnread, forestOf, makeThread, attentionRootIds, rowIds, T0, viewOf, working, type Scenario } from "../testing/fixtures";
 import { detectTransitions, mergeTargets, pruneTargets, snapshotOf, type Targets } from "./expansion";
 import type { ThreadRow } from "./view";
-import { toggleChip } from "./toggles";
-import { defaultPreferences } from "@/shared/preferences";
 
 const DAY = 24 * 60 * 60 * 1000;
 

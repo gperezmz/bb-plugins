@@ -22,7 +22,7 @@ export type LayoutItem =
   | (ItemBase & { kind: "empty" });
 
 /** Where one group sits: its items, and its extent without the gap above it. */
-export interface GroupExtent {
+interface GroupExtent {
   groupId: string;
   /** Index of its header item. */
   first: number;

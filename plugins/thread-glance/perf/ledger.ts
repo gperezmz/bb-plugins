@@ -44,7 +44,7 @@ import type { EventFigure } from "./harness/jsdom-run";
 export type Kind = "deterministic" | "timing" | "both";
 
 /** A row's figure from one run: what it read, and whether that meets the threshold (null: not measured here). */
-export interface Reading {
+interface Reading {
   figure: string;
   pass: boolean | null;
 }

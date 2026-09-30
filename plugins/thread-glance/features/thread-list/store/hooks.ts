@@ -73,10 +73,6 @@ export function useFocusedThreadId(): string | null {
   return useListSelect((state) => state.inputs.activeThreadId);
 }
 
-export function useEditingId(): string | null {
-  return useListSelect((state) => state.ui.editingId);
-}
-
 export function useHasNoThreads(): boolean {
   return useListSelect((state) => state.inputs.host.threads.length === 0);
 }
@@ -216,7 +212,6 @@ export function useRenaming(groupId: string, rowKey: string | null): boolean {
 export function useEnvironmentMenuOpen(groupId: string, rowKey: string): boolean {
   return useListSelect((state) => state.ui.menu?.kind === "environment" && sameRow(state.ui.menu, groupId, rowKey));
 }
-
 
 const keptCache = new WeakMap<ListStore, KeptRows>();
 

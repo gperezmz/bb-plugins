@@ -39,7 +39,7 @@ function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   drawerElement.style.removeProperty(DRAWER_KEYBOARD_INSET_PROPERTY);
 }
 
-export function measureDrawerKeyboardOverlap({
+function measureDrawerKeyboardOverlap({
   layoutViewportHeight,
   visualViewportHeight,
   visualViewportOffsetTop,
@@ -105,7 +105,7 @@ function useDrawerKeyboardInset(
   }, [open, panelRef]);
 }
 
-export function useResponsiveOverlayBehavior() {
+function useResponsiveOverlayBehavior() {
   const presentation = useIsCompactViewport() ? "drawer" : "floating";
   const isPointerCoarse = usePointerCoarse();
 
@@ -274,7 +274,7 @@ interface ResponsiveDrawerShellProps {
   children: React.ReactNode;
 }
 
-export function useResponsiveDrawerRealization({
+function useResponsiveDrawerRealization({
   open,
   enabled = true,
 }: {
@@ -521,7 +521,7 @@ interface UsePersistentOverlayFocusArgs {
   requestClose: () => void;
 }
 
-export function usePersistentOverlayFocus({
+function usePersistentOverlayFocus({
   onAfterCloseAutoFocus,
   onBeforeCloseAutoFocus,
   open,
@@ -595,7 +595,7 @@ type PersistentDrawerDrag = {
   height: number;
 };
 
-export function PersistentResponsiveDrawerShell({
+function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   onAfterCloseAutoFocus,

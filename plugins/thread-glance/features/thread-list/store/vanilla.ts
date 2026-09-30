@@ -2,7 +2,7 @@
 // `subscribe`), so the list store can move onto zustand's `createStore` by
 // changing this file alone.
 
-export type Listener<T> = (state: T, previous: T) => void;
+type Listener<T> = (state: T, previous: T) => void;
 
 export interface StoreApi<T> {
   getState(): T;

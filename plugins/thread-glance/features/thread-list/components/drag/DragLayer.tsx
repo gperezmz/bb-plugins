@@ -32,7 +32,7 @@ interface DragApi {
 const DragContext = createContext<DragApi | null>(null);
 
 /** What a press on `target` would drag, read off the row or header it is in. */
-export function pressedAt(target: EventTarget | null): { dragged: Dragged; dragging: Dragging } | null {
+function pressedAt(target: EventTarget | null): { dragged: Dragged; dragging: Dragging } | null {
   if (!(target instanceof Element)) return null;
   if (target.closest("[data-no-drag], input, textarea") !== null) return null;
   const row = target.closest<HTMLElement>("[data-drag-thread]");

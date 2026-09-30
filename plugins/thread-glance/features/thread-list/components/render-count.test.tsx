@@ -7,8 +7,6 @@ import "../../../perf/harness/render-counter";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { defaultPreferences } from "@/shared/preferences";
-import { CHANNELS } from "@/shared/contract";
 import { startCounting, stopCounting } from "../../../perf/harness/render-counter";
 import { createFakeServer, makeThread, type FakeServer, PROJECTS, T0, working } from "../testing/fixtures";
 

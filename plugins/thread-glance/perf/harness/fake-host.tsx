@@ -20,7 +20,7 @@ import type { Preferences } from "@/shared/preferences";
 import { createFakeServer, type FakeServer, type FakeServerOptions } from "@/features/thread-list/testing/fixtures";
 
 /** bb's list hooks the fake host serves; every call is counted by name. */
-export const HOST_HOOKS = [
+const HOST_HOOKS = [
   "experimental_useSidebarThreads",
   "experimental_useSidebarThreadActions",
   "experimental_useProviders",
@@ -64,7 +64,7 @@ interface HostState {
   props: PluginThreadListProps;
 }
 
-export interface ActionCall {
+interface ActionCall {
   method: string;
   threadId?: string;
 }
@@ -353,7 +353,7 @@ export function serverState(patch: Partial<Preferences> = {}, held: Omit<FakeSer
 }
 
 /** bb's SDK calls the list makes, answered at once. */
-export const SDK_FAKES = {
+const SDK_FAKES = {
   threads: {
     defaultExecutionOptions: async () => null,
     update: async () => ({}),
@@ -377,7 +377,7 @@ export const SDK_FAKES = {
 } as never;
 
 /** A sidebar's height: what the harness's jsdom runs give the window, as a user's list has in view. */
-export const SIDEBAR_HEIGHT = 800;
+const SIDEBAR_HEIGHT = 800;
 
 /**
  * Gives jsdom, which lays nothing out, a sidebar-tall window, so the list

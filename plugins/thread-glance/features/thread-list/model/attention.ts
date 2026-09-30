@@ -6,7 +6,7 @@ import type { ChildAttention } from "@/shared/preferences";
 import { computeState, type Flag, type StateKind, type ThreadState } from "./state";
 
 /** The flags that count for a root thread. Working is not one. */
-export const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
+const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
   "waits-on-you",
   "unread-failed",
   "queue-failed",
@@ -43,7 +43,7 @@ export function isParentIdle(parent: ParentThread): boolean {
 }
 
 /** When the thread's failure happened: an error bumps `latestAttentionAt`, a failed queue only `updatedAt`. */
-export function failureTime(
+function failureTime(
   thread: Pick<PluginSidebarThread, "latestAttentionAt" | "updatedAt">,
   flags: ReadonlySet<Flag>,
 ): number {
@@ -106,7 +106,7 @@ export interface IdleTracker {
  * going offline. Every other change to idle, such as background work ending
  * or a queued message being cancelled, is not.
  */
-export function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
+function isAnnounced(wasWorking: boolean, now: ThreadState): boolean {
   return wasWorking && now.kind !== "offline";
 }
 

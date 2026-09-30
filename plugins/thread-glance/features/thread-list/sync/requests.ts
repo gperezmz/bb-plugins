@@ -16,7 +16,7 @@ let syncing = false;
 let again = false;
 
 /** Whether this device already got an answer to `importPreferences`, whatever it said. */
-export function importAnswered(): boolean {
+function importAnswered(): boolean {
   return readJson(IMPORT_ANSWER_STORAGE_KEY) !== null;
 }
 

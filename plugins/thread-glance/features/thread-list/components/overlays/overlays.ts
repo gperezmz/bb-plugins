@@ -8,7 +8,7 @@ import type { Commands } from "../../commands/commands";
 import type { ListStore, RowPlace } from "../../store/api";
 import { createRowCard, type RowCardController } from "../row-card";
 
-export interface ContextTarget extends RowPlace {
+interface ContextTarget extends RowPlace {
   threadId: string;
 }
 

@@ -25,7 +25,7 @@ import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
 import { moveTargets } from "../model/move";
-import { createListStore, type ListStore } from "../store/api";
+import { createListStore } from "../store/api";
 import {
   ListContext,
   useArchived,

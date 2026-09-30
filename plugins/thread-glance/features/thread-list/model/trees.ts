@@ -136,7 +136,7 @@ function isPinned(thread: PluginSidebarThread): boolean {
  * a root. A pinned thread with no pinned ancestor is a root. Cycles end
  * the walk and make the thread a root.
  */
-export function attachParent(
+function attachParent(
   thread: PluginSidebarThread,
   byId: ReadonlyMap<string, PluginSidebarThread>,
 ): string | null {

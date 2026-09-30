@@ -28,7 +28,7 @@ import type { RowNote } from "./notes";
 import { rowTime, type TrailingTime } from "./time";
 
 /** How many quiet children stay in an expanded tree. */
-export const KEEP_QUIET_CHILDREN = 3;
+const KEEP_QUIET_CHILDREN = 3;
 
 /** The children chip: the count of a parent's direct children and its chevron, after the state of its descendants. */
 export interface Chip {
@@ -130,7 +130,7 @@ export interface SettledRow {
 }
 
 /** The rows a tree and its folders draw. */
-export type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
+type TreeRow = ThreadRow | OlderRow | EnvironmentRow;
 
 export type Row = TreeRow | SettledRow;
 
@@ -243,7 +243,6 @@ function isDimmed(context: Context, info: ThreadInfo, chip: Chip | null): boolea
   if (info.parentId === null && chip !== null) return context.forest.treeOf.get(info.thread.id)?.quiet ?? info.quiet;
   return info.quiet;
 }
-
 
 /** A root draws its harness when it differs from bb's default; a child, when it differs from its parent thread's. */
 function drawsHarness(context: Context, info: ThreadInfo): boolean {
@@ -487,7 +486,7 @@ function focusedPath(context: Context, tree: ThreadTree, focusedId: string): Thr
 }
 
 /** Whether a thread in the tree needs attention: it stays drawn when its group is collapsed. */
-export function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
+function needsAttention(tree: Pick<ThreadTree, "attentionFlags">): boolean {
   return tree.attentionFlags.size > 0;
 }
 
@@ -514,7 +513,6 @@ function buildGroup(context: Context, descriptor: GroupDescriptor, trees: Thread
   const opened =
     activeId !== null && context.targets.has(activeId) && trees.some((tree) => tree.containsActive);
   const collapsed = userCollapsed && !opened;
-  const isPinned = descriptor.id === PINNED_GROUP_ID;
 
   const sorted = sortTrees(context, descriptor, trees);
 
@@ -668,6 +666,3 @@ export function buildListView(inputs: ViewInputs): ListView {
 }
 
 /** Every thread row in visual order, for keyboard and windowing. */
-export function threadRowsOf(rows: readonly Row[]): ThreadRow[] {
-  return rows.filter((row): row is ThreadRow => row.type === "thread");
-}

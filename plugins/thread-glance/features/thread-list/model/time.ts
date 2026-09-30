@@ -19,7 +19,7 @@ export function formatDuration(ms: number): string {
 }
 
 /** When the thread last finished: max(latestAttentionAt, finishedAt ?? createdAt). */
-export function lastFinishedAt(
+function lastFinishedAt(
   thread: Pick<PluginSidebarThread, "id" | "latestAttentionAt" | "createdAt">,
   finishedAt: Readonly<Record<string, number>>,
 ): number {

@@ -26,7 +26,7 @@ export function headerHeight({ phone }: HeightContext): number {
 }
 
 /** A thread row on one line or two. */
-export function threadRowHeight({ density, phone }: HeightContext, twoLines: boolean): number {
+function threadRowHeight({ density, phone }: HeightContext, twoLines: boolean): number {
   const taller = density === "comfortable" ? 4 : 0;
   if (twoLines) return (phone ? 48 : 44) + taller;
   return (phone ? 36 : 28) + taller;

@@ -13,7 +13,7 @@ const CLOSE_DELAY = 100;
 const FOCUS_KEYS = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 
 /** The row a card would open for, and the element it anchors to. */
-export type CardTarget = OpenCard;
+type CardTarget = OpenCard;
 
 export interface RowCardController {
   pointerEnter(event: { clientX: number; clientY: number }): void;
@@ -32,7 +32,7 @@ export interface RowCardController {
 }
 
 /** The card may open for `threadId` now: see the rules above. */
-export function cardAllowed(store: ListStore, threadId: string): boolean {
+function cardAllowed(store: ListStore, threadId: string): boolean {
   const { ui, inputs, layout } = store.getState();
   return !layout.compact && ui.menu === null && ui.editingId === null && ui.renaming === null && inputs.activeThreadId !== threadId;
 }

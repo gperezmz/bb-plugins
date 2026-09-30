@@ -18,6 +18,8 @@
       ]
     },
     "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": false
   },
   "include": [
@@ -28,7 +30,6 @@
     "features",
     "components",
     "lib",
-    "hooks",
     "vitest.config.ts",
     "perf",
     "types"

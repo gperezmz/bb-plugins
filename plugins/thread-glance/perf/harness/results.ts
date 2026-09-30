@@ -5,7 +5,7 @@ import { mergeFigures, type Figures } from "../figures";
 
 // From the plugin's folder, where npm runs its scripts: under jsdom a
 // module's URL is not a file path.
-export const RESULTS_DIR = join(process.cwd(), "perf", "results");
+const RESULTS_DIR = join(process.cwd(), "perf", "results");
 /** The JSON file a run's numbers go to; PERF_OUT moves it. */
 export const REPORT_JSON = process.env.PERF_OUT ?? join(RESULTS_DIR, "perf.json");
 

@@ -37,7 +37,7 @@ export interface SyncAnswer extends SyncPoint {
  * followed since, `failed` when the last `sync` failed (what is held, or the
  * browser's mirror of the preferences, stands in).
  */
-export type DataStatus = "waiting" | "current" | "failed";
+type DataStatus = "waiting" | "current" | "failed";
 
 export interface PluginData {
   records: HeldRecords;
@@ -60,7 +60,7 @@ export type DataChange =
   | { kind: "preference"; key: PreferenceKey; value: unknown }
   | { kind: "facts" };
 
-export const UNKNOWN_SYSTEM: SystemFacts = { defaultProviderId: null, primaryHostId: null };
+const UNKNOWN_SYSTEM: SystemFacts = { defaultProviderId: null, primaryHostId: null };
 
 const INITIAL: PluginData = {
   records: NO_RECORDS,
