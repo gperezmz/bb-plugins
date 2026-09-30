@@ -11,6 +11,7 @@ import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { countComponents, startCounting, stopCounting, type RenderCount } from "./render-counter";
 import { createFakeHost, loadWithFakeHost, mountList, serverState } from "./fake-host";
+import { markAllReadConfirm } from "./list-screen";
 
 /** What one event rendered. */
 export interface EventFigure {
@@ -480,13 +481,11 @@ export async function runMarkAllRead(list: GeneratedList): Promise<MarkAllReadFi
     slot.getByRole("button", { name: "Mark all read" }).click();
   });
   await settle(2);
-  const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-    (button) => button.textContent?.trim() === "Mark all read",
-  );
+  const confirm = markAllReadConfirm(slot);
   startCounting();
   const started = performance.now();
   await act(async () => {
-    (confirm ?? slot.getByRole("button", { name: "Mark all read" })).click();
+    confirm.click();
   });
   const unreadAfterClick = anchors(slot.container).filter(
     (anchor) => counted.has(anchor.dataset.sidebarThreadId!) && UNREAD.test(anchor.getAttribute("aria-label") ?? ""),

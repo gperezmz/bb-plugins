@@ -5,12 +5,14 @@
 // time). Runs in vitest browser mode; `deterministicOnly` takes the figures
 // that do not depend on timing, for `npm test`.
 import { cleanup } from "@testing-library/react";
+import { vi } from "vitest";
 import { commands, page, userEvent } from "vitest/browser";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { CHANNELS } from "@/shared/contract";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type Frame, type ServerState } from "./fake-host";
 import type { ChromiumFigures, InpFigure, MarkAllReadTiming } from "./chromium-figures";
+import { markAllReadConfirm } from "./list-screen";
 
 type PluginApp = Awaited<ReturnType<typeof loadWithFakeHost>>;
 
@@ -176,6 +178,17 @@ async function mountTimed(list: GeneratedList, frame: Frame, existing?: Omit<Mou
   return { host, app, server, slot, toFirstRowMs: performance.now() - started };
 }
 
+/** Runs `run` with the clock stopped at the list's own moment, as the jsdom run's is. */
+export async function atClockOf<T>(list: GeneratedList, run: () => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(list.now);
+  try {
+    return await run();
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 export interface ChromiumOptions {
   /** Take only what does not depend on timing: rows mounted and the window checks. */
   deterministicOnly?: boolean;
@@ -241,14 +254,14 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   }
   await quiet();
   check();
-  const chip = () => byName(slot.container, /^Show \d+ child threads? of /)[0];
-  const chipClose = () => byName(slot.container, /^Collapse \d+ child threads? of /)[0];
-  const inpChip = timing ? await inpOf(slot, chip, chipClose) : null;
-  if (!timing && chip() !== undefined) {
-    await click(chip()!);
+  const childrenChip = () => byName(slot.container, /^Show \d+ child threads? of /)[0];
+  const childrenChipClose = () => byName(slot.container, /^Collapse \d+ child threads? of /)[0];
+  const inpChildrenChip = timing ? await inpOf(slot, childrenChip, childrenChipClose) : null;
+  if (!timing && childrenChip() !== undefined) {
+    await click(childrenChip()!);
     await quiet();
     check();
-    await click(chipClose()!);
+    await click(childrenChipClose()!);
   }
   await quiet();
   check();
@@ -320,7 +333,7 @@ export async function runChromium(list: GeneratedList, { deterministicOnly = fal
   const phone = await runPhone(list, timing);
   return {
     build: process.env.NODE_ENV === "production" ? "production" : "development",
-    inp: { group: inpGroup ?? { x1: null, x4: null }, chip: inpChip ?? { x1: null, x4: null }, settledFold: inpFold },
+    inp: { group: inpGroup ?? { x1: null, x4: null }, childrenChip: inpChildrenChip ?? { x1: null, x4: null }, settledFold: inpFold },
     mountToFirstRowMs: Number(first.toFirstRowMs.toFixed(1)),
     remountToFirstRowMs: Number(again.toFirstRowMs.toFixed(1)),
     scrollMountMs: Number(scrollMountMs.toFixed(1)),
@@ -379,12 +392,10 @@ export async function runMarkAllReadChromium(makeList: () => GeneratedList): Pro
     await quiet();
     await click(slot.getByRole("button", { name: "Mark all read" }));
     await quiet();
-    const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-      (button) => button.textContent?.trim() === "Mark all read",
-    );
+    const confirm = markAllReadConfirm(slot);
     await throttle(rate);
     const before = await scriptMs();
-    const value = await interaction(confirm ?? slot.getByRole("button", { name: "Mark all read" }));
+    const value = await interaction(confirm);
     await host.setReadSettled();
     await quiet();
     const spent = (await scriptMs()) - before;

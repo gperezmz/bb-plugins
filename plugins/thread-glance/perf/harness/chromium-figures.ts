@@ -11,7 +11,7 @@ export interface ChromiumFigures {
   build: "production" | "development";
   inp: {
     group: InpFigure;
-    chip: InpFigure;
+    childrenChip: InpFigure;
     /** Null where nothing is settled, so there is no Settled fold to open. */
     settledFold: InpFigure | null;
   };

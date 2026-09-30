@@ -75,7 +75,7 @@ function chromiumWith(remountToFirstRowMs: number): ChromiumFigures {
   const inp = { x1: 10, x4: 20 };
   return {
     build: "production",
-    inp: { group: inp, chip: inp, settledFold: null },
+    inp: { group: inp, childrenChip: inp, settledFold: null },
     mountToFirstRowMs: remountToFirstRowMs,
     remountToFirstRowMs,
     scrollMountMs: 10,

@@ -5,6 +5,7 @@ import { act } from "@testing-library/react";
 import { vi } from "vitest";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { GeneratedList } from "@/features/thread-list/testing/fixtures";
+import { markAllReadConfirm } from "./list-screen";
 import { createFakeHost, loadWithFakeHost, mountList, PER_ROW_HOOKS, serverState, type FakeHost } from "./fake-host";
 
 /** Requests over one stretch. */
@@ -103,14 +104,10 @@ export async function runHost(list: GeneratedList, { markAllRead = false } = {})
       again.getByRole("button", { name: "Mark all read" }).click();
     });
     await drain();
-    const confirm = [...document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button')].find(
-      (button) => button.textContent?.trim() === "Mark all read",
-    );
-    if (confirm !== undefined) {
-      await act(async () => {
-        confirm.click();
-      });
-    }
+    const confirm = markAllReadConfirm(again);
+    await act(async () => {
+      confirm.click();
+    });
     await drain(200);
     const setRead = first.host.actionCalls.filter((call) => call.method === "setRead").length;
     marked = {

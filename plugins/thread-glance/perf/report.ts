@@ -13,6 +13,11 @@ function msValue(value: number | null | undefined): string {
   return value === null || value === undefined ? "n/a" : `${Math.round(value)} ms`;
 }
 
+/** An INP; Event Timing reports nothing under 16 ms, which the run records as 0. */
+function inpValue(value: number | null): string {
+  return value === 0 ? "< 16 ms" : msValue(value);
+}
+
 function cellRows(figures: Figures, cell: Cell | "snapshot"): [string, string][] {
   const rows: [string, string][] = [];
   const jsdom = cell === "snapshot" ? figures.snapshot : figures.jsdom[cell];
@@ -48,9 +53,9 @@ function cellRows(figures: Figures, cell: Cell | "snapshot"): [string, string][]
   }
   const chromium = figures.chromium[cell];
   if (chromium !== undefined) {
-    const inp = (value: { x1: number | null; x4: number | null } | null) => (value === null ? "n/a" : `${msValue(value.x1)} at 1×, ${msValue(value.x4)} at 4×`);
+    const inp = (value: { x1: number | null; x4: number | null } | null) => (value === null ? "n/a" : `${inpValue(value.x1)} at 1×, ${inpValue(value.x4)} at 4×`);
     rows.push([`Chromium (${chromium.build} React): INP open group`, inp(chromium.inp.group)]);
-    rows.push(["Chromium: INP open children chip", inp(chromium.inp.chip)]);
+    rows.push(["Chromium: INP open children chip", inp(chromium.inp.childrenChip)]);
     rows.push(["Chromium: INP open Settled fold", inp(chromium.inp.settledFold)]);
     rows.push(["Chromium: mount / remount to first row", `${msValue(chromium.mountToFirstRowMs)} / ${msValue(chromium.remountToFirstRowMs)}`]);
     rows.push(["Chromium: rows 100 rows of scrolling bring in", msValue(chromium.scrollMountMs)]);
@@ -81,7 +86,7 @@ export function formatReport(figures: Figures, verdicts: readonly Verdict[]): st
   const shared: [string, string][] = [];
   if (mar.jsdom) shared.push(["MAR list, jsdom", `${mar.jsdom.unreadAfterClick} of ${mar.jsdom.counted} unread after the click, ${mar.jsdom.commits} commits, ${mar.jsdom.jsMs} ms`]);
   if (mar.host) shared.push(["MAR list, fake host", `${mar.host.setRead} setRead, ${mar.host.setReadPeak} in flight at once, ${mar.host.markSeen} markSeen`]);
-  if (mar.chromium) shared.push(["MAR list, Chromium", `INP ${msValue(mar.chromium.inp.x1)} at 1×, ${msValue(mar.chromium.inp.x4)} at 4×, main thread ${msValue(mar.chromium.mainThreadMs)}`]);
+  if (mar.chromium) shared.push(["MAR list, Chromium", `INP ${inpValue(mar.chromium.inp.x1)} at 1×, ${inpValue(mar.chromium.inp.x4)} at 4×, main thread ${msValue(mar.chromium.mainThreadMs)}`]);
   if (server) {
     shared.push(["server: signals per thread event", Object.entries(server.signalsPerEvent).map(([name, count]) => `${name} ${count}`).join(", ")]);
     shared.push(["server: stamps + notes per mount", `${server.mountPayloadBytes.stamps} + ${server.mountPayloadBytes.notes} bytes, ${server.mountPayloadBytes.threads} threads`]);

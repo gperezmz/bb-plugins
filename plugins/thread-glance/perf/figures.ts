@@ -3,15 +3,22 @@ import type { MarkAllReadFigure, JsdomFigures } from "./harness/jsdom-run";
 import type { HostFigures, MarkAllReadRequests } from "./harness/host-run";
 import type { ServerFigures } from "./harness/server-run";
 import type { ChromiumFigures, MarkAllReadTiming } from "./harness/chromium-figures";
+import type { GeneratedScenario } from "@/features/thread-list/testing/fixtures";
 
 export const SIZES = [50, 300, 1_500] as const;
-export const SCENARIOS = ["live", "settled"] as const;
+export const SCENARIOS: readonly GeneratedScenario[] = ["live", "settled"];
 export type Size = (typeof SIZES)[number];
-export type Scenario = (typeof SCENARIOS)[number];
+export type Scenario = GeneratedScenario;
 /** A generated list: its size and scenario, as `1500/live`. */
 export type Cell = `${Size}/${Scenario}`;
 
 export const CELLS: Cell[] = SIZES.flatMap((size) => SCENARIOS.map((scenario) => `${size}/${scenario}` as Cell));
+
+/** A cell's size and scenario, as `generateList` takes them. */
+export function parseCell(cell: Cell): { size: Size; scenario: Scenario } {
+  const [size, scenario] = cell.split("/");
+  return { size: Number(size) as Size, scenario: scenario as Scenario };
+}
 
 export interface BundleFigures {
   rawBytes: number;

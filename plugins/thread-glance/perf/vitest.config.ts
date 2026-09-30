@@ -26,7 +26,8 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: "ledger", include: ["perf/ledger.perf.ts"] },
+        // Its tables are the run's output, printed whether or not it passes.
+        test: { name: "ledger", include: ["perf/ledger.perf.ts"], disableConsoleIntercept: true },
       },
     ],
   },

@@ -41,9 +41,12 @@
 //   likewise by `data-sidebar="group-label"` and `data-sidebar="list-header"`
 //   (perf/harness/render-counter.ts).
 // - A figure the harness cannot reproduce on the code it runs against is
-//   reported as measured, never tuned until it shows.
+//   reported as measured, never tuned until it shows. Where that figure is
+//   one of the defects #145's acceptance criteria expect on 0.7.0, that part
+//   of the criterion stands as not met in #145's pull request.
 import type { Cell, Figures } from "./figures";
 import { CELLS } from "./figures";
+import type { InpFigure } from "./harness/chromium-figures";
 import type { EventFigure } from "./harness/jsdom-run";
 
 export type Kind = "deterministic" | "timing" | "both";
@@ -93,11 +96,10 @@ function acrossCells<T>(
   };
 }
 
-const ALL = CELLS;
 const AT_1500: Cell[] = ["1500/live", "1500/settled"];
 
 function events(names: readonly string[], rule: (event: EventFigure, name: string) => Reading) {
-  return (figures: Figures, cells: readonly Cell[] = ALL) =>
+  return (figures: Figures, cells: readonly Cell[] = CELLS) =>
     acrossCells(
       cells,
       (cell) => figures.jsdom[cell],
@@ -135,10 +137,24 @@ function ms(value: number | null | undefined): string {
   return value === null || value === undefined ? "n/a" : `${Math.round(value)} ms`;
 }
 
-function inpReading(inp: { x1: number | null; x4: number | null } | null): Reading {
+/** An INP; Event Timing reports nothing under 16 ms, which the run records as 0. */
+function inpMs(value: number | null): string {
+  return value === 0 ? "< 16 ms" : ms(value);
+}
+
+function inpReading(inp: InpFigure | null): Reading {
   if (inp === null) return { figure: "n/a", pass: null };
   const pass = inp.x1 !== null && inp.x4 !== null ? inp.x1 < 100 && inp.x4 < 200 : null;
-  return { figure: `${ms(inp.x1)} at 1×, ${ms(inp.x4)} at 4×`, pass };
+  return { figure: `${inpMs(inp.x1)} at 1×, ${inpMs(inp.x4)} at 4×`, pass };
+}
+
+/** `app.js` against a raw and a gzip ceiling, in KB. */
+function bundleReading({ bundle }: Figures, rawKb: number, gzipKb: number): Reading {
+  if (bundle === undefined) return NOT_MEASURED;
+  return {
+    figure: `${(bundle.rawBytes / KB).toFixed(1)} KB raw, ${(bundle.gzipBytes / KB).toFixed(1)} KB gzip`,
+    pass: bundle.rawBytes <= rawKb * KB && bundle.gzipBytes <= gzipKb * KB,
+  };
 }
 
 export const LEDGER: readonly LedgerRow[] = [
@@ -152,13 +168,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 145,
     enforcing: false,
     retiredBy: "B2",
-    read: ({ bundle }) =>
-      bundle === undefined
-        ? NOT_MEASURED
-        : {
-            figure: `${(bundle.rawBytes / KB).toFixed(1)} KB raw, ${(bundle.gzipBytes / KB).toFixed(1)} KB gzip`,
-            pass: bundle.rawBytes <= 560 * KB && bundle.gzipBytes <= 165 * KB,
-          },
+    read: (figures) => bundleReading(figures, 560, 165),
   },
   {
     id: "B2",
@@ -169,13 +179,7 @@ export const LEDGER: readonly LedgerRow[] = [
     kind: "deterministic",
     switchedOnBy: 146,
     enforcing: true,
-    read: ({ bundle }) =>
-      bundle === undefined
-        ? NOT_MEASURED
-        : {
-            figure: `${(bundle.rawBytes / KB).toFixed(1)} KB raw, ${(bundle.gzipBytes / KB).toFixed(1)} KB gzip`,
-            pass: bundle.rawBytes <= 250 * KB && bundle.gzipBytes <= 80 * KB,
-          },
+    read: (figures) => bundleReading(figures, 250, 80),
   },
   {
     id: "B3",
@@ -188,7 +192,7 @@ export const LEDGER: readonly LedgerRow[] = [
     kind: "deterministic",
     switchedOnBy: 148,
     enforcing: false,
-    // A thread off screen has no row to render; its parent's chip may change.
+    // A thread off screen has no row to render; its parent's children chip may change.
     read: (figures) =>
       events(["update on screen", "update off screen", "stamp signal", "note signal", "read change"], (event, name) =>
         name === "update off screen" ? changedOnly(event) : onlyItsOwn(event),
@@ -263,7 +267,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 148,
     enforcing: false,
     read: ({ jsdom }) =>
-      acrossCells(ALL, (cell) => jsdom[cell], ({ drag }) => ({
+      acrossCells(CELLS, (cell) => jsdom[cell], ({ drag }) => ({
         figure: `up to ${drag.maxRowsOnChange} rows per change of target, ${drag.rowsOnUnchanged} on unchanged moves`,
         pass: drag.maxRowsOnChange <= 2 && drag.rowsOnUnchanged === 0,
       })),
@@ -279,7 +283,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 152,
     enforcing: false,
     read: ({ jsdom }) =>
-      acrossCells(ALL, (cell) => jsdom[cell], ({ drag, mountedRows }) => ({
+      acrossCells(CELLS, (cell) => jsdom[cell], ({ drag, mountedRows }) => ({
         figure: `${drag.otherRows} renders of other rows over ${drag.moves} moves (${drag.rowsOnUnchanged} on unchanged moves, up to ${drag.maxRowsOnChange} per change)`,
         pass: drag.otherRows === 0 || (drag.rowsOnUnchanged === 0 && drag.maxRowsOnChange <= mountedRows),
       })),
@@ -315,7 +319,7 @@ export const LEDGER: readonly LedgerRow[] = [
       acrossCells(AT_1500, (cell) => chromium[cell], ({ inp }) => {
         const readings = [
           ["group", inpReading(inp.group)],
-          ["chip", inpReading(inp.chip)],
+          ["children chip", inpReading(inp.childrenChip)],
           ["Settled fold", inpReading(inp.settledFold)],
         ] as const;
         const passes = readings.map(([, reading]) => reading.pass).filter((pass) => pass !== null);
@@ -436,7 +440,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 151,
     enforcing: false,
     read: ({ host }) =>
-      acrossCells(ALL, (cell) => host[cell], ({ hooksPerRow }) => {
+      acrossCells(CELLS, (cell) => host[cell], ({ hooksPerRow }) => {
         const used = Object.entries(hooksPerRow).filter(([, calls]) => calls > 0);
         const allowed = new Set(["useSidebarThreadShortcut", "experimental_useSidebarThreadPullRequest"]);
         return {
@@ -456,7 +460,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 151,
     enforcing: false,
     read: ({ jsdom }) =>
-      acrossCells(ALL, (cell) => jsdom[cell], ({ menuPrimitives: counts }) => ({
+      acrossCells(CELLS, (cell) => jsdom[cell], ({ menuPrimitives: counts }) => ({
         figure: Object.entries(counts)
           .map(([name, count]) => `${name.replace(/Provider$/, "")} ${count}`)
           .join(", "),
@@ -475,11 +479,13 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 149,
     enforcing: false,
     read: ({ host }) =>
-      acrossCells(ALL, (cell) => host[cell], ({ remount }) => {
+      acrossCells(CELLS, (cell) => host[cell], ({ remount }) => {
         const other = Object.entries(remount.rpc).filter(([method]) => method !== "sync" && method !== "fetchArchived");
+        // The fake host has no app overlay slot, so this is the case without
+        // one: exactly one `sync`. The case with it is read once #149 adds it.
         return {
-          figure: `${remount.rpcTotal} plugin RPC, ${remount.bbTotal} bb requests`,
-          pass: remount.bbTotal === 0 && other.length === 0 && (remount.rpc.sync ?? 0) <= 1 && (remount.rpc.fetchArchived ?? 0) <= 1,
+          figure: `${remount.rpcTotal} plugin RPC, ${remount.bbTotal} bb requests (no app overlay slot)`,
+          pass: remount.bbTotal === 0 && other.length === 0 && remount.rpc.sync === 1 && (remount.rpc.fetchArchived ?? 0) <= 1,
         };
       }),
   },
@@ -494,10 +500,12 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 149,
     enforcing: false,
     read: ({ host }) =>
-      acrossCells(ALL, (cell) => host[cell], ({ firstLoad }) => {
+      acrossCells(CELLS, (cell) => host[cell], ({ firstLoad }) => {
         const counted = Object.entries(firstLoad.rpc)
           .filter(([method]) => method !== "importPreferences" && method !== "fetchArchived")
           .reduce((sum, [, calls]) => sum + calls, 0);
+        // A first load starts a plugin lifetime, so bb has answered none of its
+        // requests yet; asking again what it answered is B20's remount.
         return { figure: `${counted} plugin RPC besides the import, ${firstLoad.bbTotal} bb requests`, pass: counted <= 1 };
       }),
   },
@@ -511,7 +519,7 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 145,
     enforcing: true,
     read: ({ host }) =>
-      acrossCells(ALL, (cell) => host[cell], ({ idle }) => {
+      acrossCells(CELLS, (cell) => host[cell], ({ idle }) => {
         const total = Object.values(idle).reduce((sum, requests) => sum + requests.rpcTotal + requests.bbTotal, 0);
         return {
           figure: Object.entries(idle)
@@ -584,8 +592,8 @@ export const LEDGER: readonly LedgerRow[] = [
     switchedOnBy: 147,
     enforcing: false,
     read: ({ host }) =>
-      acrossCells(ALL, (cell) => host[cell], ({ idleAtWritesPerTransition: writes }) => ({
-        figure: `${writes} window writes with 3 windows`,
+      acrossCells(CELLS, (cell) => host[cell], ({ idleAtWritesPerTransition: writes }) => ({
+        figure: `${writes} window writes with 3 windows (the server's store and signal: server.test, from #147)`,
         pass: writes === 0,
       })),
   },

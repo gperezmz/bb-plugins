@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { generateList, markAllReadList } from "@/features/thread-list/testing/fixtures";
-import { CELLS, type Figures } from "./figures";
+import { CELLS, parseCell, type Figures } from "./figures";
 import { runJsdom, runMarkAllRead } from "./harness/jsdom-run";
 import { writeFragment } from "./harness/results";
 import { snapshotList } from "./harness/snapshot";
@@ -25,8 +25,7 @@ describe("jsdom run", () => {
   it("measures every generated list and the Mark all read list", async () => {
     const figures: Partial<Figures> = { jsdom: {}, markAllRead: {} };
     for (const cell of CELLS) {
-      const [size, scenario] = cell.split("/") as [string, "live" | "settled"];
-      figures.jsdom![cell] = await runJsdom(generateList({ size: Number(size), scenario }), { samples: SAMPLES });
+      figures.jsdom![cell] = await runJsdom(generateList(parseCell(cell)), { samples: SAMPLES });
       cleanup();
       localStorage.clear();
     }
