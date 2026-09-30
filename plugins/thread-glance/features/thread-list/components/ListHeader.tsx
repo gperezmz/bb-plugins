@@ -1,6 +1,6 @@
 // The list header: the grouping's name, the need-you filter, Mark all read
 // and the settings button, above every group.
-import { memo, useState } from "react";
+import { memo, useRef } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { ICONS } from "../icons";
 import { groupingName } from "../model/labels";
 import { useClient, useCommands, useLayout, useListHasUnread, useNeedYouCount, useNeedYouOn, usePrefs } from "../store/hooks";
 import { SettingsPanel } from "./SettingsPanel";
+import { useSettingsPopover } from "./settings-popover";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 // bb's attention colour, thinned, as the need-you filter's own: the list's
@@ -19,7 +20,7 @@ const NEED_YOU_ON = "bg-[color-mix(in_oklab,var(--attention)_30%,transparent)] t
 /** The list header. It reads only what it draws, so it renders when a count or flag it shows changes. */
 export const ListHeader = memo(function ListHeader() {
   const commands = useCommands();
-  const { mode } = useLayout();
+  const { mode, compact } = useLayout();
   // Thread trees that need attention; the filter is not drawn at 0.
   const needYouCount = useNeedYouCount();
   const needYouOnly = useNeedYouOn();
@@ -27,7 +28,8 @@ export const ListHeader = memo(function ListHeader() {
   const hasUnread = useListHasUnread();
   const prefs = usePrefs();
   const client = useClient();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsButton = useRef<HTMLButtonElement>(null);
+  const settings = useSettingsPopover(settingsButton, !compact);
   return (
     <div
       data-sidebar="list-header"
@@ -53,13 +55,13 @@ export const ListHeader = memo(function ListHeader() {
           <Icon name={ICONS.markRead} aria-hidden className="size-4" />
         </button>
       ) : null}
-      <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+      <Popover open={settings.open} onOpenChange={settings.onOpenChange}>
         <PopoverTrigger asChild>
-          <button type="button" aria-label="Thread Glance settings" title="Settings" className={ROW_ICON_BUTTON}>
+          <button ref={settingsButton} type="button" aria-label="Thread Glance settings" title="Settings" className={ROW_ICON_BUTTON}>
             <Icon name={ICONS.settings} aria-hidden className="size-4" />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="end" className="w-80 max-w-[calc(100vw-1rem)] p-1">
+        <PopoverContent side="bottom" align="end" className="w-80 max-w-[calc(100vw-1rem)] p-1" {...settings.contentProps}>
           <SettingsPanel prefs={prefs} client={client} onPrefs={commands.updatePreferences} onClient={commands.updateClient} />
         </PopoverContent>
       </Popover>

@@ -110,11 +110,13 @@ export function createStampTable(db: Database): ThreadTable<ThreadStamps> {
       remove: "DELETE FROM stamps WHERE thread_id = ?",
     },
     (threadId, stamps) => [threadId, ...STAMP_KINDS.map((kind) => stamps[kind] ?? null)],
+    // SQLite keeps text an INTEGER column cannot convert, so a value written
+    // from outside the plugin can be anything; any but a finite number reads as absent.
     (row) => {
       const stamps: ThreadStamps = {};
       STAMP_KINDS.forEach((kind, i) => {
         const value = row[i + 1];
-        if (value !== null) stamps[kind] = value as number;
+        if (typeof value === "number" && Number.isFinite(value)) stamps[kind] = value;
       });
       return [row[0] as string, stamps];
     },

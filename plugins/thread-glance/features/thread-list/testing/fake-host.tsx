@@ -260,22 +260,23 @@ type PluginApp = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: PluginApp | null = null;
 
 /**
- * Loads the plugin app against the fake host. bb's SDK module binds its hooks
- * when first imported, so the fake hooks go in before that import; a module
- * that imported it earlier would have bound the test runtime's hooks instead,
- * which this refuses rather than test the wrong host.
+ * Loads the plugin app against the fake host. bb's SDK module looks each hook
+ * up on the test runtime when it is called, and `loadPluginApp` and
+ * `renderSlot` install that runtime afresh with one shared object of hooks, so
+ * the fake hooks go onto that object; a runtime without them would test the
+ * wrong host, which this refuses.
  */
 export async function loadWithFakeHost(): Promise<PluginApp> {
   if (app !== null) return app;
   installTestPluginRuntime();
   const runtime = (globalThis as unknown as { __bbPluginRuntime: { pluginSdkApp: Runtime } }).__bbPluginRuntime;
-  const hooks = fakeHooks(runtime.pluginSdkApp);
-  runtime.pluginSdkApp = { ...runtime.pluginSdkApp, ...hooks };
-  const sdkApp = (await import("@get-bb/plugin-sdk/app")) as unknown as Runtime;
-  if (sdkApp.experimental_useSidebarThreads !== hooks.experimental_useSidebarThreads) {
-    throw new Error("@get-bb/plugin-sdk/app was imported before the fake host; load it first");
-  }
+  const hooks = fakeHooks({ ...runtime.pluginSdkApp });
+  Object.assign(runtime.pluginSdkApp, hooks);
   app = await loadPluginApp(() => import("../../../app"));
+  const installed = (globalThis as unknown as { __bbPluginRuntime: { pluginSdkApp: Runtime } }).__bbPluginRuntime.pluginSdkApp;
+  if (installed.experimental_useSidebarThreads !== hooks.experimental_useSidebarThreads) {
+    throw new Error("the test runtime dropped the fake host's hooks while the app loaded");
+  }
   return app;
 }
 

@@ -46,10 +46,8 @@ export function rowHeight(row: Row, context: HeightContext): number {
     case "thread":
       return threadRowHeight(context, hasTwoLines(row));
     case "older":
-      return threadRowHeight(context, false);
     case "environment":
-      // The same on phones as on desktop.
-      return context.density === "comfortable" ? 32 : 28;
+      return threadRowHeight(context, false);
     case "settled":
       return context.phone ? 36 : 24;
   }

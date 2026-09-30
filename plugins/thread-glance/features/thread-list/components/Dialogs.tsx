@@ -154,40 +154,49 @@ export function NewSectionDialog({
   );
 }
 
-export function ConfirmDialog({
-  open,
-  title,
-  description,
-  confirmLabel,
-  destructive,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean;
+/** What a confirmation asks. */
+export interface ConfirmText {
   title: string;
   description: string;
   confirmLabel: string;
   destructive?: boolean;
+}
+
+/**
+ * Asks `confirm` while it is set. Once it is cleared the dialog animates out
+ * still showing it, rather than empty.
+ */
+export function ConfirmDialog({
+  confirm,
+  onOpenChange,
+  onConfirm,
+}: {
+  confirm: ConfirmText | null;
   onOpenChange(open: boolean): void;
   onConfirm(): void;
 }) {
+  const [shown, setShown] = useState(confirm);
+  if (confirm !== null && confirm !== shown) setShown(confirm);
+  const text = confirm ?? shown;
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className={cn(destructive && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
+    <AlertDialog open={confirm !== null} onOpenChange={onOpenChange}>
+      {text !== null ? (
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{text.title}</AlertDialogTitle>
+            <AlertDialogDescription>{text.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(text.destructive && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+              onClick={onConfirm}
+            >
+              {text.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      ) : null}
     </AlertDialog>
   );
 }

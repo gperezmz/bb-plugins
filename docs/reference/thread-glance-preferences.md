@@ -33,7 +33,7 @@ Density is row spacing. Compact is the default. Comfortable makes thread rows an
 | Thread row, one line | 28 px (phones 36) | 32 px (phones 40) |
 | Thread row, two lines (a note or a branch line) | 44 px (phones 48) | 48 px (phones 52) |
 | "N more child threads" fold row | 28 px (phones 36) | 32 px (phones 40) |
-| Environment fold row | 28 px | 32 px |
+| Environment fold row | 28 px (phones 36) | 32 px (phones 40) |
 | Group header, list header | 28 px (phones 36) | 28 px (phones 36) |
 | Settled fold | 24 px (phones 36) | 24 px (phones 36) |
 | Space above a group header | 4 px | 8 px |
