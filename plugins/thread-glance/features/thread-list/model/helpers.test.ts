@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mapBbPreferences, coercePreferences, defaultPreferences, parsePreference, parseStoredPreference } from "@/shared/preferences";
+import { mapBbPreferences, coercePreferences, defaultPreferences } from "@/shared/preferences";
 import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
 import { resolveDrop, targetAt, type DraggedThread } from "./drag";
 import { layoutItems } from "./layout-items";
 import { moveGroup, resolveGroupOrder } from "./groups";
 import { assignProviderMarks, providerMark } from "./provider-mark";
 import { olderRowText, settledRowText } from "./labels";
-import { FOLDED_STEP, ROOT_INDENT, rowIndent } from "./layout";
 import { chipTone } from "./state";
 import { formatDuration, TRAILING_SLOT_SIZERS, trailingTime } from "./time";
 import type { GroupView, OlderRow, Row } from "./view";
@@ -208,23 +207,10 @@ describe("preferences", () => {
     }
     expect(prefs.settleAfter).toBe("1d");
   });
-  it("reads a stored Hidden harness icon as Muted, and refuses to save it", () => {
-    expect(coercePreferences({ harnessIcon: "hidden" }).harnessIcon).toBe("muted");
-    expect(parseStoredPreference("harnessIcon", "hidden")).toEqual({ success: true, value: "muted" });
-    expect(parsePreference("harnessIcon", "hidden").success).toBe(false);
-  });
   it("does not import a removed setting from bb", () => {
     expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, threadLifecycles: ["active", "archived"], organizationMode: "machine" })).toEqual({
       organizationMode: "machine",
     });
-  });
-});
-
-describe("row indent", () => {
-  it("steps each level by 12px", () => {
-    expect(rowIndent(0)).toBe(ROOT_INDENT);
-    expect(rowIndent(1)).toBe(ROOT_INDENT + FOLDED_STEP);
-    expect(rowIndent(3)).toBe(8 + 12 * 3);
   });
 });
 

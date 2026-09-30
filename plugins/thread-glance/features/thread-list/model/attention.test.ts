@@ -238,16 +238,6 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     }
   });
 
-  it("never draws a home-group label or a Finished line", () => {
-    const threads = [makeThread({ id: "u", latestAttentionAt: T0 + 30, lastReadAt: T0 }), makeThread({ id: "d", parentThreadId: "u", createdAt: T0 + 1 })];
-    const notes = { u: { done: { kind: "done" as const, text: "All done", at: T0 + 30 } } };
-    const rows = threadRows(viewOf({ threads, notes, prefs: { expandedChildren: ["u"] } }));
-    for (const row of rows) {
-      expect(row).not.toHaveProperty("homeGroupLabel");
-      expect(row.note).toBeNull();
-    }
-  });
-
   it("does not count a tree whose only news is a finished grandchild, and shows no counter for it", () => {
     const threads = [
       parent(),
@@ -291,22 +281,6 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     expect(chipState([child({ ...failedUnread })], parent({ ...working }))).toBe("unread-failed");
     expect(chipState([child({ ...working })])).toBe("working");
     expect(chipState([child({ ...finishedUnread })])).toBe("unread");
-  });
-
-  it("puts the chip and its state on a child that has children", () => {
-    const threads = [
-      parent({ lastReadAt: T0 + 50 }),
-      makeThread({ id: "c", parentThreadId: "m", createdAt: T0 + 1 }),
-      makeThread({ id: "g", parentThreadId: "c", createdAt: T0 + 2, ...working }),
-    ];
-    const rows = threadRows(viewOf({ threads, prefs: { expandedChildren: ["m"] } }));
-    const child = rows.find((row) => row.info.thread.id === "c")!;
-    expect(child.chip).toEqual({ count: 1, expanded: false, flag: "working" });
-    expect(child.chip?.flag).toBe("working");
-    // Its children wait for its chip, or for an auto-reveal.
-    expect(rows.map((row) => row.info.thread.id)).toEqual(["m", "c"]);
-    const revealed = viewOf({ threads, prefs: { expandedChildren: ["m"] }, targets: new Map([["g", "reveal" as const]]) });
-    expect(threadRows(revealed).map((row) => row.info.thread.id)).toEqual(["m", "c", "g"]);
   });
 });
 

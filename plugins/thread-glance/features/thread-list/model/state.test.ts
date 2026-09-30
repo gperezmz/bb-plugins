@@ -46,7 +46,7 @@ describe("computeState (first match wins)", () => {
     ["host-reconnecting", "Reconnecting"],
   ])("5 working for %s, labelled %s", (runtimeStatus, label) => {
     const state = stateOf({ id: "t", status: "active", runtimeStatus: runtimeStatus as never });
-    expect(state).toMatchObject({ kind: "working", label, glyph: { icon: "Loading", spin: true } });
+    expect(state).toMatchObject({ kind: "working", label, glyph: { icon: "Loading", spin: true, tone: "working" } });
   });
   it("5 working with a draft shows Edit with shine; plan mode and goals as bb", () => {
     expect(stateOf({ id: "t", ...working }, { hasDraft: true }).glyph).toMatchObject({ icon: "Edit", shine: true });
@@ -61,7 +61,7 @@ describe("computeState (first match wins)", () => {
     ["backgroundCommands", "Terminal"],
   ])("6 background %s draws %s", (field, icon) => {
     const state = stateOf({ id: "t", activity: { [field]: 1 } });
-    expect(state).toMatchObject({ kind: "background", glyph: { icon, shine: true } });
+    expect(state).toMatchObject({ kind: "background", glyph: { icon, shine: true, tone: "background" } });
   });
   it("6 background follows bb's order when several are set", () => {
     expect(stateOf({ id: "t", activity: { workflows: 3, goals: 1 } }).glyph.icon).toBe("Target");

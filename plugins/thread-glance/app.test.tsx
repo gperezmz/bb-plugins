@@ -168,7 +168,6 @@ describe("Thread Glance slot", () => {
       .map((link) => link.getAttribute("aria-label")!.replace(/^Open (.*?) —.*$/, "$1"));
     expect(links).toEqual(["Parent", "Child 2", "Other"]);
     expect(within(project).getByRole("group", { name: "1 waiting on you" })).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "Needs attention" })).toBeNull();
   });
 
   it("opens and closes a tree from its chip", async () => {

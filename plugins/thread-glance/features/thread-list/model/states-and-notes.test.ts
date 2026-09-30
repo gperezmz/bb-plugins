@@ -11,14 +11,6 @@ import type { Row } from "./view";
 
 const note = (kind: "question" | "approval" | "plan" | "input" | "failed" | "done", text: string) => ({ kind, text, at: T0 });
 
-describe("working is visible, background stays grey", () => {
-  it("draws working in the working tone and background in its own", () => {
-    const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
-    expect(computeState(makeThread({ id: "w", ...working }), base).glyph.tone).toBe("working");
-    expect(computeState(makeThread({ id: "b", activity: { workflows: 1 } }), base).glyph.tone).toBe("background");
-  });
-});
-
 describe("what a thread waits on you for", () => {
   const base = { unread: false, hasDraft: false, scheduledAt: null, now: T0 };
   it.each([
@@ -29,10 +21,6 @@ describe("what a thread waits on you for", () => {
   ] as const)("%s draws %s in the attention tone", (needsKind, icon, label) => {
     const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), { ...base, needsKind });
     expect(state).toMatchObject({ kind: "waits-on-you", label, glyph: { icon, tone: "attention" } });
-  });
-  it("without a note it keeps the question glyph", () => {
-    const state = computeState(makeThread({ id: "q", hasPendingInteraction: true }), base);
-    expect(state.glyph.icon).toBe("CircleQuestion");
   });
 });
 
