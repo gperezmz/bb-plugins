@@ -9,7 +9,7 @@ The scheduled CI run that checks every plugin against bb releases newer than the
 _Avoid_: Canary, nightly check, smoke test
 
 **Channel**:
-The bb release line a compatibility run tests, named by its npm dist-tag: `latest` for releases, `nightly` for nightly builds.
+The bb release line a compatibility run tests, named by its npm dist-tag: one for releases, one for nightly builds.
 _Avoid_: Track, release stream
 
 **Thread tree**:
@@ -27,7 +27,7 @@ _Avoid_: Saved run, drive fixture
 ### Thread Glance
 
 **Needs attention**:
-The state of a thread tree with a thread only you can move forward, which keeps the tree showing in its group when the group is collapsed. In code it is `attention`, bb's own word.
+The state of a thread tree with a thread only you can move forward, which keeps the tree showing in its group when the group is collapsed.
 _Avoid_: Needs you, inbox, attention section
 
 **List header**:
@@ -43,7 +43,7 @@ The thread that spawned a child thread.
 _Avoid_: Manager, owner
 
 **Orphaned failure**:
-A child thread's failure that its parent thread has stayed idle for 5 seconds without handling.
+A child thread's failure that its parent thread has stayed idle for a few seconds without handling.
 _Avoid_: Unhandled failure, stuck child
 
 **Children chip**:
@@ -71,7 +71,7 @@ A thread that is read, idle, only a draft or failed, needs no attention, is not 
 _Avoid_: Older thread, done thread, archived thread
 
 **Settle after**:
-Thread Glance's setting for how long a thread goes without activity before it settles: 12 hours, 1 day, 3 days, 1 week or Never, 1 day by default.
+Thread Glance's setting for how long a thread goes without activity before it settles, or Never.
 _Avoid_: Auto-settle days, inactivity threshold
 
 **Settled fold**:
@@ -83,7 +83,7 @@ A thread tree that settled while it held the focused thread, and stays where it 
 _Avoid_: Pending tree, parked tree
 
 **Trailing slot**:
-The last column of a Thread Glance row, holding the time at rest and the "…" menu button on hover. It is as wide on every row as the "…" button or the widest time up to 99 weeks, whichever is wider.
+The last column of a Thread Glance row, holding the time at rest and the "…" menu button on hover. It is as wide on every row as the "…" button or the widest time it can show, whichever is wider.
 _Avoid_: Last slot, time slot, time column
 
 **Status column**:
@@ -99,7 +99,7 @@ The second line of a Thread Glance row naming its thread's branch when that is n
 _Avoid_: Branch row, subtitle
 
 **Thread record**:
-One thread's stamps and notes as Thread Glance's server stores them, sent whole in its `records` signals and `sync` answers.
+One thread's stamps and notes as Thread Glance's server stores them, sent whole whenever it changes or a client catches up.
 _Avoid_: Thread data, thread entry
 
 **Spacer**:
@@ -119,7 +119,7 @@ One line of Team Onboarding's checklist: a check, zero or more fixes, and the ma
 _Avoid_: Checklist entry, requirement
 
 **Safe fix**:
-A fix that is idempotent, needs no input, and runs no code the engineer has not approved. Only safe fixes run from the CLI, from **Fix all safe items**, or through `bb plugin rpc call`.
+A fix that is idempotent, needs no input, and runs no code the engineer has not approved. Only safe fixes run from the CLI, from **Fix all safe items**, or through a plugin call.
 _Avoid_: Auto-fix, quick fix
 
 **Approval**:
@@ -127,11 +127,11 @@ The engineer's recorded consent, given only in the Onboarding page, to run a tea
 _Avoid_: Trust, allowlist
 
 **Team command**:
-A command the manifest names for a machine to run: a check's `run` or `fix`, or a tool's `install`. It runs only once approved.
+A command the manifest names for a machine to run: a check's run or fix command, or a tool's install command. It runs only once approved.
 _Avoid_: Custom command, shell command, approved command
 
 **Machine rule**:
-Which machines a manifest entry applies to: the server machine, every persistent machine, or a list of machine names, written `server`, `all` or the list. Every item has one, taken from its entry or else from the manifest's top-level machines field.
+Which machines a manifest entry applies to: the server machine, every persistent machine, or a list of machine names. Every item has one, taken from its entry or else from the manifest's top-level machines field.
 _Avoid_: Scope, host rule, target
 
 ### Pocket Navigation
@@ -151,7 +151,7 @@ _Avoid_: New thread row, action bar
 ### OpenAI-compatible inference
 
 **Endpoint**:
-One entry in OpenAI-compatible inference's `endpoints` setting, which bb offers as one AI service.
+One entry in OpenAI-compatible inference's endpoints setting, which bb offers as one AI service.
 _Avoid_: Server, backend, provider
 
 **AI task**:
@@ -166,7 +166,7 @@ _Avoid_: Idle Compact, cache warmer
 
 **Compaction line**:
 The context size at or above which Cache Keeper compacts a thread with compacting switched on, once its turn has ended and just before its cache expires.
-_Avoid_: Threshold, trigger, N
+_Avoid_: Threshold, trigger
 
 **Keep-warm**:
 A turn Cache Keeper sends a thread whose turn has ended while it still waits on background work, child threads or a scheduled message, so its cache, and through its report every cache above it, is warm when they report back.
@@ -189,7 +189,7 @@ The keep-warms Cache Keeper sends at the same moment to the waiting threads at t
 _Avoid_: Family keep-warm, group ping, batch keep-warm
 
 **Check-in**:
-A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task running over 30 minutes. It asks the agent to check the work and report what it finds.
+A turn Cache Keeper sends a thread whose turn has ended about its own stalled task, or a question folded into its keep-warm about a task that has run long. It asks the agent to check the work and report what it finds.
 _Avoid_: Nudge
 
 **Stalled task**:
@@ -201,7 +201,7 @@ Cache Keeper's setting, off until switched on, that sends a check-in about every
 _Avoid_: Check in on stalled background work, check-ins setting
 
 **No-output wait**:
-How long a background command or subagent may go without output or progress before it is a stalled task: 10, 15 or 30 minutes, set in Cache Keeper's settings.
+How long a background command or subagent may go without output or progress before it is a stalled task, set in Cache Keeper's settings.
 _Avoid_: Check-in wait, stall timeout
 
 **Compact when idle**:
@@ -233,7 +233,7 @@ A Claude Code thread with no Claude Code thread above it, where a thread tree's 
 _Avoid_: Top thread, branch top
 
 **Deadline**:
-The moment Cache Keeper acts on a thread: its most recent request's time plus its cache lifetime, minus one minute.
+The moment Cache Keeper acts on a thread: its most recent request's time plus its cache lifetime, less a small margin.
 _Avoid_: Expiry, TTL, timer
 
 **Idle stretch**:
@@ -253,7 +253,7 @@ The section of Cache Keeper's settings with one switch per agent tool it registe
 _Avoid_: Tool permissions, agent settings
 
 **Reconciliation check**:
-Cache Keeper's listing of every bb thread every 5 minutes, which corrects what a missed event left wrong; the only work it does over every thread.
+Cache Keeper's listing of every bb thread every few minutes, which corrects what a missed event left wrong; the only work it does over every thread.
 _Avoid_: Pass, poll
 
 **Fair floor**:
@@ -275,7 +275,7 @@ One of UI Tweaks' settings, text size or transcript width, together with the cho
 _Avoid_: Setting override, adjustment
 
 **Thread view**:
-bb's own view of a thread's transcript and composer, in the main area or a split pane. A thread chat another plugin embeds with bb's `ThreadChat` component is not one.
+bb's own view of a thread's transcript and composer, in the main area or a split pane. A thread chat another plugin embeds with bb's thread chat component is not one.
 _Avoid_: Thread window, chat panel, thread surface
 
 **New-thread screen**:
