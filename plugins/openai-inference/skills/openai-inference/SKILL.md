@@ -1,6 +1,6 @@
 ---
 name: openai-inference
-description: Configures the Endpoints (LiteLLM gateway, local OpenAI-compatible server) behind bb's thread-title and commit-message AI tasks. Use when an Endpoint's titles fail, or to change a task's service.
+description: Configures the Endpoints (LiteLLM gateway, local OpenAI-compatible server) for bb's title and commit-message AI tasks. Use when such a server gives no titles, or to change a task's service.
 ---
 
 # OpenAI-compatible inference
