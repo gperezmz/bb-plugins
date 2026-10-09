@@ -646,7 +646,7 @@ export default async function plugin(bb: BbPluginApi) {
   // ---- agent tool ----
   bb.agents.registerTool({
     name: "thread_usage",
-    description: "Cost and tokens of this thread plus every thread it spawned, with cost source and billing mode.",
+    description: "Returns the tokens and dollars spent by this thread and every thread it spawned, split by cost source, with the billing mode.",
     presentation: { label: { pending: "Checking thread usage", completed: "Checked thread usage" } },
     // The SDK types a validated tool's parameters as full zod, but takes any
     // schema with safeParse and validates the call with it, as for full zod.
