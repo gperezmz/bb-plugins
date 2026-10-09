@@ -401,9 +401,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.agents.registerTool({
     name: AGENT_TOOLS.compactWhenIdle.name,
     description:
-      "Switch Cache Keeper's compact-when-idle on for this thread: when its turn ends at or above the compaction line, it is compacted a minute before its prompt cache expires. Optionally set the line as a size such as 500k; it is refused while the thread's context window is unknown, or above its highest line.",
+      "Switches compact-when-idle on for this thread: when a turn ends at or above the compaction line, the thread is compacted a minute before its prompt cache expires. Refused, changing nothing, once its Agent tools switch is turned off in the plugin's settings.",
     presentation: { label: { pending: "Switching on compact when idle", completed: "Switched on compact when idle" } },
-    parameters: z.object({ above: z.string().optional().describe("Compaction line in tokens, e.g. 500k or 0.5m; snapped to the nearest of the thread's ten lines") }).strict(),
+    parameters: z.object({ above: z.string().optional().describe("Compaction line as a size, e.g. 500k or 0.5m, snapped to the nearest of the thread's ten lines; refused while the thread's context window is unknown, above its highest line, or on a thread Claude Code does not run") }).strict(),
     execute: ({ above }, { threadId }) => compactWhenIdle(surfaces, threadId, above),
   });
   bb.agents.configure(() => ({ tools: agentTools.offered(), skills: [] }));
