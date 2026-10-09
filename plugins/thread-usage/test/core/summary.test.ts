@@ -42,7 +42,7 @@ const TEST_SNAPSHOT = {
   },
 };
 const prices = new PriceBook({ snapshot: TEST_SNAPSHOT });
-const NO_LOGS: MergedLogs = { history: [], gapFill: [], subagent: [], costOnly: [] };
+const NO_LOGS: MergedLogs = { history: [], gapFill: [], subagent: [], costOnly: [], cacheWrites: [] };
 const NOW = T0 + 60 * MIN;
 
 const ctx = (p: Partial<LogMergeContext> = {}): LogMergeContext => ({
@@ -91,6 +91,45 @@ describe("mergeLogEntries (merge rule)", () => {
 
   it("keeps main-session entries for their cost only when the harness records cost (pi)", () => {
     expect(mergeLogEntries([after], ctx({ harnessCost: true })).costOnly.map((e) => e.key)).toEqual(["after"]);
+  });
+
+  it("keeps main-session entries with cache writes for the cache lifetime of the ledger's writes", () => {
+    const written = logEntry({ key: "written", ts: T0 + MIN, tokens: tokens({ cacheWrite: 500 }) });
+    expect(mergeLogEntries([after, written], ctx()).cacheWrites.map((e) => e.key)).toEqual(["written"]);
+  });
+});
+
+describe("1-hour cache writes the ledger cannot see", () => {
+  // bb's usage events carry no cache lifetime, so the ledger's turns hold
+  // every cache write as a 5-minute one.
+  const oneHourPrices = new PriceBook({
+    snapshot: { "test-model": { ...TEST_SNAPSHOT["test-model"], cache_creation_input_token_cost_above_1hr: 2e-6 } },
+  });
+  const turn = (turnId: string, startedAt: number) =>
+    turnRecord({ turnId, startedAt, completedAt: startedAt + MIN, model: "test-model", tokens: tokens({ cacheWrite: 1_000_000 }) });
+  const entry = (key: string, ts: number, cacheWrite: number, cacheWrite1h: number) =>
+    logEntry({ key, ts, model: "test-model", tokens: tokens({ cacheWrite, cacheWrite1h }) });
+
+  it("prices a turn's cache writes at the 1-hour rate where its session log records 1-hour writes", () => {
+    const logs = mergeLogEntries([entry("a", T0 + MIN + SEC, 600_000, 600_000), entry("b", T0 + MIN + 2 * SEC, 400_000, 400_000)], ctx());
+    const u = threadUsage({ turns: [turn("t1", T0 + MIN)], rows: [], logs, prices: oneHourPrices, billing: "subscription", now: NOW });
+    expect(u.figure.tokens).toEqual(tokens({ cacheWrite: 1_000_000, cacheWrite1h: 1_000_000 }));
+    expect(costTotal(u.figure.cost)).toBeCloseTo(2, 10);
+  });
+
+  it("takes the 1-hour share of the turn's logged cache writes", () => {
+    const logs = mergeLogEntries([entry("1h", T0 + MIN + SEC, 300, 300), entry("5m", T0 + MIN + 2 * SEC, 100, 0)], ctx());
+    const u = threadUsage({ turns: [turn("t1", T0 + MIN)], rows: [], logs, prices: oneHourPrices, billing: "subscription", now: NOW });
+    expect(u.figure.tokens.cacheWrite1h).toBe(750_000);
+  });
+
+  it("prices both turns at the 1-hour rate when a turn's first request is logged just before bb starts it", () => {
+    const t2Start = T0 + 3 * MIN;
+    // Inside t1's 30-second grace window, so it is placed under t1.
+    const early = entry("early", t2Start - 7, 400_000, 400_000);
+    const logs = mergeLogEntries([entry("t1", T0 + MIN + SEC, 1_000_000, 1_000_000), early, entry("t2", t2Start + SEC, 600_000, 600_000)], ctx());
+    const u = threadUsage({ turns: [turn("t1", T0 + MIN), turn("t2", t2Start)], rows: [], logs, prices: oneHourPrices, billing: "subscription", now: NOW });
+    expect(u.figure.tokens.cacheWrite1h).toBe(2_000_000);
   });
 });
 

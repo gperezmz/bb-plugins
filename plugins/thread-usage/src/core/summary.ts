@@ -55,6 +55,12 @@ export interface MergedLogs {
   subagent: StoredLogEntry[];
   /** Main-session entries used for the harness's own cost only (tokens stay the ledger's). */
   costOnly: StoredLogEntry[];
+  /**
+   * Main-session entries with cache writes, used only for the share of the
+   * ledger's cache writes that were 1-hour ones, which bb's usage events do
+   * not report.
+   */
+  cacheWrites: StoredLogEntry[];
 }
 
 /** Merges harness-log entries into turns; see docs/explanation/thread-usage-counting.md for the rule. */
@@ -62,7 +68,7 @@ export function mergeLogEntries(
   entries: readonly StoredLogEntry[],
   ctx: LogMergeContext,
 ): MergedLogs {
-  const out: MergedLogs = { history: [], gapFill: [], subagent: [], costOnly: [] };
+  const out: MergedLogs = { history: [], gapFill: [], subagent: [], costOnly: [], cacheWrites: [] };
   for (const entry of entries) {
     if (ctx.forkCreatedAt !== null && entry.ts < ctx.forkCreatedAt) continue;
     if (entry.agentId !== null) {
@@ -73,8 +79,9 @@ export function mergeLogEntries(
       out.history.push(entry);
     } else if (ctx.partialGaps.some((g) => entry.ts >= g.fromMs && entry.ts <= g.toMs)) {
       out.gapFill.push(entry);
-    } else if (ctx.harnessCost) {
-      out.costOnly.push(entry);
+    } else {
+      if (ctx.harnessCost) out.costOnly.push(entry);
+      if (entry.tokens.cacheWrite > 0) out.cacheWrites.push(entry);
     }
   }
   return out;
@@ -306,6 +313,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
   const subagentByTurn = new Map<string, StoredLogEntry[]>();
   const gapByTurn = new Map<string, StoredLogEntry[]>();
   const costByTurn = new Map<string, StoredLogEntry[]>();
+  const cacheWritesByTurn = new Map<string, StoredLogEntry[]>();
   const place = (map: Map<string, StoredLogEntry[]>, entry: StoredLogEntry) => {
     const turn = [...realTurns].reverse().find((t) => inWindow(entry.ts, t, now));
     const key = turn?.turnId ?? OUTSIDE_TURNS;
@@ -314,6 +322,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
   input.logs.subagent.forEach((e) => place(subagentByTurn, e));
   input.logs.gapFill.forEach((e) => place(gapByTurn, e));
   input.logs.costOnly.forEach((e) => place(costByTurn, e));
+  input.logs.cacheWrites.forEach((e) => place(cacheWritesByTurn, e));
 
   const views: TurnView[] = [];
   let knownTokensInGatewayTurns = 0;
@@ -376,6 +385,17 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
         : [];
     const fromLogs = coveredByHistory || gapEntries.length > 0;
     let tokens = coveredByHistory ? ZERO_TOKENS : turn.tokens;
+    if (!coveredByHistory && tokens.cacheWrite1h === 0) {
+      // A share rather than a sum: a turn's first request can be logged just
+      // before bb starts the turn, and so land in the previous turn's window.
+      const written = (cacheWritesByTurn.get(turn.turnId) ?? []).reduce(
+        (acc, e) => ({ all: acc.all + e.tokens.cacheWrite, oneHour: acc.oneHour + Math.min(e.tokens.cacheWrite1h, e.tokens.cacheWrite) }),
+        { all: 0, oneHour: 0 },
+      );
+      if (written.oneHour > 0) {
+        tokens = { ...tokens, cacheWrite1h: Math.round((tokens.cacheWrite * written.oneHour) / written.all) };
+      }
+    }
     let partial = turn.partial;
     if (gapEntries.length > 0) {
       tokens = gapEntries.reduce((acc, e) => addTokens(acc, e.tokens), ZERO_TOKENS);

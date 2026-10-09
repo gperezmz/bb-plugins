@@ -542,7 +542,7 @@ export class Engine {
       }
       // Incremental reads keep only what the merge rule can use outside windows.
       const kept = incremental
-        ? entries.filter((e) => e.agentId !== null || harness === "pi")
+        ? entries.filter((e) => e.agentId !== null || harness === "pi" || e.tokens.cacheWrite > 0)
         : entries;
       store.upsertLogEntries(threadId, kept);
       // Only the row as it is now is updated. Writing back the one read before
@@ -704,6 +704,26 @@ export class Engine {
       }),
     );
     this.deps.model.invalidateAll();
+  }
+
+  /**
+   * Queues a log read from first sight for each Claude Code thread of these,
+   * so main-session entries with cache writes that incremental reads once
+   * dropped are stored.
+   */
+  rereadClaudeLogs(listed: ReadonlySet<string>): void {
+    const { store } = this.deps;
+    if (!this.deps.settings().readLogs) return;
+    const now = this.deps.now();
+    for (const id of listed) {
+      const edge = store.getEdge(id);
+      const state = store.getThread(id);
+      if (harnessOf(edge?.providerId ?? null) !== "claude-code" || state?.firstSeenAt == null) continue;
+      store.enqueue(
+        { threadId: id, kind: "logs", fromMs: state.firstSeenAt - 60_000, toMs: null, priority: edge?.createdAt ?? 0 },
+        now,
+      );
+    }
   }
 
   /**

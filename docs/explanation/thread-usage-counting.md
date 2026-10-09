@@ -5,7 +5,7 @@ bb reports how many tokens a thread used, but not what they cost, and not what t
 ```mermaid
 flowchart LR
   events["bb thread events"] --> ledger["Ledger: one record per turn"]
-  logs["Harness session logs"] -->|subagents, history, pi's cost| ledger
+  logs["Harness session logs"] -->|subagents, history, 1-hour cache writes, pi's cost| ledger
   gateway["LiteLLM gateway spend logs"] -->|rows tagged with the thread| rows["Gateway rows"]
   ledger --> cost{"Cost per turn"}
   rows --> cost
@@ -24,10 +24,11 @@ bb keeps those per-request events only for a short while once newer ones arrive.
 
 ## Harness logs
 
-Some usage never reaches bb's events. The plugin's host entry reads each harness's session logs on the machine that ran the thread, for three things:
+Some usage never reaches bb's events. The plugin's host entry reads each harness's session logs on the machine that ran the thread, for four things:
 
 - **Claude Code subagents.** Their requests run inside the same session but bb never counts them. They are stored under the turn whose time they fall in.
 - **History** from before the plugin was installed, or from a gap.
+- **Claude Code's 1-hour cache writes.** bb reports how many tokens a request wrote to the prompt cache, but not for how long, and a 1-hour write costs more than a 5-minute one. The plugin finds what share of the cache writes logged during a turn were 1-hour writes, takes that share of the turn's cache writes as bb counted them, and prices it at the 1-hour rate. The tokens themselves still come from bb's events.
 - **pi's own cost**, which pi writes per message.
 
 Codex logs are read for history and gaps only. Cursor, run through ACP, reports no tokens to bb and keeps no log the plugin reads, so its threads show no usage.

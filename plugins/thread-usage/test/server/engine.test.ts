@@ -445,6 +445,41 @@ describe("ledger rebuild against a harness-log read", () => {
   });
 });
 
+describe("incremental harness-log reads", () => {
+  it("keep main-session entries with cache writes, whose lifetime bb's usage events do not report", async () => {
+    const r = rig({ readLogs: true });
+    r.store.upsertEdge({ threadId: "thr_h", providerId: "claude-code", createdAt: T0, hostId: "host-1" }, T0);
+    r.events.set("thr_h", [identity(1, T0, "sess-h"), ...turns(2, 1, T0, 100)]);
+    await r.engine.catchUp("thr_h");
+    const main = { sessionId: "sess-h", agentId: null, model: "test-model", costUsd: null };
+    r.logs.entries = [
+      { ...main, key: "1h", ts: r.clock.now, tokens: tokens({ cacheWrite: 50, cacheWrite1h: 50 }) },
+      { ...main, key: "5m", ts: r.clock.now, tokens: tokens({ cacheWrite: 50 }) },
+      { ...main, key: "read", ts: r.clock.now, tokens: tokens({ cacheRead: 50 }) },
+    ];
+    await r.engine.readThreadLogs("thr_h", { timeoutMs: 1000 });
+    expect(r.store.getLogEntries("thr_h").map((e) => e.key).sort()).toEqual(["1h", "5m"]);
+  });
+
+  it("are read again from first sight for Claude Code threads whose logs were read before", async () => {
+    const r = rig({ readLogs: true });
+    r.store.upsertEdge({ threadId: "thr_o", providerId: "claude-code", createdAt: T0, hostId: "host-1" }, T0);
+    r.events.set("thr_o", [identity(1, T0, "sess-o"), ...turns(2, 1, T0, 100)]);
+    await r.engine.catchUp("thr_o");
+    const firstSeenAt = r.store.getThread("thr_o")!.firstSeenAt!;
+    r.logs.entries = [
+      { key: "1h", sessionId: "sess-o", agentId: null, ts: firstSeenAt, model: "test-model", tokens: tokens({ cacheWrite: 50, cacheWrite1h: 50 }), costUsd: null },
+    ];
+    // Read through a later time, as a read under the rule that dropped such entries left it.
+    r.store.putThread({ ...r.store.getThread("thr_o")!, logsReadThrough: firstSeenAt + 30 * MIN }, r.clock.now);
+    r.engine.rereadClaudeLogs(new Set(["thr_o"]));
+    while ((await r.engine.runBackfill(4)) > 0) {
+      // drain the queue
+    }
+    expect(r.store.getLogEntries("thr_o").map((e) => e.key)).toEqual(["1h"]);
+  });
+});
+
 describe("catch-up cadence for busy threads", () => {
   afterEach(() => {
     vi.useRealTimers();
