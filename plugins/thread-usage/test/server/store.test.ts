@@ -122,7 +122,7 @@ describe("retention", () => {
       threadUsage({
         turns: store.getTurns("thr_a"),
         rows: store.getGatewayRows("thr_a"),
-        logs: { history: [], gapFill: [], subagent: [], costOnly: [] },
+        logs: { history: [], gapFill: [], subagent: [], costOnly: [], cacheWrites: [] },
         prices,
         billing: "gateway",
         now: T0 + 500 * day,

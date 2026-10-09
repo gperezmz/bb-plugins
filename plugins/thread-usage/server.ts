@@ -39,6 +39,8 @@ const TAGGED_PROVIDERS = ["claude-code", "codex", "pi"];
 const RETENTION_MS = 365 * 86_400_000;
 /** Bump when a ledger rule changes; stored ledgers are then rebuilt from bb's events. */
 const LEDGER_VERSION = 4;
+/** Set once Claude Code threads seen before main-session cache writes were kept have had their logs read again. */
+const CACHE_WRITES_META = "cacheWritesReread";
 const DAY_MS = 86_400_000;
 
 /** When the public prices were last fetched, as an ISO time; null when never. */
@@ -315,6 +317,10 @@ export default async function plugin(bb: BbPluginApi) {
         if (store.getMeta<number>("ledgerVersion") !== LEDGER_VERSION) {
           await engine.rebuildLedgers(listed);
           store.setMeta("ledgerVersion", LEDGER_VERSION);
+        }
+        if (store.getMeta<boolean>(CACHE_WRITES_META) !== true) {
+          engine.rereadClaudeLogs(listed);
+          store.setMeta(CACHE_WRITES_META, true);
         }
         bb.log.info(`discovered ${listed.size} threads`);
         await engine.resumeInterrupted(wasRunning.filter((id) => listed.has(id)));
