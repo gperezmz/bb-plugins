@@ -98,7 +98,7 @@ bb thread-glance prefs set hiddenGroups '["threads"]'
 bb thread-glance prefs reset hiddenGroups
 ```
 
-Every open window follows a change at once. The plugin's agent skill documents the same commands, so an agent asked to change the sidebar's layout uses them.
+Every open window follows a change at once. The plugin's agent skill sends an agent asked to change the sidebar's layout to the same commands.
 
 ## First-run import
 

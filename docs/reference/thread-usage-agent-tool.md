@@ -5,7 +5,7 @@ Every thread's agent gets one tool from Thread Usage. Source: [`server.ts`](../.
 | | |
 |---|---|
 | Name | `thread_usage` |
-| Description the agent sees | Cost and tokens of this thread plus every thread it spawned, with cost source and billing mode. |
+| Description the agent sees | Returns the tokens and dollars spent by this thread and every thread it spawned, split by cost source, with the billing mode. |
 | Label in the timeline | Checking thread usage, then Checked thread usage |
 | Parameters | none |
 | Returns | JSON for the calling thread's [tree](../explanation/how-the-plugins-fit-bb.md#threads-and-trees), after reading any events bb has for the thread that the plugin has not read yet |

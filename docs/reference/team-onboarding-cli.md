@@ -20,4 +20,4 @@ The CLI runs on the bb server. `--machine <name>` picks the machine, by its name
 
 `apply --safe` is meant for machine bootstraps: see [provision a manifest from a machine bootstrap](../how-to/team-onboarding-provision-manifest.md).
 
-The plugin's agent skill documents these commands for agents, and tells them that logins and approvals need the engineer in the Onboarding page.
+The plugin's agent skill sends agents to `bb team-onboarding --help` for these commands, and tells them that logins and approvals need the engineer in the Onboarding page.
