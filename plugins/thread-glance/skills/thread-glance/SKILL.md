@@ -1,6 +1,6 @@
 ---
 name: thread-glance
-description: Changes how the sidebar groups, sorts, hides and settles threads with `bb thread-glance prefs`, not `bb thread-list prefs`, when Thread Glance is its list. Use when asked to change the sidebar layout.
+description: Sets how the sidebar groups, sorts, hides, collapses, folds and settles threads via `bb thread-glance prefs`. Use as the tool for sidebar changes with Thread Glance installed, not `bb thread-list`.
 ---
 
 # Thread Glance preferences
@@ -28,9 +28,8 @@ What a few keys do beyond their description:
 - `harnessIcon`: a row draws a harness logo only where its harness differs
   from bb's default (a root thread) or from its parent thread's (a child).
 - `childAttention`: Needs attention drives collapsed groups, the need-you
-  filter, the counters and auto-reveal, and the children kept out of a tree's
-  "N more child threads" fold. An orphaned failure is a child's failure whose
-  parent thread has stayed idle for 5 seconds without handling it.
+  filter, the counters and auto-reveal. An orphaned failure is a child's
+  failure whose parent thread has stayed idle for 5 seconds without handling it.
 - A tree that needs attention stays in its group, drawn even when the group
   is collapsed.
 
