@@ -53,6 +53,11 @@ docstrings follow the convention the repository's linter is configured for,
 which then reports nothing on the lines written or changed, else the Google
 style guide for the file's language, else the language's own convention.
 
+## Skills and tool descriptions
+
+Call the Skill tool with `writing-for-agents` before writing or changing a
+skill or an agent tool description.
+
 ## Artifacts
 
 The lessons directory is `docs/lessons/`, and the ideation directory
