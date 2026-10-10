@@ -46,6 +46,7 @@ runs:
           # plugin repinned to an SDK missing here fails until it is added.
           case $sdk in
             0.5.29) BB_VERSION=0.44.0 ;;
+            0.6.37) BB_VERSION=0.46.0 ;;
             *) echo "::error::$PLUGIN pins @get-bb/plugin-sdk $sdk, which no bb release is listed for in .github/actions/setup/action.yml" >&2; exit 1 ;;
           esac
         fi

@@ -8,7 +8,7 @@ The harness never touches your own bb. Every command it runs has the variables t
 
 - Linux (the scripts read `/proc`) and bash.
 - `node`, `jq`, `curl`, `git` and `rsync`.
-- bb-app's `bb`, `bb-server` and `bb-host-daemon` on your `PATH`, bb 0.44 or later, with its Claude Code provider.
+- bb-app's `bb`, `bb-server` and `bb-host-daemon` on your `PATH`, bb 0.46 or later, with its Claude Code provider.
 - The plugin's dependencies installed: `npm install` in `plugins/cache-keeper`.
 
 ## Start
