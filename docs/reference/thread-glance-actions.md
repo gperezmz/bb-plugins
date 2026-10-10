@@ -12,10 +12,10 @@ Thread Glance adds four items of its own, each at the end of the bb group it bel
 |---|---|---|
 | Details | Always, with bb's Open in split | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
 | Copy thread ID | Always, with bb's organizing items | Copies the ID |
-| Mark tree read | On a root with an unread thread below it | Marks the root and every thread below it read; see [Marking threads read](#marking-threads-read) |
+| Mark tree read | On a root with an unread thread below it | Marks the root and every thread below it read; see [Marking threads read](#marking-threads-read). The row's hover button does the same |
 | Move… | On a thread that is not archived | Opens a search for a new parent thread, or none |
 
-The row itself also offers bb's **Mark read**, while bb has the thread unread, and bb's **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
+The row itself also offers a read button and bb's **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows. On a root with an unread thread below it the read button is **Mark tree read**, and marks the tree as the menu item does; on any other thread bb has unread it is bb's **Mark read**, and marks the one thread.
 
 A worktree folder row, drawn while **Worktrees as folders** is on, has its own **…** menu: **New thread in environment**, **Rename** and **Archive**, which archives every thread in the worktree as bb's own list does: the threads leave the list at once, split panes showing them close, and bb's toast offers **Undo**.
 
@@ -59,6 +59,6 @@ Enter on a row opens its thread, as a click does, and the context-menu key or Sh
 
 ## Marking threads read
 
-**Mark all read** in the list header marks every unread thread in the list read: every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. A group's **Mark all read** does the same for that group, and **Mark tree read** in a root's menu for that root's thread tree. Above 20 threads, Mark all read asks first. bb's own **Mark read**, in the row's menu, on hover and in Details, marks the one thread.
+**Mark all read** in the list header marks every unread thread in the list read: every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. A group's **Mark all read** does the same for that group, and **Mark tree read**, in a root's menu or on its hover, for that root's thread tree. Above 20 threads, Mark all read asks first. bb's own **Mark read**, in the row's menu, on hover where the row offers no Mark tree read, and in Details, marks the one thread.
 
 The threads show read at once. Thread Glance then sends bb one read request per thread, six at a time, so bb is never sent them all at once. A thread whose request fails shows unread again, and Mark tree read says it could not.

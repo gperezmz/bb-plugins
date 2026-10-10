@@ -51,7 +51,7 @@ Left to right, from the title to the row's end. On hover the children chip stays
 | | Title | Harness and machine | Children chip | Trailing slot |
 |---|---|---|---|---|
 | At rest | The title, then the hidden badge on a hidden child, or the [pull request badge](#the-pull-request-badge) on a root | The [harness logo and machine name](#the-harness-logo-and-the-machine-name), where the row shows them | On a parent thread only | The time |
-| On hover, or with keyboard focus in the row | Shortened where the actions need the room | bb's **Mark read**, while bb has the thread unread, and bb's **Archive**, in place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
+| On hover, or with keyboard focus in the row | Shortened where the actions need the room **Mark tree read**, on a root with an unread thread below it, or else bb's **Mark read**, while bb has the thread unread; and bb's **Archive**. They take the place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 

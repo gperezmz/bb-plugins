@@ -1,7 +1,7 @@
 // One thread row, as plain elements. It draws the row the model built and
 // reports what the user did; every decision was made before it rendered. Its
-// "…" menu, context menu and hover buttons are bb's own; its hover card, drag
-// and drag-to-split are the list's.
+// "…" menu, context menu and hover buttons are bb's own, but for a root's
+// Mark tree read; its hover card, drag and drag-to-split are the list's.
 import { memo, useMemo, useRef } from "react";
 import {
   experimental_Icon as Icon,
@@ -100,7 +100,14 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
     onOpenChange: (open: boolean) => (open ? commands.openMenu({ kind: "thread", ...place }) : commands.closeMenu()),
   };
   const quick = useThreadActions(target, { keys: QUICK_ACTION_KEYS });
-  const markRead = thread.isUnread ? quick.find((entry) => entry.key === "bb--core/read") : undefined;
+  // A root with an unread thread below it marks its tree on hover, as its
+  // menu's Mark tree read does; any other unread thread runs bb's Mark read.
+  const bbRead = quick.find((entry) => entry.key === "bb--core/read");
+  const markRead = row.descendantsUnread
+    ? { label: "Mark tree read", icon: ICONS.markRead, run: () => commands.markTreeRead(thread.id) }
+    : thread.isUnread && bbRead !== undefined
+      ? { label: bbRead.action.label, icon: bbRead.action.icon, run: () => void bbRead.action.run() }
+      : undefined;
   const archive = quick.find((entry) => entry.key === "bb--core/archive");
 
   const stateSlot = miniMap ? (
@@ -343,18 +350,18 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
                 {markRead !== undefined ? (
                   <button
                     type="button"
-                    aria-label="Mark read"
-                    title="Mark read"
+                    aria-label={markRead.label}
+                    title={markRead.label}
                     data-no-drag=""
                     className={ROW_ICON_BUTTON}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      void markRead.action.run();
+                      markRead.run();
                     }}
                   >
-                    <Icon name={markRead.action.icon} aria-hidden className="size-4" />
+                    <Icon name={markRead.icon} aria-hidden className="size-4" />
                   </button>
                 ) : null}
                 {archive !== undefined ? (
