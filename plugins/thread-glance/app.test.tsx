@@ -506,6 +506,45 @@ describe("Thread Glance slot", () => {
     await waitFor(() => expect(ran).toEqual(["read u", "archive q"]));
   });
 
+  it.each([
+    ["a read", false, ["c", "d"]],
+    ["an unread", true, ["c", "d", "r"]],
+  ] as const)("marks %s root's whole tree read from its hover button while a thread below it is unread", async (_, rootUnread, marked) => {
+    const ran: string[] = [];
+    const slot = render([
+      makeThread({ id: "r", title: "Root", ...(rootUnread ? { isUnread: true, ...finishedUnread } : {}) }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, isUnread: true, ...finishedUnread }),
+      makeThread({ id: "d", title: "Done child", parentThreadId: "r", createdAt: T0 + 2 }),
+    ], { stamps: { finishedAt: { d: T0 + 50 } }, extra: { threadActions: coreThreadActions(ran) } });
+    const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    expect(within(row).queryByRole("button", { name: "Mark read" })).toBeNull();
+    const button = within(row).getByRole("button", { name: "Mark tree read" });
+    expect(button.getAttribute("title")).toBe("Mark tree read");
+    expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
+    fireEvent.click(button);
+    await waitFor(() => expect(markedRead(slot)).toEqual(marked));
+    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
+    // bb's Mark read is not run: the tree's reads went to bb one thread at a time.
+    expect(ran).toEqual([]);
+  });
+
+  it("runs bb's Mark read from the hover button of an unread child row and of an unread root with nothing unread below it", async () => {
+    const ran: string[] = [];
+    render([
+      makeThread({ id: "r", title: "Root", isUnread: true, ...finishedUnread }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1 }),
+      makeThread({ id: "p", title: "Parent" }),
+      makeThread({ id: "k", title: "Kid", parentThreadId: "p", createdAt: T0 + 1, isUnread: true, ...finishedUnread }),
+    ], { extra: { threadActions: coreThreadActions(ran) }, prefs: { expandedChildren: ["p"] } });
+    const root = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
+    expect(within(root).queryByRole("button", { name: "Mark tree read" })).toBeNull();
+    fireEvent.click(within(root).getByRole("button", { name: "Mark read" }));
+    const kid = (await screen.findByRole("link", { name: /Open Kid/ })).parentElement!;
+    expect(within(kid).queryByRole("button", { name: "Mark tree read" })).toBeNull();
+    fireEvent.click(within(kid).getByRole("button", { name: "Mark read" }));
+    await waitFor(() => expect(ran).toEqual(["read r", "read k"]));
+  });
+
   it("marks a whole tree read with Mark tree read in a root's menu", async () => {
     const slot = render([
       makeThread({ id: "r", title: "Root" }),

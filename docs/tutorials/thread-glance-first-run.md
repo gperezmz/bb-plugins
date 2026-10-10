@@ -52,7 +52,7 @@ When the parent finishes, its row shows the dot and a bold title.
 
 The tree stays where it is in its project's group, and the list header now shows `1 need you`, because the parent finished unread. Your finished child did not add to it: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why.
 
-Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row, click **…** and choose **Mark tree read**: the parent and its child are read, and `1 need you` goes away.
+Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row and click **Mark tree read**, the open envelope beside archive: the parent and its child are read, and `1 need you` goes away.
 
 ## 6. Change a setting
 

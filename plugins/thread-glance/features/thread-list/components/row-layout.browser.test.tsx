@@ -188,7 +188,7 @@ const PARTS = {
   pullRequest: () => '[aria-label^="Pull request #1234"]',
   harness: () => '[aria-label="Codex"]',
   machine: () => '[aria-label="On work"]',
-  markRead: () => 'button[aria-label="Mark read"]',
+  markRead: () => 'button[aria-label="Mark read"], button[aria-label="Mark tree read"]',
   archive: () => 'button[aria-label="Archive thread"]',
   childrenChip: () => 'button[aria-label^="Show "], button[aria-label^="Collapse "]',
   time: () => '[aria-label^="Waiting on you"], [aria-label^="Finished"]',

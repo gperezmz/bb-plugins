@@ -5,7 +5,7 @@ import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk/app";
 import type { Commands } from "../commands/commands";
 import { ICONS } from "../icons";
 
-/** bb's own actions a row's hover buttons run: Mark read and Archive. */
+/** bb's own actions a row's hover buttons run: Mark read and Archive. A root with an unread thread below it runs Mark tree read in Mark read's place. */
 export const QUICK_ACTION_KEYS = ["bb--core/read", "bb--core/archive"] as const;
 
 export interface InlineInputs {
