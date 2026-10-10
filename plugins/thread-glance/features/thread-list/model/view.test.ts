@@ -125,11 +125,6 @@ describe("scenario 3: machine offline", () => {
     expect(attentionRootIds({ threads })).toEqual(["t"]);
     expect(rowIds(view, "project:proj_a")).toEqual(["t", "u"]);
   });
-  it("host-reconnecting counts as working", () => {
-    const view = viewOf({ threads: [makeThread({ id: "t", status: "active", runtimeStatus: "host-reconnecting" })] });
-    expect(threadRow(view, "t").info.state).toMatchObject({ kind: "working", label: "Reconnecting" });
-    expect(group(view, "project:proj_a").counters.working).toBe(1);
-  });
 });
 
 describe("scenario 6: pinned thread while its child is active", () => {

@@ -76,6 +76,9 @@ function render(
       threads: {
         defaultExecutionOptions: async () => null,
         update: async () => ({}),
+        pin: async () => ({}),
+        unpin: async () => ({}),
+        markUnread: async () => ({}),
         markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
       } as never,
       projects: {
@@ -525,9 +528,7 @@ describe("Thread Glance slot", () => {
   it("the header + opens a new thread in its project", async () => {
     const slot = render([makeThread({ id: "t" })]);
     fireEvent.click(await screen.findByRole("button", { name: "New thread in Alpha" }));
-    expect(slot.inspection.sidebarActionCalls).toContainEqual(
-      expect.objectContaining({ method: "openNewThread", options: expect.objectContaining({ projectId: "proj_a", focusPrompt: true }) }),
-    );
+    expect(slot.inspection.navigateCalls).toContainEqual({ method: "toCompose", options: { projectId: "proj_a", focusPrompt: true } });
   });
 
   it("says so on an empty list, with no New thread button of its own", async () => {
@@ -705,6 +706,75 @@ describe("compact viewport", () => {
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "touch" });
     fireEvent.click(trigger);
     expect(await screen.findByRole("menuitem", { name: "Details" })).toBeTruthy();
+  });
+});
+
+/** The thread action entries a test hands bb for a thread: archive and delete, recording what runs. */
+function recordedThreadActions(ran: string[]) {
+  return (thread: { id: string }) =>
+    ["archive", "delete"].map((id) => ({
+      key: `bb--core/${id}`,
+      pluginId: "bb--core",
+      group: "4_lifecycle",
+      action: { label: id, icon: "Archive" as never, run: async () => void ran.push(`${id} ${thread.id}`) },
+    }));
+}
+
+describe("thread actions", () => {
+  const openRowMenu = async (title: string) => {
+    const row = (await screen.findByRole("link", { name: new RegExp(`Open ${title}`) })).parentElement!;
+    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+  };
+
+  it("pins and unpins through bb's threads.pin and threads.unpin", async () => {
+    const slot = render([makeThread({ id: "a", title: "Loose" }), makeThread({ id: "p", title: "Pinned", pinnedAt: T0, isPinned: true })]);
+    await openRowMenu("Loose");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
+    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.pin", args: [{ threadId: "a" }] })));
+    await openRowMenu("Pinned");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin" }));
+    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.unpin", args: [{ threadId: "p" }] })));
+  });
+
+  it("marks a read thread unread through bb's threads.markUnread", async () => {
+    const slot = render([makeThread({ id: "a", title: "Read one" })]);
+    await openRowMenu("Read one");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark unread" }));
+    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.markUnread", args: [{ threadId: "a" }] })));
+  });
+
+  it("opens a thread in a split, and from its details, through bb's navigation", async () => {
+    const slot = render([makeThread({ id: "a", title: "Alpha" })]);
+    await openRowMenu("Alpha");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in split" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({ method: "toThread", threadId: "a", options: { split: true } });
+    await openRowMenu("Alpha");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({ method: "toThread", threadId: "a" });
+  });
+
+  it("renames silently through bb's threads.update", async () => {
+    const slot = render([makeThread({ id: "a", title: "Alpha" })]);
+    await openRowMenu("Alpha");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const editor = await screen.findByRole("textbox");
+    fireEvent.change(editor, { target: { value: "Renamed" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitFor(() =>
+      expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.update", args: [{ threadId: "a", title: "Renamed" }] })),
+    );
+  });
+
+  it("archives and deletes through bb's own thread actions for that thread", async () => {
+    const ran: string[] = [];
+    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })], { extra: { threadActions: recordedThreadActions(ran) } });
+    await openRowMenu("Alpha");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
+    await waitFor(() => expect(ran).toEqual(["archive a"]));
+    await openRowMenu("Beta");
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    await waitFor(() => expect(ran).toEqual(["archive a", "delete b"]));
   });
 });
 

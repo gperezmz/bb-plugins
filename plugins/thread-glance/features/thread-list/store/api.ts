@@ -14,5 +14,6 @@ export {
   type OpenCard,
   type OpenMenu,
   type RowPlace,
+  type ThreadActionRequest,
 } from "./list-store";
 export type { DefaultBranches, ListModel, SystemFacts } from "./derive";

@@ -8,10 +8,11 @@
 // data (../sync), which outlives the store, so a list mounted again starts
 // from it.
 import type {
+  BbNavigate,
   PluginBrowserBbSdk,
   PluginRpcClient,
   PluginSidebarSection,
-  PluginSidebarThreadActions,
+  PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { RpcContract } from "@/shared/contract";
@@ -44,6 +45,15 @@ interface Confirm {
   confirmLabel: string;
   destructive?: boolean;
   run(): void;
+}
+
+/** A thread action of bb's own that only a hook can run, asked for until `ThreadActionRunner` has run it. */
+export interface ThreadActionRequest {
+  /** Tells two requests for one thread and action apart. */
+  id: number;
+  thread: PluginSidebarThread;
+  /** The action's id among bb's own thread actions. */
+  action: "archive" | "delete";
 }
 
 /** A row as the list draws it: its group, and its key within the group. */
@@ -97,6 +107,7 @@ export interface ListUi {
   probeId: string | null;
   /** bb offers splits here: rows offer Open in split, and Ctrl or Cmd+click opens one. */
   splitAvailable: boolean;
+  threadAction: ThreadActionRequest | null;
 }
 
 /** How every row is drawn: one object, the same while none of it changes. */
@@ -122,7 +133,7 @@ export interface ListState {
 
 /** bb's and the plugin server's calls, kept behind one reference: commands read them when they run. */
 export interface Edge {
-  actions: PluginSidebarThreadActions;
+  navigate: BbNavigate;
   sdk: PluginBrowserBbSdk;
   rpc: PluginRpcClient<RpcContract>;
   onNavigate(): void;
@@ -181,7 +192,7 @@ const unset = (): never => {
 };
 
 const UNSET_EDGE: Edge = {
-  get actions(): never {
+  get navigate(): never {
     return unset();
   },
   get sdk(): never {
@@ -211,6 +222,7 @@ const CLOSED_UI: ListUi = {
   focusKey: null,
   probeId: null,
   splitAvailable: false,
+  threadAction: null,
 };
 
 /** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */

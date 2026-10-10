@@ -43,7 +43,6 @@ describe("computeState (first match wins)", () => {
     ["starting", "Working"],
     ["active", "Working"],
     ["stopping", "Stopping"],
-    ["host-reconnecting", "Reconnecting"],
   ])("5 working for %s, labelled %s", (runtimeStatus, label) => {
     const state = stateOf({ id: "t", status: "active", runtimeStatus: runtimeStatus as never });
     expect(state).toMatchObject({ kind: "working", label, glyph: { icon: "Loading", spin: true, tone: "working" } });

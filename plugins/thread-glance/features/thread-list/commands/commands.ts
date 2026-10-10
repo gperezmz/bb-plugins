@@ -21,7 +21,7 @@ import {
 } from "../model/toggles";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
-import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu } from "../store/api";
+import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu, type ThreadActionRequest } from "../store/api";
 import { inPool } from "./pool";
 import { lookUpModel, type ModelInfo } from "../sync";
 
@@ -41,6 +41,10 @@ export interface Commands {
   closeDetails(): void;
   /** Opens the thread the details dialog shows. */
   openFromDetails(threadId: string): void;
+  /** Asks for one of bb's own thread actions that only a hook can run; `ThreadActionRunner` runs it. */
+  requestThreadAction(thread: PluginSidebarThread, action: ThreadActionRequest["action"]): void;
+  /** The requested thread action has been taken up. */
+  finishThreadAction(): void;
   loadModel(threadId: string, status: string): Promise<ModelInfo | null>;
   toggleChip(row: ThreadRow): void;
   toggleOlder(row: OlderRow): void;
@@ -131,6 +135,7 @@ export function createCommands(store: ListStore): Commands {
   let dropContext: { model: ListModel; context: ReturnType<typeof dropContextOf> } | null = null;
   // Threads marked unread since a bulk read queued them: their queued read is not sent.
   const markedUnread = new Set<string>();
+  let requests = 0;
 
   const groupOf = (groupId: string): GroupView | undefined => store.getState().model?.groupsById.get(groupId);
 
@@ -189,7 +194,7 @@ export function createCommands(store: ListStore): Commands {
   };
 
   const runDrop = async (action: DropAction) => {
-    const { sdk, actions } = edge();
+    const { sdk } = edge();
     switch (action.type) {
       case "nest":
         if (action.unpinFirst) await sdk.threads.unpin({ threadId: action.threadId });
@@ -206,10 +211,10 @@ export function createCommands(store: ListStore): Commands {
         await sdk.threads.update({ threadId: action.threadId, parentThreadId: null });
         return;
       case "pin":
-        await actions.setPinned(action.threadId, true);
+        await sdk.threads.pin({ threadId: action.threadId });
         return;
       case "unpin":
-        await actions.setPinned(action.threadId, false);
+        await sdk.threads.unpin({ threadId: action.threadId });
         return;
       case "reorder-pinned":
         await sdk.threads.reorderPinned({
@@ -233,10 +238,10 @@ export function createCommands(store: ListStore): Commands {
     navigate: () => edge().onNavigate(),
 
     menuAction(action, thread, sectionId) {
-      const { actions, sdk, onNavigate } = edge();
+      const { navigate, sdk, onNavigate } = edge();
       switch (action) {
         case "open-in-split":
-          actions.open(thread.id, { split: true });
+          navigate.toThread(thread.id, { split: true });
           onNavigate();
           return;
         case "copy-link":
@@ -255,11 +260,13 @@ export function createCommands(store: ListStore): Commands {
           markedUnread.add(thread.id);
           store.revertRead([thread.id]);
           store.clearSeen([thread.id]);
-          actions.setRead(thread.id, false).catch(fail("Couldn't mark unread"));
+          sdk.threads.markUnread({ threadId: thread.id }).catch(fail("Couldn't mark unread"));
           return;
         case "pin":
         case "unpin":
-          actions.setPinned(thread.id, action === "pin").catch(fail("Couldn't change the pin"));
+          (action === "pin" ? sdk.threads.pin({ threadId: thread.id }) : sdk.threads.unpin({ threadId: thread.id })).catch(
+            fail("Couldn't change the pin"),
+          );
           return;
         case "move-to-section":
           sdk.threads.update({ threadId: thread.id, sectionId: sectionId ?? null }).catch(fail("Couldn't move the thread"));
@@ -274,26 +281,32 @@ export function createCommands(store: ListStore): Commands {
           store.setUi({ moveQuery: "", moveId: thread.id });
           return;
         case "archive":
-          actions.archive(thread.id);
+          commands.requestThreadAction(thread, "archive");
           return;
         case "unarchive":
           sdk.threads.unarchive({ threadId: thread.id }).catch(fail("Couldn't unarchive"));
           return;
         case "delete":
-          // Let the menu close before bb's confirmation takes focus.
-          setTimeout(() => actions.requestDelete(thread.id), 0);
+          commands.requestThreadAction(thread, "delete");
           return;
       }
     },
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
-    renameThread: (threadId, title) => edge().actions.rename(threadId, title),
+    async renameThread(threadId, title) {
+      await edge().sdk.threads.update({ threadId, title });
+    },
     closeDetails: () => store.setUi({ detailsId: null }),
     openFromDetails(threadId) {
       store.setUi({ detailsId: null });
-      edge().actions.open(threadId);
+      edge().navigate.toThread(threadId);
       edge().onNavigate();
     },
+    requestThreadAction(thread, action) {
+      requests += 1;
+      store.setUi({ threadAction: { id: requests, thread, action } });
+    },
+    finishThreadAction: () => store.setUi({ threadAction: null }),
 
     loadModel: (threadId, status) => lookUpModel(edge().sdk, store.getState().model?.byId.get(threadId), threadId, status),
 
@@ -315,7 +328,7 @@ export function createCommands(store: ListStore): Commands {
       });
     },
     newThreadInEnvironment(environmentId, projectId, sectionId) {
-      edge().actions.openNewThread({ projectId, environmentId, ...(sectionId ? { sectionId } : {}), focusPrompt: true });
+      edge().navigate.toCompose({ projectId, environmentId, ...(sectionId ? { placement: { sectionId, pinned: false } } : {}), focusPrompt: true });
       edge().onNavigate();
     },
     async renameEnvironment(environmentId, name) {
@@ -333,9 +346,9 @@ export function createCommands(store: ListStore): Commands {
     newThreadInGroup(groupId) {
       const descriptor = groupOf(groupId)?.descriptor;
       if (descriptor === undefined) return;
-      edge().actions.openNewThread({
+      edge().navigate.toCompose({
         ...(descriptor.newThreadProjectId ? { projectId: descriptor.newThreadProjectId } : {}),
-        ...(descriptor.newThreadSectionId ? { sectionId: descriptor.newThreadSectionId } : {}),
+        ...(descriptor.newThreadSectionId ? { placement: { sectionId: descriptor.newThreadSectionId, pinned: false } } : {}),
         focusPrompt: true,
       });
       edge().onNavigate();

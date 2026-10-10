@@ -5,7 +5,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import {
   experimental_Icon as Icon,
   experimental_useProviders as useProviders,
-  experimental_useSidebarThreadActions as useThreadActions,
+  experimental_useThreadActions as useThreadActions,
+  useBbNavigate,
   experimental_useSidebarThreads as useSidebarThreads,
   experimental_useSidebarThreadSplit as useThreadSplit,
   useEnvironmentProviders,
@@ -15,7 +16,7 @@ import {
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatuses,
 } from "@get-bb/plugin-sdk/app";
-import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread, PluginThreadActionTarget, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -24,7 +25,7 @@ import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
 import { moveTargets } from "../model/move";
-import { createListStore } from "../store/api";
+import { createListStore, type ThreadActionRequest } from "../store/api";
 import {
   ListContext,
   useArchived,
@@ -39,6 +40,7 @@ import {
   useMoreCounters,
   useMoreIds,
   useProbeId,
+  useThreadActionRequest,
   useShowArchivedOf,
   type ListHandle,
 } from "../store/hooks";
@@ -80,7 +82,7 @@ function ThreadListEdge({
   const { store } = handle;
   const showArchived = useShowArchivedOf(store);
   const sidebar = useSidebarThreads({ experimental_lifecycles: showArchived ? ["active", "archived"] : ["active"] });
-  const actions = useThreadActions();
+  const navigate = useBbNavigate();
   const sdk = useSdk();
   const rpc = useRpc<RpcContract>();
   const { providers } = useProviders();
@@ -108,7 +110,7 @@ function ThreadListEdge({
   });
   // bb's calls change identity on every host update; commands read them when they run.
   useLayoutEffect(() => {
-    store.edge = { actions, sdk, rpc, onNavigate, isIdleReporter };
+    store.edge = { navigate, sdk, rpc, onNavigate, isIdleReporter };
   });
   useLayoutEffect(() => store.feedHost(host));
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);
@@ -182,6 +184,7 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
       <ContextMenuHost />
       <CardHost />
       <SplitProbe />
+      <ThreadActionRunner />
     </div>
   );
 });
@@ -197,6 +200,45 @@ function SplitProbe() {
   const split = useThreadSplit(threadId ?? "");
   useLayoutEffect(() => overlays.setSplit(threadId, split));
   useLayoutEffect(() => commands.setSplitAvailable(split.isAvailable), [commands, split.isAvailable]);
+  return null;
+}
+
+/** A thread as bb's thread actions read it. */
+function actionTargetOf(thread: PluginSidebarThread): PluginThreadActionTarget {
+  const { environment } = thread;
+  return {
+    id: thread.id,
+    projectId: thread.projectId,
+    parentThreadId: thread.parentThreadId,
+    archivedAt: thread.archivedAt,
+    pinnedAt: thread.pinnedAt,
+    sectionId: thread.sectionId,
+    isUnread: thread.isUnread,
+    status: thread.status,
+    environment: environment?.id != null ? { id: environment.id, path: environment.path } : null,
+  };
+}
+
+/**
+ * Runs the archive or delete a person asked for through bb's own thread
+ * action, which confirms first where child threads go with it. Only a hook
+ * reaches bb's actions, so the request mounts `RunThreadAction` for its thread.
+ */
+function ThreadActionRunner() {
+  const commands = useCommands();
+  const request = useThreadActionRequest();
+  if (request === null) return null;
+  return <RunThreadAction key={request.id} request={request} onDone={commands.finishThreadAction} />;
+}
+
+function RunThreadAction({ request, onDone }: { request: ThreadActionRequest; onDone(): void }) {
+  const [entry] = useThreadActions(actionTargetOf(request.thread), { keys: [`bb--core/${request.action}`] });
+  const ran = useRef(false);
+  useEffect(() => {
+    if (entry === undefined || ran.current) return;
+    ran.current = true;
+    void entry.action.run().finally(onDone);
+  }, [entry, onDone]);
   return null;
 }
 

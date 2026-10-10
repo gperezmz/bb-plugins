@@ -26,6 +26,14 @@ const pullRequestLookup = (() => {
   };
 })();
 const lookedUp: string[] = [];
+// What the pull request's row does not read, as bb 0.46 reports it.
+const PULL_REQUEST_FACTS = {
+  experimental_autoMerge: false,
+  experimental_inMergeQueue: false,
+  experimental_checks: { state: "no_checks" },
+  experimental_review: { state: "none" },
+  experimental_mergeability: { state: "unknown" },
+} as const;
 
 vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@get-bb/plugin-sdk/app")>();
@@ -93,8 +101,8 @@ function render() {
       providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
       // Pull request states, which do not settle a thread.
       sidebarPullRequests: {
-        s: { number: 1, title: "Open", url: "https://example.test/1", state: "open", attention: "none" },
-        r: { number: 2, title: "Merged", url: "https://example.test/2", state: "merged", attention: "merged" },
+        s: { number: 1, title: "Open", url: "https://example.test/1", state: "open", attention: "none", ...PULL_REQUEST_FACTS },
+        r: { number: 2, title: "Merged", url: "https://example.test/2", state: "merged", attention: "merged", ...PULL_REQUEST_FACTS },
       },
       sdk: {
         threads: { defaultExecutionOptions: async () => null } as never,

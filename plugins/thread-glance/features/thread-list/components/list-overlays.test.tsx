@@ -9,6 +9,29 @@ import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps }
 import type { Preferences } from "@/shared/preferences";
 import { createFakeServer, finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
+// The SDK's fake drag-to-split hook records nothing; this one notes the thread each press is handed to.
+const splitPresses: string[] = [];
+
+vi.mock("@get-bb/plugin-sdk/app", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@get-bb/plugin-sdk/app")>();
+  return {
+    ...actual,
+    experimental_useSidebarThreadSplit(threadId: string) {
+      const split = actual.experimental_useSidebarThreadSplit(threadId);
+      return {
+        ...split,
+        splitProps: {
+          ...split.splitProps,
+          onPointerDown(event: never) {
+            splitPresses.push(threadId);
+            split.splitProps.onPointerDown?.(event);
+          },
+        },
+      };
+    },
+  };
+});
+
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
 
@@ -302,13 +325,14 @@ describe("the hover card", () => {
 
 describe("drag-to-split through one probe", () => {
   it("hands a press to bb's drag-to-split for the pressed row, even with no pointer entering it first", async () => {
-    const slot = render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })]);
+    splitPresses.length = 0;
+    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })]);
     const alpha = await rowOf("Alpha");
     const beta = await rowOf("Beta");
     fireEvent.pointerEnter(alpha, { pointerType: "mouse" });
     // The list scrolled Beta under the still pointer: no enter reaches it.
     fireEvent.pointerDown(beta, { pointerType: "mouse", button: 0 });
-    expect(slot.inspection.sidebarActionCalls.filter((call) => call.method === "open").map((call) => call.threadId)).toEqual(["b"]);
+    expect(splitPresses).toEqual(["b"]);
   });
 });
 

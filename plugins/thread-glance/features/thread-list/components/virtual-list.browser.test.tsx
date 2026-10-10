@@ -86,6 +86,7 @@ async function render(
       threads: {
         defaultExecutionOptions: async () => null,
         update: async () => ({}),
+        pin: async () => ({}),
         unpin: async () => ({}),
         reorderPinned: async () => ({}),
         markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
@@ -298,7 +299,7 @@ describe("the one drag", () => {
   it("pins a thread dropped on Pinned, and reorders within Pinned by a row's top or bottom quarter, drawing the line there", async () => {
     const slot = await render(tree(), { prefs: { organizationMode: "chronological" }, sections });
     await drag(center(rowOf("a")), center(header(/Pinned section/)));
-    await waitFor(() => expect(slot.inspection.sidebarActionCalls).toContainEqual(expect.objectContaining({ method: "setPinned", threadId: "a" })));
+    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.pin", args: [{ threadId: "a" }] })));
     await drag(center(rowOf("p2")), center(rowOf("p1"), 0.1), async () => {
       expect(document.querySelector("[data-sidebar-reorder-placement]")?.getAttribute("data-sidebar-reorder-placement")).toBe("before");
     });
