@@ -61,10 +61,15 @@ export interface RowMenuInputs {
 /** The choice that moves a thread back to Threads, out of every section. */
 export const THREADS_CHOICE = "";
 
-/** bb's own thread actions that Thread Glance draws its own way: tree-wide Mark read, its inline rename. */
-const DRAWN_BY_THREAD_GLANCE: ReadonlySet<string> = new Set(
-  ["split", "copyLink", "read", "pin", "rename", "archive", "delete"].map((id) => `bb--core/${id}`),
-);
+/**
+ * bb's thread actions that Thread Glance draws its own way (tree-wide Mark
+ * read, its inline rename): bb's own, and Move to section, which bb's
+ * built-in thread list registers.
+ */
+const DRAWN_BY_THREAD_GLANCE: ReadonlySet<string> = new Set([
+  ...["split", "copyLink", "read", "pin", "rename", "archive", "delete"].map((id) => `bb--core/${id}`),
+  "thread-list/move",
+]);
 
 /** bb's group of archive and delete, which Thread Glance's Archive and Delete stand for. */
 const LIFECYCLE_GROUP = "4_lifecycle";

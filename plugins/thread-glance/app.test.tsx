@@ -780,6 +780,7 @@ describe("thread actions", () => {
           entry("bb--core/split", "1_open", "Open in split"),
           entry("bb--core/newThreadInEnvironment", "2_organize", "New thread in environment"),
           entry("bb--core/read", "2_organize", "Mark unread"),
+          entry("thread-list/move", "2_organize", "Move to section"),
           entry("bb--core/archive", "4_lifecycle", "Archive"),
           entry("bb--core/delete", "4_lifecycle", "Delete"),
           entry("other-plugin/label", "5_other", "Label", {
