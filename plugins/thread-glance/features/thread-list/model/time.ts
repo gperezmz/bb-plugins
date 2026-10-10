@@ -117,7 +117,7 @@ export function stateSince(
       ? stamps.startedAt[threadId]
       : kind === "waits-on-you"
         ? stamps.pendingAt[threadId]
-        : kind === "idle" || kind === "unread" || kind === "failed"
+        : kind === "idle" || kind === "unread" || kind === "done-unseen" || kind === "failed"
           ? stamps.finishedAt[threadId]
           : undefined;
   if (at === undefined) return null;

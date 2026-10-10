@@ -19,7 +19,7 @@ import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
 import { holdSettled, type SettleHold, type SettleInputs } from "../model/settled";
 import { onlyReadFieldsDiffer, share, shareView } from "../model/share";
 import { miniMapsOf, openThreadIdsOf, type MiniMapPane } from "../model/split";
-import { isUnread } from "../model/state";
+import { isDoneUnseen, isUnread } from "../model/state";
 import { buildForest, type Forest, type ThreadInfo } from "../model/trees";
 import { buildListView, countNeedYou, needYouActive, type GroupView, type ListView } from "../model/view";
 
@@ -308,7 +308,7 @@ function sameRecord(a: Readonly<Record<string, number>>, b: Readonly<Record<stri
 
 /**
  * Whether `next` differs from `current` only by bb marking read threads the
- * model already shows read, so the model drawn from `next` would look the
+ * model already shows read and not done-unseen, so the model drawn from `next` would look the
  * same. Reads only the threads whose objects changed.
  */
 export function onlyReadChanged(current: ListInputs, next: ListInputs, model: ListModel): boolean {
@@ -329,9 +329,10 @@ export function onlyReadChanged(current: ListInputs, next: ListInputs, model: Li
   for (let index = 0; index < after.threads.length; index += 1) {
     const [was, thread] = [before.threads[index]!, after.threads[index]!];
     if (was === thread) continue;
-    if (was.id !== thread.id || model.forest.infos.get(thread.id)?.unread !== false) return false;
+    const info = model.forest.infos.get(thread.id);
+    if (was.id !== thread.id || info === undefined || info.unread || info.doneUnseen) return false;
     if (!onlyReadFieldsDiffer(was, thread)) return false;
-    if (isUnread(thread, context)) return false;
+    if (isUnread(thread, context) || isDoneUnseen(thread, context)) return false;
   }
   return true;
 }

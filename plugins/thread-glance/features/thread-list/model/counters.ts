@@ -29,7 +29,7 @@ export function countTrees(trees: readonly ThreadTree[]): Counters {
       if (flags.has("unread-failed") || flags.has("queue-failed")) counters.failed += 1;
       if (flags.has("offline")) counters.offline += 1;
       if (info.flags.has("working")) counters.working += 1;
-      if (flags.has("unread")) counters.unread += 1;
+      if (flags.has("unread") || flags.has("done-unseen")) counters.unread += 1;
     }
   }
   return counters;

@@ -248,8 +248,8 @@ describe("Needs attention is a state of a tree, drawn in its own group", () => {
     const view = viewOf({ threads, finishedAt, prefs: { expandedChildren: ["m", "c"] } });
     expect(attentionRootIds({ threads, finishedAt })).toEqual([]);
     expect(group(view, "project:proj_a").counters).toMatchObject({ unread: 0, waitsOnYou: 0 });
-    // The unread dot stays on its own row, inside the open tree.
-    expect(threadRows(view).find((row) => row.info.thread.id === "g")?.info.state.kind).toBe("unread");
+    // The done-unseen mark stays on its own row, inside the open tree.
+    expect(threadRows(view).find((row) => row.info.thread.id === "g")?.info.state.kind).toBe("done-unseen");
   });
 
   it("counts a child that failed while its parent is idle, not while it works or after it finished", () => {

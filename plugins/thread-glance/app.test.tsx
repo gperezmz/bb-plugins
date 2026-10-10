@@ -518,8 +518,8 @@ describe("Thread Glance slot", () => {
   });
 
   it.each([
-    ["a read", false, ["c", "d"]],
-    ["an unread", true, ["c", "d", "r"]],
+    ["a read", false, ["c"]],
+    ["an unread", true, ["c", "r"]],
   ] as const)("marks %s root's whole tree read from its hover button while a thread below it is unread", async (_, rootUnread, marked) => {
     const ran: string[] = [];
     const slot = render([
@@ -534,6 +534,7 @@ describe("Thread Glance slot", () => {
     expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
     fireEvent.click(button);
     await waitFor(() => expect(markedRead(slot)).toEqual(marked));
+    // The done-unseen child bb already has read is only stamped seen.
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
     // bb's Mark read is not run: the tree's reads went to bb one thread at a time.
     expect(ran).toEqual([]);
@@ -565,7 +566,7 @@ describe("Thread Glance slot", () => {
     const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
     fireEvent.click(within(row).getByRole("button", { name: "Thread actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mark tree read" }));
-    await waitFor(() => expect(markedRead(slot)).toEqual(["c", "d"]));
+    await waitFor(() => expect(markedRead(slot)).toEqual(["c"]));
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
   });
 

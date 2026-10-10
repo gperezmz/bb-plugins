@@ -77,6 +77,27 @@ describe("scenario 1: parent with 5 working children, one blocked", () => {
   });
 });
 
+describe("a done-unseen child", () => {
+  const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
+
+  it("is drawn read, with its own mark, and still offers its root Mark tree read", () => {
+    const view = viewOf({ threads, finishedAt: { c: T0 + 5 }, prefs: { expandedChildren: ["p"] } });
+    const child = threadRow(view, "c");
+    expect(child.bold).toBe(false);
+    expect(child.info).toMatchObject({ unread: false, doneUnseen: true, state: { kind: "done-unseen" } });
+    expect(child.dimmed).toBe(false);
+    expect(threadRow(view, "p").descendantsUnread).toBe(true);
+    expect(view.hasUnread).toBe(true);
+  });
+
+  it("loses the mark once seen", () => {
+    const view = viewOf({ threads, finishedAt: { c: T0 + 5 }, seenAt: { c: T0 + 6 }, prefs: { expandedChildren: ["p"] } });
+    expect(threadRow(view, "c").info).toMatchObject({ doneUnseen: false, state: { kind: "idle" } });
+    expect(threadRow(view, "p").descendantsUnread).toBe(false);
+    expect(view.hasUnread).toBe(false);
+  });
+});
+
 describe("scenario 2: child failed while its parent finished", () => {
   const threads = [
     makeThread({ id: "p", ...finishedUnread }),
@@ -299,16 +320,16 @@ describe("folding a tree by what needs attention", () => {
   const withState = (overrides: Record<string, Partial<PluginSidebarThread>>) =>
     threads.map((t) => (overrides[t.id] ? { ...t, ...overrides[t.id] } : t));
 
-  it("folds finished-unread children like quiet ones, keeping the 3 most recent", () => {
+  it("folds done-unseen children like quiet ones, keeping the 3 most recent", () => {
     expect(rows({ threads })).toEqual(["m", "w9", "w10", "w11", "older:9"]);
   });
-  it("keeps their unread dot when the fold is opened", () => {
+  it("keeps their done-unseen mark when the fold is opened", () => {
     const view = viewOf({ threads, finishedAt, prefs: { expandedChildren: ["m"], expandedOlder: ["m"] } });
     const shown = group(view, "project:proj_a").rows.filter((row): row is ThreadRow => row.type === "thread").slice(1);
     expect(shown).toHaveLength(12);
-    for (const row of shown) expect(row.info.state.kind).toBe("unread");
+    for (const row of shown) expect(row.info.state.kind).toBe("done-unseen");
   });
-  it("with Everything, finished-unread children need attention, as a root would", () => {
+  it("with Everything, done-unseen children need attention, as an unread root would", () => {
     expect(rows({ threads }, "everything")).toEqual(["m", ...workers.map((worker) => worker.id)]);
   });
   it("keeps working children out of the fold, and those that wait, are offline or failed", () => {
@@ -515,11 +536,11 @@ describe("transitions", () => {
     expect(rowIds(view, "project:proj_a")).toEqual(["p"]);
     expect(targets.get("c")).toBe("open");
   });
-  it("a finished child opens nothing, and puts unread on its parent's chip", () => {
+  it("a finished child opens nothing, and puts done-unseen on its parent's chip", () => {
     const threads = [makeThread({ id: "p" }), makeThread({ id: "c", parentThreadId: "p" })];
     const { view, targets } = render({ threads, finishedAt: { c: T0 + 5 } }, null, new Map());
     expect(targets.has("c")).toBe(false);
-    expect(threadRow(view, "p").chip).toEqual({ count: 1, expanded: false, flag: "unread" });
+    expect(threadRow(view, "p").chip).toEqual({ count: 1, expanded: false, flag: "done-unseen" });
   });
 });
 

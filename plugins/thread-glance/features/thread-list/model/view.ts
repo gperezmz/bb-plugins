@@ -6,7 +6,7 @@ import type {
   PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { ancestorsOf, anyUnread, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
+import { ancestorsOf, anyUnread, isUnreadOrDoneUnseen, type ThreadTree, type Forest, type Subtree, type ThreadInfo } from "./trees";
 import {
   builtinGroup,
   entityGroups,
@@ -151,7 +151,7 @@ export interface GroupView {
   rows: Row[];
   /** Every tree root bucketed in the group, those behind folds included. */
   rootIds: string[];
-  /** A thread in the group's trees is unread: its menu offers Mark all read. */
+  /** A thread in the group's trees is unread or done-unseen: its menu offers Mark all read. */
   hasUnread: boolean;
 }
 
@@ -164,7 +164,7 @@ export interface ListView {
   order: string[];
   /** Thread trees that need attention, in every group, hidden ones included: the need-you filter's N. */
   needYouCount: number;
-  /** A thread in the list is unread, hidden groups included: the list header offers Mark all read. */
+  /** A thread in the list is unread or done-unseen, hidden groups included: the list header offers Mark all read. */
   hasUnread: boolean;
 }
 
@@ -287,7 +287,7 @@ function threadRow(
     chip: options.chip,
     harness: drawsHarness(context, info),
     bold: info.unread,
-    descendantsUnread: info === root && (context.forest.treeOf.get(root.thread.id)?.descendants ?? []).some((info) => info.unread),
+    descendantsUnread: info === root && (context.forest.treeOf.get(root.thread.id)?.descendants ?? []).some(isUnreadOrDoneUnseen),
     note: info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,

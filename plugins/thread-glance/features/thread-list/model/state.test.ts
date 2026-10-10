@@ -151,6 +151,20 @@ describe("unread", () => {
     expect(isDoneUnseen(child, { ...context, finishedAt: { c: T0 + 5 }, activeThreadId: "c" })).toBe(false);
     expect(isDoneUnseen({ ...child, ...working }, { ...context, finishedAt: { c: T0 + 5 } })).toBe(false);
   });
+  it("a done-unseen child is not unread: bb keeps a finished child read", () => {
+    const child = makeThread({ id: "c", parentThreadId: "r", lastReadAt: T0 });
+    expect(isUnread(child, { ...context, finishedAt: { c: T0 + 5 } })).toBe(false);
+  });
+  it("done-unseen draws its own mark, a check in the accent, below unread and above a draft", () => {
+    expect(stateOf({ id: "c", parentThreadId: "r" }, { doneUnseen: true })).toMatchObject({
+      kind: "done-unseen",
+      label: "Finished since you last looked",
+      glyph: { icon: "CircleCheck", tone: "working" },
+    });
+    expect(stateOf({ id: "c", parentThreadId: "r" }, { doneUnseen: true, unread: true }).kind).toBe("unread");
+    expect(stateOf({ id: "c", parentThreadId: "r" }, { doneUnseen: true, hasDraft: true }).kind).toBe("done-unseen");
+    expect(threadFlags(makeThread({ id: "c" }), false, true)).toEqual(new Set(["done-unseen"]));
+  });
   it("roots are never done-unseen: their finish already bumps attention", () => {
     expect(isDoneUnseen(makeThread({ id: "r" }), { ...context, finishedAt: { r: T0 + 5 } })).toBe(false);
   });

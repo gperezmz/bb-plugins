@@ -15,11 +15,12 @@ export type StateKind =
   | "scheduled"
   | "queued"
   | "unread"
+  | "done-unseen"
   | "draft"
   | "idle";
 
 /** A rollup flag. Set independently of the first-match state. */
-export type Flag = "waits-on-you" | "unread-failed" | "queue-failed" | "offline" | "working" | "unread";
+export type Flag = "waits-on-you" | "unread-failed" | "queue-failed" | "offline" | "working" | "unread" | "done-unseen";
 
 /** Flags, most urgent first. */
 const FLAG_ORDER: readonly Flag[] = [
@@ -29,6 +30,7 @@ const FLAG_ORDER: readonly Flag[] = [
   "offline",
   "working",
   "unread",
+  "done-unseen",
 ];
 
 /**
@@ -125,8 +127,9 @@ function isOpenThread(thread: Pick<PluginSidebarThread, "id">, context: ThreadCo
 
 /**
  * bb's rule for every thread: unread when it has finished (idle or
- * error) since it was last read. Children are also unread when they finished
- * after you last looked at them (done-unseen). An open thread is never
+ * error) since it was last read. bb keeps a child that finished read, so a
+ * child is unread only once it fails; one that finished since you last
+ * looked is done-unseen (`isDoneUnseen`) instead. An open thread is never
  * unread: bb marks it read moments after it finishes or fails, and counting
  * it until then only flashes the need-you filter. Nor is a thread whose read
  * request is pending (`isPendingRead`).
@@ -136,10 +139,7 @@ export function isUnread(thread: PluginSidebarThread, context: ThreadContext): b
   if (isPendingRead(thread, context)) return false;
   const status = normalizeStatus(thread);
   const lastRead = thread.lastReadAt ?? 0;
-  if ((status === "idle" || status === "error") && lastRead < thread.latestAttentionAt) {
-    return true;
-  }
-  return isDoneUnseen(thread, context);
+  return (status === "idle" || status === "error") && lastRead < thread.latestAttentionAt;
 }
 
 /**
@@ -151,7 +151,10 @@ function isPendingRead(thread: Pick<PluginSidebarThread, "id" | "latestAttention
   return markedAt !== undefined && thread.latestAttentionAt <= markedAt;
 }
 
-/** Done-unseen: a child that finished after you last read or viewed it. */
+/**
+ * Done-unseen: a child that finished after you last read or viewed it. bb
+ * keeps such a child read, so it is Thread Glance's own mark, never unread.
+ */
 export function isDoneUnseen(thread: PluginSidebarThread, context: ThreadContext): boolean {
   if (thread.parentThreadId === null) return false;
   if (normalizeStatus(thread) !== "idle") return false;
@@ -163,6 +166,8 @@ export function isDoneUnseen(thread: PluginSidebarThread, context: ThreadContext
 
 export interface StateInputs {
   unread: boolean;
+  /** Done-unseen (`isDoneUnseen`); absent, it is not. */
+  doneUnseen?: boolean;
   hasDraft: boolean;
   /** Earliest future `sendAt` for this thread, or null. */
   scheduledAt: number | null;
@@ -193,6 +198,8 @@ function workingLabel(runtime: string): string {
       return "Working";
   }
 }
+
+const DONE_UNSEEN_LABEL = "Finished since you last looked";
 
 /** First match wins. */
 export function computeState(thread: PluginSidebarThread, inputs: StateInputs): ThreadState {
@@ -254,6 +261,9 @@ export function computeState(thread: PluginSidebarThread, inputs: StateInputs): 
     return { kind: "queued", label: "Message waiting to send", glyph: glyph("Clock", "muted-strong"), ...none };
   }
   if (inputs.unread) return { kind: "unread", label: "Unread", glyph: glyph("dot", "none"), ...none };
+  if (inputs.doneUnseen) {
+    return { kind: "done-unseen", label: DONE_UNSEEN_LABEL, glyph: glyph("CircleCheck", "working"), ...none };
+  }
   if (inputs.hasDraft) return { kind: "draft", label: "Unsubmitted draft", glyph: glyph("Edit", "muted"), ...none };
   return { kind: "idle", label: "Idle", glyph: glyph("ring", "muted-strong"), ...none };
 }
@@ -273,7 +283,7 @@ export function pluginStatusWins(
 }
 
 /** The rollup flags a single thread carries. */
-export function threadFlags(thread: PluginSidebarThread, unread: boolean): Set<Flag> {
+export function threadFlags(thread: PluginSidebarThread, unread: boolean, doneUnseen = false): Set<Flag> {
   const flags = new Set<Flag>();
   if (thread.hasPendingInteraction) flags.add("waits-on-you");
   if (normalizeStatus(thread) === "error" && unread) flags.add("unread-failed");
@@ -281,6 +291,7 @@ export function threadFlags(thread: PluginSidebarThread, unread: boolean): Set<F
   if (isOffline(thread)) flags.add("offline");
   if (isWorking(thread)) flags.add("working");
   if (unread) flags.add("unread");
+  if (doneUnseen) flags.add("done-unseen");
   return flags;
 }
 
@@ -323,15 +334,19 @@ export const FLAG_GLYPHS: Readonly<Record<Flag, Glyph & { label: string }>> = {
   offline: { ...glyph("CloudOff", "attention"), label: "machine offline" },
   working: { ...glyph("Loading", "working", true), label: "working" },
   unread: { ...glyph("dot", "none"), label: "unread" },
+  "done-unseen": { ...glyph("CircleCheck", "working"), label: "finished since you last looked" },
 };
 
-/** A thread is quiet when idle, a draft, or failed and read, and read. */
+/**
+ * A thread is quiet when idle, a draft, or failed and read, and read. `fresh`
+ * is unread or done-unseen: either keeps it from being quiet.
+ */
 export function isQuietThread(
   state: ThreadState,
-  unread: boolean,
+  fresh: boolean,
   isActive: boolean,
 ): boolean {
-  if (unread || isActive) return false;
+  if (fresh || isActive) return false;
   return state.kind === "idle" || state.kind === "draft" || state.kind === "failed";
 }
 
@@ -339,6 +354,7 @@ export function isQuietThread(
 export const STATE_ICON_NAMES: readonly string[] = [
   "CircleQuestion",
   "CircleX",
+  "CircleCheck",
   "AlertTriangle",
   "CloudOff",
   "Loading",

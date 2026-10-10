@@ -12,13 +12,24 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon, shining | Grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
-| 9 | Unread | The thread finished since you last read it, and is not an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
-| 10 | Draft | You have an unsent draft in its composer | Pencil | Grey |
-| 11 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Grey |
+| 9 | Unread | bb has the thread unread: it finished since you last read it, or, for a child, failed since. Never an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for) | Filled dot | Blue |
+| 10 | Done unseen | A child that finished since you last looked at it, which bb keeps read; see [done unseen](#done-unseen) | Circle with a check | Blue |
+| 11 | Draft | You have an unsent draft in its composer | Pencil | Grey |
+| 12 | Idle | None of the above | Faint ring, smaller than the other glyphs, which screen readers skip | Grey |
 
 A parent thread's glyph is chosen exactly as for a thread with no children, from its own state only, open or collapsed: an idle parent whose children are working shows the idle ring. What its children are doing is on its [children chip](#the-children-chip).
 
-A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). An unread thread's title is bold whatever its state. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, focused or needing attention is drawn at full brightness. A child's title is the same size as its parent's at any depth; the indent and the ↳ mark show its depth.
+A failed thread keeps its red glyph after you read it; reading it only stops it [needing attention](../explanation/thread-glance-attention.md). A thread's title is bold while bb has it unread, whatever its state, and only then. A [quiet thread](../explanation/thread-glance-attention.md#trees-and-folding)'s title is dimmed, at any depth, and so is a root's once every thread in its tree is quiet, chip included; anything running, unread, done unseen, focused or needing attention is drawn at full brightness. A child's title is the same size as its parent's at any depth; the indent and the ↳ mark show its depth.
+
+## Done unseen
+
+bb marks a thread unread when it finishes, but a child only when it fails: a child that finished stays read in bb. Thread Glance marks such a child **done unseen** until you look at it, with a blue circle and check in place of the unread dot, and its title at its usual weight, since bb has it read. Its glyph's tooltip and screen-reader label say "Finished since you last looked".
+
+Opening the child, or any action that marks it read in bb, clears the mark, and so do its root's **Mark tree read** and a group's or the list's **Mark all read**. The row's menu and Details offer bb's own read item, which follows bb's read state: on a done-unseen child, **Mark unread**. Why Thread Glance keeps the mark, and where it is stored, is in [children bb never marks unread](../explanation/thread-glance-attention.md#children-bb-never-marks-unread).
+
+What a done-unseen child does elsewhere in the list is what an unread one did: its parent's [children chip](#the-children-chip) shows it, it keeps its root's Mark tree read and the Mark all read buttons showing, it keeps its tree out of the [settled fold](#the-settled-fold), and with **Needs attention counts every child** on it needs attention. Without that setting it needs none, as [what a child thread adds](../explanation/thread-glance-attention.md#what-a-child-thread-adds) says.
+
+## Plugin row statuses
 
 When another plugin sets a status for a row, that status replaces the glyph in every state except waits on you, failed, and working with a spinner, as in bb's own list.
 
@@ -34,7 +45,7 @@ A thread that waits on you or failed says why under its title, whatever the sett
 | `Needs:` | Any other request | Amber |
 | `Failed:` | The error the provider reported, or that a queued message was not sent | Red |
 
-A row with nothing to follow the prefix has no second line. A finished, unread thread has none either: its dot and bold title say it.
+A row with nothing to follow the prefix has no second line. An unread or done-unseen thread has none either: its glyph says it.
 
 While the [Branch line](thread-glance-preferences.md#branch-line) switch is on, a row with no note whose branch is not its project's default branch shows that branch on its second line, followed by its pull request badge when the branch has a pull request. Every other row is one line. [Density](thread-glance-preferences.md#density) sets how tall one-line and two-line rows are. Thread Glance asks bb for each project's default branch on the machine of the project's default source, and shows no branch line until bb answers.
 
@@ -51,7 +62,7 @@ Left to right, from the title to the row's end. On hover the children chip stays
 | | Title | Harness and machine | Children chip | Trailing slot |
 |---|---|---|---|---|
 | At rest | The title, then the hidden badge on a hidden child, or the [pull request badge](#the-pull-request-badge) on a root | The [harness logo and machine name](#the-harness-logo-and-the-machine-name), where the row shows them | On a parent thread only | The time |
-| On hover, or with keyboard focus in the row | Shortened where the actions need the room **Mark tree read**, on a root with an unread thread below it, or else bb's **Mark read**, while bb has the thread unread; and bb's **Archive**. They take the place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
+| On hover, or with keyboard focus in the row | Shortened where the actions need the room **Mark tree read**, on a root with an unread or done-unseen thread below it, or else bb's **Mark read**, while bb has the thread unread; and bb's **Archive**. They take the place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 
@@ -91,6 +102,7 @@ When a descendant, at any depth, is in one of these states, the chip leads with 
 | 4 | Machine offline | Cloud with a slash | Amber |
 | 5 | Working | Spinner, still under reduced motion | Blue |
 | 6 | Unread | Filled dot | Blue |
+| 7 | Done unseen | Circle with a check | Blue |
 
 Archived descendants are left out. A hidden descendant adds only waits on you, failed, queued message failed and offline.
 
@@ -112,7 +124,7 @@ The first row of the list, above every group:
 |---|---|
 | `Projects`, `Sections` or `Machines` | Names the current grouping. Clicking it does nothing: grouping changes in the settings panel |
 | `N need you` | The [need-you filter](../explanation/thread-glance-attention.md#the-need-you-filter), N being the thread trees that need attention in every group, hidden ones included. Absent when N is 0 |
-| Mark all read | [Marks every unread thread in the list read](thread-glance-actions.md#marking-threads-read), asking first above 20. Absent while no thread in the list is unread |
+| Mark all read | [Marks every unread thread in the list read](thread-glance-actions.md#marking-threads-read) and clears every done-unseen mark, asking first above 20. Absent while no thread in the list is unread or done unseen |
 | Settings (sliders) | Opens the [settings panel](thread-glance-preferences.md#the-settings-panel) under the header, and closes it |
 
 ## Group header counters
@@ -125,6 +137,6 @@ Each group header counts over every [tree](../explanation/how-the-plugins-fit-bb
 | Failed | Circle with a cross, red | Always, when not zero |
 | Offline | Cloud with a slash, amber | Always, when not zero |
 | Working | Spinner | Only while the group is collapsed |
-| Unread | Dot | Only on **More**, which holds hidden groups |
+| Unread | Dot | Only on **More**, which holds hidden groups; it counts done-unseen children that need attention too |
 
 The wait-on-you, failed, offline and unread counters count threads that [need attention](../explanation/thread-glance-attention.md); working counts every thread that runs. The counters sit at the right edge of the header, in line with the rows' ages; with the pointer over the header, or keyboard focus in it, the **+** and **…** buttons take their place.

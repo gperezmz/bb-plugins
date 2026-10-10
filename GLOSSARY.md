@@ -70,12 +70,16 @@ _Avoid_: Viewed thread, visible thread
 A thread Thread Glance shows read while its request to bb to mark it read is still on its way. It shows unread again if the request fails or bb reports a newer finished turn.
 _Avoid_: Optimistic read, read override
 
+**Done unseen**:
+A child thread that finished since you last looked at it, which bb keeps read. Thread Glance marks it with a mark of its own, never as unread, since read state is bb core.
+_Avoid_: Finished-unseen, seen marker
+
 **Quiet thread**:
-A thread that is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
+A thread that is read and not done unseen, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
 _Avoid_: Idle thread
 
 **Settled thread**:
-A thread that is read, idle, only a draft or failed, needs no attention, is not pinned, and has had no activity for the Settle after period, whether or not it is focused. It is worked out afresh each time, so any activity unsettles it.
+A thread that is read and not done unseen, idle, only a draft or failed, needs no attention, is not pinned, and has had no activity for the Settle after period, whether or not it is focused. It is worked out afresh each time, so any activity unsettles it.
 _Avoid_: Older thread, done thread, archived thread
 
 **Settle after**:
@@ -282,4 +286,5 @@ _Avoid_: Mention menu, popup, slash menu
 
 ## Flagged ambiguities
 
+- "Finished unread" is said of a thread bb has unread after it finished, as a root is; a child that only finished stays read in bb and is done unseen, never unread.
 - "bb's own list" and "bb's list" name the built-in thread list, a plugin Thread Glance replaces, not bb core; what that list does is not what bb does.

@@ -25,7 +25,7 @@ export function snapshotOf(forest: Forest, activeThreadId: string | null): Snaps
   for (const info of forest.infos.values()) {
     if (info.thread.isArchived) continue;
     // A finished child that does not need attention never opens anything.
-    if (info.attentionFlags.has("unread") && !info.thread.isHidden) unread.add(info.thread.id);
+    if ((info.attentionFlags.has("unread") || info.attentionFlags.has("done-unseen")) && !info.thread.isHidden) unread.add(info.thread.id);
     if (revealsOn(info.attentionFlags, info.parentId === null)) attentionIds.add(info.thread.id);
   }
   return { activeThreadId, unread, attentionIds };
