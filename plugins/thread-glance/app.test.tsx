@@ -83,6 +83,7 @@ function render(
         markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
       } as never,
       projects: {
+        update: async () => ({}),
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
@@ -548,6 +549,18 @@ describe("Thread Glance slot", () => {
     expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Remove project" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: /settings/i })).toBeNull();
+  });
+
+  it("renames a project in place from its header, in a box named for a project", async () => {
+    const slot = render([makeThread({ id: "t" })]);
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const editor = await screen.findByRole("textbox", { name: "Project name" });
+    fireEvent.change(editor, { target: { value: "Alpha two" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitFor(() =>
+      expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "projects.update", args: [{ projectId: "proj_a", name: "Alpha two" }] })),
+    );
   });
 
   it("draws headers and rows at the height of the viewport bb says it is", async () => {
