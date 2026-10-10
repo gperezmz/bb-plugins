@@ -10,7 +10,7 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin t
 
 In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**.
 
-The list looks much like bb's: Thread Glance copied your grouping, sort, group order, and hidden and collapsed groups from it. Every window you have open switches too.
+The list starts from Thread Glance's own defaults, grouped by Project, rather than from the layout bb's list had: [where a new install starts](../reference/thread-glance-preferences.md#where-a-new-install-starts) says what each one is. Every window you have open switches too.
 
 ## 2. Read a row
 
