@@ -134,20 +134,6 @@ _Avoid_: Custom command, shell command, approved command
 Which machines a manifest entry applies to: the server machine, every persistent machine, or a list of machine names. Every item has one, taken from its entry or else from the manifest's top-level machines field.
 _Avoid_: Scope, host rule, target
 
-### Pocket Navigation
-
-**Pocket Navigation**:
-The plugin that draws bb's sidebar navigation on a phone as a New thread line above one row of icons.
-_Avoid_: Compact navigation, mobile nav, nav strip plugin
-
-**Icon row**:
-Pocket Navigation's line below the New thread line: an icon button for every entry bb's settings show other than New thread and search, then "…", which lists every hidden entry and opens Customize sidebar.
-_Avoid_: Icon strip, toolbar, nav bar
-
-**New thread line**:
-Pocket Navigation's top line: its full-width New thread button, with search at its right end when search is shown.
-_Avoid_: New thread row, action bar
-
 ### OpenAI-compatible inference
 
 **Endpoint**:
