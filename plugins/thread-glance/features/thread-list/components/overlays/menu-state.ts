@@ -1,4 +1,4 @@
-// What the list's menu hosts share: the menu of their kinds that is open, kept
+// What the list's menus share: the menu of their kinds that is open, kept
 // while it closes, and a rename chosen in a menu, started once it has closed.
 import { useEffect, useRef } from "react";
 import type { OpenMenu } from "../../store/api";

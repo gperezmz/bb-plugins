@@ -62,8 +62,8 @@ export interface ThreadRow {
   harness: boolean;
   /** The title is bold: the thread is unread. */
   bold: boolean;
-  /** A root whose tree holds an unread thread: it offers Mark read for the whole tree. */
-  treeUnread: boolean;
+  /** A root with an unread thread below it: it offers Mark tree read. */
+  descendantsUnread: boolean;
   /** The line under the title: why it waits on you or failed, in both densities. */
   note: RowNote | null;
   /**
@@ -287,7 +287,7 @@ function threadRow(
     chip: options.chip,
     harness: drawsHarness(context, info),
     bold: info.unread,
-    treeUnread: info === root && [root, ...(context.forest.treeOf.get(root.thread.id)?.descendants ?? [])].some((info) => info.unread),
+    descendantsUnread: info === root && (context.forest.treeOf.get(root.thread.id)?.descendants ?? []).some((info) => info.unread),
     note: info.note,
     dimmed: isDimmed(context, info, options.chip),
     hiddenBadge: info.thread.isHidden,

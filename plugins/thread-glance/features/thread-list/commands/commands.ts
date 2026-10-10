@@ -1,14 +1,12 @@
 // What a person can do in the list, as plain commands with one identity for
 // the list's life. Each reads the store and bb's calls when it runs, so no
 // component is handed a callback that changes when threads change.
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { itemKeyOf } from "../model/layout-items";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
 import { isPinnedThread, moveGroup, ORDER_PREFERENCE } from "../model/groups";
-import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import {
   markAllReadPlan,
   markReadPlanFor,
@@ -26,6 +24,8 @@ import { inPool } from "./pool";
 import { lookUpModel, type ModelInfo } from "../sync";
 
 const PLUGIN_ID = "thread-glance";
+/** Mark all read: above this many threads, ask first. */
+export const MARK_ALL_CONFIRM_ABOVE = 20;
 /** Read requests bb is sent at once by a bulk read. */
 const READS_IN_FLIGHT = 6;
 
@@ -34,7 +34,13 @@ export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group
 
 export interface Commands {
   navigate(): void;
-  menuAction(action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null): void;
+  openInSplit(threadId: string): void;
+  copyThreadId(threadId: string): void;
+  /** Marks the thread and every thread below it read. */
+  markTreeRead(threadId: string): void;
+  showDetails(threadId: string): void;
+  /** Opens the search for a new parent thread. */
+  startMove(threadId: string): void;
   /** Starts renaming a thread, or stops with null. */
   editTitle(threadId: string | null): void;
   renameThread(threadId: string, title: string): Promise<void>;
@@ -129,8 +135,6 @@ export function createCommands(store: ListStore): Commands {
   const edge = () => store.edge;
   const inputs = () => store.getState().inputs;
   let dropContext: { model: ListModel; context: ReturnType<typeof dropContextOf> } | null = null;
-  // Threads marked unread since a bulk read queued them: their queued read is not sent.
-  const markedUnread = new Set<string>();
 
   const groupOf = (groupId: string): GroupView | undefined => store.getState().model?.groupsById.get(groupId);
 
@@ -156,10 +160,8 @@ export function createCommands(store: ListStore): Commands {
    * as bb has it again, and `onFail` reports it.
    */
   const markPlanRead = (plan: MarkAllRead, onFail?: (error: unknown) => void) => {
-    for (const id of plan.read) markedUnread.delete(id);
     store.showRead(plan.read, plan.seen);
     void inPool(plan.read, READS_IN_FLIGHT, async (threadId) => {
-      if (markedUnread.has(threadId)) return;
       try {
         await edge().sdk.threads.markRead({ threadId });
       } catch (error) {
@@ -189,7 +191,7 @@ export function createCommands(store: ListStore): Commands {
   };
 
   const runDrop = async (action: DropAction) => {
-    const { sdk, actions } = edge();
+    const { sdk } = edge();
     switch (action.type) {
       case "nest":
         if (action.unpinFirst) await sdk.threads.unpin({ threadId: action.threadId });
@@ -206,10 +208,10 @@ export function createCommands(store: ListStore): Commands {
         await sdk.threads.update({ threadId: action.threadId, parentThreadId: null });
         return;
       case "pin":
-        await actions.setPinned(action.threadId, true);
+        await sdk.threads.pin({ threadId: action.threadId });
         return;
       case "unpin":
-        await actions.setPinned(action.threadId, false);
+        await sdk.threads.unpin({ threadId: action.threadId });
         return;
       case "reorder-pinned":
         await sdk.threads.reorderPinned({
@@ -232,66 +234,27 @@ export function createCommands(store: ListStore): Commands {
   const commands: Commands = {
     navigate: () => edge().onNavigate(),
 
-    menuAction(action, thread, sectionId) {
-      const { actions, sdk, onNavigate } = edge();
-      switch (action) {
-        case "open-in-split":
-          actions.open(thread.id, { split: true });
-          onNavigate();
-          return;
-        case "copy-link":
-          void copyText(new URL(thread.href, window.location.origin).toString(), "Thread link copied");
-          return;
-        case "copy-id":
-          void copyText(thread.id, "Thread ID copied");
-          return;
-        case "mark-read": {
-          const forest = store.getState().model?.forest;
-          const plan = forest === undefined ? { read: [thread.id], seen: [] } : markReadPlanFor(thread.id, forest, readContext());
-          markPlanRead(plan, fail("Couldn't mark read"));
-          return;
-        }
-        case "mark-unread":
-          markedUnread.add(thread.id);
-          store.revertRead([thread.id]);
-          store.clearSeen([thread.id]);
-          actions.setRead(thread.id, false).catch(fail("Couldn't mark unread"));
-          return;
-        case "pin":
-        case "unpin":
-          actions.setPinned(thread.id, action === "pin").catch(fail("Couldn't change the pin"));
-          return;
-        case "move-to-section":
-          sdk.threads.update({ threadId: thread.id, sectionId: sectionId ?? null }).catch(fail("Couldn't move the thread"));
-          return;
-        case "rename":
-          store.setUi({ editingId: thread.id });
-          return;
-        case "details":
-          store.setUi({ detailsId: thread.id });
-          return;
-        case "move":
-          store.setUi({ moveQuery: "", moveId: thread.id });
-          return;
-        case "archive":
-          actions.archive(thread.id);
-          return;
-        case "unarchive":
-          sdk.threads.unarchive({ threadId: thread.id }).catch(fail("Couldn't unarchive"));
-          return;
-        case "delete":
-          // Let the menu close before bb's confirmation takes focus.
-          setTimeout(() => actions.requestDelete(thread.id), 0);
-          return;
-      }
+    openInSplit(threadId) {
+      edge().navigate.toThread(threadId, { split: true });
+      edge().onNavigate();
     },
+    copyThreadId: (threadId) => void copyText(threadId, "Thread ID copied"),
+    markTreeRead(threadId) {
+      const forest = store.getState().model?.forest;
+      const plan = forest === undefined ? { read: [threadId], seen: [] } : markReadPlanFor(threadId, forest, readContext());
+      markPlanRead(plan, fail("Couldn't mark read"));
+    },
+    showDetails: (threadId) => store.setUi({ detailsId: threadId }),
+    startMove: (threadId) => store.setUi({ moveQuery: "", moveId: threadId }),
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
-    renameThread: (threadId, title) => edge().actions.rename(threadId, title),
+    async renameThread(threadId, title) {
+      await edge().sdk.threads.update({ threadId, title });
+    },
     closeDetails: () => store.setUi({ detailsId: null }),
     openFromDetails(threadId) {
       store.setUi({ detailsId: null });
-      edge().actions.open(threadId);
+      edge().navigate.toThread(threadId);
       edge().onNavigate();
     },
 
@@ -315,14 +278,15 @@ export function createCommands(store: ListStore): Commands {
       });
     },
     newThreadInEnvironment(environmentId, projectId, sectionId) {
-      edge().actions.openNewThread({ projectId, environmentId, ...(sectionId ? { sectionId } : {}), focusPrompt: true });
+      edge().navigate.toCompose({ projectId, environmentId, ...(sectionId ? { placement: { sectionId, pinned: false } } : {}), focusPrompt: true });
       edge().onNavigate();
     },
     async renameEnvironment(environmentId, name) {
       await edge().sdk.environments.update({ environmentId, name });
     },
     archiveEnvironment(environmentId) {
-      edge().sdk.environments.archiveThreads({ environmentId }).catch(fail("Couldn't archive the environment"));
+      // bb has shown its own error toast when this rejects.
+      edge().archiveEnvironmentThreads(environmentId).catch(() => {});
     },
 
     toggleGroup(groupId) {
@@ -333,9 +297,9 @@ export function createCommands(store: ListStore): Commands {
     newThreadInGroup(groupId) {
       const descriptor = groupOf(groupId)?.descriptor;
       if (descriptor === undefined) return;
-      edge().actions.openNewThread({
+      edge().navigate.toCompose({
         ...(descriptor.newThreadProjectId ? { projectId: descriptor.newThreadProjectId } : {}),
-        ...(descriptor.newThreadSectionId ? { sectionId: descriptor.newThreadSectionId } : {}),
+        ...(descriptor.newThreadSectionId ? { placement: { sectionId: descriptor.newThreadSectionId, pinned: false } } : {}),
         focusPrompt: true,
       });
       edge().onNavigate();

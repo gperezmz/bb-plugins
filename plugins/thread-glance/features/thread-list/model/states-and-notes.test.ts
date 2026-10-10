@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { failedUnread, finishedUnread, forestOf, makeThread, rowIds, T0, viewOf, working } from "../testing/fixtures";
 import { visibleCounters } from "./counters";
 import { modelDisplayName, sinceLabel } from "./details";
-import { rowMenuItems } from "./menu";
 import { moveTargets } from "./move";
 import { noteText, rowNote } from "./notes";
 import { computeState } from "./state";
@@ -148,16 +147,5 @@ describe("Move… (keyboard route to drag)", () => {
   });
   it("filters by title", () => {
     expect(moveTargets("o", forest, "grand").map((target) => target.label)).toEqual(["Grandchild"]);
-  });
-  it("is in the row menu, with Details, on every viewport", () => {
-    const actions = rowMenuItems({
-      thread: makeThread({ id: "t" }),
-      unread: false,
-      splitAvailable: false,
-      isRoot: true,
-      hasSections: false,
-    }).map((item) => item.action);
-    expect(actions).toContain("move");
-    expect(actions).toContain("details");
   });
 });

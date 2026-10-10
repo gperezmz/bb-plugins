@@ -57,7 +57,7 @@ it("keeps every row's DOM node through an insertion, a removal, an archive, a mo
   } as unknown as typeof ResizeObserver;
   vi.useFakeTimers({ toFake: ["Date", "setInterval"] });
   vi.setSystemTime(T0 + 60_000);
-  const host = createFakeHost({ threads: threadList(), projects: PROJECTS, freshActions: true });
+  const host = createFakeHost({ threads: threadList(), projects: PROJECTS });
   const slot = mountList(await loadWithFakeHost(), serverState());
   await settle(5);
   const root = slot.container;

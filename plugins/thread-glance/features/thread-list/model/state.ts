@@ -68,13 +68,7 @@ export interface ThreadState {
 }
 
 const KNOWN_STATUSES = new Set(["pending", "starting", "active", "stopping", "idle", "error"]);
-const WORKING_RUNTIME = new Set([
-  "provisioning",
-  "starting",
-  "active",
-  "stopping",
-  "host-reconnecting",
-]);
+const WORKING_RUNTIME = new Set(["provisioning", "starting", "active", "stopping"]);
 const KNOWN_RUNTIME = new Set([...KNOWN_STATUSES, ...WORKING_RUNTIME, "waiting-for-host"]);
 
 /** `status`, with unknown values read as idle. */
@@ -193,8 +187,6 @@ function workingLabel(runtime: string): string {
   switch (runtime) {
     case "provisioning":
       return "Setting up";
-    case "host-reconnecting":
-      return "Reconnecting";
     case "stopping":
       return "Stopping";
     default:

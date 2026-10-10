@@ -4,10 +4,12 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   experimental_Icon as Icon,
+  experimental_useArchiveEnvironmentThreads as useArchiveEnvironmentThreads,
   experimental_useProviders as useProviders,
-  experimental_useSidebarThreadActions as useThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
   experimental_useSidebarThreadSplit as useThreadSplit,
+  experimental_useThreadActions as useThreadActions,
+  useBbNavigate,
   useEnvironmentProviders,
   useRpc,
   useSdk,
@@ -23,7 +25,9 @@ import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
+import { actionTargetOf } from "../model/thread-target";
 import { moveTargets } from "../model/move";
+import type { ThreadInfo } from "../model/trees";
 import { createListStore } from "../store/api";
 import {
   ListContext,
@@ -48,10 +52,9 @@ import { CounterStrip } from "./glyphs";
 import { useInputModality } from "./input-modality";
 import { ListHeader } from "./ListHeader";
 import { CardHost } from "./overlays/CardHost";
-import { ContextMenuHost } from "./overlays/ContextMenuHost";
 import { GroupMenuHost } from "./overlays/GroupMenuHost";
 import { createOverlays, OverlaysContext, useOverlays, type Overlays } from "./overlays/overlays";
-import { RowMenuHost } from "./overlays/RowMenuHost";
+import { EnvironmentMenuHost } from "./overlays/EnvironmentMenuHost";
 import { ThreadDetails } from "./ThreadDetails";
 import { VirtualGroups } from "./virtual/VirtualGroups";
 
@@ -80,9 +83,10 @@ function ThreadListEdge({
   const { store } = handle;
   const showArchived = useShowArchivedOf(store);
   const sidebar = useSidebarThreads({ experimental_lifecycles: showArchived ? ["active", "archived"] : ["active"] });
-  const actions = useThreadActions();
+  const navigate = useBbNavigate();
   const sdk = useSdk();
   const rpc = useRpc<RpcContract>();
+  const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const { providers } = useProviders();
   const { providers: environmentProviders } = useEnvironmentProviders();
   const draftIds = useSidebarThreadDraftIds();
@@ -108,7 +112,7 @@ function ThreadListEdge({
   });
   // bb's calls change identity on every host update; commands read them when they run.
   useLayoutEffect(() => {
-    store.edge = { actions, sdk, rpc, onNavigate, isIdleReporter };
+    store.edge = { navigate, sdk, rpc, archiveEnvironmentThreads, onNavigate, isIdleReporter };
   });
   useLayoutEffect(() => store.feedHost(host));
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);
@@ -177,9 +181,8 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
       </DragLayer>
       <ArchivedFooter />
       <ListDialogs />
-      <RowMenuHost />
+      <EnvironmentMenuHost />
       <GroupMenuHost />
-      <ContextMenuHost />
       <CardHost />
       <SplitProbe />
     </div>
@@ -199,6 +202,24 @@ function SplitProbe() {
   useLayoutEffect(() => commands.setSplitAvailable(split.isAvailable), [commands, split.isAvailable]);
   return null;
 }
+
+/** The details dialog's content: Open, and bb's own Mark read or Mark unread. */
+function DialogDetails({ info }: { info: ThreadInfo }) {
+  const commands = useCommands();
+  const [read] = useThreadActions(actionTargetOf(info.thread), { keys: DETAILS_ACTION_KEYS });
+  return (
+    <ThreadDetails
+      info={info}
+      showPullRequest
+      actions={{
+        open: () => commands.openFromDetails(info.thread.id),
+        read: read === undefined ? null : { label: read.action.label, icon: read.action.icon, run: () => void read.action.run() },
+      }}
+    />
+  );
+}
+
+const DETAILS_ACTION_KEYS = ["bb--core/read"];
 
 /** Every group, the hidden ones in More. */
 function Groups() {
@@ -300,14 +321,7 @@ function ListDialogs() {
       />
       {details !== null ? (
         <DetailsDialog title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
-          <ThreadDetails
-            info={details}
-            showPullRequest
-            actions={{
-              open: () => commands.openFromDetails(details.thread.id),
-              toggleRead: () => commands.menuAction(details.unread ? "mark-read" : "mark-unread", details.thread),
-            }}
-          />
+          <DialogDetails info={details} />
         </DetailsDialog>
       ) : null}
       {moveThread !== null ? (

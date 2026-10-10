@@ -8,10 +8,10 @@
 // data (../sync), which outlives the store, so a list mounted again starts
 // from it.
 import type {
+  BbNavigate,
   PluginBrowserBbSdk,
   PluginRpcClient,
   PluginSidebarSection,
-  PluginSidebarThreadActions,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { RpcContract } from "@/shared/contract";
@@ -53,14 +53,13 @@ export interface RowPlace {
 }
 
 /**
- * The one menu open in the list, and the row or group it belongs to. The
- * "…" menus anchor to the button that opened them; a context menu opens at
- * a point.
+ * The one menu open in the list, and the row or group it belongs to. A
+ * thread row's menus are bb's own, drawn by the row, which reports them open
+ * here; the list's own "…" menus anchor to the button that opened them.
  */
 export type OpenMenu =
-  | (RowPlace & { kind: "row"; threadId: string; anchor: HTMLElement })
+  | (RowPlace & { kind: "thread"; threadId: string })
   | (RowPlace & { kind: "environment"; anchor: HTMLElement })
-  | (RowPlace & { kind: "context"; threadId: string })
   | { kind: "group"; groupId: string; anchor: HTMLElement };
 
 /** The row whose hover card is open, anchored to it. */
@@ -122,9 +121,11 @@ export interface ListState {
 
 /** bb's and the plugin server's calls, kept behind one reference: commands read them when they run. */
 export interface Edge {
-  actions: PluginSidebarThreadActions;
+  navigate: BbNavigate;
   sdk: PluginBrowserBbSdk;
   rpc: PluginRpcClient<RpcContract>;
+  /** bb's own archive of an environment's thread trees; rejects once bb has shown its error. */
+  archiveEnvironmentThreads(environmentId: string): Promise<void>;
   onNavigate(): void;
   /** This list is the one in the browser that reports changes to idle bb sends no event for. */
   isIdleReporter(): boolean;
@@ -181,13 +182,16 @@ const unset = (): never => {
 };
 
 const UNSET_EDGE: Edge = {
-  get actions(): never {
+  get navigate(): never {
     return unset();
   },
   get sdk(): never {
     return unset();
   },
   get rpc(): never {
+    return unset();
+  },
+  get archiveEnvironmentThreads(): never {
     return unset();
   },
   onNavigate() {},

@@ -358,6 +358,6 @@ describe("Mark read over a tree", () => {
     expect(markAllReadPlan(forest.trees, context).read.sort()).toEqual(["a", "b"]);
     const onlyArchived = threads.filter((thread) => thread.id !== "b");
     const row = viewOf({ threads: onlyArchived, prefs: { showArchived: true } }).groups[0]!.rows[0]!;
-    expect(row.type === "thread" && row.treeUnread).toBe(true);
+    expect(row.type === "thread" && row.descendantsUnread).toBe(true);
   });
 });

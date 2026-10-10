@@ -12,7 +12,7 @@ import type { ModelInfo } from "../sync";
 import { useCommands, useLayout, useNotesOf, useNow, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
 import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
-import { pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
+import { pullRequestFacts, pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
 
 function Line({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
   return (
@@ -43,16 +43,19 @@ function useModel(commands: Commands, info: ThreadInfo): ModelInfo | null | "loa
 function PullRequestLine({ threadId }: { threadId: string }) {
   const { pullRequest } = usePullRequest(threadId);
   if (pullRequest === null) return null;
+  const facts = pullRequestFacts(pullRequest);
   return (
     <Line label="Pull request">
       <span className={pullRequestTone(pullRequest.attention)}>{pullRequestLabel(pullRequest)}</span>
+      {facts.length > 0 ? <span className="block text-muted-foreground">{facts.join(" · ")}</span> : null}
     </Line>
   );
 }
 
 export interface DetailsActions {
   open(): void;
-  toggleRead(): void;
+  /** bb's own Mark read or Mark unread for the thread, where bb offers it. */
+  read: { label: string; icon: string; run(): void } | null;
 }
 
 export function ThreadDetails({
@@ -132,10 +135,12 @@ export function ThreadDetails({
             <Icon name={ICONS.open} aria-hidden />
             Open
           </Button>
-          <Button size="sm" variant="outline" onClick={actions.toggleRead}>
-            <Icon name={info.unread ? ICONS.markRead : ICONS.markUnread} aria-hidden />
-            {info.unread ? "Mark read" : "Mark unread"}
-          </Button>
+          {actions.read !== null ? (
+            <Button size="sm" variant="outline" onClick={actions.read.run}>
+              <Icon name={actions.read.icon} aria-hidden />
+              {actions.read.label}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

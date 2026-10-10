@@ -8,7 +8,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 2 | Failed | The thread's last run ended in an error | Circle with a cross | Red |
 | 3 | Queued message failed | A queued message could not be sent | Warning triangle | Red |
 | 4 | Machine offline | The thread waits for its machine to come back | Cloud with a slash | Amber |
-| 5 | Working | Setting up, running, reconnecting or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
+| 5 | Working | Setting up, running or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon, shining | Grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
@@ -42,6 +42,8 @@ While the [Branch line](thread-glance-preferences.md#branch-line) switch is on, 
 
 The badge reads `#<number>`, coloured red when checks failed, the branch conflicts or changes were requested, green when it is ready to merge, and grey otherwise. It sits after the branch when the second line shows the branch. Otherwise, with Branch line on or off, it sits on the title line of a root whose branch is not its project's default branch.
 
+The hover card and **Details** name the pull request with what the badge's colour stands for, and under it, while the pull request is open, whatever else bb knows of it: its checks, its review, whether it can merge, auto-merge, and the merge queue.
+
 ## The row's right end
 
 Left to right, from the title to the row's end. On hover the children chip stays where it was, and the title gives up room only where the actions need more than the harness and machine leave. Source: [`features/thread-list/components/ThreadRowView.tsx`](../../plugins/thread-glance/features/thread-list/components/ThreadRowView.tsx).
@@ -49,13 +51,13 @@ Left to right, from the title to the row's end. On hover the children chip stays
 | | Title | Harness and machine | Children chip | Trailing slot |
 |---|---|---|---|---|
 | At rest | The title, then the hidden badge on a hidden child, or the [pull request badge](#the-pull-request-badge) on a root | The [harness logo and machine name](#the-harness-logo-and-the-machine-name), where the row shows them | On a parent thread only | The time |
-| On hover, or with keyboard focus in the row | Shortened where the actions need the room | **Mark read**, on a root whose tree holds something unread, and **Archive**, in place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
+| On hover, or with keyboard focus in the row | Shortened where the actions need the room | bb's **Mark read**, while bb has the thread unread, and bb's **Archive**, in place of the harness and machine, which fade out | Unchanged, and still opens and closes the children | **…**, the thread's menu, in place of the time |
 
 A row without children has no children chip and no space kept for one. A mouse click that leaves focus in a row, or a menu closed with the pointer, does not keep the hover look: the row is back at rest once the pointer leaves it. Focus counts only when the keyboard moved it there. Group headers follow the same rule.
 
 What the menu, the keyboard and dragging do is in [menus, dragging and keys](thread-glance-actions.md).
 
-On a phone nothing fades, and the row has no hover actions; a long press opens the menu. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
+On a phone nothing fades, and the row has no hover actions; a long press opens bb's menu drawer. While bb's thread shortcut modifier is held, the row's shortcut takes the place of the machine and the time.
 
 ## The trailing slot
 

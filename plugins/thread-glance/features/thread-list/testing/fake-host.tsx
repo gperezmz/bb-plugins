@@ -1,8 +1,8 @@
 // A fake bb and plugin server. bb's list hooks read a store the test drives,
 // so bb can hand the list updates after mount (renderSlot's own host is fixed
-// at mount), a new `actions` object on every update as bb 0.44 does, and a
-// `threads.markRead` that takes time. The list itself is mounted as bb mounts
-// it: the plugin's registered thread list component, through renderSlot.
+// at mount), and a `threads.markRead` that takes time. The list itself is
+// mounted as bb mounts it: the plugin's registered thread list component,
+// through renderSlot.
 import { useSyncExternalStore, type ComponentType } from "react";
 import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {
@@ -39,8 +39,6 @@ export interface FakeHostOptions {
   threads: PluginSidebarThread[];
   projects: PluginSidebarProject[];
   sections?: PluginSidebarSection[];
-  /** Hand the list a new `actions` object on every host update, as bb 0.44 does. */
-  freshActions?: boolean;
   /** How long `threads.markRead` takes to answer. */
   markReadMs?: number;
   /** Threads whose `threads.markRead` fails. */
@@ -120,16 +118,6 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
     idle = [];
     for (const resolve of waiting) resolve();
   };
-  const makeActions = () => ({
-    open() {},
-    openNewThread() {},
-    async setPinned() {},
-    async setRead() {},
-    async rename() {},
-    archive() {},
-    requestDelete() {},
-  });
-  let actions = makeActions();
   let sidebar = sidebarOf(state);
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -141,7 +129,6 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
       if (patch.threads !== undefined || patch.projects !== undefined || patch.sections !== undefined) {
         sidebar = sidebarOf(state);
       }
-      if (options.freshActions) actions = makeActions();
       notify();
     },
     updateThread(id, patch) {
@@ -180,13 +167,11 @@ export function createFakeHost(options: FakeHostOptions): FakeHost {
       return () => listeners.delete(listener);
     },
   };
-  hostActions = () => actions;
   hostSidebar = () => sidebar;
   active = host;
   return host;
 }
 
-let hostActions: () => unknown = () => null;
 let hostSidebar: () => unknown = () => null;
 
 function sidebarOf(state: HostState) {
@@ -217,9 +202,6 @@ function fakeHooks(testRuntime: Runtime): Runtime {
     experimental_useSidebarThreads: () => {
       useHost((state) => state.threads);
       return hostSidebar();
-    },
-    experimental_useSidebarThreadActions: () => {
-      return useHost(() => hostActions());
     },
     experimental_useProviders: () => {
       const providers = useHost((state) => state.providers);
@@ -293,7 +275,9 @@ const SDK_FAKES = {
   threads: {
     defaultExecutionOptions: async () => null,
     update: async () => ({}),
+    pin: async () => ({}),
     unpin: async () => ({}),
+    markUnread: async () => ({}),
     unarchive: async () => ({}),
     reorderPinned: async () => ({}),
     markRead: (args: { threadId: string }) => hostOrThrow().markRead(args),

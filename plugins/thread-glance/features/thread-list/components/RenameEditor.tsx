@@ -10,6 +10,11 @@ function isEditable(target: EventTarget | null): boolean {
   return target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "INPUT";
 }
 
+/** A menu on its way out: Radix focuses it as the pointer leaves its items while it animates closed. */
+function isClosingMenu(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('[role="menu"][data-state="closed"]') !== null;
+}
+
 export function RenameEditor({
   initial,
   label,
@@ -89,10 +94,15 @@ export function RenameEditor({
           }
         }}
         onBlur={(event) => {
-          // Only the thread opening can take focus back: bb moves it into
-          // the composer (an editable element) just after the click that
-          // started the rename. Any other blur is the user leaving.
-          if (!settled.current && !userPressedElsewhere.current && isEditable(event.relatedTarget)) {
+          // Two things take focus back that are not the user leaving: the
+          // menu that started the rename, focusing itself as it closes under
+          // the pointer, and the thread opening, which moves focus into its
+          // composer (an editable element) just after the click that started
+          // the rename. Any other blur is the user leaving.
+          if (
+            !userPressedElsewhere.current &&
+            (isClosingMenu(event.relatedTarget) || (!settled.current && isEditable(event.relatedTarget)))
+          ) {
             setTimeout(() => {
               input.current?.focus();
               input.current?.select();
