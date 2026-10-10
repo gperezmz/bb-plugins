@@ -1,6 +1,6 @@
 # OpenAI-compatible inference: first run
 
-In this tutorial you install OpenAI-compatible inference, point bb's AI tasks at your LiteLLM gateway, and watch a new thread get its title from the gateway. You need bb 0.44 or later on a server you can install plugins on, a LiteLLM gateway that serves `/v1/chat/completions`, a virtual key for it, and the name of a model it serves, `gpt-6-luna` in the commands below.
+In this tutorial you install OpenAI-compatible inference, point bb's AI tasks at your LiteLLM gateway, and watch a new thread get its title from the gateway. You need bb 0.46 or later on a server you can install plugins on, a LiteLLM gateway that serves `/v1/chat/completions`, a virtual key for it, and the name of a model it serves, `gpt-6-luna` in the commands below.
 
 ## 1. Install it
 

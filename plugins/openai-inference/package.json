@@ -3,8 +3,8 @@
   "version": "0.2.2",
   "type": "module",
   "engines": {
-    "bb": ">=0.44",
-    "bbPluginSdk": ">=0.5.29"
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.37"
   },
   "bb": {
     "name": "OpenAI-compatible inference",
@@ -22,7 +22,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@get-bb/plugin-sdk": "0.5.29",
+    "@get-bb/plugin-sdk": "0.6.37",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",

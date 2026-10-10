@@ -1,6 +1,6 @@
 # OpenAI-compatible inference
 
-A [bb](https://getbb.app) plugin that does bb's AI tasks for thread titles and commit messages through OpenAI Chat Completions. Each Endpoint you list, a LiteLLM gateway or a local server such as mlx_lm.server, LM Studio or llama.cpp, becomes an AI service with the model you name for it. An Endpoint's URL and key can reference bb's environment, as in `${GATEWAY_URL}`. Needs bb 0.44 or later.
+A [bb](https://getbb.app) plugin that does bb's AI tasks for thread titles and commit messages through OpenAI Chat Completions. Each Endpoint you list, a LiteLLM gateway or a local server such as mlx_lm.server, LM Studio or llama.cpp, becomes an AI service with the model you name for it. An Endpoint's URL and key can reference bb's environment, as in `${GATEWAY_URL}`. Needs bb 0.46 or later.
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin openai-inference

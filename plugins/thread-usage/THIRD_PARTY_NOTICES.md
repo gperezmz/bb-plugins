@@ -7,7 +7,7 @@ portal families, sonner and others) are not bundled and are not listed.
 
 | Package | Version | Licence | Copyright | Bundled into |
 |---|---|---|---|---|
-| @get-bb/plugin-sdk | 0.5.29 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | host |
+| @get-bb/plugin-sdk | 0.6.37 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | host |
 | @radix-ui/primitive | 1.1.7 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-collection | 1.1.15 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-compose-refs | 1.1.5 | MIT | Copyright (c) 2022 WorkOS | app |
