@@ -267,10 +267,13 @@ says.
 - The thread on screen, and any thread in a split pane, is never unread, so
   unread, `need you` and `Mark all read` show only for other threads. Mark
   all read asks for confirmation above 20 threads; the verb confirms.
-- Read state set elsewhere (another window's Mark all read, `bb thread read`)
-  reaches an open window only on reload in bb 0.44, bb's own list included;
-  a child marked read reaches it live. Read it back with `list` on a fresh
-  load, not a second window.
+- Read state set elsewhere (another window's Mark all read, `bb thread read`,
+  opening the thread in another window) reaches an open window only on
+  reload, bb's own list included, child threads too: bb 0.46 sends
+  `read-state-changed` but only marks its sidebar threads query stale
+  (`refetchType: "none"`), so `experimental_useSidebarThreads` hands the list
+  nothing new until something else refetches it. Read it back with `list` on
+  a fresh load, not a second window.
 - A turn in flight when its machine goes offline fails once bb's 30 s
   reconnect grace ends, so the `Machine offline` state and the chip's
   `, machine offline below` are not reachable on a run.
