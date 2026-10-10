@@ -8,7 +8,7 @@ Every row shows one **state**, the first in this table that matches the thread. 
 | 2 | Failed | The thread's last run ended in an error | Circle with a cross | Red |
 | 3 | Queued message failed | A queued message could not be sent | Warning triangle | Red |
 | 4 | Machine offline | The thread waits for its machine to come back | Cloud with a slash | Amber |
-| 5 | Working | Setting up, running, reconnecting or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
+| 5 | Working | Setting up, running or stopping | Spinner; a pencil while you have a draft open, a list in plan mode, a target with a goal | Blue |
 | 6 | Background | The turn has ended but plan mode, a goal, a workflow, a background agent or a background command is still active | That activity's icon, shining | Grey |
 | 7 | Scheduled | A queued message has a send time in the future | Calendar; the hover card and the row's screen-reader label give the time | Grey |
 | 8 | Queued | A queued message waits to be sent | Clock | Grey |
