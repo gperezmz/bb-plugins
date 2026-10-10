@@ -766,6 +766,39 @@ describe("thread actions", () => {
     );
   });
 
+  it("lists the thread actions bb has that it does not draw, other plugins' among them, and runs the one picked", async () => {
+    const ran: string[] = [];
+    const entry = (key: string, group: string, label: string, extra: object = {}) => ({
+      key,
+      pluginId: key.split("/")[0]!,
+      group,
+      action: { label, icon: "Star" as never, run: async (value?: string) => void ran.push(value === undefined ? key : `${key} ${value}`), ...extra },
+    });
+    render([makeThread({ id: "a", title: "Alpha" })], {
+      extra: {
+        threadActions: () => [
+          entry("bb--core/split", "1_open", "Open in split"),
+          entry("bb--core/newThreadInEnvironment", "2_organize", "New thread in environment"),
+          entry("bb--core/read", "2_organize", "Mark unread"),
+          entry("bb--core/archive", "4_lifecycle", "Archive"),
+          entry("bb--core/delete", "4_lifecycle", "Delete"),
+          entry("other-plugin/label", "5_other", "Label", {
+            choices: { items: [{ id: "red", label: "Red" }, { id: "blue", label: "Blue" }] },
+          }),
+        ],
+      },
+    });
+    await openRowMenu("Alpha");
+    const labels = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(labels).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "New thread in environment", "Archive", "Delete", "Label"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "New thread in environment" }));
+    await waitFor(() => expect(ran).toEqual(["bb--core/newThreadInEnvironment"]));
+    await openRowMenu("Alpha");
+    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Label" }), { key: "ArrowRight" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Blue" }));
+    await waitFor(() => expect(ran).toEqual(["bb--core/newThreadInEnvironment", "other-plugin/label blue"]));
+  });
+
   it("archives an environment's threads through bb's own environment archive", async () => {
     const worktree = { id: "env_w", name: "feature", isWorktree: true };
     const slot = render([makeThread({ id: "a", environment: worktree }), makeThread({ id: "b", environment: worktree })], {

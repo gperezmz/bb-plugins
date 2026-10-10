@@ -17,7 +17,8 @@ The row's **…** button, a right-click on the row, the context-menu key or Shif
 | Move to section | On a root that is not archived, while the list has sections or groups by Custom | Moves the thread to Threads or one of bb's sections, with a check on its own. A phone's menu lists the sections under the label instead of in a submenu |
 | Move… | On a thread that is not archived | Opens a search for a new parent thread, or none |
 | Rename | Always | Edits the title in place |
-| Archive, Unarchive | Always | Archives the thread, or brings it back |
+| bb's other thread actions | Where bb offers them for the thread | Each runs as in bb's own thread menu: bb's **New thread in environment**, and every action another plugin adds to bb's thread menus. Those in bb's own groups come here, the rest after Delete |
+| Archive, Unarchive | Always | Archives the thread through bb's own archive, or brings it back |
 | Delete | Always | Asks bb to delete the thread, with bb's own confirmation |
 
 The row itself also offers **Mark read** and **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.

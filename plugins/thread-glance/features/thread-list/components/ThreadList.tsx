@@ -6,10 +6,10 @@ import {
   experimental_Icon as Icon,
   experimental_useArchiveEnvironmentThreads as useArchiveEnvironmentThreads,
   experimental_useProviders as useProviders,
-  experimental_useThreadActions as useThreadActions,
-  useBbNavigate,
   experimental_useSidebarThreads as useSidebarThreads,
   experimental_useSidebarThreadSplit as useThreadSplit,
+  experimental_useThreadActions as useThreadActions,
+  useBbNavigate,
   useEnvironmentProviders,
   useRpc,
   useSdk,
@@ -17,7 +17,7 @@ import {
   useSidebarThreadDraftIds,
   useSidebarThreadRowStatuses,
 } from "@get-bb/plugin-sdk/app";
-import type { PluginSidebarThread, PluginThreadActionTarget, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -25,6 +25,7 @@ import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
+import { actionTargetOf } from "../model/menu";
 import { moveTargets } from "../model/move";
 import { createListStore, type ThreadActionRequest } from "../store/api";
 import {
@@ -203,22 +204,6 @@ function SplitProbe() {
   useLayoutEffect(() => overlays.setSplit(threadId, split));
   useLayoutEffect(() => commands.setSplitAvailable(split.isAvailable), [commands, split.isAvailable]);
   return null;
-}
-
-/** A thread as bb's thread actions read it. */
-function actionTargetOf(thread: PluginSidebarThread): PluginThreadActionTarget {
-  const { environment } = thread;
-  return {
-    id: thread.id,
-    projectId: thread.projectId,
-    parentThreadId: thread.parentThreadId,
-    archivedAt: thread.archivedAt,
-    pinnedAt: thread.pinnedAt,
-    sectionId: thread.sectionId,
-    isUnread: thread.isUnread,
-    status: thread.status,
-    environment: environment?.id != null ? { id: environment.id, path: environment.path } : null,
-  };
 }
 
 /**

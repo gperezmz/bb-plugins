@@ -1,10 +1,10 @@
 // The list's one "…" menu for rows, thread and environment: anchored to the
 // button that opened it, a drawer on phones. Rename waits for the menu to
 // close, so the editor keeps the focus the closing menu would take back.
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, experimental_useThreadActions as useThreadActions } from "@get-bb/plugin-sdk/app";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ICONS } from "../../icons";
-import { rowMenuItems, type RowMenuAction } from "../../model/menu";
+import { actionTargetOf, rowMenuItems, THREADS_CHOICE, type RowMenuAction, type RowMenuItem } from "../../model/menu";
 import type { EnvironmentRow, ThreadRow } from "../../model/view";
 import { useCommands, useLayout, useRowAt, useSplitAvailable } from "../../store/hooks";
 import { RowDropdownMenuContent } from "../RowMenu";
@@ -35,24 +35,35 @@ interface ContentProps {
   onCloseAutoFocus(event: Event): void;
 }
 
-/** A thread row's menu items and what each does, from the keyboard or the pointer. */
+/**
+ * A thread row's menu items and what each does, from the keyboard or the
+ * pointer. Mounted only while the menu is open, so bb's thread actions are
+ * read for the one thread whose menu it is.
+ */
 export function useThreadMenu(row: ThreadRow, onRename: ContentProps["onRename"]) {
   const commands = useCommands();
   const { sections, hasSections } = useLayout();
   const splitAvailable = useSplitAvailable();
   const thread = row.info.thread;
+  const rename = (threadId: string) => onRename(() => commands.editTitle(threadId));
+  const threadActions = useThreadActions(actionTargetOf(thread), { requestRename: rename });
   const items = rowMenuItems({
     thread,
     unread: row.depth === 0 ? row.treeUnread : row.info.unread,
     splitAvailable,
     isRoot: thread.parentThreadId === null,
     hasSections,
+    sections,
+    threadActions,
   });
-  const onAction = (action: RowMenuAction, sectionId?: string | null) => {
-    if (action === "rename") onRename(() => commands.editTitle(thread.id));
-    else commands.menuAction(action, thread, sectionId);
+  const onSelect = (item: RowMenuItem, value?: string) => {
+    const entry = threadActions.find((candidate) => candidate.key === item.key);
+    if (entry !== undefined) void entry.action.run(value);
+    else if (item.key === "rename") rename(thread.id);
+    else if (item.key === "move-to-section") commands.menuAction("move-to-section", thread, value === THREADS_CHOICE ? null : (value ?? null));
+    else commands.menuAction(item.key as RowMenuAction, thread);
   };
-  return { items, sections, currentSectionId: thread.sectionId, onAction };
+  return { items, onSelect };
 }
 
 function ThreadMenuContent({ row, onRename, onCloseAutoFocus }: ContentProps & { row: ThreadRow }) {

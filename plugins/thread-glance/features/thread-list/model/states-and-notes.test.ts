@@ -156,7 +156,9 @@ describe("Move… (keyboard route to drag)", () => {
       splitAvailable: false,
       isRoot: true,
       hasSections: false,
-    }).map((item) => item.action);
+      sections: [],
+      threadActions: [],
+    }).map((item) => item.key);
     expect(actions).toContain("move");
     expect(actions).toContain("details");
   });

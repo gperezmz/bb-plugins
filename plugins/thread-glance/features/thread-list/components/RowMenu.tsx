@@ -2,7 +2,6 @@
 // becomes a bottom drawer on compact viewports.
 import { Fragment } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import type { PluginSidebarSection } from "@get-bb/plugin-sdk/app";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -22,39 +21,53 @@ import {
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
-import type { RowMenuAction, RowMenuItem } from "../model/menu";
+import type { MenuChoice, RowMenuItem } from "../model/menu";
 
 interface MenuProps {
   items: readonly RowMenuItem[];
-  sections: readonly PluginSidebarSection[];
-  currentSectionId: string | null;
-  onAction(action: RowMenuAction, sectionId?: string | null): void;
+  /** `value` is the picked choice's id, for an item with choices. */
+  onSelect(item: RowMenuItem, value?: string): void;
   /** Rename keeps focus in its editor instead of returning it to the row. */
   onCloseAutoFocus(event: Event): void;
 }
 
-function ItemLabel({ item }: { item: Pick<RowMenuItem, "icon" | "label"> }) {
+function ItemLabel({ item }: { item: Pick<RowMenuItem, "icon" | "label" | "detail"> }) {
   return (
     <>
       <Icon name={item.icon} aria-hidden className="size-4" />
-      <span>{item.label}</span>
+      {item.detail === undefined ? (
+        <span>{item.label}</span>
+      ) : (
+        <span className="flex min-w-0 flex-col">
+          <span>{item.label}</span>
+          <span className="truncate text-xs text-muted-foreground">{item.detail}</span>
+        </span>
+      )}
     </>
   );
 }
 
-/** A section Move to section offers: a check on the thread's own, room for one on the rest. */
-function SectionTarget({ name, current }: { name: string; current: boolean }) {
+/** A pick in a choice list: its icon, or a check on the selected one and room for one on the rest. */
+function ChoiceLabel({ choice }: { choice: MenuChoice }) {
   return (
     <>
-      {current ? <Icon name={ICONS.check} aria-hidden className="size-4" /> : <span className="size-4" />}
-      {name}
+      {choice.icon !== undefined ? (
+        <Icon name={choice.icon} aria-hidden className="size-4" />
+      ) : choice.selected ? (
+        <Icon name={ICONS.check} aria-hidden className="size-4" />
+      ) : (
+        <span className="size-4" />
+      )}
+      {choice.label}
     </>
   );
 }
 
-function sectionTargets(sections: readonly PluginSidebarSection[]) {
-  return [{ id: null as string | null, name: "Threads" }, ...sections.map((s) => ({ id: s.id as string | null, name: s.name }))];
+function ChoiceHint({ hint }: { hint: string | undefined }) {
+  return hint === undefined ? null : <p className="px-2 py-1.5 text-xs text-muted-foreground">{hint}</p>;
 }
+
+const itemClass = (item: RowMenuItem) => cn(item.destructive && "text-destructive focus:text-destructive");
 
 /**
  * What the user has done inside an open context menu. The right-click that
@@ -70,9 +83,7 @@ export interface ContextMenuInput {
 
 export function RowContextMenuContent({
   items,
-  sections,
-  currentSectionId,
-  onAction,
+  onSelect,
   onCloseAutoFocus,
   input,
 }: MenuProps & {
@@ -97,30 +108,24 @@ export function RowContextMenuContent({
       }}
     >
       {items.map((item) => (
-        <Fragment key={item.action}>
+        <Fragment key={item.key}>
           {item.separated ? <ContextMenuSeparator /> : null}
-          {item.action === "move-to-section" ? (
+          {item.choices !== undefined ? (
             <ContextMenuSub>
-              <ContextMenuSubTrigger>
+              <ContextMenuSubTrigger disabled={item.disabled}>
                 <ItemLabel item={item} />
               </ContextMenuSubTrigger>
               <ContextMenuSubContent>
-                {sectionTargets(sections).map((target) => (
-                  <ContextMenuItem
-                    key={target.id ?? "threads"}
-                    disabled={target.id === currentSectionId}
-                    onSelect={guard(() => onAction("move-to-section", target.id))}
-                  >
-                    <SectionTarget name={target.name} current={target.id === currentSectionId} />
+                {item.choices.items.map((choice) => (
+                  <ContextMenuItem key={choice.id} disabled={choice.disabled} onSelect={guard(() => onSelect(item, choice.id))}>
+                    <ChoiceLabel choice={choice} />
                   </ContextMenuItem>
                 ))}
+                <ChoiceHint hint={item.choices.hint} />
               </ContextMenuSubContent>
             </ContextMenuSub>
           ) : (
-            <ContextMenuItem
-              className={cn(item.destructive && "text-destructive focus:text-destructive")}
-              onSelect={guard(() => onAction(item.action))}
-            >
+            <ContextMenuItem className={itemClass(item)} disabled={item.disabled} onSelect={guard(() => onSelect(item))}>
               <ItemLabel item={item} />
             </ContextMenuItem>
           )}
@@ -130,52 +135,47 @@ export function RowContextMenuContent({
   );
 }
 
-export function RowDropdownMenuContent({ items, sections, currentSectionId, onAction, onCloseAutoFocus }: MenuProps) {
-  // A phone's drawer holds no submenu: the sections follow their label.
+export function RowDropdownMenuContent({ items, onSelect, onCloseAutoFocus }: MenuProps) {
+  // A phone's drawer holds no submenu: the choices follow their heading.
   const drawer = useIsCompactViewport();
   return (
     <DropdownMenuContent align="end" className="min-w-48" onCloseAutoFocus={onCloseAutoFocus}>
       {items.map((item) => (
-        <Fragment key={item.action}>
+        <Fragment key={item.key}>
           {item.separated ? <DropdownMenuSeparator /> : null}
-          {item.action === "move-to-section" && drawer ? (
-            <div role="group" aria-label={item.label}>
+          {item.choices !== undefined && drawer ? (
+            <div role="group" aria-label={item.choices.heading ?? item.label}>
               <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
-                <ItemLabel item={item} />
+                <ItemLabel item={{ ...item, label: item.choices.heading ?? item.label }} />
               </div>
-              {sectionTargets(sections).map((target) => (
+              {item.choices.items.map((choice) => (
                 <DropdownMenuItem
-                  key={target.id ?? "threads"}
-                  disabled={target.id === currentSectionId}
+                  key={choice.id}
+                  disabled={item.disabled || choice.disabled}
                   className="pl-8"
-                  onSelect={() => onAction("move-to-section", target.id)}
+                  onSelect={() => onSelect(item, choice.id)}
                 >
-                  <SectionTarget name={target.name} current={target.id === currentSectionId} />
+                  <ChoiceLabel choice={choice} />
                 </DropdownMenuItem>
               ))}
+              <ChoiceHint hint={item.choices.hint} />
             </div>
-          ) : item.action === "move-to-section" ? (
+          ) : item.choices !== undefined ? (
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger disabled={item.disabled}>
                 <ItemLabel item={item} />
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                {sectionTargets(sections).map((target) => (
-                  <DropdownMenuItem
-                    key={target.id ?? "threads"}
-                    disabled={target.id === currentSectionId}
-                    onSelect={() => onAction("move-to-section", target.id)}
-                  >
-                    <SectionTarget name={target.name} current={target.id === currentSectionId} />
+                {item.choices.items.map((choice) => (
+                  <DropdownMenuItem key={choice.id} disabled={choice.disabled} onSelect={() => onSelect(item, choice.id)}>
+                    <ChoiceLabel choice={choice} />
                   </DropdownMenuItem>
                 ))}
+                <ChoiceHint hint={item.choices.hint} />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           ) : (
-            <DropdownMenuItem
-              className={cn(item.destructive && "text-destructive focus:text-destructive")}
-              onSelect={() => onAction(item.action)}
-            >
+            <DropdownMenuItem className={itemClass(item)} disabled={item.disabled} onSelect={() => onSelect(item)}>
               <ItemLabel item={item} />
             </DropdownMenuItem>
           )}
