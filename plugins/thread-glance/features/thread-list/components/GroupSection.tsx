@@ -29,7 +29,6 @@ import { menuTriggerProps } from "./overlays/trigger";
 import { GROUP_GAP } from "./row-heights";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
 
-/** A group's header: its label, counters, `+` and its "…". It reads only what it draws. */
 /** What the inline rename box of each renamable group is called. */
 const RENAME_LABEL: Partial<Record<GroupDescriptor["kind"], string>> = {
   project: "Project name",
@@ -37,6 +36,7 @@ const RENAME_LABEL: Partial<Record<GroupDescriptor["kind"], string>> = {
   machine: "Machine name",
 };
 
+/** A group's header: its label, counters, `+` and its "…". It reads only what it draws. */
 const GroupHeader = memo(function GroupHeader({
   descriptor,
   counters,
