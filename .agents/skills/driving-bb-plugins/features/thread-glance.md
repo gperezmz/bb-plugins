@@ -77,8 +77,8 @@ with `--reload` (`kept` true when a reload changed nothing). The command with
 no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
 
 - **It is the list** (`list`): `thread-glance list` on a fresh run prints
-  `heading` `Sections` (the first run imports bb's own grouping) and `empty`
-  true; `drive-bb-plugins bb thread-glance.list/cli -- settings ui get sidebar.threadListProvider`
+  `heading` `Projects` (Thread Glance's default grouping; it reads none of bb's
+  list's) and `empty` true; `drive-bb-plugins bb thread-glance.list/cli -- settings ui get sidebar.threadListProvider`
   prints `"__automatic__"`. `list --wait <title>` waits for a row, `list
   --open <title>` opens a row on screen (a child only under an open chip).
 - **A tree in every state**: `seed` a shape of
@@ -182,11 +182,6 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   on (a `records` signal when a turn or read state changes a thread; a
   `thread update --title` sends none). The actions block the verb while
   they run, so frames and the wait are timed from their end.
-- **First-run import** (`settings`): `thread-glance import-once --actions
-  <file>` counts `importPreferences` on one browser profile through a first
-  load, a reload, a trip to Settings, the actions (such as `plugin reload
-  thread-glance`) and a reload after them; `--fail-first` aborts the first
-  import in the network, so the device has no answer yet.
 - **Window** (`window`): `thread-glance scroll` scrolls the sidebar top to
   bottom and back; every step has `outside` and `missing` 0 (the first nine
   rows, which bb's jump keys reach, stay mounted and count as neither), and
@@ -204,7 +199,7 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   out of view; `feedback` is what was drawn while over it (`nest` `valid`,
   `blocked` or `unchanged`, `placement` `before` or `after` in Pinned, or the
   highlighted `header`), `after` the thread's parent, section and pin in bb.
-  Under Custom grouping (a fresh run's), `--onto-group` a section moves the
+  Under Custom grouping (`prefs set organizationMode chronological`; a fresh run starts under Projects), `--onto-group` a section moves the
   thread there; `--onto-group Pinned` pins it (`bb thread pin` one thread
   first, for Pinned to show); a child dropped on its group's header leaves
   its parent; a parent dropped on its own child shows `blocked` and changes
@@ -291,8 +286,7 @@ says.
 - The list is windowed: only rows near the viewport are in the DOM, so read
   every row with `rows`, not `list`, and a hover card only while its row is
   drawn.
-- Each verb run is a new browser profile, so a first load in any verb is a
-  device that never got an import answer; `import-once` keeps one profile.
+- Each verb run is a new browser profile.
 - bb 0.44's `thread unarchive` unarchives one thread and always sends
   `thread.unarchived`; archiving a parent archives its children, unarchiving
   it does not bring them back.

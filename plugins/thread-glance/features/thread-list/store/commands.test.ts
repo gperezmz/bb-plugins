@@ -4,9 +4,9 @@
 import { describe, expect, it } from "vitest";
 import type { OrganizationMode } from "@/shared/preferences";
 import { makeThread, PROJECTS, T0 } from "../testing/fixtures";
-import { NO_HOST } from "../store/derive";
-import { createListStore } from "../store/list-store";
-import { createCommands } from "./commands";
+import { createCommands } from "../commands/commands";
+import { NO_HOST } from "./derive";
+import { createListStore } from "./list-store";
 
 const SECTIONS = [{ id: "sec_1", name: "Later", createdAt: 1, updatedAt: 1 }];
 
