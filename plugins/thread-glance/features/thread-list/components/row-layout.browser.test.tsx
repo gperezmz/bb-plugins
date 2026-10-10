@@ -166,12 +166,19 @@ async function render(
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
-      providers: { models: async () => ({ models: [] }) } as never,
+      // No default harness chosen: bb starts threads on the first available one, Claude Code.
+      providers: {
+        models: async () => ({ models: [] }),
+        list: async () => [
+          { id: "claude-code", available: true },
+          { id: "codex", available: true },
+        ],
+      } as never,
       system: {
         config: async () => ({
           primaryHostId: "host_1",
           generalSettings: { defaultProviderId: null },
-          serverAccess: { defaultProviderId: "claude-code" },
+          serverAccess: { defaultProviderId: "connect" },
         }),
       } as never,
     },

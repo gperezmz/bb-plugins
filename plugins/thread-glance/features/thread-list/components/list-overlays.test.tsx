@@ -87,7 +87,7 @@ function render(
         config: async () => ({
           primaryHostId: "host_1",
           generalSettings: { defaultProviderId: null },
-          serverAccess: { defaultProviderId: "claude-code" },
+          serverAccess: { defaultProviderId: "connect" },
         }),
       } as never,
     },

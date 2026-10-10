@@ -59,6 +59,8 @@ function render(
     prefs?: Partial<Preferences>;
     props?: Partial<PluginThreadListProps>;
     extra?: object;
+    /** bb's harnesses, as `providers.list()` answers; by default Claude Code then Codex. */
+    providerList?: () => Promise<unknown>;
     notes?: Record<string, unknown>;
     stamps?: Partial<Record<string, Record<string, number>>>;
   } = {},
@@ -87,12 +89,21 @@ function render(
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
-      providers: { models: async () => ({ models: [] }) } as never,
+      // No default harness chosen: bb starts threads on the first available one.
+      providers: {
+        models: async () => ({ models: [] }),
+        list:
+          options.providerList ??
+          (async () => [
+            { id: "claude-code", available: true },
+            { id: "codex", available: true },
+          ]),
+      } as never,
       system: {
         config: async () => ({
           primaryHostId: "host_1",
           generalSettings: { defaultProviderId: null },
-          serverAccess: { defaultProviderId: "claude-code" },
+          serverAccess: { defaultProviderId: "connect" },
         }),
       } as never,
     },
@@ -626,6 +637,15 @@ describe("Thread Glance slot", () => {
     const trigger = await screen.findByRole("button", { name: "Alpha actions" });
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     expect(await screen.findByRole("menuitem", { name: "New thread" })).toBeTruthy();
+  });
+
+  it("draws no root's harness while bb's default harness is unknown, whatever reaches machines", async () => {
+    render([makeThread({ id: "x", title: "Codex root", providerId: "codex" })], {
+      providerList: async () => Promise.reject(new Error("offline")),
+    });
+    const row = (await screen.findByRole("link", { name: /Open Codex root/ })).parentElement!;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(within(row).queryByRole("img", { name: "Codex" })).toBeNull();
   });
 
   it("draws a two-letter mark for providers without a logo", async () => {

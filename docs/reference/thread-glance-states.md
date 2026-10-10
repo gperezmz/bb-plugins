@@ -75,7 +75,7 @@ An archived row shows no time. A thread that started before Thread Glance was in
 
 A thread on a machine other than bb's primary machine shows the machine's name before the children chip, in both densities. A thread on the primary machine shows no machine, and while the list is grouped by machine no row does.
 
-The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees), the provider's logo or a two-letter mark when the provider has none, sits before the machine name only where the harness differs: on a root whose harness is not bb's default harness, and on a child whose harness is not its parent thread's. The **Harness icon** preference draws it muted or in the provider's colour.
+The logo of the thread's [harness](../explanation/how-the-plugins-fit-bb.md#threads-and-trees), the provider's logo or a two-letter mark when the provider has none, sits before the machine name only where the harness differs: on a root whose harness is not bb's default harness, and on a child whose harness is not its parent thread's. bb's default harness is the one bb starts a new thread on: the default chosen in bb's settings while it is available, else the first available harness in bb's provider order. While Thread Glance cannot learn it, no root draws a logo. The **Harness icon** preference draws it muted or in the provider's colour.
 
 ## The children chip
 
