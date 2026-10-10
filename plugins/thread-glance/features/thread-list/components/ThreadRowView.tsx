@@ -66,7 +66,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   const archived = thread.archivedAt !== null || thread.isArchived;
   const commands = useCommands();
   const overlays = useOverlays();
-  const { compact, density, harnessIcon, sections } = useLayout();
+  const { compact, density, harnessIcon } = useLayout();
   const { focused: isActive, editing, miniMap, hasDraft, rowStatus, menuOpen, dragging } = useRow(thread.id, groupId, row.key);
   const provider = useProviderDisplay(thread.providerId);
   const shortcut = useSidebarThreadShortcut(thread.id);
@@ -88,18 +88,8 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   // inline editor for Rename, started once the menu has closed.
   const target = useMemo(() => actionTargetOf(thread), [thread]);
   const inline = useMemo(
-    () =>
-      inlineThreadActions(
-        {
-          threadId: thread.id,
-          descendantsUnread: row.descendantsUnread,
-          archived,
-          place: { sectionId: thread.sectionId, pinned: isPinnedThread(thread), root: thread.parentThreadId === null },
-          sections,
-        },
-        commands,
-      ),
-    [thread, row.descendantsUnread, archived, sections, commands],
+    () => inlineThreadActions({ threadId: thread.id, descendantsUnread: row.descendantsUnread, archived }, commands),
+    [thread.id, row.descendantsUnread, archived, commands],
   );
   const rename = useRenameAfterClose(menuOpen);
   const menu = {

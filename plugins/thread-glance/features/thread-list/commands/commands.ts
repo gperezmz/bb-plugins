@@ -41,8 +41,6 @@ export interface Commands {
   showDetails(threadId: string): void;
   /** Opens the search for a new parent thread. */
   startMove(threadId: string): void;
-  /** Files the thread in a section, or in Threads for null, unpinning it first. */
-  moveToSection(threadId: string, sectionId: string | null): void;
   /** Starts renaming a thread, or stops with null. */
   editTitle(threadId: string | null): void;
   renameThread(threadId: string, title: string): Promise<void>;
@@ -250,16 +248,6 @@ export function createCommands(store: ListStore): Commands {
     },
     showDetails: (threadId) => store.setUi({ detailsId: threadId }),
     startMove: (threadId) => store.setUi({ moveQuery: "", moveId: threadId }),
-    moveToSection(threadId, sectionId) {
-      const thread = store.getState().model?.byId.get(threadId);
-      if (thread === undefined) return;
-      const { sdk } = edge();
-      const move = async () => {
-        if (isPinnedThread(thread)) await sdk.threads.unpin({ threadId });
-        if (thread.sectionId !== sectionId) await sdk.threads.update({ threadId, sectionId });
-      };
-      move().catch(fail("Failed to move thread."));
-    },
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
     async renameThread(threadId, title) {

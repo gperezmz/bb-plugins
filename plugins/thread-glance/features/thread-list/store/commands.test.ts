@@ -90,26 +90,3 @@ describe("a project's header", () => {
     expect(store.getState().ui.confirm).toBeNull();
   });
 });
-
-describe("Move to section", () => {
-  it("files a loose thread in the section", async () => {
-    const { commands, calls } = setup("chronological");
-    commands.moveToSection("a", "sec_1");
-    await Promise.resolve();
-    expect(calls).toEqual([{ method: "threads.update", args: { threadId: "a", sectionId: "sec_1" } }]);
-  });
-
-  it("unpins a pinned thread first, and only unpins it where it is already in the section", async () => {
-    const { commands, calls } = setup("chronological", [makeThread({ id: "a", pinnedAt: T0, isPinned: true, sectionId: "sec_1" })]);
-    commands.moveToSection("a", "sec_1");
-    await new Promise((resolve) => setTimeout(resolve));
-    expect(calls).toEqual([{ method: "threads.unpin", args: { threadId: "a" } }]);
-    calls.length = 0;
-    commands.moveToSection("a", null);
-    await new Promise((resolve) => setTimeout(resolve));
-    expect(calls).toEqual([
-      { method: "threads.unpin", args: { threadId: "a" } },
-      { method: "threads.update", args: { threadId: "a", sectionId: null } },
-    ]);
-  });
-});

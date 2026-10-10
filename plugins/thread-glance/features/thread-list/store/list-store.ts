@@ -106,6 +106,8 @@ export interface ListLayout {
   branchLine: boolean;
   harnessIcon: HarnessIcon;
   mode: OrganizationMode;
+  /** Rows offer Move to section. */
+  hasSections: boolean;
   sections: readonly PluginSidebarSection[];
 }
 
@@ -282,6 +284,7 @@ function layoutOf(previous: ListLayout | null, inputs: ListInputs, compact: bool
     branchLine: client.branchLine,
     harnessIcon: prefs.harnessIcon,
     mode: prefs.organizationMode,
+    hasSections: prefs.organizationMode === "chronological" || host.sections.length > 0,
     sections: host.sections,
   };
   return previous === null ? next : share(previous, next);

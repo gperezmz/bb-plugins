@@ -162,26 +162,6 @@ describe("the row menus", () => {
     expect(menuNames()).toEqual(["Details", "Copy thread ID"]);
   });
 
-  it("offers Move to a section where bb has sections, on a root only, and hides the built-in list's own Move to section", async () => {
-    const withBuiltIn = (thread: Parameters<ReturnType<typeof coreThreadActions>>[0], options: { requestRename(threadId: string): void }) => [
-      ...coreThreadActions()(thread, options),
-      { key: "thread-list/move", pluginId: "thread-list", group: "2_organize", action: { label: "Move to section", icon: "SectionMove", run: async () => undefined } },
-    ];
-    render(
-      [makeThread({ id: "p", title: "Parent" }), makeThread({ id: "c", title: "Child", parentThreadId: "p" })],
-      { prefs: { expandedChildren: ["p"] }, sections: [{ id: "sec_1", name: "Later", createdAt: T0, updatedAt: T0 }], extra: { threadActions: withBuiltIn } },
-    );
-    await openMenu("Parent");
-    const builtIn = () => document.querySelector<HTMLElement>('[data-thread-action="thread-list/move"]')!;
-    await waitFor(() => expect(builtIn().style.display).toBe("none"));
-    expect(screen.getByRole("menuitem", { name: "Move to a section" }).style.display).toBe("");
-    fireEvent.click(screen.getByRole("menuitem", { name: "Details" }));
-    fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await openMenu("Child");
-    expect(screen.queryByRole("menuitem", { name: "Move to a section" })).toBeNull();
-  });
-
   it("hands bb the thread as bb's actions read it", async () => {
     const seen: unknown[] = [];
     render([makeThread({ id: "a", title: "Alpha", pinnedAt: T0, isPinned: true, sectionId: "sec_1", environment: { id: "env_1", path: "/w" }, ...finishedUnread })], {

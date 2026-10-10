@@ -6,14 +6,13 @@ What each of the list's menus offers, what a drop does, and what the keyboard re
 
 The row's **…** button, a right-click on the row, the context-menu key or Shift+F10 on it, and on a phone a long press, all open bb's own thread menu, the one bb's list and a thread's header show: the same items, order, submenus and phone drawer, and every action another plugin adds to bb's thread menus. Rename edits the title in place in the row.
 
-Thread Glance adds five items of its own, each at the end of the bb group it belongs with:
+Thread Glance adds four items of its own, each at the end of the bb group it belongs with:
 
 | Item | Shown | Does |
 |---|---|---|
 | Details | Always, with bb's Open in split | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
 | Copy thread ID | Always, with bb's organizing items | Copies the ID |
 | Mark tree read | On a root with an unread thread below it | Marks the root and every thread below it read; see [Marking threads read](#marking-threads-read) |
-| Move to a section | On a root that is not archived, where bb has sections | Files the thread in Threads or a section, unpinning it first; its own place is disabled. The built-in list adds a **Move to section** to bb's menu of its own accord, which Thread Glance hides while the menu is open, because bb's menus have no way to leave an action out |
 | Move… | On a thread that is not archived | Opens a search for a new parent thread, or none |
 
 The row itself also offers bb's **Mark read**, while bb has the thread unread, and bb's **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
