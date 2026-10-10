@@ -40,7 +40,7 @@ A worktree folder row, drawn while **Worktrees as folders** is on, has its own *
 
 ## The hover card
 
-Resting the pointer on a row for half a second, or moving keyboard focus onto it, opens a card with the same lines as **Details**, and the pull request where the row shows one. A row that slides under a still pointer, the focused thread's row, and any row while a menu is open or a title is being renamed open no card. The card stays open while the pointer is on it.
+Resting the pointer on a row for half a second, or moving keyboard focus onto it, opens a card with the same lines as **Details**, and the pull request where the row shows one, with [what bb knows of it](thread-glance-states.md#the-pull-request-badge). A row that slides under a still pointer, the focused thread's row, and any row while a menu is open or a title is being renamed open no card. The card stays open while the pointer is on it.
 
 ## Dragging
 

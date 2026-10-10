@@ -28,11 +28,56 @@ const ATTENTION_LABEL: Partial<Record<PluginSidebarPullRequest["attention"], str
   merged: "merged",
   closed: "closed",
   blocked: "blocked",
+  queued: "in merge queue",
 };
 
 export function pullRequestLabel(pullRequest: PluginSidebarPullRequest): string {
   const detail = ATTENTION_LABEL[pullRequest.attention];
   return `Pull request #${pullRequest.number}${detail ? `, ${detail}` : ""}: ${pullRequest.title}`;
+}
+
+const CHECKS: Partial<Record<PluginSidebarPullRequest["experimental_checks"]["state"], string>> = {
+  failing: "Checks failing",
+  pending: "Checks pending",
+  passing: "Checks passing",
+};
+const REVIEW: Partial<Record<PluginSidebarPullRequest["experimental_review"]["state"], string>> = {
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  review_requested: "Review requested",
+  review_required: "Review required",
+};
+const MERGEABILITY: Partial<Record<PluginSidebarPullRequest["experimental_mergeability"]["state"], string>> = {
+  mergeable: "Mergeable",
+  conflicts: "Conflicts",
+  blocked: "Blocked",
+};
+
+/** The fact each attention already states in the pull request's label. */
+const STATED_BY_ATTENTION: Partial<Record<PluginSidebarPullRequest["attention"], string>> = {
+  checks_failed: "Checks failing",
+  checks_pending: "Checks pending",
+  changes_requested: "Changes requested",
+  review_requested: "Review requested",
+  conflicts: "Conflicts",
+  blocked: "Blocked",
+  queued: "In merge queue",
+};
+
+/**
+ * An open pull request's checks, review and merge state, each that bb knows
+ * and its label does not already state; none once it is merged or closed.
+ */
+export function pullRequestFacts(pullRequest: PluginSidebarPullRequest): string[] {
+  if (pullRequest.state === "merged" || pullRequest.state === "closed") return [];
+  const stated = STATED_BY_ATTENTION[pullRequest.attention];
+  return [
+    CHECKS[pullRequest.experimental_checks.state],
+    REVIEW[pullRequest.experimental_review.state],
+    MERGEABILITY[pullRequest.experimental_mergeability.state],
+    pullRequest.experimental_autoMerge ? "Auto-merge on" : undefined,
+    pullRequest.experimental_inMergeQueue ? "In merge queue" : undefined,
+  ].filter((fact): fact is string => fact !== undefined && fact !== stated);
 }
 
 export function PullRequestBadge({ threadId }: { threadId: string }) {

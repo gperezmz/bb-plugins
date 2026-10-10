@@ -42,6 +42,8 @@ While the [Branch line](thread-glance-preferences.md#branch-line) switch is on, 
 
 The badge reads `#<number>`, coloured red when checks failed, the branch conflicts or changes were requested, green when it is ready to merge, and grey otherwise. It sits after the branch when the second line shows the branch. Otherwise, with Branch line on or off, it sits on the title line of a root whose branch is not its project's default branch.
 
+The hover card and **Details** name the pull request with what the badge's colour stands for, and under it, while the pull request is open, whatever else bb knows of it: its checks, its review, whether it can merge, auto-merge, and the merge queue.
+
 ## The row's right end
 
 Left to right, from the title to the row's end. On hover the children chip stays where it was, and the title gives up room only where the actions need more than the harness and machine leave. Source: [`features/thread-list/components/ThreadRowView.tsx`](../../plugins/thread-glance/features/thread-list/components/ThreadRowView.tsx).

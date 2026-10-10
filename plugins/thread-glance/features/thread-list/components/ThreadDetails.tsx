@@ -12,7 +12,7 @@ import type { ModelInfo } from "../sync";
 import { useCommands, useLayout, useNotesOf, useNow, useProviderDisplay, useStampMaps, useTreeOf } from "../store/hooks";
 import { GlyphIcon, NoteLine } from "./glyphs";
 import { ProviderBadge } from "./ProviderBadge";
-import { pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
+import { pullRequestFacts, pullRequestLabel, pullRequestTone } from "./PullRequestBadge";
 
 function Line({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
   return (
@@ -43,9 +43,11 @@ function useModel(commands: Commands, info: ThreadInfo): ModelInfo | null | "loa
 function PullRequestLine({ threadId }: { threadId: string }) {
   const { pullRequest } = usePullRequest(threadId);
   if (pullRequest === null) return null;
+  const facts = pullRequestFacts(pullRequest);
   return (
     <Line label="Pull request">
       <span className={pullRequestTone(pullRequest.attention)}>{pullRequestLabel(pullRequest)}</span>
+      {facts.length > 0 ? <span className="block text-muted-foreground">{facts.join(" · ")}</span> : null}
     </Line>
   );
 }
