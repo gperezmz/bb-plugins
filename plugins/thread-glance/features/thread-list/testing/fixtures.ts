@@ -4,6 +4,8 @@ import type {
   PluginSidebarProject,
   PluginSidebarSection,
   PluginSidebarThread,
+  PluginThreadActionEntry,
+  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk/app";
 import { defaultPreferences, type PreferenceKey, type Preferences } from "@/shared/preferences";
 import { CHANNELS, type StampKind, type Stamps, type ThreadNotes } from "@/shared/signals";
@@ -85,6 +87,41 @@ export function makeThread(overrides: ThreadOverrides): PluginSidebarThread {
 export const working = { status: "active", runtimeStatus: "active" } as const;
 export const failedUnread = { status: "error", latestAttentionAt: T0 + 10, lastReadAt: T0 } as const;
 export const finishedUnread = { status: "idle", latestAttentionAt: T0 + 10, lastReadAt: T0 } as const;
+
+/**
+ * bb's own thread actions, as `experimental_useThreadActions` lists them for
+ * a thread, for the fake host's `threadActions`: each run is recorded in
+ * `ran` as `<id> <thread id>`, and Rename asks for the caller's editor.
+ */
+export function coreThreadActions(ran: string[] = []) {
+  return (thread: PluginThreadActionTarget, { requestRename }: { requestRename(threadId: string): void }): PluginThreadActionEntry[] => {
+    const entry = (id: string, group: string, label: string, icon: string, run?: () => void): PluginThreadActionEntry => ({
+      key: `bb--core/${id}`,
+      pluginId: "bb--core",
+      group,
+      action: {
+        label,
+        icon,
+        ...(id === "delete" ? { variant: "destructive" as const } : {}),
+        run: async () => {
+          ran.push(`${id} ${thread.id}`);
+          run?.();
+        },
+      },
+    });
+    const pinned = thread.pinnedAt !== null;
+    const archived = thread.archivedAt !== null;
+    return [
+      entry("split", "1_open", "Open in split", "Columns2"),
+      entry("copyLink", "2_organize", "Copy thread link", "Copy"),
+      entry("read", "2_organize", thread.isUnread ? "Mark read" : "Mark unread", thread.isUnread ? "MailOpen" : "Mail"),
+      entry("pin", "2_organize", pinned ? "Unpin" : "Pin", pinned ? "PinOff" : "Pin"),
+      entry("rename", "2_organize", "Rename", "Edit", () => requestRename(thread.id)),
+      entry("archive", "4_lifecycle", archived ? "Unarchive" : "Archive", archived ? "ArchiveRestore" : "Archive"),
+      entry("delete", "4_lifecycle", "Delete", "Trash2"),
+    ];
+  };
+}
 
 export function makeProject(
   id: string,

@@ -4,12 +4,12 @@
 import "../testing/browser.css";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cdp, page, userEvent } from "vitest/browser";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/signals";
-import { createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
+import { coreThreadActions, createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
 import { PHONE_QUERY } from "../model/heights";
 import { layoutItems } from "../model/layout-items";
 import { rangeKey } from "../model/windowing";
@@ -91,7 +91,7 @@ function threads() {
       const thread = makeThread({
         id: c.id,
         title: titleOf(c.id),
-        ...(c.unread ? finishedUnread : {}),
+        ...(c.unread ? { ...finishedUnread, isUnread: true } : {}),
         providerId: c.harness ? "codex" : "claude-code",
         host: c.machine ? { id: "host_2", name: "work" } : { id: "host_1", name: "Laptop" },
         environment: { branchName: `fix/${c.id}` },
@@ -147,6 +147,7 @@ async function render(
       notes,
     }).handlers as never,
     sidebarThreads: { status: "ready", threads: [...threads(), ...extraThreads], projects: PROJECTS, sections: [] },
+    threadActions: coreThreadActions(),
     sidebarPullRequests: Object.fromEntries(
       CASES.map((c) => [c.id, { number: 1234, title: "Fix", url: "u", state: "open", attention: "none" }]),
     ),
@@ -239,8 +240,8 @@ function expectOrder(c: Case, boxes: Box[], order: Part[]) {
 
 function expected(c: Case, hovered: boolean): Part[] {
   const middle: Part[] = hovered
-    ? // Mark read shows on a root whose tree holds something unread.
-      [...(c.unread && c.kind === "root" ? (["markRead"] as const) : []), "archive"]
+    ? // bb's Mark read shows on a thread bb has unread.
+      [...(c.unread ? (["markRead"] as const) : []), "archive"]
     : [...(c.harness ? (["harness"] as const) : []), ...(c.machine ? (["machine"] as const) : [])];
   const badge: Part = c.kind === "root" ? "pullRequest" : "hidden";
   const lead: Part[] = c.kind === "hidden-child" ? ["status", "nested"] : ["status"];
@@ -499,7 +500,7 @@ document.addEventListener(
 const seen = (element: Element | null) =>
   element !== null && element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
 
-/** A root with children and something unread, so every hover action shows. */
+/** An unread root with children, so every hover action shows. */
 const FULL = CASES.find((c) => c.kind === "root" && c.parent && c.unread)!;
 
 /** The Alpha group's header, where every case lives. */
@@ -548,8 +549,9 @@ describe("the hover look after a click", () => {
       await userEvent.hover(rowOf(FULL));
       await userEvent.click(rowOf(FULL).querySelector<HTMLElement>(PARTS[part]())!);
       if (part === "more") {
-        await screen.findByRole("menu");
-        await clickAway();
+        // bb's menu, as the SDK fakes it, closes once an item runs.
+        // It draws inside the row's "…" slot, under the hover styles: a DOM click reaches it.
+        within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Copy thread link" }).click();
         await expect.poll(() => screen.queryByRole("menu")).toBeNull();
       }
       await pointerAway();

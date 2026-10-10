@@ -1,27 +1,21 @@
 # Thread Glance: menus, dragging and keys
 
-What each of the list's menus offers, what a drop does, and what the keyboard reaches. Sources: [`model/menu.ts`](../../plugins/thread-glance/features/thread-list/model/menu.ts) for the row menu, [`components/overlays/`](../../plugins/thread-glance/features/thread-list/components/overlays/) for the other menus and the hover card, and [`model/drag.ts`](../../plugins/thread-glance/features/thread-list/model/drag.ts) for drops.
+What each of the list's menus offers, what a drop does, and what the keyboard reaches. Sources: [`components/thread-menu.ts`](../../plugins/thread-glance/features/thread-list/components/thread-menu.ts) for what Thread Glance adds to a thread row's menu, [`components/overlays/`](../../plugins/thread-glance/features/thread-list/components/overlays/) for the other menus and the hover card, and [`model/drag.ts`](../../plugins/thread-glance/features/thread-list/model/drag.ts) for drops.
 
 ## A thread row's menu
 
-The row's **…** button, a right-click on the row, the context-menu key or Shift+F10 on it, and on a phone a long press, all open the same items, top to bottom:
+The row's **…** button, a right-click on the row, the context-menu key or Shift+F10 on it, and on a phone a long press, all open bb's own thread menu, the one bb's list and a thread's header show: the same items, order, submenus and phone drawer, and every action another plugin adds to bb's thread menus. Rename edits the title in place in the row.
+
+Thread Glance adds four items of its own, each at the end of the bb group it belongs with:
 
 | Item | Shown | Does |
 |---|---|---|
-| Details | Always | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
-| Open in split | While bb offers split panes here | Opens the thread in a new pane |
-| Copy thread link, Copy thread ID | Always | Copies the link or the ID |
-| Mark read | On a root while its tree holds something unread, on any other row while the thread is unread | See [Marking threads read](#marking-threads-read) |
-| Mark unread | Otherwise | Marks the thread unread in bb |
-| Pin, Unpin | Always | Pins or unpins the thread in bb |
-| Move to section | On a root that is not archived, while the list has sections or groups by Custom | Moves the thread to Threads or one of bb's sections, with a check on its own. A phone's menu lists the sections under the label instead of in a submenu |
+| Details | Always, with bb's Open in split | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
+| Copy thread ID | Always, with bb's organizing items | Copies the ID |
+| Mark tree read | On a root with an unread thread below it | Marks the root and every thread below it read; see [Marking threads read](#marking-threads-read) |
 | Move… | On a thread that is not archived | Opens a search for a new parent thread, or none |
-| Rename | Always | Edits the title in place |
-| bb's other thread actions | Where bb offers them for the thread | Each runs as in bb's own thread menu: bb's **New thread in environment**, and every action another plugin adds to bb's thread menus. Those in bb's own groups come here, the rest after Delete |
-| Archive, Unarchive | Always | Archives the thread through bb's own archive, or brings it back |
-| Delete | Always | Asks bb to delete the thread, with bb's own confirmation |
 
-The row itself also offers **Mark read** and **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
+The row itself also offers bb's **Mark read**, while bb has the thread unread, and bb's **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
 
 A worktree folder row, drawn while **Worktrees as folders** is on, has its own **…** menu: **New thread in environment**, **Rename** and **Archive**, which archives every thread in the worktree as bb's own list does: the threads leave the list at once, split panes showing them close, and bb's toast offers **Undo**.
 
@@ -62,6 +56,6 @@ Enter on a row opens its thread, as a click does, and the context-menu key or Sh
 
 ## Marking threads read
 
-**Mark all read** in the list header marks every unread thread in the list read: every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. A group's **Mark all read** does the same for that group. **Mark read** on a root marks its whole thread tree; on any other row, the thread alone. Above 20 threads, Mark all read asks first.
+**Mark all read** in the list header marks every unread thread in the list read: every group, hidden ones included, child threads, children that finished since you last looked at them, and archived threads while **Show archived threads** is on. A group's **Mark all read** does the same for that group, and **Mark tree read** in a root's menu for that root's thread tree. Above 20 threads, Mark all read asks first. bb's own **Mark read**, in the row's menu, on hover and in Details, marks the one thread.
 
-The threads show read at once. Thread Glance then sends bb one read request per thread, six at a time, so bb is never sent them all at once. A thread whose request fails shows unread again, and a row's Mark read says it could not.
+The threads show read at once. Thread Glance then sends bb one read request per thread, six at a time, so bb is never sent them all at once. A thread whose request fails shows unread again, and Mark tree read says it could not.

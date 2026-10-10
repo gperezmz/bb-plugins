@@ -7,6 +7,7 @@ import { defaultPreferences, type Preferences } from "@/shared/preferences";
 import { CHANNELS } from "@/shared/signals";
 import manifest from "./package.json";
 import {
+  coreThreadActions,
   createFakeServer,
   failedUnread,
   finishedUnread,
@@ -489,22 +490,31 @@ describe("Thread Glance slot", () => {
     expect(unread.querySelector('[aria-hidden="true"]')).toBeNull();
   });
 
-  it("offers Mark read beside archive on a root whose tree holds something unread, and marks the whole tree read", async () => {
+  it("runs bb's own Mark read and Archive from a row's hover buttons, Mark read only on a thread bb has unread", async () => {
+    const ran: string[] = [];
+    render([makeThread({ id: "u", title: "Fresh", isUnread: true, ...finishedUnread }), makeThread({ id: "q", title: "Calm" })], {
+      extra: { threadActions: coreThreadActions(ran) },
+    });
+    const fresh = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!;
+    const calm = (await screen.findByRole("link", { name: /Open Calm/ })).parentElement!;
+    expect(within(calm).queryByRole("button", { name: "Mark read" })).toBeNull();
+    const button = within(fresh).getByRole("button", { name: "Mark read" });
+    expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
+    fireEvent.click(button);
+    fireEvent.click(within(calm).getByRole("button", { name: "Archive thread" }));
+    await waitFor(() => expect(ran).toEqual(["read u", "archive q"]));
+  });
+
+  it("marks a whole tree read with Mark tree read in a root's menu", async () => {
     const slot = render([
       makeThread({ id: "r", title: "Root" }),
       makeThread({ id: "c", title: "Child", parentThreadId: "r", createdAt: T0 + 1, ...finishedUnread }),
       makeThread({ id: "d", title: "Done child", parentThreadId: "r", createdAt: T0 + 2 }),
-      makeThread({ id: "q", title: "Calm" }),
     ], { stamps: { finishedAt: { d: T0 + 50 } } });
     const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
-    const calm = (await screen.findByRole("link", { name: /Open Calm/ })).parentElement!;
-    expect(within(calm).queryByRole("button", { name: "Mark read" })).toBeNull();
-    const button = within(row).getByRole("button", { name: "Mark read" });
-    expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
-    fireEvent.click(button);
-    await waitFor(() =>
-      expect(markedRead(slot)).toEqual(["c", "d"]),
-    );
+    fireEvent.click(within(row).getByRole("button", { name: "Thread actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark tree read" }));
+    await waitFor(() => expect(markedRead(slot)).toEqual(["c", "d"]));
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
   });
 
@@ -512,17 +522,6 @@ describe("Thread Glance slot", () => {
     render([makeThread({ id: "u", title: "Fresh", ...finishedUnread })], { props: { isCompactViewport: true } });
     const row = (await screen.findByRole("link", { name: /Open Fresh/ })).parentElement!;
     expect(within(row).queryByRole("button", { name: "Mark read" })).toBeNull();
-  });
-
-  it("marks read through bb's markRead from the row menu", async () => {
-    const slot = render([makeThread({ id: "u", title: "Unread one", ...finishedUnread })]);
-    const row = (await screen.findByRole("link", { name: /Open Unread one/ })).parentElement!;
-    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
-    const item = await screen.findByRole("menuitem", { name: "Mark read" });
-    fireEvent.click(item);
-    await waitFor(() =>
-      expect(markedRead(slot)).toEqual(["u"]),
-    );
   });
 
   it("the header + opens a new thread in its project", async () => {
@@ -709,55 +708,40 @@ describe("compact viewport", () => {
   });
 });
 
-/** The thread action entries a test hands bb for a thread: archive and delete, recording what runs. */
-function recordedThreadActions(ran: string[]) {
-  return (thread: { id: string }) =>
-    ["archive", "delete"].map((id) => ({
-      key: `bb--core/${id}`,
-      pluginId: "bb--core",
-      group: "4_lifecycle",
-      action: { label: id, icon: "Archive" as never, run: async () => void ran.push(`${id} ${thread.id}`) },
-    }));
-}
-
 describe("thread actions", () => {
+  const rowOf = async (title: string) => (await screen.findByRole("link", { name: new RegExp(`Open ${title}`) })).parentElement!;
   const openRowMenu = async (title: string) => {
-    const row = (await screen.findByRole("link", { name: new RegExp(`Open ${title}`) })).parentElement!;
-    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+    fireEvent.click(within(await rowOf(title)).getByRole("button", { name: "Thread actions" }));
+    await screen.findByRole("menu");
   };
 
-  it("pins and unpins through bb's threads.pin and threads.unpin", async () => {
-    const slot = render([makeThread({ id: "a", title: "Loose" }), makeThread({ id: "p", title: "Pinned", pinnedAt: T0, isPinned: true })]);
-    await openRowMenu("Loose");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Pin" }));
-    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.pin", args: [{ threadId: "a" }] })));
-    await openRowMenu("Pinned");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin" }));
-    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.unpin", args: [{ threadId: "p" }] })));
+  it("runs bb's own item picked in a row's menu, for that row's thread", async () => {
+    const ran: string[] = [];
+    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })], { extra: { threadActions: coreThreadActions(ran) } });
+    for (const [title, item] of [["Alpha", "Pin"], ["Alpha", "Mark unread"], ["Beta", "Open in split"], ["Beta", "Archive"], ["Alpha", "Delete"]] as const) {
+      await openRowMenu(title);
+      fireEvent.click(screen.getByRole("menuitem", { name: item }));
+    }
+    await waitFor(() => expect(ran).toEqual(["pin a", "read a", "split b", "archive b", "delete a"]));
   });
 
-  it("marks a read thread unread through bb's threads.markUnread", async () => {
-    const slot = render([makeThread({ id: "a", title: "Read one" })]);
-    await openRowMenu("Read one");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Mark unread" }));
-    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.markUnread", args: [{ threadId: "a" }] })));
-  });
-
-  it("opens a thread in a split, and from its details, through bb's navigation", async () => {
-    const slot = render([makeThread({ id: "a", title: "Alpha" })]);
-    await openRowMenu("Alpha");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Open in split" }));
+  it("opens a split on Ctrl or Cmd+click, and a thread from its details, through bb's navigation; Details offers bb's own read item", async () => {
+    const ran: string[] = [];
+    const slot = render([makeThread({ id: "a", title: "Alpha" })], { extra: { threadActions: coreThreadActions(ran) } });
+    fireEvent.click(await screen.findByRole("link", { name: /Open Alpha/ }), { ctrlKey: true });
     expect(slot.inspection.navigateCalls).toContainEqual({ method: "toThread", threadId: "a", options: { split: true } });
     await openRowMenu("Alpha");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Details" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Details" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mark unread" }));
+    await waitFor(() => expect(ran).toEqual(["read a"]));
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
     expect(slot.inspection.navigateCalls).toContainEqual({ method: "toThread", threadId: "a" });
   });
 
-  it("renames silently through bb's threads.update", async () => {
-    const slot = render([makeThread({ id: "a", title: "Alpha" })]);
+  it("renames in its own editor for bb's Rename, saving silently through bb's threads.update", async () => {
+    const slot = render([makeThread({ id: "a", title: "Alpha" })], { extra: { threadActions: coreThreadActions() } });
     await openRowMenu("Alpha");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const editor = await screen.findByRole("textbox");
     fireEvent.change(editor, { target: { value: "Renamed" } });
     fireEvent.keyDown(editor, { key: "Enter" });
@@ -766,38 +750,13 @@ describe("thread actions", () => {
     );
   });
 
-  it("lists the thread actions bb has that it does not draw, other plugins' among them, and runs the one picked", async () => {
-    const ran: string[] = [];
-    const entry = (key: string, group: string, label: string, extra: object = {}) => ({
-      key,
-      pluginId: key.split("/")[0]!,
-      group,
-      action: { label, icon: "Star" as never, run: async (value?: string) => void ran.push(value === undefined ? key : `${key} ${value}`), ...extra },
-    });
-    render([makeThread({ id: "a", title: "Alpha" })], {
-      extra: {
-        threadActions: () => [
-          entry("bb--core/split", "1_open", "Open in split"),
-          entry("bb--core/newThreadInEnvironment", "2_organize", "New thread in environment"),
-          entry("bb--core/read", "2_organize", "Mark unread"),
-          entry("thread-list/move", "2_organize", "Move to section"),
-          entry("bb--core/archive", "4_lifecycle", "Archive"),
-          entry("bb--core/delete", "4_lifecycle", "Delete"),
-          entry("other-plugin/label", "5_other", "Label", {
-            choices: { items: [{ id: "red", label: "Red" }, { id: "blue", label: "Blue" }] },
-          }),
-        ],
-      },
-    });
+  it("copies the thread's ID with Copy thread ID", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render([makeThread({ id: "thr_a", title: "Alpha" })]);
     await openRowMenu("Alpha");
-    const labels = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
-    expect(labels).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "New thread in environment", "Archive", "Delete", "Label"]);
-    fireEvent.click(screen.getByRole("menuitem", { name: "New thread in environment" }));
-    await waitFor(() => expect(ran).toEqual(["bb--core/newThreadInEnvironment"]));
-    await openRowMenu("Alpha");
-    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Label" }), { key: "ArrowRight" });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Blue" }));
-    await waitFor(() => expect(ran).toEqual(["bb--core/newThreadInEnvironment", "other-plugin/label blue"]));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy thread ID" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("thr_a"));
   });
 
   it("archives an environment's threads through bb's own environment archive", async () => {
@@ -809,17 +768,6 @@ describe("thread actions", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     expect(slot.inspection.experimental_environmentArchiveCalls).toEqual(["env_w"]);
     expect(slot.inspection.sdkCalls.map((call) => call.method)).not.toContain("environments.archiveThreads");
-  });
-
-  it("archives and deletes through bb's own thread actions for that thread", async () => {
-    const ran: string[] = [];
-    render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })], { extra: { threadActions: recordedThreadActions(ran) } });
-    await openRowMenu("Alpha");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    await waitFor(() => expect(ran).toEqual(["archive a"]));
-    await openRowMenu("Beta");
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await waitFor(() => expect(ran).toEqual(["archive a", "delete b"]));
   });
 });
 
@@ -839,7 +787,7 @@ describe("notes and moves", () => {
       makeThread({ id: "b", title: "New parent" }),
     ]);
     const row = (await screen.findByRole("link", { name: /Open Mover/ })).parentElement!;
-    fireEvent.pointerDown(within(row).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
+    fireEvent.click(within(row).getByRole("button", { name: "Thread actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Move…" }));
     const input = await screen.findByRole("combobox", { name: "Find a thread" });
     fireEvent.change(input, { target: { value: "new" } });
@@ -848,41 +796,6 @@ describe("notes and moves", () => {
       expect(slot.inspection.sdkCalls).toContainEqual(
         expect.objectContaining({ method: "threads.update", args: [{ threadId: "a", parentThreadId: "b" }] }),
       ),
-    );
-  });
-});
-
-describe("context menu release guard", () => {
-  it("ignores the release of the right-click, then accepts a press and click", async () => {
-    const slot = render([makeThread({ id: "r", title: "Right clicked", ...finishedUnread })]);
-    const anchor = await screen.findByRole("link", { name: /Open Right clicked/ });
-    fireEvent.contextMenu(anchor.parentElement!, { clientX: 20, clientY: 20 });
-    const item = await screen.findByRole("menuitem", { name: "Mark read" });
-    fireEvent.click(item);
-    expect(markedRead(slot)).toEqual([]);
-    // However long the release took, only a new press in the menu chooses.
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Mark read" }));
-    expect(markedRead(slot)).toEqual([]);
-    const again = screen.getByRole("menuitem", { name: "Mark read" });
-    fireEvent.pointerDown(again, { button: 0, pointerType: "mouse" });
-    fireEvent.click(again);
-    await waitFor(() =>
-      expect(markedRead(slot)).toHaveLength(1),
-    );
-  });
-});
-
-describe("context menu keyboard choice", () => {
-  it("accepts an item chosen with the keyboard", async () => {
-    const slot = render([makeThread({ id: "k", title: "Keyed", ...finishedUnread })]);
-    const anchor = await screen.findByRole("link", { name: /Open Keyed/ });
-    fireEvent.contextMenu(anchor.parentElement!, { clientX: 20, clientY: 20 });
-    const item = await screen.findByRole("menuitem", { name: "Mark read" });
-    fireEvent.keyDown(item, { key: "ArrowDown" });
-    fireEvent.click(item);
-    await waitFor(() =>
-      expect(markedRead(slot)).toHaveLength(1),
     );
   });
 });
@@ -993,10 +906,10 @@ describe("row hover card", () => {
       await wait(600);
       expect(card()).not.toBeNull();
       const actions = within(link.parentElement!).getByRole("button", { name: "Thread actions" });
-      fireEvent.keyDown(actions, { key: "Enter" });
+      fireEvent.click(actions);
       await wait(50);
       expect(screen.getByRole("menu")).toBeTruthy();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Copy thread ID" }));
       await wait(600);
       expect(screen.queryByRole("menu")).toBeNull();
       expect(card()).toBeNull();

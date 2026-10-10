@@ -1,14 +1,12 @@
 // What a person can do in the list, as plain commands with one identity for
 // the list's life. Each reads the store and bb's calls when it runs, so no
 // component is handed a callback that changes when threads change.
-import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { ClientPreferences, Preferences } from "@/shared/preferences";
 import { itemKeyOf } from "../model/layout-items";
 import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
 import { pruneTargets } from "../model/expansion";
 import { isPinnedThread, moveGroup, ORDER_PREFERENCE } from "../model/groups";
-import { MARK_ALL_CONFIRM_ABOVE, type RowMenuAction } from "../model/menu";
 import {
   markAllReadPlan,
   markReadPlanFor,
@@ -21,11 +19,13 @@ import {
 } from "../model/toggles";
 import type { ThreadTree } from "../model/trees";
 import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
-import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu, type ThreadActionRequest } from "../store/api";
+import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu } from "../store/api";
 import { inPool } from "./pool";
 import { lookUpModel, type ModelInfo } from "../sync";
 
 const PLUGIN_ID = "thread-glance";
+/** Mark all read: above this many threads, ask first. */
+export const MARK_ALL_CONFIRM_ABOVE = 20;
 /** Read requests bb is sent at once by a bulk read. */
 const READS_IN_FLIGHT = 6;
 
@@ -34,17 +34,19 @@ export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group
 
 export interface Commands {
   navigate(): void;
-  menuAction(action: RowMenuAction, thread: PluginSidebarThread, sectionId?: string | null): void;
+  openInSplit(threadId: string): void;
+  copyThreadId(threadId: string): void;
+  /** Marks the thread and every thread below it read. */
+  markTreeRead(threadId: string): void;
+  showDetails(threadId: string): void;
+  /** Opens the search for a new parent thread. */
+  startMove(threadId: string): void;
   /** Starts renaming a thread, or stops with null. */
   editTitle(threadId: string | null): void;
   renameThread(threadId: string, title: string): Promise<void>;
   closeDetails(): void;
   /** Opens the thread the details dialog shows. */
   openFromDetails(threadId: string): void;
-  /** Asks for one of bb's own thread actions that only a hook can run; `ThreadActionRunner` runs it. */
-  requestThreadAction(thread: PluginSidebarThread, action: ThreadActionRequest["action"]): void;
-  /** The requested thread action has been taken up. */
-  finishThreadAction(): void;
   loadModel(threadId: string, status: string): Promise<ModelInfo | null>;
   toggleChip(row: ThreadRow): void;
   toggleOlder(row: OlderRow): void;
@@ -133,9 +135,6 @@ export function createCommands(store: ListStore): Commands {
   const edge = () => store.edge;
   const inputs = () => store.getState().inputs;
   let dropContext: { model: ListModel; context: ReturnType<typeof dropContextOf> } | null = null;
-  // Threads marked unread since a bulk read queued them: their queued read is not sent.
-  const markedUnread = new Set<string>();
-  let requests = 0;
 
   const groupOf = (groupId: string): GroupView | undefined => store.getState().model?.groupsById.get(groupId);
 
@@ -161,10 +160,8 @@ export function createCommands(store: ListStore): Commands {
    * as bb has it again, and `onFail` reports it.
    */
   const markPlanRead = (plan: MarkAllRead, onFail?: (error: unknown) => void) => {
-    for (const id of plan.read) markedUnread.delete(id);
     store.showRead(plan.read, plan.seen);
     void inPool(plan.read, READS_IN_FLIGHT, async (threadId) => {
-      if (markedUnread.has(threadId)) return;
       try {
         await edge().sdk.threads.markRead({ threadId });
       } catch (error) {
@@ -237,60 +234,18 @@ export function createCommands(store: ListStore): Commands {
   const commands: Commands = {
     navigate: () => edge().onNavigate(),
 
-    menuAction(action, thread, sectionId) {
-      const { navigate, sdk, onNavigate } = edge();
-      switch (action) {
-        case "open-in-split":
-          navigate.toThread(thread.id, { split: true });
-          onNavigate();
-          return;
-        case "copy-link":
-          void copyText(new URL(thread.href, window.location.origin).toString(), "Thread link copied");
-          return;
-        case "copy-id":
-          void copyText(thread.id, "Thread ID copied");
-          return;
-        case "mark-read": {
-          const forest = store.getState().model?.forest;
-          const plan = forest === undefined ? { read: [thread.id], seen: [] } : markReadPlanFor(thread.id, forest, readContext());
-          markPlanRead(plan, fail("Couldn't mark read"));
-          return;
-        }
-        case "mark-unread":
-          markedUnread.add(thread.id);
-          store.revertRead([thread.id]);
-          store.clearSeen([thread.id]);
-          sdk.threads.markUnread({ threadId: thread.id }).catch(fail("Couldn't mark unread"));
-          return;
-        case "pin":
-        case "unpin":
-          (action === "pin" ? sdk.threads.pin({ threadId: thread.id }) : sdk.threads.unpin({ threadId: thread.id })).catch(
-            fail("Couldn't change the pin"),
-          );
-          return;
-        case "move-to-section":
-          sdk.threads.update({ threadId: thread.id, sectionId: sectionId ?? null }).catch(fail("Couldn't move the thread"));
-          return;
-        case "rename":
-          store.setUi({ editingId: thread.id });
-          return;
-        case "details":
-          store.setUi({ detailsId: thread.id });
-          return;
-        case "move":
-          store.setUi({ moveQuery: "", moveId: thread.id });
-          return;
-        case "archive":
-          commands.requestThreadAction(thread, "archive");
-          return;
-        case "unarchive":
-          sdk.threads.unarchive({ threadId: thread.id }).catch(fail("Couldn't unarchive"));
-          return;
-        case "delete":
-          commands.requestThreadAction(thread, "delete");
-          return;
-      }
+    openInSplit(threadId) {
+      edge().navigate.toThread(threadId, { split: true });
+      edge().onNavigate();
     },
+    copyThreadId: (threadId) => void copyText(threadId, "Thread ID copied"),
+    markTreeRead(threadId) {
+      const forest = store.getState().model?.forest;
+      const plan = forest === undefined ? { read: [threadId], seen: [] } : markReadPlanFor(threadId, forest, readContext());
+      markPlanRead(plan, fail("Couldn't mark read"));
+    },
+    showDetails: (threadId) => store.setUi({ detailsId: threadId }),
+    startMove: (threadId) => store.setUi({ moveQuery: "", moveId: threadId }),
 
     editTitle: (threadId) => store.setUi({ editingId: threadId }),
     async renameThread(threadId, title) {
@@ -302,11 +257,6 @@ export function createCommands(store: ListStore): Commands {
       edge().navigate.toThread(threadId);
       edge().onNavigate();
     },
-    requestThreadAction(thread, action) {
-      requests += 1;
-      store.setUi({ threadAction: { id: requests, thread, action } });
-    },
-    finishThreadAction: () => store.setUi({ threadAction: null }),
 
     loadModel: (threadId, status) => lookUpModel(edge().sdk, store.getState().model?.byId.get(threadId), threadId, status),
 

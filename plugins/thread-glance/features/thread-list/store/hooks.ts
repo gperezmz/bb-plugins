@@ -14,7 +14,7 @@ import type { GroupView, Row } from "../model/view";
 import { itemKeyOf } from "../model/layout-items";
 import type { KeptRows } from "../model/windowing";
 import type { HostData, ListModel } from "./derive";
-import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi, type OpenCard, type OpenMenu, type RowPlace, type ThreadActionRequest } from "./list-store";
+import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi, type OpenCard, type OpenMenu, type RowPlace } from "./list-store";
 
 export type { ListLayout };
 
@@ -67,11 +67,6 @@ export function useShowArchivedOf(store: ListStore): boolean {
 /** What the list draws (see `listStatusOf`). */
 export function useListStatus(): "error" | "loading" | "ready" {
   return useListSelect(listStatusOf);
-}
-
-/** The bb thread action asked for and not yet taken up. */
-export function useThreadActionRequest(): ThreadActionRequest | null {
-  return useListSelect((state) => state.ui.threadAction);
 }
 
 export function useFocusedThreadId(): string | null {

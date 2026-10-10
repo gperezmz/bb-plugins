@@ -1,8 +1,16 @@
 // One thread row, as plain elements. It draws the row the model built and
 // reports what the user did; every decision was made before it rendered. Its
-// menu, context menu, hover card, drag and drag-to-split are the list's.
-import { memo, useRef } from "react";
-import { experimental_Icon as Icon, useSidebarThreadShortcut } from "@get-bb/plugin-sdk/app";
+// "…" menu, context menu and hover buttons are bb's own; its hover card, drag
+// and drag-to-split are the list's.
+import { memo, useMemo, useRef } from "react";
+import {
+  experimental_Icon as Icon,
+  experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
+  experimental_ThreadActionsMenu as ThreadActionsMenu,
+  experimental_useThreadActions as useThreadActions,
+  useSidebarThreadShortcut,
+} from "@get-bb/plugin-sdk/app";
+import type { PluginThreadActionsTriggerProps } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import { isPinnedThread } from "../model/groups";
@@ -11,43 +19,25 @@ import { chipLabel, rowAriaLabel } from "../model/labels";
 import { rowIndent } from "../model/layout";
 import { itemKeyOf } from "../model/layout-items";
 import { noteText } from "../model/notes";
+import { actionTargetOf } from "../model/thread-target";
 import { chipTone, pluginStatusWins } from "../model/state";
 import { TRAILING_SLOT_SIZERS } from "../model/time";
 import type { ThreadRow } from "../model/view";
 import { useCommands, useLayout, useProviderDisplay, useRow } from "../store/hooks";
 import { ChipStateGlyph, GlyphIcon, NoteLine, PluginStatusGlyph, TONE_CLASS } from "./glyphs";
 import { useOverlays } from "./overlays/overlays";
-import { menuTriggerProps } from "./overlays/trigger";
+import { useRenameAfterClose } from "./overlays/menu-state";
 import { ProviderBadge } from "./ProviderBadge";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
 import { SplitMiniMap } from "./SplitMiniMap";
+import { inlineThreadActions, QUICK_ACTION_KEYS } from "./thread-menu";
 import { NESTED_MARK_TWO_LINES, THREAD_ROW_HEIGHT } from "./row-heights";
 import { ROW_HOVER_HIDES, ROW_HOVER_LAYS_OUT, ROW_HOVER_SHOWS } from "./input-modality";
 
 /** Two clicks on one row within this window start a rename, as in bb. */
 const RENAME_CLICK_MS = 400;
-const LONG_PRESS_MS = 700;
-const LONG_PRESS_TOLERANCE = 10;
 let lastClick: { threadId: string; at: number } | null = null;
-
-/**
- * Drops the click that ends a long-press, wherever it lands, so lifting the
- * finger never selects the menu item that opened under it.
- */
-function swallowNextClick(): void {
-  const swallow = (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    window.removeEventListener("click", swallow, true);
-  };
-  window.addEventListener("click", swallow, true);
-  // A long-press that ends without a click must not eat the next real tap.
-  window.addEventListener("touchend", () => setTimeout(() => window.removeEventListener("click", swallow, true), 400), {
-    capture: true,
-    once: true,
-  });
-}
 
 /**
  * A quiet title, and its chip: the foreground mixed toward the sidebar in
@@ -67,8 +57,8 @@ export interface ThreadRowViewProps {
 /**
  * One thread row. It reads its own part of the list store (focus, rename,
  * split mini-map, draft, row status, its menu and drag, settings), so it
- * renders when that part or its row changes, and no other time. The only bb
- * hook it calls is its shortcut.
+ * renders when that part or its row changes, and no other time. The bb hooks
+ * it calls are its shortcut and its hover buttons' thread actions.
  */
 export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: ThreadRowViewProps) {
   const { info } = row;
@@ -82,8 +72,6 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
   const shortcut = useSidebarThreadShortcut(thread.id);
   const element = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLAnchorElement>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const press = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const key = itemKeyOf(groupId, row.key);
   const place = { groupId, rowKey: row.key, threadId: thread.id };
   const cardTarget = () => ({ ...place, anchor: element.current! });
@@ -95,8 +83,25 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
     hasDraft,
   });
   const time = row.time;
-  const openMenu = (button: HTMLElement) => commands.openMenu({ kind: "row", ...place, anchor: button });
-  const trigger = menuTriggerProps(menuOpen, compact, openMenu, commands.closeMenu);
+
+  // bb's menus for this thread, with Thread Glance's items added and its
+  // inline editor for Rename, started once the menu has closed.
+  const target = useMemo(() => actionTargetOf(thread), [thread]);
+  const inline = useMemo(
+    () => inlineThreadActions({ threadId: thread.id, descendantsUnread: row.descendantsUnread, archived }, commands),
+    [thread.id, row.descendantsUnread, archived, commands],
+  );
+  const rename = useRenameAfterClose(menuOpen);
+  const menu = {
+    thread: target,
+    inline,
+    requestRename: (threadId: string) => rename.request(() => commands.editTitle(threadId)),
+    onCloseAutoFocus: rename.onCloseAutoFocus,
+    onOpenChange: (open: boolean) => (open ? commands.openMenu({ kind: "thread", ...place }) : commands.closeMenu()),
+  };
+  const quick = useThreadActions(target, { keys: QUICK_ACTION_KEYS });
+  const markRead = thread.isUnread ? quick.find((entry) => entry.key === "bb--core/read") : undefined;
+  const archive = quick.find((entry) => entry.key === "bb--core/archive");
 
   const stateSlot = miniMap ? (
     <SplitMiniMap panes={miniMap} label={`${thread.displayTitle} — open in split; ${info.state.label}`} working={info.flags.has("working")} />
@@ -115,7 +120,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
     }
     if ((event.metaKey || event.ctrlKey) && commands.splitAvailable()) {
       event.preventDefault();
-      commands.menuAction("open-in-split", thread);
+      commands.openInSplit(thread.id);
       return;
     }
     const now = Date.now();
@@ -129,50 +134,8 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
     commands.navigate();
   };
 
-  const cancelPress = () => {
-    if (press.current !== null) clearTimeout(press.current.timer);
-    press.current = null;
-  };
-  const longPressFired = useRef(false);
-  const longPress = compact
-    ? {
-        onTouchStart: (event: React.TouchEvent) => {
-          const touch = event.touches[0];
-          if (touch === undefined) return;
-          cancelPress();
-          longPressFired.current = false;
-          press.current = {
-            x: touch.clientX,
-            y: touch.clientY,
-            timer: setTimeout(() => {
-              press.current = null;
-              longPressFired.current = true;
-              swallowNextClick();
-              if (menuButton.current !== null) openMenu(menuButton.current);
-            }, LONG_PRESS_MS),
-          };
-        },
-        onTouchMove: (event: React.TouchEvent) => {
-          const touch = event.touches[0];
-          if (press.current === null || touch === undefined) return;
-          if (Math.hypot(touch.clientX - press.current.x, touch.clientY - press.current.y) > LONG_PRESS_TOLERANCE) {
-            cancelPress();
-          }
-        },
-        onTouchEnd: (event: React.TouchEvent) => {
-          cancelPress();
-          // The finger lifts over the drawer that just opened: without this,
-          // the click that follows would select the item under it.
-          if (longPressFired.current) event.preventDefault();
-        },
-        onTouchCancel: cancelPress,
-        onContextMenu: (event: React.MouseEvent) => event.preventDefault(),
-        style: { WebkitTouchCallout: "none" } as React.CSSProperties,
-      }
-    : {};
-
   // Desktop: the pointer and focus drive the hover card and bb's drag-to-split,
-  // and a right-click or the context-menu key opens the context menu.
+  // and the context-menu key or Shift+F10 opens bb's context menu at the row.
   const desktop = compact
     ? {}
     : {
@@ -182,17 +145,14 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
         },
         onPointerMove: (event: React.PointerEvent) => overlays.card.pointerMove(cardTarget(), event),
         onPointerLeave: () => overlays.card.pointerLeave(),
-        onContextMenu: (event: React.MouseEvent) => {
-          // The rename editor keeps the browser's own menu.
-          if (editing) return;
-          event.preventDefault();
-          overlays.openContextMenu(place, { x: event.clientX, y: event.clientY });
-        },
         onKeyDown: (event: React.KeyboardEvent) => {
           if (editing || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
           event.preventDefault();
+          // The context menu opens where a contextmenu event lands on its row.
           const box = element.current!.getBoundingClientRect();
-          overlays.openContextMenu(place, { x: box.left + 16, y: box.bottom });
+          element.current!.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + 16, clientY: box.bottom, button: 2 }),
+          );
         },
       };
 
@@ -227,288 +187,310 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
         };
 
   return (
-    <div
-      ref={element}
-      data-sidebar-rename-row=""
-      {...drag}
-      {...desktop}
-      onPointerDown={(event) => {
-        overlays.card.press();
-        if (!editing && !compact) overlays.forwardSplit(thread.id, event);
-      }}
-      onFocus={() => {
-        commands.focusRow(key);
-        if (!compact) overlays.card.focus(cardTarget());
-      }}
-      onBlur={(event) => {
-        if (element.current?.contains(event.relatedTarget as Node | null)) return;
-        commands.focusRow(null, key);
-        overlays.card.blur();
-      }}
-      {...longPress}
-      className={cn(
-        "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
-        THREAD_ROW_HEIGHT[density][twoLines ? "two" : "one"],
-        isActive
-          ? "bg-state-active text-sidebar-foreground"
-          : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        !isActive && menuOpen && "bg-sidebar-accent",
-        miniMap && !isActive && "bb-sidebar-open-in-split-row",
-        dragging && "opacity-50",
-      )}
-      style={{ paddingLeft: indent }}
-    >
-      <a
-        ref={anchor}
-        href={thread.href}
-        data-sidebar-thread-shortcut-target=""
-        data-sidebar-thread-id={thread.id}
-        data-sidebar-rename-anchor=""
-        aria-label={label}
-        aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
-        aria-current={isActive ? "page" : undefined}
-        onClick={onAnchorClick}
-        onDoubleClick={(event) => {
-          event.preventDefault();
-          commands.editTitle(thread.id);
+    <ThreadActionsContextMenu {...menu} disabled={editing} dragging={dragging}>
+      <div
+        ref={element}
+        data-sidebar-rename-row=""
+        {...drag}
+        {...desktop}
+        onPointerDown={(event) => {
+          overlays.card.press();
+          if (!editing && !compact) overlays.forwardSplit(thread.id, event);
         }}
-        className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-      />
-      <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
-        {stateSlot}
-      </span>
-      {row.nested ? (
-        // Tight against the title, and over the row's gap, so it adds 8px.
-        <span
-          aria-hidden
-          title={`Child of ${row.parentTitle ?? "a thread"}`}
-          className={cn(
-            "pointer-events-none relative -ml-[3px] -mr-px w-1.5 shrink-0 text-center text-[10px] leading-none text-muted-foreground",
-            // On two-line rows it sits beside the title, not between the lines.
-            twoLines && NESTED_MARK_TWO_LINES[density],
-          )}
-        >
-          ↳
-        </span>
-      ) : null}
-      {row.crossGroupLabel !== null ? (
-        <span
-          role="img"
-          aria-label={row.crossGroupLabel}
-          title={row.crossGroupLabel}
-          data-sidebar-thread-cross-project=""
-          className="pointer-events-none relative inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground"
-        >
-          <Icon name={ICONS.crossGroup} aria-hidden className="size-3.5" />
-        </span>
-      ) : null}
-      <span className="pointer-events-none relative flex min-w-0 flex-1 flex-col justify-center">
-        {editing ? (
-          <RenameEditor
-            initial={thread.displayTitle}
-            label="Thread name"
-            onSave={(title) => commands.renameThread(thread.id, title)}
-            onDone={() => {
-              commands.editTitle(null);
-              anchor.current?.focus();
-            }}
-          />
-        ) : (
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span
-              title={thread.displayTitle}
-              className={cn(
-                "min-w-0 truncate",
-                row.bold ? "font-semibold" : "font-normal",
-                // Quiet threads step back so live ones lead; hover brings them back.
-                dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
-              )}
-            >
-              {/* Plain text rather than mention pills, so the title truncates. */}
-              {thread.displayTitle}
-            </span>
-            {/* On a two-line row the badge stays on the title's line, not centred beside both. */}
-            {row.pullRequest === "title" && twoLines ? <PullRequestBadge threadId={thread.id} /> : null}
-          </span>
+        onFocus={() => {
+          commands.focusRow(key);
+          if (!compact) overlays.card.focus(cardTarget());
+        }}
+        onBlur={(event) => {
+          if (element.current?.contains(event.relatedTarget as Node | null)) return;
+          commands.focusRow(null, key);
+          overlays.card.blur();
+        }}
+        className={cn(
+          "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
+          THREAD_ROW_HEIGHT[density][twoLines ? "two" : "one"],
+          isActive
+            ? "bg-state-active text-sidebar-foreground"
+            : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          !isActive && menuOpen && "bg-sidebar-accent",
+          miniMap && !isActive && "bb-sidebar-open-in-split-row",
+          dragging && "opacity-50",
         )}
-        {!editing && note !== null ? (
-          <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
-            <NoteLine note={note} />
+        style={{ paddingLeft: indent }}
+      >
+        <a
+          ref={anchor}
+          href={thread.href}
+          data-sidebar-thread-shortcut-target=""
+          data-sidebar-thread-id={thread.id}
+          data-sidebar-rename-anchor=""
+          aria-label={label}
+          aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+          aria-current={isActive ? "page" : undefined}
+          onClick={onAnchorClick}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            commands.editTitle(thread.id);
+          }}
+          className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        />
+        <span className="pointer-events-none relative flex size-4 shrink-0 items-center justify-center">
+          {stateSlot}
+        </span>
+        {row.nested ? (
+          // Tight against the title, and over the row's gap, so it adds 8px.
+          <span
+            aria-hidden
+            title={`Child of ${row.parentTitle ?? "a thread"}`}
+            className={cn(
+              "pointer-events-none relative -ml-[3px] -mr-px w-1.5 shrink-0 text-center text-[10px] leading-none text-muted-foreground",
+              // On two-line rows it sits beside the title, not between the lines.
+              twoLines && NESTED_MARK_TWO_LINES[density],
+            )}
+          >
+            ↳
           </span>
-        ) : row.branchLine !== null && !editing ? (
-          <BranchLine row={row} branch={row.branchLine} />
         ) : null}
-      </span>
-      {row.hiddenBadge ? (
-        <span role="img" aria-label="Hidden thread" title="Hidden thread" className="pointer-events-none relative shrink-0 text-muted-foreground">
-          <Icon name={ICONS.hidden} aria-hidden className="size-3.5" />
-        </span>
-      ) : null}
-      {row.pullRequest === "title" && !twoLines && !editing ? (
-        <span className="pointer-events-none relative">
-          <PullRequestBadge threadId={thread.id} />
-        </span>
-      ) : null}
-      {!editing && (badgesShown || actionsShown) ? (
-        // One cell: the harness and machine at rest, Mark read and Archive
-        // on hover. The actions take no width at rest, so no title is
-        // shorter for them; on hover the title gives up only what they
-        // need beyond the badges they replace.
-        <span className="relative -ml-1.5 grid shrink-0 items-center">
-          {badgesShown ? (
-            <span className={cn("flex items-center gap-1.5 pl-1.5 [grid-area:1/1] transition-opacity", shortcut === null && fadeClass)}>
-              {row.harness ? (
-                <span className="pointer-events-none relative inline-flex shrink-0">
-                  <ProviderBadge display={provider} mode={harnessIcon} />
-                </span>
-              ) : null}
-              {showMachine ? (
-                <span
-                  title={`On ${row.machine}`}
-                  aria-label={`On ${row.machine}`}
-                  className="pointer-events-none max-w-20 truncate text-xs text-muted-foreground"
-                >
-                  {row.machine}
-                </span>
-              ) : null}
+        {row.crossGroupLabel !== null ? (
+          <span
+            role="img"
+            aria-label={row.crossGroupLabel}
+            title={row.crossGroupLabel}
+            data-sidebar-thread-cross-project=""
+            className="pointer-events-none relative inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground"
+          >
+            <Icon name={ICONS.crossGroup} aria-hidden className="size-3.5" />
+          </span>
+        ) : null}
+        <span className="pointer-events-none relative flex min-w-0 flex-1 flex-col justify-center">
+          {editing ? (
+            <RenameEditor
+              initial={thread.displayTitle}
+              label="Thread name"
+              onSave={(title) => commands.renameThread(thread.id, title)}
+              onDone={() => {
+                commands.editTitle(null);
+                anchor.current?.focus();
+              }}
+            />
+          ) : (
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span
+                title={thread.displayTitle}
+                className={cn(
+                  "min-w-0 truncate",
+                  row.bold ? "font-semibold" : "font-normal",
+                  // Quiet threads step back so live ones lead; hover brings them back.
+                  dimmed && `${QUIET_TEXT} group-hover/row:text-foreground`,
+                )}
+              >
+                {/* Plain text rather than mention pills, so the title truncates. */}
+                {thread.displayTitle}
+              </span>
+              {/* On a two-line row the badge stays on the title's line, not centred beside both. */}
+              {row.pullRequest === "title" && twoLines ? <PullRequestBadge threadId={thread.id} /> : null}
             </span>
+          )}
+          {!editing && note !== null ? (
+            <span className="min-w-0 truncate text-xs leading-4 text-muted-foreground" title={noteText(note)}>
+              <NoteLine note={note} />
+            </span>
+          ) : row.branchLine !== null && !editing ? (
+            <BranchLine row={row} branch={row.branchLine} />
           ) : null}
-          {actionsShown ? (
-            <span
-              className={cn(
-                "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
-                menuOpen ? "flex" : ROW_HOVER_LAYS_OUT,
-              )}
-            >
-              {row.treeUnread ? (
-                <button
-                  type="button"
-                  aria-label="Mark read"
-                  title="Mark read"
-                  data-no-drag=""
-                  className={ROW_ICON_BUTTON}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    commands.menuAction("mark-read", thread);
-                  }}
-                >
-                  <Icon name={ICONS.markRead} aria-hidden className="size-4" />
-                </button>
-              ) : null}
+        </span>
+        {row.hiddenBadge ? (
+          <span role="img" aria-label="Hidden thread" title="Hidden thread" className="pointer-events-none relative shrink-0 text-muted-foreground">
+            <Icon name={ICONS.hidden} aria-hidden className="size-3.5" />
+          </span>
+        ) : null}
+        {row.pullRequest === "title" && !twoLines && !editing ? (
+          <span className="pointer-events-none relative">
+            <PullRequestBadge threadId={thread.id} />
+          </span>
+        ) : null}
+        {!editing && (badgesShown || actionsShown) ? (
+          // One cell: the harness and machine at rest, Mark read and Archive
+          // on hover. The actions take no width at rest, so no title is
+          // shorter for them; on hover the title gives up only what they
+          // need beyond the badges they replace.
+          <span className="relative -ml-1.5 grid shrink-0 items-center">
+            {badgesShown ? (
+              <span className={cn("flex items-center gap-1.5 pl-1.5 [grid-area:1/1] transition-opacity", shortcut === null && fadeClass)}>
+                {row.harness ? (
+                  <span className="pointer-events-none relative inline-flex shrink-0">
+                    <ProviderBadge display={provider} mode={harnessIcon} />
+                  </span>
+                ) : null}
+                {showMachine ? (
+                  <span
+                    title={`On ${row.machine}`}
+                    aria-label={`On ${row.machine}`}
+                    className="pointer-events-none max-w-20 truncate text-xs text-muted-foreground"
+                  >
+                    {row.machine}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+            {actionsShown ? (
+              <span
+                className={cn(
+                  "items-center justify-self-end gap-0.5 pl-1.5 [grid-area:1/1]",
+                  menuOpen ? "flex" : ROW_HOVER_LAYS_OUT,
+                )}
+              >
+                {markRead !== undefined ? (
+                  <button
+                    type="button"
+                    aria-label="Mark read"
+                    title="Mark read"
+                    data-no-drag=""
+                    className={ROW_ICON_BUTTON}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void markRead.action.run();
+                    }}
+                  >
+                    <Icon name={markRead.action.icon} aria-hidden className="size-4" />
+                  </button>
+                ) : null}
+                {archive !== undefined ? (
+                  <button
+                    type="button"
+                    aria-label={archived ? "Unarchive thread" : "Archive thread"}
+                    title={archive.action.label}
+                    data-no-drag=""
+                    className={ROW_ICON_BUTTON}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void archive.action.run();
+                    }}
+                  >
+                    <Icon name={archive.action.icon} aria-hidden className="size-4" />
+                  </button>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
+        {!editing ? (
+          // The chip sits 4px before the trailing slot, whose width never
+          // changes, so hover never moves it.
+          <span className="relative flex shrink-0 items-center gap-1">
+            {chip !== null ? (
               <button
                 type="button"
-                aria-label={archived ? "Unarchive thread" : "Archive thread"}
-                title={archived ? "Unarchive" : "Archive"}
+                aria-expanded={chip.expanded}
+                aria-label={chipLabel(thread.displayTitle, chip)}
+                title={chipLabel(thread.displayTitle, chip)}
                 data-no-drag=""
-                className={ROW_ICON_BUTTON}
-                onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  commands.menuAction(archived ? "unarchive" : "archive", thread);
+                  commands.toggleChip(row);
                 }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                className={cn(
+                  "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-xs leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  chip.flag === null
+                    ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
+                    : TONE_CLASS[chipTone(chip.flag)],
+                )}
               >
-                <Icon name={archived ? ICONS.unarchive : ICONS.archive} aria-hidden className="size-4" />
+                {chip.flag !== null ? <ChipStateGlyph flag={chip.flag} /> : null}
+                {chip.count > 0 ? chip.count : null}
+                <Icon
+                  name={ICONS.expand}
+                  aria-hidden
+                  className={cn("size-3 transition-transform duration-150", chip.expanded && "rotate-90")}
+                />
               </button>
-            </span>
-          ) : null}
-        </span>
-      ) : null}
-      {!editing ? (
-        // The chip sits 4px before the trailing slot, whose width never
-        // changes, so hover never moves it.
-        <span className="relative flex shrink-0 items-center gap-1">
-          {chip !== null ? (
-            <button
-              type="button"
-              aria-expanded={chip.expanded}
-              aria-label={chipLabel(thread.displayTitle, chip)}
-              title={chipLabel(thread.displayTitle, chip)}
-              data-no-drag=""
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                commands.toggleChip(row);
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
-              className={cn(
-                "pointer-events-auto relative z-10 inline-flex h-5 shrink-0 items-center gap-0.5 rounded-md px-0.5 text-xs leading-none tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                chip.flag === null
-                  ? cn("text-muted-foreground hover:text-foreground", dimmed && QUIET_TEXT)
-                  : TONE_CLASS[chipTone(chip.flag)],
-              )}
-            >
-              {chip.flag !== null ? <ChipStateGlyph flag={chip.flag} /> : null}
-              {chip.count > 0 ? chip.count : null}
-              <Icon
-                name={ICONS.expand}
-                aria-hidden
-                className={cn("size-3 transition-transform duration-150", chip.expanded && "rotate-90")}
-              />
-            </button>
-          ) : null}
-          {/* The trailing slot: one grid cell, as wide as "…" or the widest
-              time, whichever is wider, holding the time at rest and "…" on hover. */}
-          <span data-trailing-slot="" className="relative grid h-6 shrink-0 items-center">
-            <span aria-hidden className="invisible w-6 [grid-area:1/1]" />
-            {TRAILING_SLOT_SIZERS.map((text) => (
-              <span key={text} aria-hidden className="invisible text-xs font-medium tabular-nums [grid-area:1/1]">
-                {text}
-              </span>
-            ))}
-            {shortcut !== null ? (
-              <kbd aria-hidden className="pointer-events-none justify-self-end rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted-foreground [grid-area:1/1]">
-                {shortcut.label}
-              </kbd>
-            ) : (
-              <>
-                {time !== null ? (
+            ) : null}
+            {/* The trailing slot: one grid cell, as wide as "…" or the widest
+                time, whichever is wider, holding the time at rest and "…" on hover. */}
+            <span data-trailing-slot="" className="relative grid h-6 shrink-0 items-center">
+              <span aria-hidden className="invisible w-6 [grid-area:1/1]" />
+              {TRAILING_SLOT_SIZERS.map((text) => (
+                <span key={text} aria-hidden className="invisible text-xs font-medium tabular-nums [grid-area:1/1]">
+                  {text}
+                </span>
+              ))}
+              {shortcut !== null ? (
+                <kbd aria-hidden className="pointer-events-none justify-self-end rounded border border-border px-1 font-sans text-[10px] leading-4 text-muted-foreground [grid-area:1/1]">
+                  {shortcut.label}
+                </kbd>
+              ) : (
+                <>
+                  {time !== null ? (
+                    <span
+                      title={time.label}
+                      aria-label={time.label}
+                      className={cn(
+                        "pointer-events-none justify-self-end text-xs tabular-nums transition-opacity [grid-area:1/1]",
+                        // A running timer reads as work, an age as history.
+                        time.kind === "timer" ? "font-medium text-[var(--timeline-accent)]" : "text-muted-foreground",
+                        fadeClass,
+                      )}
+                    >
+                      {time.text}
+                    </span>
+                  ) : null}
                   <span
-                    title={time.label}
-                    aria-label={time.label}
                     className={cn(
-                      "pointer-events-none justify-self-end text-xs tabular-nums transition-opacity [grid-area:1/1]",
-                      // A running timer reads as work, an age as history.
-                      time.kind === "timer" ? "font-medium text-[var(--timeline-accent)]" : "text-muted-foreground",
-                      fadeClass,
+                      "flex items-center justify-self-end transition-opacity [grid-area:1/1]",
+                      compact
+                        ? "relative"
+                        : menuOpen
+                          ? "opacity-100"
+                          : ROW_HOVER_SHOWS,
                     )}
                   >
-                    {time.text}
+                    <ThreadActionsMenu
+                      {...menu}
+                      side="right"
+                      align="start"
+                      sideOffset={8}
+                      trigger={(props) => <MenuButton {...props} compact={compact} />}
+                    />
                   </span>
-                ) : null}
-                <span
-                  className={cn(
-                    "flex items-center justify-self-end transition-opacity [grid-area:1/1]",
-                    compact
-                      ? "relative"
-                      : menuOpen
-                        ? "opacity-100"
-                        : ROW_HOVER_SHOWS,
-                  )}
-                >
-                  <button
-                    ref={menuButton}
-                    type="button"
-                    aria-label="Thread actions"
-                    {...trigger}
-                    // Phones open the menu by long-press, as bb's lists do;
-                    // the button stays for keyboards and screen readers.
-                    className={compact ? "sr-only" : ROW_ICON_BUTTON}
-                  >
-                    <Icon name={ICONS.more} aria-hidden className="size-4" />
-                  </button>
-                </span>
-              </>
-            )}
+                </>
+              )}
+            </span>
           </span>
-        </span>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
+    </ThreadActionsContextMenu>
   );
 });
+
+/**
+ * The "…" button bb's thread menu opens from. Phones open the menu by
+ * long-press, as bb's lists do; the button stays for keyboards and screen
+ * readers. A press opens the menu and nothing under it: no drag, no split.
+ */
+function MenuButton({ compact, onPointerDown, className, ...props }: PluginThreadActionsTriggerProps & { compact: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label="Thread actions"
+      data-no-drag=""
+      {...props}
+      onPointerDown={(event) => {
+        onPointerDown?.(event);
+        event.stopPropagation();
+      }}
+      className={cn(className, compact ? "sr-only" : ROW_ICON_BUTTON)}
+    >
+      <Icon name={ICONS.more} aria-hidden className="size-4" />
+    </button>
+  );
+}
 
 /** The branch line: the branch, then its pull request badge. */
 function BranchLine({ row, branch }: { row: ThreadRow; branch: string }) {

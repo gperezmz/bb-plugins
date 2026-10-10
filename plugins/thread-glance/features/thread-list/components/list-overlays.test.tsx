@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
-// The list's one menu, context menu, hover card and drag, driven as a person
-// does: rows are plain elements, every row's overlay is the list's, and rows
-// keep their DOM nodes through what changes around them.
+// A row's menus, which are bb's own with Thread Glance's items added, and the
+// list's hover card and drag, driven as a person does: rows keep their DOM
+// nodes through what changes around them.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { createFakeServer, finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
+import { coreThreadActions, createFakeServer, finishedUnread, makeThread, PROJECTS, T0 } from "../testing/fixtures";
 
 // The SDK's fake drag-to-split hook records nothing; this one notes the thread each press is handed to.
 const splitPresses: string[] = [];
@@ -100,7 +100,7 @@ const rowOf = async (title: string) => (await link(title)).parentElement!;
 const menuNames = () => within(screen.getByRole("menu")).getAllByRole("menuitem").map((item) => item.textContent);
 
 describe("rows are plain elements", () => {
-  it("mounts no menu, context menu or hover card per row, and marks no row, wrapper or header disabled or draggable", async () => {
+  it("puts each thread row in bb's own context menu for its thread, and marks no row, wrapper or header disabled or draggable", async () => {
     render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta", parentThreadId: "a" })], {
       prefs: { expandedChildren: ["a"] },
     });
@@ -110,8 +110,8 @@ describe("rows are plain elements", () => {
       expect(element.getAttribute("aria-roledescription")).toBeNull();
       expect(element.getAttribute("role")).toBeNull();
     }
-    // One trigger for the list's context menu; none per row.
-    expect(document.querySelectorAll("[data-sidebar-context-menu-trigger]")).toHaveLength(1);
+    const menus = [...document.querySelectorAll("[data-testid='bb-thread-actions-context-menu']")].map((menu) => menu.getAttribute("data-thread-id"));
+    expect(menus).toEqual(["a", "b"]);
   });
 
   it("marks nothing disabled or draggable on a phone either", async () => {
@@ -121,106 +121,69 @@ describe("rows are plain elements", () => {
   });
 });
 
-describe("the row menu", () => {
-  const sections: PluginSidebarSection[] = [{ id: "sec_1", name: "Later" } as PluginSidebarSection];
-  const holder = makeThread({ id: "h", title: "Holder" });
-  const kinds = [
-    {
-      name: "a root",
-      thread: makeThread({ id: "r", title: "Root" }),
-      others: [],
-      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
-    },
-    {
-      name: "an unread root",
-      thread: makeThread({ id: "r", title: "Root", ...finishedUnread }),
-      others: [],
-      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark read", "Pin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
-    },
-    {
-      name: "a pinned root",
-      thread: makeThread({ id: "r", title: "Root", pinnedAt: T0, isPinned: true }),
-      others: [],
-      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Unpin", "Move to section", "Move…", "Rename", "Archive", "Delete"],
-    },
-    {
-      name: "a hidden child waiting on you",
-      thread: makeThread({ id: "r", title: "Root", parentThreadId: "h", isHidden: true, hasPendingInteraction: true }),
-      others: [holder],
-      items: ["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "Archive", "Delete"],
-    },
-  ];
+describe("the row menus", () => {
+  const BB_ITEMS = ["Open in split", "Copy thread link", "Mark unread", "Pin", "Rename", "Archive", "Delete"];
+  const openMenu = async (title: string) => {
+    fireEvent.click(within(await rowOf(title)).getByRole("button", { name: "Thread actions" }));
+    return screen.findByRole("menu");
+  };
+  const closeMenu = () => fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Copy thread link" }));
 
-  it.each(kinds.flatMap((kind) => [false, true].map((phone) => ({ ...kind, phone }))))(
-    "offers these items for $name, phone $phone",
-    async ({ thread, others, items, phone }) => {
-      render([thread, ...others, makeThread({ id: "o", title: "Other" })], { props: { isCompactViewport: phone }, sections });
-      const row = await rowOf("Root");
-      const trigger = within(row).getByRole("button", { name: "Thread actions" });
-      if (phone) {
-        fireEvent.pointerDown(trigger, { button: 0, pointerType: "touch" });
-        fireEvent.click(trigger);
-      } else fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-      await screen.findByRole("menuitem", { name: "Details" });
-      expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(items);
-    },
-  );
+  it("lists bb's own items, then Details, Copy thread ID and Move…, from the \u2026 button and from a right-click", async () => {
+    render([makeThread({ id: "a", title: "Alpha" })], { extra: { threadActions: coreThreadActions() } });
+    await openMenu("Alpha");
+    expect(menuNames()).toEqual([...BB_ITEMS, "Details", "Copy thread ID", "Move…"]);
+    closeMenu();
+    fireEvent.contextMenu(await rowOf("Alpha"), { clientX: 20, clientY: 20, button: 2 });
+    await screen.findByRole("menu");
+    expect(menuNames()).toEqual([...BB_ITEMS, "Details", "Copy thread ID", "Move…"]);
+  });
 
-  it("offers a child row's items, and an archived thread's without Move", async () => {
+  it("offers Mark tree read on a root with an unread thread below it, not on the thread itself, and leaves Move… out on an archived thread", async () => {
     render(
       [
         makeThread({ id: "p", title: "Parent" }),
-        makeThread({ id: "c", title: "Child", parentThreadId: "p" }),
-        makeThread({ id: "a", title: "Shelved", archivedAt: T0, isArchived: true }),
+        makeThread({ id: "c", title: "Child", parentThreadId: "p", ...finishedUnread }),
+        makeThread({ id: "s", title: "Shelved", archivedAt: T0, isArchived: true }),
       ],
-      { prefs: { expandedChildren: ["p"], showArchived: true }, sections },
+      { prefs: { expandedChildren: ["p"], showArchived: true } },
     );
-    const child = await rowOf("Child");
-    fireEvent.pointerDown(within(child).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
-    await screen.findByRole("menuitem", { name: "Details" });
-    expect(menuNames()).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Move…", "Rename", "Archive", "Delete"]);
+    await openMenu("Parent");
+    expect(menuNames()).toEqual(["Details", "Copy thread ID", "Mark tree read", "Move…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Details" }));
     fireEvent.keyDown(document.body, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    const archived = await rowOf("Shelved");
-    fireEvent.pointerDown(within(archived).getByRole("button", { name: "Thread actions" }), { button: 0, pointerType: "mouse" });
-    await screen.findByRole("menuitem", { name: "Details" });
-    expect(menuNames()).toEqual(["Details", "Open in split", "Copy thread link", "Copy thread ID", "Mark unread", "Pin", "Rename", "Unarchive", "Delete"]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await openMenu("Child");
+    expect(menuNames()).toEqual(["Details", "Copy thread ID", "Move…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Details" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await openMenu("Shelved");
+    expect(menuNames()).toEqual(["Details", "Copy thread ID"]);
   });
 
-  it("returns focus to the \"…\" button when closed with Escape, and anchors to it", async () => {
-    render([makeThread({ id: "a", title: "Alpha" })]);
-    const row = await rowOf("Alpha");
-    const trigger = within(row).getByRole("button", { name: "Thread actions" });
-    act(() => trigger.focus());
-    fireEvent.keyDown(document.body, { key: "Tab" });
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    const menu = await screen.findByRole("menu");
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.keyDown(menu, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(trigger));
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  it("hands bb the thread as bb's actions read it", async () => {
+    const seen: unknown[] = [];
+    render([makeThread({ id: "a", title: "Alpha", pinnedAt: T0, isPinned: true, sectionId: "sec_1", environment: { id: "env_1", path: "/w" }, ...finishedUnread })], {
+      extra: { threadActions: (thread: unknown) => (seen.push(thread), []) },
+    });
+    await openMenu("Alpha");
+    expect(seen.at(-1)).toMatchObject({ id: "a", pinnedAt: T0, sectionId: "sec_1", archivedAt: null, parentThreadId: null, environment: { id: "env_1", path: "/w" } });
   });
 
-  it("starts the rename editor with focus in it after Rename closes the menu", async () => {
-    render([makeThread({ id: "a", title: "Alpha" })]);
-    const row = await rowOf("Alpha");
-    const trigger = within(row).getByRole("button", { name: "Thread actions" });
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    const rename = await screen.findByRole("menuitem", { name: "Rename" });
-    fireEvent.keyDown(rename, { key: "Enter" });
-    fireEvent.click(rename);
+  it("starts the rename editor with focus in it for bb's Rename, and closes the context menu while it edits", async () => {
+    render([makeThread({ id: "a", title: "Alpha" })], { extra: { threadActions: coreThreadActions() } });
+    await openMenu("Alpha");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const editor = await screen.findByRole("textbox", { name: "Thread name" });
     await waitFor(() => expect(document.activeElement).toBe(editor));
+    expect(document.querySelector("[data-testid='bb-thread-actions-context-menu']")?.getAttribute("data-disabled")).toBe("true");
   });
 
   it("keeps the rename editor when the menu that started it focuses itself while it animates closed", async () => {
-    render([makeThread({ id: "a", title: "Alpha" })]);
-    const row = await rowOf("Alpha");
-    fireEvent.keyDown(within(row).getByRole("button", { name: "Thread actions" }), { key: "Enter" });
-    const rename = await screen.findByRole("menuitem", { name: "Rename" });
-    fireEvent.keyDown(rename, { key: "Enter" });
-    fireEvent.click(rename);
+    render([makeThread({ id: "a", title: "Alpha" })], { extra: { threadActions: coreThreadActions() } });
+    await openMenu("Alpha");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const editor = await screen.findByRole("textbox", { name: "Thread name" });
     await waitFor(() => expect(document.activeElement).toBe(editor));
     // bb animates its menus out; Radix focuses one as the pointer leaves its items meanwhile.
@@ -250,47 +213,16 @@ describe("the row menu", () => {
     await waitFor(() => expect(document.activeElement).toBe(editor));
   });
 
-  it("opens the row's menu as a drawer on a long press on a phone, choosing nothing on release, and not after a 10 px move", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    render([makeThread({ id: "a", title: "Alpha" })], { props: { isCompactViewport: true } });
-    const row = await rowOf("Alpha");
-    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
-    fireEvent.touchMove(row, { touches: [{ clientX: 10, clientY: 22 }] });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(800);
-    });
-    expect(screen.queryByRole("menuitem", { name: "Details" })).toBeNull();
-    fireEvent.touchEnd(row);
-    fireEvent.touchStart(row, { touches: [{ clientX: 10, clientY: 10 }] });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(750);
-    });
-    const details = await screen.findByRole("menuitem", { name: "Details" });
-    fireEvent.touchEnd(row);
-    fireEvent.click(details);
-    expect(screen.queryByRole("dialog", { name: /Alpha/ })).toBeNull();
-  });
-});
-
-describe("the context menu", () => {
   it.each([
     ["the context-menu key", { key: "ContextMenu" }],
     ["Shift+F10", { key: "F10", shiftKey: true }],
-  ])("opens with %s on a focused row, with a right-click's items, and returns focus to the row", async (_name, keys) => {
-    render([makeThread({ id: "k", title: "Keyed", ...finishedUnread })]);
+  ])("opens bb's context menu with %s on a focused row", async (_name, keys) => {
+    render([makeThread({ id: "k", title: "Keyed" })], { extra: { threadActions: coreThreadActions() } });
     const anchor = await link("Keyed");
-    fireEvent.contextMenu(anchor.parentElement!, { clientX: 20, clientY: 20, button: 2 });
-    await screen.findByRole("menuitem", { name: "Mark read" });
-    const byPointer = menuNames();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     act(() => anchor.focus());
     fireEvent.keyDown(anchor, keys);
-    await screen.findByRole("menuitem", { name: "Mark read" });
-    expect(menuNames()).toEqual(byPointer);
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(anchor));
+    await screen.findByRole("menu");
+    expect(menuNames()).toEqual([...BB_ITEMS, "Details", "Copy thread ID", "Move…"]);
   });
 });
 

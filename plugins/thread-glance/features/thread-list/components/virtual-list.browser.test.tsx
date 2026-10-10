@@ -10,7 +10,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarSection, PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import type { Preferences } from "@/shared/preferences";
-import { createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
+import { coreThreadActions, createFakeServer, makeThread, PROJECTS } from "../testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -81,6 +81,7 @@ async function render(
     // The fixtures' threads are months old by the real clock: nothing settles unless a test asks.
     rpc: createFakeServer({ preferences: { settleAfter: "never", ...prefs } }).handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections },
+    threadActions: coreThreadActions(),
     providers: { status: "ready", providers: [{ id: "claude-code", displayName: "Claude Code", logoUrl: null }] as never },
     sdk: {
       threads: {
@@ -199,31 +200,17 @@ describe("scrolling a windowed list", () => {
     expect(document.activeElement).toBe(anchorOf("t26"));
   });
 
-  it("keeps the row an open menu belongs to mounted, with the menu anchored to it", async () => {
+  it("keeps the row an open menu belongs to mounted however far the list scrolls", async () => {
     await render(many(200), { height: 500 });
-    const row = anchorOf("t28")!.parentElement!;
-    const trigger = within(row).getByRole("button", { name: "Thread actions" });
-    trigger.focus();
-    await userEvent.keyboard("{Enter}");
-    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(anchorOf("t28")!.parentElement!).getByRole("button", { name: "Thread actions" }));
+    await screen.findByRole("menu");
     window.scrollTo(0, 3_000);
     await frames();
     await frames();
     await sleep(50);
     expect(anchorOf("t28")).not.toBeNull();
     expect(anchorOf("t40")).toBeNull();
-    const button = trigger.getBoundingClientRect();
-    const content = menu.getBoundingClientRect();
-    // Radix places it below or above its anchor, 4 px off.
-    expect(Math.min(Math.abs(content.top - button.bottom), Math.abs(content.bottom - button.top))).toBeLessThan(6);
-    // Closed from the keyboard far from its row, focus still returns to the row's "…".
-    window.scrollTo(0, 5_000);
-    await frames();
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-    await frames();
-    await sleep(100);
-    expect(document.activeElement).toBe(within(anchorOf("t28")!.parentElement!).getByRole("button", { name: "Thread actions" }));
+    expect(screen.getByRole("menu")).toBeTruthy();
   });
 
   it("keeps the dragged row mounted while the list scrolls, and the drag goes on to its drop", async () => {
@@ -344,24 +331,6 @@ describe("the one drag", () => {
     await userEvent.keyboard("{Enter}");
     expect(navigated).toBe(1);
     expect(rowOf("a").className).not.toMatch(/opacity-50/);
-  });
-});
-
-describe("a phone's row menu", () => {
-  it("opens as a drawer with sections, listing Move to section's targets under it, and moves the thread", async () => {
-    const sections: PluginSidebarSection[] = [{ id: "sec_1", name: "Later" } as PluginSidebarSection];
-    const slot = await render([makeThread({ id: "a", title: "Alpha" })], {
-      width: 390,
-      prefs: { organizationMode: "chronological" },
-      sections,
-      listProps: { isCompactViewport: true },
-    });
-    fireEvent.click(within(anchorOf("a")!.parentElement!).getByRole("button", { name: "Thread actions" }));
-    const later = await screen.findByRole("menuitem", { name: "Later" });
-    expect(screen.getByRole("group", { name: "Move to section" })).toBeTruthy();
-    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toContain("Details");
-    fireEvent.click(later);
-    await waitFor(() => expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "threads.update", args: [{ threadId: "a", sectionId: "sec_1" }] })));
   });
 });
 

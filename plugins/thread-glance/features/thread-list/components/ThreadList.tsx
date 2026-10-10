@@ -25,9 +25,10 @@ import { createCommands } from "../commands/commands";
 import { useIdleReporter } from "../data/useIdleReporter";
 import { lookUpDefaultBranches, lookUpSystem } from "../sync";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
-import { actionTargetOf } from "../model/menu";
+import { actionTargetOf } from "../model/thread-target";
 import { moveTargets } from "../model/move";
-import { createListStore, type ThreadActionRequest } from "../store/api";
+import type { ThreadInfo } from "../model/trees";
+import { createListStore } from "../store/api";
 import {
   ListContext,
   useArchived,
@@ -42,7 +43,6 @@ import {
   useMoreCounters,
   useMoreIds,
   useProbeId,
-  useThreadActionRequest,
   useShowArchivedOf,
   type ListHandle,
 } from "../store/hooks";
@@ -52,10 +52,9 @@ import { CounterStrip } from "./glyphs";
 import { useInputModality } from "./input-modality";
 import { ListHeader } from "./ListHeader";
 import { CardHost } from "./overlays/CardHost";
-import { ContextMenuHost } from "./overlays/ContextMenuHost";
 import { GroupMenuHost } from "./overlays/GroupMenuHost";
 import { createOverlays, OverlaysContext, useOverlays, type Overlays } from "./overlays/overlays";
-import { RowMenuHost } from "./overlays/RowMenuHost";
+import { EnvironmentMenuHost } from "./overlays/EnvironmentMenuHost";
 import { ThreadDetails } from "./ThreadDetails";
 import { VirtualGroups } from "./virtual/VirtualGroups";
 
@@ -182,12 +181,10 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
       </DragLayer>
       <ArchivedFooter />
       <ListDialogs />
-      <RowMenuHost />
+      <EnvironmentMenuHost />
       <GroupMenuHost />
-      <ContextMenuHost />
       <CardHost />
       <SplitProbe />
-      <ThreadActionRunner />
     </div>
   );
 });
@@ -206,28 +203,23 @@ function SplitProbe() {
   return null;
 }
 
-/**
- * Runs the archive or delete a person asked for through bb's own thread
- * action, which confirms first where child threads go with it. Only a hook
- * reaches bb's actions, so the request mounts `RunThreadAction` for its thread.
- */
-function ThreadActionRunner() {
+/** The details dialog's content: Open, and bb's own Mark read or Mark unread. */
+function DialogDetails({ info }: { info: ThreadInfo }) {
   const commands = useCommands();
-  const request = useThreadActionRequest();
-  if (request === null) return null;
-  return <RunThreadAction key={request.id} request={request} onDone={commands.finishThreadAction} />;
+  const [read] = useThreadActions(actionTargetOf(info.thread), { keys: DETAILS_ACTION_KEYS });
+  return (
+    <ThreadDetails
+      info={info}
+      showPullRequest
+      actions={{
+        open: () => commands.openFromDetails(info.thread.id),
+        read: read === undefined ? null : { label: read.action.label, icon: read.action.icon, run: () => void read.action.run() },
+      }}
+    />
+  );
 }
 
-function RunThreadAction({ request, onDone }: { request: ThreadActionRequest; onDone(): void }) {
-  const [entry] = useThreadActions(actionTargetOf(request.thread), { keys: [`bb--core/${request.action}`] });
-  const ran = useRef(false);
-  useEffect(() => {
-    if (entry === undefined || ran.current) return;
-    ran.current = true;
-    void entry.action.run().finally(onDone);
-  }, [entry, onDone]);
-  return null;
-}
+const DETAILS_ACTION_KEYS = ["bb--core/read"];
 
 /** Every group, the hidden ones in More. */
 function Groups() {
@@ -329,14 +321,7 @@ function ListDialogs() {
       />
       {details !== null ? (
         <DetailsDialog title={details.thread.displayTitle} onOpenChange={(open) => !open && commands.closeDetails()}>
-          <ThreadDetails
-            info={details}
-            showPullRequest
-            actions={{
-              open: () => commands.openFromDetails(details.thread.id),
-              toggleRead: () => commands.menuAction(details.unread ? "mark-read" : "mark-unread", details.thread),
-            }}
-          />
+          <DialogDetails info={details} />
         </DetailsDialog>
       ) : null}
       {moveThread !== null ? (

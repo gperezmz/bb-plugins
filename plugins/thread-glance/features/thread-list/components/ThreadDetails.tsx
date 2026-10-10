@@ -54,7 +54,8 @@ function PullRequestLine({ threadId }: { threadId: string }) {
 
 export interface DetailsActions {
   open(): void;
-  toggleRead(): void;
+  /** bb's own Mark read or Mark unread for the thread, where bb offers it. */
+  read: { label: string; icon: string; run(): void } | null;
 }
 
 export function ThreadDetails({
@@ -134,10 +135,12 @@ export function ThreadDetails({
             <Icon name={ICONS.open} aria-hidden />
             Open
           </Button>
-          <Button size="sm" variant="outline" onClick={actions.toggleRead}>
-            <Icon name={info.unread ? ICONS.markRead : ICONS.markUnread} aria-hidden />
-            {info.unread ? "Mark read" : "Mark unread"}
-          </Button>
+          {actions.read !== null ? (
+            <Button size="sm" variant="outline" onClick={actions.read.run}>
+              <Icon name={actions.read.icon} aria-hidden />
+              {actions.read.label}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

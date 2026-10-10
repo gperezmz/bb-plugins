@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Mark all read and Mark read on a thread tree: every thread they mark shows
+// Mark all read and Mark tree read: every thread they mark shows
 // read in the click's own commit, and bb is sent the reads behind it, six at
 // a time, on a fake host, which holds reads until the test releases them,
 // fails a read, and changes a thread while its read is pending. Once the list
@@ -126,25 +126,19 @@ it("shows a group's threads read in the click's commit, from its menu, and no ot
   expect(reads(slot)).toEqual(beta.map((thread) => thread.id).sort());
 });
 
-it("shows a tree read in the click's commit, from the root's hover action and from its menu", async () => {
-  const tree = () => [makeThread({ id: "r", title: "Root" }), unread("c", { parentThreadId: "r", createdAt: T0 + 1 }), unread("d", { parentThreadId: "r", createdAt: T0 + 2 })];
-  const { host, slot } = await open(tree());
-  const row = screen.getByRole("link", { name: /Open Root/ }).parentElement!;
+async function markTreeRead(title: string): Promise<void> {
+  const row = screen.getByRole("link", { name: new RegExp(`Open ${title}\\b`) }).parentElement!;
+  await click(within(row).getByRole("button", { name: "Thread actions" }));
+  await click(screen.getByRole("menuitem", { name: "Mark tree read" }));
+}
+
+it("shows a tree read in the click's commit, from Mark tree read in the root's menu", async () => {
+  const { host, slot } = await open([makeThread({ id: "r", title: "Root" }), unread("c", { parentThreadId: "r", createdAt: T0 + 1 }), unread("d", { parentThreadId: "r", createdAt: T0 + 2 })]);
   expect(unreadBelow()).not.toBeNull();
-  await click(within(row).getByRole("button", { name: "Mark read" }));
+  await markTreeRead("Root");
   expect(unreadBelow()).toBeNull();
   await release(host);
   expect(reads(slot)).toEqual(["c", "d"]);
-  vi.useRealTimers();
-  cleanup();
-
-  const again = await open(tree());
-  const menuRow = screen.getByRole("link", { name: /Open Root/ }).parentElement!;
-  await openMenu(within(menuRow).getByRole("button", { name: "Thread actions" }));
-  await click(screen.getByRole("menuitem", { name: "Mark read" }));
-  expect(unreadBelow()).toBeNull();
-  await release(again.host);
-  expect(reads(again.slot)).toEqual(["c", "d"]);
 });
 
 it("sends at most six reads at once, one per counted thread, and marks done-unseen child threads seen in one request", async () => {
@@ -220,13 +214,12 @@ it("shows a thread whose read fails unread again, silently from Mark all read", 
   expect(toast.error).not.toHaveBeenCalled();
 });
 
-it("shows one Couldn't mark read toast per failed thread from Mark read on a tree, each shown unread again", async () => {
+it("shows one Couldn't mark read toast per failed thread from Mark tree read, each shown unread again", async () => {
   const { host } = await open(
     [makeThread({ id: "r", title: "Root" }), unread("c", { parentThreadId: "r", createdAt: T0 + 1 }), unread("d", { parentThreadId: "r", createdAt: T0 + 2 }), unread("e", { parentThreadId: "r", createdAt: T0 + 3 })],
     { failRead: (id) => id !== "c" },
   );
-  const row = screen.getByRole("link", { name: /Open Root/ }).parentElement!;
-  await click(within(row).getByRole("button", { name: "Mark read" }));
+  await markTreeRead("Root");
   expect(unreadBelow()).toBeNull();
   await release(host);
   expect(toast.error.mock.calls.map(([message]) => message)).toEqual(["Couldn't mark read", "Couldn't mark read"]);
@@ -245,21 +238,4 @@ it("shows a thread unread once bb says a new turn finished while its read was pe
   expect(rowLabel("U1")).toMatch(UNREAD);
   expect(rowLabel("U2")).not.toMatch(UNREAD);
   await release(host);
-});
-
-it("sends no queued read for a thread marked unread meanwhile, and shows it unread", async () => {
-  const threads = Array.from({ length: 8 }, (_, n) => unread(`m${n}`));
-  const { host, slot } = await open(threads);
-  await click(screen.getByRole("button", { name: "Mark all read" }));
-  // Six reads are held in flight; the other two wait. Mark one of them unread.
-  expect(reads(slot)).toHaveLength(6);
-  const queued = threads.find((thread) => !reads(slot).includes(thread.id))!;
-  const row = screen.getByRole("link", { name: new RegExp(`Open ${queued.displayTitle}\\b`) }).parentElement!;
-  await openMenu(within(row).getByRole("button", { name: "Thread actions" }));
-  await click(screen.getByRole("menuitem", { name: "Mark unread" }));
-  expect(rowLabel(queued.displayTitle)).toMatch(UNREAD);
-  await release(host);
-  expect(reads(slot)).not.toContain(queued.id);
-  expect(reads(slot)).toHaveLength(7);
-  expect(rowLabel(queued.displayTitle)).toMatch(UNREAD);
 });

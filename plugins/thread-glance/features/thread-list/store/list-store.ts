@@ -12,7 +12,6 @@ import type {
   PluginBrowserBbSdk,
   PluginRpcClient,
   PluginSidebarSection,
-  PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import type { RpcContract } from "@/shared/contract";
@@ -47,15 +46,6 @@ interface Confirm {
   run(): void;
 }
 
-/** A thread action of bb's own that only a hook can run, asked for until `ThreadActionRunner` has run it. */
-export interface ThreadActionRequest {
-  /** Tells two requests for one thread and action apart. */
-  id: number;
-  thread: PluginSidebarThread;
-  /** The action's id among bb's own thread actions. */
-  action: "archive" | "delete";
-}
-
 /** A row as the list draws it: its group, and its key within the group. */
 export interface RowPlace {
   groupId: string;
@@ -63,14 +53,13 @@ export interface RowPlace {
 }
 
 /**
- * The one menu open in the list, and the row or group it belongs to. The
- * "…" menus anchor to the button that opened them; a context menu opens at
- * a point.
+ * The one menu open in the list, and the row or group it belongs to. A
+ * thread row's menus are bb's own, drawn by the row, which reports them open
+ * here; the list's own "…" menus anchor to the button that opened them.
  */
 export type OpenMenu =
-  | (RowPlace & { kind: "row"; threadId: string; anchor: HTMLElement })
+  | (RowPlace & { kind: "thread"; threadId: string })
   | (RowPlace & { kind: "environment"; anchor: HTMLElement })
-  | (RowPlace & { kind: "context"; threadId: string })
   | { kind: "group"; groupId: string; anchor: HTMLElement };
 
 /** The row whose hover card is open, anchored to it. */
@@ -107,7 +96,6 @@ export interface ListUi {
   probeId: string | null;
   /** bb offers splits here: rows offer Open in split, and Ctrl or Cmd+click opens one. */
   splitAvailable: boolean;
-  threadAction: ThreadActionRequest | null;
 }
 
 /** How every row is drawn: one object, the same while none of it changes. */
@@ -227,7 +215,6 @@ const CLOSED_UI: ListUi = {
   focusKey: null,
   probeId: null,
   splitAvailable: false,
-  threadAction: null,
 };
 
 /** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */
