@@ -1,6 +1,6 @@
 # Thread Glance
 
-A sidebar thread list for [bb](https://getbb.app). It keeps everything bb's own list does, and shows at a glance each thread's state, the harness that runs it, and what its child threads are doing, without the child threads taking over the list. A thread tree with a thread only you can move forward stays in its group, drawn even when the group is collapsed, and the list header's need-you filter shows only those trees. Trees with nothing left to do settle into a fold at the end of their group.
+A sidebar thread list for [bb](https://getbb.app). It replaces the built-in thread list and keeps bb's own thread actions and state, and shows at a glance each thread's state, the harness that runs it, and what its child threads are doing, without the child threads taking over the list. A thread tree with a thread only you can move forward stays in its group, drawn even when the group is collapsed, and the list header's need-you filter shows only those trees. Trees with nothing left to do settle into a fold at the end of their group.
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
