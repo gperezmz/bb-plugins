@@ -612,9 +612,9 @@ async function branchLineOn(page) {
   await popover(page).waitFor({ state: "hidden" });
 }
 
-/** Leaves for bb's Settings page through its sidebar link, with no reload. */
+/** Leaves for bb's Settings page through its navigation's Settings entry (a button in bb 0.46's rail), with no reload. */
 async function leaveForSettings(page) {
-  await page.getByRole("link", { name: /^Settings/ }).first().click();
+  await page.getByRole("link", { name: /^Settings/ }).or(page.getByRole("button", { name: /^Settings/ })).first().click();
   await page.waitForURL(/\/settings/);
   await header(page).waitFor({ state: "detached" });
 }
@@ -1565,6 +1565,106 @@ export const verbs = {
       await capture("menu", "open Environment actions");
       await page.keyboard.press("Escape");
       return { density, rows, threadRowHeights, menu };
+    },
+  },
+
+  "new-thread": {
+    usage: "<group label> [--menu]: press the group header's New thread (or its menu's New thread), send a prompt from bb's compose screen, and read where bb put the thread: its project, section, pin and machine",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [label] = args;
+      if (!label) throw new Error("usage: new-thread <group label> [--menu]");
+      await ready(page, url);
+      const head = page.locator('[data-sidebar="group-label"]').filter({ has: groupButton(page, label, "toggle") });
+      await head.scrollIntoViewIfNeeded();
+      await head.hover();
+      await capture("before", `hover the ${label} header`);
+      if (flags.menu) {
+        await groupButton(page, label, "menu").click();
+        await page.getByRole("menuitem", { name: "New thread", exact: true }).click();
+      } else await page.getByRole("button", { name: `New thread in ${label}`, exact: true }).click();
+      const box = page.getByRole("textbox", { name: "Ask anything." });
+      await box.waitFor();
+      // The compose screen names the project it starts in, and nothing of the pin, section or machine.
+      const composeProject = await page.getByRole("button", { name: /^Project: / }).first().evaluate((b) => b.getAttribute("aria-label") ?? b.textContent.trim());
+      await capture("compose", flags.menu ? `${label} actions → New thread` : `press New thread in ${label}`);
+      const prompt = `new in ${label}`;
+      await box.fill(prompt);
+      await page.keyboard.press("Enter");
+      await page.waitForURL(/\/threads\/thr_/, { timeout: 30_000 });
+      const id = page.url().match(/thr_[a-z0-9]+/)[0];
+      const l = "thread-glance.new-thread/cli";
+      // bb keeps the turn's Claude Code loaded after it, as after spawn: release it.
+      cli(l, "thread", "wait", id, "--status", "idle", "--timeout", "60s");
+      cli(l, "thread", "stop", id);
+      await capture("sent", `send "${prompt}"`);
+      const shown = JSON.parse(cli(l, "thread", "show", id, "--json"));
+      const t = shown.thread;
+      return {
+        composeProject,
+        thread: { id, providerId: t.providerId, projectId: t.projectId, sectionId: t.sectionId ?? null, pinned: t.pinnedAt != null, hostId: shown.environment?.hostId ?? null },
+      };
+    },
+  },
+
+  group: {
+    usage: "<label> rename <name> [--dblclick] | <label> remove [--cancel]: rename a group from its menu's Rename (or by double-clicking its header), or choose its menu's Remove project or Remove section and confirm (or cancel) the dialog; the rename box's name, the dialog's title, text and buttons, the group headers after, and bb's project, section and machine names",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [label, action, name] = args;
+      if (!label || !["rename", "remove"].includes(action) || (action === "rename" && !name)) throw new Error("usage: group <label> rename <name> [--dblclick] | <label> remove [--cancel]");
+      await ready(page, url);
+      const headers = () =>
+        page.locator("section[data-sidebar-visibility-group]").evaluateAll((els) => els.filter((e) => !e.closest('[data-sidebar-overflow="true"]')).map((e) => e.getAttribute("aria-label")));
+      const head = page.locator('[data-sidebar="group-label"]').filter({ has: groupButton(page, label, "toggle") });
+      await head.scrollIntoViewIfNeeded();
+      const before = await headers();
+      await capture("before", `the ${label} header`);
+      const openMenu = async () => {
+        await head.hover();
+        await groupButton(page, label, "menu").click();
+        await page.getByRole("menuitem").first().waitFor();
+      };
+      let result;
+      if (action === "rename") {
+        if (flags.dblclick) await groupButton(page, label, "toggle").dblclick();
+        else {
+          await openMenu();
+          await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+        }
+        const box = page.getByRole("textbox", { name: /^(Project|Section|Machine) name$/ });
+        await box.waitFor();
+        const boxName = await box.getAttribute("aria-label");
+        await capture("editing", flags.dblclick ? `double-click the ${label} header` : `${label} actions → Rename`);
+        await box.fill(name);
+        await page.keyboard.press("Enter");
+        await groupButton(page, name, "toggle").waitFor({ timeout: 10_000 });
+        await capture("after", `rename to ${name}`);
+        result = { boxName };
+      } else {
+        await openMenu();
+        await page.getByRole("menuitem", { name: /^Remove (project|section)$/ }).click();
+        const dialog = page.getByRole("alertdialog");
+        await dialog.waitFor();
+        const read = await dialog.evaluate((d) => ({
+          title: d.querySelector("h2")?.textContent.trim() ?? null,
+          description: d.querySelector("p")?.textContent.trim() ?? null,
+          buttons: [...d.querySelectorAll("button")].map((b) => b.textContent.trim()),
+        }));
+        await capture("dialog", `${label} actions → Remove`);
+        if (flags.cancel) await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        else await dialog.getByRole("button", { name: read.buttons.find((b) => b !== "Cancel"), exact: true }).click();
+        await dialog.waitFor({ state: "hidden" });
+        if (!flags.cancel) await groupButton(page, label, "toggle").waitFor({ state: "detached", timeout: 10_000 });
+        await capture("after", flags.cancel ? "Cancel" : "confirm");
+        result = { dialog: read };
+      }
+      const l = "thread-glance.group/cli";
+      const names = (...a) => JSON.parse(cli(l, ...a, "--json")).map((x) => x.name);
+      return {
+        ...result,
+        before,
+        after: await headers(),
+        stored: { projects: names("project", "list"), sections: names("thread", "section", "list"), machines: names("machine", "list") },
+      };
     },
   },
 };

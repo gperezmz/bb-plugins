@@ -1,8 +1,9 @@
 # Thread Glance
 
 Replaces bb's sidebar thread list. Each row shows the thread's state glyph,
-title (bold while unread), harness logo where it differs from its parent's,
-machine where it is not the primary one, and time since it finished. Child
+title (bold while unread), harness logo where it differs from bb's default
+provider (a child's: from its parent's), machine where it is not the primary
+one and the list is not grouped by machine, and time since it finished. Child
 threads fold behind a count chip on their parent. The list header counts the
 trees only you can move forward as `N need you`, and a tree quiet for longer
 than Settle after moves into a `Settled (N)` fold at the end of its group.
@@ -25,8 +26,11 @@ window at once; Density and Branch line are kept per browser.
   back.
 - `window`: the list mounts only the rows near the sidebar's view, each run
   of the rest a spacer bb's keyboard walk still reads.
-- `menus`: the list's one row menu, group menu, environment row menu, context
-  menu and hover card.
+- `menus`: bb's own thread menu on a row ("…" and context menu) with the
+  list's items added, and the list's own group menu, environment row menu and
+  hover card.
+- `groups`: a group header's New thread, Rename and Remove project or Remove
+  section.
 - `drag`: dragging rows and group headers with the pointer, and bb's
   drag-to-split out of the sidebar.
 - `keys`: Enter on a row, the context-menu key, and bb's thread shortcuts.
@@ -40,6 +44,10 @@ window at once; Density and Branch line are kept per browser.
 - List header: `heading` level 2, `button "Thread Glance settings"`,
   `button "Mark all read"` while something is unread, and a button with text
   `N need you` while N > 0 (`aria-pressed` when filtering).
+- Group headers, each a `region` named for its group:
+  `button "Collapse|Expand <label> section"` (double-click renames a project,
+  section or machine), `button "New thread in <label>"` (on a phone, only on
+  the group holding the open thread) and `button "<label> actions"`.
 - Rows: `link` named `Open <title> — <State>; <Provider>[; child of
   <parent>][; unread]…`, e.g. `Open parent — Idle; Claude Code`;
   `aria-current="page"` on the open one.
@@ -91,7 +99,9 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   names its highest-ranked state; `parent 1` stays `pending` and runs no
   turn. Beside it, `spawn … deployer "Start the deploy." --background` shows
   `Background command running` until `drive-bb-plugins release <id>`;
-  once `busy`'s turn has ended, `needYou.count` is 2 more than before.
+  once `busy`'s turn has ended, `needYou.count` is 2: `parent 1`'s tree, for
+  its failed child, and `deployer`. `busy` finished unread adds nothing, since
+  by default only a child that failed or waits on you counts.
 - **Children** (`children`): `thread-glance children "parent 1" expand
   --second-window --reload` turns the chip to `Collapse …`, lists every child
   under `after.children`, `stored.holdsParent` true (`prefs get
@@ -137,7 +147,8 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   -- thread-glance prefs set settleAfter 12h`, read every thread
   (`mark-all-read`), then `thread-glance settled expand --advance 13` moves the
   page's clock 13 hours on and opens the fold: `before.text` `Settled (N)`,
-  `stored.openSettledFolds` holds the group (`threads` under Custom).
+  `stored.openSettledFolds` holds the group, `project:<id>` of the run's
+  `drives` project (`threads` for the loose group under Custom).
 - **Remount** (`remount`): `thread-glance remount` picks `Thread list
   (built-in)` in Settings → Appearance, sees Thread Glance gone (`away`), picks
   `Thread Glance` again, and prints the rows and chips before and after;
@@ -146,8 +157,9 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
 - **Every row** (`list`): `thread-glance rows` scrolls the windowed list top
   to bottom and prints each row's name, drawn text (title, note line, time)
   and time label; `--details` hovers each row and adds its hover card (state
-  and since, note, `Harness`, `Model`, `Branch`, `Machine`, `Last reply`,
-  `Created`, `Finished`), `--requests` the load's fetches
+  and since, note, `Harness`, `Model`, `Branch`, `Machine`, `Children`,
+  `Pull request`, `Last reply` where there is no note, `Created`, `Finished`,
+  each where it applies, as `card[]`), `--requests` the load's fetches
   grouped by calling script (Thread Glance's bundle is a
   `plugin-app-assets/<hash>/app.js`) with `threadGlance.calls` naming each
   RPC and its body, `--first-draw` the list at each of its first DOM changes
@@ -160,7 +172,7 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   counts the requests of that many idle seconds after the load. Two `rows`
   results compare row by row once relative times are masked.
 - **Leaving for Settings** (`remount`, `sync`): `thread-glance away` loads,
-  leaves by bb's sidebar `Settings` link (no reload: `trips[].sameRealm`
+  leaves by bb's `Settings` in its navigation rail (no reload: `trips[].sameRealm`
   true), runs `--actions <json file>` while the sidebar is unmounted (each a
   `bb` argument array, `{"sleep": ms}` or `{"harness": [...]}`), comes back by
   history back, and prints `trips[].firstDraw` (the list as first drawn),
@@ -191,8 +203,38 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   lists its items, then closes it with Escape; `focusAfterEscape` is the "…"
   button. `--keyboard` opens it with Enter, `--context` by right-click and
   `--keyboard-context` by Shift+F10 on the focused row, where focus goes back
-  to the row's link; `menu --group <label>` opens a group header's. A row the
-  sidebar has scrolled out of view is scrolled into it first.
+  to the row's link. A row's items are bb's thread menu with the list's
+  `Details`, `Copy thread ID`, `Move…` (not on an archived thread) and
+  `Mark tree read` (on a root with an unread child) among them.
+  `menu --group <label>` opens a group header's: `Mark all read` while one is
+  unread, `New thread`, `New section` (Custom), `Rename` (a project, section
+  or machine), `Hide from list` (not Pinned), `Show archived threads`,
+  `Customize list`, and `Remove project` on a project or `Remove section` on a
+  section. A row the sidebar has scrolled out of view is scrolled into it
+  first.
+- **New thread in a group** (`groups`): `thread-glance new-thread <label>`
+  presses the header's `button "New thread in <label>"` (`--menu`: the group
+  menu's `New thread`), sends a prompt from bb's compose screen and prints
+  `composeProject` (the compose screen's `Project:` button, its only sign of
+  the group) and the new `thread`'s `projectId`, `sectionId`, `pinned` and
+  `hostId`: from Pinned `pinned` true, from a section its `sectionId`, from a
+  project its `projectId`, from a machine its `hostId`; Pinned, a section and
+  Threads start in `proj_personal` (`No project`). The verb waits out the turn
+  and releases its runtime. An empty list draws no group to press.
+- **Rename and remove a group** (`groups`):
+  `thread-glance group <label> rename <name>` (`--dblclick`: double-click the
+  header instead of the menu's `Rename`) prints `boxName`, `Project name`,
+  `Section name` or `Machine name`, the headers `before` and `after`, and
+  `stored`, bb's project, section and machine names. `group <label> remove`
+  picks `Remove project` or `Remove section` and confirms: `dialog.title`
+  `Remove <label>?` with
+  `The project and its threads are removed from bb. This cannot be undone.`
+  and buttons `Cancel`, `Remove project`, or `Remove section?` with
+  `Threads in this section will move back to Threads.` and `Cancel`, `Remove`;
+  `--cancel` leaves the group. Remove only a project made for it:
+  `drive-bb-plugins bb … project create --name spare --root <git repository> --machine <host>`,
+  the run's `host_id` and `scratch` in `run.env` giving a host and a place for
+  the repository.
 - **Drag** (`drag`): `thread-glance drag <title> --onto <title> [--zone
   top|middle|bottom]` drops a row on another's zone, `--onto-group <label>` on
   a group header, waiting at the sidebar's edge while it scrolls to a target
@@ -219,20 +261,20 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   Control+Shift+n, and `thread-glance shortcut next|previous --from <title>`
   Control+Shift+] or [ from that thread's; `same` is true when bb opened the
   thread its keyboard walk puts there.
-- **Phone** (`--mobile`): every verb first opens the sidebar's drawer, which
-  a phone keeps closed under the main area. `thread-glance long-press
-  <title>` opens the row's menu as a drawer after 700 ms, and lifting chooses
-  nothing (`openAfterLift` true, `navigated` and `detailsOpened` false);
-  `--move 24` cancels it (`items` null): the plugin cancels past 10 px, but
-  Chromium delivers no `touchmove` inside its touch slop, about 15 px, so a
-  smaller move drives nothing. `thread-glance menu <title>` opens it
-  from the screen reader's "…" with Enter. `thread-glance drawer` opens a
-  thread, which closes the drawer, and reports the rows mounted closed and
-  open again.
-  `thread-glance mark-all-read-home --mobile` reads the home screen's
-  `Recent` list around Mark all read: `recentUnreadAfter` and
-  `recentUnreadAfter6s` name the threads bb's own list still shows unread
-  with no reload, `recentUnreadAfterReload` after one.
+- **Phone** (`--mobile`): every verb first opens the sidebar's drawer, which a
+  phone keeps closed under the main area. `thread-glance long-press <title>`
+  presses the row for 800 ms, which opens bb's thread menu as a drawer, and
+  lifting chooses nothing (`openAfterLift` true, `navigated` and
+  `detailsOpened` false); `--move 24` cancels it (`items` null): bb's press
+  cancels when the finger moves, but Chromium delivers no `touchmove` inside
+  its touch slop, about 15 px, so a smaller move drives nothing.
+  `thread-glance menu <title>` opens it from the screen reader's "…" with
+  Enter. `thread-glance drawer` opens a thread, which closes the drawer, and
+  reports the rows mounted closed and open again.
+  `thread-glance mark-all-read-home --mobile` reads the home screen's `Recent`
+  list around Mark all read: `recentUnreadAfter` and `recentUnreadAfter6s`
+  name the threads bb's own list still shows unread with no reload,
+  `recentUnreadAfterReload` after one.
 - **Environment fold row** (`list`, `menus`): `spawn … wt-one hi
   --worktree` gives a thread a git worktree of its own, and `spawn … wt-two
   hi --beside <wt-one's id>` puts a second in it; `seed` makes no worktree
@@ -247,11 +289,14 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   also lists archived threads, 50 at a time behind `button "Load more
   archived threads"`; any verb with `--all-archived` presses it until it is
   gone on each load, so every archived thread is drawn.
-- **Machine offline**: `drive-bb-plugins machine offline` under a `--hold`
-  turn shows `Reconnecting` for bb's 30 s grace, then `Failed`; a `bb thread
-  tell` while offline to a thread that has not failed shows `Message waiting
-  to send` (a failed one stays `Failed`). `machine online` brings the machine
-  back and sends it, and doctor passes again.
+- **Machine offline** (`list`, `children`): `drive-bb-plugins machine offline`
+  under a `--hold` turn shows `Working`, then, 15 to 30 s on,
+  `Machine offline` for as long as the machine is away; a lone such child
+  turns its parent's chip to `…, machine offline below` (a failed sibling
+  outranks it). A `bb thread tell` while offline to a thread that has not
+  failed shows `Message waiting to send` (a failed one stays `Failed`).
+  `machine online` brings the machine back, the held turn ends `Failed` and
+  the waiting message is sent, and doctor passes again.
 
 A step no verb covers is added to `verbs/thread-glance.mjs` in the same pull
 request as the drive that needed it, as [the README](README.md#driving-conventions)
@@ -269,9 +314,8 @@ says.
   (`refetchType: "none"`), so `experimental_useSidebarThreads` hands the list
   nothing new until something else refetches it. Read it back with `list` on
   a fresh load, not a second window.
-- A turn in flight when its machine goes offline fails once bb's 30 s
-  reconnect grace ends, so the `Machine offline` state and the chip's
-  `, machine offline below` are not reachable on a run.
+- A tree that settles while it holds the open thread stays out of the fold
+  until focus leaves it; a fresh load folds it at once, as `settled` does.
 - Settle after is at least 12 hours, and settling reads bb's thread times, so
   only the page clock (`settled --advance`) reaches the fold.
 - On a desktop the settings popover closes once the sidebar scrolls its

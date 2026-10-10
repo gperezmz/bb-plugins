@@ -76,7 +76,8 @@ handles, required state, commands, and observable evidence.
   settings section and from RPC, applied live to the New-thread screen.
 - [Thread Glance](./thread-glance.md): the sidebar thread list, its settings
   popover and `prefs` CLI, child-thread chips, need you, the settled fold,
-  second windows and remounts, each a verb.
+  group headers' New thread, Rename and Remove, second windows and remounts,
+  each a verb.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab, the
   Thread usage page and the `thread-usage` CLI over a parent and child
   thread.
