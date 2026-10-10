@@ -80,8 +80,6 @@ handles, required state, commands, and observable evidence.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab, the
   Thread usage page and the `thread-usage` CLI over a parent and child
   thread.
-- [Pocket Navigation](./pocket-navigation.md): bb's sidebar navigation on a
-  phone and its overflow menu.
 - [Cache Keeper](./cache-keeper.md): the composer chip, compact when idle on
   the drive clock, the banner and the Cache Keeper page.
 

@@ -1,6 +1,6 @@
 ---
 name: driving-bb-plugins
-description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Pocket Navigation, Cache Keeper) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
+description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Cache Keeper) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
 ---
 
 # Driving bb-plugins
