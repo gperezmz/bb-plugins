@@ -136,6 +136,8 @@ export interface Edge {
   navigate: BbNavigate;
   sdk: PluginBrowserBbSdk;
   rpc: PluginRpcClient<RpcContract>;
+  /** bb's own archive of an environment's thread trees; rejects once bb has shown its error. */
+  archiveEnvironmentThreads(environmentId: string): Promise<void>;
   onNavigate(): void;
   /** This list is the one in the browser that reports changes to idle bb sends no event for. */
   isIdleReporter(): boolean;
@@ -199,6 +201,9 @@ const UNSET_EDGE: Edge = {
     return unset();
   },
   get rpc(): never {
+    return unset();
+  },
+  get archiveEnvironmentThreads(): never {
     return unset();
   },
   onNavigate() {},

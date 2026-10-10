@@ -4,6 +4,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   experimental_Icon as Icon,
+  experimental_useArchiveEnvironmentThreads as useArchiveEnvironmentThreads,
   experimental_useProviders as useProviders,
   experimental_useThreadActions as useThreadActions,
   useBbNavigate,
@@ -85,6 +86,7 @@ function ThreadListEdge({
   const navigate = useBbNavigate();
   const sdk = useSdk();
   const rpc = useRpc<RpcContract>();
+  const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const { providers } = useProviders();
   const { providers: environmentProviders } = useEnvironmentProviders();
   const draftIds = useSidebarThreadDraftIds();
@@ -110,7 +112,7 @@ function ThreadListEdge({
   });
   // bb's calls change identity on every host update; commands read them when they run.
   useLayoutEffect(() => {
-    store.edge = { navigate, sdk, rpc, onNavigate, isIdleReporter };
+    store.edge = { navigate, sdk, rpc, archiveEnvironmentThreads, onNavigate, isIdleReporter };
   });
   useLayoutEffect(() => store.feedHost(host));
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);

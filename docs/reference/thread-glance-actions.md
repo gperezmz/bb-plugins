@@ -22,7 +22,7 @@ The row's **…** button, a right-click on the row, the context-menu key or Shif
 
 The row itself also offers **Mark read** and **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
 
-A worktree folder row, drawn while **Worktrees as folders** is on, has its own **…** menu: **New thread in environment**, **Rename** and **Archive**, which archives every thread in the worktree.
+A worktree folder row, drawn while **Worktrees as folders** is on, has its own **…** menu: **New thread in environment**, **Rename** and **Archive**, which archives every thread in the worktree as bb's own list does: the threads leave the list at once, split panes showing them close, and bb's toast offers **Undo**.
 
 ## A group header's menu
 

@@ -766,6 +766,17 @@ describe("thread actions", () => {
     );
   });
 
+  it("archives an environment's threads through bb's own environment archive", async () => {
+    const worktree = { id: "env_w", name: "feature", isWorktree: true };
+    const slot = render([makeThread({ id: "a", environment: worktree }), makeThread({ id: "b", environment: worktree })], {
+      prefs: { environmentGrouping: true },
+    });
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Environment actions" }), { button: 0, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
+    expect(slot.inspection.experimental_environmentArchiveCalls).toEqual(["env_w"]);
+    expect(slot.inspection.sdkCalls.map((call) => call.method)).not.toContain("environments.archiveThreads");
+  });
+
   it("archives and deletes through bb's own thread actions for that thread", async () => {
     const ran: string[] = [];
     render([makeThread({ id: "a", title: "Alpha" }), makeThread({ id: "b", title: "Beta" })], { extra: { threadActions: recordedThreadActions(ran) } });

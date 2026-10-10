@@ -335,7 +335,8 @@ export function createCommands(store: ListStore): Commands {
       await edge().sdk.environments.update({ environmentId, name });
     },
     archiveEnvironment(environmentId) {
-      edge().sdk.environments.archiveThreads({ environmentId }).catch(fail("Couldn't archive the environment"));
+      // bb has shown its own error toast when this rejects.
+      edge().archiveEnvironmentThreads(environmentId).catch(() => {});
     },
 
     toggleGroup(groupId) {
