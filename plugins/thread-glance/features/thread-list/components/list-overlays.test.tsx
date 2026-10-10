@@ -214,6 +214,27 @@ describe("the row menu", () => {
     await waitFor(() => expect(document.activeElement).toBe(editor));
   });
 
+  it("keeps the rename editor when the menu that started it focuses itself while it animates closed", async () => {
+    render([makeThread({ id: "a", title: "Alpha" })]);
+    const row = await rowOf("Alpha");
+    fireEvent.keyDown(within(row).getByRole("button", { name: "Thread actions" }), { key: "Enter" });
+    const rename = await screen.findByRole("menuitem", { name: "Rename" });
+    fireEvent.keyDown(rename, { key: "Enter" });
+    fireEvent.click(rename);
+    const editor = await screen.findByRole("textbox", { name: "Thread name" });
+    await waitFor(() => expect(document.activeElement).toBe(editor));
+    // bb animates its menus out; Radix focuses one as the pointer leaves its items meanwhile.
+    const closing = document.createElement("div");
+    closing.setAttribute("role", "menu");
+    closing.setAttribute("data-state", "closed");
+    closing.tabIndex = -1;
+    document.body.append(closing);
+    act(() => closing.focus());
+    closing.remove();
+    await waitFor(() => expect(document.activeElement).toBe(editor));
+    expect(editor.isConnected).toBe(true);
+  });
+
   it("opens a group header's menu and starts its rename with focus in the editor", async () => {
     render([makeThread({ id: "a", title: "Alpha", sectionId: "sec_1" })], {
       prefs: { organizationMode: "chronological" },
