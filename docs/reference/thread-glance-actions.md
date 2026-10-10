@@ -6,13 +6,14 @@ What each of the list's menus offers, what a drop does, and what the keyboard re
 
 The row's **…** button, a right-click on the row, the context-menu key or Shift+F10 on it, and on a phone a long press, all open bb's own thread menu, the one bb's list and a thread's header show: the same items, order, submenus and phone drawer, and every action another plugin adds to bb's thread menus. Rename edits the title in place in the row.
 
-Thread Glance adds four items of its own, each at the end of the bb group it belongs with:
+Thread Glance adds five items of its own, each at the end of the bb group it belongs with:
 
 | Item | Shown | Does |
 |---|---|---|
 | Details | Always, with bb's Open in split | Opens the thread's details: state, harness, model, branch, machine, children, last reply, when it was created and last finished |
 | Copy thread ID | Always, with bb's organizing items | Copies the ID |
 | Mark tree read | On a root with an unread thread below it | Marks the root and every thread below it read; see [Marking threads read](#marking-threads-read) |
+| Move to a section | On a root that is not archived, where bb has sections | Files the thread in Threads or a section, unpinning it first; its own place is disabled. The built-in list adds a **Move to section** to bb's menu of its own accord, which Thread Glance hides while the menu is open, because bb's menus have no way to leave an action out |
 | Move… | On a thread that is not archived | Opens a search for a new parent thread, or none |
 
 The row itself also offers bb's **Mark read**, while bb has the thread unread, and bb's **Archive** on hover, as [the row's right end](thread-glance-states.md#the-rows-right-end) shows.
@@ -24,13 +25,16 @@ A worktree folder row, drawn while **Worktrees as folders** is on, has its own *
 | Item | Shown | Does |
 |---|---|---|
 | Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read) |
-| New thread | On a group that names a project, not on Pinned | Opens a new thread there |
+| New thread | On every group | Opens bb's new-thread screen for the group, as the group's **+** does: from Pinned the thread is pinned, from a section it is filed in that section, from a project it is in that project, from a machine it runs on that machine, and from Threads it is in the personal project |
 | New section | While grouped by Custom | Creates a bb section |
-| Rename | On a section or a machine | Renames it in bb |
+| Rename | On a project, a section or a machine | Renames it in bb |
 | Hide from list, Show in list | On every group but Pinned | Moves the group into **More** at the end of the list, or back |
 | Show archived threads | Always | Shows archived threads in every group; a check marks it on |
 | Customize list | Always | Opens the dialog that orders and hides groups |
 | Remove section | On a section | Asks first, then removes the section; its threads go back to Threads |
+| Remove project | On a project | Asks first, then removes the project and its threads from bb, as bb's own list does |
+
+A project header has no **Project settings** item: bb's plugin SDK gives a plugin the settings page's address but no way to open it without reloading the app. A project's settings are not reached from the list.
 
 ## The hover card
 

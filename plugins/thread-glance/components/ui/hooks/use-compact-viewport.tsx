@@ -1,7 +1,8 @@
-import { useMediaQuery } from "./use-media-query.js";
+import { createContext, useContext } from "react";
 
-const COMPACT_VIEWPORT_QUERY = "(max-width: 767px)";
+/** Whether bb calls the viewport compact: the list is handed it as `isCompactViewport`. */
+export const CompactViewportContext = createContext(false);
 
 export function useIsCompactViewport(): boolean {
-  return useMediaQuery(COMPACT_VIEWPORT_QUERY);
+  return useContext(CompactViewportContext);
 }

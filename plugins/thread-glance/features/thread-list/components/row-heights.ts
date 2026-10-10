@@ -1,16 +1,20 @@
-// Row heights and group gaps per density. Comfortable adds 4px to every
-// thread row and fold row that Compact draws, on every viewport, and doubles
-// the gap before a group header; headers and the Settled fold keep their
-// height. Whole class names, so Tailwind finds them. model/heights.ts gives
+// Row heights and group gaps per density, rows taller on bb's compact viewport.
+// Comfortable adds 4px to every thread row and fold row that Compact draws, on
+// every viewport, and doubles the gap before a group header; headers and the
+// Settled fold keep their height. Whole class names, so Tailwind finds them. model/heights.ts gives
 // the same heights in px, which the list lays rows out by; a browser test
 // holds the two together.
 import type { Density } from "../model/heights";
 
-/** A thread row, one line or two (a note's or a branch line's). */
-export const THREAD_ROW_HEIGHT: Record<Density, { one: string; two: string }> = {
-  compact: { one: "h-7 max-md:pointer-coarse:h-9", two: "h-11 max-md:pointer-coarse:h-12" },
-  comfortable: { one: "h-8 max-md:pointer-coarse:h-10", two: "h-12 max-md:pointer-coarse:h-13" },
+const THREAD_ROW_HEIGHT: Record<Density, Record<"one" | "two", { wide: string; compact: string }>> = {
+  compact: { one: { wide: "h-7", compact: "h-9" }, two: { wide: "h-11", compact: "h-12" } },
+  comfortable: { one: { wide: "h-8", compact: "h-10" }, two: { wide: "h-12", compact: "h-13" } },
 };
+
+/** A thread row, one line or two (a note's or a branch line's); also the fold rows, on one line. */
+export function threadRowHeight(density: Density, compact: boolean, twoLines: boolean): string {
+  return THREAD_ROW_HEIGHT[density][twoLines ? "two" : "one"][compact ? "compact" : "wide"];
+}
 
 /**
  * Where the ↳ mark sits on a two-line row, beside the title: the two lines
@@ -20,15 +24,6 @@ export const NESTED_MARK_TWO_LINES: Record<Density, string> = {
   compact: "mt-[9px] self-start",
   comfortable: "mt-[11px] self-start",
 };
-
-/** The "N more child threads" fold row, as tall as a one-line thread row. */
-export const OLDER_ROW_HEIGHT: Record<Density, string> = {
-  compact: THREAD_ROW_HEIGHT.compact.one,
-  comfortable: THREAD_ROW_HEIGHT.comfortable.one,
-};
-
-/** The environment fold row, as tall as a one-line thread row. */
-export const ENVIRONMENT_ROW_HEIGHT: Record<Density, string> = OLDER_ROW_HEIGHT;
 
 /** The space above every group header but the first. */
 export const GROUP_GAP: Record<Density, string> = {

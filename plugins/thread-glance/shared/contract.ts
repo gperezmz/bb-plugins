@@ -53,19 +53,6 @@ export const rpcContract = defineRpcContract({
     input: z.strictObject({ key: preferenceKeySchema }),
     output: z.strictObject({ key: preferenceKeySchema, value: z.unknown() }),
   },
-  /**
-   * First-run import. `bbMirror` is the parsed value of bb's own
-   * localStorage mirror, or null when the app found none; the server then
-   * tries `bb thread-list prefs list --json`. Runs at most once.
-   */
-  importPreferences: {
-    input: z.strictObject({ bbMirror: z.nullable(z.unknown()) }),
-    output: z.strictObject({
-      status: z.enum(["already-imported", "imported", "defaults"]),
-      source: z.nullable(z.enum(["local-storage", "cli", "none"])),
-      keys: z.array(preferenceKeySchema),
-    }),
-  },
   /** Records `seenAt` for child threads the user viewed. */
   markSeen: {
     input: z.strictObject({ threadIds: threadIdsSchema }),

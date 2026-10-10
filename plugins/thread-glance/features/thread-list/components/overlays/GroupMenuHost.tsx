@@ -62,12 +62,10 @@ function GroupMenuItems({
           Mark all read
         </DropdownMenuItem>
       ) : null}
-      {descriptor.kind !== "pinned" && descriptor.newThreadProjectId !== null ? (
-        <DropdownMenuItem onSelect={() => commands.newThreadInGroup(groupId)}>
-          <Icon name={ICONS.newThread} aria-hidden className="size-4" />
-          New thread
-        </DropdownMenuItem>
-      ) : null}
+      <DropdownMenuItem onSelect={() => commands.newThreadInGroup(groupId)}>
+        <Icon name={ICONS.newThread} aria-hidden className="size-4" />
+        New thread
+      </DropdownMenuItem>
       {canCreateSections ? (
         <DropdownMenuItem onSelect={() => commands.setNewSectionOpen(true)}>
           <Icon name={ICONS.newSection} aria-hidden className="size-4" />
@@ -106,6 +104,12 @@ function GroupMenuItems({
         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => commands.removeSection(groupId)}>
           <Icon name={ICONS.remove} aria-hidden className="size-4" />
           Remove section
+        </DropdownMenuItem>
+      ) : null}
+      {descriptor.kind === "project" ? (
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => commands.removeProject(groupId)}>
+          <Icon name={ICONS.remove} aria-hidden className="size-4" />
+          Remove project
         </DropdownMenuItem>
       ) : null}
     </>

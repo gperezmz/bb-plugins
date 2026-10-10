@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapBbPreferences, coercePreferences, defaultPreferences } from "@/shared/preferences";
+import { coercePreferences, defaultPreferences } from "@/shared/preferences";
 import { defaultSourceHostId, isOffDefaultBranch } from "./branches";
 import { resolveDrop, targetAt, type DraggedThread } from "./drag";
 import { layoutItems } from "./layout-items";
@@ -175,19 +175,6 @@ describe("default branch", () => {
 });
 
 describe("preferences", () => {
-  it("imports bb's values, maps auto grouping to off and skips collapsedThreads", () => {
-    expect(
-      mapBbPreferences({
-        organizationMode: "chronological",
-        environmentGrouping: "auto",
-        collapsedThreads: ["t1"],
-        hiddenGroups: ["project:x", "project:x"],
-        chronologicalSort: "bogus",
-        unknownKey: 1,
-      }),
-    ).toEqual({ organizationMode: "chronological", environmentGrouping: false, hiddenGroups: ["project:x"] });
-    expect(mapBbPreferences({ environmentGrouping: true })).toEqual({ environmentGrouping: true });
-  });
   it("defaults follow the spec", () => {
     expect(defaultPreferences()).toMatchObject({
       organizationMode: "project",
@@ -206,11 +193,6 @@ describe("preferences", () => {
       expect(prefs).not.toHaveProperty(key);
     }
     expect(prefs.settleAfter).toBe("1d");
-  });
-  it("does not import a removed setting from bb", () => {
-    expect(mapBbPreferences({ workingFirst: true, foldOlder: false, showPullRequests: false, threadLifecycles: ["active", "archived"], organizationMode: "machine" })).toEqual({
-      organizationMode: "machine",
-    });
   });
 });
 
@@ -262,7 +244,7 @@ describe("drop target from positions", () => {
       group("project:a", [thread("a1", { branchLine: "fix/x" }), { type: "settled", key: "settled:project:a" } as unknown as Row]),
       group("project:b", []),
     ],
-    { density: "compact", phone: false },
+    { density: "compact", compact: false },
   );
 
   it("lays every item out from the heights model, with the gap above every header but the first", () => {
@@ -307,7 +289,7 @@ describe("the rows the window mounts", () => {
   const row = (id: string): Row => ({ type: "thread", key: `thread:${id}`, info: { thread: { id } }, note: null, branchLine: null }) as unknown as Row;
   const group = (id: string, rows: Row[]): GroupView => ({ descriptor: { id }, rows, collapsed: false, rootIds: ["x"] }) as unknown as GroupView;
   // Compact desktop rows are 28 px under a 28 px header: row n starts at 28 + 28n.
-  const layout = layoutItems([group("threads", Array.from({ length: 60 }, (_, n) => row(`t${n}`)))], { density: "compact", phone: false });
+  const layout = layoutItems([group("threads", Array.from({ length: 60 }, (_, n) => row(`t${n}`)))], { density: "compact", compact: false });
   const keys = (indexes: readonly number[]) => indexes.map((index) => layout.items[index]!.key.replace("threads/", ""));
 
   it("mounts every item within the margin of the view, and nothing for an unknown view but the kept rows", () => {

@@ -20,7 +20,7 @@ Choose **Thread list** under Settings → Appearance → Sidebar, or:
 bb settings ui set sidebar.threadListProvider thread-list/thread-list
 ```
 
-Thread Glance keeps its own preferences, so switching to it again brings back its layout. Changes you make in bb's list meanwhile are not copied over: the [first-run import](../reference/thread-glance-preferences.md#first-run-import) happens once.
+Thread Glance keeps its own preferences, so switching to it again brings back its layout. The two lists keep separate preferences: a change in bb's list is not copied to Thread Glance, and [a new install starts from Thread Glance's defaults](../reference/thread-glance-preferences.md#where-a-new-install-starts). Both lists show the same threads, sections, pins and archive state, since those are bb's.
 
 To see which list is active:
 

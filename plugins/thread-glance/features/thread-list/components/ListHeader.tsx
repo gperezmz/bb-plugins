@@ -33,7 +33,7 @@ export const ListHeader = memo(function ListHeader() {
   return (
     <div
       data-sidebar="list-header"
-      className="flex h-7 items-center gap-1 pl-2 pr-1 text-xs text-muted-foreground max-md:pointer-coarse:h-9"
+      className={cn("flex items-center gap-1 pl-2 pr-1 text-xs text-muted-foreground", compact ? "h-9" : "h-7")}
     >
       <h2 className="min-w-0 flex-1 truncate font-medium select-none">{groupingName(mode)}</h2>
       {needYouCount > 0 ? (

@@ -11,12 +11,12 @@ import { useCommands, useEnvironmentMenuOpen, useEnvironmentProviderList, useLay
 import { menuTriggerProps } from "./overlays/trigger";
 import { FlagGlyph } from "./glyphs";
 import { RenameEditor } from "./RenameEditor";
-import { ENVIRONMENT_ROW_HEIGHT, OLDER_ROW_HEIGHT } from "./row-heights";
+import { threadRowHeight } from "./row-heights";
 import { ROW_ICON_BUTTON } from "./ThreadRowView";
 
 export const OlderRowView = memo(function OlderRowView({ row }: { row: OlderRow }) {
   const commands = useCommands();
-  const { density } = useLayout();
+  const { compact, density } = useLayout();
   const { label, ariaLabel } = olderRowText(row);
   // It sits where the children do, with a dots glyph in the Status column.
   return (
@@ -27,7 +27,7 @@ export const OlderRowView = memo(function OlderRowView({ row }: { row: OlderRow 
       onClick={() => commands.toggleOlder(row)}
       className={cn(
         "relative flex w-full items-center gap-1.5 rounded-md pr-2 text-left text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-        OLDER_ROW_HEIGHT[density],
+        threadRowHeight(density, compact, false),
       )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >
@@ -42,6 +42,7 @@ export const OlderRowView = memo(function OlderRowView({ row }: { row: OlderRow 
 /** The settled fold: a muted label, a hairline to the row's end, and a chevron. */
 export const SettledRowView = memo(function SettledRowView({ row }: { row: SettledRow }) {
   const commands = useCommands();
+  const { compact } = useLayout();
   const { label, ariaLabel } = settledRowText(row);
   return (
     <button
@@ -49,7 +50,10 @@ export const SettledRowView = memo(function SettledRowView({ row }: { row: Settl
       aria-expanded={row.expanded}
       aria-label={ariaLabel}
       onClick={() => commands.toggleSettled(row)}
-      className="group/settled relative flex h-6 w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring max-md:pointer-coarse:h-9"
+      className={cn(
+        "group/settled relative flex w-full items-center gap-2 rounded-md pr-1 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+        compact ? "h-9" : "h-6",
+      )}
       style={{ paddingLeft: rowIndent(0) }}
     >
       <span className="shrink-0 tabular-nums">{label}</span>
@@ -79,7 +83,7 @@ export const EnvironmentRowView = memo(function EnvironmentRowView({ row, groupI
     <div
       className={cn(
         "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm text-muted-foreground hover:bg-sidebar-accent",
-        ENVIRONMENT_ROW_HEIGHT[density],
+        threadRowHeight(density, compact, false),
       )}
       style={{ paddingLeft: rowIndent(row.depth) }}
     >

@@ -52,6 +52,8 @@ import { CounterStrip } from "./glyphs";
 import { useInputModality } from "./input-modality";
 import { ListHeader } from "./ListHeader";
 import { CardHost } from "./overlays/CardHost";
+import { CompactViewportContext } from "@/components/ui/hooks/use-compact-viewport";
+import { ForeignMoveToSection } from "./overlays/ForeignMoveToSection";
 import { GroupMenuHost } from "./overlays/GroupMenuHost";
 import { createOverlays, OverlaysContext, useOverlays, type Overlays } from "./overlays/overlays";
 import { EnvironmentMenuHost } from "./overlays/EnvironmentMenuHost";
@@ -118,13 +120,15 @@ function ThreadListEdge({
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);
   useEffect(() => store.attach(), [store]);
   return (
-    <ListContext.Provider value={handle}>
-      <OverlaysContext.Provider value={handle.overlays}>
-        <ListSyncKeeper />
-        <Lookups />
-        <ListBody attempt={attempt} onRetry={onRetry} />
-      </OverlaysContext.Provider>
-    </ListContext.Provider>
+    <CompactViewportContext.Provider value={isCompactViewport}>
+      <ListContext.Provider value={handle}>
+        <OverlaysContext.Provider value={handle.overlays}>
+          <ListSyncKeeper />
+          <Lookups />
+          <ListBody attempt={attempt} onRetry={onRetry} />
+        </OverlaysContext.Provider>
+      </ListContext.Provider>
+    </CompactViewportContext.Provider>
   );
 }
 
@@ -183,6 +187,7 @@ const ListBody = memo(function ListBody({ attempt, onRetry }: { attempt: number;
       <ListDialogs />
       <EnvironmentMenuHost />
       <GroupMenuHost />
+      <ForeignMoveToSection />
       <CardHost />
       <SplitProbe />
     </div>

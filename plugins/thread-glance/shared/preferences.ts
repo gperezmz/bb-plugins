@@ -206,26 +206,6 @@ export function coercePreferences(raw: unknown): Preferences {
 }
 
 /**
- * Maps bb's own thread-list preferences onto ours for the first-run import.
- * `environmentGrouping: "auto"` becomes off, `collapsedThreads` is skipped
- * because it means the inverse of `expandedChildren`, and invalid values are
- * skipped. Returns only the keys that parsed.
- */
-export function mapBbPreferences(raw: unknown): Partial<Preferences> {
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const source = raw as Record<string, unknown>;
-  const mapped: Partial<Record<PreferenceKey, unknown>> = {};
-  for (const [bbKey, value] of Object.entries(source)) {
-    if (bbKey === "collapsedThreads") continue;
-    if (!isPreferenceKey(bbKey)) continue;
-    const candidate = bbKey === "environmentGrouping" && value === "auto" ? false : value;
-    const parsed = parsePreference(bbKey, candidate);
-    if (parsed.success) mapped[bbKey] = parsed.value;
-  }
-  return mapped as Partial<Preferences>;
-}
-
-/**
  * Per-client preferences, kept in localStorage only. A saved `filter`, from
  * the old All / Needs attention control, is dropped. `branchLine` is missing
  * where 0.5.0 or earlier saved the density, whose Comfortable drew branch
@@ -242,9 +222,6 @@ export type ClientPreferences = z.infer<typeof clientPreferencesSchema>;
 
 export const CLIENT_PREFERENCES_STORAGE_KEY = "bb.thread-glance.client.v1";
 export const PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-glance.preferences.v1";
-export const BB_PREFERENCES_MIRROR_STORAGE_KEY = "bb.thread-list.preferences.v1";
-/** The first answer this device got to `importPreferences`; once it is here, the device does not import again. */
-export const IMPORT_ANSWER_STORAGE_KEY = "bb.thread-glance.import.v1";
 
 export function parseClientPreferences(raw: unknown): ClientPreferences {
   const result = clientPreferencesSchema.safeParse(raw ?? {});

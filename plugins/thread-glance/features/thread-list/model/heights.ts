@@ -6,30 +6,25 @@ import type { Row } from "./view";
 
 export type Density = ClientPreferences["density"];
 
-/**
- * The viewport a height is for: a phone is a coarse pointer below Tailwind's
- * `md` width, where the height classes' `max-md:pointer-coarse:` variants apply.
- */
-export const PHONE_QUERY = "(width < 48rem) and (pointer: coarse)";
-
 export interface HeightContext {
   density: Density;
-  phone: boolean;
+  /** bb's compact viewport, where the height classes in components/row-heights.ts are taller. */
+  compact: boolean;
 }
 
 /** The space above every group header but the first. */
 export const GROUP_GAP_PX: Record<Density, number> = { compact: 4, comfortable: 8 };
 
 /** A group header, and the list header. */
-export function headerHeight({ phone }: HeightContext): number {
-  return phone ? 36 : 28;
+export function headerHeight({ compact }: HeightContext): number {
+  return compact ? 36 : 28;
 }
 
 /** A thread row on one line or two. */
-function threadRowHeight({ density, phone }: HeightContext, twoLines: boolean): number {
+function threadRowHeight({ density, compact }: HeightContext, twoLines: boolean): number {
   const taller = density === "comfortable" ? 4 : 0;
-  if (twoLines) return (phone ? 48 : 44) + taller;
-  return (phone ? 36 : 28) + taller;
+  if (twoLines) return (compact ? 48 : 44) + taller;
+  return (compact ? 36 : 28) + taller;
 }
 
 /** "No threads", under an empty group's header. */
@@ -49,6 +44,6 @@ export function rowHeight(row: Row, context: HeightContext): number {
     case "environment":
       return threadRowHeight(context, false);
     case "settled":
-      return context.phone ? 36 : 24;
+      return context.compact ? 36 : 24;
   }
 }

@@ -2,17 +2,16 @@
 // The list's data across mounts of the list within one plugin lifetime, as
 // bb unmounts the sidebar for its Settings and Plugins pages: what a list
 // mounted again draws first, and what it asks for, with and without the
-// plugin's component in bb's app overlay slot; a realtime reconnect; the
-// first-run import once per device; and the records `sync` leaves out.
+// plugin's component in bb's app overlay slot; a realtime reconnect; what a
+// first load asks for; and the records `sync` leaves out.
 // The clock is fake throughout, so what a test sees follows from how far it
 // moved the clock, whatever the machine's speed.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { CLIENT_PREFERENCES_STORAGE_KEY, IMPORT_ANSWER_STORAGE_KEY } from "@/shared/preferences";
+import { CLIENT_PREFERENCES_STORAGE_KEY } from "@/shared/preferences";
 import { createFakeServer, failedUnread, finishedUnread, makeThread, PROJECTS, T0, type FakeServer } from "../testing/fixtures";
-import { endPluginLifetime } from "./lifetime";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -153,7 +152,7 @@ describe("a list mounted again beside the app overlay's keeper", () => {
     expect(server.calls.slice(callsBefore)).toEqual([]);
     expect(again.inspection.rpcCalls).toEqual([]);
     expect(again.inspection.sdkCalls).toEqual([]);
-    expect(overlay.inspection.rpcCalls.map((call) => call.method)).toEqual(["importPreferences", "sync"]);
+    expect(overlay.inspection.rpcCalls.map((call) => call.method)).toEqual(["sync"]);
     expect(within(await details("Worker")).getByText("Shipped the fix")).toBeTruthy();
   });
 
@@ -259,45 +258,14 @@ describe("a first load", () => {
   });
 });
 
-describe("the first-run import", () => {
-  it("is sent once per device, across remounts and reloads, once an answer came", async () => {
+describe("a first load", () => {
+  it("asks only for `sync`: Thread Glance reads no other list's preferences", async () => {
     const server = createFakeServer({ preferences: { settleAfter: "never" } });
     const first = mountList(server, threads());
     await find(() => screen.getByRole("link", { name: /Open Worker/ }));
     await settle();
-    expect(first.inspection.rpcCalls.map((call) => call.method).slice(0, 2)).toEqual(["importPreferences", "sync"]);
-    expect(JSON.parse(localStorage.getItem(IMPORT_ANSWER_STORAGE_KEY)!)).toMatchObject({ status: "already-imported" });
-    leave(server, first);
-    const again = mountList(server, threads());
-    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
-    await settle();
-    leave(server, again);
-    // A reload of the app, or of the plugin after an update, starts a new lifetime; the device keeps its record.
-    endPluginLifetime();
-    const reloaded = mountList(createFakeServer({ preferences: { settleAfter: "never" } }), threads());
-    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
-    await settle();
-    expect([...again.inspection.rpcCalls, ...reloaded.inspection.rpcCalls].map((call) => call.method)).not.toContain("importPreferences");
-  });
-
-  it("is sent again on the next load when it got no answer", async () => {
-    const server = createFakeServer({ preferences: { settleAfter: "never" } });
-    const failing = {
-      ...server.handlers,
-      importPreferences: () => {
-        throw new Error("server restarting");
-      },
-    };
-    const first = mountList(server, threads(), { rpc: failing });
-    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
-    await settle();
-    expect(localStorage.getItem(IMPORT_ANSWER_STORAGE_KEY)).toBeNull();
-    leave(server, first);
-    endPluginLifetime();
-    const next = mountList(createFakeServer({ preferences: { settleAfter: "never" } }), threads());
-    await find(() => screen.getByRole("link", { name: /Open Worker/ }));
-    await settle();
-    expect(next.inspection.rpcCalls.map((call) => call.method)).toContain("importPreferences");
+    expect(first.inspection.rpcCalls.map((call) => call.method)[0]).toBe("sync");
+    expect(first.inspection.rpcCalls.map((call) => call.method)).not.toContain("importPreferences");
   });
 });
 
