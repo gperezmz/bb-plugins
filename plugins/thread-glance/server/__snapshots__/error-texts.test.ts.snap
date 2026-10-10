@@ -752,30 +752,6 @@ exports[`refusal texts > rpc fetchArchived refuses {"threadIds":[""]} 1`] = `
 }
 `;
 
-exports[`refusal texts > rpc importPreferences refuses "mirror" 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Invalid input: expected object, received string",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
-exports[`refusal texts > rpc importPreferences refuses {"bbMirror":null,"extra":true} 1`] = `
-{
-  "code": "invalid_input",
-  "issues": [
-    {
-      "message": "Unrecognized key: "extra"",
-    },
-  ],
-  "message": "rpc input validation failed",
-}
-`;
-
 exports[`refusal texts > rpc markSeen refuses {"threadIds":[""]} 1`] = `
 {
   "code": "invalid_input",

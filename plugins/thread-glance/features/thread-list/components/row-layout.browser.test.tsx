@@ -10,7 +10,6 @@ import type { PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { CLIENT_PREFERENCES_STORAGE_KEY, defaultPreferences, type ClientPreferences, type OrganizationMode, type Preferences } from "@/shared/preferences";
 import type { ThreadNotes } from "@/shared/signals";
 import { coreThreadActions, createFakeServer, finishedUnread, makeThread, PROJECTS } from "../testing/fixtures";
-import { PHONE_QUERY } from "../model/heights";
 import { layoutItems } from "../model/layout-items";
 import { rangeKey } from "../model/windowing";
 import { attachedListStores } from "../store/api";
@@ -103,6 +102,9 @@ function threads() {
   ];
 }
 
+/** What the test's browser frame stands in for bb's `isCompactViewport` by: a coarse pointer below Tailwind's `md` width. */
+const HOST_COMPACT_QUERY = "(width < 48rem) and (pointer: coarse)";
+
 const props: PluginThreadListProps = {
   activeThreadId: null,
   activeProjectId: null,
@@ -135,7 +137,7 @@ async function render(
   await page.viewport(width, height);
   localStorage.setItem(CLIENT_PREFERENCES_STORAGE_KEY, JSON.stringify({ density, branchLine }));
   const preferences = { ...defaultPreferences(), settleAfter: "never" as const, organizationMode, ...overrides };
-  renderSlot(app.threadLists[0]!, props, {
+  renderSlot(app.threadLists[0]!, { ...props, isCompactViewport: matchMedia(HOST_COMPACT_QUERY).matches }, {
     rpc: createFakeServer({
       preferences,
       stamps: {
@@ -738,7 +740,7 @@ describe("Density and Branch line", () => {
     const store = attachedListStores().at(-1)!;
     const model = store.getState().model!;
     const groups = model.groupIds.map((id) => model.groupsById.get(id)!);
-    const layout = layoutItems(groups, { density: options.density, phone });
+    const layout = layoutItems(groups, { density: options.density, compact: phone });
     const sections = [...document.querySelectorAll<HTMLElement>("section[data-sidebar-visibility-group]")];
     expect(sections.map((section) => section.dataset.sidebarVisibilityGroup)).toEqual(layout.groups.map((group) => group.groupId));
     for (const [index, extent] of layout.groups.entries()) {
@@ -794,7 +796,7 @@ describe("Density and Branch line", () => {
       const state = attachedListStores().at(-1)!.getState();
       const model = state.model!;
       const groups = model.groupIds.map((id) => model.groupsById.get(id)!);
-      const layout = layoutItems(groups, { density: state.layout.density, phone: matchMedia(PHONE_QUERY).matches });
+      const layout = layoutItems(groups, { density: state.layout.density, compact: matchMedia(HOST_COMPACT_QUERY).matches });
       const listTop = list().getBoundingClientRect().top + window.scrollY;
       const bottom = document.documentElement.scrollHeight - innerHeight;
       const tops = new Set([0, bottom]);

@@ -3,12 +3,11 @@
 // spacer of their height that carries their threads for bb's navigation.
 import { memo, type ReactNode } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { ICONS } from "../icons";
 import type { Counters } from "../model/counters";
 import { canRename, type GroupDescriptor } from "../model/groups";
-import { PHONE_QUERY, rowHeight } from "../model/heights";
+import { rowHeight } from "../model/heights";
 import { drawsEmpty } from "../model/layout-items";
 import type { Row } from "../model/view";
 import { windowedNavValue, type NavTarget } from "../model/windowing";
@@ -29,6 +28,13 @@ import { HEADER_HOVER_HIDES, HEADER_HOVER_SHOWS } from "./input-modality";
 import { menuTriggerProps } from "./overlays/trigger";
 import { GROUP_GAP } from "./row-heights";
 import { ROW_ICON_BUTTON, ThreadRowView } from "./ThreadRowView";
+
+/** What the inline rename box of each renamable group is called. */
+const RENAME_LABEL: Partial<Record<GroupDescriptor["kind"], string>> = {
+  project: "Project name",
+  section: "Section name",
+  machine: "Machine name",
+};
 
 /** A group's header: its label, counters, `+` and its "…". It reads only what it draws. */
 const GroupHeader = memo(function GroupHeader({
@@ -66,7 +72,8 @@ const GroupHeader = memo(function GroupHeader({
       data-sidebar="group-label"
       data-drag-group={compact || inOverflow || renaming ? undefined : groupId}
       className={cn(
-        "group/header sticky top-0 z-20 flex h-7 items-center gap-1 rounded-md bg-sidebar pl-2 pr-1 text-xs text-muted-foreground max-md:pointer-coarse:h-9",
+        "group/header sticky top-0 z-20 flex items-center gap-1 rounded-md bg-sidebar pl-2 pr-1 text-xs text-muted-foreground",
+        compact ? "h-9" : "h-7",
         dropActive && "bg-sidebar-accent",
         dragged && "opacity-50",
         !compact && !inOverflow && "select-none",
@@ -75,7 +82,7 @@ const GroupHeader = memo(function GroupHeader({
       {renaming ? (
         <RenameEditor
           initial={label}
-          label={descriptor.kind === "section" ? "Section name" : "Machine name"}
+          label={RENAME_LABEL[descriptor.kind] ?? "Group name"}
           onSave={(name) => commands.renameGroup(groupId, name)}
           onDone={commands.endRename}
           className="text-xs"
@@ -103,9 +110,7 @@ const GroupHeader = memo(function GroupHeader({
         <span className="relative ml-auto flex shrink-0 items-center">
           <CounterStrip counters={counters} className={cn("transition-opacity", counterFade)} />
           <span className={cn("flex items-center transition-opacity", actionsFade)}>
-            {descriptor.kind !== "pinned" &&
-            (descriptor.newThreadProjectId !== null || descriptor.kind === "machine") &&
-            (!compact || holdsActive) ? (
+            {!compact || holdsActive ? (
               <button
                 type="button"
                 aria-label={`New thread in ${label}`}
@@ -171,8 +176,7 @@ export const GroupSection = memo(function GroupSection({
   mounted: ReadonlySet<string>;
 }) {
   const group = useGroup(groupId);
-  const { density } = useLayout();
-  const phone = useMediaQuery(PHONE_QUERY);
+  const { density, compact } = useLayout();
   if (group === undefined) return null;
   const descriptor = group.descriptor;
   const content: ReactNode[] = [];
@@ -189,7 +193,7 @@ export const GroupSection = memo(function GroupSection({
       continue;
     }
     if (spacer.height === 0) spacer.key = row.key;
-    spacer.height += rowHeight(row, { density, phone });
+    spacer.height += rowHeight(row, { density, compact });
     if (row.type === "thread") spacer.nav.push({ threadId: row.info.thread.id, projectId: row.projectId });
   }
   flush();

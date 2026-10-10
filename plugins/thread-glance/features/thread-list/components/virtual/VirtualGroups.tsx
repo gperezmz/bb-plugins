@@ -4,8 +4,6 @@
 // measured. The list re-renders when the mounted range changes; a group
 // renders only when its own mounted rows do.
 import { memo, useLayoutEffect, useMemo, useReducer, useRef } from "react";
-import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
-import { PHONE_QUERY } from "../../model/heights";
 import { firstRowFrom, layoutItems } from "../../model/layout-items";
 import { keptIndexes, mountedByGroup, mountedIndexes, NO_ROWS, rangeKey } from "../../model/windowing";
 import { useGroups, useKeptRows, useLayout } from "../../store/hooks";
@@ -24,9 +22,8 @@ export const VirtualGroups = memo(function VirtualGroups({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const groups = useGroups(groupIds);
-  const { density, branchLine } = useLayout();
-  const phone = useMediaQuery(PHONE_QUERY);
-  const layout = useMemo(() => layoutItems(groups, { density, phone }), [groups, density, phone]);
+  const { density, branchLine, compact } = useLayout();
+  const layout = useMemo(() => layoutItems(groups, { density, compact }), [groups, density, compact]);
   const kept = useKeptRows();
   const [, rerender] = useReducer((count: number) => count + 1, 0);
   const tracker = useRef<ViewTracker | null>(null);
@@ -41,7 +38,7 @@ export const VirtualGroups = memo(function VirtualGroups({
 
   // Switching Density or Branch line keeps the first visible row where it
   // was on screen: its new top, less where the view was over the old one.
-  const heights = `${density}:${branchLine}:${phone}`;
+  const heights = `${density}:${branchLine}:${compact}`;
   const last = useRef({ heights, layout });
   const steady = useRef<{ key: string; above: number } | null>(null);
   if (last.current.heights !== heights && tracker.current !== null) {

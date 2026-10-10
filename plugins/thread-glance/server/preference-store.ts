@@ -35,8 +35,6 @@ export interface PreferenceStore {
   /** The stored value, or the default when none is stored or it is invalid. */
   read<K extends PreferenceKey>(key: K): Promise<Preferences[K]>;
   readAll(): Promise<Preferences>;
-  /** Whether the kv holds a row for the key, valid or not. */
-  isStored(key: PreferenceKey): Promise<boolean>;
   /**
    * Validates, stores and publishes the value, and returns it as parsed.
    *
@@ -76,9 +74,6 @@ export function createPreferenceStore(
         }),
       );
       return result;
-    },
-    async isStored(key) {
-      return (await kv.get<unknown>(preferenceKvKey(key))) !== undefined;
     },
     async write(key, value) {
       const parsed = parsePreference(key, value);

@@ -61,6 +61,8 @@ export interface Commands {
   showGroup(groupId: string): void;
   renameGroup(groupId: string, name: string): Promise<void>;
   removeSection(groupId: string): void;
+  /** Asks first, as bb does: the project's threads go with it. */
+  removeProject(groupId: string): void;
   markGroupRead(groupId: string): void;
   toggleArchived(): void;
   setCustomizeOpen(open: boolean): void;
@@ -297,18 +299,15 @@ export function createCommands(store: ListStore): Commands {
     newThreadInGroup(groupId) {
       const descriptor = groupOf(groupId)?.descriptor;
       if (descriptor === undefined) return;
-      edge().navigate.toCompose({
-        ...(descriptor.newThreadProjectId ? { projectId: descriptor.newThreadProjectId } : {}),
-        ...(descriptor.newThreadSectionId ? { placement: { sectionId: descriptor.newThreadSectionId, pinned: false } } : {}),
-        focusPrompt: true,
-      });
+      edge().navigate.toCompose({ ...descriptor.newThread, focusPrompt: true });
       edge().onNavigate();
     },
     hideGroup: (groupId) => store.updatePreferences({ hiddenGroups: [...inputs().prefs.hiddenGroups, groupId] }),
     showGroup: (groupId) => store.updatePreferences({ hiddenGroups: inputs().prefs.hiddenGroups.filter((id) => id !== groupId) }),
     async renameGroup(groupId, name) {
       const descriptor = groupOf(groupId)?.descriptor;
-      if (descriptor?.kind === "section") await edge().sdk.threadSections.update({ id: descriptor.entityId!, name });
+      if (descriptor?.kind === "project") await edge().sdk.projects.update({ projectId: descriptor.entityId!, name });
+      else if (descriptor?.kind === "section") await edge().sdk.threadSections.update({ id: descriptor.entityId!, name });
       else if (descriptor?.kind === "machine") await edge().sdk.hosts.update({ hostId: descriptor.entityId!, name });
     },
     removeSection(groupId) {
@@ -322,6 +321,22 @@ export function createCommands(store: ListStore): Commands {
           destructive: true,
           run: () => {
             edge().sdk.threadSections.delete({ id: entityId }).catch(fail("Couldn't remove the section"));
+          },
+        },
+      });
+    },
+    removeProject(groupId) {
+      const descriptor = groupOf(groupId)?.descriptor;
+      if (descriptor?.kind !== "project" || descriptor.entityId === null) return;
+      const projectId = descriptor.entityId;
+      store.setUi({
+        confirm: {
+          title: `Remove ${descriptor.label}?`,
+          description: "The project and its threads are removed from bb. This cannot be undone.",
+          confirmLabel: "Remove project",
+          destructive: true,
+          run: () => {
+            edge().sdk.projects.delete({ projectId }).catch(fail("Couldn't remove the project"));
           },
         },
       });

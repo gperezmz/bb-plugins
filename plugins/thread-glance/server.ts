@@ -1,4 +1,4 @@
-// Thread Glance server: preferences, first-run import, thread stamps, thread
+// Thread Glance server: preferences, thread stamps, thread
 // notes and scheduled sends, served to the app through `sync` and realtime.
 // The app imports the RPC contract's types from shared/contract.ts and the
 // signals' from shared/signals.ts.
@@ -9,7 +9,6 @@ import { rpcContract } from "./shared/contract";
 import { CHANNELS } from "./shared/signals";
 import { createCli } from "./server/cli";
 import { resolveFailureText } from "./server/failures";
-import { createBbCliReader, importPreferences } from "./server/import";
 import {
   createNoteStore,
   describeDone,
@@ -42,8 +41,6 @@ export default function threadGlance(bb: BbPluginApi): void {
   const scheduled = createScheduledTracker({
     publish: (signal) => bb.realtime.publish(CHANNELS.scheduled, signal),
   });
-  const readBbCli = createBbCliReader(bb.log, () => bb.server.loopbackBaseUrl);
-  const importOnce = createSerialQueue();
   // A change to thread records and the signal that carries it, one at a
   // time, so each signal carries the records as its revision left them.
   const inOrder = createSerialQueue();
@@ -81,11 +78,6 @@ export default function threadGlance(bb: BbPluginApi): void {
     },
     async resetPreference({ key }) {
       return { key, value: await preferences.reset(key) };
-    },
-    importPreferences({ bbMirror }) {
-      return importOnce(() =>
-        importPreferences({ kv: bb.storage.kv, log: bb.log, store: preferences, readBbCli }, bbMirror),
-      );
     },
     async markSeen({ threadIds }) {
       const at = Date.now();

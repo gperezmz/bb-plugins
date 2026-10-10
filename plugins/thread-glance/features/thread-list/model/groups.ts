@@ -16,9 +16,19 @@ export interface GroupDescriptor {
   label: string;
   /** Project, section or machine id for entity groups. */
   entityId: string | null;
-  /** Project a new thread from this group's `+` goes to. */
-  newThreadProjectId: string | null;
-  newThreadSectionId: string | null;
+  /** What a new thread started from this group's `+` is given. */
+  newThread: NewThreadTarget;
+}
+
+/**
+ * What bb's compose screen is opened with: the project, where the thread is
+ * filed and pinned, and the machine a new environment runs on. A key left out
+ * is left to bb's defaults.
+ */
+export interface NewThreadTarget {
+  projectId?: string;
+  placement?: { sectionId: string | null; pinned: boolean };
+  hostId?: string;
 }
 
 export interface GroupingInputs {
@@ -67,6 +77,14 @@ export function groupIdForRoot(
   }
 }
 
+/** A thread started in a section: filed there, unpinned, in the personal project. */
+function sectionTarget(personal: PluginSidebarProject | null, sectionId: string): NewThreadTarget {
+  return {
+    ...(personal === null ? {} : { projectId: personal.id }),
+    placement: { sectionId, pinned: false },
+  };
+}
+
 /** Entity groups for the mode, in their natural order. */
 export function entityGroups(
   inputs: GroupingInputs,
@@ -82,8 +100,7 @@ export function entityGroups(
           kind: "project" as const,
           label: project.name,
           entityId: project.id,
-          newThreadProjectId: project.id,
-          newThreadSectionId: null,
+          newThread: { projectId: project.id },
         }));
     case "chronological": {
       const known = new Set(inputs.sections.map((section) => section.id));
@@ -94,8 +111,7 @@ export function entityGroups(
         kind: "section",
         label: section.name,
         entityId: section.id,
-        newThreadProjectId: personal?.id ?? null,
-        newThreadSectionId: section.id,
+        newThread: sectionTarget(personal, section.id),
       }));
       for (const thread of inputs.threads) {
         if (thread.sectionId === null || known.has(thread.sectionId)) continue;
@@ -105,8 +121,7 @@ export function entityGroups(
           kind: "section",
           label: "Section",
           entityId: thread.sectionId,
-          newThreadProjectId: personal?.id ?? null,
-          newThreadSectionId: thread.sectionId,
+          newThread: sectionTarget(personal, thread.sectionId),
         });
       }
       return groups;
@@ -123,8 +138,7 @@ export function entityGroups(
         kind: "machine" as const,
         label: name || "Unknown machine",
         entityId: id,
-        newThreadProjectId: null,
-        newThreadSectionId: null,
+        newThread: { hostId: id },
       }));
     }
   }
@@ -140,17 +154,16 @@ export function builtinGroup(
       kind: "pinned",
       label: "Pinned",
       entityId: null,
-      newThreadProjectId: null,
-      newThreadSectionId: null,
+      newThread: { placement: { sectionId: null, pinned: true } },
     };
   }
+  const personal = personalProject(projects);
   return {
     id,
     kind: "threads",
     label: "Threads",
     entityId: null,
-    newThreadProjectId: personalProject(projects)?.id ?? null,
-    newThreadSectionId: null,
+    newThread: personal === null ? {} : { projectId: personal.id },
   };
 }
 
@@ -263,7 +276,7 @@ export function toggleGroupCollapse(
   }
 }
 
-/** Sections and machines take a name of their own. */
+/** Projects, sections and machines take a name of their own. */
 export function canRename(descriptor: GroupDescriptor): boolean {
-  return descriptor.kind === "section" || descriptor.kind === "machine";
+  return descriptor.kind === "project" || descriptor.kind === "section" || descriptor.kind === "machine";
 }

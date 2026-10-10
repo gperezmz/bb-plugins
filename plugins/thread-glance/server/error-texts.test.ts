@@ -70,8 +70,6 @@ const RPC_CASES = ([
   ["setPreference", { key: "organizationMode", value: "sideways" }],
   ["setPreference", { key: "organizationMode", value: "machine", extra: 1 }],
   ["resetPreference", { key: 1 }],
-  ["importPreferences", { bbMirror: null, extra: true }],
-  ["importPreferences", "mirror"],
   ["fetchArchived", { threadIds: [""] }],
   ["markSeen", { threadIds: [""] }],
   ["markSeen", { threadIds: JSON.parse(TOO_MANY) as string[] }, "10001 ids"],

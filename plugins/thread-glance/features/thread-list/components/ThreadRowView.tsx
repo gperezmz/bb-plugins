@@ -32,7 +32,7 @@ import { PullRequestBadge } from "./PullRequestBadge";
 import { RenameEditor } from "./RenameEditor";
 import { SplitMiniMap } from "./SplitMiniMap";
 import { inlineThreadActions, QUICK_ACTION_KEYS } from "./thread-menu";
-import { NESTED_MARK_TWO_LINES, THREAD_ROW_HEIGHT } from "./row-heights";
+import { NESTED_MARK_TWO_LINES, threadRowHeight } from "./row-heights";
 import { ROW_HOVER_HIDES, ROW_HOVER_LAYS_OUT, ROW_HOVER_SHOWS } from "./input-modality";
 
 /** Two clicks on one row within this window start a rename, as in bb. */
@@ -208,7 +208,7 @@ export const ThreadRowView = memo(function ThreadRowView({ row, groupId }: Threa
         }}
         className={cn(
           "group/row relative flex w-full items-center gap-1.5 rounded-md pr-1 text-sm transition-colors",
-          THREAD_ROW_HEIGHT[density][twoLines ? "two" : "one"],
+          threadRowHeight(density, compact, twoLines),
           isActive
             ? "bg-state-active text-sidebar-foreground"
             : "cursor-pointer text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

@@ -83,6 +83,7 @@ function render(
         markRead: async ({ threadId }: { threadId: string }) => ({ id: threadId }),
       } as never,
       projects: {
+        update: async () => ({}),
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
@@ -528,6 +529,51 @@ describe("Thread Glance slot", () => {
     const slot = render([makeThread({ id: "t" })]);
     fireEvent.click(await screen.findByRole("button", { name: "New thread in Alpha" }));
     expect(slot.inspection.navigateCalls).toContainEqual({ method: "toCompose", options: { projectId: "proj_a", focusPrompt: true } });
+  });
+
+  it("the Pinned header + starts a pinned thread", async () => {
+    const slot = render([makeThread({ id: "t", pinnedAt: T0, isPinned: true })]);
+    fireEvent.click(await screen.findByRole("button", { name: "New thread in Pinned" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({ method: "toCompose", options: { placement: { sectionId: null, pinned: true }, focusPrompt: true } });
+  });
+
+  it("a machine header + starts a thread on that machine", async () => {
+    const slot = render([makeThread({ id: "t" })], { prefs: { organizationMode: "machine" } });
+    fireEvent.click(await screen.findByRole("button", { name: "New thread in Laptop" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({ method: "toCompose", options: { hostId: "host_1", focusPrompt: true } });
+  });
+
+  it("a project header's menu offers Rename and Remove project, but no Project settings, which bb gives a plugin no route to", async () => {
+    render([makeThread({ id: "t" })]);
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, ctrlKey: false });
+    expect(await screen.findByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Remove project" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /settings/i })).toBeNull();
+  });
+
+  it("renames a project in place from its header, in a box named for a project", async () => {
+    const slot = render([makeThread({ id: "t" })]);
+    fireEvent.pointerDown(await screen.findByRole("button", { name: "Alpha actions" }), { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const editor = await screen.findByRole("textbox", { name: "Project name" });
+    fireEvent.change(editor, { target: { value: "Alpha two" } });
+    fireEvent.keyDown(editor, { key: "Enter" });
+    await waitFor(() =>
+      expect(slot.inspection.sdkCalls).toContainEqual(expect.objectContaining({ method: "projects.update", args: [{ projectId: "proj_a", name: "Alpha two" }] })),
+    );
+  });
+
+  it("draws headers and rows at the height of the viewport bb says it is", async () => {
+    const heights = async (isCompactViewport: boolean) => {
+      render([makeThread({ id: "t" })], { props: { isCompactViewport } });
+      const header = (await screen.findByRole("button", { name: "Alpha actions" })).closest("[data-sidebar='group-label']")!;
+      const row = (await screen.findByRole("link", { name: /Open Thread t/ })).parentElement!;
+      const out = [header.className.match(/\bh-\d+\b/)![0], row.className.match(/\bh-\d+\b/)![0]];
+      cleanup();
+      return out;
+    };
+    expect(await heights(false)).toEqual(["h-7", "h-7"]);
+    expect(await heights(true)).toEqual(["h-9", "h-9"]);
   });
 
   it("says so on an empty list, with no New thread button of its own", async () => {

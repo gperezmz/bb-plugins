@@ -24,13 +24,16 @@ A worktree folder row, drawn while **Worktrees as folders** is on, has its own *
 | Item | Shown | Does |
 |---|---|---|
 | Mark all read | While the group holds an unread thread | See [Marking threads read](#marking-threads-read) |
-| New thread | On a group that names a project, not on Pinned | Opens a new thread there |
+| New thread | On every group | Opens bb's new-thread screen for the group, as the group's **+** does: from Pinned the thread is pinned, from a section it is filed in that section, from a project it is in that project, from a machine it runs on that machine, and from Threads it is in the personal project |
 | New section | While grouped by Custom | Creates a bb section |
-| Rename | On a section or a machine | Renames it in bb |
+| Rename | On a project, a section or a machine | Renames it in bb |
 | Hide from list, Show in list | On every group but Pinned | Moves the group into **More** at the end of the list, or back |
 | Show archived threads | Always | Shows archived threads in every group; a check marks it on |
 | Customize list | Always | Opens the dialog that orders and hides groups |
 | Remove section | On a section | Asks first, then removes the section; its threads go back to Threads |
+| Remove project | On a project | Asks first, then removes the project and its threads from bb, as bb's own list does |
+
+A project header has no **Project settings** item: bb's plugin SDK gives a plugin the settings page's address but no way to open it without reloading the app. A project's settings are not reached from the list.
 
 ## The hover card
 

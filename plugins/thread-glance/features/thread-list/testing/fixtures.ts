@@ -363,10 +363,6 @@ export function createFakeServer(options: FakeServerOptions = {}) {
         preferences = { ...preferences, [key]: defaultPreferences()[key] };
         return { key, value: preferences[key] };
       },
-      importPreferences: (input: unknown) => {
-        server.calls.push({ method: "importPreferences", input });
-        return { status: "already-imported" as const, source: null, keys: [] as PreferenceKey[] };
-      },
       markSeen: ({ threadIds }: { threadIds: string[] }) => {
         server.calls.push({ method: "markSeen", input: { threadIds } });
         const at = Date.now();

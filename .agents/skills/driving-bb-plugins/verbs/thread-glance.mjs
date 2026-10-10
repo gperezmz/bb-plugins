@@ -982,7 +982,6 @@ export const verbs = {
         before,
         trips,
         after,
-        importAnswer: await page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => /thread-glance|import/i.test(k)).map((k) => [k, localStorage.getItem(k)]))),
       };
     },
   },
@@ -1105,52 +1104,6 @@ export const verbs = {
       return { actionsMs: acted - t0, actions, windows: states, ...(flags.frames ? { frames: frames.filter((f) => f.at >= t0).map((f) => ({ ms: f.at - t0, frame: f.frame })) } : {}) };
     },
   },
-  "import-once": {
-    usage: "[--actions <json file>] [--fail-first]: one browser profile through a first load, a reload, a trip to Settings and back, the actions (a plugin reload or update) and a reload after them, counting `importPreferences` at each; --fail-first makes the first load's import fail in the network, so no answer arrives",
-    valued: ["actions"],
-    async run(ctx) {
-      const { page, url, capture, flags } = ctx;
-      const rec = await recordRequests(page);
-      let failing = Boolean(flags["fail-first"]);
-      await page.route("**/api/v1/plugins/thread-glance/rpc/importPreferences", (route) => (failing ? ((failing = false), route.abort("failed")) : route.continue()));
-      const imports = (from) => rec.since(from).filter((r) => r.path.endsWith("/rpc/importPreferences")).length;
-      const stored = () => page.evaluate(() => Object.fromEntries(Object.keys(localStorage).filter((k) => /thread-glance/i.test(k)).map((k) => [k, localStorage.getItem(k)?.slice(0, 200)])));
-      const steps = [];
-      let mark = rec.mark();
-      await ready(page, url);
-      await sleep(2000);
-      steps.push({ step: "first load", imports: imports(mark), stored: await stored() });
-      await capture("first-load", "first load");
-      mark = rec.mark();
-      await page.reload();
-      await header(page).waitFor();
-      await page.waitForLoadState("networkidle");
-      await sleep(2000);
-      steps.push({ step: "reload", imports: imports(mark), stored: await stored() });
-      mark = rec.mark();
-      await leaveForSettings(page);
-      await page.goBack();
-      await header(page).waitFor();
-      await page.waitForLoadState("networkidle");
-      await sleep(2000);
-      steps.push({ step: "Settings and back", imports: imports(mark) });
-      mark = rec.mark();
-      const actions = runActions(ctx, "thread-glance.import-once/cli", readActions(flags));
-      await sleep(3000);
-      await header(page).waitFor({ timeout: 30_000 }).catch(() => {});
-      await page.waitForLoadState("networkidle");
-      steps.push({ step: "the actions, no reload", actions, imports: imports(mark) });
-      mark = rec.mark();
-      await page.reload();
-      await header(page).waitFor();
-      await page.waitForLoadState("networkidle");
-      await sleep(2000);
-      steps.push({ step: "reload after the actions", imports: imports(mark), stored: await stored() });
-      await capture("end", "after the last reload");
-      return { steps, allRpc: glanceRequests(rec.since(0)).rpc };
-    },
-  },
-
   scroll: {
     usage: "[--step <px>]: scroll the sidebar top to bottom and back; at each step the rows mounted outside the view and margin, rows left out inside it, and whether bb's keyboard walk matches the top's",
     valued: ["step"],

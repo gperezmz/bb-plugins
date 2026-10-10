@@ -38,7 +38,7 @@ Density is row spacing. Compact is the default. Comfortable makes thread rows an
 | Settled fold | 24 px (phones 36) | 24 px (phones 36) |
 | Space above a group header | 4 px | 8 px |
 
-The list header and the first group shown get no space above them; every group header after the first gets it, a collapsed group's included. Phones are narrow screens with a touch pointer.
+The list header and the first group shown get no space above them; every group header after the first gets it, a collapsed group's included. A phone is whatever bb calls a compact viewport: bb tells the list when it is one (phone-width viewports and coarse pointers), and Thread Glance draws and sizes everything by that, without a width test of its own.
 
 ### Branch line
 
@@ -100,6 +100,6 @@ bb thread-glance prefs reset hiddenGroups
 
 Every open window follows a change at once. The plugin's agent skill sends an agent asked to change the sidebar's layout to the same commands.
 
-## First-run import
+## Where a new install starts
 
-The first time Thread Glance loads, it copies your layout from bb's own list: grouping, sort, direction, group order, hidden groups, collapsed groups and collapsed folder rows, and whether worktrees are folders, where bb's `auto` becomes off. It reads bb's list's browser copy, or, when the browser has none, runs `bb thread-list prefs list --json` against the bb server Thread Glance runs in, never the machine's default one. When it cannot tell which server that is, it logs a warning and imports nothing from the CLI. It runs once per install, each browser asks for it only until it gets an answer, and it never overwrites a key the plugin already has, and skips which parents you collapsed in bb's list, because Thread Glance stores which chips you opened, not which you closed.
+A new install starts from the defaults in the tables above. Thread Glance does not read bb's built-in list's preferences, from its browser copy or from `bb thread-list prefs`, so neither a change there nor the layout it had before Thread Glance was chosen reaches Thread Glance. Set the layout with the list's settings or `bb thread-glance prefs`. An install that has run an earlier version keeps the preferences it already stored.

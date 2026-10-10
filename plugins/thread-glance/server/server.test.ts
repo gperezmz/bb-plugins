@@ -1,20 +1,16 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
 import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadRecord } from "../shared/signals";
 import { defaultPreferences } from "../shared/preferences";
-import { createBbCliReader, IMPORT_MARKER_KEY } from "./import";
 import { noteKvKey } from "./notes";
 import { preferenceKvKey } from "./preference-store";
 import { stampKvKey } from "./stamps";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
-async function load(sdk: Overrides = {}, loopbackBaseUrl?: string) {
-  const host = createFakePluginHost({ pluginId: "thread-glance", sdk, loopbackBaseUrl });
+async function load(sdk: Overrides = {}) {
+  const host = createFakePluginHost({ pluginId: "thread-glance", sdk });
   await plugin(host.bb);
   return host;
 }
@@ -64,51 +60,9 @@ function recordSignals(harness: Harness): Record<string, ThreadRecord>[] {
   return signalsOn(harness, CHANNELS.records).map((signal) => (signal as RecordsSignal).records);
 }
 
-let tempDir: string;
-const savedBbCli = process.env.BB_CLI;
-const savedServerUrl = process.env.BB_SERVER_URL;
-
-beforeEach(() => {
-  tempDir = mkdtempSync(join(tmpdir(), "thread-glance-test-"));
-  process.env.BB_CLI = join(tempDir, "missing-bb");
-});
-
 afterEach(() => {
-  rmSync(tempDir, { recursive: true, force: true });
-  if (savedBbCli === undefined) delete process.env.BB_CLI;
-  else process.env.BB_CLI = savedBbCli;
-  if (savedServerUrl === undefined) delete process.env.BB_SERVER_URL;
-  else process.env.BB_SERVER_URL = savedServerUrl;
   vi.useRealTimers();
 });
-
-/** Points BB_CLI at a script that prints `output` and records its argv. */
-function fakeBbCli(output: string): string {
-  const script = join(tempDir, "bb");
-  const argvFile = join(tempDir, "argv");
-  writeFileSync(
-    script,
-    `#!/bin/sh\necho "$@" > '${argvFile}'\ncat <<'JSON'\n${output}\nJSON\n`,
-  );
-  chmodSync(script, 0o755);
-  process.env.BB_CLI = script;
-  return argvFile;
-}
-
-/**
- * Points BB_CLI at a script standing in for two bb servers on one machine: it
- * prints `own` when BB_SERVER_URL names `ownUrl`, and `other` otherwise, as the
- * CLI would for whichever server it asked.
- */
-function fakeTwoServerBbCli(ownUrl: string, own: string, other: string): void {
-  const script = join(tempDir, "bb");
-  writeFileSync(
-    script,
-    `#!/bin/sh\nif [ "$BB_SERVER_URL" = '${ownUrl}' ]; then\ncat <<'JSON'\n${own}\nJSON\nelse\ncat <<'JSON'\n${other}\nJSON\nfi\n`,
-  );
-  chmodSync(script, 0o755);
-  process.env.BB_CLI = script;
-}
 
 describe("preferences", () => {
   it("lists the defaults when nothing is stored", async () => {
@@ -177,156 +131,6 @@ describe("preferences", () => {
     expect(preferences).toEqual(defaultPreferences());
     expect(preferences.settleAfter).toBe("1d");
     expect(preferences.showArchived).toBe(false);
-  });
-});
-
-describe("importPreferences", () => {
-  it("imports bb's localStorage mirror once, skipping defaults and stored keys", async () => {
-    const { bb, harness } = await load();
-    await bb.storage.kv.set(preferenceKvKey("sortDirection"), "ascending");
-    const mirror = {
-      organizationMode: "machine",
-      environmentGrouping: "auto",
-      sortDirection: "descending",
-      collapsedThreads: ["t1"],
-      collapsedProjects: ["p1"],
-      threadLifecycles: ["active"],
-    };
-    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: mirror })).toEqual({
-      status: "imported",
-      source: "local-storage",
-      keys: ["organizationMode", "collapsedProjects"],
-    });
-    expect(await bb.storage.kv.get(preferenceKvKey("sortDirection"))).toBe("ascending");
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([
-      { key: "organizationMode", value: "machine" },
-      { key: "collapsedProjects", value: ["p1"] },
-    ]);
-    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: mirror })).toEqual({
-      status: "already-imported",
-      source: null,
-      keys: [],
-    });
-  });
-
-  it("unwraps a mirror sent as a JSON string or a { preferences } object", async () => {
-    const first = await load();
-    expect(
-      await first.harness.behavior.callRpc("importPreferences", {
-        bbMirror: JSON.stringify({ organizationMode: "machine" }),
-      }),
-    ).toMatchObject({ source: "local-storage", keys: ["organizationMode"] });
-    const second = await load();
-    expect(
-      await second.harness.behavior.callRpc("importPreferences", {
-        bbMirror: { preferences: { environmentGrouping: true } },
-      }),
-    ).toMatchObject({ source: "local-storage", keys: ["environmentGrouping"] });
-  });
-
-  it("falls back to bb's CLI when there is no mirror", async () => {
-    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "chronological" }));
-    const { harness } = await load();
-    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
-      status: "imported",
-      source: "cli",
-      keys: ["organizationMode"],
-    });
-    expect(readFileSync(argvFile, "utf8").trim()).toBe("thread-list prefs list --json");
-  });
-
-  it.each([
-    ["the CLI's default server", undefined],
-    ["the server BB_SERVER_URL names", "http://127.0.0.1:38886"],
-  ])("reads its own server's preferences, never %s", async (_, inherited) => {
-    const ownUrl = "http://127.0.0.1:41886";
-    if (inherited === undefined) delete process.env.BB_SERVER_URL;
-    else process.env.BB_SERVER_URL = inherited;
-    fakeTwoServerBbCli(
-      ownUrl,
-      JSON.stringify({ organizationMode: "machine" }),
-      JSON.stringify({ organizationMode: "chronological" }),
-    );
-    const { bb, harness } = await load({}, ownUrl);
-    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
-      status: "imported",
-      source: "cli",
-      keys: ["organizationMode"],
-    });
-    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBe("machine");
-  });
-
-  it("falls back to bb's CLI when the mirror holds no bb preferences", async () => {
-    fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
-    const { harness } = await load();
-    expect(
-      await harness.behavior.callRpc("importPreferences", { bbMirror: { unrelated: 1 } }),
-    ).toMatchObject({ source: "cli", keys: ["organizationMode"] });
-  });
-
-  it("uses the defaults and marks the import done when every source fails", async () => {
-    const { bb, harness } = await load();
-    expect(await harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
-      status: "defaults",
-      source: "none",
-      keys: [],
-    });
-    expect(await bb.storage.kv.get(IMPORT_MARKER_KEY)).toMatchObject({ source: "none" });
-    expect(
-      harness.inspection.logEntries.some((entry) => entry.message.includes("thread-list prefs")),
-    ).toBe(true);
-  });
-
-  it("asks no server when it cannot tell which one it runs in", async () => {
-    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
-    const warnings: string[] = [];
-    const log = { ...createFakePluginHost().bb.log, warn: (message: string) => warnings.push(message) };
-    const read = createBbCliReader(log, () => {
-      throw new Error("server not listening yet");
-    });
-    expect(await read()).toBeNull();
-    expect(existsSync(argvFile)).toBe(false);
-    expect(warnings).toEqual([
-      "could not tell which bb server Thread Glance runs in (server not listening yet); " +
-        "importing nothing from bb's CLI and asking no other server",
-    ]);
-  });
-
-  it("starts from the defaults, or the browser copy, when its own server has no URL", async () => {
-    const argvFile = fakeBbCli(JSON.stringify({ organizationMode: "machine" }));
-    const bare = await load({}, "");
-    expect(await bare.harness.behavior.callRpc("importPreferences", { bbMirror: null })).toEqual({
-      status: "defaults",
-      source: "none",
-      keys: [],
-    });
-    expect(await bare.bb.storage.kv.get(IMPORT_MARKER_KEY)).toMatchObject({ source: "none" });
-    expect(existsSync(argvFile)).toBe(false);
-    expect(
-      bare.harness.inspection.logEntries.some(
-        (entry) =>
-          entry.level === "warn" &&
-          entry.message.includes("could not tell which bb server Thread Glance runs in (it has no URL)"),
-      ),
-    ).toBe(true);
-    const mirrored = await load({}, "");
-    expect(
-      await mirrored.harness.behavior.callRpc("importPreferences", {
-        bbMirror: { organizationMode: "chronological" },
-      }),
-    ).toMatchObject({ source: "local-storage", keys: ["organizationMode"] });
-  });
-
-  it("runs once when two windows import at the same time", async () => {
-    const { harness } = await load();
-    const results = await Promise.all([
-      harness.behavior.callRpc("importPreferences", { bbMirror: { organizationMode: "machine" } }),
-      harness.behavior.callRpc("importPreferences", { bbMirror: { organizationMode: "machine" } }),
-    ]);
-    expect(results.map((result) => (result as { status: string }).status).sort()).toEqual([
-      "already-imported",
-      "imported",
-    ]);
   });
 });
 
