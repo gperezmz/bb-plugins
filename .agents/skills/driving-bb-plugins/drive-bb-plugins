@@ -267,6 +267,14 @@ ENV
   sort -u "$ev/pids" -o "$ev/pids"
   # bb's own limit on threads running at once, as a second bound under spawn's.
   tb bb concurrency-limit global "$max_sessions" > /dev/null || fail "could not limit the run to $max_sessions running threads"
+  # bb shows its first-run setup guide in place of the app until this is set.
+  tb bb settings general onboardingCompletedAt "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > /dev/null || fail "could not mark bb's setup guide done"
+  # A thread sent from the web UI's compose screen takes whichever provider bb
+  # picks, and only Claude Code reaches the fake API; Pi sends the fake key to
+  # the real one. Every other provider is turned off.
+  for p in $(tb bb provider list --json | jq -r '.[].id' | grep -vx claude-code); do
+    tb bb provider disable "$p" > /dev/null || fail "could not turn off provider $p"
+  done
 
   if [[ -z $snapshot ]]; then
     GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
@@ -616,7 +624,7 @@ cmd_seed() {
   : > "$made"
   # Titles number on past the ones the run already has, so each stays unique.
   tb bb thread section list --json > "$ev/seed-existing.json"
-  tb bb thread list --json | jq --slurpfile sections "$ev/seed-existing.json" '{ titles: [.[].title], sections: $sections[0] }' > "$ev/seed-existing.json.new"
+  tb bb thread list --json | jq --slurpfile sections "$ev/seed-existing.json" '{ titles: [.[].title | strings], sections: $sections[0] }' > "$ev/seed-existing.json.new"
   mv "$ev/seed-existing.json.new" "$ev/seed-existing.json"
   next() { jq -r --arg s "$1" '[.titles[] | capture("^" + $s + " (?<n>[0-9]+)$") | .n | tonumber] | max // 0' "$ev/seed-existing.json"; }
   local nf nw nb nd nu

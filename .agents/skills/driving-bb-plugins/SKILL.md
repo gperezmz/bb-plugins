@@ -54,7 +54,10 @@ What a run holds:
   and a project named `drives` in a git repository of its own;
 - Claude Code threads answered by Cache Keeper's fake Anthropic API
   (`plugins/cache-keeper/harness/README.md#the-fake-anthropic-api` says how a
-  prompt steers it), so a thread spends no tokens;
+  prompt steers it), so a thread spends no tokens. Claude Code is the run's
+  only provider, so a thread sent from the web UI's compose screen is one of
+  these too;
+- bb's first-run setup guide marked done, so the web UI opens on the app;
 - `CACHE_KEEPER_DRIVE_CLOCK=1`, so `bb cache-keeper drive advance` exists.
 
 A run never touches the user's bb: every command the harness runs has the
