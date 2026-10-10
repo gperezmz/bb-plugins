@@ -36,6 +36,12 @@ The **server machine** is the machine that runs the bb server and holds its data
 
 All six rely on plugin APIs that bb marks experimental, and need bb 0.46 and plugin SDK 0.6.37 (`engines` in each `package.json`). A bb upgrade that renames one of those APIs can stop a plugin loading until the plugin is updated; `bb status` warns when an enabled plugin is not running.
 
+## What the plugins follow in bb
+
+A plugin follows **bb core**, what bb itself does for every plugin through the SDK and the host: its thread actions, read, pin, archive and section state, project operations, how a new thread is created, and what the host passes the surface a plugin draws. Taking those as they are, rather than doing the same thing another way, is what lets a plugin keep working when bb changes them in a release. A plugin does something of its own only for a feature bb core does not have, such as Thread Glance's Mark tree read, which marks a whole thread tree where bb's Mark read marks one thread.
+
+A plugin that replaces another plugin is an alternative to it, not a copy. Thread Glance replaces the **built-in thread list**, the `thread-list` plugin bb ships. That plugin's preferences, row buttons, sort and folding are its own design rather than bb core, so Thread Glance keeps its own and neither reads nor copies the built-in list's; following another plugin's settings would mean following its format on every release. Where both lists use bb core, for example a thread's section or its archive, each shows the same state.
+
 ## Threads and trees
 
 A **harness** is the coding agent a thread runs on, such as Claude Code, Codex, pi or Cursor; bb calls it the thread's provider.
