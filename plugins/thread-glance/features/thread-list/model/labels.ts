@@ -23,6 +23,7 @@ export function rowAriaLabel(
   if (row.crossGroupLabel !== null) parts.push(row.crossGroupLabel.toLowerCase());
   if (row.hiddenBadge) parts.push("hidden thread");
   if (row.info.unread && row.info.state.kind !== "unread") parts.push("unread");
+  if (row.info.doneUnseen && row.info.state.kind !== "done-unseen") parts.push("finished since you last looked");
   if (options.hasDraft && row.info.state.kind !== "draft") parts.push("unsubmitted draft");
   return `Open ${row.info.thread.displayTitle} — ${parts.join("; ")}`;
 }
@@ -35,6 +36,7 @@ const CHIP_STATE_TEXT: Readonly<Record<Flag, string>> = {
   offline: "machine offline below",
   working: "working below",
   unread: "unread below",
+  "done-unseen": "finished below",
 };
 
 /**

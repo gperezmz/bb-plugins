@@ -1,8 +1,8 @@
 # Thread Glance
 
 Replaces bb's sidebar thread list. Each row shows the thread's state glyph,
-title (bold while unread), harness logo where it differs from bb's default
-provider (a child's: from its parent's), machine where it is not the primary
+title (bold while bb has it unread), harness logo where it differs from bb's
+default provider (a child's: from its parent's), machine where it is not the primary
 one and the list is not grouped by machine, and time since it finished. Child
 threads fold behind a count chip on their parent. The list header counts the
 trees only you can move forward as `N need you`, and a tree quiet for longer
@@ -53,7 +53,7 @@ window at once; Density and Branch line are kept per browser.
   `aria-current="page"` on the open one.
 - Children chip: `button` named `Show N child thread(s) of <title>` (then
   `Collapse …`), with `, working below`, `, failed below`, `, waiting on you
-  below`, `, unread below` and the like appended.
+  below`, `, unread below`, `, finished below` and the like appended.
 - Settled fold: `button` named `Show N settled thread tree(s)` (then `Hide
   …`), its text `Settled (N)`.
 - Settings popover: radiogroups `Group by` (Project, Custom, Machine), `Sort
@@ -100,8 +100,25 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   turn. Beside it, `spawn … deployer "Start the deploy." --background` shows
   `Background command running` until `drive-bb-plugins release <id>`;
   once `busy`'s turn has ended, `needYou.count` is 2: `parent 1`'s tree, for
-  its failed child, and `deployer`. `busy` finished unread adds nothing, since
+  its failed child, and `deployer`. `busy` finished adds nothing, since
   by default only a child that failed or waits on you counts.
+- **A row's look** (`list`, `children`): `thread-glance look <title>,<title>
+  [--expand <parent>]` prints, per row, the state and details its link names,
+  `bold` (the title's weight), `glyph` (the Status column's label) and
+  `harness` (the provider logos it draws, empty where none). A child
+  `spawn`ed under a parent and finished reads state and glyph `Finished since
+  you last looked`, `bold` false and `unread` false, and its parent's chip
+  `…, finished below`; `menu <child>` offers bb's `Mark unread`, since bb has
+  it read. `list --open <child>` clears it: a later `look` reads `Idle`. With
+  bb's default provider unset (`bb settings show --json` gives
+  `generalSettings.defaultProviderId` null and `serverAccess` `connect`), or
+  set with `settings general defaultProviderId claude-code`, no Claude Code
+  row draws a `harness`.
+- **Mark tree read** (`need-you`): `thread-glance tree-read <root>
+  [--expand]` hovers the root's row and clicks its `Mark tree read`; `before`
+  and `after` hold each tree row's `look`, `stored` each thread's read state
+  in bb. A root with a finished child turns both rows `Idle` and not bold, and
+  `--reload` keeps it.
 - **Children** (`children`): `thread-glance children "parent 1" expand
   --second-window --reload` turns the chip to `Collapse …`, lists every child
   under `after.children`, `stored.holdsParent` true (`prefs get
@@ -205,7 +222,7 @@ no verb lists them. Evidence lands in `ui/thread-glance.<verb>[-N]/`.
   `--keyboard-context` by Shift+F10 on the focused row, where focus goes back
   to the row's link. A row's items are bb's thread menu with the list's
   `Details`, `Copy thread ID`, `Move…` (not on an archived thread) and
-  `Mark tree read` (on a root with an unread child) among them.
+  `Mark tree read` (on a root with an unread or done-unseen child) among them.
   `menu --group <label>` opens a group header's: `Mark all read` while one is
   unread, `New thread`, `New section` (Custom), `Rename` (a project, section
   or machine), `Hide from list` (not Pinned), `Show archived threads`,

@@ -624,6 +624,37 @@ async function leaveForSettings(page) {
 const markRealm = (page) => page.evaluate(() => (window.__dbpRealm = Math.random()));
 const realmOf = (page) => page.evaluate(() => window.__dbpRealm ?? null);
 
+
+/**
+ * How rows are drawn, by title: the state and details their link names, the
+ * title's weight (`bold` from 600 up), the Status column glyph's label, and
+ * the provider logos or marks the row draws (`harness`, empty where none).
+ * A row not mounted reads null.
+ */
+async function lookOf(page, titles) {
+  const looks = {};
+  for (const title of titles) {
+    const link = row(page, title);
+    if ((await link.count()) === 0) {
+      looks[title] = null;
+      continue;
+    }
+    const drawn = await link.locator("..").evaluate((box, t) => {
+      const titleSpan = [...box.querySelectorAll("span[title]")].find((s) => s.getAttribute("title") === t);
+      const providers = ["Claude Code", "Codex", "Cursor", "pi"];
+      return {
+        bold: titleSpan ? Number(getComputedStyle(titleSpan).fontWeight) >= 600 : null,
+        harness: [...box.querySelectorAll("[aria-label]")].map((e) => e.getAttribute("aria-label")).filter((l) => providers.includes(l)),
+        hoverButtons: [...box.querySelectorAll("button[aria-label]")].map((b) => b.getAttribute("aria-label")),
+      };
+    }, title);
+    const glyph = await link.locator("..").locator(":scope > span:first-of-type [aria-label], :scope > span:first-of-type[aria-label]").first()
+      .getAttribute("aria-label", { timeout: 500 }).catch(() => null);
+    looks[title] = { ...parseRow(await link.getAttribute("aria-label")), ...drawn, glyph };
+  }
+  return looks;
+}
+
 export const verbs = {
   list: {
     usage: "[--open <title>] [--wait <title>]: the list header, rows, chips and settled folds; --wait first waits for a row, --open clicks it",
@@ -725,6 +756,62 @@ export const verbs = {
           threads(ctx.cli, "thread-glance.mark-all-read/cli").map((t) => ({ title: t.title, read: (t.lastReadAt ?? 0) >= (t.latestAttentionAt ?? 0) })),
       });
       return { ...result, confirm: confirmed };
+    },
+  },
+
+  look: {
+    usage: "<title>[,<title>…] [--expand <parent title>]: how each row is drawn: its named state and details, whether its title is bold, its glyph's label and the harness logo it draws, if any; --expand opens that parent's chip first",
+    valued: ["expand"],
+    async run({ page, url, capture, args, flags }) {
+      const titles = String(args[0] ?? "").split(",").filter(Boolean);
+      if (titles.length === 0) throw new Error("usage: look <title>[,<title>…]");
+      await ready(page, url);
+      if (flags.expand) {
+        await reveal(page, flags.expand);
+        const c = chip(page, flags.expand);
+        if ((await c.getAttribute("aria-expanded")) !== "true") await c.click();
+      }
+      for (const title of titles) await row(page, title).waitFor({ timeout: 30_000 });
+      await capture("look", `the rows ${titles.join(", ")}`);
+      return { rows: await lookOf(page, titles), list: await readList(page) };
+    },
+  },
+
+  "tree-read": {
+    usage: "<root title> [--expand]: hover the root's row and click its Mark tree read button; each row of the tree drawn before and after (--expand opens the chip first), and bb's read state of each thread",
+    async run(ctx) {
+      const root = ctx.args[0];
+      if (!root) throw new Error("usage: tree-read <root title>");
+      const button = (p) => row(p, root).locator("..").getByRole("button", { name: "Mark tree read" });
+      const treeTitles = () => {
+        const all = threads(ctx.cli, "thread-glance.tree-read/cli");
+        const rootId = all.find((t) => t.title === root)?.id;
+        return [root, ...all.filter((t) => t.parentThreadId === rootId).map((t) => t.title)];
+      };
+      const titles = treeTitles();
+      return drive(ctx, {
+        name: `click Mark tree read on ${root}`,
+        prepare: async (p) => {
+          await reveal(p, root);
+          if (ctx.flags.expand) {
+            const c = chip(p, root);
+            if ((await c.getAttribute("aria-expanded")) !== "true") await c.click();
+          }
+        },
+        observe: async (p) => ({ rows: await lookOf(p, titles), treeRead: (await button(p).count()) > 0 }),
+        act: async (p) => {
+          await row(p, root).locator("..").hover();
+          await button(p).click();
+        },
+        settle: async (p) => {
+          await p.mouse.move(0, 0);
+          await button(p).waitFor({ state: "detached" });
+        },
+        stored: async () =>
+          threads(ctx.cli, "thread-glance.tree-read/cli")
+            .filter((t) => titles.includes(t.title))
+            .map((t) => ({ title: t.title, read: (t.lastReadAt ?? 0) >= (t.latestAttentionAt ?? 0) })),
+      });
     },
   },
 

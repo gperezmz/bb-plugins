@@ -59,6 +59,8 @@ function render(
     prefs?: Partial<Preferences>;
     props?: Partial<PluginThreadListProps>;
     extra?: object;
+    /** bb's harnesses, as `providers.list()` answers; by default Claude Code then Codex. */
+    providerList?: () => Promise<unknown>;
     notes?: Record<string, unknown>;
     stamps?: Partial<Record<string, Record<string, number>>>;
   } = {},
@@ -87,12 +89,21 @@ function render(
         get: async () => ({ sources: [{ hostId: "host_1", isDefault: true }] }),
         branches: async () => ({ defaultBranch: "main" }),
       } as never,
-      providers: { models: async () => ({ models: [] }) } as never,
+      // No default harness chosen: bb starts threads on the first available one.
+      providers: {
+        models: async () => ({ models: [] }),
+        list:
+          options.providerList ??
+          (async () => [
+            { id: "claude-code", available: true },
+            { id: "codex", available: true },
+          ]),
+      } as never,
       system: {
         config: async () => ({
           primaryHostId: "host_1",
           generalSettings: { defaultProviderId: null },
-          serverAccess: { defaultProviderId: "claude-code" },
+          serverAccess: { defaultProviderId: "connect" },
         }),
       } as never,
     },
@@ -507,8 +518,8 @@ describe("Thread Glance slot", () => {
   });
 
   it.each([
-    ["a read", false, ["c", "d"]],
-    ["an unread", true, ["c", "d", "r"]],
+    ["a read", false, ["c"]],
+    ["an unread", true, ["c", "r"]],
   ] as const)("marks %s root's whole tree read from its hover button while a thread below it is unread", async (_, rootUnread, marked) => {
     const ran: string[] = [];
     const slot = render([
@@ -523,6 +534,7 @@ describe("Thread Glance slot", () => {
     expect(button.nextElementSibling?.getAttribute("aria-label")).toBe("Archive thread");
     fireEvent.click(button);
     await waitFor(() => expect(markedRead(slot)).toEqual(marked));
+    // The done-unseen child bb already has read is only stamped seen.
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
     // bb's Mark read is not run: the tree's reads went to bb one thread at a time.
     expect(ran).toEqual([]);
@@ -554,7 +566,7 @@ describe("Thread Glance slot", () => {
     const row = (await screen.findByRole("link", { name: /Open Root/ })).parentElement!;
     fireEvent.click(within(row).getByRole("button", { name: "Thread actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Mark tree read" }));
-    await waitFor(() => expect(markedRead(slot)).toEqual(["c", "d"]));
+    await waitFor(() => expect(markedRead(slot)).toEqual(["c"]));
     expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({ method: "markSeen", input: { threadIds: ["d"] } }));
   });
 
@@ -626,6 +638,15 @@ describe("Thread Glance slot", () => {
     const trigger = await screen.findByRole("button", { name: "Alpha actions" });
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
     expect(await screen.findByRole("menuitem", { name: "New thread" })).toBeTruthy();
+  });
+
+  it("draws no root's harness while bb's default harness is unknown, whatever reaches machines", async () => {
+    render([makeThread({ id: "x", title: "Codex root", providerId: "codex" })], {
+      providerList: async () => Promise.reject(new Error("offline")),
+    });
+    const row = (await screen.findByRole("link", { name: /Open Codex root/ })).parentElement!;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(within(row).queryByRole("img", { name: "Codex" })).toBeNull();
   });
 
   it("draws a two-letter mark for providers without a logo", async () => {

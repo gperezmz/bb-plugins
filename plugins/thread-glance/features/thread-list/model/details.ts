@@ -12,6 +12,7 @@ const SUMMARY_ORDER: readonly [StateKind, string][] = [
   ["scheduled", "scheduled"],
   ["queued", "queued"],
   ["unread", "unread"],
+  ["done-unseen", "finished since you looked"],
   ["draft", "drafts"],
   ["idle", "idle"],
 ];

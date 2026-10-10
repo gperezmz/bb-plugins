@@ -51,7 +51,7 @@ export function lastActivityAt(
 export function isSettledThread(info: ThreadInfo, inputs: SettleInputs): boolean {
   const thread = info.thread;
   if (isPinnedThread(thread)) return false;
-  if (!isQuietThread(info.state, info.unread, false) || info.attentionFlags.size > 0) return false;
+  if (!isQuietThread(info.state, info.unread || info.doneUnseen, false) || info.attentionFlags.size > 0) return false;
   if (inputs.settleAfter === "never") return false;
   return inputs.now - lastActivityAt(thread, inputs) >= SETTLE_AFTER_MS[inputs.settleAfter];
 }

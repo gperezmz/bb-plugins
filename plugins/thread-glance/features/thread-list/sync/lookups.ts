@@ -14,18 +14,28 @@ import { pluginData } from "./plugin-data";
 interface SystemConfig {
   primaryHostId: string | null;
   generalSettings: { defaultProviderId: string | null };
-  serverAccess: { defaultProviderId: string };
 }
 
 /**
- * The facts in `system.config()`'s answer. The default harness is the one
- * the user chose in bb's settings, else the one bb falls back to.
+ * The facts in `system.config()`'s answer, with `providers`, bb's harnesses
+ * in its order as `providers.list()` gives them, or null when that is not
+ * known. The default harness is the one bb starts a new thread on: the one
+ * the user chose in bb's settings while it is available, else the first
+ * available one. Without `providers` it is the chosen one, or unknown.
+ * `serverAccess.defaultProviderId` is how machines reach the server, not a
+ * harness, so it plays no part.
  */
-export function readSystemFacts(config: SystemConfig): SystemFacts {
-  return {
-    defaultProviderId: config.generalSettings.defaultProviderId ?? config.serverAccess.defaultProviderId ?? null,
-    primaryHostId: config.primaryHostId,
-  };
+export function readSystemFacts(
+  config: SystemConfig,
+  providers: readonly { id: string; available: boolean }[] | null = null,
+): SystemFacts {
+  const chosen = config.generalSettings.defaultProviderId;
+  let defaultProviderId = chosen;
+  if (providers !== null) {
+    const available = providers.filter((provider) => provider.available).map((provider) => provider.id);
+    defaultProviderId = chosen !== null && available.includes(chosen) ? chosen : (available[0] ?? null);
+  }
+  return { defaultProviderId, primaryHostId: config.primaryHostId };
 }
 
 export interface ModelInfo {
@@ -45,10 +55,13 @@ export function lookUpSystem(sdk: PluginBrowserBbSdk): void {
   systemAsked = true;
   // Called inside the chain, so a host that throws for an area it lacks
   // lands in the rejection handler and leaves the facts unknown.
+  const providers = Promise.resolve()
+    .then(() => sdk.providers.list())
+    .catch(() => null);
   Promise.resolve()
     .then(() => sdk.system.config())
     .then(
-      (config) => pluginData.facts({ system: readSystemFacts(config) }),
+      async (config) => pluginData.facts({ system: readSystemFacts(config, await providers) }),
       () => {
         // Unknown is not an answer: the next list mounted asks again.
         systemAsked = false;

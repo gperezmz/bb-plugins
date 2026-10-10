@@ -73,7 +73,10 @@ export interface MarkAllRead {
   seen: string[];
 }
 
-/** Every unread thread in the trees, descendants included: Mark all read, and a root's Mark read for its tree. */
+/**
+ * Every unread or done-unseen thread in the trees, descendants included: Mark
+ * all read, and a root's Mark tree read for its tree.
+ */
 export function markAllReadPlan(
   trees: readonly ThreadTree[],
   context: ThreadContext,
@@ -82,8 +85,7 @@ export function markAllReadPlan(
   const seen: string[] = [];
   for (const tree of trees) {
     for (const info of [tree.root, ...tree.descendants]) {
-      if (!info.unread) continue;
-      read.push(info.thread.id);
+      if (info.unread) read.push(info.thread.id);
       if (isDoneUnseen(info.thread, context)) seen.push(info.thread.id);
     }
   }

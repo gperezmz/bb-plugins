@@ -12,6 +12,7 @@ const ROOT_ATTENTION: ReadonlySet<Flag> = new Set<Flag>([
   "queue-failed",
   "offline",
   "unread",
+  "done-unseen",
 ]);
 
 /** States in which a parent thread is busy and may still deal with a failed child. */
@@ -166,7 +167,7 @@ export function trackIdle(
 /**
  * The flags of one thread that make it need attention. A root keeps its own. A
  * child counts when it waits on you or is offline, or for an orphaned
- * failure; a finished-unread child never does. With `everything`, a child
+ * failure; a done-unseen child never does. With `everything`, a child
  * counts like a root.
  */
 export function attentionFlagsOf(

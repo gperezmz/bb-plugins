@@ -35,9 +35,9 @@ Here a child's [parent thread](how-the-plugins-fit-bb.md#threads-and-trees) is t
 
 A failure counts as orphaned only once the parent thread has been idle for 5 seconds, counted from the later of the failure and the parent thread last becoming idle. bb reports a child's failure to its parent thread after a 2 second delay, and the parent thread then starts, so without the wait a failure it was about to pick up would show in the need-you filter for 2 or 3 seconds. If the parent thread gets busy within the 5 seconds, the failure never counts. Thread Glance's backend records the moment a thread becomes idle, so a reload or another window counts from it too. It takes the moment from bb when a turn ends, fails or starts waiting on you. For any other change to idle, which bb does not report (background work ending, a queued or scheduled message cancelled, a turn cut off by its machine going offline), one open window in each browser records the moment it sees. A thread that became idle that way while no window was open has no such record, and the wait counts from the later of the failure and the last moment recorded. Until the list has loaded these records after a reload, it counts no failure as orphaned. The wait applies only to orphaned failures: with **Needs attention counts every child** on, a failed child counts at once, as an unread one.
 
-A child that only finished unread does not need attention. It keeps its own unread dot and bold title, its parent's [children chip](../reference/thread-glance-states.md#the-children-chip) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees).
+A child that only finished does not need attention. Until you look at it, it is [done unseen](../reference/thread-glance-states.md#done-unseen): its row carries Thread Glance's own mark, its parent's [children chip](../reference/thread-glance-states.md#the-children-chip) shows it, and you see it when you open the [tree](how-the-plugins-fit-bb.md#threads-and-trees). It is not unread, since bb keeps it read.
 
-The setting **Needs attention counts every child** makes a child count exactly as a root does: every failed or finished-unread child needs attention too. The same setting decides which children a tree's fold keeps out, below.
+The setting **Needs attention counts every child** makes a child count exactly as a root does: every failed or done-unseen child needs attention too. The same setting decides which children a tree's fold keeps out, below.
 
 ## Needs attention is a state, not a place
 
@@ -55,7 +55,7 @@ A thread's tree is listed as one unit: only the root gets a row in its group, an
 
 Opening a children chip shows one level: the root's direct children. A child with children of its own has its own chip. So a grandchild never shows without the parent that explains it.
 
-Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine. The settled fold takes the test as if no thread were focused, so opening a thread does not move it out.
+Two folds keep threads with nothing to show out of the way: the settled fold for trees, and the `N more child threads` fold for children. Both start from the **quiet thread** test: a thread is quiet when it is read and not done unseen, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine. The settled fold takes the test as if no thread were focused, so opening a thread does not move it out.
 
 Inside an open tree, all children that are not quiet show, then the 3 most recent quiet ones, then an `N more child threads` row. A child is quiet unless it or anything under it:
 
@@ -64,7 +64,7 @@ Inside an open tree, all children that are not quiet show, then the 3 most recen
 
 A hidden thread under it counts only for the second, and an archived child is always quiet.
 
-So a parent thread whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its unread dot when you open the fold. With **Needs attention counts every child** on, a finished, unread child needs attention, so it stays out of the fold.
+So a parent thread whose twelve workers all finished shows the 3 most recent and folds the other 9; each keeps its done-unseen mark when you open the fold. With **Needs attention counts every child** on, a done-unseen child needs attention, so it stays out of the fold.
 
 The fold is worked out as if no thread were focused, so the children shown stay the same while you move between them. Opening a child that sits behind the fold, or one of its descendants, adds that one row, and nothing else moves out to make room.
 
@@ -97,7 +97,7 @@ Whether a group's fold is open is saved on the server, so it survives a reload a
 
 ## What opens by itself
 
-When you open a thread inside a closed tree, Thread Glance opens the path to it: each chip down to the thread, and its group if the group is collapsed. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to wait on you or fails, so its tree's chips stay open on the way to it; its group stays collapsed, since a collapsed group draws that tree anyway. A thread that finished unread opens no chip, and nothing opens the settled fold.
+When you open a thread inside a closed tree, Thread Glance opens the path to it: each chip down to the thread, and its group if the group is collapsed. It reveals only that thread and the threads above it, not the whole tree. The same happens for a thread that starts to wait on you or fails, so its tree's chips stay open on the way to it; its group stays collapsed, since a collapsed group draws that tree anyway. A thread that only finished, unread or done unseen, opens no chip, and nothing opens the settled fold.
 
 This happens on a change, not on every render: when a thread starts to need attention, or when you open another thread. If you collapse it again, it stays collapsed until the next change. A child that merely finished opens no chip, because a parent thread with many workers would otherwise keep reopening.
 
@@ -107,6 +107,6 @@ Under **Updated** sort, a tree's place in its group comes from the most recent a
 
 ## Children bb never marks unread
 
-bb marks a thread unread when it finishes, but for a child only when it fails. Thread Glance also marks a child unread when it finishes after you last looked at it. To know when that was, Thread Glance's backend records when each thread starts, finishes and begins waiting on you, and when you last opened each child; it also records when each thread last became idle, for [orphaned failures](#what-a-child-thread-adds). These **stamps** live on the bb server, so every window agrees and a reload keeps them. They also give the working timer and how long a thread has waited on you.
+bb marks a thread unread when it finishes, but for a child only when it fails. Read state is bb core, so Thread Glance draws a child bold, with the unread dot, only when bb has it unread. A child that finished after you last looked at it is still news, though, and bb has nothing to say so: Thread Glance marks it [done unseen](../reference/thread-glance-states.md#done-unseen), a mark of its own drawn unlike unread, so bb's read item in the row's menu, which offers **Mark unread** on it, agrees with what the row shows. To know when you last looked, Thread Glance's backend records when each thread starts, finishes and begins waiting on you, and when you last opened each child; it also records when each thread last became idle, for [orphaned failures](#what-a-child-thread-adds). These **stamps** live on the bb server, so every window agrees and a reload keeps them. They also give the working timer and how long a thread has waited on you.
 
-**Mark unread** on a child clears the record that you looked at it, so it shows as finished and unread again.
+**Mark unread** on a child is bb's: bb marks it unread, and its row shows unread until it is read again.

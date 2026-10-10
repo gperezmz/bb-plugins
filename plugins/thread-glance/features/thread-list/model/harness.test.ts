@@ -36,13 +36,30 @@ describe("the harness icon", () => {
 });
 
 describe("bb's system facts", () => {
-  it("takes the default harness the user chose, else the one bb falls back to, and the primary machine", () => {
-    const config = (chosen: string | null) => ({
-      primaryHostId: "host_1",
-      generalSettings: { defaultProviderId: chosen },
-      serverAccess: { defaultProviderId: "codex" },
-    });
-    expect(readSystemFacts(config("claude-code"))).toEqual({ defaultProviderId: "claude-code", primaryHostId: "host_1" });
-    expect(readSystemFacts(config(null))).toEqual({ defaultProviderId: "codex", primaryHostId: "host_1" });
+  const config = (chosen: string | null) => ({
+    primaryHostId: "host_1",
+    generalSettings: { defaultProviderId: chosen },
+    // How machines reach the server, never a harness.
+    serverAccess: { defaultProviderId: "connect" },
+  });
+  const providers = [
+    { id: "codex", available: false },
+    { id: "claude-code", available: true },
+    { id: "pi", available: true },
+  ];
+
+  it("takes the default harness the user chose while bb can start threads on it, and the primary machine", () => {
+    expect(readSystemFacts(config("pi"), providers)).toEqual({ defaultProviderId: "pi", primaryHostId: "host_1" });
+    expect(readSystemFacts(config("pi"))).toEqual({ defaultProviderId: "pi", primaryHostId: "host_1" });
+  });
+
+  it("with none chosen, takes the first available harness, as bb starts a thread on", () => {
+    expect(readSystemFacts(config(null), providers)).toEqual({ defaultProviderId: "claude-code", primaryHostId: "host_1" });
+    expect(readSystemFacts(config("codex"), providers).defaultProviderId).toBe("claude-code");
+  });
+
+  it("never takes the server access provider: with no harness known, the default is unknown", () => {
+    expect(readSystemFacts(config(null)).defaultProviderId).toBeNull();
+    expect(readSystemFacts(config(null), []).defaultProviderId).toBeNull();
   });
 });

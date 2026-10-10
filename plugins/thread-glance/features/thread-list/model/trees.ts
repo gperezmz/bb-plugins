@@ -5,6 +5,7 @@ import {
   computeState,
   chipFlagsOf,
   hiddenThreadFlags,
+  isDoneUnseen,
   isQuietThread,
   isUnread,
   threadFlags,
@@ -27,7 +28,10 @@ const RUNNING: ReadonlySet<StateKind> = new Set<StateKind>(["working", "backgrou
 export interface ThreadInfo {
   thread: PluginSidebarThread;
   state: ThreadState;
+  /** bb's read state (`isUnread`): the row's bold title and unread dot. */
   unread: boolean;
+  /** Finished since you last looked (`isDoneUnseen`): Thread Glance's own mark, never unread. */
+  doneUnseen: boolean;
   /** Own flags; for hidden threads only waits-on-you and unread-failed. */
   flags: ReadonlySet<Flag>;
   /** What it adds to the children chip of the threads above it (see `chipFlagsOf`). */
@@ -44,8 +48,8 @@ export interface ThreadInfo {
    * A quiet thread, as if no thread were focused: nothing to see behind a
    * tree's fold. A root, or any child when `childAttention` is
    * `everything`, takes the quiet test without the focused thread's exemption.
-   * Otherwise a child is quiet unless it runs or needs attention, so finishing
-   * unread folds it; an archived child is always quiet. The fold reads this,
+   * Otherwise a child is quiet unless it runs or needs attention, so a
+   * done-unseen child folds; an archived child is always quiet. The fold reads this,
    * so opening a thread never changes which children stay shown.
    */
   quietIgnoringOpen: boolean;
@@ -162,23 +166,26 @@ export function buildForest(inputs: ForestInputs): Forest {
   const infos = new Map<string, ThreadInfo>();
   for (const thread of inputs.threads) {
     const unread = isUnread(thread, inputs);
+    const doneUnseen = isDoneUnseen(thread, inputs);
     const state = computeState(thread, {
       unread,
+      doneUnseen,
       hasDraft: inputs.draftIds.has(thread.id),
       scheduledAt: inputs.scheduled[thread.id] ?? null,
       now: inputs.now,
       needsKind: needsKindOf(inputs.notes?.[thread.id]),
     });
-    const flags = threadFlags(thread, unread);
+    const flags = threadFlags(thread, unread, doneUnseen);
     const isActive = thread.id === inputs.activeThreadId;
     infos.set(thread.id, {
       thread,
       state,
       unread,
+      doneUnseen,
       flags: thread.isHidden ? hiddenThreadFlags(flags) : flags,
       chipFlags: chipFlagsOf(flags, thread.isHidden),
       attentionFlags: new Set<Flag>(),
-      quiet: isQuietThread(state, unread, isActive),
+      quiet: isQuietThread(state, unread || doneUnseen, isActive),
       quietIgnoringOpen: false,
       isActive,
       parentId: attachParent(thread, byId),
@@ -206,7 +213,7 @@ export function buildForest(inputs: ForestInputs): Forest {
     });
     info.quietIgnoringOpen =
       parent === undefined || mode === "everything"
-        ? isQuietThread(info.state, info.unread, false)
+        ? isQuietThread(info.state, info.unread || info.doneUnseen, false)
         : info.thread.isArchived || (!RUNNING.has(info.state.kind) && info.attentionFlags.size === 0);
   }
 
@@ -301,12 +308,17 @@ export function buildForest(inputs: ForestInputs): Forest {
 }
 
 /**
- * Whether any thread in the trees is unread, descendants, hidden and
- * archived threads included: the threads Mark all read marks, so it is
- * offered only when this holds.
+ * Whether any thread in the trees is unread or done-unseen, descendants,
+ * hidden and archived threads included: the threads Mark all read marks, so
+ * it is offered only when this holds.
  */
 export function anyUnread(trees: readonly ThreadTree[]): boolean {
-  return trees.some((tree) => tree.root.unread || tree.descendants.some((info) => info.unread));
+  return trees.some((tree) => [tree.root, ...tree.descendants].some(isUnreadOrDoneUnseen));
+}
+
+/** Unread, or done-unseen: what Mark all read and Mark tree read clear. */
+export function isUnreadOrDoneUnseen(info: Pick<ThreadInfo, "unread" | "doneUnseen">): boolean {
+  return info.unread || info.doneUnseen;
 }
 
 /** Ids of `id`'s ancestors, nearest first. */

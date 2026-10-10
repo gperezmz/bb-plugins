@@ -98,7 +98,7 @@ async function render(
       } as never,
       providers: { models: async () => ({ models: [] }) } as never,
       system: {
-        config: async () => ({ primaryHostId: "host_1", generalSettings: { defaultProviderId: null }, serverAccess: { defaultProviderId: "claude-code" } }),
+        config: async () => ({ primaryHostId: "host_1", generalSettings: { defaultProviderId: null }, serverAccess: { defaultProviderId: "connect" } }),
       } as never,
     },
   } as never);

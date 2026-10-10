@@ -58,7 +58,7 @@ export const rpcContract = defineRpcContract({
     input: z.strictObject({ threadIds: threadIdsSchema }),
     output: z.strictObject({ at: z.number() }),
   },
-  /** Deletes `seenAt`, so Mark unread shows a finished child as unread. */
+  /** Deletes `seenAt`, so a finished child shows done unseen again. */
   clearSeen: {
     input: z.strictObject({ threadIds: threadIdsSchema }),
     output: z.strictObject({ ok: z.literal(true) }),

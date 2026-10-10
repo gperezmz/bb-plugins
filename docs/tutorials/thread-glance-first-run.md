@@ -10,7 +10,7 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin t
 
 In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**.
 
-The list looks much like bb's: Thread Glance copied your grouping, sort, group order, and hidden and collapsed groups from it. Every window you have open switches too.
+The list starts from Thread Glance's own defaults, grouped by Project, rather than from the layout bb's list had: [where a new install starts](../reference/thread-glance-preferences.md#where-a-new-install-starts) says what each one is. Every window you have open switches too.
 
 ## 2. Read a row
 
@@ -19,7 +19,7 @@ The list starts with its header: `Projects`, the name of the grouping, then a sl
 Look at any thread you have run before. From left to right, its row holds:
 
 - a state glyph, or a faint ring when the thread is idle and read;
-- the title, bold if you have not read the thread since it finished;
+- the title, bold while bb has the thread unread;
 - a small harness logo, only if the thread runs on a harness other than bb's default;
 - the machine's name, only if the thread runs on a machine other than bb's own;
 - how long ago it last finished.
@@ -44,7 +44,7 @@ Click the chip. The child's row opens under the parent, indented one step, its t
 
 The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and its chip turns blue and leads with a small spinner: a child is working.
 
-When the child finishes, its row shows a blue dot: it finished and you have not looked at it. The parent's chip swaps its spinner for a small blue dot, now for unread, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
+When the child finishes, its row shows a blue check, and its title stays at its usual weight: it finished since you last looked at it, but bb keeps a finished child read, so it is not unread. The parent's chip swaps its spinner for a small blue check, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
 
 When the parent finishes, its row shows the dot and a bold title.
 
@@ -52,7 +52,7 @@ When the parent finishes, its row shows the dot and a bold title.
 
 The tree stays where it is in its project's group, and the list header now shows `1 need you`, because the parent finished unread. Your finished child did not add to it: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why.
 
-Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row and click **Mark tree read**, the open envelope beside archive: the parent and its child are read, and `1 need you` goes away.
+Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row and click **Mark tree read**, the open envelope beside archive: the parent is read, the child's check goes, and `1 need you` goes away.
 
 ## 6. Change a setting
 
