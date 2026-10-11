@@ -2,6 +2,9 @@
 // Escape cancels. The row stays on its shelf until the editor ends.
 import { useEffect, useRef, useState } from "react";
 
+/** How long after it opens the editor takes focus back from anything but the user. */
+const GRACE_MS = 600;
+
 export function RenameEditor({
   initial,
   label,
@@ -19,9 +22,22 @@ export function RenameEditor({
   const input = useRef<HTMLInputElement>(null);
   // One end per edit: Enter saves and then the unmount's blur must not save again.
   const ended = useRef(false);
+  // bb focuses the composer of a thread a double-click's first click has just
+  // opened, a moment after the editor is up. Until the user types or clicks,
+  // focus that leaves the editor is taken back instead of ending the edit.
+  const driven = useRef(false);
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
+    const drive = () => void (driven.current = true);
+    const timer = setTimeout(drive, GRACE_MS);
+    document.addEventListener("keydown", drive, true);
+    document.addEventListener("pointerdown", drive, true);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("keydown", drive, true);
+      document.removeEventListener("pointerdown", drive, true);
+    };
   }, []);
   const end = (save: boolean) => {
     if (ended.current) return;
@@ -38,7 +54,7 @@ export function RenameEditor({
       data-rename-editor=""
       className={className}
       onChange={(event) => setValue(event.target.value)}
-      onBlur={() => end(true)}
+      onBlur={() => (driven.current ? end(true) : input.current?.focus())}
       onClick={(event) => event.preventDefault()}
       onKeyDown={(event) => {
         event.stopPropagation();
