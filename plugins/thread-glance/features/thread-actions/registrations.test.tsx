@@ -169,6 +169,31 @@ describe("the window's data", () => {
     }
   });
 
+  it("leaves the history and the page alone when the browser is already on the project's settings page", async () => {
+    let data: MenuData | undefined;
+    const project = registrations.find((registration) => registration.id === "project")!;
+    function Probe() {
+      data = project.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, { sidebarThreads: { status: "ready", threads: [makeThread({ id: "t1" })], projects: PROJECTS } });
+    await waitFor(() => expect(data).toBeDefined());
+    const href = `/settings/projects/${PROJECTS[0]!.id}`;
+    const popped = vi.fn();
+    window.addEventListener("popstate", popped);
+    try {
+      window.history.replaceState(null, "", href);
+      const length = window.history.length;
+      data!.ports.openPage(href);
+      expect(window.history.length).toBe(length);
+      expect(window.location.pathname).toBe(href);
+      expect(popped).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("popstate", popped);
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("marks Add local path unavailable when the machines cannot be listed", async () => {
     let data: MenuData | undefined;
     const project = registrations.find((registration) => registration.id === "project")!;

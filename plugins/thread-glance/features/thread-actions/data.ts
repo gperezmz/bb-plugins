@@ -22,9 +22,11 @@ const NO_FACTS: ReadonlyMap<string, MenuFacts> = new Map();
  * Opens bb's page at `href` (an app-relative URL) in bb's router. bb's own menus
  * link to it, `BbNavigate` has no call for a settings page, and its `openUrl`
  * hands any http(s) URL to the browser, a new tab: so the page is pushed on the
- * history and bb's router, which follows `popstate`, is told.
+ * history and bb's router, which follows `popstate`, is told. Already on the
+ * page, neither happens: a second entry would make Back appear to do nothing.
  */
 function openPage(href: string): void {
+  if (window.location.pathname === href) return;
   window.history.pushState(null, "", href);
   window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
 }
