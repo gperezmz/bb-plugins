@@ -76,6 +76,13 @@ describe("snooze", () => {
     await expect(actions.park("t1")).rejects.toThrow(/Cannot park while/);
   });
 
+  it("accepts a never-run thread with nothing queued, and refuses one whose first message waits", async () => {
+    actions = build([makeServerThread("t1", { status: "pending" }), makeServerThread("t2", { status: "pending", queuedWork: "waiting" })]);
+    await expect(actions.snooze("t1", NOW + HOUR)).resolves.toBeDefined();
+    await expect(actions.park("t2")).rejects.toThrow(/Cannot park while/);
+    await expect(actions.settle("t2")).rejects.toThrow(/Cannot settle while/);
+  });
+
   it("refuses a time in the past or more than a year ahead", async () => {
     await expect(actions.snooze("t1", NOW - 1)).rejects.toThrow("Pick a time in the future.");
     await expect(actions.snooze("t1", NOW + 366 * 24 * HOUR)).rejects.toThrow("Snooze for at most a year.");

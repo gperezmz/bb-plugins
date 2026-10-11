@@ -84,11 +84,13 @@ One rule decides busy for the buttons, the server's checks, automatic settling a
 
 - a question or approval is pending;
 - a queued message waits, or one failed;
-- a turn is in flight;
+- a turn is in flight (starting, active or stopping; a thread bb lists as pending, created and never run, has none);
 - any activity counter is above zero: workflows, background agents, background commands, plan mode, goals;
 - its runtime is starting, active or provisioning (the runtime's display status), which includes a runtime kept alive between turns by a running monitor.
 
 A busy thread offers no Snooze, Park or Settle, and the server refuses all three.
+
+A never-run thread with nothing queued is at rest, as bb's own list draws it: it can be snoozed, parked and settled, and auto-settle settles it once it has been quiet long enough. One whose first message waits to send, scheduled for later or not, is busy through that queued message but not working: it sits on Active with its Queued status, no spinner, and is left out of the Working shelf, the children chip's working count and Compact working threads.
 
 ### Woke
 

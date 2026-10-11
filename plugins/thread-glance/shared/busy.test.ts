@@ -23,7 +23,8 @@ describe("isBusy", () => {
     ["a turn in flight", { status: "active" }],
     ["a turn starting", { status: "starting" }],
     ["a turn stopping", { status: "stopping" }],
-    ["a first message not yet sent", { status: "pending" }],
+    ["a never-run thread whose first message waits to send", { status: "pending", queuedWork: "waiting" }],
+    ["a never-run thread whose first message failed to send", { status: "pending", queuedWork: "failed" }],
     ["a runtime that is active between turns", { runtimeStatus: "active" }],
     ["a runtime that is starting", { runtimeStatus: "starting" }],
     ["a runtime that is provisioning", { runtimeStatus: "provisioning" }],
@@ -44,6 +45,10 @@ describe("isBusy", () => {
     expect(isBusy(busy({ status: "novel", runtimeStatus: "novel", queuedWork: "novel" }))).toBe(false);
   });
 
+  it("is false for a never-run thread with nothing queued", () => {
+    expect(isBusy(busy({ status: "pending" }))).toBe(false);
+  });
+
   it("is true for a thread whose only sign of life is a running monitor", () => {
     expect(isBusy(busy({ status: "idle", runtimeStatus: "active" }))).toBe(true);
   });
@@ -52,5 +57,10 @@ describe("isBusy", () => {
 describe("isWorking", () => {
   it("leaves out a pending question and a queued message", () => {
     expect(isWorking(busy({ hasPendingInteraction: true, queuedWork: "waiting" }))).toBe(false);
+  });
+
+  it("is false for a never-run thread, with its first message waiting or not", () => {
+    expect(isWorking(busy({ status: "pending" }))).toBe(false);
+    expect(isWorking(busy({ status: "pending", queuedWork: "waiting" }))).toBe(false);
   });
 });

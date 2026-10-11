@@ -172,6 +172,11 @@ describe("what a pass decides", () => {
     expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
   });
 
+  it("settles a quiet never-run thread with nothing queued, and leaves one whose first message waits", async () => {
+    const { autoSettle } = setup([idleFor("never-run", 9, { status: "pending" }), idleFor("scheduled", 9, { status: "pending", queuedWork: "waiting" })]);
+    expect((await autoSettle.run()).settled).toEqual(["never-run"]);
+  });
+
   it("returns an automatic settle to the automatic rules when the thread is pinned, busy or parked, and not a manual one", async () => {
     const auto = settledRow(NOW - DAY, "auto");
     const { autoSettle, lifecycle } = setup(
