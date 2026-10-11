@@ -52,6 +52,15 @@ describe("bb thread-glance prefs", () => {
     expect((signals.at(-1)?.payload as Versioned<typeof DEFAULT_SETTINGS>).value.hoursBeforeInactive).toBe(12);
   });
 
+  it("lists what is stored, not the defaults", async () => {
+    const harness = await load();
+    await harness.behavior.runCli(["prefs", "set", "hoursBeforeInactive", "12"]);
+    const lines = (await harness.behavior.runCli(["prefs", "list"])).stdout?.split("\n") ?? [];
+    expect(lines.find((line) => line.startsWith("hoursBeforeInactive\t"))?.split("\t")[1]).toBe("12");
+    const json = JSON.parse((await harness.behavior.runCli(["prefs", "list", "--json"])).stdout ?? "") as Record<string, unknown>;
+    expect(json.hoursBeforeInactive).toBe(12);
+  });
+
   it("reads a bare word as a string and a JSON word as its value", async () => {
     const harness = await load();
     expect((await harness.behavior.runCli(["prefs", "set", "childOrder", "activity", "--json"])).stdout).toBe('{"key":"childOrder","value":"activity"}');
