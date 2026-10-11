@@ -108,11 +108,11 @@ Heights are kept in one place, [`model/heights.ts`](../../plugins/thread-glance/
 
 - Line 1: the project's icon and name, then the [status slot](#status-slot).
 - Line 2: the title.
-- Line 3: the branch, or the worktree branch, or the machine when there is no branch; then the [children chip](#children-chip); then a machine icon when both a branch and a machine exist; workflow and background-agent counts; the [pull request badge](#pull-request-badge); and the harness logo, always.
+- Line 3: the branch, or the worktree branch, or the machine when there is no branch; then the [children chip](#children-chip); then a machine icon when both a branch and a machine exist; workflow and background-agent counts; the [pull request badge](#pull-request-badge); the [port indicator](#workspace-ports) while something listens in the thread's workspace; and the harness logo, always.
 
 ### Folded card
 
-One line: project name · title, then the children chip, an unpin button and the live status with elapsed time or the age. It unfolds to a full card when the work ends, fails or needs you.
+One line: project name · title, then the children chip, the [port indicator](#workspace-ports), an unpin button and the live status with elapsed time or the age. It unfolds to a full card when the work ends, fails or needs you.
 
 ### Slim row
 
@@ -185,7 +185,8 @@ Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms
 - the title, project, machine and branch;
 - the harness with its status glyph, model and reasoning level, loaded from bb: "Loading…", "Not set" or "Unavailable";
 - the branch's pull request from bb, when it has one: `#number` and title, linking to it, with bb's attention as its label and its checks, review and mergeability on one line. No pull request, no section;
-- "Subthreads (N)", with a toggle listing the direct children, each opening that child.
+- "Subthreads (N)", with a toggle listing the direct children, each opening that child;
+- "Workspace ports (N)", when the thread's environment has listeners ([Workspace ports](#workspace-ports)).
 
 | Pull request label | Colour |
 |---|---|
@@ -193,6 +194,26 @@ Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms
 | Blocked, Changes requested, Checks failed, Conflicts, Closed | Red |
 | Open (when bb reports no attention) | Emerald |
 | Draft, Checks pending, Ready to merge, In merge queue, Review requested | Muted |
+
+## Workspace ports
+
+A machine bb runs threads on, macOS or Linux, reports every listening TCP socket whose process works inside a thread's workspace. A Windows machine reports none, and its threads show no indicator.
+
+```mermaid
+flowchart LR
+  host["Each machine: lsof, ps or /proc, docker ps"] -->|"port, address, executable name, PID, start time, owner"| server[("Server snapshot, up to 30 s old")]
+  server -->|"ports channel, one read per window"| rows["Port indicator and hover card"]
+```
+
+- A listener belongs to the workspace that is the longest match for its process's working directory. Several environments on one path all show it. bb's own listeners are left out.
+- A port is the thread's [owned port](../../GLOSSARY.md) when its process's environment holds a single `BB_THREAD_ID` naming that thread, and the thread works in that environment. Only that one entry is read: nothing else of a process's environment or command line leaves its machine. Every other port belongs to the workspace only.
+- A Docker container whose compose working directory is inside a workspace adds its published ports, with no owner and nothing to stop.
+- The **port indicator**, a plug on the full card's third line and on the folded card, shows while the environment has listeners; its accessible name counts them. Slim rows have none.
+- The hover card's "Workspace ports (N)" lists each listener's port and executable name, or its container, scrolling beyond 4. A listener with a process has **Stop** ([Stop a port](thread-glance-actions.md#stop-a-port)).
+- With a [port link machine](thread-glance-settings.md#this-device) chosen, the ports of that machine bound to a loopback or wildcard address are links: `https` for 443 and 8443, else `http`, to `127.0.0.1`, or `[::1]` for a port bound to `::1` only.
+- Touch has the indicator only, since the hover card opens on pointer hover and keyboard focus.
+
+The server rereads every non-archived thread's environment at most every 30 s, and each visible window asks again 10 s after its last read completed, and at once when its tab is shown again. A machine whose scan fails is left out, and asked again after 30 s, doubling up to 5 minutes. A read that fails everywhere keeps the last snapshot for up to 5 minutes, so the indicators stay.
 
 ## Jump hints
 

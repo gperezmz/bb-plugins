@@ -71,7 +71,7 @@ The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button
 3. It unpins the tree's pinned threads and marks every thread in the tree settled. If the tree changed meanwhile, it fails with "Thread tree changed while settling. Try again." and restores any pins it removed.
 4. Each thread is [reclaimed](#reclaim).
 
-The toast reads "Thread settled", plus what was reclaimed, with **Undo**, for 4 s, or 10 s with a reclaim note. The server keeps the settle's snapshot in memory until Undo can no longer be pressed. **Undo** restores each thread's previous shelf where nothing changed since and toasts "Settling undone". If the snapshot is gone, as after a plugin restart, the toast reads "This Settle can no longer be undone. Use Un-settle instead."
+The toast reads "Thread settled", plus what was reclaimed, with **Undo**, for 4 s, or 10 s with a reclaim note. A settle of a thread that owns ports then asks to [close them](#close-a-settled-threads-ports). The server keeps the settle's snapshot in memory until Undo can no longer be pressed. **Undo** restores each thread's previous shelf where nothing changed since and toasts "Settling undone". If the snapshot is gone, as after a plugin restart, the toast reads "This Settle can no longer be undone. Use Un-settle instead."
 
 **Un-settle**, the Settled slim row's button and the thread menu's item, returns the thread to Active, returns its settled descendants to the automatic rules and reopens its ancestors. The toast reads "Thread returned to Active", with **Undo** (settle).
 
@@ -87,6 +87,45 @@ After a park, snooze or settle, and only while the thread is still unpinned, not
 The note joins "Agent session stopped", "closed N terminals nobody used" and "N terminals left running" with " · ", for example "Agent session stopped · closed 1 terminal nobody used · 1 terminal left running". It is shown in the toast.
 
 When a thread is archived from any bb menu, its runtime and its idle children's runtimes are stopped; a working child is left alone. When a child thread is created or starts a turn, its parked, snoozed or settled ancestors are reopened to Active.
+
+## Ports
+
+Every way of closing a port sends SIGTERM only to a process the server's snapshot lists in the thread's environment, after its machine reads the port again and finds the same PID and the same start time, so a reused PID is never signalled. Anything else is refused and nothing is signalled. [Workspace ports](thread-glance-list.md#workspace-ports) says what is listed.
+
+### Stop a port
+
+**Stop**, beside a listener with a process in the hover card. The first press turns it into **Confirm stop**, which lapses after 4 s; the second sends the request and the list reads the ports again. A Docker-only port has no Stop.
+
+### Close a settled thread's ports
+
+After a manual settle of a thread that owns ports, a toast stays until dismissed: "Close this thread's ports?", "Stop the processes listening on :p1, :p2? This also closes any other ports those processes serve.", with **Keep open** and **Close ports**. Any later action on the thread dismisses it, and so does the thread leaving Settled.
+
+**Close ports** signals only while the thread is still settled, and toasts one of:
+
+| Toast | When |
+|---|---|
+| "Stop requested for port processes", "Processes received a graceful shutdown request. Ports may take a moment to close." | Every matching process got the request |
+| "Some port processes could not be stopped" | Some could not |
+| "No matching thread-owned ports are still running" | None still matches, or the thread is no longer settled |
+| "Could not close thread ports" | The call failed |
+
+If the ports cannot be looked up after the settle, the toast reads "Thread settled, but its ports could not be checked".
+
+[Automatic settle](../explanation/thread-glance-shelves.md#automatic-settle) holds back, for that pass, a thread that serves a port: one it owns, or an unowned port in an environment where it is the only thread. A machine that cannot be scanned holds back all of its threads.
+
+### Clean settled resources
+
+**Clean**, on the Settled shelf's header even while it is collapsed, is labelled "Close terminals and ports of settled threads", with the tooltip "Close terminals and ports of settled threads (threads stay in Settled)". It opens **Clean settled resources?**, a preview of the settled threads in the list's project scope:
+
+- A thread is included when it is still settled, not hidden, unpinned, not busy and has had no attention since it settled. A thread sharing a workspace with any thread that fails that test, or whose workspace cannot be resolved, is left out without a word.
+- Each included thread lists its running or starting terminals, typed into or not, and its owned ports, with **Open**, which opens the thread and closes the dialog.
+- The dialog warns "This closes terminals even if you typed into them." and "A port process may need time to exit after its shutdown request." With nothing to close it reads "No live terminals or thread-owned listening ports found."
+
+**Clean resources** ("Cleaning..." while it runs) checks each thread and workspace again before each terminal and port, force-closes each terminal, sends SIGTERM to each port, waits 750 ms and reports "N terminals closed · M port shutdown requests sent" or "No resources were closed.", then "Still listening after the request: :port" and any issue, naming threads by title. No thread leaves Settled.
+
+The preview lasts 2 minutes, survives a plugin restart, and runs once. A used or expired one reads "Cleanup preview expired. Review the resources again.", with **Refresh preview**.
+
+Unlike [Reclaim](#reclaim), which closes only terminals nobody typed into, Clean closes every running terminal: you asked for it, after seeing the list.
 
 ## Thread menu
 

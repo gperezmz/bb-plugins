@@ -25,7 +25,7 @@ flowchart TB
 
 | Plugin | Backend | UI | Host entry |
 |---|---|---|---|
-| Thread Glance | Keeps a lifecycle row per snoozed, parked or settled thread, the manual order, the settings and project colours and icons; settles threads on a 5-minute pass; reclaims put-away threads; serves project icons | The sidebar thread list, thread menu actions, thread header buttons, a settings section | none |
+| Thread Glance | Keeps a lifecycle row per snoozed, parked or settled thread, the manual order, the settings and project colours and icons; settles threads on a 5-minute pass; reclaims put-away threads; serves project icons; keeps the workspace ports snapshot and signals port processes for Stop, the settle prompt and Clean | The sidebar thread list, thread menu actions, thread header buttons, a settings section | Lists listening ports inside workspaces and sends SIGTERM to a matched process, on every macOS and Linux machine |
 | Thread Usage | Builds the ledger from bb's events, sweeps the gateway, prices turns; serves `bb thread-usage` and the `thread_usage` tool | Header chip, Usage tab, Thread usage page, settings section | Reads harness session logs on the machine that ran a thread |
 | Team Onboarding | Reads the manifest, schedules checks, syncs skills, installs approved plugins and marketplaces, sets machine variables; serves `bb team-onboarding` | Onboarding page, sidebar badge, home **Setup** line, **Team manifest** tab, **Manifest file** settings section | Runs the checks and fixes on each machine |
 | OpenAI-compatible inference | Registers an AI service per Endpoint, and reports whether each is ready; sends the Endpoints to the host entry | none | Sends bb's AI tasks to the Endpoints, from the primary machine |
@@ -54,7 +54,7 @@ Thread Glance lists a child under its parent's card, so one busy parent thread d
 
 | Plugin | Where | What |
 |---|---|---|
-| Thread Glance | The plugin's key-value store on the server for the settings, and its own `<data dir>/plugins/thread-glance/data.db` for the rest; the browser's `localStorage` for shelf and group collapse, the Active sort, open child lists and caches, kept per device | The settings; a lifecycle row for each thread that is settled, parked or snoozed, or has an active override; the manual order; each project's colour override and uploaded icon |
+| Thread Glance | The plugin's key-value store on the server for the settings, and its own `<data dir>/plugins/thread-glance/data.db` for the rest; the browser's `localStorage` for shelf and group collapse, the Active sort, open child lists, the port link machine and caches, kept per device | The settings; a lifecycle row for each thread that is settled, parked or snoozed, or has an active override; the manual order; each project's colour override and uploaded icon; Clean's previews, for 2 minutes each |
 | Thread Usage | `<data dir>/plugins/thread-usage/data.db` (SQLite) | Turn records, gateway rows, harness-log entries, the thread tree |
 | Team Onboarding | The plugin's storage on the server; `<data dir>/skills`; files on each machine it fixed | Results by category, approvals, which skill folders it installed |
 | OpenAI-compatible inference | `<data dir>/plugins/openai-inference/host-data/`, readable only by bb's user | `learned-fields.json`, the request fields each Endpoint refused |
