@@ -173,6 +173,10 @@ function Counts({ row }: { row: RowView }) {
 
 // ——— The three cards ———
 
+// Each card's lines sit over the row link, which is the whole card's hit area:
+// they pass the pointer through, and a button in them takes it back with
+// `pointer-events-auto`.
+
 function FullCard({ row, editing, projectName, colour }: CardProps) {
   const status = useRowStatus(row);
   const { thread } = row;
@@ -191,7 +195,7 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
   );
   if (row.grouped) {
     return (
-      <div className="relative flex flex-col gap-0.5">
+      <div className="pointer-events-none relative flex flex-col gap-0.5">
         <div className="pointer-events-none flex h-5 items-center gap-1.5">
           <Title row={row} editing={editing} />
           {slot}
@@ -201,7 +205,7 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
     );
   }
   return (
-    <div className="relative flex flex-col gap-0.5">
+    <div className="pointer-events-none relative flex flex-col gap-0.5">
       <div className="pointer-events-none flex h-[18px] items-center gap-1.5 text-[10px] font-medium">
         <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
         <ProjectName name={projectName} colour={colour} className="min-w-0 flex-1 truncate" />

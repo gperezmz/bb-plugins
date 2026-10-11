@@ -3,7 +3,7 @@
 // windowed rows with their spacers, and the edges' fade.
 import "../testing/browser.css";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
@@ -169,5 +169,54 @@ describe("the cards' lines", () => {
     const cardBox = card("full").getBoundingClientRect();
     expect(Math.round(cardBox.right - box.right)).toBe(10);
     expect(box.top - cardBox.top).toBeLessThan(heights.fullCard / 2);
+  });
+});
+
+describe("a card takes the pointer", () => {
+  const threads = [
+    makeThread({ id: "full", title: "Full card", ...at(5), isPinned: true, pinnedAt: NOW }),
+    makeThread({ id: "work", title: "Working one", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
+    makeThread({ id: "pk", title: "Parked one", ...old }),
+  ];
+  const draw = async () => {
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { compactWorkingThreads: true, inactiveShelf: false }, order: ["full", "work", "pk"] });
+    screen.getByRole("button", { name: "Parked (1)" }).click();
+    await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+    await frames();
+  };
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+  const centre = (el: HTMLElement) => {
+    const box = el.getBoundingClientRect();
+    return [box.left + box.width / 2, box.top + box.height / 2] as const;
+  };
+
+  it("lets the row link take a hit at the middle of a Full, Folded and Slim card", async () => {
+    await draw();
+    for (const id of ["full", "work", "pk"]) {
+      const hit = document.elementFromPoint(...centre(card(id)));
+      expect(hit?.closest("a[data-sidebar-thread-id]")?.getAttribute("data-sidebar-thread-id"), id).toBe(id);
+    }
+  });
+
+  it("opens the Hover card when the pointer rests on a Full card", async () => {
+    await draw();
+    await userEvent.hover(card("full"));
+    await waitFor(() => expect(document.querySelector("[data-hover-card]")).not.toBeNull());
+  });
+
+  it("starts the rename on a double-click of a Full card", async () => {
+    await draw();
+    await userEvent.dblClick(card("full"));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Rename Full card" })).toBeTruthy());
+  });
+
+  it("still lets the card's own buttons take a hit", async () => {
+    await draw();
+    await userEvent.hover(card("full"));
+    for (const label of ["Unpin", "Thread actions for"]) {
+      // Unpin has a second, touch-only copy that is not drawn here.
+      const button = [...card("full").querySelectorAll<HTMLElement>(`button[aria-label^="${label}"]`)].find((el) => el.getBoundingClientRect().width > 0)!;
+      expect(button.contains(document.elementFromPoint(...centre(button))), label).toBe(true);
+    }
   });
 });
