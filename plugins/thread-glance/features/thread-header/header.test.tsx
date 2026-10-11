@@ -98,6 +98,23 @@ describe("AC23: the Children button", () => {
     expect(screen.queryByRole("region", { name: "Child threads" })).toBeNull();
   });
 
+  it("closes the popover when the last child goes away, and does not reopen it for a new child", async () => {
+    const list = [makeThread({ id: "p" }), makeThread({ id: "c1", title: "Only child", parentThreadId: "p" })];
+    const view = show(ChildrenButton, "p", list);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "1 child" }));
+    });
+    expect(screen.queryByRole("region", { name: "Child threads" })).not.toBeNull();
+    list.splice(1, 1);
+    await act(async () => view.rerender(<ChildrenButton threadId="p" projectId="proj_a" isCompactViewport={false} />));
+    expect(view.container.textContent).toBe("");
+    expect(screen.queryByRole("region", { name: "Child threads" })).toBeNull();
+    list.push(makeThread({ id: "c2", title: "New child", parentThreadId: "p" }));
+    await act(async () => view.rerender(<ChildrenButton threadId="p" projectId="proj_a" isCompactViewport={false} />));
+    expect(screen.getByRole("button", { name: "1 child" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Child threads" })).toBeNull();
+  });
+
   it("draws nothing without children", () => {
     const view = show(ChildrenButton, "c1");
     expect(view.container.textContent).toBe("");

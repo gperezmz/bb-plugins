@@ -57,12 +57,13 @@ describe("which actions apply", () => {
     for (const build of [snoozeAction, parkAction, settleAction]) expect(build(targetOf(monitoring), data)).toBeNull();
   });
 
-  it("offers Wake now, Park thread and Settle, not Snooze, on a snoozed thread that is not woke", () => {
+  it("offers Wake now, Snooze again, Park thread and Settle on a snoozed thread that is not woke", () => {
     const now = Date.now();
     const { data } = menuData([idle], { now, rows: { t1: snoozedRow(now + 3_600_000, now - 1000) } });
     expect(wakeAction(targetOf(idle), data)?.label).toBe("Wake now");
     expect(snoozeAction(targetOf(idle), data)?.label).toBe("Snooze");
     expect(parkAction(targetOf(idle), data)).not.toBeNull();
+    expect(settleAction(targetOf(idle), data)).not.toBeNull();
   });
 
   it("offers Park thread and Settle but not Snooze on a woke thread", () => {

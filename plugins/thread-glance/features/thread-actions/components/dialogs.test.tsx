@@ -132,7 +132,11 @@ describe("Snooze until (AC5)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Saturday, October 3rd, 2026/ }));
     setTime("14:35");
     expect(screen.queryByRole("alert")).toBeNull();
-    act(() => void vi.advanceTimersByTime(6 * 60_000));
+    // 14:35 is five minutes ahead, so the clock is moved past it, and nothing is refused until the next 15 s tick reads it.
+    vi.setSystemTime(NOW + 6 * 60_000);
+    act(() => void vi.advanceTimersByTime(14_999));
+    expect(screen.queryByRole("alert")).toBeNull();
+    act(() => void vi.advanceTimersByTime(1));
     expect(screen.getByRole("alert").textContent).toBe("Pick a time in the future.");
   });
 });
@@ -182,13 +186,14 @@ describe("Parent… (AC21)", () => {
   });
 
   it("says unpinning could not be confirmed when the unpin fails after the parent changed", async () => {
-    const { sdk } = mountDialogs({
+    const update = vi.fn(async () => ({}));
+    mountDialogs({
       threads,
-      sdk: { threads: { update: vi.fn(async () => ({})), unpin: vi.fn(async () => Promise.reject(new Error("no"))), get: vi.fn() } },
+      sdk: { threads: { update, unpin: vi.fn(async () => Promise.reject(new Error("no"))), get: vi.fn() } },
     });
     act(() => requestParentDialog("t1"));
     await act(async () => void fireEvent.click(screen.getByRole("option", { name: "Alpha parent" })));
-    expect(sdk.threads.update).toBeDefined();
+    expect(update).toHaveBeenCalledWith({ threadId: "t1", parentThreadId: "p1" });
     expect(toasts.error).toHaveBeenCalledWith(UNPIN_UNCONFIRMED);
   });
 
