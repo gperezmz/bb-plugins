@@ -4,6 +4,7 @@ import type { Database, Kv } from "./database";
 import { MIGRATIONS } from "./database";
 import { removeLegacyData } from "./legacy-cleanup";
 
+/** A KV store whose `list` ignores the prefix, as a store that over-matches would. */
 function fakeKv(initial: Record<string, unknown>): Kv & { rows: Map<string, unknown> } {
   const rows = new Map(Object.entries(initial));
   return {
@@ -17,8 +18,8 @@ function fakeKv(initial: Record<string, unknown>): Kv & { rows: Map<string, unkn
     async delete(key) {
       rows.delete(key);
     },
-    async list(prefix = "") {
-      return [...rows.keys()].filter((key) => key.startsWith(prefix));
+    async list() {
+      return [...rows.keys()];
     },
   };
 }
@@ -35,7 +36,7 @@ function database(): Database {
 }
 
 describe("removeLegacyData", () => {
-  it("drops the earlier tables with their data and deletes the earlier KV rows, whatever the version", async () => {
+  it("empties the earlier tables, keeping them, and deletes the earlier KV rows, whatever the version", async () => {
     const db = database();
     db.prepare("INSERT INTO stamps (thread_id, seen_at) VALUES ('t1', 5)").run();
     db.prepare("INSERT INTO notes (thread_id, data) VALUES ('t1', '{}')").run();
@@ -44,12 +45,21 @@ describe("removeLegacyData", () => {
       "preference:foldOlder": false,
       "stamp:t1": { seenAt: 1 },
       "note:t1": {},
+      settings: { workingShelf: true },
     });
     const result = await removeLegacyData({ storage: { kv } }, db);
-    expect(result).toEqual({ droppedTables: ["stamps", "notes"], deletedKvRows: 4 });
-    expect(tables(db)).not.toContain("stamps");
-    expect(tables(db)).not.toContain("notes");
-    expect(kv.rows.size).toBe(0);
+    expect(result).toEqual({ clearedTables: ["stamps", "notes"], deletedKvRows: 4 });
+    expect(tables(db)).toEqual(expect.arrayContaining(["stamps", "notes"]));
+    expect(db.prepare("SELECT thread_id FROM stamps").all()).toEqual([]);
+    expect(db.prepare("SELECT thread_id FROM notes").all()).toEqual([]);
+    expect([...kv.rows.keys()]).toEqual(["settings"]);
+  });
+
+  it("leaves tables that are already empty alone and reports nothing on a later start", async () => {
+    const db = database();
+    const kv = fakeKv({});
+    expect(await removeLegacyData({ storage: { kv } }, db)).toEqual({ clearedTables: [], deletedKvRows: 0 });
+    expect(tables(db)).toEqual(expect.arrayContaining(["stamps", "notes"]));
   });
 
   it("leaves the shelf list's own data alone, on every start", async () => {
@@ -72,14 +82,17 @@ describe("removeLegacyData", () => {
     const db = new BetterSqlite3(":memory:") as unknown as Database;
     db.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)");
     db.exec("CREATE TABLE stamps (thread_id TEXT, seen_at INTEGER)");
+    db.exec("INSERT INTO notes (body) VALUES ('mine')");
+    db.exec("INSERT INTO stamps (thread_id, seen_at) VALUES ('t1', 1)");
     const result = await removeLegacyData({ storage: { kv: fakeKv({}) } }, db);
-    expect(result.droppedTables).toEqual([]);
-    expect(tables(db)).toEqual(["notes", "stamps"]);
+    expect(result.clearedTables).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM notes").get()).toEqual({ n: 1 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM stamps").get()).toEqual({ n: 1 });
   });
 
   it("does nothing on a database the earlier design never touched", async () => {
     const db = new BetterSqlite3(":memory:") as unknown as Database;
-    expect(await removeLegacyData({ storage: { kv: fakeKv({}) } }, db)).toEqual({ droppedTables: [], deletedKvRows: 0 });
+    expect(await removeLegacyData({ storage: { kv: fakeKv({}) } }, db)).toEqual({ clearedTables: [], deletedKvRows: 0 });
   });
 
   it("deletes a large number of KV rows", async () => {

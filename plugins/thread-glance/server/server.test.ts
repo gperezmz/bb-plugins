@@ -5,6 +5,7 @@ import { activeRow, parkedRow, settledRow, snoozedRow } from "../shared/lifecycl
 import { DEFAULT_SETTINGS } from "../shared/settings";
 import { CHANNELS, type RecordsSignal, type ThreadRecord, type Versioned } from "../shared/signals";
 import { createLifecycleStore } from "./lifecycle-store";
+import { createOrderStore } from "./order-store";
 import { listedThread, sdkWith } from "./testing/fakes";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
@@ -197,6 +198,29 @@ describe("events", () => {
       lastAssistantText: null,
     });
     expect(rowOf(await sync(harness), "a")).toBeNull();
+  });
+
+  it("publishes one records signal holding only the record of the thread an event changed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { harness } = await load(sdkWith(() => [listedThread("a"), listedThread("b"), listedThread("c")]));
+    await harness.behavior.callRpc("park", { threadId: "a" });
+    await harness.behavior.callRpc("park", { threadId: "b" });
+    await harness.behavior.callRpc("resume", { threadId: "c" });
+    const before = recordSignals(harness).length;
+
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "a", latestAttentionAt: 20_000 }),
+      lastAssistantText: null,
+    });
+    expect(recordSignals(harness).slice(before).map((signal) => Object.keys(signal.records))).toEqual([["a"]]);
+
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "c" }) });
+    expect(recordSignals(harness).slice(before).map((signal) => Object.keys(signal.records))).toEqual([["a"], ["c"]]);
+
+    await harness.behavior.callRpc("snooze", { threadId: "a", until: 60_000 });
+    expect(recordSignals(harness).slice(before).map((signal) => Object.keys(signal.records))).toEqual([["a"], ["c"], ["a"]]);
+    expect(recordSignals(harness).at(-1)?.records).toEqual({ a: { lifecycle: snoozedRow(60_000, 10_000) } });
   });
 
   it("keeps a snooze when attention arrives, since the row is what makes the thread Woke", async () => {
@@ -420,6 +444,64 @@ describe("the startup service", () => {
     service.controller.abort();
     await service.done;
     expect([...createLifecycleStore(bb.storage.database()).all().keys()].sort()).toEqual(["old"]);
+
+    // The archived thread keeps its row but is left out of a full answer, and comes back with its row when unarchived.
+    const full = await sync(harness);
+    expect(full.full).toBe(true);
+    expect(Object.keys(full.records)).toEqual([]);
+    const ahead = await sync(harness, { epoch: full.epoch, revision: full.revision + 1 });
+    expect(ahead.full).toBe(true);
+    expect(Object.keys(ahead.records)).toEqual([]);
+
+    await harness.behavior.emitThreadEvent("thread.unarchived", { thread: makeThreadResponse({ id: "old" }) });
+    expect(recordSignals(harness).at(-1)?.records).toEqual({ old: { lifecycle: parkedRow(1) } });
+    const back = await sync(harness, { epoch: full.epoch, revision: full.revision });
+    expect(back).toMatchObject({ full: false, records: { old: { lifecycle: parkedRow(1) } } });
+  });
+
+  it("keeps the row and the order entry of a thread the listing missed but bb still has, and forgets those bb does not", async () => {
+    const kept = listedThread("kept", { createdAt: 3 });
+    const skipped = listedThread("skipped", { createdAt: 2 });
+    const sdk = sdkWith(() => [kept], () => [], {
+      threads: {
+        async get({ threadId }: { threadId: string }) {
+          const thread = [kept, skipped].find((candidate) => candidate.id === threadId);
+          if (thread === undefined) throw Object.assign(new Error("Thread not found"), { code: "thread_not_found" });
+          return thread;
+        },
+      },
+    });
+    const first = await load(sdk);
+    createLifecycleStore(first.bb.storage.database()).putMany([
+      ["skipped", parkedRow(5_000)],
+      ["gone", parkedRow(5_000)],
+    ]);
+    createOrderStore(first.bb.storage.database()).replace(["skipped", "gone", "kept"]);
+    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const service = harness.behavior.runService("startup");
+    service.controller.abort();
+    await service.done;
+    expect([...createLifecycleStore(bb.storage.database()).all().keys()]).toEqual(["skipped"]);
+    expect((await sync(harness)).order.value).toEqual(["skipped", "kept"]);
+  });
+
+  it("forgets nothing when bb cannot say whether a thread exists", async () => {
+    const sdk = sdkWith(() => [], () => [], {
+      threads: {
+        async get() {
+          throw new Error("bb is restarting");
+        },
+      },
+    });
+    const first = await load(sdk);
+    createLifecycleStore(first.bb.storage.database()).putMany([["a", parkedRow(5_000)]]);
+    createOrderStore(first.bb.storage.database()).replace(["a"]);
+    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const service = harness.behavior.runService("startup");
+    service.controller.abort();
+    await service.done;
+    expect([...createLifecycleStore(bb.storage.database()).all().keys()]).toEqual(["a"]);
+    expect((await sync(harness)).order.value).toEqual(["a"]);
   });
 });
 
@@ -441,18 +523,19 @@ describe("the earlier list's data", () => {
   }
 
   it("is removed on the first start, and the shelf list's own data is kept through it and every later start", async () => {
-    const { harness, bb } = await load(sdkWith(() => [listedThread("a")]));
+    const { harness, bb } = await load(sdkWith(() => [listedThread("a"), listedThread("b")]));
     await harness.behavior.callRpc("writeSettings", { patch: { workingShelf: true } });
     await harness.behavior.callRpc("park", { threadId: "a" });
     await harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "#aabbcc" });
-    await harness.behavior.callRpc("reorder", { threadIds: [] });
+    for (const id of ["a", "b"]) await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id }) });
     await seedEarlierData(harness, bb);
 
     await start(harness);
     const db = bb.storage.database();
-    const names = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name);
-    expect(names).not.toContain("stamps");
-    expect(names).not.toContain("notes");
+    // The earlier design's tables stay, empty, so going back to it on this database keeps working.
+    expect(db.prepare("SELECT thread_id FROM stamps").all()).toEqual([]);
+    expect(db.prepare("SELECT thread_id FROM notes").all()).toEqual([]);
+    expect(() => db.prepare("INSERT INTO stamps (thread_id, seen_at) VALUES ('b', 2)").run()).not.toThrow();
     expect(await bb.storage.kv.list("preference:")).toEqual([]);
     expect(await bb.storage.kv.list("stamp:")).toEqual([]);
     expect(await bb.storage.kv.list("note:")).toEqual([]);
@@ -463,6 +546,7 @@ describe("the earlier list's data", () => {
     expect(answer.settings.value.workingShelf).toBe(true);
     expect(answer.records.a?.lifecycle).toEqual(expect.objectContaining({ parkedAt: expect.any(Number) }));
     expect(answer.appearance.value.colours).toEqual({ p1: "#aabbcc" });
+    expect(answer.order.value).toEqual(["b", "a"]);
   });
 
   it("starts without them on an install that never held them", async () => {

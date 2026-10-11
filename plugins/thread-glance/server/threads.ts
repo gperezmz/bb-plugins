@@ -26,6 +26,9 @@ export interface ServerThread extends ShelfThread {
   archived: boolean;
 }
 
+/** What the server needs to know about a thread bb has when it asks for that one thread. */
+export type ThreadPresence = Pick<ServerThread, "id" | "hidden" | "archived" | "createdAt" | "latestAttentionAt">;
+
 export interface ThreadGateway {
   /** Every thread bb has that is not archived or deleted, hidden ones included, as bb reports them now. */
   snapshot(): Promise<ServerThread[]>;
@@ -37,6 +40,12 @@ export interface ThreadGateway {
   reorderPinned(threadId: string, previousThreadId: string | null, nextThreadId: string | null): Promise<void>;
   /** The thread's parent id, or undefined when bb no longer has the thread (a deleted thread). */
   parentOf(threadId: string): Promise<string | null | undefined>;
+  /**
+   * The thread as bb has it now, archived ones included, or undefined when bb
+   * does not have it (never existed, or deleted). Rejects when bb could not
+   * answer, which says nothing about the thread.
+   */
+  find(threadId: string): Promise<ThreadPresence | undefined>;
 }
 
 /** The pinned threads in the order bb lists them: by pin key, then newest pin first. */
@@ -92,6 +101,12 @@ async function listAll(sdk: Sdk, archived: boolean): Promise<ListedThread[]> {
   return [...byId.values()];
 }
 
+/** Whether a failed `threads.get` says that bb has no such thread, as against bb failing to answer. */
+function isNotFound(error: unknown): boolean {
+  const { code, status, message } = (error ?? {}) as { code?: unknown; status?: unknown; message?: unknown };
+  return code === "thread_not_found" || status === 404 || (typeof message === "string" && /not found/i.test(message));
+}
+
 export function createSdkThreads(bb: Pick<BbPluginApi, "sdk">): ThreadGateway {
   return {
     async snapshot() {
@@ -109,6 +124,22 @@ export function createSdkThreads(bb: Pick<BbPluginApi, "sdk">): ThreadGateway {
     },
     async reorderPinned(threadId, previousThreadId, nextThreadId) {
       await bb.sdk.threads.reorderPinned({ threadId, previousThreadId, nextThreadId });
+    },
+    async find(threadId) {
+      try {
+        const thread = await bb.sdk.threads.get({ threadId });
+        if (thread.deletedAt !== null) return undefined;
+        return {
+          id: thread.id,
+          hidden: thread.visibility === "hidden",
+          archived: thread.archivedAt !== null,
+          createdAt: thread.createdAt,
+          latestAttentionAt: thread.latestAttentionAt,
+        };
+      } catch (error) {
+        if (isNotFound(error)) return undefined;
+        throw error;
+      }
     },
     async parentOf(threadId) {
       try {

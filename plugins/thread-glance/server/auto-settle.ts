@@ -102,8 +102,9 @@ function decide(
 
 /**
  * The threads to settle and to return, from the threads bb has now. A parent
- * settles only when every thread below it is settled or settling, and an
- * automatic settle of a parent whose tree is no longer so is returned.
+ * settles only when every visible thread below it is settled or settling and
+ * no hidden one is busy, and an automatic settle of a parent whose tree is no
+ * longer so is returned.
  */
 export function planAutoSettle(input: {
   threads: readonly ServerThread[];
@@ -128,7 +129,7 @@ export function planAutoSettle(input: {
 
   const childrenOf = new Map<string, string[]>();
   for (const thread of threads) {
-    if (thread.hidden || thread.parentThreadId === null) continue;
+    if (thread.parentThreadId === null) continue;
     childrenOf.set(thread.parentThreadId, [...(childrenOf.get(thread.parentThreadId) ?? []), thread.id]);
   }
   const settledOrSettling = (threadId: string) => {
@@ -137,10 +138,12 @@ export function planAutoSettle(input: {
     if (settle.has(threadId)) return true;
     return row !== null && row.settledAt !== null && thread !== undefined && staleMark(row, thread) === null && !unsettle.has(threadId);
   };
+  // A hidden helper is never settled itself, so it only blocks its tree while it is busy.
   const wholeTreeSettled = (threadId: string) => {
     const pending = [...(childrenOf.get(threadId) ?? [])];
     for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
-      if (!settledOrSettling(id)) return false;
+      const thread = byId.get(id);
+      if (thread?.hidden ? isBusy(thread) : !settledOrSettling(id)) return false;
       pending.push(...(childrenOf.get(id) ?? []));
     }
     return true;

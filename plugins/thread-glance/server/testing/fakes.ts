@@ -87,6 +87,10 @@ export function createFakeThreads(initial: readonly ServerThread[] = []): FakeTh
     async reorderPinned(threadId, previousThreadId, nextThreadId) {
       fake.calls.push(`reorder ${threadId} ${previousThreadId} ${nextThreadId}`);
     },
+    async find(threadId) {
+      const thread = fake.threads.get(threadId);
+      return thread === undefined ? undefined : { ...thread };
+    },
     async parentOf(threadId) {
       const thread = fake.threads.get(threadId);
       return thread === undefined ? undefined : thread.parentThreadId;

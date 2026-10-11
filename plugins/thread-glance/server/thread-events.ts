@@ -104,9 +104,11 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
       }),
 
     unarchived: (thread) =>
-      deps.change(async () => {
+      deps.change(async (changed) => {
         deps.archived.unarchive(thread.id);
         addToOrder(thread);
+        // A full `sync` left its record out while it was archived.
+        if (lifecycle.get(thread.id) !== null) changed([thread.id]);
       }),
 
     deleted: (thread) =>

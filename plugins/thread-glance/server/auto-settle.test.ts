@@ -264,6 +264,27 @@ describe("trees", () => {
     const { autoSettle } = setup([idleFor("parent", 9), idleFor("helper", 0, { parentThreadId: "parent", hidden: true })]);
     expect((await autoSettle.run()).settled).toEqual(["parent"]);
   });
+
+  it("does not settle a parent while a hidden helper below it is busy, nor deeper in its tree", async () => {
+    const busy = { status: "active" as const, runtimeStatus: "active", hidden: true };
+    const direct = setup([idleFor("parent", 9), idleFor("helper", 0, { parentThreadId: "parent", ...busy })]);
+    expect((await direct.autoSettle.run()).settled).toEqual([]);
+    const deeper = setup([
+      idleFor("parent", 9),
+      idleFor("kid", 9, { parentThreadId: "parent" }),
+      idleFor("helper", 0, { parentThreadId: "kid", ...busy }),
+    ]);
+    expect((await deeper.autoSettle.run()).settled).toEqual([]);
+  });
+
+  it("returns an automatic settle of a parent whose hidden helper became busy", async () => {
+    const { autoSettle, lifecycle } = setup(
+      [idleFor("parent", 9), idleFor("helper", 0, { parentThreadId: "parent", hidden: true, status: "active", runtimeStatus: "active" })],
+      { rows: [["parent", settledRow(NOW - 2 * DAY, "auto")]] },
+    );
+    expect((await autoSettle.run()).unsettled).toEqual(["parent"]);
+    expect(lifecycle.get("parent")).toBeNull();
+  });
 });
 
 describe("one pass at a time", () => {

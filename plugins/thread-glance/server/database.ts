@@ -11,7 +11,7 @@ export type Kv = BbPluginApi["storage"]["kv"];
  *
  * The first two statements create the `stamps` and `notes` tables of the
  * earlier list design. Installs that ran them have them recorded, so they
- * stay; `removeLegacyData` drops the tables by their shape.
+ * stay; `removeLegacyData` empties the tables by their shape.
  */
 export const MIGRATIONS: readonly string[] = [
   "CREATE TABLE stamps (thread_id TEXT PRIMARY KEY NOT NULL, started_at INTEGER, finished_at INTEGER, seen_at INTEGER, idle_at INTEGER, pending_at INTEGER) WITHOUT ROWID",
