@@ -1,6 +1,6 @@
 # Thread Glance: first run
 
-In this tutorial you install Thread Glance, switch the sidebar to it, and watch a parent thread and its child thread in the list. You need a bb server you can install plugins on and one project with an agent that can run.
+In this tutorial you install Thread Glance, switch the sidebar to it, and put threads away and bring them back: snooze one, park one, settle one and undo it, then put your Active threads in an order of your own. You need a bb server you can install plugins on and one project with an agent that can run, with a few threads in it.
 
 ## 1. Install it and switch the sidebar
 
@@ -8,54 +8,40 @@ In this tutorial you install Thread Glance, switch the sidebar to it, and watch 
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
-In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**.
+In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**. Every window you have open switches too.
 
-The list starts from Thread Glance's own defaults, grouped by Project, rather than from the layout bb's list had: [where a new install starts](../reference/thread-glance-preferences.md#where-a-new-install-starts) says what each one is. Every window you have open switches too.
+The list opens on its [defaults](../reference/thread-glance-settings.md#where-a-new-install-starts): every thread starts on Active, and no thread is snoozed, parked or settled.
 
-## 2. Read a row
+`bb thread-glance prefs` and the `thread-glance` agent skill are gone for now. They return in a later release, over the settings page you use in step 6.
 
-The list starts with its header: `Projects`, the name of the grouping, then a sliders button, with a Mark all read button before it while any thread in the list is unread. Below it are your groups, each ending with a muted `Settled (N)` divider when some of its threads have gone a day without activity.
+## 2. Read the list
 
-Look at any thread you have run before. From left to right, its row holds:
+At the top is the project scope, set to **All projects**. Below it are the [shelves](../reference/thread-glance-list.md#shelves), top to bottom: **Pinned** if you have pinned a thread, then **Active**, where your threads sit. A shelf with no threads is not drawn, so the lower shelves are missing for now.
 
-- a state glyph, or a faint ring when the thread is idle and read;
-- the title, bold while bb has the thread unread;
-- a small harness logo, only if the thread runs on a harness other than bb's default;
-- the machine's name, only if the thread runs on a machine other than bb's own;
-- how long ago it last finished.
+Each Active thread is a card of three lines: the project and a status on the right, the title, and the branch with the pull request and harness logo.
 
-Hover the row for half a second. The card names the state, the harness, the model the next turn will use, the branch and the machine.
+## 3. Snooze a thread
 
-## 3. Start a parent with a child
+Pick a thread that is not working. Hover its card and click the clock button, then choose **1 hour**.
 
-In a thread of your project, send:
+The card leaves Active and a **Snoozed** shelf appears, collapsed and reading `Snoozed (1)`. Open it: the thread is a one-line row with the time it wakes. A toast says "Thread snoozed", with **Undo**.
 
-```text
-Spawn one child thread that lists the files in this repository, then wait for it and summarise what it found.
-```
+Click **Wake thread now** on the row. The thread returns to Active and the toast reads "Thread woke up". Snooze it again and let the toast pass; the [snooze presets](../reference/thread-glance-actions.md#snooze-presets) say what else the clock menu offers, and **Pick date & time…** takes any moment within a year.
 
-Then open a different thread. A thread shown in a pane of bb's window is an [open thread](../explanation/thread-glance-attention.md#what-a-thread-needs-attention-for), which is never unread, so the steps below need the parent out of view.
+## 4. Park a thread
 
-While the parent works, its row shows a blue spinner and a timer counting up. When the child appears, the parent's row gets a muted `1` and a chevron just before its time: its one child. The child has no row of its own at the top of the group. It sits behind that chip.
+Open the clock menu on another thread that is not working and choose **Park thread**. The thread goes to a collapsed **Parked** shelf, where its row shows how long it has waited. Parking is for a thread waiting on someone else: it needs no time, and it returns by itself when new attention arrives. Click **Resume thread** to bring it back by hand.
 
-Click the chip. The child's row opens under the parent, indented one step, its title the same size as its parent's.
+## 5. Settle a thread, and undo it
 
-## 4. Let it finish
+Hover a card and click **Settle**. The card sweeps across and the thread moves to **Settled**, with the toast "Thread settled" and **Undo**. Click **Undo**: the thread goes back to the shelf it was on.
 
-The parent's glyph always shows the parent's own state. If its turn ends while the child still works, its glyph turns to the idle ring, and its chip turns blue and leads with a small spinner: a child is working.
+Settle it again, and let the toast go. Open **Settled** and click **Un-settle thread** on its row to return it to Active. A settle covers the thread's whole tree, so a parent with a working child refuses: "Cannot settle while <child title> is working or waiting for input". The [children chip](../reference/thread-glance-list.md#children-chip) on a parent's card is where the child list opens.
 
-When the child finishes, its row shows a blue check, and its title stays at its usual weight: it finished since you last looked at it, but bb keeps a finished child read, so it is not unread. The parent's chip swaps its spinner for a small blue check, and the parent's row does not turn urgent, because the parent is the one waiting for that result.
+## 6. Put Active in your own order and change a setting
 
-When the parent finishes, its row shows the dot and a bold title.
+Drag a card on Active up or down, keeping the pointer more vertical than sideways, or focus a card and press Alt+Arrow Up. Active is on **Manual order**: the order is yours, every window follows it, and new threads arrive at its top. [Reordering](../reference/thread-glance-actions.md#reordering) has the details.
 
-## 5. See what needs attention
+Open Thread Glance's section in bb's settings. Under **Sidebar layout**, turn on **Working shelf**. The settings save by themselves: the heading reads "Saving…", then "Saved". Threads whose tree is working now sit on a **Working** shelf instead of Active. Turn it off again.
 
-The tree stays where it is in its project's group, and the list header now shows `1 need you`, because the parent finished unread. Your finished child did not add to it: [what "Needs attention" means](../explanation/thread-glance-attention.md) explains why.
-
-Click `1 need you`. The list narrows to that one tree under its project's header. Click it again for the full list. Hover the parent's row and click **Mark tree read**, the open envelope beside archive: the parent is read, the child's check goes, and `1 need you` goes away.
-
-## 6. Change a setting
-
-Click the sliders button at the right of the list header. Under **List**, set **Settle after** to **12h**. Trees that have gone half a day without activity join each group's `Settled (N)` divider at its end; click a divider to see what it holds. Set it back to **1d**, and click the sliders button again to close the panel.
-
-You have installed Thread Glance, read its rows and chips, and used the need-you filter. [States and glyphs](../reference/thread-glance-states.md) lists every glyph you can meet, and [preferences](../reference/thread-glance-preferences.md) every setting.
+You have installed Thread Glance, and used its three ways to put a thread away. [The list](../reference/thread-glance-list.md) describes every shelf and row, [actions](../reference/thread-glance-actions.md) every button, [settings](../reference/thread-glance-settings.md) every setting, and [why it keeps threads on shelves](../explanation/thread-glance-shelves.md) the reasons.

@@ -30,7 +30,7 @@ Only on Claude Code threads.
 | Composer chip | Its text is compaction's: nothing when compact when idle is off, `≥ {line}` when on (`no line` where no size up to the window gives one, or while bb has not reported the thread's context window), `{m}m` counting down while a compaction is due, `paused` while the thread waits on your answer. Its icon is the timer, or, while the thread is [waiting with its turn ended](#while-a-thread-waits-with-its-turn-ended), the flame or the crossed-out flame. Hovering gives the full sentence, then whether the thread is kept warm while it waits. While the window is unknown and compact when idle is on, the sentence is "Compact when idle is on. Its line is set once this thread's first turn ends." |
 | Composer chip's popover | See [the popover](#the-composer-chips-popover) |
 | Banner | One line above the composer, with no tooltip, only around a compaction; see [the banner](#the-banner) |
-| Sidebar row | The timer icon in place of the status glyph while a compaction is due; the flame while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm |
+| Row in bb's built-in thread list | The timer icon in place of the status glyph while a compaction is due; the flame while a keep-warm is planned for the thread or a thread below it, which happens only in a tree kept warm. Thread Glance's rows draw no other plugin's status, so with Thread Glance as the sidebar neither shows |
 
 **Compact now** compacts whatever the size, provided the thread is idle, waits on no answer and is not waiting.
 
@@ -62,7 +62,7 @@ The composer chip shows keep-warms only once a waiting thread's turn has ended, 
 
 Where more than one row holds, the first one listed wins. Skip this wait stops keep-warms for this thread and every thread below it until the wait ends, and leaves the switch as it is; check-ins on a stalled task still go. **Keep warm** switches the tree top's switch on. Where the thread's cache went cold before you pressed it, keep-warms cannot warm it again: the chip shows the crossed-out flame until the next request, whoever makes it, warms the cache, and keep-warms go from then on.
 
-The sidebar never shows the crossed-out flame.
+bb's built-in thread list never shows the crossed-out flame.
 
 ### The banner
 

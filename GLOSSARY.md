@@ -34,88 +34,118 @@ _Avoid_: Saved run, drive fixture
 
 ### Thread Glance
 
-**Needs attention**:
-The state of a thread tree with a thread only you can move forward, which keeps the tree showing in its group when the group is collapsed.
-_Avoid_: Needs you, inbox, attention section
-
-**List header**:
-Thread Glance's row above its groups: the grouping's name, the need-you filter, Mark all read and the settings button.
-_Avoid_: Toolbar, title row, thread navigation
-
-**Need-you filter**:
-The list header's "N need you" badge, which shows only the thread trees that need attention while it is on.
-_Avoid_: Attention filter, inbox view
-
 **Parent thread**:
 The thread that spawned a child thread.
 _Avoid_: Manager, owner
 
-**Orphaned failure**:
-A child thread's failure that its parent thread has stayed idle for a few seconds without handling.
-_Avoid_: Unhandled failure, stuck child
-
-**Children chip**:
-The count of a parent thread's direct children just before its trailing slot, with the chevron that opens and closes them, led by the glyph of the most urgent state among its descendants.
-_Avoid_: Chip, Pill, children badge, child dot
-
 **Focused thread**:
 The thread in the pane of bb's window that has focus.
-_Avoid_: Active thread, current thread
+_Avoid_: Current thread
 
 **Open thread**:
-A thread shown in any pane of bb's window, the focused thread or one in another split pane. Thread Glance never counts it as unread.
-_Avoid_: Viewed thread, visible thread
+A thread shown in any pane of bb's window, the focused thread or one in another split pane. Its row is highlighted when it is the focused thread and tinted when it is in another pane.
+_Avoid_: Viewed thread
 
-**Pending read**:
-A thread Thread Glance shows read while its request to bb to mark it read is still on its way. It shows unread again if the request fails or bb reports a newer finished turn.
-_Avoid_: Optimistic read, read override
+**Attention**:
+bb's latest-attention time for a thread moving later: a turn that ends, a failure, a question or approval that arrives. Thread Glance compares it with the time a thread was parked, snoozed or settled to decide whether that thread comes back.
+_Avoid_: Notification
 
-**Done unseen**:
-A child thread that finished since you last looked at it, which bb keeps read. Thread Glance marks it with a mark of its own, never as unread, since read state is bb core.
-_Avoid_: Finished-unseen, seen marker
+**Busy thread**:
+A thread that is not at rest: it has a pending question or approval, a queued or failed queued message, a turn in flight, any activity counter (workflows, background agents or commands, plan mode, goals), or a runtime that is starting, active or provisioning. One rule decides it for every button, check and automatic action; a busy thread cannot be snoozed, parked or settled.
+_Avoid_: In-use thread
 
-**Quiet thread**:
-A thread that is read and not done unseen, not the focused thread, and idle, only a draft, or failed: not running, holding no queued or scheduled message, and not on an offline machine.
-_Avoid_: Idle thread
+**Shelf**:
+One of the sections of Thread Glance's list that a thread sits on by its lifecycle: Pinned, Active, Working, Inactive, Snoozed, Parked or Settled.
+_Avoid_: Bucket, lane
+
+**Lifecycle row**:
+What Thread Glance's server keeps for a thread that is not simply Active: when it was settled and whether by you or automatically, when it was parked, when it was snoozed and until when, and an active override. A thread without one is Active.
+_Avoid_: Thread state, status record
+
+The active override is set by Resume and Un-settle and lasts until the thread next starts a turn; it also stops automatic settling from touching the thread.
+
+**Snooze preset**:
+One entry of the snooze shortcuts setting: an optional label and either a duration or a named time of day, offered in the Snooze menu and the card's clock menu.
+_Avoid_: Snooze option
+
+**Woke**:
+The state of a thread back from a snooze, at its wake time or on new attention, until you open it or dismiss its marker. It is on Active, in bold, with a Woke label, and is the same in every window and after a reload.
+_Avoid_: Awake, unsnoozed
+
+**Parked thread**:
+A thread you have set aside while someone else replies. It sits on Parked, showing how long it has waited, until attention returns it to Active or you resume it.
+_Avoid_: Shelved thread, held thread
 
 **Settled thread**:
-A thread that is read and not done unseen, idle, only a draft or failed, needs no attention, is not pinned, and has had no activity for the Settle after period, whether or not it is focused. It is worked out afresh each time, so any activity unsettles it.
-_Avoid_: Older thread, done thread, archived thread
+A thread on Settled, put there by you or automatically after it went quiet or its pull request closed. Settling covers a whole thread tree, and attention or Un-settle returns the thread to Active.
+_Avoid_: Older thread, done thread
 
-**Settle after**:
-Thread Glance's setting for how long a thread goes without activity before it settles, or Never.
-_Avoid_: Auto-settle days, inactivity threshold
+**Inactive thread**:
+A thread left on Active that is not busy, does not need you, is not woke, and has had no activity for the hours before inactive. It sits on Inactive.
+_Avoid_: Stale thread, dormant thread
 
-**Settled fold**:
-The muted "Settled (N)" divider at the end of a group, behind which its settled threads go, a held tree excepted.
-_Avoid_: Older fold, N older, more row
+**Manual order**:
+The order of the threads on Active, set by dragging or with Alt+Arrow, stored on the server as one list for every thread outside Pinned across all projects and shelves, and followed by every window. Working and Inactive follow it too.
+_Avoid_: Custom order, drag order
 
-**Held tree**:
-A thread tree that settled while it held the focused thread, and stays where it was, out of its group's Settled fold and its count, until no thread in the group's settled trees is focused.
-_Avoid_: Pending tree, parked tree
+**Reclaim**:
+What Thread Glance does after a park, snooze or settle, once the thread is still unpinned, not busy and unchanged: it stops the thread's agent runtime and closes its terminals that are running but have never had input, leaving the rest.
+_Avoid_: Cleanup
 
-**Trailing slot**:
-The last column of a Thread Glance row, holding the time at rest and the "…" menu button on hover. It is as wide on every row as the "…" button or the widest time it can show, whichever is wider.
-_Avoid_: Last slot, time slot, time column
+**Project scope**:
+The picker at the top of Thread Glance's list that limits every shelf to one project or to all of them. It is not saved: each time the list mounts it starts on All projects.
+_Avoid_: Project filter
 
-**Status column**:
-The column at the left of every Thread Glance row where its status glyph sits, a faint ring when the thread is idle.
-_Avoid_: Glyph slot, indent, gutter
+**Project colour**:
+The colour a project has while project colours are on: soft and automatic from the project's id, or an override picked in settings. It colours the project's name, its stripe and its monogram.
+_Avoid_: Project theme
 
-**Density**:
-Thread Glance's per-device choice of row spacing, Compact or Comfortable. Its Compact has nothing to do with Cache Keeper's compacting.
-_Avoid_: Row size, zoom
+**Stripe**:
+The 2 px bar at the left edge of a row, in the project colour, shown where the setting for where stripes show allows.
+_Avoid_: Accent bar, colour bar
 
-**Branch line**:
-The second line of a Thread Glance row naming its thread's branch when that is not its project's default, shown while its switch is on.
-_Avoid_: Branch row, subtitle
+**Monogram**:
+The uppercase first letter of a project's name, on a tile, drawn where the project has no icon or its icon fails to load.
+_Avoid_: Initial, avatar
+
+**Full card**:
+A row of three lines: the project's icon and name with the status slot, the title, and the branch with the children chip, pull request badge and harness logo. Used on Pinned, Active and Inactive, and for a working thread unless it is folded.
+_Avoid_: Big row, expanded row
+
+**Folded card**:
+A row of one line: project name and title, the children chip, an unpin button and the live status. Used for working threads while compacting working threads is on and for every row of Working; it unfolds when the work ends, fails or needs you.
+_Avoid_: Compact row, collapsed card
+
+**Slim row**:
+A one-line row, 32 px tall, showing project name, title and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.
+_Avoid_: Thin row, mini row
+
+**Status slot**:
+The 80 px right-aligned part of a card that shows one thing, the first that applies: Needs you, Send failed or Queued, the indicator's label, or else the thread's age.
+_Avoid_: Trailing slot, status column
+
+**Children chip**:
+The control on a parent thread's card showing the number of its direct, non-archived children, up to three child marks, the glyph of the most urgent state in its whole subtree, and a chevron that opens and closes the child list.
+_Avoid_: Chip, Pill, children badge, child dot
+
+**Parent button**:
+The button in a thread's header that goes back to its parent thread.
+_Avoid_: Back button, parent link
+
+**Children button**:
+The button in a thread's header that opens a popover listing its children.
+_Avoid_: Subthreads button
+
+**Hover card**:
+The card that opens beside a row after the pointer rests on it, or at once on keyboard focus, showing the thread's project, machine, branch, harness, model and the branch's pull request.
+_Avoid_: Details panel
 
 **Thread record**:
-One thread's stamps and notes as Thread Glance's server stores them, sent whole whenever it changes or a client catches up.
+One thread's lifecycle row as Thread Glance's server sends it, whole, whenever it changes or a client catches up.
 _Avoid_: Thread data, thread entry
 
 **Spacer**:
-The empty block standing in for a run of a group's rows the list has not mounted, as tall as they are, naming their threads for bb's keyboard navigation.
+The empty block standing in for a run of a shelf's rows the list has not mounted, as tall as they are, naming their threads for bb's keyboard navigation.
 _Avoid_: Placeholder, chunk, filler
 
 ### Thread Usage
@@ -211,11 +241,11 @@ Cache Keeper's button in a Claude Code thread's composer, showing Compact when i
 _Avoid_: Chip, Cache Keeper chip
 
 **Timer icon**:
-Cache Keeper's icon, a dial with one hand and a crown, drawn on its nav item, its banner, its composer chip unless the thread is waiting with its turn ended, and a sidebar row whose compaction is due.
+Cache Keeper's icon, a dial with one hand and a crown, drawn on its nav item, its banner, its composer chip unless the thread is waiting with its turn ended, and a row of bb's built-in thread list whose compaction is due. Thread Glance's rows draw no other plugin's status, so they never show it.
 _Avoid_: Clock, stopwatch, Cache Keeper logo
 
 **Flame**:
-Cache Keeper's glyph, on a sidebar row and, once the thread's turn has ended, on the composer chip, while a keep-warm is planned for its thread or a thread below it.
+Cache Keeper's glyph, on a row of bb's built-in thread list (never one of Thread Glance's) and, once the thread's turn has ended, on the composer chip, while a keep-warm is planned for its thread or a thread below it.
 _Avoid_: Fire, warm icon
 
 **Crossed-out flame**:
@@ -286,5 +316,6 @@ _Avoid_: Mention menu, popup, slash menu
 
 ## Flagged ambiguities
 
-- "Finished unread" is said of a thread bb has unread after it finished, as a root is; a child that only finished stays read in bb and is done unseen, never unread.
+- "Active thread" is a thread on the Active shelf; the thread in the pane that has focus is the focused thread.
+- The settings page spells its labels in US English ("Project colors", "Thread behavior"); the docs name those labels as they read and write colour otherwise.
 - "bb's own list" and "bb's list" name the built-in thread list, a plugin Thread Glance replaces, not bb core; what that list does is not what bb does.
