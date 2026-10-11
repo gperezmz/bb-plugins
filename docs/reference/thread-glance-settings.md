@@ -105,4 +105,21 @@ Browser storage is bounded. When it is full the caches go first (the manual orde
 
 A new install starts from the defaults above, with every thread on Active and none snoozed, parked or settled. Thread Glance does not read bb's built-in list's preferences. Upgrading from 0.11.2 removes 0.11.2's stored data; [what Thread Glance stores](../explanation/how-the-plugins-fit-bb.md#what-each-plugin-stores) says which.
 
-`bb thread-glance prefs` and the `thread-glance` agent skill are removed with 0.11.2's preferences, and return in a later release over these settings.
+0.11.2's `bb thread-glance prefs` keys and values are not translated: none has a counterpart here, and the first start of 1.0.0 deletes their stored values. [The command line](#the-command-line) takes the field names of the settings record.
+
+## The command line
+
+`bb thread-glance prefs` reads and changes the settings record the page edits, with the subcommands of bb's `bb thread-list prefs`. A change shows at once in every open window, as an edit on the page does.
+
+| Command | Does |
+|---|---|
+| `list [--json]` | Prints every setting with its value and what it takes |
+| `get <key> [--json]` | Prints one value |
+| `set <key> <value> [--json]` | Validates as the page does and stores one value; the value is JSON, and a bare word is a string |
+| `reset <key> [--json]` | Restores the default |
+
+The keys are the 15 fields of the record, such as `hoursBeforeInactive`, `snoozeShortcuts`, `daysBeforeAutoSettle` and `childOrder`. A value the page would refuse fails with `invalid_preference_value` and a hint describing the key, and the stored value stays. A key that is not a field, including a key of 0.11.2, fails with `unknown_preference`, and the hint lists the current keys.
+
+Snoozing, parking, settling and reordering a thread are not settings, and neither is anything [kept on this device](#kept-on-this-device); the command cannot change them.
+
+The `thread-glance` agent skill tells an agent to use this command while Thread Glance is the sidebar's list, `bb settings ui get sidebar.threadListProvider` printing `thread-glance/thread-glance`, or `__automatic__` with no other thread list plugin installed. While bb's own list is in use, it passes sort, organisation and collapse requests to `bb thread-list prefs` and changes no Thread Glance setting.

@@ -8,7 +8,7 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin t
 
 Then choose **Thread Glance** under Settings → Appearance → Sidebar.
 
-What becomes of `bb thread-glance prefs` and the `thread-glance` agent skill is in [Where a new install starts](../../docs/reference/thread-glance-settings.md#where-a-new-install-starts).
+`bb thread-glance prefs` and the `thread-glance` agent skill change its settings from a terminal or an agent: see [The command line](../../docs/reference/thread-glance-settings.md#the-command-line).
 
 - [First run](../../docs/tutorials/thread-glance-first-run.md)
 - [Switch the sidebar between Thread Glance and bb's list](../../docs/how-to/thread-glance-switch-sidebar.md)

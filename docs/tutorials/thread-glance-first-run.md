@@ -12,7 +12,7 @@ In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**. Ev
 
 The list opens on its [defaults](../reference/thread-glance-settings.md#where-a-new-install-starts): every thread starts on Active, and no thread is snoozed, parked or settled.
 
-What becomes of `bb thread-glance prefs` and the `thread-glance` agent skill is in [Where a new install starts](../reference/thread-glance-settings.md#where-a-new-install-starts).
+`bb thread-glance prefs` and the `thread-glance` agent skill change its settings from a terminal or an agent: see [The command line](../reference/thread-glance-settings.md#the-command-line).
 
 ## 2. Read the list
 
