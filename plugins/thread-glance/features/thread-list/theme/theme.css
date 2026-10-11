@@ -1,0 +1,88 @@
+/*
+ * Thread Glance's colours and effects. Colours are variables keyed on bb's own
+ * theme classes, `.light` and `.dark` on the document, never on the system's
+ * colour scheme: the plugin build's `dark:` utilities follow the system, so
+ * nothing here or in the components uses them.
+ */
+:root,
+.light {
+  --tg-failed: #b91c1c;
+  --tg-needs-you: #b45309;
+  --tg-working: #0369a1;
+  --tg-unread: #047857;
+  --tg-draft: #b45309;
+  --tg-merged: #6d28d9;
+  --tg-row-open: color-mix(in oklab, var(--foreground, #111) 9%, transparent);
+  --tg-row-elsewhere: color-mix(in oklab, var(--foreground, #111) 4%, transparent);
+  --tg-scene-stroke: #6b7280;
+  --tg-sweep: color-mix(in oklab, var(--foreground, #111) 12%, transparent);
+}
+
+.dark {
+  --tg-failed: #f87171;
+  --tg-needs-you: #fbbf24;
+  --tg-working: #38bdf8;
+  --tg-unread: #34d399;
+  --tg-draft: #fbbf24;
+  --tg-merged: #a78bfa;
+  --tg-row-open: color-mix(in oklab, var(--foreground, #eee) 14%, transparent);
+  --tg-row-elsewhere: color-mix(in oklab, var(--foreground, #eee) 7%, transparent);
+  --tg-scene-stroke: #9ca3af;
+  --tg-sweep: color-mix(in oklab, var(--foreground, #eee) 18%, transparent);
+}
+
+/* The list's scroller: no scrollbar, and the edges fade by up to 12px. */
+.tg-scroller {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  --tg-fade-top: 0px;
+  --tg-fade-bottom: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--tg-fade-top), #000 calc(100% - var(--tg-fade-bottom)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--tg-fade-top), #000 calc(100% - var(--tg-fade-bottom)), transparent 100%);
+}
+
+.tg-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* The Settle sweep across a card. */
+@keyframes tg-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.tg-sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--tg-sweep), transparent);
+  animation: tg-sweep 520ms ease-in forwards;
+}
+
+/* The typist of the Working scene. */
+@keyframes tg-type {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+
+.tg-typing {
+  animation: tg-type 700ms ease-in-out infinite;
+}
+
+.tg-row-open {
+  background: var(--tg-row-open);
+}
+
+.tg-row-elsewhere {
+  background: var(--tg-row-elsewhere);
+}

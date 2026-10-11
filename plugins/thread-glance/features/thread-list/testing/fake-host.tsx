@@ -1,0 +1,230 @@
+// A fake bb and plugin server. bb's list hooks read a store the test drives,
+// so bb can hand the list updates after mount (renderSlot's own host is fixed
+// at mount). The list itself is mounted as bb mounts it: the plugin's
+// registered thread list component, through renderSlot.
+import { useSyncExternalStore, type ComponentType } from "react";
+import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
+import type {
+  PluginSidebarProject,
+  PluginSidebarSplitLayout,
+  PluginSidebarThread,
+  PluginThreadListProps,
+} from "@get-bb/plugin-sdk/app";
+import { createFakeServer, type FakeServer, type FakeServerOptions } from "./fake-server";
+
+interface HostState {
+  status: "loading" | "ready" | "error";
+  threads: PluginSidebarThread[];
+  projects: PluginSidebarProject[];
+  draftIds: ReadonlySet<string>;
+  splitLayout: PluginSidebarSplitLayout | null;
+  props: PluginThreadListProps;
+}
+
+export interface FakeHostOptions {
+  threads: PluginSidebarThread[];
+  projects: PluginSidebarProject[];
+  isCompactViewport?: boolean;
+  activeThreadId?: string | null;
+  /** Makes `threads.reorderPinned` fail. */
+  failReorderPinned?: boolean;
+  /** Counts how many times bb's list hook was read, to show no row reads it. */
+  onThreadsRead?(): void;
+}
+
+export interface FakeHost {
+  state(): HostState;
+  /** Replaces what bb reports; one host update. */
+  update(patch: Partial<Omit<HostState, "props">>): void;
+  /** Replaces one thread, as bb does when it changes. */
+  updateThread(id: string, patch: Partial<PluginSidebarThread>): void;
+  /** Replaces the list's props; `onNavigate` gets a new identity. */
+  updateProps(patch?: Partial<PluginThreadListProps>): void;
+  /** Every call to bb's SDK the list made, as `<area>.<method>` with its arguments. */
+  sdkCalls: { method: string; args: unknown }[];
+  /** How many times the list's `onNavigate` ran. */
+  navigated: number;
+  subscribe(listener: () => void): () => void;
+}
+
+let active: FakeHost | null = null;
+
+function hostOrThrow(): FakeHost {
+  if (active === null) throw new Error("no fake host: call createFakeHost first");
+  return active;
+}
+
+export function createFakeHost(options: FakeHostOptions): FakeHost {
+  const listeners = new Set<() => void>();
+  let state: HostState = {
+    status: "ready",
+    threads: options.threads,
+    projects: options.projects,
+    draftIds: new Set(),
+    splitLayout: null,
+    props: {
+      activeThreadId: options.activeThreadId ?? null,
+      activeProjectId: null,
+      isCompactViewport: options.isCompactViewport ?? false,
+      onNavigate: () => {
+        host.navigated += 1;
+      },
+      searchQuery: "",
+    },
+  };
+  let sidebar = sidebarOf(state);
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  const host: FakeHost = {
+    state: () => state,
+    update(patch) {
+      state = { ...state, ...patch };
+      if (patch.threads !== undefined || patch.projects !== undefined || patch.status !== undefined) sidebar = sidebarOf(state);
+      notify();
+    },
+    updateThread(id, patch) {
+      host.update({ threads: state.threads.map((thread) => (thread.id === id ? { ...thread, ...patch } : thread)) });
+    },
+    updateProps(patch = {}) {
+      state = { ...state, props: { ...state.props, onNavigate: () => void (host.navigated += 1), ...patch } };
+      notify();
+    },
+    sdkCalls: [],
+    navigated: 0,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+  hostSidebar = () => sidebar;
+  readCount = options.onThreadsRead ?? (() => {});
+  failReorderPinned = options.failReorderPinned ?? false;
+  active = host;
+  return host;
+}
+
+let hostSidebar: () => unknown = () => null;
+let readCount: () => void = () => {};
+let failReorderPinned = false;
+
+function sidebarOf(state: HostState) {
+  return { status: state.status, threads: state.threads, projects: state.projects, sections: [], experimental_archived: null };
+}
+
+function useHost<T>(select: (state: HostState) => T): T {
+  const host = hostOrThrow();
+  return useSyncExternalStore(host.subscribe, () => select(host.state()));
+}
+
+type Runtime = Record<string, (...args: never[]) => unknown>;
+
+const rowRenders = new Map<string, number>();
+
+/** How many times each thread's row rendered since the last reset: a row calls bb's split hook once per render. */
+export function rowRenderCounts(): ReadonlyMap<string, number> {
+  return rowRenders;
+}
+
+export function resetRowRenderCounts(): void {
+  rowRenders.clear();
+}
+
+function fakeHooks(testRuntime: Runtime): Runtime {
+  const split = testRuntime.experimental_useSidebarThreadSplit as (threadId: string) => unknown;
+  return {
+    experimental_useSidebarThreadSplit: (threadId: string) => {
+      rowRenders.set(threadId, (rowRenders.get(threadId) ?? 0) + 1);
+      return split(threadId);
+    },
+    experimental_useSidebarThreads: () => {
+      useHost((state) => state.threads);
+      useHost((state) => state.status);
+      useHost((state) => state.projects);
+      readCount();
+      return hostSidebar();
+    },
+    useSidebarThreadDraftIds: () => useHost((state) => state.draftIds),
+    useSidebarSplitLayout: () => useHost((state) => state.splitLayout),
+  };
+}
+
+type PluginApp = Awaited<ReturnType<typeof loadPluginApp>>;
+let app: PluginApp | null = null;
+
+/**
+ * Loads the plugin app against the fake host. bb's SDK module looks each hook
+ * up on the test runtime when it is called, and `loadPluginApp` and
+ * `renderSlot` install that runtime afresh with one shared object of hooks, so
+ * the fake hooks go onto that object; a runtime without them would test the
+ * wrong host, which this refuses.
+ */
+export async function loadWithFakeHost(): Promise<PluginApp> {
+  if (app !== null) return app;
+  installTestPluginRuntime();
+  const runtime = (globalThis as unknown as { __bbPluginRuntime: { pluginSdkApp: Runtime } }).__bbPluginRuntime;
+  const hooks = fakeHooks({ ...runtime.pluginSdkApp });
+  Object.assign(runtime.pluginSdkApp, hooks);
+  app = await loadPluginApp(() => import("../../../app"));
+  const installed = (globalThis as unknown as { __bbPluginRuntime: { pluginSdkApp: Runtime } }).__bbPluginRuntime.pluginSdkApp;
+  if (installed.experimental_useSidebarThreads !== hooks.experimental_useSidebarThreads) {
+    throw new Error("the test runtime dropped the fake host's hooks while the app loaded");
+  }
+  return app;
+}
+
+export type ServerState = FakeServer;
+
+/** A fake plugin server holding what `held` gives it. */
+export function serverState(held: FakeServerOptions = {}): ServerState {
+  return createFakeServer(held);
+}
+
+/** bb's SDK calls the list makes, answered at once and recorded. */
+function sdkFakes() {
+  const record = (method: string) => async (args: unknown) => {
+    hostOrThrow().sdkCalls.push({ method, args });
+    return {};
+  };
+  return {
+    threads: {
+      update: async (args: { threadId: string; title?: string }) => {
+        hostOrThrow().sdkCalls.push({ method: "threads.update", args });
+        if (args.title !== undefined) hostOrThrow().updateThread(args.threadId, { title: args.title, displayTitle: args.title });
+        return {};
+      },
+      pin: record("threads.pin"),
+      unpin: async (args: { threadId: string }) => {
+        hostOrThrow().sdkCalls.push({ method: "threads.unpin", args });
+        hostOrThrow().updateThread(args.threadId, { isPinned: false, pinnedAt: null });
+        return {};
+      },
+      reorderPinned: async (args: { threadId: string; previousThreadId: string | null; nextThreadId: string | null }) => {
+        hostOrThrow().sdkCalls.push({ method: "threads.reorderPinned", args });
+        if (failReorderPinned) throw new Error("reorder failed");
+        const host = hostOrThrow();
+        // Rewrite pin keys so the pinned threads sort as bb's reorder would put them.
+        const pinned = host.state().threads.filter((thread) => thread.isPinned);
+        const sorted = pinned.filter((thread) => thread.id !== args.threadId).sort(comparePinKeys);
+        const at = args.previousThreadId === null ? 0 : sorted.findIndex((thread) => thread.id === args.previousThreadId) + 1;
+        const ids = sorted.map((thread) => thread.id);
+        ids.splice(at, 0, args.threadId);
+        host.update({
+          threads: host.state().threads.map((thread) => (thread.isPinned ? { ...thread, pinSortKey: String(ids.indexOf(thread.id)).padStart(4, "0") } : thread)),
+        });
+        return {};
+      },
+    },
+  } as never;
+}
+
+function comparePinKeys(a: PluginSidebarThread, b: PluginSidebarThread): number {
+  return (a.pinSortKey ?? "~").localeCompare(b.pinSortKey ?? "~") || (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0);
+}
+
+/** The list as a window mounts it, fed props by the fake host. */
+export function mountList(loaded: PluginApp, server: ServerState): RenderedSlot {
+  const List = loaded.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
+  const Window = () => <List {...useHost((state) => state.props)} />;
+  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: sdkFakes(), realtimeConnectionState: "connected" }));
+}
