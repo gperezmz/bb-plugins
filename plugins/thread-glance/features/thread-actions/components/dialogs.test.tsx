@@ -6,6 +6,7 @@ import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { requestSnoozePicker } from "@/features/thread-list";
+import { NEEDS_APP_OVERLAY } from "@/lib/dialog-requests";
 import { requestParentDialog, requestProjectDialog } from "../requests";
 import { PARENT_REMOVED, PARENT_UPDATED, UNPIN_UNCONFIRMED } from "./ParentDialog";
 import { REMOVE_WARNING, RemoveProjectConfirmation } from "./RemoveProject";
@@ -66,6 +67,15 @@ function mountDialogs(options: { threads?: ReturnType<typeof makeThread>[]; sdk?
   });
   return { view, sdk, rpc, calls };
 }
+
+describe("without bb's app overlay, where no dialogs are mounted", () => {
+  it("says each dialog's action needs it, instead of doing nothing", () => {
+    requestSnoozePicker("t1");
+    requestParentDialog("t1");
+    requestProjectDialog("rename", "proj_a");
+    expect(toasts.error.mock.calls).toEqual(Array(3).fill([NEEDS_APP_OVERLAY]));
+  });
+});
 
 describe("Snooze until (AC5)", () => {
   // Saturday, Oct 3 2026, 14:30 local.
