@@ -1,46 +1,52 @@
-// Thread Glance server: preferences, thread stamps, thread
-// notes and scheduled sends, served to the app through `sync` and realtime.
-// The app imports the RPC contract's types from shared/contract.ts and the
+// Thread Glance server: lifecycle rows, the manual order, the settings and
+// the project appearance, served to the app through `sync` and realtime. The
+// app imports the RPC contract's types from shared/contract.ts and the
 // signals' from shared/signals.ts.
+import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { en } from "zod/locales";
 import { config } from "zod/mini";
 import { rpcContract } from "./shared/contract";
+import { applySubsetOrder } from "./shared/manual-order";
+import { affectsAutoSettle } from "./shared/settings";
 import { CHANNELS } from "./shared/signals";
-import { createCli } from "./server/cli";
-import { resolveFailureText } from "./server/failures";
-import {
-  createNoteStore,
-  describeDone,
-  describeFailure,
-  describeInteraction,
-  type NoteChanges,
-  type NoteDraft,
-} from "./server/notes";
+import { createLifecycleActions, type ChangeRecords } from "./server/actions";
+import { createAppearanceStore } from "./server/appearance-store";
 import { createArchivedThreads } from "./server/archived";
-import { createPreferenceStore } from "./server/preference-store";
-import { createScheduledTracker } from "./server/scheduled";
+import { createAutoSettle } from "./server/auto-settle";
+import { MIGRATIONS } from "./server/database";
+import { createLifecycleStore } from "./server/lifecycle-store";
+import { notImplemented } from "./server/not-implemented";
+import { createOrderStore } from "./server/order-store";
+import { createReclaimer } from "./server/reclaim";
+import { createRecordLog } from "./server/records";
 import { createSerialQueue } from "./server/serial";
-import { createStampStore } from "./server/stamps";
+import { createSettingsStore } from "./server/settings-store";
 import { runStartup } from "./server/startup";
-import { createRecordLog } from "./server/sync";
-import { createNoteTable, createStampTable, MIGRATIONS } from "./server/thread-table";
+import { createThreadEvents } from "./server/thread-events";
+import { createSdkThreads } from "./server/threads";
+import { createVersionedChannel } from "./server/versioned";
 
 export default function threadGlance(bb: BbPluginApi): void {
-  // zod/mini carries no messages of its own. The server and CLI show
-  // refusals in English, so the locale is set here rather than in the app.
-  // Like full zod, it leaves a locale something else in the process set.
+  // zod/mini carries no messages of its own. The server shows refusals in
+  // English, so the locale is set here rather than in the app. Like full zod,
+  // it leaves a locale something else in the process set.
   if (config().localeError === undefined) config(en());
-  const preferences = createPreferenceStore(bb);
   const db = bb.storage.database();
   bb.storage.migrate(db, [...MIGRATIONS]);
-  const stamps = createStampStore(bb, createStampTable(db));
-  const notes = createNoteStore(bb, createNoteTable(db));
+  const lifecycle = createLifecycleStore(db);
+  const order = createOrderStore(db);
+  const appearance = createAppearanceStore(db);
+  const settings = createSettingsStore(bb);
   const archived = createArchivedThreads();
-  const records = createRecordLog(bb, { stamps, notes, archived });
-  const scheduled = createScheduledTracker({
-    publish: (signal) => bb.realtime.publish(CHANNELS.scheduled, signal),
-  });
+  const epoch = randomUUID();
+  const records = createRecordLog(bb, { lifecycle, archived }, epoch);
+  const settingsChannel = createVersionedChannel(bb, CHANNELS.settings, epoch, () => settings.read());
+  const orderChannel = createVersionedChannel(bb, CHANNELS.order, epoch, () => [...order.get()]);
+  const appearanceChannel = createVersionedChannel(bb, CHANNELS.appearance, epoch, () => appearance.read());
+  const threads = createSdkThreads(bb);
+  const autoSettle = createAutoSettle();
+
   // A change to thread records and the signal that carries it, one at a
   // time, so each signal carries the records as its revision left them.
   const inOrder = createSerialQueue();
@@ -49,155 +55,103 @@ export default function threadGlance(bb: BbPluginApi): void {
    * then publishes their records as one signal, even when a later step of
    * `write` fails.
    */
-  const changeRecords = (write: (changed: (threadIds: readonly string[]) => void) => Promise<void>) =>
+  const change: ChangeRecords = (write) =>
     inOrder(async () => {
       const touched = new Set<string>();
       try {
-        await write((threadIds) => {
+        return await write((threadIds) => {
           for (const threadId of threadIds) touched.add(threadId);
         });
       } finally {
-        await records.publish([...touched]);
+        records.publish([...touched]);
       }
     });
+  const publishOrder = () => void orderChannel.publish([...order.get()]);
+  // Settings edits read the record, change it and store it: one at a time.
+  const settingsInOrder = createSerialQueue();
+
+  const actions = createLifecycleActions({
+    lifecycle,
+    threads,
+    reclaim: createReclaimer(),
+    change,
+    warn: (message) => bb.log.warn(message),
+  });
+  const events = createThreadEvents({ lifecycle, order, orderChanged: publishOrder, archived, threads, change });
 
   bb.rpc.register(rpcContract, {
     async sync({ since }) {
-      const [answer, all, sends] = await Promise.all([
-        inOrder(() => records.since(since)),
-        preferences.readAll(),
-        scheduled.snapshot(),
+      const answer = await inOrder(() => records.since(since));
+      const [settingsNow, orderNow, appearanceNow] = await Promise.all([
+        settingsChannel.current(),
+        orderChannel.current(),
+        appearanceChannel.current(),
       ]);
-      return { ...answer, preferences: all, scheduled: sends };
+      return { ...answer, settings: settingsNow, order: orderNow, appearance: appearanceNow };
     },
-    fetchArchived({ threadIds }) {
-      return inOrder(() => records.fetch(threadIds));
+
+    snooze: ({ threadId, until }) => actions.snooze(threadId, until),
+    wake: ({ threadId }) => actions.wake(threadId),
+    park: ({ threadId }) => actions.park(threadId),
+    resume: ({ threadId }) => actions.resume(threadId),
+    settle: ({ threadId }) => actions.settle(threadId),
+    undoSettle: ({ threadId, undoToken }) => actions.undoSettle(threadId, undoToken),
+    unsettle: ({ threadId }) => actions.unsettle(threadId),
+    undoLifecycle: ({ changes }) => actions.undoLifecycle(changes),
+    dismissWoke: ({ threadId }) => actions.dismissWoke(threadId),
+    clearPinned: ({ threadId }) => actions.clearPinned(threadId),
+
+    async reorder({ threadIds }) {
+      order.replace(applySubsetOrder(order.get(), threadIds));
+      return orderChannel.publish([...order.get()]);
     },
-    async setPreference({ key, value }) {
-      return { key, value: await preferences.write(key, value) };
+
+    writeSettings: ({ patch }) =>
+      settingsInOrder(async () => {
+        const result = await settings.write(patch);
+        if (result.changed.length === 0) return settingsChannel.current();
+        const published = settingsChannel.publish(result.settings);
+        if (affectsAutoSettle(result.changed)) autoSettle.onSettingsChanged(result.changed);
+        return published;
+      }),
+    resetSettings: ({ keys }) =>
+      settingsInOrder(async () => {
+        const result = await settings.reset(keys);
+        if (result.changed.length === 0) return settingsChannel.current();
+        const published = settingsChannel.publish(result.settings);
+        if (affectsAutoSettle(result.changed)) autoSettle.onSettingsChanged(result.changed);
+        return published;
+      }),
+
+    async setProjectColour({ projectId, colour }) {
+      return appearance.setColour(projectId, colour) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();
     },
-    async resetPreference({ key }) {
-      return { key, value: await preferences.reset(key) };
+    async resetProjectColour({ projectId }) {
+      return appearance.setColour(projectId, null) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();
     },
-    async markSeen({ threadIds }) {
-      const at = Date.now();
-      await changeRecords(async (changed) => changed(await stamps.stamp("seenAt", threadIds, at)));
-      return { at };
+    async forgetProject({ projectId }) {
+      return appearance.forget(projectId) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();
     },
-    async clearSeen({ threadIds }) {
-      await changeRecords(async (changed) => changed(await stamps.clear("seenAt", threadIds)));
-      return { ok: true as const };
-    },
-    async reportIdle({ threadIds }) {
-      await changeRecords(async (changed) => changed(await stamps.advance("idleAt", threadIds, Date.now())));
-      return { ok: true as const };
-    },
+    uploadProjectIcon: notImplemented("uploadProjectIcon", "project icons"),
+    clearProjectIcon: notImplemented("clearProjectIcon", "project icons"),
+
+    runAutoSettle: () => autoSettle.run(),
   });
 
-  bb.cli.register(createCli(preferences));
-
-  const note = (draft: NoteDraft, at = Date.now()) => ({ ...draft, at });
-  // Each event that takes a thread from busy to not busy, as the list counts
-  // it, records idleAt here once, whatever the number of windows open.
-  const wentIdle = (threadId: string, at: number) => stamps.advance("idleAt", [threadId], at);
-  /** Applies note changes to one thread, passing it to `changed` when its notes changed. */
-  const updateNotes = async (changed: (threadIds: readonly string[]) => void, threadId: string, changes: NoteChanges) => {
-    if (await notes.update(threadId, changes)) changed([threadId]);
-  };
-
-  // Each thread event publishes one signal, with every stamp and note it changed.
-  bb.events.on("thread.active", ({ thread }) =>
-    changeRecords(async (changed) => {
-      changed(await stamps.stamp("startedAt", [thread.id], Date.now()));
-      await updateNotes(changed, thread.id, { pending: null, failed: null });
-    }),
-  );
-  bb.events.on("thread.idle", ({ thread, lastAssistantText }) =>
-    changeRecords(async (changed) => {
-      const at = Date.now();
-      changed(await stamps.stamp("finishedAt", [thread.id], at));
-      changed(await wentIdle(thread.id, at));
-      const done = describeDone(lastAssistantText);
-      await updateNotes(changed, thread.id, { pending: null, ...(done ? { done: note(done) } : {}) });
-    }),
-  );
-  bb.events.on("thread.failed", async ({ thread, error }) => {
-    const at = Date.now();
-    const text = await resolveFailureText(bb, {
-      threadId: thread.id,
-      error,
-      errorInfo: null,
-      turnId: null,
-    });
-    await changeRecords(async (changed) => {
-      changed(await stamps.stamp("finishedAt", [thread.id], at));
-      changed(await wentIdle(thread.id, at));
-      // thread.active clears the failed note, so one that is already here
-      // belongs to this failure: turn.failed wrote it first.
-      if (text === null && (await notes.get(thread.id))?.failed) return;
-      await updateNotes(changed, thread.id, { failed: note(describeFailure(text)) });
-    });
-  });
-  // turn.failed carries errorInfo and the turn id. It writes only text that
-  // says more than "Failed", in whichever order the two events arrive.
-  bb.events.on("turn.failed", async ({ threadId, errorInfo, turnId }) => {
-    const text = await resolveFailureText(bb, { threadId, error: null, errorInfo, turnId });
-    if (text === null) return;
-    await changeRecords((changed) => updateNotes(changed, threadId, { failed: note(describeFailure(text)) }));
-  });
-  // A thread waiting on the user is not busy, so the list counts this as
-  // going idle too.
-  bb.events.on("interaction.pending", ({ thread, interaction }) =>
-    changeRecords(async (changed) => {
-      const at = Date.now();
-      changed(await stamps.stamp("pendingAt", [thread.id], at));
-      changed(await wentIdle(thread.id, at));
-      await updateNotes(changed, thread.id, { pending: note(describeInteraction(interaction), interaction.createdAt) });
-    }),
-  );
-  bb.events.on("thread.deleted", async ({ thread }) => {
-    scheduled.threadGone(thread.id);
-    archived.unarchive(thread.id);
-    await changeRecords(async (changed) => {
-      changed(await stamps.forget([thread.id]));
-      changed(await notes.forget([thread.id]));
-    });
-  });
-  bb.events.on("thread.archived", ({ thread }) => {
-    scheduled.threadGone(thread.id);
-    archived.archive(thread.id);
-  });
-  bb.events.on("thread.unarchived", ({ thread }) => archived.unarchive(thread.id));
-  bb.events.on("message.queued", ({ entry }) => scheduled.queued(entry));
-  bb.events.on("message.dispatched", ({ entry }) => scheduled.removed(entry.id));
-  bb.events.on("message.cancelled", ({ entry }) => scheduled.removed(entry.id));
-
-  /** Runs a prune and publishes the records it dropped, so windows drop them too. */
-  const pruneAndPublish = async (prune: () => Promise<string[]>) => {
-    let threadIds: string[] = [];
-    await changeRecords(async (changed) => {
-      threadIds = await prune();
-      changed(threadIds);
-    });
-    return threadIds;
-  };
+  bb.events.on("thread.created", ({ thread }) => events.created(thread));
+  bb.events.on("thread.active", ({ thread }) => events.active(thread));
+  bb.events.on("thread.idle", ({ thread }) => events.attention(thread));
+  bb.events.on("thread.failed", ({ thread }) => events.attention(thread));
+  bb.events.on("interaction.pending", ({ thread }) => events.attention(thread));
+  bb.events.on("thread.archived", ({ thread }) => events.archived(thread));
+  bb.events.on("thread.unarchived", ({ thread }) => events.unarchived(thread));
+  bb.events.on("thread.deleted", ({ thread }) => events.deleted(thread));
 
   bb.background.service("startup", {
-    start: (signal) => {
-      // Reads stamps and notes in, moving 0.7.0's KV rows on the first start
-      // after the update, before a window asks. A failure here is retried by
-      // the first request that reads them.
-      Promise.all([stamps.all(), notes.all()]).catch(() => undefined);
-      return runStartup(
-        bb,
-        [
-          { name: "stamps", prune: (live, before) => pruneAndPublish(() => stamps.prune(live, before)) },
-          { name: "notes", prune: (live, before) => pruneAndPublish(() => notes.prune(live, before)) },
-        ],
-        scheduled,
-        archived,
+    start: (signal) =>
+      runStartup(
+        { bb, db, threads, lifecycle, order, archived, change, orderChanged: publishOrder },
         signal,
-      );
-    },
+      ),
   });
 }

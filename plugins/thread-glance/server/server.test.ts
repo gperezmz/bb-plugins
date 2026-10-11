@@ -1,11 +1,11 @@
-import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
+import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { CHANNELS, STAMP_KINDS, type RecordsSignal, type Stamps, type ThreadRecord } from "../shared/signals";
-import { defaultPreferences } from "../shared/preferences";
-import { noteKvKey } from "./notes";
-import { preferenceKvKey } from "./preference-store";
-import { stampKvKey } from "./stamps";
+import { activeRow, parkedRow, settledRow, snoozedRow } from "../shared/lifecycle";
+import { DEFAULT_SETTINGS } from "../shared/settings";
+import { CHANNELS, type RecordsSignal, type ThreadRecord, type Versioned } from "../shared/signals";
+import { createLifecycleStore } from "./lifecycle-store";
+import { listedThread, sdkWith } from "./testing/fakes";
 
 type Overrides = NonNullable<Parameters<typeof createFakePluginHost>[0]>["sdk"];
 
@@ -14,596 +14,369 @@ async function load(sdk: Overrides = {}) {
   await plugin(host.bb);
   return host;
 }
-
-function signalsOn(harness: Awaited<ReturnType<typeof load>>["harness"], channel: string) {
-  return harness.inspection.realtimeSignals
-    .filter((signal) => signal.channel === channel)
-    .map((signal) => signal.payload);
-}
-
 type Harness = Awaited<ReturnType<typeof load>>["harness"];
 
 interface SyncAnswer {
   epoch: string;
   revision: number;
   full: boolean;
-  preferences: Record<string, unknown>;
-  scheduled: { status: string; scheduled: Record<string, number> };
   records: Record<string, ThreadRecord>;
+  settings: Versioned<typeof DEFAULT_SETTINGS>;
+  order: Versioned<string[]>;
+  appearance: Versioned<{ colours: Record<string, string>; icons: Record<string, unknown> }>;
 }
 
-/** `sync` from a window that has seen nothing, or since the point of an earlier answer. */
-async function sync(harness: Harness, since: { epoch: string; revision: number } | null = null): Promise<SyncAnswer> {
-  const point = since === null ? null : { epoch: since.epoch, revision: since.revision };
-  return (await harness.behavior.callRpc("sync", { since: point })) as SyncAnswer;
+async function sync(harness: Harness, since: { epoch: string; revision: number } | null = null) {
+  return (await harness.behavior.callRpc("sync", { since })) as SyncAnswer;
 }
 
-/** The stamps a first `sync` carries, one map per kind. */
-async function stampsOf(harness: Harness): Promise<Stamps> {
-  const stamps: Stamps = { startedAt: {}, finishedAt: {}, pendingAt: {}, seenAt: {}, idleAt: {} };
-  for (const [threadId, record] of Object.entries((await sync(harness)).records)) {
-    for (const kind of STAMP_KINDS) {
-      const value = record.stamps?.[kind];
-      if (value !== undefined) stamps[kind][threadId] = value;
-    }
-  }
-  return stamps;
-}
+const signalsOn = (harness: Harness, channel: string) =>
+  harness.inspection.realtimeSignals.filter((signal) => signal.channel === channel).map((signal) => signal.payload);
 
-/** One thread's stamps as the server stores them, as a first `sync` carries them. */
-async function storedStamps(harness: Harness, threadId: string) {
-  return (await sync(harness)).records[threadId]?.stamps ?? undefined;
-}
+/** A thread's row in an answer: a full `sync` leaves out a thread with none. */
+const rowOf = (answer: SyncAnswer, threadId: string) => answer.records[threadId]?.lifecycle ?? null;
 
-/** The records each `records` signal carried, in order. */
-function recordSignals(harness: Harness): Record<string, ThreadRecord>[] {
-  return signalsOn(harness, CHANNELS.records).map((signal) => (signal as RecordsSignal).records);
-}
+const recordSignals = (harness: Harness) => signalsOn(harness, CHANNELS.records) as RecordsSignal[];
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("preferences", () => {
-  it("lists the defaults when nothing is stored", async () => {
+describe("sync", () => {
+  it("answers with the defaults, an empty order and no records on a fresh install", async () => {
     const { harness } = await load();
-    expect((await sync(harness)).preferences).toEqual(defaultPreferences());
+    const answer = await sync(harness);
+    expect(answer).toMatchObject({ full: true, records: {} });
+    expect(answer.settings.value).toEqual(DEFAULT_SETTINGS);
+    expect(answer.settings.value.inactiveShelf).toBe(true);
+    expect(answer.order.value).toEqual([]);
+    expect(answer.appearance.value).toEqual({ colours: {}, icons: {} });
   });
 
-  it("stores, publishes and resets a value", async () => {
-    const { bb, harness } = await load();
-    expect(
-      await harness.behavior.callRpc("setPreference", { key: "organizationMode", value: "machine" }),
-    ).toEqual({ key: "organizationMode", value: "machine" });
-    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBe("machine");
-    expect(await harness.behavior.callRpc("resetPreference", { key: "organizationMode" })).toEqual({
-      key: "organizationMode",
-      value: "project",
-    });
-    expect(await bb.storage.kv.get(preferenceKvKey("organizationMode"))).toBeUndefined();
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([
-      { key: "organizationMode", value: "machine" },
-      { key: "organizationMode", value: "project" },
-    ]);
-  });
-
-  it("rejects an invalid value with an error that names the key", async () => {
-    const { harness } = await load();
-    await expect(
-      harness.behavior.callRpc("setPreference", { key: "organizationMode", value: "sideways" }),
-    ).rejects.toThrow(/organizationMode/);
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
-  });
-
-  it("reads an invalid stored value as the default and warns", async () => {
-    const { bb, harness } = await load();
-    await bb.storage.kv.set(preferenceKvKey("settleAfter"), "2d");
-    const { preferences } = (await sync(harness)) as unknown as {
-      preferences: { settleAfter: string };
-    };
-    expect(preferences.settleAfter).toBe("1d");
-    expect(
-      harness.inspection.logEntries.some(
-        (entry) => entry.level === "warn" && entry.message.includes("settleAfter"),
-      ),
-    ).toBe(true);
-  });
-
-  it("reads a stored Hidden harness icon as Muted, without a warning", async () => {
-    const { bb, harness } = await load();
-    await bb.storage.kv.set(preferenceKvKey("harnessIcon"), "hidden");
-    const { preferences } = (await sync(harness)) as unknown as {
-      preferences: { harnessIcon: string };
-    };
-    expect(preferences.harnessIcon).toBe("muted");
-    expect(harness.inspection.logEntries.some((entry) => entry.level === "warn")).toBe(false);
-  });
-
-  it("ignores values saved under removed settings, and a saved foldOlder leaves Settle after at 1d", async () => {
-    const { bb, harness } = await load();
-    await bb.storage.kv.set("preference:foldOlder", false);
-    await bb.storage.kv.set("preference:workingFirst", true);
-    await bb.storage.kv.set("preference:showPullRequests", false);
-    await bb.storage.kv.set("preference:threadLifecycles", ["active", "archived"]);
-    const { preferences } = (await sync(harness)) as unknown as {
-      preferences: Record<string, unknown>;
-    };
-    expect(preferences).toEqual(defaultPreferences());
-    expect(preferences.settleAfter).toBe("1d");
-    expect(preferences.showArchived).toBe(false);
+  it("answers a window that is up to date with only what changed since", async () => {
+    const { harness } = await load(sdkWith(() => [listedThread("a"), listedThread("b")]));
+    await harness.behavior.callRpc("park", { threadId: "a" });
+    const first = await sync(harness);
+    await harness.behavior.callRpc("park", { threadId: "b" });
+    const next = await sync(harness, { epoch: first.epoch, revision: first.revision });
+    expect(next.full).toBe(false);
+    expect(Object.keys(next.records)).toEqual(["b"]);
+    expect(Object.keys(first.records)).toEqual(["a"]);
+    const other = await sync(harness, { epoch: "another-epoch", revision: 99 });
+    expect(other.full).toBe(true);
+    expect(Object.keys(other.records).sort()).toEqual(["a", "b"]);
   });
 });
 
-describe("stamps", () => {
-  it("stamps lifecycle events and publishes each event's changes in one signal", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(1_000);
-    const { harness } = await load();
-    const thread = makeThreadResponse({ id: "t1" });
-    await harness.behavior.emitThreadEvent("thread.active", { thread });
-    vi.setSystemTime(2_000);
-    await harness.behavior.emitThreadEvent("interaction.pending", {
-      thread,
-      interaction: {} as never,
-    });
-    vi.setSystemTime(3_000);
-    await harness.behavior.emitThreadEvent("thread.idle", { thread, lastAssistantText: null });
-    vi.setSystemTime(4_000);
-    await harness.behavior.emitThreadEvent("thread.failed", {
-      thread: makeThreadResponse({ id: "t2" }),
-      error: null,
-    });
-    expect(await stampsOf(harness)).toEqual({
-      startedAt: { t1: 1_000 },
-      finishedAt: { t1: 3_000, t2: 4_000 },
-      pendingAt: { t1: 2_000 },
-      seenAt: {},
-      idleAt: { t1: 3_000, t2: 4_000 },
-    });
-    expect(recordSignals(harness).map((records) => Object.fromEntries(Object.entries(records).map(([id, record]) => [id, record.stamps])))).toEqual([
-      { t1: { startedAt: 1_000 } },
-      { t1: { startedAt: 1_000, pendingAt: 2_000, idleAt: 2_000 } },
-      { t1: { startedAt: 1_000, pendingAt: 2_000, finishedAt: 3_000, idleAt: 3_000 } },
-      { t2: { finishedAt: 4_000, idleAt: 4_000 } },
-    ]);
-  });
-
-  it("marks and clears seenAt", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(5_000);
-    const { harness } = await load();
-    expect(await harness.behavior.callRpc("markSeen", { threadIds: ["a", "b"] })).toEqual({
-      at: 5_000,
-    });
-    expect(await storedStamps(harness, "a")).toEqual({ seenAt: 5_000 });
-    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "c"] })).toEqual({ ok: true });
-    expect(await storedStamps(harness, "a")).toBeUndefined();
-    expect(recordSignals(harness)).toEqual([
-      { a: { stamps: { seenAt: 5_000 }, notes: null }, b: { stamps: { seenAt: 5_000 }, notes: null } },
-      { a: { stamps: null, notes: null } },
-    ]);
-  });
-
-  it("publishes nothing when clearing seenAt finds none", async () => {
-    const { harness } = await load();
-    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
-    const before = harness.inspection.realtimeSignals.length;
-    expect(await harness.behavior.callRpc("clearSeen", { threadIds: ["a", "b"] })).toEqual({ ok: true });
-    expect(harness.inspection.realtimeSignals.length).toBe(before);
-  });
-
-  it("keeps the later idleAt, so an event carrying an earlier moment cannot move it back", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(6_000);
-    const { harness } = await load();
-    const a = makeThreadResponse({ id: "a" });
-    await harness.behavior.emitThreadEvent("thread.idle", { thread: a, lastAssistantText: null });
-    vi.setSystemTime(8_000);
-    await harness.behavior.emitThreadEvent("thread.failed", { thread: a, error: null });
-    await harness.behavior.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: "b" }),
-      lastAssistantText: null,
-    });
-    expect(await storedStamps(harness, "a")).toEqual({ finishedAt: 8_000, idleAt: 8_000 });
-    vi.setSystemTime(7_000);
-    await harness.behavior.emitThreadEvent("interaction.pending", { thread: a, interaction: {} as never });
-    expect(await storedStamps(harness, "a")).toEqual({ finishedAt: 8_000, idleAt: 8_000, pendingAt: 7_000 });
-    expect(recordSignals(harness).map((records) => Object.entries(records).map(([id, record]) => [id, record.stamps?.idleAt]))).toEqual([
-      [["a", 6_000]],
-      [["a", 8_000]],
-      [["b", 8_000]],
-      [["a", 8_000]],
-    ]);
-  });
-
-  // One signal per busy-to-idle change, whatever the number of windows, none
-  // of which has a request to send for it.
-  it("records a thread going idle once, with no request from any window", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(9_000);
-    const { harness } = await load();
-    await sync(harness);
-    await harness.behavior.emitThreadEvent("thread.idle", {
-      thread: makeThreadResponse({ id: "p" }),
-      lastAssistantText: null,
-    });
-    expect(recordSignals(harness)).toEqual([
-      { p: { stamps: { finishedAt: 9_000, idleAt: 9_000 }, notes: null } },
-    ]);
-  });
-
-  it("records a reported idle moment only when it is later than the stored one", async () => {
+describe("lifecycle actions over RPC", () => {
+  it("snoozes a thread, sends its record as one signal and travels in sync", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(10_000);
-    const { harness } = await load();
-    await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "p" }), lastAssistantText: null });
-    vi.setSystemTime(9_000);
-    expect(await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] })).toEqual({ ok: true });
-    vi.setSystemTime(12_000);
-    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
-    await harness.behavior.callRpc("reportIdle", { threadIds: ["p"] });
-    expect(await storedStamps(harness, "p")).toEqual({ finishedAt: 10_000, idleAt: 12_000 });
-    expect(recordSignals(harness).map((records) => records.p?.stamps?.idleAt)).toEqual([10_000, 12_000]);
-  });
-
-  it("forgets a deleted thread's stamps, publishing its record as gone", async () => {
-    const { harness } = await load();
-    const thread = makeThreadResponse({ id: "t1" });
-    await harness.behavior.emitThreadEvent("thread.active", { thread });
-    await harness.behavior.emitThreadEvent("thread.deleted", { thread });
-    expect(await storedStamps(harness, "t1")).toBeUndefined();
-    expect(recordSignals(harness).at(-1)).toEqual({ t1: { stamps: null, notes: null } });
-  });
-
-  it("drops an invalid stored row on a cold read and logs it", async () => {
-    const { bb, harness } = await load();
-    await bb.storage.kv.set(stampKvKey("good"), { finishedAt: 1_000 });
-    await bb.storage.kv.set(stampKvKey("bad"), { finishedAt: "yesterday" });
-    const stamps = await stampsOf(harness);
-    expect(stamps.finishedAt).toEqual({ good: 1_000 });
-    expect(await bb.storage.kv.get(stampKvKey("bad"))).toBeUndefined();
-    expect(harness.inspection.logEntries.filter((entry) => entry.level === "warn").map((entry) => entry.message)).toEqual([
-      "stored stamps for bad are invalid; dropping them",
+    const { harness } = await load(sdkWith(() => [listedThread("a")]));
+    const result = (await harness.behavior.callRpc("snooze", { threadId: "a", until: 60_000 })) as {
+      changes: { threadId: string }[];
+      note: string | null;
+    };
+    expect(result.changes.map((entry) => entry.threadId)).toEqual(["a"]);
+    expect(result.note).toBeNull();
+    expect(recordSignals(harness).map((signal) => signal.records)).toEqual([
+      { a: { lifecycle: snoozedRow(60_000, 10_000) } },
     ]);
+    expect((await sync(harness)).records.a).toEqual({ lifecycle: snoozedRow(60_000, 10_000) });
   });
 
-  it("reads a stamp the database holds as anything but a finite number as absent", async () => {
-    const first = await load();
-    await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
-    // Written from outside the plugin: an INTEGER column keeps text it cannot convert, and a REAL infinity.
-    first.bb.storage
-      .database()
-      .prepare("INSERT OR REPLACE INTO stamps (thread_id, started_at, finished_at, seen_at, idle_at) VALUES (?, ?, ?, ?, ?)")
-      .run("mixed", "soon", 2_000, Infinity, null);
-    first.bb.storage.database().prepare("INSERT OR REPLACE INTO stamps (thread_id, finished_at) VALUES (?, ?)").run("text", "yesterday");
-    const restarted = await first.harness.lifecycle.reload(plugin);
-    const records = (await sync(restarted.harness)).records;
-    expect(records.mixed?.stamps).toEqual({ finishedAt: 2_000 });
-    expect(records.text).toBeUndefined();
+  it("refuses to snooze a busy thread and a time in the past, and publishes nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { harness } = await load(sdkWith(() => [listedThread("busy", { title: "Fix login", status: "active" }), listedThread("a")]));
+    await expect(harness.behavior.callRpc("snooze", { threadId: "busy", until: 60_000 })).rejects.toThrow(
+      "Cannot snooze while Fix login is working or waiting for input",
+    );
+    await expect(harness.behavior.callRpc("snooze", { threadId: "a", until: 5_000 })).rejects.toThrow("Pick a time in the future.");
+    expect(recordSignals(harness)).toEqual([]);
   });
 
-  it("reloads stored stamps after a restart", async () => {
-    const first = await load();
-    await first.harness.behavior.callRpc("markSeen", { threadIds: ["t1"] });
-    const restarted = await first.harness.lifecycle.reload(plugin);
-    const stamps = await stampsOf(restarted.harness);
-    expect(Object.keys(stamps.seenAt)).toEqual(["t1"]);
+  it("refuses to settle a parent with a working child, naming the child", async () => {
+    const { harness } = await load(
+      sdkWith(() => [
+        listedThread("parent"),
+        listedThread("child", { parentThreadId: "parent", title: "Run the migration", runtime: { displayStatus: "active" } }),
+      ]),
+    );
+    await expect(harness.behavior.callRpc("settle", { threadId: "parent" })).rejects.toThrow(
+      "Cannot settle while Run the migration is working or waiting for input",
+    );
+  });
+
+  it("settles a tree, undoes it from the snapshot, and says so when the snapshot is gone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { harness } = await load(sdkWith(() => [listedThread("parent"), listedThread("child", { parentThreadId: "parent" })]));
+    const settled = (await harness.behavior.callRpc("settle", { threadId: "parent" })) as { undoToken: string; undoUntil: number };
+    expect((await sync(harness)).records.child?.lifecycle).toEqual(settledRow(10_000, "manual"));
+    await harness.behavior.callRpc("undoSettle", { threadId: "parent", undoToken: settled.undoToken });
+    expect(rowOf(await sync(harness), "child")).toBeNull();
+    await expect(
+      harness.behavior.callRpc("undoSettle", { threadId: "parent", undoToken: settled.undoToken }),
+    ).rejects.toThrow("This Settle can no longer be undone. Use Un-settle instead.");
+  });
+
+  it("clears the row of a pinned thread when asked", async () => {
+    const threads = [listedThread("a", { pinnedAt: 5 })];
+    const { harness } = await load(sdkWith(() => threads));
+    await harness.behavior.callRpc("resume", { threadId: "a" });
+    expect((await sync(harness)).records.a?.lifecycle).toEqual(activeRow());
+    await harness.behavior.callRpc("clearPinned", { threadId: "a" });
+    expect(rowOf(await sync(harness), "a")).toBeNull();
   });
 });
 
-describe("sync", () => {
-  it("answers everything first, then only what changed since the window's revision", async () => {
+describe("events", () => {
+  it("puts a new visible thread at the top of the manual order, and not a hidden one", async () => {
     const { harness } = await load();
-    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
-    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "b" }) });
-    const first = await sync(harness);
-    expect(first).toMatchObject({ full: true, preferences: defaultPreferences(), scheduled: { status: "error", scheduled: {} } });
-    expect(Object.keys(first.records).sort()).toEqual(["a", "b"]);
-
-    const unchanged = await sync(harness, first);
-    expect(unchanged).toMatchObject({ full: false, records: {}, revision: first.revision });
-
-    await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "b" }), lastAssistantText: "Done." });
-    await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
-    const delta = await sync(harness, first);
-    expect(delta.full).toBe(false);
-    expect(delta.records).toEqual({
-      a: { stamps: null, notes: null },
-      b: { stamps: expect.objectContaining({ finishedAt: expect.any(Number) }), notes: { done: expect.objectContaining({ text: "Done." }) } },
-    });
-    expect(delta.revision).toBeGreaterThan(first.revision);
+    await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "a" }) });
+    await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "b" }) });
+    await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "helper", visibility: "hidden" }) });
+    expect((await sync(harness)).order.value).toEqual(["b", "a"]);
+    expect((signalsOn(harness, CHANNELS.order) as Versioned<string[]>[]).map((signal) => signal.value)).toEqual([["a"], ["b", "a"]]);
   });
 
-  it("answers in full to a window from an earlier server start", async () => {
-    const first = await load();
-    await first.harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
-    const seen = await sync(first.harness);
-    const { harness } = await first.harness.lifecycle.reload(plugin);
-    const answer = await sync(harness, seen);
-    expect(answer.epoch).not.toBe(seen.epoch);
-    expect(answer).toMatchObject({ full: true, records: { a: expect.any(Object) } });
+  it("orders the subset a reorder names and leaves other places", async () => {
+    const { harness } = await load();
+    for (const id of ["a", "b", "c", "d"]) await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id }) });
+    expect((await sync(harness)).order.value).toEqual(["d", "c", "b", "a"]);
+    const reordered = (await harness.behavior.callRpc("reorder", { threadIds: ["a", "c"] })) as Versioned<string[]>;
+    expect(reordered.value).toEqual(["d", "a", "b", "c"]);
+    expect((await sync(harness)).order.value).toEqual(["d", "a", "b", "c"]);
+  });
+
+  it("reopens the parked, snoozed and settled ancestors of a child that is created or starts a turn", async () => {
+    const threads = [
+      listedThread("root"),
+      listedThread("mid", { parentThreadId: "root" }),
+      listedThread("leaf", { parentThreadId: "mid" }),
+    ];
+    const { harness } = await load(sdkWith(() => threads));
+    await harness.behavior.callRpc("park", { threadId: "root" });
+    await harness.behavior.callRpc("settle", { threadId: "mid" });
+    const child = makeThreadResponse({ id: "new", parentThreadId: "mid" });
+    await harness.behavior.emitThreadEvent("thread.created", { thread: child });
+    const after = await sync(harness);
+    expect(rowOf(after, "root")).toBeNull();
+    expect(rowOf(after, "mid")).toBeNull();
+  });
+
+  it("reopens a snoozed ancestor when a child starts a turn", async () => {
+    const threads = [listedThread("root"), listedThread("kid", { parentThreadId: "root" })];
+    const { harness } = await load(sdkWith(() => threads));
+    await harness.behavior.callRpc("snooze", { threadId: "root", until: Date.now() + 3_600_000 });
+    expect(rowOf(await sync(harness), "root")).not.toBeNull();
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "kid", parentThreadId: "root" }) });
+    expect(rowOf(await sync(harness), "root")).toBeNull();
+  });
+
+  it("clears the active override when the thread starts a turn", async () => {
+    const { harness } = await load(sdkWith(() => [listedThread("a")]));
+    await harness.behavior.callRpc("resume", { threadId: "a" });
+    await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "a" }) });
+    expect(rowOf(await sync(harness), "a")).toBeNull();
+  });
+
+  it("returns a parked thread with new attention to Active and clears the mark, so auto-settle may settle it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { harness } = await load(sdkWith(() => [listedThread("a")]));
+    await harness.behavior.callRpc("park", { threadId: "a" });
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "a", latestAttentionAt: 9_000 }),
+      lastAssistantText: null,
+    });
+    expect((await sync(harness)).records.a?.lifecycle).toEqual(parkedRow(10_000));
+    await harness.behavior.emitThreadEvent("thread.idle", {
+      thread: makeThreadResponse({ id: "a", latestAttentionAt: 20_000 }),
+      lastAssistantText: null,
+    });
+    expect(rowOf(await sync(harness), "a")).toBeNull();
+  });
+
+  it("keeps a snooze when attention arrives, since the row is what makes the thread Woke", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(10_000);
+    const { harness } = await load(sdkWith(() => [listedThread("a")]));
+    await harness.behavior.callRpc("snooze", { threadId: "a", until: 90_000 });
+    await harness.behavior.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "a", latestAttentionAt: 20_000 }),
+      error: null,
+    });
+    expect((await sync(harness)).records.a?.lifecycle).toEqual(snoozedRow(90_000, 10_000));
+  });
+
+  it("forgets the row and the order entry of a deleted thread, and the order entry of an archived one", async () => {
+    const { harness } = await load(sdkWith(() => [listedThread("a"), listedThread("b")]));
+    await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "a" }) });
+    await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "b" }) });
+    await harness.behavior.callRpc("park", { threadId: "a" });
+    await harness.behavior.emitThreadEvent("thread.deleted", { thread: makeThreadResponse({ id: "a" }) });
+    await harness.behavior.emitThreadEvent("thread.archived", { thread: makeThreadResponse({ id: "b" }) });
+    const answer = await sync(harness);
+    expect(answer.order.value).toEqual([]);
+    expect(rowOf(answer, "a")).toBeNull();
+    expect(recordSignals(harness).at(-1)?.records).toEqual({ a: { lifecycle: null } });
+    await harness.behavior.emitThreadEvent("thread.unarchived", { thread: makeThreadResponse({ id: "b" }) });
+    expect((await sync(harness)).order.value).toEqual(["b"]);
   });
 });
 
-describe("the move from KV", () => {
-  // A 0.7.0 server's KV rows: stamps and notes, one of them invalid.
-  async function seedKv(bb: Awaited<ReturnType<typeof load>>["bb"]) {
-    await bb.storage.kv.set(stampKvKey("a"), { startedAt: 1_000, finishedAt: 2_000, seenAt: 3_000 });
-    await bb.storage.kv.set(stampKvKey("b"), { pendingAt: 4_000, idleAt: 4_000 });
-    await bb.storage.kv.set(noteKvKey("a"), { done: { kind: "done", text: "All done.", at: 2_000 } });
-    await bb.storage.kv.set(noteKvKey("c"), { failed: { kind: "failed", text: "Out of credits", at: 5_000 } });
+describe("settings", () => {
+  it("stores only the edited fields, publishes the whole record and returns it with a version", async () => {
+    const { harness } = await load();
+    const first = (await sync(harness)).settings;
+    const written = (await harness.behavior.callRpc("writeSettings", { patch: { workingShelf: true } })) as Versioned<typeof DEFAULT_SETTINGS>;
+    expect(written.value).toEqual({ ...DEFAULT_SETTINGS, workingShelf: true });
+    expect(written.version).toBeGreaterThan(first.version);
+    expect(signalsOn(harness, CHANNELS.settings)).toEqual([written]);
+    expect((await sync(harness)).settings.value.workingShelf).toBe(true);
+  });
+
+  it("publishes nothing for a write that changes nothing", async () => {
+    const { harness } = await load();
+    await harness.behavior.callRpc("writeSettings", { patch: { inactiveShelf: true } });
+    expect(signalsOn(harness, CHANNELS.settings)).toEqual([]);
+  });
+
+  it("refuses days before auto-settle of 0 and saves nothing, even with a valid field beside it", async () => {
+    const { harness } = await load();
+    await expect(
+      harness.behavior.callRpc("writeSettings", { patch: { daysBeforeAutoSettle: 0, workingShelf: true } }),
+    ).rejects.toThrow(/daysBeforeAutoSettle: Use at least 1 day/);
+    expect((await sync(harness)).settings.value).toEqual(DEFAULT_SETTINGS);
+    expect(signalsOn(harness, CHANNELS.settings)).toEqual([]);
+  });
+
+  it("refuses a snooze shortcuts list with one invalid entry, with the reason", async () => {
+    const { harness } = await load();
+    await expect(
+      harness.behavior.callRpc("writeSettings", { patch: { snoozeShortcuts: "1h, soonish, tomorrow@09:00" } }),
+    ).rejects.toThrow(/soonish/);
+  });
+
+  it("resets named settings, or all", async () => {
+    const { harness } = await load();
+    await harness.behavior.callRpc("writeSettings", { patch: { workingShelf: true, dockShelves: true, hoursBeforeInactive: 12 } });
+    const some = (await harness.behavior.callRpc("resetSettings", { keys: ["workingShelf"] })) as Versioned<typeof DEFAULT_SETTINGS>;
+    expect(some.value).toMatchObject({ workingShelf: false, dockShelves: true, hoursBeforeInactive: 12 });
+    const all = (await harness.behavior.callRpc("resetSettings", {})) as Versioned<typeof DEFAULT_SETTINGS>;
+    expect(all.value).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it("keeps the record across a server restart", async () => {
+    const { harness } = await load();
+    await harness.behavior.callRpc("writeSettings", { patch: { hoursBeforeInactive: 24 } });
+    const reloaded = await harness.lifecycle.reload(plugin);
+    expect((await sync(reloaded.harness)).settings.value.hoursBeforeInactive).toBe(24);
+  });
+});
+
+describe("project appearance", () => {
+  it("sets, resets and forgets a project's colour, publishing the whole map", async () => {
+    const { harness } = await load();
+    await harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "#aabbcc" });
+    await harness.behavior.callRpc("setProjectColour", { projectId: "p2", colour: "#112233" });
+    expect((await sync(harness)).appearance.value.colours).toEqual({ p1: "#aabbcc", p2: "#112233" });
+    await harness.behavior.callRpc("resetProjectColour", { projectId: "p1" });
+    await harness.behavior.callRpc("forgetProject", { projectId: "p2" });
+    expect((await sync(harness)).appearance.value.colours).toEqual({});
+    expect(signalsOn(harness, CHANNELS.appearance)).toHaveLength(4);
+  });
+
+  it("refuses a colour that is not #rrggbb", async () => {
+    const { harness } = await load();
+    await expect(harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "red" })).rejects.toThrow();
+  });
+
+  it("answers the RPCs another phase owes with an error that names them", async () => {
+    const { harness } = await load();
+    await expect(
+      harness.behavior.callRpc("uploadProjectIcon", { projectId: "p1", name: "a.png", mime: "image/png", dataBase64: "" }),
+    ).rejects.toThrow(/uploadProjectIcon is not built yet \(project icons\)/);
+    await expect(harness.behavior.callRpc("clearProjectIcon", { projectId: "p1" })).rejects.toThrow(/clearProjectIcon is not built yet/);
+    await expect(harness.behavior.callRpc("runAutoSettle", {})).rejects.toThrow(/runAutoSettle is not built yet \(auto-settle\)/);
+  });
+});
+
+describe("the startup service", () => {
+  it("forgets rows of threads bb no longer has, clears stale marks, and lists visible threads in the manual order", async () => {
+    const threads = [
+      listedThread("kept", { createdAt: 1 }),
+      listedThread("newer", { createdAt: 5 }),
+      listedThread("helper", { visibility: "hidden", createdAt: 9 }),
+      listedThread("stale", { latestAttentionAt: 5_000, createdAt: 2 }),
+    ];
+    const archived = [listedThread("old", { archivedAt: 100 })];
+    const first = await load(sdkWith(() => threads, () => archived));
+    // Rows written while the server was not running, as after an offline stretch.
+    const lifecycleRows = createLifecycleStore(first.bb.storage.database());
+    lifecycleRows.putMany([
+      ["gone", parkedRow(1)],
+      ["old", parkedRow(1)],
+      ["stale", parkedRow(1_000)],
+    ]);
+    const { harness, bb } = await first.harness.lifecycle.reload(plugin);
+    const service = harness.behavior.runService("startup");
+    await vi.waitFor(async () => expect((await sync(harness)).order.value).toEqual(["newer", "stale", "kept"]));
+    service.controller.abort();
+    await service.done;
+    expect([...createLifecycleStore(bb.storage.database()).all().keys()].sort()).toEqual(["old"]);
+  });
+});
+
+describe("the earlier list's data", () => {
+  async function seedEarlierData(harness: Harness, bb: Awaited<ReturnType<typeof load>>["bb"]) {
+    const db = bb.storage.database();
+    db.prepare("INSERT OR REPLACE INTO stamps (thread_id, seen_at) VALUES ('a', 1)").run();
+    db.prepare("INSERT OR REPLACE INTO notes (thread_id, data) VALUES ('a', '{}')").run();
     await bb.storage.kv.set("preference:organizationMode", "machine");
+    await bb.storage.kv.set("stamp:a", {});
+    await bb.storage.kv.set("note:a", {});
+    void harness;
   }
 
-  it("moves every stamp and note into the database unchanged, then removes their KV rows", async () => {
-    const { bb, harness } = await load();
-    await seedKv(bb);
-    expect((await sync(harness)).records).toEqual({
-      a: {
-        stamps: { startedAt: 1_000, finishedAt: 2_000, seenAt: 3_000 },
-        notes: { done: { kind: "done", text: "All done.", at: 2_000 } },
-      },
-      b: { stamps: { pendingAt: 4_000, idleAt: 4_000 }, notes: null },
-      c: { stamps: null, notes: { failed: { kind: "failed", text: "Out of credits", at: 5_000 } } },
-    });
+  async function start(harness: Harness) {
+    const service = harness.behavior.runService("startup");
+    service.controller.abort();
+    await service.done;
+  }
+
+  it("is removed on the first start, and the shelf list's own data is kept through it and every later start", async () => {
+    const { harness, bb } = await load(sdkWith(() => [listedThread("a")]));
+    await harness.behavior.callRpc("writeSettings", { patch: { workingShelf: true } });
+    await harness.behavior.callRpc("park", { threadId: "a" });
+    await harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "#aabbcc" });
+    await harness.behavior.callRpc("reorder", { threadIds: [] });
+    await seedEarlierData(harness, bb);
+
+    await start(harness);
+    const db = bb.storage.database();
+    const names = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((row) => row.name);
+    expect(names).not.toContain("stamps");
+    expect(names).not.toContain("notes");
+    expect(await bb.storage.kv.list("preference:")).toEqual([]);
     expect(await bb.storage.kv.list("stamp:")).toEqual([]);
     expect(await bb.storage.kv.list("note:")).toEqual([]);
-    expect(await bb.storage.kv.get("preference:organizationMode")).toBe("machine");
-    const db = bb.storage.database();
-    expect(db.prepare("SELECT * FROM stamps ORDER BY thread_id").all()).toEqual([
-      { thread_id: "a", started_at: 1_000, finished_at: 2_000, seen_at: 3_000, idle_at: null, pending_at: null },
-      { thread_id: "b", started_at: null, finished_at: null, seen_at: null, idle_at: 4_000, pending_at: 4_000 },
-    ]);
-    expect(harness.inspection.logEntries.filter((entry) => entry.level === "info").map((entry) => entry.message)).toEqual([
-      "moved the stamps of 2 threads from KV into the plugin database",
-      "moved the notes of 2 threads from KV into the plugin database",
-    ]);
+
+    const reloaded = await harness.lifecycle.reload(plugin);
+    await start(reloaded.harness);
+    const answer = await sync(reloaded.harness);
+    expect(answer.settings.value.workingShelf).toBe(true);
+    expect(answer.records.a?.lifecycle).toEqual(expect.objectContaining({ parkedAt: expect.any(Number) }));
+    expect(answer.appearance.value.colours).toEqual({ p1: "#aabbcc" });
   });
 
-  it("moves nothing on a second start", async () => {
-    const first = await load();
-    await seedKv(first.bb);
-    await sync(first.harness);
-    const { bb, harness } = await first.harness.lifecycle.reload(plugin);
-    const before = harness.inspection.logEntries.length;
-    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["a", "b", "c"]);
-    expect(harness.inspection.logEntries.slice(before).filter((entry) => entry.message.startsWith("moved"))).toEqual([]);
-    expect(bb.storage.database().prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 2 });
-  });
-
-  it("keeps every KV row when the move fails before it commits", async () => {
-    const { bb, harness } = await load();
-    await seedKv(bb);
-    const db = bb.storage.database();
-    // The insert fails midway, as a crash inside the transaction would leave it.
-    db.exec("CREATE TRIGGER fail_b BEFORE INSERT ON stamps WHEN NEW.thread_id = 'b' BEGIN SELECT RAISE(ABORT, 'disk gone'); END");
-    await expect(sync(harness)).rejects.toThrow();
-    expect(db.prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 0 });
-    expect((await bb.storage.kv.list("stamp:")).sort()).toEqual([stampKvKey("a"), stampKvKey("b")]);
-    db.exec("DROP TRIGGER fail_b");
-    const restarted = await harness.lifecycle.reload(plugin);
-    expect(Object.keys((await sync(restarted.harness)).records).sort()).toEqual(["a", "b", "c"]);
-    expect(await restarted.bb.storage.kv.list("stamp:")).toEqual([]);
-  });
-
-  it("neither loses nor duplicates when a restart comes after the commit and before the KV rows are removed", async () => {
-    const { bb, harness } = await load();
-    await seedKv(bb);
-    await sync(harness);
-    // The KV rows back, as a restart between the commit and their removal leaves them.
-    await seedKv(bb);
-    const db = bb.storage.database();
-    // A write after the commit that the KV copy must not overwrite.
-    db.prepare("UPDATE stamps SET started_at = 9000, finished_at = NULL, seen_at = NULL WHERE thread_id = 'a'").run();
-    const restarted = await harness.lifecycle.reload(plugin);
-    const { records } = await sync(restarted.harness);
-    expect(records.a?.stamps).toEqual({ startedAt: 9_000 });
-    expect(records.b?.stamps).toEqual({ pendingAt: 4_000, idleAt: 4_000 });
-    const reopened = restarted.bb.storage.database();
-    expect(reopened.prepare("SELECT count(*) AS n FROM stamps").get()).toEqual({ n: 2 });
-    expect(reopened.prepare("SELECT count(*) AS n FROM notes").get()).toEqual({ n: 2 });
-    expect(await restarted.bb.storage.kv.list("stamp:")).toEqual([]);
-  });
-});
-
-describe("startup service", () => {
-  function threadsListStub(active: string[], archived: string[]) {
-    return async (args?: { archived?: boolean; limit?: number; offset?: number }) => {
-      const ids = args?.archived ? archived : active;
-      const offset = args?.offset ?? 0;
-      return ids.slice(offset, offset + (args?.limit ?? ids.length)).map((id) =>
-        makeThreadResponse({ id }),
-      );
-    };
-  }
-
-  it("prunes stamps of threads bb no longer lists, keeping archived and hidden ones", async () => {
-    const { bb, harness } = await load({
-      threads: {
-        list: threadsListStub(["live"], ["old"]) as never,
-        queue: { list: async () => [] },
-      },
-    });
-    await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
-    await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 1 });
-    await bb.storage.kv.set(stampKvKey("gone"), { finishedAt: 1 });
-    const stored = () =>
-      (bb.storage.database().prepare("SELECT thread_id FROM stamps ORDER BY thread_id").all() as { thread_id: string }[]).map(
-        (row) => row.thread_id,
-      );
-    const service = harness.behavior.runService("startup");
-    await vi.waitFor(() => {
-      expect(stored()).toEqual(["live", "old"]);
-    });
-    expect(recordSignals(harness).at(-1)).toEqual({ gone: { stamps: null, notes: null } });
-    const listCalls = harness.inspection.sdk.callsTo("threads.list");
-    expect(listCalls.map((args) => (args[0] as { archived: boolean }).archived)).toEqual([
-      false,
-      true,
-    ]);
-    expect(listCalls[0]?.[0]).toMatchObject({ includeHidden: true });
-    service.controller.abort();
-    await service.done;
-  });
-
-  it("has a full sync wait for the startup listing, so archived records stay out right after a start", async () => {
-    let answerList: () => void = () => undefined;
-    const listed = new Promise<void>((resolve) => (answerList = resolve));
-    const { bb, harness } = await load({
-      threads: {
-        list: (async (args?: { archived?: boolean }) => {
-          await listed;
-          return args?.archived ? [makeThreadResponse({ id: "old" })] : [makeThreadResponse({ id: "live" })];
-        }) as never,
-        queue: { list: async () => [] },
-      },
-    });
-    await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
-    await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 2 });
-    const service = harness.behavior.runService("startup");
-    const answer = sync(harness);
-    answerList();
-    expect(Object.keys((await answer).records)).toEqual(["live"]);
-    service.controller.abort();
-    await service.done;
-  });
-
-  it("leaves archived threads' records out of a full sync, and serves them by id", async () => {
-    const { bb, harness } = await load({
-      threads: {
-        list: threadsListStub(["live"], ["old"]) as never,
-        queue: { list: async () => [] },
-      },
-    });
-    await bb.storage.kv.set(stampKvKey("live"), { finishedAt: 1 });
-    await bb.storage.kv.set(stampKvKey("old"), { finishedAt: 2 });
-    // Until the startup listing arrives, nothing is known archived.
-    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["live", "old"]);
-    const service = harness.behavior.runService("startup");
-    await vi.waitFor(async () => {
-      expect(Object.keys((await sync(harness)).records)).toEqual(["live"]);
-    });
-    expect(await harness.behavior.callRpc("fetchArchived", { threadIds: ["old", "never"] })).toMatchObject({
-      records: { old: { stamps: { finishedAt: 2 }, notes: null } },
-    });
-    await harness.behavior.emitThreadEvent("thread.unarchived", { thread: makeThreadResponse({ id: "old" }) });
-    expect(Object.keys((await sync(harness)).records).sort()).toEqual(["live", "old"]);
-    await harness.behavior.emitThreadEvent("thread.archived", { thread: makeThreadResponse({ id: "live" }) });
-    expect(Object.keys((await sync(harness)).records)).toEqual(["old"]);
-    // Archiving keeps the record, as it is.
-    expect((await harness.behavior.callRpc("fetchArchived", { threadIds: ["live"] })) as { records: unknown }).toMatchObject({
-      records: { live: { stamps: { finishedAt: 1 }, notes: null } },
-    });
-    service.controller.abort();
-    await service.done;
-  });
-
-  it("seeds scheduled sends and follows queue events", async () => {
-    const future = Date.now() + 60_000;
-    const { harness } = await load({
-      threads: {
-        list: threadsListStub([], []) as never,
-        queue: {
-          list: async () => [makeQueueEntry({ id: "q1", threadId: "t1", sendAt: future })],
-        },
-      },
-    });
-    const service = harness.behavior.runService("startup");
-    await vi.waitFor(async () => {
-      expect((await sync(harness)).scheduled).toEqual({
-        status: "ready",
-        scheduled: { t1: future },
-      });
-    });
-    await harness.behavior.emitThreadEvent("message.queued", {
-      entry: makeQueueEntry({ id: "q2", threadId: "t2", sendAt: future + 1 }),
-    });
-    await harness.behavior.emitThreadEvent("message.dispatched", {
-      entry: makeQueueEntry({ id: "q1", threadId: "t1" }),
-    });
-    await harness.behavior.emitThreadEvent("thread.archived", {
-      thread: makeThreadResponse({ id: "t2" }),
-    });
-    expect(signalsOn(harness, CHANNELS.scheduled)).toEqual([
-      { status: "ready", scheduled: { t1: future } },
-      { status: "ready", scheduled: { t1: future, t2: future + 1 } },
-      { status: "ready", scheduled: { t2: future + 1 } },
-      { status: "ready", scheduled: {} },
-    ]);
-    service.controller.abort();
-    await service.done;
-  });
-
-  it("reports error when the queue cannot be listed", async () => {
-    const { harness } = await load({
-      threads: {
-        list: threadsListStub([], []) as never,
-        queue: {
-          list: async () => {
-            throw new Error("offline");
-          },
-        },
-      },
-    });
-    const service = harness.behavior.runService("startup");
-    await vi.waitFor(() => {
-      expect(harness.inspection.sdk.callsTo("threads.queue.list")).toHaveLength(1);
-    });
-    expect((await sync(harness)).scheduled).toEqual({
-      status: "error",
-      scheduled: {},
-    });
-    service.controller.abort();
-    await service.done;
-  });
-});
-
-describe("bb thread-glance prefs", () => {
-  it("lists, gets, sets and resets through the store", async () => {
-    const { harness } = await load();
-    const list = await harness.behavior.runCli(["prefs", "list", "--json"]);
-    expect(JSON.parse(list.stdout)).toEqual(defaultPreferences());
-
-    const set = await harness.behavior.runCli(["prefs", "set", "organizationMode", "machine"]);
-    expect(set).toMatchObject({ exitCode: 0, stdout: 'organizationMode = "machine"' });
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([{ key: "organizationMode", value: "machine" }]);
-
-    const get = await harness.behavior.runCli(["prefs", "get", "organizationMode", "--json"]);
-    expect(JSON.parse(get.stdout)).toEqual({ key: "organizationMode", value: "machine" });
-
-    const setList = await harness.behavior.runCli([
-      "prefs",
-      "set",
-      "collapsedSections",
-      '["pinned"]',
-    ]);
-    expect(setList.exitCode).toBe(0);
-
-    for (const period of ["12h", "1d", "3d", "1w", "never"]) {
-      const settle = await harness.behavior.runCli(["prefs", "set", "settleAfter", period]);
-      expect(settle).toMatchObject({ exitCode: 0, stdout: `settleAfter = "${period}"` });
-    }
-
-    const reset = await harness.behavior.runCli(["prefs", "reset", "organizationMode"]);
-    expect(reset.stdout).toBe('organizationMode = "project"');
-  });
-
-  it("refuses unknown and removed keys with their code, publishing nothing", async () => {
-    const { harness } = await load();
-    const unknown = await harness.behavior.runCli(["prefs", "get", "colour", "--json"]);
-    expect(unknown.exitCode).not.toBe(0);
-    expect(JSON.parse(unknown.stdout)).toMatchObject({
-      ok: false,
-      error: { code: "unknown_preference" },
-    });
-
-    const tree = await harness.behavior.runCli(["prefs", "set", "nesting", "tree", "--json"]);
-    expect(JSON.parse(tree.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
-    expect(signalsOn(harness, CHANNELS.preferences)).toEqual([]);
-
-    for (const removed of ["workingFirst", "foldOlder", "showPullRequests", "threadLifecycles"]) {
-      const result = await harness.behavior.runCli(["prefs", "set", removed, "true", "--json"]);
-      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, error: { code: "unknown_preference" } });
-    }
+  it("starts without them on an install that never held them", async () => {
+    const { harness, bb } = await load();
+    await start(harness);
+    await start(harness);
+    expect(await bb.storage.kv.list()).toEqual([]);
+    expect((await sync(harness)).settings.value).toEqual(DEFAULT_SETTINGS);
   });
 });
