@@ -26,8 +26,8 @@ bb settings ui get sidebar.threadListProvider
 
 `bb thread-glance prefs list` prints every setting with its value and what it
 does; read it before `set`, since the keys are its field names
-(`hoursBeforeInactive`, `childOrder`) and the earlier layout keys
-(`organizationMode`, `hiddenGroups`) no longer exist.
+(`hoursBeforeInactive`, `childOrder`). A key of `bb thread-list`, such as
+`organizationMode` or `hiddenGroups`, is not a key here.
 
 ```sh
 bb thread-glance prefs list [--json]

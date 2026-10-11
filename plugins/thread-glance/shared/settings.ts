@@ -67,6 +67,10 @@ const fields = {
 export type SettingKey = keyof typeof fields;
 export const SETTING_KEYS = Object.keys(fields) as SettingKey[];
 
+export function isSettingKey(key: string): key is SettingKey {
+  return (SETTING_KEYS as readonly string[]).includes(key);
+}
+
 export const settingsSchema = z.strictObject(fields);
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -138,13 +142,13 @@ export function validateSettingsPatch(input: unknown): SettingsValidation {
   const value: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(input)) {
     if (entry === undefined) continue;
-    if (!SETTING_KEYS.includes(key as SettingKey)) {
+    if (!isSettingKey(key)) {
       unknown.push(key);
       continue;
     }
-    const message = fieldError(key as SettingKey, entry);
+    const message = fieldError(key, entry);
     if (message === null) value[key] = entry;
-    else errors[key as SettingKey] = message;
+    else errors[key] = message;
   }
   if (unknown.length > 0 || Object.keys(errors).length > 0) return { success: false, errors, unknown };
   return { success: true, value: value as SettingsPatch };

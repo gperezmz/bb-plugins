@@ -10,7 +10,7 @@ import { config } from "zod/mini";
 import { rpcContract } from "./shared/contract";
 import { applySubsetOrder } from "./shared/manual-order";
 import { PROJECT_ICON_ROUTE } from "./shared/project-icon";
-import { affectsAutoSettle } from "./shared/settings";
+import { affectsAutoSettle, type SettingKey } from "./shared/settings";
 import { CHANNELS } from "./shared/signals";
 import { createLifecycleActions, type ChangeRecords } from "./server/actions";
 import { createAppearanceStore } from "./server/appearance-store";
@@ -106,6 +106,9 @@ export default function threadGlance(bb: BbPluginApi): void {
     return published;
   };
 
+  const writeSettings = (patch: unknown) => settingsInOrder(async () => publishSettings(await settings.write(patch)));
+  const resetSettings = (keys?: readonly SettingKey[]) => settingsInOrder(async () => publishSettings(await settings.reset(keys)));
+
   const autoSettle = createAutoSettle({
     lifecycle,
     threads,
@@ -146,8 +149,8 @@ export default function threadGlance(bb: BbPluginApi): void {
       return orderChannel.publish([...order.get()]);
     },
 
-    writeSettings: ({ patch }) => settingsInOrder(async () => publishSettings(await settings.write(patch))),
-    resetSettings: ({ keys }) => settingsInOrder(async () => publishSettings(await settings.reset(keys))),
+    writeSettings: ({ patch }) => writeSettings(patch),
+    resetSettings: ({ keys }) => resetSettings(keys),
 
     async setProjectColour({ projectId, colour }) {
       return appearance.setColour(projectId, colour) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();
@@ -180,11 +183,7 @@ export default function threadGlance(bb: BbPluginApi): void {
   });
 
   bb.cli.register(
-    createCli({
-      read: () => settings.read(),
-      write: (patch) => settingsInOrder(async () => publishSettings(await settings.write(patch))),
-      reset: (keys) => settingsInOrder(async () => publishSettings(await settings.reset(keys))),
-    }),
+    createCli({ read: () => settings.read(), write: writeSettings, reset: resetSettings }),
   );
 
   bb.events.on("thread.created", ({ thread }) => events.created(thread));

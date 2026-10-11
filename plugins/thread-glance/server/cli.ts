@@ -3,7 +3,7 @@
 // A change goes through the same write and reset the page's RPCs use, so every
 // open window receives it.
 import { PluginCliError, cliCommand, defineCli, type PluginCliRegistration } from "@get-bb/plugin-sdk";
-import { DEFAULT_SETTINGS, SETTING_DESCRIPTIONS, SETTING_KEYS, type SettingKey, type Settings } from "../shared/settings";
+import { DEFAULT_SETTINGS, isSettingKey, SETTING_DESCRIPTIONS, SETTING_KEYS, type SettingKey, type Settings } from "../shared/settings";
 import { SettingsValidationError } from "./settings-store";
 
 /** What the command needs of the settings: read the record, and edit it as the page does. */
@@ -20,10 +20,6 @@ function parseCliValue(raw: string): unknown {
   } catch {
     return raw;
   }
-}
-
-function isSettingKey(key: string): key is SettingKey {
-  return (SETTING_KEYS as readonly string[]).includes(key);
 }
 
 function requireSettingKey(key: string): SettingKey {
