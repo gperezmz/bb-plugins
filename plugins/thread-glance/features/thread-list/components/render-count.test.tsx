@@ -5,7 +5,8 @@ import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThread } from "@/testing/fixtures";
 import { resetRowRenderCounts, rowRenderCounts } from "../testing/fake-host";
-import { flush, mount, useListHarness } from "../testing/harness";
+import { PORTS_REFRESH_MS } from "../sync/ports-requests";
+import { fakeTimersFromMount, flush, mount, useListHarness } from "../testing/harness";
 
 useListHarness();
 
@@ -22,6 +23,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: viewport });
 });
 
@@ -61,16 +63,18 @@ describe("AC30: the list at 2,000 threads", () => {
     expect(rowRenderCounts().get("t7")).toBe(1);
   });
 
-  it("makes no request from a row: the server hears only sync, the auto-settle pass and the window's one ports read, however long the list stays open", async () => {
+  it("makes no request from a row: the server hears only sync, the auto-settle pass and the window's one ports read, at its cadence, however long the list stays open", async () => {
+    fakeTimersFromMount();
     const m = await mount({ threads, server: { order, settings: { inactiveShelf: false } } });
     await flush();
     const heard = () => m.server.calls.map((call) => call.method);
     expect(new Set(heard())).toEqual(new Set(["sync", "ports", "runAutoSettle"]));
     expect(heard().filter((method) => method === "ports")).toHaveLength(1);
     const before = heard();
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     await act(async () => void (await vi.advanceTimersByTimeAsync(10 * MIN)));
     await flush();
-    expect(heard()).toEqual(before);
+    const added = heard().slice(before.length);
+    expect(new Set(added)).toEqual(new Set(["ports"]));
+    expect(Math.abs(added.length - (10 * MIN) / PORTS_REFRESH_MS)).toBeLessThanOrEqual(1);
   });
 });

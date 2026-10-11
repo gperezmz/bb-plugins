@@ -21,7 +21,7 @@ import {
   CLEAN_TITLE,
   CLEAN_WARNINGS,
   cleanSummary,
-  hasResources,
+  cleanView,
   portsText,
   stillListeningText,
   terminalsText,
@@ -65,17 +65,17 @@ function useClean(): { state: CleanState; refresh(): void; run(token: string): v
     (token: string) => {
       const mine = (latest.current += 1);
       setState((current) => (current.phase === "preview" ? { phase: "running", preview: current.preview } : current));
+      // The dialog can be gone when the answer comes (the list unmounting): the toast still reports it, and only the state is guarded.
       store.edge.rpc.call("runClean", { token }).then(
         (result) => {
+          if (!result.expired) toast.success(cleanSummary(result), { description: stillListeningText(result) ?? undefined });
           if (mine !== latest.current) return;
-          if (result.expired) {
-            setState({ phase: "expired" });
-            return;
-          }
-          setState({ phase: "done", result });
-          toast.success(cleanSummary(result), { description: stillListeningText(result) ?? undefined });
+          setState(result.expired ? { phase: "expired" } : { phase: "done", result });
         },
-        (error) => mine === latest.current && setState({ phase: "failed", message: messageOf(error) }),
+        (error) => {
+          if (mine === latest.current) setState({ phase: "failed", message: messageOf(error) });
+          else toast.error(messageOf(error));
+        },
       );
     },
     [store],
@@ -86,11 +86,11 @@ function useClean(): { state: CleanState; refresh(): void; run(token: string): v
 function CleanContent() {
   const commands = useCommands();
   const { state, refresh, run } = useClean();
-  const preview = state.phase === "preview" || state.phase === "running" ? state.preview : null;
-  const found = preview !== null && hasResources(preview);
-  const finished = state.phase === "done" || (state.phase === "preview" && !found);
+  const view = cleanView(state);
+  const { preview } = view;
   return (
-    <AlertDialogContent className="max-w-md">
+    // Escape would close the dialog on a run that is going; the result would then have nowhere to show.
+    <AlertDialogContent className="max-w-md" onEscapeKeyDown={(event) => !view.dismissible && event.preventDefault()}>
       <AlertDialogHeader>
         <AlertDialogTitle>{CLEAN_TITLE}</AlertDialogTitle>
         <AlertDialogDescription>Closes the live terminals and thread-owned listening ports of settled threads. They stay in Settled.</AlertDialogDescription>
@@ -103,8 +103,8 @@ function CleanContent() {
           </p>
         ) : null}
         {state.phase === "expired" ? <p role="alert">{CLEAN_EXPIRED_TEXT}</p> : null}
-        {preview !== null && !found ? <p>{CLEAN_NOTHING_TEXT}</p> : null}
-        {found ? (
+        {view.nothingFound ? <p>{CLEAN_NOTHING_TEXT}</p> : null}
+        {view.found && preview !== null ? (
           <>
             <ul data-clean-threads="" className="grid max-h-64 gap-2 overflow-y-auto">
               {preview.threads.map((thread) => (
@@ -154,15 +154,15 @@ function CleanContent() {
         ) : null}
       </div>
       <AlertDialogFooter>
-        <AlertDialogCancel>{finished || state.phase === "expired" || state.phase === "failed" ? "Close" : "Cancel"}</AlertDialogCancel>
-        {state.phase === "expired" || state.phase === "failed" ? (
+        <AlertDialogCancel disabled={!view.dismissible}>{view.closeLabel}</AlertDialogCancel>
+        {view.showRefresh ? (
           <Button type="button" onClick={refresh}>
             Refresh preview
           </Button>
         ) : null}
-        {found && preview !== null ? (
-          <Button type="button" disabled={state.phase === "running"} onClick={() => run(preview.token)}>
-            {state.phase === "running" ? "Cleaning..." : "Clean resources"}
+        {view.showClean && preview !== null ? (
+          <Button type="button" disabled={view.cleanDisabled} onClick={() => run(preview.token)}>
+            {view.cleanLabel}
           </Button>
         ) : null}
       </AlertDialogFooter>

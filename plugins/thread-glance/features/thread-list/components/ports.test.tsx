@@ -7,9 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PortListener } from "@/shared/ports";
 import { makeThread } from "@/testing/fixtures";
 import { resetRowRenderCounts, rowRenderCounts } from "../testing/fake-host";
-import { flush, mount, useListHarness } from "../testing/harness";
+import { fakeTimersFromMount, flush, mount, useListHarness } from "../testing/harness";
 import { portLinkMachine } from "../storage/port-link-machine";
 import { closeHoverCards } from "./rows/hover-state";
+import { PORTS_REFRESH_MS } from "../sync/ports-requests";
 import { STOP_ARMED_MS } from "./rows/PortsSection";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
@@ -45,6 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   closeHoverCards();
   localStorage.clear();
 });
@@ -140,12 +142,19 @@ describe("AC3: the window's refresh", () => {
     expect(indicator("a")).not.toBeNull();
   });
 
-  it("makes no read while the tab is hidden", async () => {
+  it("makes no read while the tab is hidden, however long, and resumes its cadence when it is shown", async () => {
+    fakeTimersFromMount();
     const m = await mountWithPorts([listener()]);
+    const reads = () => m.server.calls.filter((call) => call.method === "ports").length;
+    await act(async () => void (await vi.advanceTimersByTimeAsync(PORTS_REFRESH_MS)));
+    expect(reads()).toBe(2);
     setVisibility("hidden");
-    const before = m.server.calls.length;
-    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 20))));
-    expect(m.server.calls).toHaveLength(before);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(PORTS_REFRESH_MS * 5)));
+    expect(reads()).toBe(2);
+    await act(async () => setVisibility("visible"));
+    expect(reads()).toBe(3);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(PORTS_REFRESH_MS)));
+    expect(reads()).toBe(4);
   });
 
   it("renders no row when only another environment's listeners change", async () => {
@@ -215,6 +224,15 @@ describe("AC4: Stop", () => {
     expect(within(section).queryByRole("button", { name: "Confirm stopping node on port 3000" })).not.toBeNull();
     fireEvent.pointerDown(within(section).getByText("Workspace ports (2)"));
     expect(within(section).queryByRole("button", { name: /Confirm stopping/ })).toBeNull();
+  });
+
+  it("is disarmed when the button loses focus", async () => {
+    await mountWithPorts([owned]);
+    await openHover("a");
+    fireEvent.click(within(hoverCard()).getByRole("button", { name: "Stop node on port 5173" }));
+    fireEvent.blur(within(hoverCard()).getByRole("button", { name: "Confirm stopping node on port 5173" }));
+    expect(within(hoverCard()).queryByRole("button", { name: /Confirm stopping/ })).toBeNull();
+    expect(within(hoverCard()).queryByRole("button", { name: "Stop node on port 5173" })).not.toBeNull();
   });
 
   it("offers Stop on a process that nobody owns, and none on a port only Docker reports", async () => {

@@ -81,6 +81,9 @@ export async function offerToClosePorts(rpc: () => Rpc, threadId: string): Promi
     id,
     description: `Stop the processes listening on ${portList(owned.map((entry) => entry.port))}? This also closes any other ports those processes serve.`,
     duration: Infinity,
+    // Swiped away, or closed some other way: the row watch goes with the toast.
+    onDismiss: () => dismissPortsPrompt(threadId),
+    onAutoClose: () => dismissPortsPrompt(threadId),
     cancel: { label: "Keep open", onClick: () => dismissPortsPrompt(threadId) },
     action: { label: "Close ports", onClick: () => void close() },
   });
