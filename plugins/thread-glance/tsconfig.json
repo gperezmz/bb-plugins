@@ -24,6 +24,8 @@
   },
   "include": [
     "server.ts",
+    "host.ts",
+    "host",
     "app.tsx",
     "server",
     "shared",
