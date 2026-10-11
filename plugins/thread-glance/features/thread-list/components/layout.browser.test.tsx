@@ -33,8 +33,8 @@ const frames = () => new Promise((resolve) => requestAnimationFrame(() => reques
 const NOW = Date.now();
 const props: PluginThreadListProps = { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" };
 
-async function render(threads: PluginSidebarThread[], server: FakeServerOptions = {}, listProps: Partial<PluginThreadListProps> = {}, height = 600) {
-  await page.viewport(360, height);
+async function render(threads: PluginSidebarThread[], server: FakeServerOptions = {}, listProps: Partial<PluginThreadListProps> = {}, height = 600, width = 360) {
+  await page.viewport(width, height);
   const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
     rpc: createFakeServer(server).handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
@@ -159,6 +159,24 @@ describe("the cards' lines", () => {
     expect(el.getBoundingClientRect().height).toBe(heights.foldedCard);
     expect(el.scrollHeight).toBeLessThanOrEqual(el.clientHeight);
     expect(el.scrollWidth).toBeLessThanOrEqual(el.clientWidth);
+  });
+
+  it("keeps a folded card's title readable beside the Children chip at the default sidebar width", async () => {
+    const family = [
+      makeThread({ id: "boss", title: "boss", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "boss", ...at(5) }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "boss", ...at(4) }),
+      makeThread({ id: "k3", title: "kid three", parentThreadId: "boss", ...at(3) }),
+    ];
+    await render(family, { settings: { compactWorkingThreads: true, inactiveShelf: false } }, {}, 600, 255);
+    const boss = card("boss");
+    expect(boss.dataset.card).toBe("folded");
+    expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
+    expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+    expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+    const chip = boss.querySelector<HTMLElement>("[data-children-chip]")!;
+    expect(chip.getBoundingClientRect().right).toBeLessThanOrEqual(boss.querySelector("[data-status-slot]")!.getBoundingClientRect().left);
+    expect(chip.scrollWidth).toBeLessThanOrEqual(chip.clientWidth);
   });
 
   it("puts the Status slot at 80 px at the right edge of the card's first line", async () => {

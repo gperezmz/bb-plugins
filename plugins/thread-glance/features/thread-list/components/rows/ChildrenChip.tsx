@@ -28,25 +28,25 @@ export function ChildrenChip({ parentId, info, expanded }: { parentId: string; i
           event.stopPropagation();
           commands.setExpanded(parentId, !expanded);
         }}
-        className="pointer-events-auto flex h-4 shrink-0 items-center gap-1 rounded-md px-1 text-[10px] tabular-nums outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="pointer-events-auto flex h-4 min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 text-[10px] tabular-nums outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
-        <span>{info.ids.length}</span>
-        <span className="flex items-center -space-x-1">
+        <span className="shrink-0">{info.ids.length}</span>
+        <span className="flex min-w-0 items-center overflow-hidden -space-x-1">
           {marks.map((mark) => (
             <ChildMark key={mark.id} threadId={mark.id} providerId={mark.thread.providerId} style={childIcon} />
           ))}
         </span>
         {urgency === null ? null : urgency.icon === null ? (
-          <span aria-hidden data-urgency="done" className={cn("inline-block size-[6px] rounded-full bg-current", TONE_CLASS[urgency.tone])} />
+          <span aria-hidden data-urgency="done" className={cn("inline-block size-[6px] shrink-0 rounded-full bg-current", TONE_CLASS[urgency.tone])} />
         ) : (
           <Icon
             name={urgency.icon}
             aria-hidden
             data-urgency={info.urgency ?? undefined}
-            className={cn("size-3", TONE_CLASS[urgency.tone], urgency.tone === "working" && "animate-spin")}
+            className={cn("size-3 shrink-0", TONE_CLASS[urgency.tone], urgency.tone === "working" && "animate-spin")}
           />
         )}
-        <Icon name="ChevronRight" aria-hidden className={cn("size-3 transition-transform duration-150", expanded && "rotate-90")} />
+        <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", expanded && "rotate-90")} />
       </button>
     </Tip>
   );

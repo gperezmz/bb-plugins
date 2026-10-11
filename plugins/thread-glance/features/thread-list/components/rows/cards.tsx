@@ -225,11 +225,12 @@ function FoldedCard({ row, editing, projectName, colour }: CardProps) {
   return (
     <div className="pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
       <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
-      <ProjectName name={projectName} colour={colour} className="max-w-[40%] shrink truncate" />
+      {/* Squeezed first, then the chip's marks, so the title keeps `min-w-12` of the one line. */}
+      <ProjectName name={projectName} colour={colour} className="max-w-[40%] shrink-[4] truncate" />
       <span aria-hidden className="shrink-0 text-muted-foreground/60">
         ·
       </span>
-      <Title row={row} editing={editing} className="text-xs" />
+      <Title row={row} editing={editing} className="min-w-12 text-xs" />
       {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
       <StatusCell row={row} status={status} compact />
     </div>
