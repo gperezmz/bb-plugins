@@ -8,6 +8,12 @@ Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `team
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
 ```
 
+Until Thread Glance 1.0.0, install it with:
+
+```sh
+bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
+```
+
 bb shows what it will install and asks to confirm; `--yes` skips the question, for scripts. The bb server builds the plugin after cloning it, so it needs `npm` on its `PATH`.
 
 Then turn it on where it shows:
@@ -53,6 +59,8 @@ bb plugin update thread-glance
 ```
 
 `bb plugin outdated` lists installed plugins with a compatible update; `bb plugin update --all` updates every one of them.
+
+An install from `@main` follows `main`, and until Thread Glance 1.0.0 it gets the rewrite as it lands, replacing 0.11.2's layout and settings.
 
 ## Remove
 

@@ -5,7 +5,7 @@ In this tutorial you install Thread Glance, switch the sidebar to it, and watch 
 ## 1. Install it and switch the sidebar
 
 ```sh
-bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
+bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
 In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**.
