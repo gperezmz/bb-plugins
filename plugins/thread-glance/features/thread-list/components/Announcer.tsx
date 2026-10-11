@@ -5,7 +5,7 @@ import { useAnnouncement } from "../store/hooks";
 export function Announcer() {
   const text = useAnnouncement();
   return (
-    <div role="status" aria-live="polite" aria-atomic="true" data-testid="list-announcer" className="sr-only">
+    <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
       {text}
     </div>
   );

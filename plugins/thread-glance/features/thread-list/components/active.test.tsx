@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 // Active's order and sort (AC14, AC15), and the threads listed under a parent
 // (AC4).
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { makeThread, PROJECTS, titleOf } from "../testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
-import { attachedListHandles } from "./ThreadList";
 
 useListHarness();
 
@@ -109,8 +108,6 @@ describe("AC15: Project mode", () => {
 });
 
 describe("AC4: threads under a parent", () => {
-  const commands = () => attachedListHandles()[0]!.commands;
-
   it("lists a child only under its parent, whose child list opens on this device", async () => {
     const threads = [
       makeThread({ id: "p", title: "Parent", ...at(30) }),
@@ -119,7 +116,7 @@ describe("AC4: threads under a parent", () => {
     await mount({ threads, server: { order: ["p", "c"] } });
     expect(rowTitles()).toEqual(["Parent"]);
     expect(screen.queryByText("Child")).toBeNull();
-    act(() => commands().setExpanded("p", true));
+    fireEvent.click(screen.getByRole("button", { name: "1 child thread" }));
     await flush();
     expect(rowTitles()).toEqual(["Parent"]);
     expect(document.querySelector("[data-child-of-thread=p] a")?.textContent).toBe("Child");
@@ -134,7 +131,8 @@ describe("AC4: threads under a parent", () => {
     ];
     await mount({ threads });
     expect(rowTitles().sort()).toEqual(["Beta parent", "Orphan"]);
-    act(() => commands().setScope("proj_a"));
+    fireEvent.click(screen.getByRole("button", { name: /Project scope/ }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Projects" })).getByRole("option", { name: "Alpha" }));
     await flush();
     expect(rowTitles().sort()).toEqual(["Alpha child", "Orphan"]);
   });

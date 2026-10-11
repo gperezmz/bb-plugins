@@ -8,7 +8,6 @@ import { parkedRow, settledRow, snoozedRow, type LifecycleRow } from "@/shared/l
 import { DAY, HOUR, makeProject, makeThread, PROJECTS, working } from "../testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { SWEEP_MS } from "../commands/sweep";
-import { attachedListHandles } from "./ThreadList";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
@@ -169,9 +168,7 @@ describe("AC17: the Slim row", () => {
   /** Mounts with the three slim shelves open. */
   async function mountSlim() {
     const m = await mount({ threads: threads(), server: { rows, settings: { inactiveShelf: false } } });
-    act(() => {
-      for (const shelf of ["parked", "snoozed", "settled"] as const) attachedListHandles()[0]!.commands.toggleShelf(shelf);
-    });
+    for (const label of ["Parked (1)", "Snoozed (1)", "Settled (1)"]) fireEvent.click(screen.getByRole("button", { name: label }));
     await flush();
     return m;
   }

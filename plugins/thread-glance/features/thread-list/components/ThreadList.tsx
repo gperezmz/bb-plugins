@@ -19,13 +19,6 @@ import { ListContext, type ListHandle } from "../store/hooks";
 import { ListSyncKeeper } from "../sync/SyncKeeper";
 import { ListBody } from "./ListBody";
 
-/** Mounted lists' handles, for tests to reach a list's commands. */
-const attachedHandles = new Set<ListHandle>();
-
-export function attachedListHandles(): readonly ListHandle[] {
-  return [...attachedHandles];
-}
-
 export function ThreadList(props: PluginThreadListProps) {
   const [attempt, setAttempt] = useState(0);
   const onRetry = useCallback(() => setAttempt((value) => value + 1), []);
@@ -61,13 +54,8 @@ function ThreadListEdge({ activeThreadId, isCompactViewport, onNavigate, onRetry
   useLayoutEffect(() => store.feedHost(host));
   useLayoutEffect(() => store.feedFocus(activeThreadId, isCompactViewport), [store, activeThreadId, isCompactViewport]);
   useEffect(() => {
-    attachedHandles.add(handle);
-    const detach = store.attach();
-    return () => {
-      detach();
-      attachedHandles.delete(handle);
-    };
-  }, [handle, store]);
+    return store.attach();
+  }, [store]);
   return (
     <CompactViewportContext.Provider value={isCompactViewport}>
       <ListContext.Provider value={handle}>

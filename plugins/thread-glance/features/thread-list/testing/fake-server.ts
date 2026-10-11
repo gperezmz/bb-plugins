@@ -2,6 +2,7 @@
 // over the rows it holds, and realtime signals to the windows attached to it.
 // It applies the rules the real server does only as far as the list's tests
 // look: a call writes the row the shared constructors build and publishes it.
+import { SNOOZE_ENDED } from "@/shared/messages";
 import { EMPTY_RECLAIM } from "@/shared/reclaim-note";
 import { activeRow, parkedRow, settledRow, snoozedRow, sameRow, type LifecycleRow } from "@/shared/lifecycle";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
@@ -28,6 +29,8 @@ export interface FakeServerOptions {
   appearance?: Partial<Appearance>;
   /** Holds `sync` unanswered until `releaseSync`. */
   holdSync?: boolean;
+  /** Holds `reorder` unanswered until `releaseReorder`, which then answers as `refuse` says. */
+  holdReorder?: boolean;
 }
 
 type Change = { threadId: string; before: LifecycleRow | null; after: LifecycleRow | null; unpinned: boolean };
@@ -50,6 +53,8 @@ export function createFakeServer(options: FakeServerOptions = {}) {
   const appearance: Versioned<Appearance> = { epoch, version: 1, value: { colours: options.appearance?.colours ?? {}, icons: options.appearance?.icons ?? {} } };
   let holding = options.holdSync ?? false;
   let held: (() => void)[] = [];
+  let holdingReorder = options.holdReorder ?? false;
+  let heldReorders: (() => void)[] = [];
 
   const publish = async (channel: string, payload: unknown) => {
     server.signals.push({ channel, payload });
@@ -135,6 +140,10 @@ export function createFakeServer(options: FakeServerOptions = {}) {
             skipped.push({ threadId: change.threadId, reason: "Changed since" });
             continue;
           }
+          if (change.before?.snoozeUntil != null && change.before.snoozeUntil <= Date.now()) {
+            skipped.push({ threadId: change.threadId, reason: SNOOZE_ENDED });
+            continue;
+          }
           write(change.threadId, change.before);
         }
         await publishRows(changes.map((change) => change.threadId));
@@ -149,6 +158,7 @@ export function createFakeServer(options: FakeServerOptions = {}) {
       },
       async reorder({ threadIds }: { threadIds: string[] }) {
         server.calls.push({ method: "reorder", input: { threadIds } });
+        if (holdingReorder) await new Promise<void>((resolve) => heldReorders.push(resolve));
         refusing("reorder");
         const listed = new Set(order.value);
         const base = [...threadIds.filter((id) => !listed.has(id)), ...order.value];
@@ -196,6 +206,13 @@ export function createFakeServer(options: FakeServerOptions = {}) {
       holding = false;
       const waiting = held;
       held = [];
+      for (const resolve of waiting) resolve();
+    },
+    /** Answers every held `reorder`, and stops holding. */
+    releaseReorder(): void {
+      holdingReorder = false;
+      const waiting = heldReorders;
+      heldReorders = [];
       for (const resolve of waiting) resolve();
     },
     /** Makes a method refuse from now on (null to stop). */

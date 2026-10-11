@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 // The lifecycle commands: their toasts and Undo (AC5, AC6, AC8, AC9, AC10),
 // and the refusals of a busy thread (AC7).
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
-import { busyRefusal, SETTLE_UNDO_GONE } from "@/shared/messages";
-import { attachedListHandles } from "../components/ThreadList";
+import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
 import { DAY, HOUR, makeThread, working } from "../testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { createLifecycleCommands, lifecycleHostOf } from "./lifecycle";
@@ -32,12 +31,30 @@ afterEach(() => {
 
 /** Server options with the Inactive shelf off, so a thread idle for days still starts on Active. */
 const quiet = (options: Parameters<typeof mount>[0]["server"] = {}) => ({ settings: { inactiveShelf: false }, ...(options as object) });
-const commands = () => attachedListHandles()[0]!.commands;
-const run = async (call: () => Promise<void>) => {
+/** Opens a card's clock menu, as a pointer press on its button does. */
+const openClockMenu = async (title: string) => {
   await act(async () => {
-    await call();
+    fireEvent.pointerDown(screen.getByRole("button", { name: `Snooze ${title}` }), { button: 0, ctrlKey: false });
+  });
+  return screen.getByRole("menu");
+};
+const chooseFromClockMenu = async (title: string, item: string | RegExp) => {
+  const menu = await openClockMenu(title);
+  await act(async () => {
+    fireEvent.click(within(menu).getByRole("menuitem", { name: item }));
   });
   await flush();
+};
+const settleFromCard = async (title: string) => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: `Settle ${title}` }));
+  });
+  await flush();
+};
+/** The window's clock reads `at` from here on; timers keep running. */
+const setClock = (at: number) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(at);
 };
 /** The text of a toast's description. */
 const describing = (call: unknown[]): string => {
@@ -57,9 +74,9 @@ const shelfOfRow = (id: string) => document.querySelector(`[data-card][data-thre
 describe("Snooze (AC5)", () => {
   it("snoozes with a toast that reads Thread snoozed, when it wakes and what was reclaimed, with Undo that lasts 10 s", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...fresh })], server: { note: "Agent session stopped" } });
-    const until = NOW + 3 * HOUR;
-    await run(() => commands().snooze("a", until));
-    expect(callsOf(m, "snooze").map((call) => call.input)).toEqual([{ threadId: "a", until }]);
+    setClock(NOW);
+    await chooseFromClockMenu("A", /^1 hour/);
+    expect(callsOf(m, "snooze").map((call) => call.input)).toEqual([{ threadId: "a", until: NOW + HOUR }]);
     const call = toastCall("Thread snoozed");
     expect(describing(call)).toMatch(/^Wakes .*Agent session stopped$/);
     expect((call[1] as { duration: number }).duration).toBe(10_000);
@@ -71,29 +88,33 @@ describe("Snooze (AC5)", () => {
 
   it("keeps the default toast length when nothing was reclaimed", async () => {
     await mount({ threads: [makeThread({ id: "a", ...fresh })] });
-    await run(() => commands().snooze("a", NOW + HOUR));
+    await chooseFromClockMenu("Thread a", /^1 hour/);
     expect("duration" in (toastCall("Thread snoozed")[1] as object)).toBe(false);
   });
 });
 
 describe("AC7: a busy thread", () => {
-  it("is refused at once when this window sees it busy", async () => {
-    const m = await mount({ threads: [makeThread({ id: "a", title: "Busy one", ...working, ...fresh })] });
-    await run(() => commands().park("a"));
-    await run(() => commands().snooze("a", NOW + HOUR));
-    await run(() => commands().settle("a"));
-    expect(toasts.error.mock.calls.map((call) => call[0])).toEqual([
+  it("offers no hover actions on a card, and a menu action is refused at once when this window sees it busy", async () => {
+    await mount({ threads: [makeThread({ id: "a", title: "Busy one", ...working, ...fresh })] });
+    expect(screen.queryByRole("button", { name: "Snooze Busy one" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Settle Busy one" })).toBeNull();
+    const call = vi.fn();
+    const lifecycle = createLifecycleCommands(lifecycleHostOf({ call } as never, () => makeThread({ id: "a", title: "Busy one", ...working, ...fresh })));
+    await lifecycle.park("a");
+    await lifecycle.snooze("a", NOW + HOUR);
+    await lifecycle.settle("a");
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([
       busyRefusal("park", "Busy one"),
       busyRefusal("snooze", "Busy one"),
       busyRefusal("settle", "Busy one"),
     ]);
-    expect(m.server.calls.filter((call) => ["park", "snooze", "settle"].includes(call.method))).toEqual([]);
+    expect(call).not.toHaveBeenCalled();
   });
 
   it("shows the server's refusal when the thread started a turn after the menu opened, and changes nothing", async () => {
     const text = busyRefusal("park", "A");
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...fresh })], server: { refuse: { park: text } } });
-    await run(() => commands().park("a"));
+    await chooseFromClockMenu("A", "Park thread");
     expect(toasts.error).toHaveBeenCalledWith(text);
     expect(toasts.success).not.toHaveBeenCalled();
     expect(m.server.rows.size).toBe(0);
@@ -123,10 +144,30 @@ describe("Woke and Wake now (AC6)", () => {
 
   it("shows why Undo could not re-snooze", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: { rows: { a: snoozedRow(NOW + 2 * HOUR, NOW - HOUR) } } });
-    await run(() => commands().wakeNow("a"));
+    fireEvent.click(screen.getByRole("button", { name: "Snoozed (1)" }));
+    await flush();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Wake thread now" }));
+    });
+    await flush();
     await m.server.setRow("a", activeRow());
     await pressUndo(toastCall("Thread woke up"));
     expect(toasts.error).toHaveBeenCalledWith("Changed since");
+  });
+
+  it("refuses Undo once the time the thread was snoozed until has passed", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: { rows: { a: snoozedRow(NOW + 2 * HOUR, NOW - HOUR) } } });
+    fireEvent.click(screen.getByRole("button", { name: "Snoozed (1)" }));
+    await flush();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Wake thread now" }));
+    });
+    await flush();
+    setClock(NOW + 3 * HOUR);
+    await pressUndo(toastCall("Thread woke up"));
+    expect(toasts.error).toHaveBeenCalledWith(SNOOZE_ENDED);
+    expect(callsOf(m, "undoLifecycle")).toHaveLength(1);
+    expect(shelfOfRow("a")).not.toBe("snoozed");
   });
 
   it("shows a woke thread in Active with a Woke label in two windows, and opening it clears the marker in both", async () => {
@@ -159,7 +200,7 @@ describe("Woke and Wake now (AC6)", () => {
 describe("Park and Resume (AC8)", () => {
   it("parks with a toast and Undo that resumes, and shows Waiting Nd", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...old })], server: quiet() });
-    await run(() => commands().park("a"));
+    await chooseFromClockMenu("A", "Park thread");
     expect(toasts.success.mock.calls[0]![0]).toBe("Thread parked");
     expect(screen.getByRole("button", { name: "Parked (1)" })).toBeTruthy();
     await pressUndo(toastCall("Thread parked"));
@@ -188,16 +229,14 @@ describe("Settle (AC9)", () => {
   it("plays the 520 ms sweep on a drawn card before it settles", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...old })], server: quiet() });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    let done!: Promise<void>;
     act(() => {
-      done = commands().settle("a");
+      fireEvent.click(screen.getByRole("button", { name: "Settle A" }));
     });
     await flush();
     expect(document.querySelector("[data-sweep]")).not.toBeNull();
     expect(callsOf(m, "settle")).toHaveLength(0);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(SWEEP_MS);
-      await done;
     });
     await flush();
     expect(callsOf(m, "settle")).toHaveLength(1);
@@ -207,7 +246,7 @@ describe("Settle (AC9)", () => {
   it("settles at once under reduced motion", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }));
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...old })], server: quiet() });
-    await run(() => commands().settle("a"));
+    await settleFromCard("A");
     expect(document.querySelector("[data-sweep]")).toBeNull();
     expect(callsOf(m, "settle")).toHaveLength(1);
   });
@@ -215,7 +254,7 @@ describe("Settle (AC9)", () => {
   it("toasts for 4 s, or 10 s with a reclaim note, and Undo brings the thread back", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const m = await mount({ threads: [makeThread({ id: "a", title: "A", ...old })], server: quiet() });
-    await run(() => commands().settle("a"));
+    await settleFromCard("A");
     const call = toastCall("Thread settled");
     expect((call[1] as { duration: number }).duration).toBe(4_000);
     await pressUndo(call);
@@ -225,7 +264,7 @@ describe("Settle (AC9)", () => {
     m.view.unmount();
     toasts.success.mockClear();
     await mount({ threads: [makeThread({ id: "a", title: "A", ...old })], server: quiet({ note: "Agent session stopped" }) });
-    await run(() => commands().settle("a"));
+    await settleFromCard("A");
     expect((toastCall("Thread settled")[1] as { duration: number }).duration).toBe(10_000);
     expect(describing(toastCall("Thread settled"))).toBe("Agent session stopped");
   });
@@ -233,7 +272,7 @@ describe("Settle (AC9)", () => {
   it("says when the Settle can no longer be undone", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: quiet() });
-    await run(() => commands().settle("a"));
+    await settleFromCard("Thread a");
     m.server.refuse("undoSettle", SETTLE_UNDO_GONE);
     await pressUndo(toastCall("Thread settled"));
     expect(toasts.error).toHaveBeenCalledWith(SETTLE_UNDO_GONE);
@@ -243,7 +282,7 @@ describe("Settle (AC9)", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const text = busyRefusal("settle", "Child");
     const m = await mount({ threads: [makeThread({ id: "p", title: "Parent", ...old })], server: quiet({ refuse: { settle: text } }) });
-    await run(() => commands().settle("p"));
+    await settleFromCard("Parent");
     expect(toasts.error).toHaveBeenCalledWith(text);
     expect(m.server.rows.size).toBe(0);
   });

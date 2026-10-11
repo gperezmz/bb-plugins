@@ -158,12 +158,15 @@ describe("AC16: reordering by pointer", () => {
     expect(reorderCalls(m)).toHaveLength(0);
   });
 
-  it("rolls back a failed write and says so", async () => {
-    await mount({ threads: abc(), server: { order: ["a", "b", "c"], refuse: { reorder: "no" } } });
+  it("shows the move while the write is out, then rolls it back when the write fails, and says so", async () => {
+    const m = await mount({ threads: abc(), server: { order: ["a", "b", "c"], refuse: { reorder: "no" }, holdReorder: true } });
     press("a");
     move(10, rowY(0) + 8);
     move(10, rowY(1));
     await release();
+    expect(reorderCalls(m)).toHaveLength(1);
+    expect(rowTitles()).toEqual(["B", "A", "C"]);
+    await act(async () => m.server.releaseReorder());
     await flush();
     expect(toasts.error).toHaveBeenCalledWith("Could not reorder Active thread");
     expect(rowTitles()).toEqual(["A", "B", "C"]);
@@ -196,7 +199,7 @@ describe("AC16: reordering by pointer", () => {
 describe("AC16: reordering by keyboard", () => {
   it("moves a row with Alt+Arrow and announces its place, and that it is already first or last", async () => {
     const m = await mount({ threads: abc(), server: { order: ["a", "b", "c"] } });
-    const announcer = screen.getByTestId("list-announcer");
+    const announcer = screen.getByRole("status");
     fireEvent.keyDown(rowEl("a"), { key: "ArrowUp", altKey: true });
     expect(announcer.textContent).toContain("A is already first in Active");
     await act(async () => {
@@ -223,7 +226,7 @@ describe("AC16: reordering by keyboard", () => {
       fireEvent.keyDown(rowEl("p1"), { key: "ArrowDown", altKey: true });
     });
     await flush();
-    expect(screen.getByTestId("list-announcer").textContent).toContain("P1 moved to 2 of 3 in Pinned");
+    expect(screen.getByRole("status").textContent).toContain("P1 moved to 2 of 3 in Pinned");
     expect(m.host.sdkCalls.find((call) => call.method === "threads.reorderPinned")?.args).toEqual({
       threadId: "p1",
       previousThreadId: "p2",
