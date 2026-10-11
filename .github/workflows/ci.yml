@@ -85,7 +85,8 @@ jobs:
       fail-fast: false
       matrix:
         plugin: ${{ fromJSON(needs.changes.outputs.plugins) }}
-        # check: types, tests, build, generated files. git-install: what bb
+        # check: types, tests, build, generated files, and the devDependencies
+        # bb shims at runtime (`bb plugin types --check`). git-install: what bb
         # runs after cloning the repository, which a devDependency the build
         # needs can break. npm-install: the package the Release workflow
         # publishes, installed from a local registry into a throwaway bb.
@@ -101,6 +102,15 @@ jobs:
         env:
           PLUGIN: ${{ matrix.plugin }}
           MODE: ${{ matrix.mode }}
+      # Fails when a devDependency that bb shims is declared at another
+      # version than bb shims, or the SDK pin differs from the SDK this bb
+      # ships, and names the package. Not in
+      # check-plugin.sh, which the Compatibility workflow also runs against
+      # newer bb releases, where an SDK pin that trails bb is a warning.
+      - name: bb plugin types --check
+        if: matrix.mode == 'check'
+        working-directory: plugins/${{ matrix.plugin }}
+        run: bb plugin types --check
 
   # The npm-install check must fail when bb refuses what a plugin registers;
   # OpenAI-compatible inference built to be refused proves it does.
