@@ -28,8 +28,12 @@ export interface BusyInput {
   activity: BusyActivity;
 }
 
-/** Statuses of a turn bb has accepted and not finished. */
-const TURN_IN_FLIGHT = new Set(["pending", "starting", "active", "stopping"]);
+/**
+ * Statuses of a turn bb has accepted and not finished. `pending` is left out:
+ * a thread that was created and never ran has no turn, and a first message
+ * waiting to send, scheduled or not, shows as a queued message instead.
+ */
+const TURN_IN_FLIGHT = new Set(["starting", "active", "stopping"]);
 /** Runtime display statuses of a runtime that is up or coming up, a monitor kept alive between turns included. */
 const RUNTIME_WORKING = new Set(["provisioning", "starting", "active"]);
 

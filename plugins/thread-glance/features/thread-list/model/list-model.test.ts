@@ -176,6 +176,31 @@ describe("sorts turn reordering off in Active", () => {
   });
 });
 
+describe("never-run threads", () => {
+  const idleNeverRun = makeThread({ id: "n", status: "pending", ...at(1000) });
+  const scheduled = makeThread({ id: "s", status: "pending", queuedWork: "waiting", ...at(1000) });
+  const settings = { ...DEFAULT_SETTINGS, workingShelf: true, compactWorkingThreads: true };
+
+  it("keeps a never-run thread off the Working shelf and its card full, with or without a queued first message", () => {
+    const model = buildModel(inputs({ threads: [idleNeverRun, scheduled], settings }));
+    expect(model.shelves.working).toEqual([]);
+    expect([...model.shelves.active].sort()).toEqual(["n", "s"]);
+    expect(model.rows.get("n")!.card).toBe("full");
+    expect(model.rows.get("s")!.card).toBe("full");
+  });
+
+  it("leaves a never-run child out of its parent's working count", () => {
+    const threads = [
+      makeThread({ id: "p", ...at(1000) }),
+      { ...idleNeverRun, id: "c1", parentThreadId: "p" },
+      { ...scheduled, id: "c2", parentThreadId: "p" },
+    ];
+    const model = buildModel(inputs({ threads, settings }));
+    expect(model.rows.get("p")!.children!.counts.working).toBe(0);
+    expect(model.shelves.working).toEqual([]);
+  });
+});
+
 describe("children", () => {
   const tree = [
     makeThread({ id: "p", ...at(1000) }),
