@@ -20,6 +20,7 @@ import { messageOf } from "@/lib/error-message";
 import { ICON_TYPES_LABEL } from "@/shared/project-icon";
 import type { Settings } from "@/shared/settings";
 import type { Appearance, Versioned } from "@/shared/signals";
+import { createColourSave, type ColourSave } from "../model/colour-save";
 import { colourError, iconSizeError, iconSourceLine } from "../model/icons";
 import { readBase64 } from "../read-file";
 import { Group, Row, Select, SelectRow, SwitchRow } from "./Fields";
@@ -30,9 +31,6 @@ export const STRIPE_CHOICES: readonly { value: Settings["stripesIn"]; label: str
   { value: "full", label: "Full mode only" },
   { value: "grouped", label: "Grouped projects only" },
 ];
-
-/** How long a picked colour waits for the next before it is saved. */
-const COLOUR_DELAY_MS = 500;
 
 export function ProjectAppearance({ form, projects }: { form: Form; projects: readonly PluginSidebarProject[] }) {
   const { values, edit } = form;
@@ -68,23 +66,18 @@ function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSi
   const colour = useProjectColour(projectId, ids);
   const [draft, setDraft] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const pending = useRef<{ projectId: string; colour: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-  const commitColour = () => {
-    const waiting = pending.current;
-    if (waiting === null) return;
-    clearTimeout(waiting.timer);
-    pending.current = null;
-    rpcRef.current.call("setProjectColour", { projectId: waiting.projectId, colour: waiting.colour }).then(
-      (answer) => {
-        pluginData.appearanceSignal(answer);
-        setDraft((typed) => (typed?.toLowerCase() === waiting.colour ? null : typed));
-      },
-      (error: unknown) => setProblem(messageOf(error)),
-    );
-  };
+  const saveRef = useRef<ColourSave | null>(null);
+  saveRef.current ??= createColourSave({
+    write: (id, picked) => rpcRef.current.call("setProjectColour", { projectId: id, colour: picked }),
+    saved(answer, saved) {
+      pluginData.appearanceSignal(answer);
+      setDraft((typed) => (typed?.trim().toLowerCase() === saved ? null : typed));
+    },
+    failed: (error) => setProblem(messageOf(error)),
+  });
+  const colourSave = saveRef.current;
   // A picked colour that is still waiting goes when the page is left.
-  useEffect(() => () => commitColour(), []);
+  useEffect(() => () => colourSave.commit(), [colourSave]);
 
   const apply = (action: () => Promise<Versioned<Appearance>>) => {
     setProblem(null);
@@ -107,12 +100,7 @@ function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSi
   const pickColour = (typed: string) => {
     setDraft(typed);
     setProblem(null);
-    if (pending.current !== null) clearTimeout(pending.current.timer);
-    pending.current = null;
-    if (colourError(typed) !== null) return;
-    const lowered = typed.trim().toLowerCase();
-    const id = project.id;
-    pending.current = { projectId: id, colour: lowered, timer: setTimeout(commitColour, COLOUR_DELAY_MS) };
+    colourSave.pick(project.id, typed);
   };
 
   return (
@@ -123,7 +111,7 @@ function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSi
           value={project.id}
           choices={projects.map((candidate) => ({ value: candidate.id, label: candidate.name }))}
           onChange={(next) => {
-            commitColour();
+            colourSave.commit();
             setDraft(null);
             setProblem(null);
             setChosen(next);
@@ -143,7 +131,7 @@ function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSi
           <input
             type="color"
             aria-label="Project colour picker"
-            value={/^#[0-9a-f]{6}$/i.test(shown) ? shown.toLowerCase() : automatic}
+            value={colourError(shown) === null ? shown.trim().toLowerCase() : automatic}
             onChange={(event) => pickColour(event.target.value)}
             className="h-9 w-10 cursor-pointer rounded-md border border-input bg-transparent p-1"
           />
@@ -160,8 +148,7 @@ function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSi
             size="sm"
             disabled={override === undefined && draft === null}
             onClick={() => {
-              if (pending.current !== null) clearTimeout(pending.current.timer);
-              pending.current = null;
+              colourSave.cancel();
               setDraft(null);
               if (override !== undefined) apply(() => rpcRef.current.call("resetProjectColour", { projectId: project.id }));
             }}
