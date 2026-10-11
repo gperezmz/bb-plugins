@@ -84,7 +84,7 @@ Remove a project. This needs the project's exact name typed, and warns "Its thre
 2. The project's favicon: the first of the usual favicon and icon files in the project, or the icon `<link>` in its index or root route file. Files over 1 MB are skipped, and a favicon is read only from a regular file whose resolved path, symlinks followed, lies inside the project's path.
 3. The monogram: the uppercase first letter of the project's name's first meaningful word (skipping an npm scope, a path, and bb, plugin, the and my), on one of eight tiles chosen from the name.
 
-The plugin's server serves the icon with a private, revalidated, sandboxed and nosniff response. A failed load shows the monogram and retries at 15 s, then 30 s and onward, up to 10 minutes. The failure is shared by every row of that project.
+The plugin's server serves the icon with a private, revalidated, sandboxed and nosniff response. A project without an icon is asked for once per page load: the server answers 204 and its rows keep the monogram, so a favicon added while the page is open shows after the next load, and an upload or **Use automatic** shows at once. An icon that exists but cannot be read or drawn shows the monogram and is asked for again at 15 s, then 30 s and onward, up to 10 minutes. The answer is shared by every row of that project.
 
 ## Kept on this device
 
