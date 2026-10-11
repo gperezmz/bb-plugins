@@ -2,16 +2,13 @@
 // process on it. `PortsHost` is the port; the SDK adapter is the only code
 // here that names `bb.hosts`.
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
-import { hostContract, type HostListener } from "../../shared/ports";
+import { hostContract, type HostListener, type HostSignalResult, type PortTarget } from "../../shared/ports";
 
 export interface PortsHost {
   /** The listeners inside `workspaces` on a machine. Rejects when the machine cannot be scanned. */
   scan(hostId: string, workspaces: readonly string[]): Promise<{ supported: boolean; listeners: HostListener[] }>;
   /** Asks the machine to SIGTERM the process listening on `port` if it still has `pid` and `startedAt` inside `workspaces`. */
-  signal(
-    hostId: string,
-    target: { port: number; pid: number; startedAt: number; workspaces: readonly string[] },
-  ): Promise<"sent" | "changed" | "failed">;
+  signal(hostId: string, target: PortTarget & { workspaces: readonly string[] }): Promise<HostSignalResult>;
 }
 
 const SCAN_TIMEOUT_MS = 20_000;

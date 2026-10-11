@@ -1,6 +1,6 @@
 // Fakes for the ports service: a host that holds listeners per machine, an
 // environment directory that holds locations, and a clock.
-import { hostContract, type HostListener } from "../../../shared/ports";
+import { hostContract, type HostListener, type HostSignalResult } from "../../../shared/ports";
 import type { EnvironmentDirectory, EnvironmentLocation } from "../environments";
 import type { PortsHost } from "../host";
 
@@ -27,7 +27,7 @@ export interface FakePortsHost extends PortsHost {
   /** The signals asked for, in order. */
   signals: { hostId: string; port: number; pid: number; startedAt: number; workspaces: string[] }[];
   /** What a signal answers; by default `sent`. */
-  signalResult: (signal: FakePortsHost["signals"][number]) => "sent" | "changed" | "failed" | Error;
+  signalResult: (signal: FakePortsHost["signals"][number]) => HostSignalResult | Error;
   /** Runs inside each scan before it answers; lets a test change a machine between two steps. */
   beforeScan: ((hostId: string) => void | Promise<void>) | null;
 }
@@ -64,7 +64,10 @@ export function createFakePortsHost(machines: Record<string, HostListener[] | Er
 export interface FakeEnvironments extends EnvironmentDirectory {
   locations: Map<string, EnvironmentLocation>;
   resolved: string[][];
+  /** Makes every lookup fail. */
   fail: boolean;
+  /** Environments bb cannot answer for, while the others resolve. */
+  failIds: Set<string>;
 }
 
 export function createFakeEnvironments(locations: Record<string, EnvironmentLocation> = {}): FakeEnvironments {
@@ -72,10 +75,13 @@ export function createFakeEnvironments(locations: Record<string, EnvironmentLoca
     locations: new Map(Object.entries(locations)),
     resolved: [],
     fail: false,
+    failIds: new Set(),
     async resolve(ids) {
       fake.resolved.push([...ids]);
       if (fake.fail) throw new Error("bb could not answer");
-      return new Map(ids.flatMap((id) => (fake.locations.has(id) ? [[id, fake.locations.get(id)!] as const] : [])));
+      const failed = new Set(ids.filter((id) => fake.failIds.has(id)));
+      const locations = new Map(ids.flatMap((id) => (fake.locations.has(id) && !failed.has(id) ? [[id, fake.locations.get(id)!] as const] : [])));
+      return { locations, failed };
     },
   };
   return fake;

@@ -7,6 +7,7 @@
 // Clean's rule (every running terminal) is not Reclaim's (only terminals nobody
 // typed into); the two share nothing. The module names no SDK.
 import { randomUUID } from "node:crypto";
+import { inBatches } from "../../shared/batches";
 import type { PreviewCleanOutput, RunCleanOutput } from "../../shared/ports";
 import type { LifecycleStore } from "../lifecycle-store";
 import { isLiveTerminal, type ThreadRuntime } from "../runtime";
@@ -14,7 +15,7 @@ import type { ServerThread, ThreadGateway } from "../threads";
 import type { PortsEngine } from "./engine";
 import type { PortsHost } from "./host";
 import { isCleanable, omitSharedWorkspaces } from "./clean-rules";
-import { ownedListener, ownedPortTargets, isScannable } from "./rules";
+import { distinctProcesses, isScannable, ownedListener, ownedPortTargets } from "./rules";
 import {
   MAX_PREVIEW_THREADS,
   MAX_THREAD_PORTS,
@@ -63,7 +64,7 @@ export function createClean(deps: CleanDeps): Clean {
     const failing = new Set(all.filter((thread) => !isCleanable(thread, lifecycle.get(thread.id), at)).map((thread) => thread.id));
     const candidates = all.filter((thread) => !failing.has(thread.id));
     const environmentIds = [...new Set(all.flatMap((thread) => (thread.environmentId === null ? [] : [thread.environmentId])))];
-    const locations = await engine.locate(environmentIds);
+    const { locations } = await engine.locate(environmentIds);
     return { eligible: omitSharedWorkspaces({ candidates, allThreads: all, failing, locations }) };
   }
 
@@ -82,19 +83,16 @@ export function createClean(deps: CleanDeps): Clean {
       const inScope = eligible.filter((thread) => projectId === null || thread.projectId === projectId);
       const view = inScope.length > 0 ? await engine.read({ fresh: true }) : engine.current();
 
+      const terminalIds = await inBatches(inScope, READ_CONCURRENCY, terminalIdsOf);
       const found: StoredPreviewThread[] = [];
-      for (let start = 0; start < inScope.length && found.length < MAX_PREVIEW_THREADS; start += READ_CONCURRENCY) {
-        const batch = inScope.slice(start, start + READ_CONCURRENCY);
-        const terminalIds = await Promise.all(batch.map(terminalIdsOf));
-        batch.forEach((thread, index) => {
-          const environmentId = thread.environmentId;
-          if (environmentId === null) return;
-          const ports = isScannable(view, environmentId) ? ownedPortTargets(view.snapshot, environmentId, thread.id).slice(0, MAX_THREAD_PORTS) : [];
-          const terminals = terminalIds[index].slice(0, MAX_THREAD_TERMINALS);
-          if (terminals.length === 0 && ports.length === 0) return;
-          found.push({ threadId: thread.id, title: thread.title, environmentId, terminalIds: terminals, ports });
-        });
-      }
+      inScope.forEach((thread, index) => {
+        const environmentId = thread.environmentId;
+        if (environmentId === null) return;
+        const ports = isScannable(view, environmentId) ? ownedPortTargets(view.snapshot, environmentId, thread.id).slice(0, MAX_THREAD_PORTS) : [];
+        const terminals = terminalIds[index].slice(0, MAX_THREAD_TERMINALS);
+        if (terminals.length === 0 && ports.length === 0) return;
+        found.push({ threadId: thread.id, title: thread.title, environmentId, terminalIds: terminals, ports });
+      });
       const threads = found.slice(0, MAX_PREVIEW_THREADS);
       const token = newToken();
       const at = now();
@@ -153,7 +151,8 @@ export function createClean(deps: CleanDeps): Clean {
             issues.push(`${thread.title}: its workspace could not be found`);
             continue;
           }
-          for (const target of thread.ports) {
+          // A process serving two ports is signalled once, and both ports are then expected to close.
+          for (const target of distinctProcesses(thread.ports)) {
             if (ownedListener(view.snapshot, thread.environmentId, thread.threadId, target) === undefined) continue;
             if (!(await stillClean(thread))) {
               skipped(thread);
@@ -167,7 +166,11 @@ export function createClean(deps: CleanDeps): Clean {
             });
             if (result === "sent") {
               portRequests += 1;
-              requested.set(target.port, { environmentId: thread.environmentId, pid: target.pid, startedAt: target.startedAt });
+              for (const served of thread.ports) {
+                if (served.pid === target.pid && served.startedAt === target.startedAt) {
+                  requested.set(served.port, { environmentId: thread.environmentId, pid: target.pid, startedAt: target.startedAt });
+                }
+              }
             } else if (result === "failed") {
               issues.push(`${thread.title}: port ${target.port} could not be stopped`);
             }

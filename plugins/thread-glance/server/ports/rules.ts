@@ -1,6 +1,6 @@
 // What the ports snapshot holds and who it serves: the ownership rule, the
 // snapshot built from machines' replies, and the auto-settle hold-back. Pure.
-import type { HostListener, PortListener, PortsSnapshot } from "../../shared/ports";
+import type { HostListener, PortListener, PortsSnapshot, PortTarget } from "../../shared/ports";
 import type { EnvironmentLocation } from "./environments";
 
 /** What the last scan of a machine found. */
@@ -11,6 +11,8 @@ export interface PortsView {
   snapshot: PortsSnapshot;
   /** Machine and path of the environment of each non-archived thread that has a path. */
   locations: ReadonlyMap<string, EnvironmentLocation>;
+  /** Environments bb could not be asked about, so their workspace is unknown; unlike one with no path, they cannot be scanned. */
+  unresolved: ReadonlySet<string>;
   /** How the last read of each machine ended. A machine missing here has not been read. */
   hostStatus: ReadonlyMap<string, HostStatus>;
   /** False when the threads or environments could not be read, so nothing is known of any machine. */
@@ -78,7 +80,7 @@ export function ownedListener(
   snapshot: PortsSnapshot,
   environmentId: string,
   threadId: string,
-  target: { port: number; pid: number; startedAt: number },
+  target: PortTarget,
 ): PortListener | undefined {
   return snapshot.environments[environmentId]?.listeners.find(
     (listener) =>
@@ -93,7 +95,7 @@ export function ownedListener(
 export function listedListener(
   snapshot: PortsSnapshot,
   environmentId: string,
-  target: { port: number; pid: number; startedAt: number },
+  target: PortTarget,
 ): PortListener | undefined {
   return snapshot.environments[environmentId]?.listeners.find(
     (listener) => listener.port === target.port && listener.pid === target.pid && listener.startedAt === target.startedAt,
@@ -105,8 +107,8 @@ export function ownedPortTargets(
   snapshot: PortsSnapshot,
   environmentId: string,
   threadId: string,
-): { port: number; pid: number; startedAt: number; process: string | null }[] {
-  const targets: { port: number; pid: number; startedAt: number; process: string | null }[] = [];
+): (PortTarget & { process: string | null })[] {
+  const targets: (PortTarget & { process: string | null })[] = [];
   for (const listener of snapshot.environments[environmentId]?.listeners ?? []) {
     if (listener.ownerThreadId === threadId && listener.pid !== null && listener.startedAt !== null) {
       targets.push({ port: listener.port, pid: listener.pid, startedAt: listener.startedAt, process: listener.process });
@@ -115,9 +117,13 @@ export function ownedPortTargets(
   return targets;
 }
 
-/** Whether the machine of the environment answered the last read, or has nothing to scan (Windows). */
+/**
+ * Whether the environment could be checked in the last read: its machine
+ * answered or has nothing to scan (Windows), or it has no path. False when
+ * the machine failed, or bb could not say where the environment is.
+ */
 export function isScannable(view: PortsView, environmentId: string): boolean {
-  if (!view.complete) return false;
+  if (!view.complete || view.unresolved.has(environmentId)) return false;
   const location = view.locations.get(environmentId);
   if (location === undefined) return true;
   const status = view.hostStatus.get(location.hostId);
@@ -156,4 +162,15 @@ export function holdBackThreads(threads: readonly HoldBackThread[], view: PortsV
     }
   }
   return held;
+}
+
+/** The targets of `targets` that name a distinct process, the first port of each: one process serving two ports gets one signal. */
+export function distinctProcesses<T extends PortTarget>(targets: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return targets.filter((target) => {
+    const key = `${target.pid}:${target.startedAt}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

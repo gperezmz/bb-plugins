@@ -36,6 +36,7 @@ function macos(): FakeSystem {
     platform: "darwin",
     commands: {
       [LSOF]: "p4242\ncnode\nf21\nn127.0.0.1:5173\n",
+      [`${LSOF} -a -p 4242`]: "p4242\ncnode\nf21\nn127.0.0.1:5173\n",
       "lsof -a -d cwd -Fn -p 4242": "p4242\nfcwd\nn/work/app/web\n",
       "ps -ww -o lstart=,comm= -p 4242": "Sat Oct 11 07:04:05 2026 /usr/local/bin/node\n",
       "ps -ww -o command= -p 4242": `${command}\n`,
@@ -46,6 +47,7 @@ function macos(): FakeSystem {
 
 /** The plugin over a fake bb whose threads hold one idle thread, working in /work/app, and whose host entry is the real one over `system`. */
 async function load(system: FakeSystem, options: { threads?: ReturnType<typeof listedThread>[]; hostFails?: boolean } = {}) {
+  const environmentLookup = { fails: false };
   const kill = vi.fn();
   const entry = createHostEntry(createSystemProbe(system), kill);
   const replies: unknown[] = [];
@@ -56,6 +58,7 @@ async function load(system: FakeSystem, options: { threads?: ReturnType<typeof l
   const sdk = sdkWith(() => threads, () => [], {
     environments: {
       async get({ environmentId }: { environmentId: string }) {
+        if (environmentLookup.fails) throw new Error("bb is busy");
         const thread = threads.find((candidate) => candidate.environmentId === environmentId);
         return { id: environmentId, hostId: "host-1", path: thread?.environmentPath ?? null };
       },
@@ -90,7 +93,7 @@ async function load(system: FakeSystem, options: { threads?: ReturnType<typeof l
     },
   });
   await plugin(host.bb);
-  return { host, harness: host.harness, kill, replies, closes };
+  return { host, harness: host.harness, kill, replies, closes, environmentLookup };
 }
 
 const ports = async (harness: Awaited<ReturnType<typeof load>>["harness"], fresh = true) =>
@@ -168,6 +171,32 @@ describe("the ports RPC and channel", () => {
       expect(harness.inspection.experimental_hostRpcCalls.filter((call) => call.method === "scan")).toHaveLength(2);
       expect(after.value.environments).toEqual(before.value.environments);
       expect(after.value.failedHosts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("when bb cannot say where the environments are", () => {
+  const DAY = 24 * 60 * 60 * 1_000;
+
+  it("answers the previous snapshot, and auto-settle settles nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const old = Date.now() - 9 * DAY;
+      const { harness, environmentLookup } = await load(linux(), {
+        threads: [
+          listedThread("thr_abc123", { environmentId: "env-1", environmentHostId: "host-1", environmentPath: "/work/app", createdAt: old, updatedAt: old, latestAttentionAt: old }),
+        ],
+      });
+      const before = await ports(harness);
+      expect(Object.keys(before.value.environments)).toEqual(["env-1"]);
+      environmentLookup.fails = true;
+      // Past the environment cache (60 s) and the snapshot (30 s).
+      vi.setSystemTime(Date.now() + 61_000);
+      const after = await ports(harness, false);
+      expect(after.value.environments).toEqual(before.value.environments);
+      expect(((await harness.behavior.callRpc("runAutoSettle", {})) as { settled: string[] }).settled).toEqual([]);
     } finally {
       vi.useRealTimers();
     }

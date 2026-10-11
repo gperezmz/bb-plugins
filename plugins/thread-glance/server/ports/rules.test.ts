@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_PORTS, type PortListener, type PortsSnapshot } from "../../shared/ports";
-import { holdBackThreads, isScannable, ownerInEnvironment, snapshotEnvironments, snapshotKey, type HostStatus, type PortsView } from "./rules";
+import { distinctProcesses, holdBackThreads, isScannable, ownerInEnvironment, snapshotEnvironments, snapshotKey, type HostStatus, type PortsView } from "./rules";
 import { hostListener } from "./testing/fakes";
 
 const listener = (overrides: Partial<PortListener> = {}): PortListener => ({
@@ -19,10 +19,12 @@ function view(options: {
   locations?: Record<string, string>;
   status?: Record<string, HostStatus>;
   complete?: boolean;
+  unresolved?: string[];
 }): PortsView {
   return {
     snapshot: { ...EMPTY_PORTS, environments: options.environments ?? {} },
     locations: new Map(Object.entries(options.locations ?? {}).map(([id, hostId]) => [id, { hostId, path: `/${id}` }])),
+    unresolved: new Set(options.unresolved ?? []),
     hostStatus: new Map(Object.entries(options.status ?? {})),
     complete: options.complete ?? true,
   };
@@ -101,6 +103,12 @@ describe("holdBackThreads (AC7)", () => {
     expect([...holdBackThreads(threads, view({ locations: {}, complete: false }))].sort()).toEqual(["a", "b"]);
   });
 
+  it("holds back a thread whose environment could not be resolved, but not one whose environment has no path", () => {
+    const threads = [{ id: "a", environmentId: "unknown" }, { id: "b", environmentId: "nopath" }];
+    const held = holdBackThreads(threads, view({ locations: {}, unresolved: ["unknown"] }));
+    expect([...held]).toEqual(["a"]);
+  });
+
   it("holds back nothing for a thread with no listener, an unsupported machine, or an environment with no path", () => {
     const threads = [{ id: "a", environmentId: "e1" }, { id: "b", environmentId: "nopath" }];
     expect(holdBackThreads(threads, view({ locations: { e1: "win" }, status: { win: "unsupported" } })).size).toBe(0);
@@ -116,5 +124,17 @@ describe("holdBackThreads (AC7)", () => {
 
   it("treats a machine that was never read as unscannable", () => {
     expect(isScannable(view({ locations: { e: "h" } }), "e")).toBe(false);
+  });
+});
+
+describe("distinctProcesses", () => {
+  it("keeps the first port of each process, told by PID and start time", () => {
+    const targets = [
+      { port: 1, pid: 10, startedAt: 1 },
+      { port: 2, pid: 10, startedAt: 1 },
+      { port: 3, pid: 10, startedAt: 2 },
+      { port: 4, pid: 11, startedAt: 1 },
+    ];
+    expect(distinctProcesses(targets).map((target) => target.port)).toEqual([1, 3, 4]);
   });
 });

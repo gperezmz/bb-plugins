@@ -130,6 +130,12 @@ describe("previewClean (AC8)", () => {
     });
   });
 
+  it("leaves out a thread whose environment bb could not resolve, unlike the others", async () => {
+    const w = world();
+    w.environments.failIds.add("env-a");
+    expect(idsIn(await w.clean.preview(null))).toEqual(["thr_b"]);
+  });
+
   it("lists terminals only for a thread whose machine cannot be scanned, and records no issue yet", async () => {
     const w = world({ machines: { h1: new Error("offline") } });
     const preview = await w.clean.preview(null);
@@ -284,6 +290,58 @@ describe("runClean (AC8)", () => {
       expect(result.portRequests).toBe(0);
       expect(w.host.signals.map((signal) => signal.port)).toEqual([4000]);
       expect(result.issues).toEqual([]);
+    });
+
+    describe("a thread with owned ports", () => {
+      /** Thread A has two ports and no terminal. */
+      const portsOnly = () => world({ terminals: {} });
+      const skip = "Alpha: skipped, it is no longer settled or its workspace is shared";
+
+      it("is not signalled when it is un-settled after the preview", async () => {
+        const w = portsOnly();
+        const preview = await w.clean.preview("project-1");
+        w.lifecycle.putMany([["thr_a", null]]);
+        const result = await w.clean.run(preview.token);
+        expect(result).toMatchObject({ portRequests: 0, issues: [skip] });
+        expect(w.host.signals).toEqual([]);
+      });
+
+      it("is not signalled when an active thread now works in its workspace", async () => {
+        const w = portsOnly();
+        const preview = await w.clean.preview("project-1");
+        w.threads.threads.set("thr_x", settled("thr_x", "env-a", { status: "active", runtimeStatus: "active" }));
+        const result = await w.clean.run(preview.token);
+        expect(result).toMatchObject({ portRequests: 0, issues: [skip] });
+        expect(w.host.signals).toEqual([]);
+      });
+
+      it("is not signalled when it is un-settled while its last terminal closes: the re-check before the port stops it", async () => {
+        const w = world({ terminals: { thr_a: [terminal("t-a1")] } });
+        const preview = await w.clean.preview("project-1");
+        w.runtime.onCall = (call) => {
+          if (call === "force t-a1") w.lifecycle.putMany([["thr_a", null]]);
+        };
+        const result = await w.clean.run(preview.token);
+        expect(w.runtime.forceClosed).toEqual(["t-a1"]);
+        expect(result).toMatchObject({ closedTerminals: 1, portRequests: 0, issues: [skip] });
+        expect(w.host.signals).toEqual([]);
+      });
+    });
+
+    it("signals a process serving two ports once, and reports both ports while it listens", async () => {
+      const w = world({ terminals: {} });
+      w.host.machines.set("h1", {
+        supported: true,
+        listeners: [
+          hostListener({ port: 5173, pid: 10, startedAt: 111, workspace: "/work/a", ownerThreadId: "thr_a" }),
+          hostListener({ port: 24678, pid: 10, startedAt: 111, workspace: "/work/a", ownerThreadId: "thr_a" }),
+        ],
+      });
+      const preview = await w.clean.preview(null);
+      expect(preview.threads[0].ports.map((port) => port.port)).toEqual([5173, 24678]);
+      const result = await w.clean.run(preview.token);
+      expect(result).toMatchObject({ portRequests: 1, stillListening: [5173, 24678] });
+      expect(w.host.signals).toHaveLength(1);
     });
 
     it("skips a terminal bb no longer lists as live", async () => {

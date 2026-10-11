@@ -9,18 +9,28 @@ export interface EnvironmentLocation {
   path: string;
 }
 
+/** What was read for some environments: their locations, and the ids bb could not answer for. */
+export interface EnvironmentRead {
+  /** The location of each environment bb answered for; null for one with no path. */
+  found: Map<string, EnvironmentLocation | null>;
+  /** The environments bb failed to answer for, which say nothing about their paths. */
+  failed: Set<string>;
+}
+
 export interface EnvironmentSource {
-  /**
-   * The location of each environment of `ids` that bb answers for: null for
-   * one with no path, absent for one bb does not know. Rejects when bb cannot
-   * answer for any of them.
-   */
-  read(ids: readonly string[]): Promise<Map<string, EnvironmentLocation | null>>;
+  /** Reads the environments of `ids`. Rejects when bb cannot answer for any of them. */
+  read(ids: readonly string[]): Promise<EnvironmentRead>;
+}
+
+export interface ResolvedEnvironments {
+  /** The locations of the environments that have one. */
+  locations: Map<string, EnvironmentLocation>;
+  /** The environments that could not be resolved: unlike one with no path, their workspace is unknown. */
+  failed: Set<string>;
 }
 
 export interface EnvironmentDirectory {
-  /** The locations of the environments of `ids` that have one. An environment bb could not answer for is absent. */
-  resolve(ids: readonly string[]): Promise<Map<string, EnvironmentLocation>>;
+  resolve(ids: readonly string[]): Promise<ResolvedEnvironments>;
 }
 
 /** How long a location is kept, and how many. */
@@ -30,6 +40,8 @@ export const MAX_CACHED_ENVIRONMENTS = 5_000;
 const LISTING_THRESHOLD = 16;
 const GET_CONCURRENCY = 8;
 const LIST_PAGE_SIZE = 500;
+/** The most environments asked for one by one in a read. */
+const MAX_GETS = 500;
 const MAX_LIST_PAGES = 40;
 
 export function createSdkEnvironments(bb: Pick<BbPluginApi, "sdk">): EnvironmentSource {
@@ -45,30 +57,31 @@ export function createSdkEnvironments(bb: Pick<BbPluginApi, "sdk">): Environment
     }
   }
 
-  async function getEach(ids: readonly string[], found: Map<string, EnvironmentLocation | null>): Promise<void> {
+  async function getEach(ids: readonly string[], found: Map<string, EnvironmentLocation | null>, failed: Set<string>): Promise<void> {
     const queue = [...ids];
-    let failures = 0;
     const worker = async () => {
       for (let id = queue.pop(); id !== undefined; id = queue.pop()) {
         try {
           found.set(id, locationOf(await environments.get({ environmentId: id })));
         } catch {
-          failures += 1;
+          failed.add(id);
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(GET_CONCURRENCY, queue.length) }, worker));
-    if (failures === ids.length && ids.length > 0) throw new Error("bb could not answer for any environment");
   }
 
   return {
     async read(ids) {
       const found = new Map<string, EnvironmentLocation | null>();
+      const failed = new Set<string>();
       if (ids.length > LISTING_THRESHOLD) await listAll(new Set(ids), found);
       const missing = ids.filter((id) => !found.has(id));
-      // Whatever a listing did not show is asked for one by one, up to a bound.
-      await getEach(missing.slice(0, LIST_PAGE_SIZE), found);
-      return found;
+      // Whatever a listing did not show is asked for one by one, up to a bound; the rest stays unresolved.
+      await getEach(missing.slice(0, MAX_GETS), found, failed);
+      for (const id of missing.slice(MAX_GETS)) failed.add(id);
+      if (failed.size === ids.length && ids.length > 0) throw new Error("bb could not answer for any environment");
+      return { found, failed };
     },
   };
 }
@@ -94,15 +107,18 @@ export function cachedEnvironments(source: EnvironmentSource, now: () => number 
         const kept = cache.get(id);
         return kept === undefined || at - kept.at >= ENVIRONMENT_TTL_MS;
       });
+      const failed = new Set<string>();
       if (stale.length > 0) {
-        for (const [id, location] of await source.read(stale)) remember(id, location, at);
+        const read = await source.read(stale);
+        for (const [id, location] of read.found) remember(id, location, at);
+        for (const id of read.failed) failed.add(id);
       }
-      const resolved = new Map<string, EnvironmentLocation>();
+      const locations = new Map<string, EnvironmentLocation>();
       for (const id of unique) {
         const kept = cache.get(id);
-        if (kept?.location != null && at - kept.at < ENVIRONMENT_TTL_MS) resolved.set(id, kept.location);
+        if (kept?.location != null && at - kept.at < ENVIRONMENT_TTL_MS && !failed.has(id)) locations.set(id, kept.location);
       }
-      return resolved;
+      return { locations, failed };
     },
   };
 }

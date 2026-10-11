@@ -9,7 +9,7 @@ import type { LifecycleStore } from "../lifecycle-store";
 import type { ThreadGateway, ThreadPresence } from "../threads";
 import type { PortsEngine } from "./engine";
 import type { PortsHost } from "./host";
-import { isScannable, listedListener, ownedListener, ownedPortTargets, type PortsView } from "./rules";
+import { distinctProcesses, isScannable, listedListener, ownedListener, ownedPortTargets, type PortsView } from "./rules";
 
 export interface PortActions {
   /** Stop on one listener of the thread's environment. Rejects when the host cannot be asked. */
@@ -35,12 +35,23 @@ export function isStillSettled(row: LifecycleRow | null, thread: Pick<ThreadPres
 export function createPortActions(deps: PortActionDeps): PortActions {
   const { threads, lifecycle, engine, host } = deps;
 
-  /** The thread's environment and its place on its machine, or null for a thread bb no longer lists or one without a path. */
+  /**
+   * The thread's environment and its place on its machine, or null for a
+   * thread bb no longer lists or one without a path. Rejects when bb cannot
+   * say where the environment is.
+   */
   async function placeOf(threadId: string, view: PortsView): Promise<{ environmentId: string; hostId: string; path: string } | null> {
     const thread = (await threads.snapshot()).find((candidate) => candidate.id === threadId);
     if (thread === undefined || thread.environmentId === null) return null;
-    const location = view.locations.get(thread.environmentId) ?? (await engine.locate([thread.environmentId])).get(thread.environmentId);
-    return location === undefined ? null : { environmentId: thread.environmentId, ...location };
+    const environmentId = thread.environmentId;
+    if (view.unresolved.has(environmentId)) throw new Error("Ports could not be checked");
+    let location = view.locations.get(environmentId);
+    if (location === undefined) {
+      const resolved = await engine.locate([environmentId]);
+      if (resolved.failed.has(environmentId)) throw new Error("Ports could not be checked");
+      location = resolved.locations.get(environmentId);
+    }
+    return location === undefined ? null : { environmentId, ...location };
   }
 
   async function stillSettled(threadId: string): Promise<boolean> {
@@ -75,7 +86,8 @@ export function createPortActions(deps: PortActionDeps): PortActions {
       const place = await placeOf(threadId, view);
       if (place === null) return { outcome: "none" };
       if (!isScannable(view, place.environmentId)) throw new Error("Ports could not be checked");
-      const matching = ports.filter((target) => ownedListener(view.snapshot, place.environmentId, threadId, target) !== undefined);
+      // A process serving two ports gets one signal.
+      const matching = distinctProcesses(ports.filter((target) => ownedListener(view.snapshot, place.environmentId, threadId, target) !== undefined));
       if (matching.length === 0) return { outcome: "none" };
 
       let sent = 0;

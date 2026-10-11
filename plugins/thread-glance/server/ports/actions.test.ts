@@ -70,6 +70,15 @@ describe("Stop (AC4)", () => {
     expect(await w.actions.stop({ threadId: "thr_a", port: 8080, pid: 1, startedAt: 1 })).toEqual({ outcome: "refused" });
   });
 
+  it("rejects without signalling when bb could not say where the environment is", async () => {
+    const w = world();
+    await w.engine.read({ fresh: false });
+    w.environments.failIds.add("env-a");
+    w.clock.advance(60_000);
+    await expect(w.actions.stop({ threadId: "thr_b", port: 3000, pid: 20, startedAt: 222 })).rejects.toThrow();
+    expect(w.host.signals).toEqual([]);
+  });
+
   it("says gone when the host finds the process changed since the scan (a reused PID)", async () => {
     const w = world();
     w.host.signalResult = () => "changed";
@@ -100,6 +109,12 @@ describe("ownedPorts", () => {
 
   it("rejects when the machine cannot be scanned", async () => {
     const w = world({ machines: { h1: new Error("offline") } });
+    await expect(w.actions.owned("thr_a")).rejects.toThrow("Ports could not be checked");
+  });
+
+  it("rejects when bb could not say where the environment is", async () => {
+    const w = world();
+    w.environments.failIds.add("env-a");
     await expect(w.actions.owned("thr_a")).rejects.toThrow("Ports could not be checked");
   });
 
@@ -180,6 +195,27 @@ describe("Close (AC6)", () => {
     });
     two.host.signalResult = (signal) => (signal.port === 5173 ? "sent" : "failed");
     expect(await two.actions.close({ threadId: "thr_a", ports: [owned, { port: 5174, pid: 11, startedAt: 112 }] })).toEqual({ outcome: "partial" });
+  });
+
+  it("signals a process serving two owned ports once and reports requested", async () => {
+    const w = world();
+    w.host.machines.set("h1", {
+      supported: true,
+      listeners: [
+        hostListener({ port: 5173, pid: 10, startedAt: 111, ownerThreadId: "thr_a" }),
+        hostListener({ port: 24678, pid: 10, startedAt: 111, ownerThreadId: "thr_a" }),
+      ],
+    });
+    const outcome = await w.actions.close({ threadId: "thr_a", ports: [owned, { port: 24678, pid: 10, startedAt: 111 }] });
+    expect(outcome).toEqual({ outcome: "requested" });
+    expect(w.host.signals.map((signal) => signal.pid)).toEqual([10]);
+  });
+
+  it("rejects, rather than answering none, when bb could not say where the environment is", async () => {
+    const w = world();
+    w.environments.failIds.add("env-a");
+    await expect(w.actions.close({ threadId: "thr_a", ports: [owned] })).rejects.toThrow("Ports could not be checked");
+    expect(w.host.signals).toEqual([]);
   });
 
   it("rejects when the lookup fails or the call throws", async () => {

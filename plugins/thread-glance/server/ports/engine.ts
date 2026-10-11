@@ -2,10 +2,10 @@
 // up to 30 s, with a backoff for a machine that fails. Rows never scan; a
 // window asks for the snapshot, and the engine scans only when what it holds
 // is too old.
-import { EMPTY_PORTS, MAX_WORKSPACES_PER_SCAN, type PortsSnapshot } from "../../shared/ports";
-import type { HostListener } from "../../shared/ports";
+import { inBatches } from "../../shared/batches";
+import { EMPTY_PORTS, MAX_WORKSPACES_PER_SCAN, type HostListener, type PortsSnapshot } from "../../shared/ports";
 import type { ThreadGateway } from "../threads";
-import type { EnvironmentDirectory, EnvironmentLocation } from "./environments";
+import type { EnvironmentDirectory, EnvironmentLocation, ResolvedEnvironments } from "./environments";
 import type { PortsHost } from "./host";
 import { snapshotEnvironments, snapshotKey, type HostStatus, type PortsView } from "./rules";
 
@@ -16,8 +16,6 @@ export const FRESH_TTL_MS = 2_000;
 export const BACKOFF_FIRST_MS = 30_000;
 export const BACKOFF_MAX_MS = 5 * 60_000;
 export const BACKOFF_MAX_FAILURES = 5;
-/** When every machine fails, the last snapshot stays this long; after it the indicators clear. */
-export const KEEP_LAST_MS = 5 * 60_000;
 const MAX_TRACKED_HOSTS = 200;
 const SCAN_CONCURRENCY = 4;
 
@@ -28,8 +26,8 @@ export interface PortsEngine {
   refresh(): Promise<PortsView>;
   /** The snapshot as it stands, without scanning. */
   current(): PortsView;
-  /** The locations of environments, from the cache bb's answers fill. */
-  locate(environmentIds: readonly string[]): Promise<ReadonlyMap<string, EnvironmentLocation>>;
+  /** The locations of environments, from the cache bb's answers fill, and the ones that could not be resolved. */
+  locate(environmentIds: readonly string[]): Promise<ResolvedEnvironments>;
 }
 
 export interface PortsEngineDeps {
@@ -57,7 +55,7 @@ export function createPortsEngine(deps: PortsEngineDeps): PortsEngine {
   const now = deps.now ?? Date.now;
   const warn = deps.warn ?? (() => undefined);
   const backoffs = new Map<string, Backoff>();
-  let view: PortsView = { snapshot: EMPTY_PORTS, locations: new Map(), hostStatus: new Map(), complete: false };
+  let view: PortsView = { snapshot: EMPTY_PORTS, locations: new Map(), unresolved: new Set(), hostStatus: new Map(), complete: false };
   let readAt = Number.NEGATIVE_INFINITY;
   let published = snapshotKey(EMPTY_PORTS);
   let inFlight: Promise<PortsView> | null = null;
@@ -93,18 +91,14 @@ export function createPortsEngine(deps: PortsEngineDeps): PortsEngine {
     }
   }
 
-  /** The view when nothing new was learned: the last snapshot stays unless it is too old to show. */
+  /** The view when nothing new was learned: the last snapshot stays, however long, until a machine answers. */
   function keepLast(
-    at: number,
     hostStatus: ReadonlyMap<string, HostStatus>,
     complete: boolean,
     locations: ReadonlyMap<string, EnvironmentLocation> = view.locations,
+    unresolved: ReadonlySet<string> = new Set(),
   ): PortsView {
-    const tooOld = at - view.snapshot.at > KEEP_LAST_MS;
-    const failedHosts = [...hostStatus].filter(([, status]) => status === "failed").map(([hostId]) => hostId);
-    const snapshot: PortsSnapshot = tooOld ? { at, environments: {}, failedHosts } : view.snapshot;
-    if (tooOld) publishIfChanged(snapshot);
-    return { snapshot, locations, hostStatus, complete };
+    return { snapshot: view.snapshot, locations, unresolved, hostStatus, complete };
   }
 
   async function cycle(): Promise<PortsView> {
@@ -112,13 +106,17 @@ export function createPortsEngine(deps: PortsEngineDeps): PortsEngine {
     readAt = at;
     let threads;
     let locations: ReadonlyMap<string, EnvironmentLocation>;
+    let unresolved: ReadonlySet<string>;
     try {
       threads = await deps.threads.snapshot();
-      locations = await deps.environments.resolve([...new Set(threads.flatMap((thread) => (thread.environmentId === null ? [] : [thread.environmentId])))]);
+      const resolved = await deps.environments.resolve([...new Set(threads.flatMap((thread) => (thread.environmentId === null ? [] : [thread.environmentId])))]);
+      locations = resolved.locations;
+      unresolved = resolved.failed;
     } catch {
       warn("ports: could not read the threads or their environments");
-      return keepLast(at, new Map(), false);
+      return keepLast(new Map(), false);
     }
+    if (unresolved.size > 0) warn(`ports: could not resolve ${unresolved.size} environments`);
 
     const workspaces = new Map<string, Set<string>>();
     for (const { hostId, path } of locations.values()) {
@@ -128,24 +126,26 @@ export function createPortsEngine(deps: PortsEngineDeps): PortsEngine {
     }
     const hostIds = [...workspaces.keys()];
     const replies = new Map<string, Awaited<ReturnType<typeof scanHost>>>();
-    for (let start = 0; start < hostIds.length; start += SCAN_CONCURRENCY) {
-      await Promise.all(
-        hostIds.slice(start, start + SCAN_CONCURRENCY).map(async (hostId) => {
-          replies.set(hostId, await scanHost(hostId, [...(workspaces.get(hostId) ?? [])].slice(0, MAX_WORKSPACES_PER_SCAN), at));
-        }),
-      );
-    }
+    await inBatches(hostIds, SCAN_CONCURRENCY, async (hostId) => {
+      replies.set(hostId, await scanHost(hostId, [...(workspaces.get(hostId) ?? [])].slice(0, MAX_WORKSPACES_PER_SCAN), at));
+    });
 
     const hostStatus = new Map([...replies].map(([hostId, reply]) => [hostId, reply.status] as const));
     const failedHosts = hostIds.filter((hostId) => hostStatus.get(hostId) === "failed").sort();
-    if (hostIds.length > 0 && failedHosts.length === hostIds.length) return keepLast(at, hostStatus, true, locations);
+    if (hostIds.length > 0 && failedHosts.length === hostIds.length) return keepLast(hostStatus, true, locations, unresolved);
 
     const scans = new Map<string, readonly HostListener[]>();
     for (const [hostId, reply] of replies) if (reply.listeners !== undefined) scans.set(hostId, reply.listeners);
     const threadEnvironments = new Map(threads.map((thread) => [thread.id, thread.environmentId] as const));
-    const snapshot: PortsSnapshot = { at, environments: snapshotEnvironments({ locations, scans, threadEnvironments }), failedHosts };
+    const environments = snapshotEnvironments({ locations, scans, threadEnvironments });
+    // An environment bb could not be asked about keeps what the last snapshot showed for it.
+    for (const environmentId of unresolved) {
+      const kept = view.snapshot.environments[environmentId];
+      if (kept !== undefined) environments[environmentId] = kept;
+    }
+    const snapshot: PortsSnapshot = { at, environments, failedHosts };
     publishIfChanged(snapshot);
-    return { snapshot, locations, hostStatus, complete: true };
+    return { snapshot, locations, unresolved, hostStatus, complete: true };
   }
 
   function start(): Promise<PortsView> {

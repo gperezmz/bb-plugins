@@ -8,7 +8,6 @@ import {
   backoffDelay,
   createPortsEngine,
   FRESH_TTL_MS,
-  KEEP_LAST_MS,
   SNAPSHOT_TTL_MS,
 } from "./engine";
 import { cachedEnvironments, ENVIRONMENT_TTL_MS, MAX_CACHED_ENVIRONMENTS, type EnvironmentSource } from "./environments";
@@ -168,6 +167,36 @@ describe("publishing", () => {
   });
 });
 
+describe("an environment bb cannot be asked about", () => {
+  const twoEnvironments = () =>
+    setup(
+      { h1: [hostListener({ workspace: "/a", ownerThreadId: "t1" }), hostListener({ workspace: "/b", port: 9, pid: 9 })] },
+      [thread("t1", "e1"), thread("t2", "e2")],
+      { e1: { hostId: "h1", path: "/a" }, e2: { hostId: "h1", path: "/b" } },
+    );
+
+  it("is unscannable, keeps what the last snapshot showed for it, and leaves the others alone", async () => {
+    const { engine, environments, clock } = twoEnvironments();
+    const before = await engine.read({ fresh: false });
+    environments.locations.delete("e2");
+    environments.failIds.add("e1");
+    clock.advance(SNAPSHOT_TTL_MS + 1);
+    const view = await engine.read({ fresh: false });
+    expect(view.unresolved).toEqual(new Set(["e1"]));
+    expect(view.snapshot.environments.e1).toEqual(before.snapshot.environments.e1);
+    expect(view.snapshot.environments.e2).toBeUndefined();
+    expect(view.complete).toBe(true);
+  });
+
+  it("is told apart from an environment that truly has no path", async () => {
+    const { engine, environments } = twoEnvironments();
+    environments.locations.delete("e1");
+    const view = await engine.read({ fresh: false });
+    expect(view.unresolved.size).toBe(0);
+    expect(view.locations.has("e1")).toBe(false);
+  });
+});
+
 describe("a machine that fails (AC3)", () => {
   const twoMachines = () =>
     setup(
@@ -244,15 +273,19 @@ describe("a machine that fails (AC3)", () => {
     expect(view.complete).toBe(false);
   });
 
-  it("clears the indicators when every machine has failed for longer than the snapshot is kept", async () => {
+  it("keeps the last snapshot for as long as every machine fails, until one answers", async () => {
     const { engine, host, clock, published } = setup();
-    await engine.read({ fresh: false });
+    const before = (await engine.read({ fresh: false })).snapshot;
     host.machines.set("h1", new Error("offline"));
-    clock.advance(KEEP_LAST_MS + 1);
-    const view = await engine.read({ fresh: false });
-    expect(view.snapshot.environments).toEqual({});
-    expect(view.snapshot.failedHosts).toEqual(["h1"]);
-    expect(published.at(-1)?.failedHosts).toEqual(["h1"]);
+    for (let hour = 0; hour < 3; hour++) {
+      clock.advance(60 * 60_000);
+      expect((await engine.read({ fresh: false })).snapshot).toBe(before);
+    }
+    expect(published).toHaveLength(1);
+    host.machines.set("h1", { supported: true, listeners: [] });
+    clock.advance(BACKOFF_MAX_MS);
+    expect((await engine.read({ fresh: false })).snapshot.environments).toEqual({});
+    expect(published).toHaveLength(2);
   });
 
   it("logs the machine and the count, nothing a machine said", async () => {
@@ -277,7 +310,9 @@ describe("the environment cache", () => {
     const known: EnvironmentSource = {
       async read(ids) {
         reads.push([...ids]);
-        return new Map(ids.map((id) => [id, id === "bare" ? null : { hostId: "h", path: `/p/${id}` }]));
+        const failed = new Set(ids.filter((id) => id.startsWith("broken")));
+        const found = new Map(ids.filter((id) => !failed.has(id)).map((id) => [id, id === "bare" ? null : { hostId: "h", path: `/p/${id}` }] as const));
+        return { found, failed };
       },
     };
     return { reads, known };
@@ -287,13 +322,24 @@ describe("the environment cache", () => {
     const clock = createClock();
     const { reads, known } = source();
     const directory = cachedEnvironments(known, clock.read);
-    expect([...(await directory.resolve(["a", "bare"]))]).toEqual([["a", { hostId: "h", path: "/p/a" }]]);
+    expect([...(await directory.resolve(["a", "bare"])).locations]).toEqual([["a", { hostId: "h", path: "/p/a" }]]);
     clock.advance(ENVIRONMENT_TTL_MS - 1);
     await directory.resolve(["a", "bare", "a"]);
     expect(reads).toEqual([["a", "bare"]]);
     clock.advance(1);
     await directory.resolve(["a"]);
     expect(reads).toEqual([["a", "bare"], ["a"]]);
+  });
+
+  it("reports the environments bb could not answer for, apart from those with no path, and asks again for them", async () => {
+    const clock = createClock();
+    const { reads, known } = source();
+    const directory = cachedEnvironments(known, clock.read);
+    const first = await directory.resolve(["a", "bare", "broken1"]);
+    expect([...first.failed]).toEqual(["broken1"]);
+    expect([...first.locations.keys()]).toEqual(["a"]);
+    await directory.resolve(["a", "bare", "broken1"]);
+    expect(reads).toEqual([["a", "bare", "broken1"], ["broken1"]]);
   });
 
   it("holds a bounded number of locations", async () => {
