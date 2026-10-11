@@ -104,7 +104,10 @@ describe("AC1: the port indicator and the Hover card's list", () => {
     await openHover("a");
     const list = hoverCard().querySelector<HTMLElement>("[data-ports-list]")!;
     expect(list.querySelectorAll("li")).toHaveLength(6);
-    expect(list.style.maxHeight).toBe("6rem");
+    // The cap is four entries' height in the same unit, so a fifth entry scrolls.
+    const entry = list.querySelector<HTMLElement>("li")!;
+    expect(entry.style.height).toBe("calc(var(--spacing) * 6)");
+    expect(list.style.maxHeight).toBe("calc(var(--spacing) * 24)");
     expect(list.className).toContain("overflow-y-auto");
   });
 

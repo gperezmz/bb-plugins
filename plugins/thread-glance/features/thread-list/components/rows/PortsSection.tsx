@@ -17,6 +17,13 @@ export const STOP_ARMED_MS = 4_000;
 
 /** The entries shown before the list scrolls. */
 const VISIBLE_ENTRIES = 4;
+/**
+ * One entry's height, in bb's spacing unit as `h-6` would give it. The list's
+ * cap is the same unit times the entries, so it holds four whatever bb sets
+ * the unit to.
+ */
+export const ENTRY_HEIGHT = "calc(var(--spacing) * 6)";
+export const LIST_MAX_HEIGHT = `calc(var(--spacing) * ${6 * VISIBLE_ENTRIES})`;
 
 const STOP_BUTTON =
   "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring";
@@ -41,7 +48,7 @@ function Entry({
   const process = processLabel(listener);
   const port = `:${listener.port}`;
   return (
-    <li data-port-entry={listener.port} className="flex h-6 min-w-0 items-center gap-2">
+    <li data-port-entry={listener.port} style={{ height: ENTRY_HEIGHT }} className="flex min-w-0 shrink-0 items-center gap-2">
       {href === null ? (
         <span className="font-mono tabular-nums">{port}</span>
       ) : (
@@ -92,7 +99,7 @@ export function PortsSection({ threadId, environmentId }: { threadId: string; en
       }}
     >
       <span className="font-medium">Workspace ports ({environment.listeners.length})</span>
-      <ul data-ports-list="" style={{ maxHeight: `${VISIBLE_ENTRIES * 1.5}rem` }} className="flex flex-col overflow-y-auto">
+      <ul data-ports-list="" style={{ maxHeight: LIST_MAX_HEIGHT }} className="flex flex-col overflow-y-auto">
         {environment.listeners.map((listener) => {
           const key = listenerKey(listener);
           return (
