@@ -34,7 +34,8 @@ export function Row({ label, description, experimental, error, labelFor, childre
           <label htmlFor={labelFor}>{label}</label>
           {experimental ? <span className="ml-2 rounded-sm bg-state-hover px-1.5 py-0.5 text-[10px] text-subtle-foreground">Experimental</span> : null}
         </p>
-        {description !== undefined ? <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">{description}</p> : null}
+        {/* A div, not a p: a description can hold a list, which a p cannot. */}
+        {description !== undefined ? <div className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">{description}</div> : null}
         {error !== undefined ? (
           <p role="alert" className="mt-1 text-xs text-destructive">
             {error}
