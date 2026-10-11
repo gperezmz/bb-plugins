@@ -14,6 +14,8 @@ export interface ServerThread extends ShelfThread {
   id: string;
   projectId: string;
   parentThreadId: string | null;
+  /** The environment the thread works in; null before one is attached. */
+  environmentId: string | null;
   /** bb's pin order key, null for a pin never reordered. */
   pinSortKey: string | null;
   pinnedAt: number | null;
@@ -55,6 +57,7 @@ export function toServerThread(thread: ListedThread): ServerThread {
     id: thread.id,
     projectId: thread.projectId,
     parentThreadId: thread.parentThreadId,
+    environmentId: thread.environmentId,
     pinSortKey: thread.pinSortKey,
     pinnedAt: thread.pinnedAt,
     isPinned: thread.pinnedAt !== null,
