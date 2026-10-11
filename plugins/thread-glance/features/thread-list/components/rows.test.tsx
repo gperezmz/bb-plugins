@@ -67,6 +67,20 @@ describe("renaming in place", () => {
     expect(m.host.sdkCalls.filter((call) => call.method === "threads.update")).toHaveLength(1);
   });
 
+  it("keeps focus when bb focuses the composer long after a double-click's first click", async () => {
+    const composer = document.body.appendChild(document.createElement("textarea"));
+    const m = await mount({ threads: [makeThread({ id: "a", title: "Old", ...fresh })] });
+    fireEvent.doubleClick(card("a").querySelector("a")!);
+    await flush();
+    const input = screen.getByRole("textbox", { name: "Rename Old" });
+    await act(async () => void (await new Promise((resolve) => setTimeout(resolve, 700))));
+    composer.focus();
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("textbox", { name: "Rename Old" })).toBe(input);
+    expect(m.host.sdkCalls.filter((call) => call.method === "threads.update")).toEqual([]);
+    composer.remove();
+  });
+
   it("cancels on Escape", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", title: "Old", ...fresh })] });
     fireEvent.doubleClick(card("a").querySelector("a")!);

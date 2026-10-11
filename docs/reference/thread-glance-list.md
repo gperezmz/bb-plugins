@@ -136,7 +136,7 @@ With **Project colors** on, a 2 px stripe at a row's left edge shows the project
 - Unread titles are bold; read idle titles are muted.
 - The open thread's row is highlighted, and a row open in another pane is tinted.
 - The **Unpin** button shows on hover, always on touch.
-- Double-click renames inline. Enter or leaving the field saves a trimmed, changed title; Escape cancels.
+- Double-click renames inline. The field keeps focus until you leave it, however long bb takes to open the thread; leaving is a click outside it or Tab, and switching to another window is not. Enter or leaving the field saves a trimmed, changed title; Escape cancels.
 - Inside a project group on Active, a card hides its project line ([Project sort](thread-glance-actions.md#active-sort)).
 
 ### Pull request badge

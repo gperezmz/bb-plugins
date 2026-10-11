@@ -2,8 +2,8 @@
 // The row's thread menus, with the host's menus as bb draws them: the context
 // menu puts its handler on the one element it wraps (Radix's `asChild`), so
 // what it wraps must be an element, not a component that draws none; and a
-// closing menu hands focus back to its trigger unless `onCloseAutoFocus`
-// stops it, which would take focus from a rename editor the menu opened.
+// closing menu hands focus back to its trigger, which the rename editor the
+// menu opened takes back.
 import { cloneElement, Children, type ReactElement, type ReactNode, type Ref } from "react";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
