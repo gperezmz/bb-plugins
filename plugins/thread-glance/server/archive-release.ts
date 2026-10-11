@@ -5,6 +5,7 @@
 import { isBusy } from "../shared/busy";
 import type { ThreadRuntime } from "./runtime";
 import type { ThreadGateway } from "./threads";
+import { errorMessage } from "./error-message";
 
 export interface ArchiveReleaseDeps {
   threads: Pick<ThreadGateway, "snapshot">;
@@ -22,7 +23,7 @@ export function createArchiveRelease(deps: ArchiveReleaseDeps): ArchiveRelease {
     try {
       await deps.runtime.stop(threadId);
     } catch (error) {
-      warn(`could not stop the runtime of ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      warn(`could not stop the runtime of ${threadId}: ${errorMessage(error)}`);
     }
   };
 
@@ -33,7 +34,7 @@ export function createArchiveRelease(deps: ArchiveReleaseDeps): ArchiveRelease {
         .filter((thread) => thread.parentThreadId === archivedThreadId && !isBusy(thread))
         .map((thread) => thread.id);
     } catch (error) {
-      warn(`could not list the children of ${archivedThreadId}: ${error instanceof Error ? error.message : String(error)}`);
+      warn(`could not list the children of ${archivedThreadId}: ${errorMessage(error)}`);
     }
     await Promise.all([archivedThreadId, ...idleChildren].map(stop));
   };

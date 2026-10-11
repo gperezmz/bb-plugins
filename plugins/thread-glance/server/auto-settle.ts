@@ -11,6 +11,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { PullRequestStatus, PullRequests } from "./pull-requests";
 import type { Reclaimer } from "./reclaim";
 import type { ServerThread, ThreadGateway } from "./threads";
+import { errorMessage } from "./error-message";
 
 export interface AutoSettleResult {
   /** Threads the pass settled. */
@@ -102,8 +103,9 @@ function decide(
 
 /**
  * The threads to settle and to return, from the threads bb has now. A parent
- * settles only when every thread below it is settled or settling, and an
- * automatic settle of a parent whose tree is no longer so is returned.
+ * settles only when every visible thread below it is settled or settling and
+ * no hidden one is busy, and an automatic settle of a parent whose tree is no
+ * longer so is returned.
  */
 export function planAutoSettle(input: {
   threads: readonly ServerThread[];
@@ -128,7 +130,7 @@ export function planAutoSettle(input: {
 
   const childrenOf = new Map<string, string[]>();
   for (const thread of threads) {
-    if (thread.hidden || thread.parentThreadId === null) continue;
+    if (thread.parentThreadId === null) continue;
     childrenOf.set(thread.parentThreadId, [...(childrenOf.get(thread.parentThreadId) ?? []), thread.id]);
   }
   const settledOrSettling = (threadId: string) => {
@@ -137,10 +139,12 @@ export function planAutoSettle(input: {
     if (settle.has(threadId)) return true;
     return row !== null && row.settledAt !== null && thread !== undefined && staleMark(row, thread) === null && !unsettle.has(threadId);
   };
+  // A hidden helper is never settled itself, so it only blocks its tree while it is busy.
   const wholeTreeSettled = (threadId: string) => {
     const pending = [...(childrenOf.get(threadId) ?? [])];
     for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
-      if (!settledOrSettling(id)) return false;
+      const thread = byId.get(id);
+      if (thread?.hidden ? isBusy(thread) : !settledOrSettling(id)) return false;
       pending.push(...(childrenOf.get(id) ?? []));
     }
     return true;
@@ -218,13 +222,7 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
       const row = lifecycle.get(threadId);
       return row === null ? [] : [{ threadId, row }];
     });
-    if (targets.length > 0) {
-      try {
-        await deps.reclaim(targets);
-      } catch (error) {
-        warn(`reclaim after auto-settle failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    if (targets.length > 0) await deps.reclaim(targets);
     return { settled: outcome.settle, unsettled: outcome.unsettle };
   }
 
@@ -259,7 +257,7 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
     run,
     onSettingsChanged(keys) {
       if (!affectsAutoSettle(keys)) return;
-      run().catch((error) => warn(`auto-settle failed: ${error instanceof Error ? error.message : String(error)}`));
+      run().catch((error) => warn(`auto-settle failed: ${errorMessage(error)}`));
     },
   };
 }

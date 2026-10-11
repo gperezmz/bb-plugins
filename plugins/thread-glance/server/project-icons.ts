@@ -7,6 +7,7 @@ import { MAX_ICON_BYTES } from "../shared/project-icon";
 import type { AppearanceStore } from "./appearance-store";
 import { findProjectIcon, type FoundIcon, type ProjectFiles } from "./favicon";
 import { checkIconUpload, entityTag, type IconMime } from "./icon-image";
+import { errorMessage } from "./error-message";
 
 /** How long a found favicon is trusted before the project's files are read again. */
 const FOUND_TTL_MS = 60_000;
@@ -89,7 +90,7 @@ export function createProjectIcons(deps: ProjectIconsDeps): ProjectIcons {
     try {
       result = await findProjectIcon(deps.files(projectId));
     } catch (error) {
-      warn(`could not read the files of ${projectId}: ${error instanceof Error ? error.message : String(error)}`);
+      warn(`could not read the files of ${projectId}: ${errorMessage(error)}`);
       return { kind: "unreadable" };
     }
     if (result.icon === null) return result.unreadable ? { kind: "unreadable" } : { kind: "missing" };

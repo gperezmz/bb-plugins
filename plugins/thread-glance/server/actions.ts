@@ -7,6 +7,8 @@ import { randomUUID } from "node:crypto";
 import { isBusy } from "../shared/busy";
 import {
   activeRow,
+  hasMark,
+  hasNewAttention,
   isWoke,
   parkedRow,
   sameRow,
@@ -21,6 +23,7 @@ import { ancestorIds, descendantIds, treeIds } from "../shared/thread-tree";
 import type { LifecycleStore } from "./lifecycle-store";
 import type { Reclaimer } from "./reclaim";
 import { pinnedInOrder, type ServerThread, type ThreadGateway } from "./threads";
+import { errorMessage } from "./error-message";
 
 /** How long Undo stays available after a Settle's toast: the toast lasts 4 s, or 10 s with a reclaim note. */
 const SETTLE_TOAST_MS = 4_000;
@@ -126,17 +129,10 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
     );
   }
 
-  /** Runs Reclaim over what the changes left in a row. A failure reclaims less and never fails the action. */
+  /** Runs Reclaim over what the changes left in a row. */
   async function reclaimAfter(changes: readonly Change[]): Promise<ActionResult> {
     const targets = changes.flatMap((entry) => (entry.after === null ? [] : [{ threadId: entry.threadId, row: entry.after }]));
-    let reclaim = EMPTY_RECLAIM;
-    if (targets.length > 0) {
-      try {
-        reclaim = await deps.reclaim(targets);
-      } catch (error) {
-        warn(`reclaim failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    const reclaim = targets.length > 0 ? await deps.reclaim(targets) : EMPTY_RECLAIM;
     return { changes: [...changes], reclaim, note: reclaimNote(reclaim) };
   }
 
@@ -157,7 +153,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
   function reopenEntries(snapshot: readonly ServerThread[], threadId: string): [string, null][] {
     return ancestorIds(byIdOf(snapshot), threadId).flatMap((ancestorId): [string, null][] => {
       const row = lifecycle.get(ancestorId);
-      return row !== null && (row.parkedAt !== null || row.snoozeUntil !== null || row.settledAt !== null) ? [[ancestorId, null]] : [];
+      return hasMark(row) ? [[ancestorId, null]] : [];
     });
   }
 
@@ -259,7 +255,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
                 was !== undefined &&
                 thread.parentThreadId === was.parentThreadId &&
                 !thread.isPinned &&
-                !hasMoreAttention(thread, was) &&
+                !hasNewAttention(was.latestAttentionAt, thread.latestAttentionAt) &&
                 sameRow(lifecycle.get(thread.id), rowsBefore.get(thread.id))
               );
             });
@@ -283,7 +279,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
         } catch (error) {
           const failed = await restorePins(unpinned, first, rowsBefore);
           if (failed.length > 0) {
-            const reason = error instanceof Error ? error.message : String(error);
+            const reason = errorMessage(error);
             throw new Error(`${reason}. Could not restore pins for: ${failed.join(", ")}`);
           }
           throw error;
@@ -329,7 +325,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
               await threads.pin(entry.threadId);
               await threads.reorderPinned(entry.threadId, entry.pinNeighbors.previous, entry.pinNeighbors.next);
             } catch (error) {
-              warn(`could not pin ${entry.threadId} again: ${error instanceof Error ? error.message : String(error)}`);
+              warn(`could not pin ${entry.threadId} again: ${errorMessage(error)}`);
             }
           }
           return changes;
@@ -377,7 +373,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
             try {
               await threads.pin(threadId);
             } catch (error) {
-              warn(`could not pin ${threadId} again: ${error instanceof Error ? error.message : String(error)}`);
+              warn(`could not pin ${threadId} again: ${errorMessage(error)}`);
             }
           }
         }
@@ -410,8 +406,4 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
       );
     },
   };
-}
-
-function hasMoreAttention(now: ServerThread, was: ServerThread): boolean {
-  return now.latestAttentionAt > was.latestAttentionAt;
 }

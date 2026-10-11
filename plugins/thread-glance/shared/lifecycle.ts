@@ -85,6 +85,11 @@ export function activeRow(): LifecycleRow {
   return { ...EMPTY_ROW, activeOverride: true };
 }
 
+/** Whether the row parks, snoozes or settles the thread, by hand or automatically. */
+export function hasMark(row: LifecycleRow | null | undefined): boolean {
+  return row != null && (row.parkedAt !== null || row.snoozeUntil !== null || row.settledAt !== null);
+}
+
 /**
  * Whether the row is a mark the user set by hand: a manual settle or the
  * active override. Auto-settle leaves such a thread alone.

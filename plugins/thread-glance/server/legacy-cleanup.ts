@@ -3,7 +3,9 @@
 // columns, a `notes` table with exactly its earlier columns, and KV rows under
 // the earlier key prefixes. The shelf list keeps none of its data under those
 // names, so running this on every start leaves the lifecycle rows, the manual
-// order, the settings and the project appearance as they are.
+// order, the settings and the project appearance as they are. The tables
+// themselves stay, empty: bb records their migrations as applied, so the
+// earlier design keeps working if it is installed again on the same database.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Database, Kv } from "./database";
 
@@ -27,21 +29,21 @@ function sameColumns(found: readonly string[], expected: readonly string[]): boo
 }
 
 export interface LegacyCleanup {
-  droppedTables: string[];
+  /** The earlier tables that held rows, now empty. */
+  clearedTables: string[];
   deletedKvRows: number;
 }
 
-/** Drops the earlier design's tables and deletes its KV rows. */
+/** Deletes the rows of the earlier design's tables, which stay, and its KV rows. */
 export async function removeLegacyData(
   bb: { storage: { kv: Kv }; log?: Pick<BbPluginApi["log"], "info"> },
   db: Database,
 ): Promise<LegacyCleanup> {
-  const droppedTables: string[] = [];
+  const clearedTables: string[] = [];
   for (const [table, columns] of Object.entries(LEGACY_TABLES)) {
     const found = columnsOf(db, table);
     if (found.length > 0 && sameColumns(found, columns)) {
-      db.exec(`DROP TABLE ${table}`);
-      droppedTables.push(table);
+      if (db.prepare(`DELETE FROM ${table}`).run().changes > 0) clearedTables.push(table);
     }
   }
   let deletedKvRows = 0;
@@ -58,10 +60,10 @@ export async function removeLegacyData(
       await new Promise((resolve) => setImmediate(resolve));
     }
   }
-  if (droppedTables.length > 0 || deletedKvRows > 0) {
+  if (clearedTables.length > 0 || deletedKvRows > 0) {
     bb.log?.info(
-      `removed the earlier list's data: ${droppedTables.length} tables, ${deletedKvRows} stored values`,
+      `removed the earlier list's data: ${clearedTables.length} tables, ${deletedKvRows} stored values`,
     );
   }
-  return { droppedTables, deletedKvRows };
+  return { clearedTables, deletedKvRows };
 }

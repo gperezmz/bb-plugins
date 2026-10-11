@@ -58,15 +58,15 @@ export function createAppearanceStore(db: Database): AppearanceStore {
     .prepare("SELECT icon_name, icon_mime, icon_data, icon_updated_at FROM project_appearance WHERE project_id = ?")
     .raw(true);
   const remove = db.prepare("DELETE FROM project_appearance WHERE project_id = ?");
-  const dropEmpty = db.prepare(
+  const deleteEmpty = db.prepare(
     "DELETE FROM project_appearance WHERE project_id = ? AND colour IS NULL AND icon_name IS NULL",
   );
 
-  function settle(projectId: string): void {
+  function dropIfEmpty(projectId: string): void {
     const row = rows.get(projectId);
     if (row !== undefined && row.colour === null && row.icon === null) {
       rows.delete(projectId);
-      dropEmpty.run(projectId);
+      deleteEmpty.run(projectId);
     }
   }
 
@@ -84,7 +84,7 @@ export function createAppearanceStore(db: Database): AppearanceStore {
       if (row.colour === colour) return false;
       upsertColour.run(projectId, colour);
       rows.set(projectId, { ...row, colour });
-      settle(projectId);
+      dropIfEmpty(projectId);
       return true;
     },
     setIcon(projectId, icon, at) {
@@ -93,7 +93,7 @@ export function createAppearanceStore(db: Database): AppearanceStore {
         if (row.icon === null) return false;
         upsertIcon.run(projectId, null, null, null, null);
         rows.set(projectId, { ...row, icon: null });
-        settle(projectId);
+        dropIfEmpty(projectId);
         return true;
       }
       upsertIcon.run(projectId, icon.name, icon.mime, icon.data, at);

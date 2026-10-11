@@ -13,6 +13,7 @@ import { addReclaim, EMPTY_RECLAIM, type ReclaimReport } from "../shared/reclaim
 import type { LifecycleStore } from "./lifecycle-store";
 import { isLiveTerminal, type ThreadRuntime } from "./runtime";
 import type { ServerThread, ThreadGateway } from "./threads";
+import { errorMessage } from "./error-message";
 
 /** A thread to reclaim and the row the action wrote for it, which it must still hold. */
 export interface ReclaimTarget {
@@ -34,8 +35,6 @@ export interface ReclaimDeps {
   runtime: ThreadRuntime;
   warn?: (message: string) => void;
 }
-
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** Shares one thread listing among the callers that ask while it is being read. */
 function sharedSnapshot(threads: Pick<ThreadGateway, "snapshot">): () => Promise<ServerThread[]> {
@@ -71,13 +70,13 @@ export function createReclaimer(deps: ReclaimDeps): Reclaimer {
       await runtime.stop(target.threadId);
       report = { ...report, stoppedRuntime: true };
     } catch (error) {
-      warn(`could not stop the runtime of ${target.threadId}: ${message(error)}`);
+      warn(`could not stop the runtime of ${target.threadId}: ${errorMessage(error)}`);
     }
     let terminals;
     try {
       terminals = (await runtime.terminals(target.threadId)).filter(isLiveTerminal);
     } catch (error) {
-      warn(`could not list the terminals of ${target.threadId}: ${message(error)}`);
+      warn(`could not list the terminals of ${target.threadId}: ${errorMessage(error)}`);
       return report;
     }
     for (const terminal of terminals) {
@@ -98,7 +97,7 @@ export function createReclaimer(deps: ReclaimDeps): Reclaimer {
     const reports = await Promise.all(
       targets.map((target) =>
         reclaimThread(target).catch((error) => {
-          warn(`reclaim of ${target.threadId} failed: ${message(error)}`);
+          warn(`reclaim of ${target.threadId} failed: ${errorMessage(error)}`);
           return EMPTY_RECLAIM;
         }),
       ),

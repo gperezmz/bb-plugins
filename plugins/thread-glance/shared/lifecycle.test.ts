@@ -5,6 +5,7 @@ import {
   clearStaleMark,
   clearStaleMarks,
   hasManualMark,
+  hasMark,
   isEmptyRow,
   isWoke,
   markShelf,
@@ -61,6 +62,12 @@ describe("rows", () => {
     expect(sameRow(null, undefined)).toBe(true);
     expect(sameRow(parkedRow(1), parkedRow(1))).toBe(true);
     expect(sameRow(parkedRow(1), parkedRow(2))).toBe(false);
+  });
+
+  it("counts a park, a snooze and a settle of either kind as a mark, and the active override as none", () => {
+    expect([parkedRow(1), snoozedRow(9, 1), settledRow(1, "manual"), settledRow(1, "auto")].map(hasMark)).toEqual([true, true, true, true]);
+    expect(hasMark(activeRow())).toBe(false);
+    expect(hasMark(null)).toBe(false);
   });
 
   it("counts a manual settle and the active override as manual marks, not an automatic settle", () => {
