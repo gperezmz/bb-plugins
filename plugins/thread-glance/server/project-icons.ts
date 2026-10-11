@@ -2,7 +2,8 @@
 // An uploaded image wins; otherwise the project's own favicon is looked for in
 // its files, and with neither the route answers 204, which the browser logs no
 // error for (a 404 is logged as a failed request), so it draws the monogram.
-// 503 is reserved for an icon that may exist but could not be read. The response is private and revalidated, sandboxed and nosniff.
+// 503 is reserved for an icon that may exist but could not be read. The
+// response is private and revalidated, sandboxed and nosniff.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MAX_ICON_BYTES } from "../shared/project-icon";
 import type { AppearanceStore } from "./appearance-store";

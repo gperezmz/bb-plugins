@@ -73,6 +73,23 @@ describe("ProjectMark", () => {
     expect(asked[0]).toContain("&v=42");
   });
 
+  it("shows an icon uploaded after the row mounted at once, and the monogram again once it is removed (AC4)", async () => {
+    const { pluginData } = await import("../sync");
+    answer = () => new Response(null, { status: 204 });
+    const { container } = render(<ProjectMark projectId="p6" name="Zeta" colour={null} />);
+    await loaded();
+    expect(container.querySelector("[data-monogram]")).not.toBeNull();
+    answer = () => new Response(new Blob(["x"], { type: "image/png" }), { status: 200 });
+    act(() => pluginData.appearanceSignal({ epoch: "e", version: 2, value: { colours: {}, icons: { p6: { name: "logo.png", mime: "image/png", updatedAt: 7 } } } }));
+    await act(() => vi.waitFor(() => expect(container.querySelector("img[data-project-icon]")).not.toBeNull()));
+    expect(asked.at(-1)).toContain("&v=7");
+    answer = () => new Response(null, { status: 204 });
+    act(() => pluginData.appearanceSignal({ epoch: "e", version: 3, value: { colours: {}, icons: {} } }));
+    await act(() => vi.waitFor(() => expect(container.querySelector("[data-monogram]")).not.toBeNull()));
+    expect(asked).toHaveLength(3);
+    expect(asked.at(-1)).not.toContain("&v=");
+  });
+
   it("tints the monogram with the project colour at 20 %", () => {
     const { container } = render(<ProjectMark projectId="p4" name="Delta" colour={{ fill: "#336699", text: "#224466" }} />);
     const tile = container.querySelector<HTMLElement>("[data-monogram]")!;

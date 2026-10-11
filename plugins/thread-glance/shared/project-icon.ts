@@ -14,11 +14,12 @@ export const MAX_ICON_BYTES = 1_048_576;
 export const ICON_TYPES_LABEL = "SVG, PNG, ICO, JPEG, GIF, AVIF or WebP";
 
 /**
- * The URL an `<img>` loads a project's icon from. bb mounts the route under
- * `/api/v1/plugins/<id>/http`, and a same-origin image request passes bb's
- * local auth. `uploadedAt` is the upload time of an uploaded icon, which makes
- * a new upload a new URL; a project that uses its favicon passes none and the
- * server's revalidated response keeps it current.
+ * The URL the browser reads a project's icon from. bb mounts the route under
+ * `/api/v1/plugins/<id>/http`, and a same-origin request passes bb's local
+ * auth. The browser asks for it once per page load, so `uploadedAt`, the
+ * upload time of an uploaded icon, is what makes a new upload or its removal
+ * be asked for again; a project that uses its favicon passes none, and a
+ * favicon that changes shows after the page next loads.
  */
 export function projectIconUrl(projectId: string, uploadedAt?: number): string {
   const query = new URLSearchParams({ project: projectId });

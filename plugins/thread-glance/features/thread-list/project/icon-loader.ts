@@ -11,8 +11,8 @@ export interface IconEnv {
   fetch(url: string): Promise<Response>;
   createObjectUrl(blob: Blob): string;
   revokeObjectUrl(url: string): void;
-  setTimeout(run: () => void, ms: number): unknown;
-  clearTimeout(timer: unknown): void;
+  setTimeout(run: () => void, ms: number): ReturnType<typeof setTimeout>;
+  clearTimeout(timer: ReturnType<typeof setTimeout>): void;
 }
 
 const browserEnv: IconEnv = {
@@ -20,7 +20,7 @@ const browserEnv: IconEnv = {
   createObjectUrl: (blob) => URL.createObjectURL(blob),
   revokeObjectUrl: (url) => URL.revokeObjectURL(url),
   setTimeout: (run, ms) => setTimeout(run, ms),
-  clearTimeout: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+  clearTimeout: (timer) => clearTimeout(timer),
 };
 
 interface Entry {
@@ -28,7 +28,7 @@ interface Entry {
   src: string;
   /** The icon as an object URL, once read. */
   url: string | null;
-  retry: unknown;
+  retry: ReturnType<typeof setTimeout> | null;
 }
 
 export class IconLoader {
@@ -56,6 +56,11 @@ export class IconLoader {
     return entry?.src === src ? entry.url : null;
   }
 
+  /** The browser drew the icon: the failures before it are forgotten. Until then they stay counted, so an icon the browser cannot decode keeps its growing wait. */
+  drawn(projectId: string, src: string): void {
+    if (this.entries.get(projectId)?.src === src) this.health.loaded(projectId);
+  }
+
   /** The browser could not draw the icon it was given: treated as unreadable. */
   broke(projectId: string, src: string): void {
     const entry = this.entries.get(projectId);
@@ -79,26 +84,23 @@ export class IconLoader {
 
   private async load(projectId: string, entry: Entry): Promise<void> {
     entry.retry = null;
-    let url: string | null = null;
     try {
       const response = await this.env.fetch(entry.src);
-      if (response.status !== 204) {
-        if (!response.ok) throw new Error(`the icon route answered ${response.status}`);
-        const blob = await response.blob();
-        if (this.entries.get(projectId) !== entry) return;
-        url = this.env.createObjectUrl(blob);
+      const none = response.status === 204;
+      if (!none && !response.ok) throw new Error(`the icon route answered ${response.status}`);
+      const blob = none ? null : await response.blob();
+      // A newer URL took the project's entry while this answer was on its way.
+      if (this.entries.get(projectId) !== entry) return;
+      if (blob === null) {
+        this.health.loaded(projectId);
+        return;
       }
+      entry.url = this.env.createObjectUrl(blob);
     } catch {
       if (this.entries.get(projectId) === entry) this.failed(projectId, entry);
       return;
     }
-    if (this.entries.get(projectId) !== entry) {
-      if (url !== null) this.env.revokeObjectUrl(url);
-      return;
-    }
-    this.health.loaded(projectId);
-    entry.url = url;
-    if (url !== null) this.emit();
+    this.emit();
   }
 
   private failed(projectId: string, entry: Entry): void {

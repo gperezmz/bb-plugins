@@ -42,7 +42,7 @@ export function ProjectMark({ projectId, name, colour, className }: { projectId:
   }, [projectId, src]);
   const url = useSyncExternalStore(iconLoader.subscribe, () => iconLoader.url(projectId, src));
   if (url === null) return <ProjectMonogram name={name} colour={colour} className={className} />;
-  return <img src={url} alt="" data-project-icon="" className={cn("size-3.5 shrink-0 rounded-sm object-contain", className)} onError={() => iconLoader.broke(projectId, src)} />;
+  return <img src={url} alt="" data-project-icon="" className={cn("size-3.5 shrink-0 rounded-sm object-contain", className)} onLoad={() => iconLoader.drawn(projectId, src)} onError={() => iconLoader.broke(projectId, src)} />;
 }
 
 /** A project's name in its colour (readable on the theme), muted while colours are off. */

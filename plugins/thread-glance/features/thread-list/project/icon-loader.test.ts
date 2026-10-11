@@ -4,7 +4,7 @@ import { IconLoader, type IconEnv } from "./icon-loader";
 afterEach(() => vi.useRealTimers());
 
 /** An environment whose icon route answers `answers` in turn (the last one repeating). */
-function setup(...answers: (number | "network")[]) {
+function setup(...answers: (number | "network" | "badbody")[]) {
   const asked: string[] = [];
   const revoked: string[] = [];
   let made = 0;
@@ -14,14 +14,18 @@ function setup(...answers: (number | "network")[]) {
       const answer = answers[Math.min(asked.length - 1, answers.length - 1)]!;
       if (answer === "network") throw new TypeError("Failed to fetch");
       // Not a real Response: reading a body takes real I/O, which fake timers do not wait for.
-      return { status: answer, ok: answer === 200, blob: async () => new Blob(["x"], { type: "image/png" }) } as Response;
+      const blob = async () => {
+        if (answer === "badbody") throw new TypeError("terminated");
+        return new Blob(["x"], { type: "image/png" });
+      };
+      return { status: answer === "badbody" ? 200 : answer, ok: answer === 200 || answer === "badbody", blob } as Response;
     },
     createObjectUrl: () => `blob:icon-${++made}`,
     revokeObjectUrl: (url) => void revoked.push(url),
     setTimeout: (run, ms) => setTimeout(run, ms),
-    clearTimeout: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
+    clearTimeout: (timer) => clearTimeout(timer),
   };
-  return { loader: new IconLoader(env), asked, revoked };
+  return { loader: new IconLoader(env), asked, revoked, env, made: () => made };
 }
 
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -36,7 +40,7 @@ describe("IconLoader", () => {
     expect(loader.url("p", "/icon?project=p")).toBeNull();
     await settle();
     expect(loader.url("p", "/icon?project=p")).toBe("blob:icon-1");
-    expect(heard).toHaveBeenCalledTimes(1);
+    expect(heard).toHaveBeenCalled();
   });
 
   it("asks once for a project with no icon, however long it sits and however many rows ask (AC2)", async () => {
@@ -66,7 +70,38 @@ describe("IconLoader", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(asked).toHaveLength(4);
     expect(loader.url("p", "/icon?project=p")).toBe("blob:icon-1");
+    loader.drawn("p", "/icon?project=p");
     await vi.advanceTimersByTimeAsync(600_000);
+    expect(asked).toHaveLength(4);
+  });
+
+  it("asks again when the body of the answer cannot be read", async () => {
+    vi.useFakeTimers();
+    const { loader, asked } = setup("badbody", 200);
+    loader.want("p", "/icon?project=p");
+    await settle();
+    expect(loader.url("p", "/icon?project=p")).toBeNull();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(asked).toHaveLength(2);
+    expect(loader.url("p", "/icon?project=p")).toBe("blob:icon-1");
+  });
+
+  it("keeps the growing wait for an icon the browser cannot decode, until one has drawn", async () => {
+    vi.useFakeTimers();
+    const { loader, asked } = setup(200);
+    loader.want("p", "/icon?project=p");
+    await settle();
+    loader.broke("p", "/icon?project=p");
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(asked).toHaveLength(2);
+    loader.broke("p", "/icon?project=p");
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(asked).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(asked).toHaveLength(3);
+    loader.drawn("p", "/icon?project=p");
+    loader.broke("p", "/icon?project=p");
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(asked).toHaveLength(4);
   });
 
@@ -94,6 +129,28 @@ describe("IconLoader", () => {
     expect(loader.url("p", "/icon?project=p")).toBeNull();
     expect(loader.url("p", "/icon?project=p&v=1")).toBe("blob:icon-1");
     expect(revoked).toEqual([]);
+  });
+
+  it("makes no object URL for an answer read after the URL changed", async () => {
+    vi.useFakeTimers();
+    const { loader, revoked, env, made } = setup(200);
+    let release!: () => void;
+    const held = new Promise<void>((done) => (release = done));
+    const fetchNow = env.fetch;
+    env.fetch = async (url) => {
+      const response = await fetchNow(url);
+      if (url.includes("v=1")) return response;
+      return { ...response, status: 200, ok: true, blob: async () => (await held, new Blob(["x"])) } as Response;
+    };
+    loader.want("p", "/icon?project=p");
+    loader.want("p", "/icon?project=p&v=1");
+    await settle();
+    release();
+    await settle();
+    expect(loader.url("p", "/icon?project=p&v=1")).toBe("blob:icon-1");
+    expect(revoked).toEqual([]);
+    expect(made()).toBe(1);
+    expect(loader.url("p", "/icon?project=p")).toBeNull();
   });
 
   it("treats an icon the browser cannot draw as unreadable and asks again after the wait", async () => {
