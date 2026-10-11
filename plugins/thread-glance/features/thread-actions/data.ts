@@ -5,17 +5,16 @@ import {
   experimental_copyToClipboard as copyToClipboard,
   experimental_useSidebarThreads as useSidebarThreads,
   useBbNavigate,
-  useRpc,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadActionDataInput } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { createLifecycleCommands, lifecycleHostOf, requestSnoozePicker, useLifecycleRows, useServerSettings } from "@/features/thread-list";
-import type { RpcContract } from "@/shared/contract";
+import { requestSnoozePicker, useLifecycleRows, useServerSettings } from "@/features/thread-list";
 import { readSnoozePresets } from "@/shared/snooze";
 import { menuFactsOf, shareFacts, type MenuFacts } from "./model/facts";
 import type { MenuData, MenuPorts, MenuProject } from "./model/menu";
 import { useMachines, useMinuteClock } from "./window-state";
+import { useLifecycleCommands } from "./use-lifecycle-commands";
 import { requestParentDialog, requestProjectDialog } from "./requests";
 
 const NO_FACTS: ReadonlyMap<string, MenuFacts> = new Map();
@@ -45,7 +44,6 @@ const ports: Omit<MenuPorts, "openPage"> = {
  * every menu.
  */
 export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuData {
-  const rpc = useRpc<RpcContract>();
   const navigate = useBbNavigate();
   const sidebar = useSidebarThreads();
   const rows = useLifecycleRows();
@@ -53,14 +51,11 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
   const now = useMinuteClock();
   const machines = useMachines(useSdk());
 
-  // The busy gate of a command reads the thread as it is when the command runs, not as the menu was drawn.
   const byId = useMemo(() => new Map(sidebar.threads.map((thread) => [thread.id, thread])), [sidebar.threads]);
-  const latest = useRef(byId);
-  latest.current = byId;
   // bb's navigation changes identity on every host update; the page opens through the current one.
   const navigation = useRef(navigate);
   navigation.current = navigate;
-  const commands = useMemo(() => createLifecycleCommands(lifecycleHostOf(rpc, (id) => latest.current.get(id) ?? null)), [rpc]);
+  const commands = useLifecycleCommands(sidebar.threads);
 
   const factsRef = useRef(NO_FACTS);
   const facts = useMemo(() => {

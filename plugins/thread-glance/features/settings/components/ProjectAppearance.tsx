@@ -16,6 +16,7 @@ import {
   useBbProjectIds,
   useProjectColour,
 } from "@/features/thread-list";
+import { messageOf } from "@/lib/error-message";
 import { ICON_TYPES_LABEL } from "@/shared/project-icon";
 import type { Settings } from "@/shared/settings";
 import type { Appearance, Versioned } from "@/shared/signals";
@@ -53,10 +54,6 @@ export function ProjectAppearance({ form, projects }: { form: Form; projects: re
       <CustomizeProject projects={projects} coloursOn={values.projectColours === true} />
     </Group>
   );
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error && error.message !== "" ? error.message : "Something went wrong.";
 }
 
 function CustomizeProject({ projects, coloursOn }: { projects: readonly PluginSidebarProject[]; coloursOn: boolean }) {

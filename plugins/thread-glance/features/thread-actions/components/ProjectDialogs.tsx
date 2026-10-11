@@ -6,15 +6,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { messageOf } from "@/lib/error-message";
 import type { RpcContract } from "@/shared/contract";
 import { MACHINES_FAILED, type ProjectDialogKind } from "../model/menu";
 import { localPathError, MAX_LOCAL_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH, projectNameError } from "../model/projects";
 import { removeProject, RemoveProjectConfirmation } from "./RemoveProject";
 import { useDialogContext } from "./use-dialog-context";
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function ProjectDialog({ kind, projectId, onClose }: { kind: ProjectDialogKind; projectId: string; onClose(): void }) {
   const { projects } = useDialogContext();
@@ -45,7 +42,7 @@ function RenameProject({ projectId, name, onClose }: { projectId: string; name: 
         try {
           await sdk.projects.update({ projectId, name: value.trim() });
         } catch (failure) {
-          toast.error(messageOf(failure) || "Failed to rename project.");
+          toast.error(messageOf(failure, "Failed to rename project."));
         }
       }}
     >
@@ -110,7 +107,7 @@ function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: s
           await sdk.projects.sources.add({ projectId, type: "local_path", hostId, path: path.trim() });
           toast.success("Local path added");
         } catch (failure) {
-          toast.error(messageOf(failure) || "Failed to add local path.");
+          toast.error(messageOf(failure, "Failed to add local path."));
         }
       }}
     >

@@ -9,6 +9,7 @@ import { busyRefusal, type GatedAction } from "@/shared/messages";
 import { formatWakeTime } from "@/shared/snooze";
 import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { ActionOutput, Change, RpcContract } from "@/shared/contract";
+import { messageOf } from "@/lib/error-message";
 import { prefersReducedMotion } from "../model/motion";
 import { isCardDrawn, isSweeping, playSweep } from "./sweep";
 
@@ -29,10 +30,6 @@ export interface LifecycleCommands {
   dismissWoke(threadId: string): Promise<void>;
   /** Asks the server to clear the row of a pinned thread. */
   clearPinned(threadId: string): Promise<void>;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : typeof error === "string" ? error : String(error);
 }
 
 /** The toast body: the line, then what was reclaimed. */

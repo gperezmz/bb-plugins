@@ -8,6 +8,7 @@ import { pluginData } from "@/features/thread-list";
 import type { RpcContract } from "@/shared/contract";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { messageOf } from "@/lib/error-message";
 import { confirmsRemoval } from "../model/projects";
 
 export const REMOVE_WARNING = "Its threads are removed from BB too. This cannot be undone.";
@@ -60,10 +61,6 @@ export function RemoveProjectConfirmation({ projectName, onConfirm, onCancel }: 
   );
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Removes the project from bb, then has the plugin's server forget its colour
  * and icon. The returned promise resolves with whether bb removed it; a
@@ -77,7 +74,7 @@ export async function removeProject(
   try {
     await sdk.projects.delete({ projectId });
   } catch (error) {
-    toast.error(messageOf(error) || "Failed to remove project.");
+    toast.error(messageOf(error, "Failed to remove project."));
     return false;
   }
   try {

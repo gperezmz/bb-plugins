@@ -6,6 +6,7 @@ import { experimental_Icon as Icon, useSdk } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { messageOf } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 import { parentOptions, unpinsOnChoice, type ParentOption, type ParentThread } from "../model/parents";
 import { useDialogContext } from "./use-dialog-context";
@@ -13,10 +14,6 @@ import { useDialogContext } from "./use-dialog-context";
 export const PARENT_UPDATED = "Parent updated";
 export const PARENT_REMOVED = "Parent removed";
 export const UNPIN_UNCONFIRMED = "Parent updated, but unpinning could not be confirmed";
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export function ParentDialog({ threadId, onClose }: { threadId: string; onClose(): void }) {
   const sdk = useSdk();
