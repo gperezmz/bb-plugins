@@ -22,7 +22,11 @@ const PROJECTS = [makeProject("proj_personal", "Personal", { isPersonal: true })
 // clears a spy's calls between tests, so the errors are kept for the whole file.
 const consoleErrors: string[] = [];
 beforeAll(() => {
-  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void consoleErrors.push(args.map(String).join(" ")));
+  const logError = console.error.bind(console);
+  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    consoleErrors.push(args.map(String).join(" "));
+    logError(...args);
+  });
   globalThis.ResizeObserver ??= class {
     observe() {}
     unobserve() {}
