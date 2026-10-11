@@ -35,6 +35,7 @@ export function RenameEditor({
       aria-label={label}
       value={value}
       data-no-drag=""
+      data-rename-editor=""
       className={className}
       onChange={(event) => setValue(event.target.value)}
       onBlur={() => end(true)}
