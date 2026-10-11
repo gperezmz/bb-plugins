@@ -1,7 +1,7 @@
 // The rules of reordering, apart from the pointer and the DOM: when a press
 // becomes a drag, where the dragged unit goes, how fast the list scrolls, and
 // what a keyboard move announces. Pure.
-import { applySubsetOrder, moveByOne } from "@/shared/manual-order";
+import { applySubsetOrder, insertAtTop, moveByOne } from "@/shared/manual-order";
 import type { ListModel, ReorderList } from "./list-model";
 
 /** The pointer must move this far before a press becomes a drag. */
@@ -100,9 +100,7 @@ export function idsOfUnits(list: ReorderList, unitKeys: readonly string[]): stri
 
 /** The manual order after `subsetIds` were put in a new sequence, threads the order lacks counted in at the top. */
 export function orderAfterReorder(order: readonly string[], subsetIds: readonly string[]): string[] {
-  const listed = new Set(order);
-  const missing = subsetIds.filter((id) => !listed.has(id));
-  return applySubsetOrder([...missing, ...order], subsetIds);
+  return applySubsetOrder(insertAtTop(order, subsetIds), subsetIds);
 }
 
 /** The neighbours bb's pin order call names for `threadId` in `ids`. */

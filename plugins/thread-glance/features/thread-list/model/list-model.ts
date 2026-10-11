@@ -12,6 +12,7 @@ import {
   type WakeReason,
 } from "@/shared/lifecycle";
 import { isWorking } from "@/shared/busy";
+import { sortByManualOrder } from "@/shared/manual-order";
 import type { Settings } from "@/shared/settings";
 import type { TreeSignals } from "@/shared/lifecycle";
 import { isShelfCollapsed, type DeviceState } from "../storage/device-state";
@@ -22,7 +23,6 @@ import {
   flattenEntries,
   groupByProject,
   sortActive,
-  sortManual,
   sortParked,
   sortSettled,
   sortSnoozed,
@@ -215,8 +215,8 @@ export function buildModel(inputs: ModelInputs): ListModel {
   }
   const reorderable = canReorderActive(device.activeSort);
   const activeThreads = sortActive(buckets.active, inputs.order, device.activeSort);
-  const working = sortManual(buckets.working, inputs.order);
-  const inactive = sortManual(buckets.inactive, inputs.order);
+  const working = sortByManualOrder(buckets.working, inputs.order);
+  const inactive = sortByManualOrder(buckets.inactive, inputs.order);
   const snoozed = sortSnoozed(buckets.snoozed, rowOf);
   const parked = sortParked(buckets.parked, rowOf);
   const settled = sortSettled(buckets.settled, rowOf);

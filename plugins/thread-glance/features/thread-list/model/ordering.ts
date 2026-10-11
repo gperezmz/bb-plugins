@@ -33,11 +33,6 @@ export function sortSettled(threads: readonly PluginSidebarThread[], rows: (id: 
   return threads.slice().sort((a, b) => at(b) - at(a) || byId(a, b));
 }
 
-/** Threads in Manual order; the ones the order lacks come first, newest first. */
-export function sortManual(threads: readonly PluginSidebarThread[], order: readonly string[]): PluginSidebarThread[] {
-  return sortByManualOrder(threads, order);
-}
-
 /**
  * Active's threads in the chosen sort. Manual order and Project start from the
  * manual order; Recent activity and Date created sort newest first and leave
@@ -51,7 +46,7 @@ export function sortActive(threads: readonly PluginSidebarThread[], order: reado
       return threads.slice().sort((a, b) => b.createdAt - a.createdAt || byId(a, b));
     case "manual":
     case "project":
-      return sortManual(threads, order);
+      return sortByManualOrder(threads, order);
   }
 }
 

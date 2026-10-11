@@ -5,30 +5,15 @@
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { isBusy } from "@/shared/busy";
-import type { LifecycleRow } from "@/shared/lifecycle";
 import { busyRefusal, type GatedAction } from "@/shared/messages";
 import { formatWakeTime } from "@/shared/snooze";
 import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
-import type { RpcContract } from "@/shared/contract";
+import type { ActionOutput, Change, RpcContract } from "@/shared/contract";
 import { prefersReducedMotion } from "../model/motion";
 import { isCardDrawn, isSweeping, playSweep } from "./sweep";
 
 const SETTLE_TOAST_MS = 4_000;
 const RECLAIM_TOAST_MS = 10_000;
-
-/** One thread's row before and after an action, which Undo hands back. */
-interface Change {
-  threadId: string;
-  before: LifecycleRow | null;
-  after: LifecycleRow | null;
-  unpinned: boolean;
-}
-
-/** What a lifecycle action answers: the rows it changed, and the reclaim note for the toast. */
-interface ActionResult {
-  changes: Change[];
-  note: string | null;
-}
 
 export interface LifecycleCommands {
   /** Snoozes the thread until `until` (epoch ms, already resolved in local time). */
@@ -97,7 +82,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
       fail(error);
     }
   };
-  const run = async (call: () => Promise<ActionResult>): Promise<ActionResult | null> => {
+  const run = async (call: () => Promise<ActionOutput>): Promise<ActionOutput | null> => {
     try {
       return await call();
     } catch (error) {
