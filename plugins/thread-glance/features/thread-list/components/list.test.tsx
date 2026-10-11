@@ -122,8 +122,8 @@ describe("settled paging", () => {
     await flush();
     expect(titles()).toHaveLength(10);
     expect(titles()[0]).toBe("t0");
-    // Found by text, not role: a role query works out the accessible name and
-    // visibility of every row's buttons, which at 50 rows was most of this
+    // Found by text, not role: a role query by name works out the accessible
+    // name of every button in the list, which at 50 rows was most of this
     // test's time and ran past its 5 s on a busy machine.
     fireEvent.click(screen.getByText("Load 25 more", { selector: "button" }));
     await flush();
