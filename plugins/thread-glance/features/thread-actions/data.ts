@@ -4,7 +4,6 @@ import { useMemo, useRef } from "react";
 import {
   experimental_copyToClipboard as copyToClipboard,
   experimental_useSidebarThreads as useSidebarThreads,
-  useBbNavigate,
   useSdk,
 } from "@get-bb/plugin-sdk/app";
 import type { PluginThreadActionDataInput } from "@get-bb/plugin-sdk/app";
@@ -19,13 +18,19 @@ import { requestParentDialog, requestProjectDialog } from "./requests";
 
 const NO_FACTS: ReadonlyMap<string, MenuFacts> = new Map();
 
-/** Opens `href` (an app-relative URL) in bb. */
-function openPage(openUrl: (url: string) => boolean, href: string): void {
-  const url = new URL(href, window.location.origin).href;
-  if (!openUrl(url)) window.open(url, "_blank", "noopener");
+/**
+ * Opens bb's page at `href` (an app-relative URL) in bb's router. bb's own menus
+ * link to it, `BbNavigate` has no call for a settings page, and its `openUrl`
+ * hands any http(s) URL to the browser, a new tab: so the page is pushed on the
+ * history and bb's router, which follows `popstate`, is told.
+ */
+function openPage(href: string): void {
+  window.history.pushState(null, "", href);
+  window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
 }
 
-const ports: Omit<MenuPorts, "openPage"> = {
+const ports: MenuPorts = {
+  openPage,
   requestSnoozePicker,
   requestParent: requestParentDialog,
   requestProject: requestProjectDialog,
@@ -44,7 +49,6 @@ const ports: Omit<MenuPorts, "openPage"> = {
  * every menu.
  */
 export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuData {
-  const navigate = useBbNavigate();
   const sidebar = useSidebarThreads();
   const rows = useLifecycleRows();
   const settings = useServerSettings();
@@ -52,9 +56,6 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
   const machines = useMachines(useSdk());
 
   const byId = useMemo(() => new Map(sidebar.threads.map((thread) => [thread.id, thread])), [sidebar.threads]);
-  // bb's navigation changes identity on every host update; the page opens through the current one.
-  const navigation = useRef(navigate);
-  navigation.current = navigate;
   const commands = useLifecycleCommands(sidebar.threads);
 
   const factsRef = useRef(NO_FACTS);
@@ -85,7 +86,7 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
       presets,
       machines,
       commands,
-      ports: { ...ports, openPage: (href) => openPage(navigation.current.openUrl, href) },
+      ports,
     }),
     [now, facts, projects, presets, machines, commands],
   );
