@@ -42,6 +42,8 @@ export interface HostProbe {
    * Every listening TCP socket the machine shows, with the process holding it:
    * on Linux from `/proc/net/tcp*` and the sockets in `/proc/<pid>/fd` (a
    * process whose fd directory is unreadable is skipped), on macOS from `lsof`.
+   * Linux does not use `lsof`: many machines lack it, and a machine that cannot
+   * be scanned hides its ports and holds back every auto-settle candidate.
    * With `pid`, only that process's sockets, without looking at any other
    * process. Rejects when the system cannot list them.
    */
