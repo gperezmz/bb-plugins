@@ -54,6 +54,10 @@ _Avoid_: Notification
 A thread that is not at rest: it has a pending question or approval, a queued or failed queued message, a turn in flight, any activity counter (workflows, background agents or commands, plan mode, goals), or a runtime that is starting, active or provisioning. One rule decides it for every button, check and automatic action; a busy thread cannot be snoozed, parked or settled.
 _Avoid_: In-use thread
 
+**Never-run thread**:
+A thread bb lists as `pending`: created, and not yet run. It has no turn in flight, so it is at rest unless a first message is queued; a queued first message, scheduled for later or not, makes it a busy thread but never a working one.
+_Avoid_: Pending thread, unstarted thread
+
 **Shelf**:
 One of the sections of Thread Glance's list that a thread sits on by its lifecycle: Pinned, Active, Working, Inactive, Snoozed, Parked or Settled.
 _Avoid_: Bucket, lane
