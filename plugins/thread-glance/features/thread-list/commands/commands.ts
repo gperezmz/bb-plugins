@@ -15,6 +15,8 @@ import {
 } from "../storage/device-state";
 import type { ListStore } from "../store/list-store";
 import { createLifecycleCommands, type LifecycleCommands } from "./lifecycle";
+import { dismissPortsPrompt } from "./ports-prompt";
+import { createPortCommands, type PortCommands } from "./ports";
 import { createReorderCommands, type ReorderCommands } from "./reorder";
 
 export interface ListCommands {
@@ -36,9 +38,12 @@ export interface ListCommands {
   /** Saves a trimmed, changed title. */
   rename(threadId: string, title: string): Promise<void>;
   unpin(threadId: string): Promise<void>;
+  /** Opens the Clean settled resources dialog. */
+  openClean(): void;
+  closeClean(): void;
 }
 
-export type Commands = ListCommands & LifecycleCommands & ReorderCommands;
+export type Commands = ListCommands & LifecycleCommands & ReorderCommands & PortCommands;
 
 export function createCommands(store: ListStore): Commands {
   const own: ListCommands = {
@@ -94,7 +99,16 @@ export function createCommands(store: ListStore): Commands {
       }
     },
 
+    openClean() {
+      store.setUi({ cleanOpen: true });
+    },
+
+    closeClean() {
+      store.setUi({ cleanOpen: false });
+    },
+
     async unpin(threadId) {
+      dismissPortsPrompt(threadId);
       try {
         await store.edge.sdk.threads.unpin({ threadId });
       } catch {
@@ -106,5 +120,5 @@ export function createCommands(store: ListStore): Commands {
     rpc: () => store.edge.rpc,
     thread: (threadId) => store.getState().model?.rows.get(threadId)?.thread ?? null,
   });
-  return { ...own, ...lifecycle, ...createReorderCommands(store) };
+  return { ...own, ...lifecycle, ...createReorderCommands(store), ...createPortCommands(() => store.edge.rpc) };
 }

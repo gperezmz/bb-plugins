@@ -15,6 +15,7 @@ import { HarnessLogo } from "./HarnessLogo";
 import { HoverActions, offersHoverActions } from "./HoverActions";
 import { JumpHint, useJumpHint } from "./jump-hints";
 import { Location } from "./Location";
+import { PortIndicator } from "./PortIndicator";
 import { PullRequestBadge } from "./PullRequestBadge";
 import { MoreButton } from "./RowMenu";
 import { RenameEditor } from "./RenameEditor";
@@ -188,6 +189,7 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
       {thread.environment?.branchName && thread.host ? (
         <Icon name="Computer" aria-label={`Machine: ${thread.host.name}`} className="size-3 shrink-0 text-muted-foreground/60" />
       ) : null}
+      <PortIndicator environmentId={thread.environment?.id} />
       <Counts row={row} />
       <PullRequestBadge threadId={row.id} />
       <HarnessLogo providerId={thread.providerId} />
@@ -232,6 +234,7 @@ function FoldedCard({ row, editing, projectName, colour }: CardProps) {
       </span>
       <Title row={row} editing={editing} className="min-w-12 text-xs" />
       {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
+      <PortIndicator environmentId={thread.environment?.id} />
       <StatusCell row={row} status={status} compact />
     </div>
   );

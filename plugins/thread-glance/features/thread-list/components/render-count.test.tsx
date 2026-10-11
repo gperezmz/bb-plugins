@@ -61,11 +61,12 @@ describe("AC30: the list at 2,000 threads", () => {
     expect(rowRenderCounts().get("t7")).toBe(1);
   });
 
-  it("makes no request from a row: the server hears only sync and the auto-settle pass, however long the list stays open", async () => {
+  it("makes no request from a row: the server hears only sync, the auto-settle pass and the window's one ports read, however long the list stays open", async () => {
     const m = await mount({ threads, server: { order, settings: { inactiveShelf: false } } });
     await flush();
     const heard = () => m.server.calls.map((call) => call.method);
-    expect(new Set(heard())).toEqual(new Set(["sync", "runAutoSettle"]));
+    expect(new Set(heard())).toEqual(new Set(["sync", "ports", "runAutoSettle"]));
+    expect(heard().filter((method) => method === "ports")).toHaveLength(1);
     const before = heard();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     await act(async () => void (await vi.advanceTimersByTimeAsync(10 * MIN)));

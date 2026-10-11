@@ -163,6 +163,11 @@ export function useIsDragging(): boolean {
   return useListSelect((state) => state.ui.dragging !== null);
 }
 
+/** Whether the Clean settled resources dialog is open. */
+export function useCleanOpen(): boolean {
+  return useListSelect((state) => state.ui.cleanOpen);
+}
+
 /** The live region's text. */
 export function useAnnouncement(): string {
   return useListSelect((state) => state.ui.announcement);
