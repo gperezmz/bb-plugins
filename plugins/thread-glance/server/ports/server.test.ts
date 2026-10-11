@@ -10,6 +10,7 @@ import plugin from "../../server";
 import { CHANNELS, type Versioned } from "../../shared/signals";
 import type { PortsSnapshot } from "../../shared/ports";
 import { listedThread, sdkWith } from "../testing/fakes";
+import { SETTLE_WAIT_MS } from "./clean";
 
 const SECRET = "s3cr3t";
 const LSOF = "lsof -nP -iTCP -sTCP:LISTEN -F pcn +c 0";
@@ -99,6 +100,24 @@ async function load(system: FakeSystem, options: { threads?: ReturnType<typeof l
 const ports = async (harness: Awaited<ReturnType<typeof load>>["harness"], fresh = true) =>
   (await harness.behavior.callRpc("ports", { fresh })) as Versioned<PortsSnapshot>;
 
+/**
+ * Runs Clean with its settle wait on a fake clock, advanced once the wait is
+ * the one timer pending, rather than sleeping 750 ms of real time. A run that
+ * requested no port waits for nothing and answers first.
+ */
+async function runClean(harness: Awaited<ReturnType<typeof load>>["harness"], token: string) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let answered = false;
+    const running = harness.behavior.callRpc("runClean", { token }).finally(() => (answered = true));
+    await vi.waitFor(() => expect(answered || vi.getTimerCount() === 1).toBe(true));
+    await vi.advanceTimersByTimeAsync(SETTLE_WAIT_MS);
+    return await running;
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
 describe.each([
   ["Linux", linux],
   ["macOS", macos],
@@ -113,7 +132,7 @@ describe.each([
     await harness.behavior.callRpc("settle", { threadId: "thr_abc123" });
     const preview = (await harness.behavior.callRpc("previewClean", { projectId: null })) as { token: string; threads: unknown[] };
     expect(preview.threads).toMatchObject([{ threadId: "thr_abc123", terminals: 1, ports: [{ port: 5173, process: "node" }] }]);
-    const ran = await harness.behavior.callRpc("runClean", { token: preview.token });
+    const ran = await runClean(harness, preview.token);
     expect(ran, JSON.stringify(ran)).toMatchObject({ expired: false, closedTerminals: 1, portRequests: 1 });
     expect(closes).toEqual(["term-1 force"]);
     expect(kill).toHaveBeenCalledWith(4242, "SIGTERM");
