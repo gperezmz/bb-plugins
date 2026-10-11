@@ -1,11 +1,15 @@
-// The inline title editor: Enter saves a trimmed, changed title, and so does
-// a blur once the user has typed or clicked, or 600 ms have passed; a blur
-// before then takes focus back. Escape cancels. The row stays on its shelf
-// until the editor ends.
+// The inline title editor. It keeps focus until the user leaves it, with no
+// time limit: a pointer press outside it, Tab, Enter or Escape. Focus that
+// moves away any other way is taken back, such as bb focusing the composer of
+// a thread a double-click's first click opened, however late, a closing menu
+// handing focus to its trigger, or focus falling to nothing as the focused
+// item of a closing menu or dialog is removed. Leaving the window is not
+// leaving the editor, and a dialog that opens on its own keeps the focus it
+// took; focus that goes into embedded content (a frame, a webview) is the user
+// pressing in it, so it leaves. Enter and leaving save a trimmed, changed
+// title; Escape cancels. The row stays on its shelf until the editor ends.
 import { useEffect, useRef, useState } from "react";
-
-/** How long after it opens the editor takes focus back from anything but the user. */
-const GRACE_MS = 600;
+import { isFocusOnNothing, isHeldByDialog, isInFrame, leavesByKey, openDialogs } from "./rename-focus";
 
 export function RenameEditor({
   initial,
@@ -24,44 +28,86 @@ export function RenameEditor({
   const input = useRef<HTMLInputElement>(null);
   // One end per edit: Enter saves and then the unmount's blur must not save again.
   const ended = useRef(false);
-  // bb focuses the composer of a thread a double-click's first click has just
-  // opened, a moment after the editor is up. Until the user types or clicks,
-  // focus that leaves the editor is taken back instead of ending the edit.
-  const driven = useRef(false);
-  useEffect(() => {
-    input.current?.focus();
-    input.current?.select();
-    const drive = () => void (driven.current = true);
-    const timer = setTimeout(drive, GRACE_MS);
-    document.addEventListener("keydown", drive, true);
-    document.addEventListener("pointerdown", drive, true);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("keydown", drive, true);
-      document.removeEventListener("pointerdown", drive, true);
-    };
-  }, []);
-  const end = (save: boolean) => {
+  // Set by Tab, so that the blur it causes saves instead of taking focus back.
+  const leaving = useRef(false);
+  // The latest save, for the document listeners below, which are set up once.
+  const save = useRef(() => {});
+  const end = (saves: boolean) => {
     if (ended.current) return;
     ended.current = true;
-    if (save) onSave(value);
+    if (saves) onSave(value);
     onDone();
   };
+  save.current = () => end(true);
+  // Takes focus back when it has gone to nothing while the window has it, set up with the guard below.
+  const takeFocusFromNothing = useRef(() => {});
+
+  useEffect(() => {
+    const editor = input.current;
+    if (editor === null) return;
+    const dialogsBefore = openDialogs();
+    // A menu still open traps focus and pulls it back as the editor takes it;
+    // the focusin that pulls back is not fought, or the two would never stop.
+    let focusing = false;
+    const focusEditor = () => {
+      if (focusing) return;
+      focusing = true;
+      try {
+        editor.focus();
+      } finally {
+        focusing = false;
+      }
+    };
+    focusEditor();
+    editor.select();
+    // Takes focus back unless the user left or a dialog holds it.
+    const takeFocusBack = (target: EventTarget | null) => {
+      if (ended.current || leaving.current || target === editor || isHeldByDialog(target, dialogsBefore)) return;
+      if (isInFrame(target)) save.current();
+      else focusEditor();
+    };
+    takeFocusFromNothing.current = () => {
+      if (isFocusOnNothing()) takeFocusBack(null);
+    };
+    const onFocusIn = (event: FocusEvent) => takeFocusBack(event.target);
+    const onWindowFocus = () => takeFocusBack(document.activeElement);
+    // Removing the focused element, such as a closing menu's item, drops focus to the body with no focus event.
+    const removals = new MutationObserver(() => takeFocusFromNothing.current());
+    removals.observe(document.body, { childList: true, subtree: true });
+    const onPointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node) || !editor.contains(event.target)) save.current();
+    };
+    document.addEventListener("focusin", onFocusIn, true);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      removals.disconnect();
+      document.removeEventListener("focusin", onFocusIn, true);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("focus", onWindowFocus);
+    };
+  }, []);
+
   return (
     <input
       ref={input}
       aria-label={label}
       value={value}
       data-no-drag=""
-      data-rename-editor=""
       className={className}
       onChange={(event) => setValue(event.target.value)}
-      onBlur={() => (driven.current ? end(true) : input.current?.focus())}
+      onBlur={(event) => {
+        if (leaving.current) end(true);
+        // Focus that went to nothing has no focusin to catch it.
+        else if (event.relatedTarget === null) takeFocusFromNothing.current();
+      }}
       onClick={(event) => event.preventDefault()}
       onKeyDown={(event) => {
         event.stopPropagation();
         if (event.key === "Enter") end(true);
         else if (event.key === "Escape") end(false);
+        // A Tab that moved nothing must not switch the guard off for good.
+        else leaving.current = leavesByKey(event);
       }}
     />
   );

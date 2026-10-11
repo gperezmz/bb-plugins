@@ -25,22 +25,11 @@ export function menuTarget(thread: PluginSidebarThread): PluginThreadActionTarge
   };
 }
 
-/**
- * A menu closing hands focus back to its trigger; where its Rename opened the
- * inline editor, the editor keeps it instead.
- */
-function keepRenameFocus(event: Event): void {
-  const editor = document.querySelector<HTMLInputElement>("input[data-rename-editor]");
-  if (editor === null) return;
-  event.preventDefault();
-  editor.focus();
-}
-
 /** Right-click (long-press on touch) opens bb's thread menu over `children`. */
 export function RowContextMenu({ thread, disabled, dragging, children }: { thread: PluginSidebarThread; disabled: boolean; dragging: boolean; children: ReactNode }) {
   const commands = useCommands();
   return (
-    <ThreadActionsContextMenu thread={menuTarget(thread)} disabled={disabled} dragging={dragging} requestRename={commands.beginRename} onCloseAutoFocus={keepRenameFocus}>
+    <ThreadActionsContextMenu thread={menuTarget(thread)} disabled={disabled} dragging={dragging} requestRename={commands.beginRename}>
       {children}
     </ThreadActionsContextMenu>
   );
@@ -53,7 +42,6 @@ export function MoreButton({ thread, className }: { thread: PluginSidebarThread;
     <ThreadActionsMenu
       thread={menuTarget(thread)}
       requestRename={commands.beginRename}
-      onCloseAutoFocus={keepRenameFocus}
       side="bottom"
       align="end"
       trigger={(props) => (
