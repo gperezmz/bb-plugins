@@ -1,19 +1,16 @@
-// Thread Glance frontend entry: registers the sidebar thread list, and where
-// bb offers its always-mounted app overlay slot, the component there that
-// keeps the list's data current while bb's Settings or Plugins page has the
-// sidebar unmounted. The list's settings open from its header.
+// Thread Glance frontend entry: registers the sidebar thread list.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
-import { OverlaySyncKeeper, ThreadList } from "@/features/thread-list";
+
+/** Stands in for the shelf list until it is built. */
+function ThreadList() {
+  return <div role="status">Thread Glance</div>;
+}
 
 export default definePluginApp((app) => {
   app.slots.experimental_threadList({
     id: "thread-glance",
     title: "Thread Glance",
-    description: "Every thread's state, harness and child threads at a glance.",
+    description: "Shelves for every thread: active, snoozed, parked and settled.",
     component: ThreadList,
   });
-  // A bb without the slot has the list follow realtime itself instead.
-  if (typeof app.slots.experimental_appOverlay === "function") {
-    app.slots.experimental_appOverlay({ id: "thread-glance-sync", component: OverlaySyncKeeper });
-  }
 });
