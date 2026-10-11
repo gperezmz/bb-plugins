@@ -14,7 +14,10 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "host": "./host.ts"
+    "host": "./host.ts",
+    "skills": [
+      "skills"
+    ]
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.3.5",
@@ -79,6 +82,7 @@
     "app.tsx",
     "host.ts",
     "server",
+    "skills",
     "host",
     "shared",
     "features",
