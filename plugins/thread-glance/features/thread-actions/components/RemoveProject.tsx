@@ -15,8 +15,8 @@ export const REMOVE_WARNING = "Its threads are removed from BB too. This cannot 
 
 export interface RemoveProjectConfirmationProps {
   projectName: string;
-  /** Runs once the name is typed exactly and Remove project is pressed. */
-  onConfirm(): void | Promise<void>;
+  /** Runs once the name is typed exactly and Remove project is pressed; the button waits for the promise it returns. */
+  onConfirm(): void | Promise<unknown>;
   /** Draws a Cancel button that calls this; omitted where the confirmation sits in a page. */
   onCancel?(): void;
 }

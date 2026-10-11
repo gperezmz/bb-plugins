@@ -8,7 +8,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { makeThread, PROJECTS } from "@/testing/fixtures";
 import type { MenuData } from "./model/menu";
 import { targetOf } from "./model/testing";
-import { resetWindowState } from "./window-state";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
@@ -22,7 +21,6 @@ beforeAll(async () => {
 });
 afterEach(() => {
   cleanup();
-  resetWindowState();
   toasts.success.mockClear();
   toasts.error.mockClear();
 });
@@ -162,5 +160,34 @@ describe("the window's data", () => {
       sdk: { hosts: { list: async () => Promise.reject(new Error("offline")) } } as never,
     });
     await waitFor(() => expect(data?.machines).toBe("failed"));
+  });
+
+  it("lists the machines again when they could not be listed, or there were none, and stops once they were", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const answers: (() => Promise<{ id: string; name: string }[]>)[] = [
+      () => Promise.reject(new Error("offline")),
+      async () => [],
+      async () => [{ id: "h1", name: "Laptop" }],
+    ];
+    const list = vi.fn(() => answers[Math.min(list.mock.calls.length - 1, answers.length - 1)]!());
+    let data: MenuData | undefined;
+    const project = registrations.find((registration) => registration.id === "project")!;
+    function Probe() {
+      data = project.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, {
+      sidebarThreads: { status: "ready", threads: [makeThread({ id: "t1" })], projects: PROJECTS },
+      sdk: { hosts: { list } } as never,
+    });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+    expect(data?.machines).toBe("failed");
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(data?.machines).toEqual({ count: 0 });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(data?.machines).toEqual({ count: 1 });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(300_000)));
+    expect(list).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
   });
 });

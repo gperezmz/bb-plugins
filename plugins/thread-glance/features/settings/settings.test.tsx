@@ -472,6 +472,19 @@ describe("Project management (AC22)", () => {
     expect(server.calls).toEqual([{ method: "forgetProject", input: { projectId: "proj_a" } }]);
   });
 
+  it("removes the project once however often the button is pressed while bb is still deleting it", async () => {
+    let finish!: () => void;
+    const deleted = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => (finish = () => resolve({ ok: true }))));
+    openPage(fakeServer(), { sdk: { projects: { delete: deleted } } });
+    fireEvent.change(within(screen.getByRole("region", { name: "Project management" })).getByLabelText("Project name"), { target: { value: "Alpha" } });
+    const remove = screen.getByRole("button", { name: "Remove project" }) as HTMLButtonElement;
+    await act(async () => void fireEvent.click(remove));
+    expect(remove.disabled).toBe(true);
+    await act(async () => void fireEvent.click(remove));
+    expect(deleted).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+  });
+
   it("starts the typed name over for another project", () => {
     openPage(fakeServer());
     const region = screen.getByRole("region", { name: "Project management" });

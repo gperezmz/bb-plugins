@@ -25,7 +25,7 @@ export function ProjectManagement({ projects }: { projects: readonly PluginSideb
               onChange={setChosen}
             />
             {/* Keyed by project so a typed name never carries over to another project. */}
-            <RemoveProjectConfirmation key={project.id} projectName={project.name} onConfirm={() => void removeProject(sdk, rpc, project.id)} />
+            <RemoveProjectConfirmation key={project.id} projectName={project.name} onConfirm={() => removeProject(sdk, rpc, project.id)} />
           </div>
         </Row>
       )}
