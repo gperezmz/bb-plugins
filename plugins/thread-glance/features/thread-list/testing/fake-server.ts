@@ -34,7 +34,11 @@ export interface FakeServerOptions {
   holdReorder?: boolean;
   /** The workspace ports snapshot held at the start. */
   ports?: Partial<Omit<PortsSnapshot, "at">>;
-  /** What the port and Clean calls answer, by method, instead of their defaults (nothing owned, nothing to clean). */
+  /**
+   * What the port and Clean calls answer, by method, instead of their defaults
+   * (nothing owned, nothing to clean): a value, or a function of the input that
+   * returns it or a promise of it.
+   */
   answers?: Partial<Record<PortsMethod, unknown>>;
 }
 
@@ -109,7 +113,9 @@ export function createFakeServer(options: FakeServerOptions = {}) {
   const portsCall = (method: PortsMethod, fallback: unknown) => async (input: unknown) => {
     server.calls.push({ method, input });
     refusing(method);
-    return answers[method] ?? fallback;
+    const answer = answers[method];
+    if (typeof answer === "function") return (answer as (input: unknown) => unknown)(input);
+    return answer ?? fallback;
   };
 
   const server = {

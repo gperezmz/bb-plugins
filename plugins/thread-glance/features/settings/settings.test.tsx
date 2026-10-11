@@ -494,3 +494,54 @@ describe("Project management (AC22)", () => {
     expect((screen.getByRole("button", { name: "Remove project" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe("This device: the port link machine (AC5)", () => {
+  const key = "thread-glance:portLinkMachine";
+  const machines = vi.fn(async () => [
+    { id: "host_1", name: "Laptop" },
+    { id: "host_2", name: "Server" },
+  ]);
+  const select = () => screen.getByLabelText("Port link machine") as HTMLSelectElement;
+  const optionLabels = () => [...select().options].map((option) => option.textContent);
+  const opened = async (server = fakeServer(), list: () => Promise<unknown> = machines) => {
+    openPage(server, { sdk: { hosts: { list } } });
+    await act(async () => void (await Promise.resolve()));
+  };
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("lists No machine, the default, then the machines bb lists", async () => {
+    await opened();
+    expect(optionLabels()).toEqual(["No machine", "Laptop", "Server"]);
+    expect(select().value).toBe("");
+  });
+
+  it("stores the choice on this device, not on the server, and reads it back", async () => {
+    const server = fakeServer();
+    await opened(server);
+    await act(async () => void fireEvent.change(select(), { target: { value: "host_2" } }));
+    expect(localStorage.getItem(key)).toBe('"host_2"');
+    expect(select().value).toBe("host_2");
+    expect(server.calls).toEqual([]);
+    cleanup();
+    await opened(server);
+    expect(select().value).toBe("host_2");
+    await act(async () => void fireEvent.change(select(), { target: { value: "" } }));
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it("follows another tab", async () => {
+    await opened();
+    localStorage.setItem(key, '"host_1"');
+    act(() => void window.dispatchEvent(new StorageEvent("storage", { key })));
+    expect(select().value).toBe("host_1");
+  });
+
+  it("shows only the current choice and Could not load machines when the list fails", async () => {
+    localStorage.setItem(key, '"host_1"');
+    await opened(fakeServer(), async () => Promise.reject(new Error("offline")));
+    expect(optionLabels()).toEqual(["No machine", "host_1"]);
+    expect(select().value).toBe("host_1");
+    expect(screen.getByText("Could not load machines")).toBeTruthy();
+  });
+});
