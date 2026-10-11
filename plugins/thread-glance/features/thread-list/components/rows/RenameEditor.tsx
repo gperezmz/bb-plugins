@@ -3,11 +3,12 @@
 // moves away any other way is taken back, such as bb focusing the composer of
 // a thread a double-click's first click opened, however late, or a closing
 // menu handing focus to its trigger. Leaving the window is not leaving the
-// editor, and a dialog that opens on its own keeps the focus it took. Enter and
+// editor, and a dialog that opens on its own keeps the focus it took; focus
+// that goes into a frame is the user pressing in it, so it leaves. Enter and
 // leaving save a trimmed, changed title; Escape cancels. The row stays on its
 // shelf until the editor ends.
 import { useEffect, useRef, useState } from "react";
-import { isHeldByDialog, leavesByKey } from "./rename-focus";
+import { isHeldByDialog, isInFrame, leavesByKey, openDialogs } from "./rename-focus";
 
 export function RenameEditor({
   initial,
@@ -41,15 +42,17 @@ export function RenameEditor({
   useEffect(() => {
     const editor = input.current;
     if (editor === null) return;
+    const dialogsBefore = openDialogs();
     editor.focus();
     editor.select();
     // Takes focus back unless the user left or a dialog holds it.
-    const reclaim = (target: EventTarget | null) => {
-      if (ended.current || leaving.current || target === editor || isHeldByDialog(target)) return;
-      editor.focus();
+    const takeFocusBack = (target: EventTarget | null) => {
+      if (ended.current || leaving.current || target === editor || isHeldByDialog(target, dialogsBefore)) return;
+      if (isInFrame(target)) save.current();
+      else editor.focus();
     };
-    const onFocusIn = (event: FocusEvent) => reclaim(event.target);
-    const onWindowFocus = () => reclaim(document.activeElement);
+    const onFocusIn = (event: FocusEvent) => takeFocusBack(event.target);
+    const onWindowFocus = () => takeFocusBack(document.activeElement);
     const onPointerDown = (event: PointerEvent) => {
       if (!(event.target instanceof Node) || !editor.contains(event.target)) save.current();
     };
@@ -81,7 +84,8 @@ export function RenameEditor({
         event.stopPropagation();
         if (event.key === "Enter") end(true);
         else if (event.key === "Escape") end(false);
-        else if (leavesByKey(event)) leaving.current = true;
+        // A Tab that moved nothing must not switch the guard off for good.
+        else leaving.current = leavesByKey(event);
       }}
     />
   );

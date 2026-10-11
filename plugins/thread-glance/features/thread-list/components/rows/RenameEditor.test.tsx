@@ -6,7 +6,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RenameEditor } from "./RenameEditor";
-import { isHeldByDialog, leavesByKey } from "./rename-focus";
+import { isHeldByDialog, isInFrame, leavesByKey, openDialogs } from "./rename-focus";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -67,6 +67,16 @@ describe("keeping focus", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it("is not switched off by a Tab that moved nothing", () => {
+    const { input, composer, onSave, onDone } = setup();
+    fireEvent.keyDown(input, { key: "Tab" });
+    type(input, "New");
+    composer.focus();
+    expect(document.activeElement).toBe(input);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it("takes focus back when it goes to nothing, such as a closing menu's trigger being gone", () => {
     const { input, onDone } = setup();
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
@@ -105,7 +115,30 @@ describe("keeping focus", () => {
   });
 });
 
+describe("a dialog that was open before the editor", () => {
+  it("is no dialog opened on its own: a menu's closing drawer does not keep the editor from its focus", () => {
+    const drawer = document.body.appendChild(document.createElement("div"));
+    drawer.setAttribute("role", "dialog");
+    drawer.innerHTML = '<button type="button">Rename</button>';
+    const { input, onDone } = setup();
+    drawer.querySelector("button")!.focus();
+    expect(document.activeElement).toBe(input);
+    expect(onDone).not.toHaveBeenCalled();
+    drawer.remove();
+  });
+});
+
 describe("leaving the editor", () => {
+  it("saves when focus goes into a frame, where a press makes no pointer press on the page", () => {
+    const { input, onSave, onDone } = setup();
+    type(input, "New");
+    const frame = document.body.appendChild(document.createElement("iframe"));
+    fireEvent.focusIn(frame);
+    expect(onSave).toHaveBeenCalledWith("New");
+    expect(onDone).toHaveBeenCalledTimes(1);
+    frame.remove();
+  });
+
   it("saves a changed title on a press outside it", () => {
     const { input, elsewhere, onSave, onDone } = setup();
     act(() => void vi.advanceTimersByTime(2_000));
@@ -170,13 +203,21 @@ describe("switching away from the window", () => {
 
   it("takes focus back on return when bb moved it while the window was away", () => {
     const { input, composer, onDone } = setup();
+    const focus = vi.spyOn(input, "focus");
+    vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    // A backgrounded page may run no focusin: the composer is simply the active element on return.
+    vi.spyOn(document, "activeElement", "get").mockReturnValue(composer);
+    fireEvent.focus(window);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("does not grab focus on the blur that leaving the window causes", () => {
+    const { input } = setup();
+    const focus = vi.spyOn(input, "focus");
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     fireEvent.blur(input);
-    composer.focus();
-    vi.spyOn(document, "hasFocus").mockReturnValue(true);
-    fireEvent.focus(window);
-    expect(document.activeElement).toBe(input);
-    expect(onDone).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
   });
 });
 
@@ -191,12 +232,16 @@ describe("what leaves the editor", () => {
     expect(leavesByKey({ key: "Alt", ...keys, altKey: true })).toBe(false);
   });
 
-  it("holds a dialog's focus, and an alert dialog's, and nothing else", () => {
+  it("holds the focus of a dialog opened since, and an alert dialog, and nothing else", () => {
     document.body.innerHTML = '<div role="dialog"><i id="a"></i></div><div role="alertdialog"><i id="b"></i></div><i id="c"></i>';
-    expect(isHeldByDialog(document.getElementById("a"))).toBe(true);
-    expect(isHeldByDialog(document.getElementById("b"))).toBe(true);
-    expect(isHeldByDialog(document.getElementById("c"))).toBe(false);
-    expect(isHeldByDialog(null)).toBe(false);
+    const none = new Set<Element>();
+    expect(isHeldByDialog(document.getElementById("a"), none)).toBe(true);
+    expect(isHeldByDialog(document.getElementById("b"), none)).toBe(true);
+    expect(isHeldByDialog(document.getElementById("c"), none)).toBe(false);
+    expect(isHeldByDialog(null, none)).toBe(false);
+    expect(isHeldByDialog(document.getElementById("a"), openDialogs())).toBe(false);
+    expect(isInFrame(document.createElement("iframe"))).toBe(true);
+    expect(isInFrame(document.getElementById("c"))).toBe(false);
     document.body.innerHTML = "";
   });
 });
