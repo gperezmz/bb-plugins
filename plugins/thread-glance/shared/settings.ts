@@ -3,7 +3,7 @@
 // that belong to the device (shelf collapse, Active's sort, group collapse,
 // child expansion) are not here.
 import * as z from "zod/mini";
-import { DEFAULT_SNOOZE_SHORTCUTS, snoozeShortcutsError } from "./snooze";
+import { DEFAULT_SNOOZE_SHORTCUTS, MAX_SNOOZE_ENTRIES, snoozeShortcutsError } from "./snooze";
 
 export const HOURS_BEFORE_INACTIVE_RANGE = { min: 1, max: 720 } as const;
 export const DAYS_BEFORE_AUTO_SETTLE_RANGE = { min: 1, max: 90 } as const;
@@ -92,6 +92,25 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   childDirection: "oldest",
   childIcon: "colour-circle",
 });
+
+/** What each setting does and the values it takes, in the words `bb thread-glance prefs` shows. */
+export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
+  compactWorkingThreads: "Draw working threads as a one-line folded card. true or false.",
+  workingShelf: "Move threads whose tree is working to their own Working shelf. true or false.",
+  inactiveShelf: "Move threads with no activity for a while to the Inactive shelf. true or false.",
+  hoursBeforeInactive: `Hours without activity before a thread moves to the Inactive shelf. A whole number, ${HOURS_BEFORE_INACTIVE_RANGE.min} to ${HOURS_BEFORE_INACTIVE_RANGE.max}.`,
+  dockShelves: "Keep the lower shelves at the bottom of the sidebar. true or false.",
+  projectColours: "Give each project a colour, shown on its name, stripe and monogram. true or false.",
+  stripesIn: `Where the project's stripe shows: ${STRIPE_CHOICES.join(", ")}. "full-and-collapsed" is Full and collapsed mode, "full" Full mode only, "grouped" Grouped projects only.`,
+  snoozeShortcuts: `The snooze presets, comma-separated text: durations (1h, 2d) or times (evening@18:00, tomorrow, next-week@09:00), each optionally named as Label=value. At most ${MAX_SNOOZE_ENTRIES} entries.`,
+  settleQuietThreads: "Settle a thread with no open pull request once it has been quiet for daysBeforeAutoSettle days. true or false.",
+  daysBeforeAutoSettle: `Days a thread is quiet before it is settled automatically. A whole number, ${DAYS_BEFORE_AUTO_SETTLE_RANGE.min} to ${DAYS_BEFORE_AUTO_SETTLE_RANGE.max}.`,
+  settleMergedPullRequests: "A merged pull request settles its thread; a closed one always does. true or false.",
+  showChildrenNeedingAttention: "Keep children with a status in a closed child list, and on a collapsed shelf or group. true or false.",
+  childOrder: `How a thread's children are sorted: ${CHILD_ORDERS.join(", ")}.`,
+  childDirection: `Which children come first: ${CHILD_DIRECTIONS.join(", ")}.`,
+  childIcon: `A child's mark: ${CHILD_ICONS.join(", ")}.`,
+};
 
 export type SettingsErrors = Partial<Record<SettingKey, string>>;
 

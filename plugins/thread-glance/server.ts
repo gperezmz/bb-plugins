@@ -1,7 +1,8 @@
 // Thread Glance server: lifecycle rows, the manual order, the settings and
 // the project appearance, served to the app through `sync` and realtime. The
 // app imports the RPC contract's types from shared/contract.ts and the
-// signals' from shared/signals.ts.
+// signals' from shared/signals.ts. `bb thread-glance prefs` edits the settings
+// through the same write as the settings page.
 import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { en } from "zod/locales";
@@ -16,6 +17,7 @@ import { createAppearanceStore } from "./server/appearance-store";
 import { createArchiveRelease } from "./server/archive-release";
 import { createArchivedThreads } from "./server/archived";
 import { createAutoSettle } from "./server/auto-settle";
+import { createCli } from "./server/cli";
 import { MIGRATIONS } from "./server/database";
 import { createLifecycleStore } from "./server/lifecycle-store";
 import { createOrderStore } from "./server/order-store";
@@ -176,6 +178,14 @@ export default function threadGlance(bb: BbPluginApi): void {
     previewClean: ({ projectId }) => clean.preview(projectId),
     runClean: ({ token }) => clean.run(token),
   });
+
+  bb.cli.register(
+    createCli({
+      read: () => settings.read(),
+      write: (patch) => settingsInOrder(async () => publishSettings(await settings.write(patch))),
+      reset: (keys) => settingsInOrder(async () => publishSettings(await settings.reset(keys))),
+    }),
+  );
 
   bb.events.on("thread.created", ({ thread }) => events.created(thread));
   bb.events.on("thread.active", ({ thread }) => events.active(thread));
