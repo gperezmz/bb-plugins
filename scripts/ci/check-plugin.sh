@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs one plugin's CI checks. CI calls this; run it locally to reproduce a
-# red job. Needs node, npm, git and the `bb` CLI on PATH.
+# red job, apart from the `bb plugin types --check` step that ci.yml's `check`
+# job runs after this script's check mode; run it in the plugin's folder. Needs
+# node, npm, git and the `bb` CLI on PATH.
 #
 #   scripts/ci/check-plugin.sh <plugin> [check|git-install|npm-install]
 #

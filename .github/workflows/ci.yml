@@ -102,8 +102,9 @@ jobs:
         env:
           PLUGIN: ${{ matrix.plugin }}
           MODE: ${{ matrix.mode }}
-      # Fails when a devDependency bb shims differs from the version bb
-      # shims, or the SDK pin differs from the SDK this bb ships. Not in
+      # Fails when a devDependency that bb shims is declared at another
+      # version than bb shims, or the SDK pin differs from the SDK this bb
+      # ships, and names the package. Not in
       # check-plugin.sh, which the Compatibility workflow also runs against
       # newer bb releases, where an SDK pin that trails bb is a warning.
       - name: bb plugin types --check
