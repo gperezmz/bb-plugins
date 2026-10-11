@@ -37,8 +37,8 @@ export interface ParentOptionsInput {
 }
 
 /**
- * None, then every non-archived, visible thread except the thread itself and
- * its descendants, and the current parent even when it is archived. Threads
+ * None, then every non-archived thread, hidden ones included, except the
+ * thread itself and its descendants, and the current parent even when it is archived. Threads
  * of the thread's own project come first, then the others, each by recent
  * activity; another project's thread reads "Project · Title". `query` keeps
  * the options whose label contains it; None always stays.
@@ -48,7 +48,7 @@ export function parentOptions({ thread, threads, currentParent, projectNames, qu
   const candidates = new Map<string, ParentThread>();
   for (const candidate of threads) {
     if (excluded.has(candidate.id)) continue;
-    if (candidate.id === thread.parentThreadId || (!candidate.isArchived && !candidate.isHidden)) candidates.set(candidate.id, candidate);
+    if (candidate.id === thread.parentThreadId || !candidate.isArchived) candidates.set(candidate.id, candidate);
   }
   if (currentParent !== null && !excluded.has(currentParent.id) && currentParent.id === thread.parentThreadId) {
     candidates.set(currentParent.id, currentParent);
@@ -67,6 +67,27 @@ export function parentOptions({ thread, threads, currentParent, projectNames, qu
     .map((candidate): ParentOption => ({ id: candidate.id, label: labelOf(candidate), checked: candidate.id === thread.parentThreadId }))
     .filter((option) => needle === "" || option.label.toLowerCase().includes(needle));
   return [{ id: null, label: NO_PARENT_LABEL, checked: thread.parentThreadId === null }, ...options];
+}
+
+/** Why a parent cannot be chosen: it sits below the thread. */
+export const PARENT_BELOW_REFUSAL = "That thread sits below this one, so it can't be its parent.";
+
+/** The longest chain of ancestors followed before giving up on a loop. */
+const MAX_ANCESTORS = 1_000;
+
+/**
+ * Whether `candidateId` is `threadId` or sits below it, found by following
+ * the candidate's parents up. `parentOf` answers a thread's parent, archived
+ * threads included, which the list bb shows leaves out; null ends the chain.
+ */
+export async function sitsBelow(threadId: string, candidateId: string, parentOf: (id: string) => Promise<string | null>): Promise<boolean> {
+  const seen = new Set<string>();
+  for (let id: string | null = candidateId; id !== null && seen.size < MAX_ANCESTORS; id = await parentOf(id)) {
+    if (id === threadId) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+  }
+  return false;
 }
 
 /** What changing the parent does to the thread's pin: choosing a parent unpins a pinned thread, None keeps it. */

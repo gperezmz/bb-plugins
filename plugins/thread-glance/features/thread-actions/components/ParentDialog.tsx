@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
-import { parentOptions, unpinsOnChoice, type ParentOption, type ParentThread } from "../model/parents";
+import { PARENT_BELOW_REFUSAL, parentOptions, sitsBelow, unpinsOnChoice, type ParentOption, type ParentThread } from "../model/parents";
 import { useDialogContext } from "./use-dialog-context";
 
 export const PARENT_UPDATED = "Parent updated";
@@ -60,9 +60,25 @@ export function ParentDialog({ threadId, onClose }: { threadId: string; onClose(
   );
   const activeIndex = Math.min(active, options.length - 1);
 
+  /** A thread's parent: from the list, else read from bb, which also knows archived threads; null where it cannot be read. */
+  const parentOf = async (id: string): Promise<string | null> => {
+    const listed = threads.find((candidate) => candidate.id === id);
+    if (listed !== undefined) return listed.parentThreadId;
+    try {
+      const found = await sdk.threads.get({ threadId: id });
+      return "thread" in found ? null : found.parentThreadId;
+    } catch {
+      return null;
+    }
+  };
+
   const choose = async (option: ParentOption) => {
     onClose();
     if (thread === undefined || option.id === parentId) return;
+    if (option.id !== null && (await sitsBelow(threadId, option.id, parentOf))) {
+      toast.error(PARENT_BELOW_REFUSAL);
+      return;
+    }
     try {
       await sdk.threads.update({ threadId, parentThreadId: option.id });
     } catch (error) {

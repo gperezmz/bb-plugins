@@ -8,6 +8,7 @@ import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { requestSnoozePicker } from "@/features/thread-list";
 import { NEEDS_APP_OVERLAY } from "@/lib/dialog-requests";
 import { requestParentDialog, requestProjectDialog } from "../requests";
+import { PARENT_BELOW_REFUSAL } from "../model/parents";
 import { PARENT_REMOVED, PARENT_UPDATED, UNPIN_UNCONFIRMED } from "./ParentDialog";
 import { REMOVE_WARNING, RemoveProjectConfirmation } from "./RemoveProject";
 import { ThreadActionDialogs } from "./ThreadActionDialogs";
@@ -198,6 +199,28 @@ describe("Parent… (AC21)", () => {
     fireEvent.keyDown(box, { key: "ArrowDown" });
     await act(async () => void fireEvent.keyDown(box, { key: "Enter" }));
     expect(calls[0]!.args).toEqual({ threadId: "t1", parentThreadId: "p1" });
+  });
+
+  it("refuses a parent that sits below the thread through an archived thread, and changes nothing", async () => {
+    // Subject <- Archived <- Deep: Deep is listed, its parent is not.
+    const deep = makeThread({ id: "deep", title: "Deep", parentThreadId: "archived" });
+    const { calls } = mountDialogs({
+      threads: [makeThread({ id: "t1", title: "Subject" }), deep],
+      sdk: {
+        threads: {
+          get: vi.fn(async () => ({
+            id: "archived", title: "Archived", titleFallback: null, projectId: "proj_a", parentThreadId: "t1",
+            archivedAt: 3, createdAt: 1, updatedAt: 2, latestAttentionAt: 2,
+          })),
+          update: vi.fn(),
+          unpin: vi.fn(),
+        },
+      },
+    });
+    act(() => requestParentDialog("t1"));
+    await act(async () => void fireEvent.click(screen.getByRole("option", { name: "Deep" })));
+    expect(toasts.error).toHaveBeenCalledWith(PARENT_BELOW_REFUSAL);
+    expect(calls.map((call) => call.method)).not.toContain("threads.update");
   });
 
   it("shows an archived current parent, read from bb, as checked", async () => {

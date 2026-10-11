@@ -1,7 +1,7 @@
 // The Parent… dialog's options (AC21).
 import { describe, expect, it } from "vitest";
 import { makeThread } from "@/testing/fixtures";
-import { NO_PARENT_LABEL, parentOptions, unpinsOnChoice, type ParentThread } from "./parents";
+import { NO_PARENT_LABEL, parentOptions, sitsBelow, unpinsOnChoice, type ParentThread } from "./parents";
 
 const NAMES = new Map([
   ["proj_a", "Alpha"],
@@ -22,16 +22,20 @@ describe("parent options", () => {
     expect(labels(options(subject, threads, { query: "zzz" }))).toEqual([NO_PARENT_LABEL]);
   });
 
-  it("leaves out the thread and its descendants, archived threads and hidden helpers", () => {
+  it("leaves out the thread and its descendants, and archived threads", () => {
     const threads = [
       subject,
       makeThread({ id: "child", title: "Child", parentThreadId: "me" }),
       makeThread({ id: "grandchild", title: "Grandchild", parentThreadId: "child" }),
       makeThread({ id: "archived", title: "Archived", isArchived: true, archivedAt: 1 }),
-      makeThread({ id: "helper", title: "Helper", isHidden: true }),
       makeThread({ id: "ok", title: "Fine" }),
     ];
     expect(labels(options(subject, threads))).toEqual([NO_PARENT_LABEL, "Fine"]);
+  });
+
+  it("offers hidden threads", () => {
+    const threads = [subject, makeThread({ id: "helper", title: "Helper", isHidden: true })];
+    expect(labels(options(subject, threads))).toEqual([NO_PARENT_LABEL, "Helper"]);
   });
 
   it("keeps the current parent, checked, even when it is archived", () => {
@@ -66,5 +70,20 @@ describe("what choosing does to a pin", () => {
     expect(unpinsOnChoice(true, "p")).toBe(true);
     expect(unpinsOnChoice(true, null)).toBe(false);
     expect(unpinsOnChoice(false, "p")).toBe(false);
+  });
+});
+
+describe("a parent that would close a loop", () => {
+  const parents: Record<string, string | null> = { me: null, a: "me", archived: "a", c: "archived", free: null };
+  const parentOf = async (id: string) => parents[id] ?? null;
+
+  it("is found through an archived thread in between", async () => {
+    expect(await sitsBelow("me", "c", parentOf)).toBe(true);
+    expect(await sitsBelow("me", "me", parentOf)).toBe(true);
+  });
+
+  it("is not found for a thread elsewhere, and a loop elsewhere ends", async () => {
+    expect(await sitsBelow("me", "free", parentOf)).toBe(false);
+    expect(await sitsBelow("me", "x", async (id) => (id === "x" ? "y" : "x"))).toBe(false);
   });
 });
