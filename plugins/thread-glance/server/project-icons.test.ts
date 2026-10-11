@@ -71,10 +71,10 @@ describe("the project icon route (AC25)", () => {
     expect(response.headers.get("last-modified")).not.toBeNull();
   });
 
-  it("answers 404 when the project has no icon, so the browser draws the monogram, and does not cache the answer", async () => {
+  it("answers 204 when the project has no icon, so the browser draws the monogram without logging an error, and does not cache the answer", async () => {
     const { get } = setup();
     const response = await get("p1");
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(204);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
@@ -133,9 +133,9 @@ describe("the project icon route (AC25)", () => {
 
   it("shows a favicon that is added within seconds of a miss, but not before the miss expires", async () => {
     const { get, setFiles, advance } = setup();
-    expect((await get("p1")).status).toBe(404);
+    expect((await get("p1")).status).toBe(204);
     setFiles({ "favicon.png": png() });
-    expect((await get("p1")).status).toBe(404);
+    expect((await get("p1")).status).toBe(204);
     advance(16_000);
     expect((await get("p1")).status).toBe(200);
   });
@@ -186,7 +186,7 @@ describe("uploading and clearing", () => {
     expect(appearance.read()).toEqual({ colours: {}, icons: {} });
     expect(appearance.readIcon("p1")).toBeNull();
     setFiles({});
-    expect((await get("p1")).status).toBe(404);
+    expect((await get("p1")).status).toBe(204);
     expect(icons.forget("p1")).toBe(false);
   });
 

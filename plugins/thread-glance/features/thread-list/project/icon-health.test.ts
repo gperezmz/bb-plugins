@@ -8,28 +8,15 @@ describe("retryDelay", () => {
 });
 
 describe("IconHealth", () => {
-  it("shares one failure among every row of a project", () => {
+  it("waits longer after each failure in a row, per project", () => {
     const health = new IconHealth();
-    health.failed("p", 0, 1_000);
-    health.failed("p", 0, 1_001);
-    expect(health.attempt("p")).toBe(1);
-    expect(health.retryAt("p", 2_000)).toBe(16_000);
-    expect(health.retryAt("q", 2_000)).toBeNull();
+    expect([health.failed("p"), health.failed("p"), health.failed("q")]).toEqual([15_000, 30_000, 15_000]);
   });
 
-  it("waits longer after each failed retry, and is ready again once the wait has passed", () => {
+  it("forgets a project's failures once its icon loads", () => {
     const health = new IconHealth();
-    health.failed("p", 0, 0);
-    expect(health.retryAt("p", 15_000)).toBeNull();
-    health.failed("p", 1, 15_000);
-    expect(health.retryAt("p", 16_000)).toBe(45_000);
-  });
-
-  it("forgets a failure once the icon loads", () => {
-    const health = new IconHealth();
-    health.failed("p", 0, 0);
+    health.failed("p");
     health.loaded("p");
-    expect(health.attempt("p")).toBe(0);
-    expect(health.retryAt("p", 1)).toBeNull();
+    expect(health.failed("p")).toBe(15_000);
   });
 });
