@@ -148,8 +148,14 @@ export function listedThread(id: string, overrides: Partial<ListedThread> = {}):
  * test can change them) and `archived`: the listing pages the way bb does, and
  * pin, unpin and reorder change the list.
  */
-export function sdkWith(threads: () => ListedThread[], archived: () => ListedThread[] = () => []) {
+export function sdkWith(
+  threads: () => ListedThread[],
+  archived: () => ListedThread[] = () => [],
+  extra: { threads?: Record<string, unknown> } & Record<string, unknown> = {},
+) {
+  const { threads: extraThreads, ...otherAreas } = extra;
   return {
+    ...otherAreas,
     threads: {
       async list({ archived: wantArchived, offset }: { archived?: boolean; offset?: number } = {}) {
         return offset ? [] : wantArchived ? archived() : threads();
@@ -167,6 +173,7 @@ export function sdkWith(threads: () => ListedThread[], archived: () => ListedThr
       async reorderPinned() {
         return [];
       },
+      ...extraThreads,
     },
   } as never;
 }
