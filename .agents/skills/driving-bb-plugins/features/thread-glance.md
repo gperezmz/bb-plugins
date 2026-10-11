@@ -311,8 +311,9 @@ says.
 - Pinning is bb's: `Pin` and `Unpin` change `pinnedAt`, not the plugin's
   lifecycle row, and Snooze, Park or Settle unpin a thread.
 - The plugin has no groups, `Settled` fold, settings popover, `N need you`
-  filter, Mark all read or `bb thread-glance prefs` command; `prefs` returns
-  in a later release.
+  filter or Mark all read. `bb thread-glance prefs list|get|set|reset` changes
+  the settings record the page edits; no verb covers it, so run it with the
+  throwaway bb's CLI and read the page or an open sidebar back.
 - Not covered by a verb: the Parent… and Project ▸ dialogs,
   `Pick date & time…`, inline rename, the Woke marker, project colours and
   icons, jump hints and the thread header's parent and children buttons; reach
