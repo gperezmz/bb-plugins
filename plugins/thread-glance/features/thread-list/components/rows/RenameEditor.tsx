@@ -1,5 +1,7 @@
-// The inline title editor: Enter or blur saves a trimmed, changed title,
-// Escape cancels. The row stays on its shelf until the editor ends.
+// The inline title editor: Enter saves a trimmed, changed title, and so does
+// a blur once the user has typed or clicked, or 600 ms have passed; a blur
+// before then takes focus back. Escape cancels. The row stays on its shelf
+// until the editor ends.
 import { useEffect, useRef, useState } from "react";
 
 /** How long after it opens the editor takes focus back from anything but the user. */
