@@ -104,7 +104,7 @@ _Avoid_: Thread port, claimed port
 
 **Clean**:
 Closing the live terminals and owned ports of settled threads, from a button on the Settled header after a preview. Unlike Reclaim, it closes every running terminal, typed into or not, and no thread leaves Settled.
-_Avoid_: Cleanup, sweep
+_Avoid_: Purge, resource cleanup
 
 **Port link machine**:
 The machine, chosen per device on the settings page, whose ports a row links to from this device; with none chosen, ports are not links.
@@ -336,5 +336,6 @@ _Avoid_: Mention menu, popup, slash menu
 
 - "Active thread" is a thread on the Active shelf; the thread in the pane that has focus is the focused thread.
 - The settings page spells its labels in US English ("Project colors", "Thread behavior"); the docs name those labels as they read and write colour otherwise.
+- "Thread ports" and "thread-owned ports" appear only in the settle prompt's messages, worded as the spec gives them; they mean owned ports.
 - "Cleanup" is only the name of Clean's expired preview message; the action is Clean, and what Thread Glance does after a park, snooze or settle is Reclaim.
 - "bb's own list" and "bb's list" name the built-in thread list, a plugin Thread Glance replaces, not bb core; what that list does is not what bb does.
