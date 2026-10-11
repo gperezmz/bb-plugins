@@ -35,9 +35,11 @@ describe("the precedence", () => {
     expect(slot({ hasPendingInteraction: true, queuedWork: "failed", indicator: "unread-error" })).toMatchObject({ kind: "needs-you", label: "Needs you" });
   });
 
-  it("puts a failed queued message over the indicator, and a waiting one under it", () => {
+  it("puts a failed or waiting queued message over the indicator", () => {
     expect(slot({ queuedWork: "failed", indicator: "runtime" }).label).toBe("Send failed");
-    expect(slot({ queuedWork: "waiting", indicator: "runtime" }).kind).toBe("working");
+    expect(slot({ queuedWork: "waiting", indicator: "runtime" }).label).toBe("Queued");
+    expect(slot({ queuedWork: "waiting", indicator: "unread-error" }).label).toBe("Queued");
+    expect(slot({ queuedWork: "waiting", hasPendingInteraction: true }).label).toBe("Needs you");
     expect(slot({ queuedWork: "waiting" }).label).toBe("Queued");
   });
 

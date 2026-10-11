@@ -143,11 +143,11 @@ export function statusSlot(input: StatusInput): StatusSlot {
   if (input.queuedWork === "failed") {
     return of({ kind: "send-failed", label: "Send failed", tone: "failed", glyph: ICON("CircleX"), timed: false }, "A queued message failed to send");
   }
+  if (input.queuedWork === "waiting") {
+    return of({ kind: "queued", label: "Queued", tone: "draft", glyph: ICON("Clock"), timed: false }, "A message is waiting to send");
+  }
   const status = indicatorStatus(foldDraft(input.indicator, input.hasDraft), input.indicatorLabel);
   if (status === null) {
-    if (input.queuedWork === "waiting") {
-      return of({ kind: "queued", label: "Queued", tone: "draft", glyph: ICON("Clock"), timed: false }, "A message is waiting to send");
-    }
     const label = ageLabel(input.lastActivityAt, input.now);
     return { kind: "age", label, ariaLabel: label, tone: "muted", glyph: null, timed: false };
   }
