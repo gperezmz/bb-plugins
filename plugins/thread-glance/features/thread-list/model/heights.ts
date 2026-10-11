@@ -9,6 +9,8 @@ export interface Heights {
   /** Space above every shelf header but the first of a group. */
   shelfGap: number;
   fullCard: number;
+  /** A full card in a Project-mode group, whose header names the project: no project line. */
+  groupedCard: number;
   foldedCard: number;
   slimRow: number;
   /** A row in a child list. */
@@ -21,6 +23,7 @@ const DESKTOP: Heights = {
   loadMore: 28,
   shelfGap: 8,
   fullCard: 72,
+  groupedCard: 52,
   foldedCard: 32,
   slimRow: 32,
   childRow: 28,
@@ -33,6 +36,7 @@ const COMPACT: Heights = {
   loadMore: 36,
   shelfGap: 8,
   fullCard: 80,
+  groupedCard: 58,
   foldedCard: 40,
   slimRow: 40,
   childRow: 36,

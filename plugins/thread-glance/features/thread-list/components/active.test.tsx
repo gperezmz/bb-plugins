@@ -3,7 +3,7 @@
 // (AC4).
 import { act, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { makeThread, PROJECTS, titleOf } from "../testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { attachedListHandles } from "./ThreadList";
 
@@ -15,7 +15,7 @@ const at = (minutesAgo: number) => ({ createdAt: NOW - minutesAgo * MIN, updated
 
 /** The top-level rows' titles, in order. */
 function rowTitles(): string[] {
-  return [...document.querySelectorAll<HTMLElement>("[data-card]")].map((row) => row.querySelector("a")!.textContent!.replace(/^.*·/, "").trim());
+  return [...document.querySelectorAll<HTMLElement>("[data-card]")].map((row) => titleOf(row));
 }
 
 function groupHeaders(): string[] {
@@ -118,7 +118,7 @@ describe("AC4: threads under a parent", () => {
     act(() => commands().setExpanded("p", true));
     await flush();
     expect(rowTitles()).toEqual(["Parent"]);
-    expect(document.querySelector("[data-child-of-thread=p]")?.textContent).toBe("Child");
+    expect(document.querySelector("[data-child-of-thread=p] a")?.textContent).toBe("Child");
   });
 
   it("makes a child with an archived parent, or a parent outside the scope, a row of its own", async () => {

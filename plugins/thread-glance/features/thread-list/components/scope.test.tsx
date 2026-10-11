@@ -4,7 +4,7 @@
 // list with the arrow keys.
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { DAY, makeProject, makeThread, PROJECTS } from "../testing/fixtures";
+import { DAY, makeProject, makeThread, PROJECTS, titleOf } from "../testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { parkedRow } from "@/shared/lifecycle";
 
@@ -23,7 +23,7 @@ const threads = () => [
 const rows = { a2: parkedRow(NOW - DAY), b2: parkedRow(NOW - DAY) };
 
 function titles(): string[] {
-  return [...document.querySelectorAll<HTMLElement>("[data-thread-id]")].map((row) => row.querySelector("a")!.textContent!.replace(/^.*·/, "").trim());
+  return [...document.querySelectorAll<HTMLElement>("[data-card]")].map((row) => titleOf(row));
 }
 
 const scopeOptions = () => within(screen.getByRole("listbox", { name: "Projects" })).getAllByRole("option");

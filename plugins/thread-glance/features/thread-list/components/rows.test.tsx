@@ -17,7 +17,7 @@ const fresh = { createdAt: NOW - 5 * 60_000, updatedAt: NOW - 5 * 60_000, latest
 
 afterEach(() => vi.unstubAllGlobals());
 
-const card = (id: string) => document.querySelector<HTMLElement>(`[data-thread-id="${id}"]`)!;
+const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
 
 describe("the open thread", () => {
   it("highlights the open thread's row, tints a row open in another pane, and opens a thread on click", async () => {

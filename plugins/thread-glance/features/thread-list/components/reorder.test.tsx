@@ -3,7 +3,7 @@
 // than Manual order turns reordering off in Active while Pinned still moves.
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { makeThread, PROJECTS, titleOf } from "../testing/fixtures";
 import { installRowBoxes, rowY } from "../testing/dom-layout";
 import { flush, mount, useListHarness, type Mounted } from "../testing/harness";
 
@@ -27,7 +27,7 @@ afterEach(() => removeBoxes());
 const abc = () => [makeThread({ id: "a", title: "A", ...at(30) }), makeThread({ id: "b", title: "B", ...at(20) }), makeThread({ id: "c", title: "C", ...at(10) })];
 
 function rowTitles(): string[] {
-  return [...document.querySelectorAll<HTMLElement>("[data-card]")].map((row) => row.querySelector("a")!.textContent!.replace(/^.*·/, "").trim());
+  return [...document.querySelectorAll<HTMLElement>("[data-card]")].map((row) => titleOf(row));
 }
 
 const rowEl = (id: string) => document.querySelector<HTMLElement>(`[data-row-id="${id}"] a`)!;

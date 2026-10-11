@@ -20,9 +20,9 @@ export interface Layout {
   height: number;
 }
 
-/** The height of a card of this kind, its child lists not counted. */
-export function cardHeight(card: CardKind, heights: Heights): number {
-  return card === "full" ? heights.fullCard : card === "folded" ? heights.foldedCard : heights.slimRow;
+/** The height of a card of this kind, its child lists not counted; a full card in a group has no project line. */
+export function cardHeight(card: CardKind, heights: Heights, grouped = false): number {
+  return card === "full" ? (grouped ? heights.groupedCard : heights.fullCard) : card === "folded" ? heights.foldedCard : heights.slimRow;
 }
 
 /** The height of a child row and the child lists open under it. */
@@ -38,7 +38,7 @@ function childHeight(rows: ReadonlyMap<string, RowView>, id: string, heights: He
 export function rowHeight(rows: ReadonlyMap<string, RowView>, id: string, heights: Heights): number {
   const row = rows.get(id);
   if (row === undefined) return 0;
-  let height = cardHeight(row.card, heights);
+  let height = cardHeight(row.card, heights, row.grouped);
   for (const childId of row.shownChildIds) height += childHeight(rows, childId, heights, 0);
   return height;
 }

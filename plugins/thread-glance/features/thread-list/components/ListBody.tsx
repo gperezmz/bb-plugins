@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useCommands, useLowerItems, useListStatus, useScene, useSettings, useUpperItems } from "../store/hooks";
 import { Announcer } from "./Announcer";
 import { ItemList } from "./ItemList";
+import { useJumpHints } from "./rows/jump-hints";
 import { ProjectScope } from "./ProjectScope";
 import { useReorderDrag } from "./reorder/use-reorder-drag";
 import { Scroller } from "./Scroller";
@@ -27,6 +28,7 @@ function ReadyList() {
   const { dockShelves } = useSettings();
   const commands = useCommands();
   useReorderDrag(root);
+  useJumpHints(root);
   // Alt+Arrow Up or Down moves the row (or group) under focus one slot.
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;

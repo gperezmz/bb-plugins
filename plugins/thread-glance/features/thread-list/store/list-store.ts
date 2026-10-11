@@ -17,9 +17,11 @@ import {
   type DeviceState,
 } from "../storage/device-state";
 import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
+import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, type HostData, type ListInputs } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
+import { createWorkingSince, type WorkingSince } from "./working-since";
 
 /** The list's own state: what it shows open, renamed or dragged. */
 export interface ListUi {
@@ -50,6 +52,8 @@ export interface Edge {
 export interface ListStore extends StoreApi<ListState> {
   edge: Edge;
   storage: DeviceStorage;
+  /** When each working thread was first seen working, for the Status slot's elapsed time. */
+  workingSince: WorkingSince;
   /** bb's list data, applied on the next animation frame. */
   feedHost(host: HostData): void;
   /** The focused thread and the viewport, applied at once. */
@@ -154,6 +158,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     frozenShelves: new Map(),
     drag: null,
   };
+  const workingSince = createWorkingSince(storage);
   const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI });
   /** bb's latest data, applied or waiting for its frame. */
   let host: HostData = NO_HOST;
@@ -192,6 +197,12 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       }
     }
     const deadline = current.model?.nextDeadline ?? null;
+    // Stamped before the rows are told, so a row that renders for its thread working reads the stamp.
+    if (model !== null) {
+      const workingIds: string[] = [];
+      for (const row of model.rows.values()) if (isWorking(row.thread)) workingIds.push(row.id);
+      workingSince.observe(workingIds, Date.now());
+    }
     api.setState({ inputs: checked, model });
     if (model !== null) {
       for (const threadId of model.pinnedWithRow) {
@@ -248,6 +259,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     ...api,
     edge: UNSET_EDGE,
     storage,
+    workingSince,
 
     feedHost(next) {
       if (sameHost(next, host)) return;

@@ -52,7 +52,7 @@ const pressUndo = async (call: unknown[]) => {
   await flush();
 };
 const callsOf = (m: Awaited<ReturnType<typeof mount>>, method: string) => m.server.calls.filter((call) => call.method === method);
-const shelfOfRow = (id: string) => document.querySelector(`[data-thread-id="${id}"]`)?.getAttribute("data-shelf-of");
+const shelfOfRow = (id: string) => document.querySelector(`[data-card][data-thread-id="${id}"]`)?.getAttribute("data-shelf-of");
 
 describe("Snooze (AC5)", () => {
   it("snoozes with a toast that reads Thread snoozed, when it wakes and what was reclaimed, with Undo that lasts 10 s", async () => {

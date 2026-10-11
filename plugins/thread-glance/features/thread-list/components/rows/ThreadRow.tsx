@@ -1,37 +1,25 @@
-// The seam a thread's row hangs on. One memoized `ThreadRow` per thread id
-// reads its own `RowView` from the store, so it renders when its thread's row
-// changes and at no other time. This is a plain stand-in for the full card,
-// the folded card and the slim row: the project and title, the shelf's label
-// and its restore button. A card draws the same props in its own layout and
-// calls `useCardDrawn` while it is on screen.
+// A thread's row. One memoized `ThreadRow` per thread id reads its own
+// `RowView` from the store, so it renders when its thread's row changes and
+// at no other time. It draws the row as a Full card, a Folded card or a Slim
+// row, with the child lists under it.
 import { memo, useEffect } from "react";
-import { useSidebarThreadSplit } from "./use-split";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { isLastInputKeyboard } from "@/components/ui/overlay-trigger";
 import { cn } from "@/lib/utils";
-import { cardHeight } from "../../model/layout";
-import { snoozeWakeLabel } from "@/shared/snooze";
-import {
-  useCommands,
-  useHeights,
-  useIsRenaming,
-  useMinute,
-  useProject,
-  useRow,
-  useRowsOf,
-} from "../../store/hooks";
-import type { RowView } from "../../model/list-model";
 import { registerCard, useIsSweeping } from "../../commands/sweep";
-import { RenameEditor } from "./RenameEditor";
-
-const DAY_MS = 86_400_000;
-
-/** The slim shelves' label: "Waiting Nd" on Parked, the wake time on Snoozed. */
-export function shelfLabel(row: RowView, now: number): string | null {
-  if (row.shelf === "parked" && row.lifecycle?.parkedAt != null) {
-    return `Waiting ${Math.max(0, Math.floor((now - row.lifecycle.parkedAt) / DAY_MS))}d`;
-  }
-  if (row.shelf === "snoozed" && row.lifecycle?.snoozeUntil != null) return snoozeWakeLabel(row.lifecycle.snoozeUntil, now);
-  return null;
-}
+import { cardHeight } from "../../model/layout";
+import { stripeShown } from "../../model/project-colour";
+import type { RowView } from "../../model/list-model";
+import { ProjectStripe } from "../../project/ProjectMark";
+import { useProjectColour } from "../../project/use-project-colour";
+import { useProjectIds } from "../../project/use-project-ids";
+import { useCommands, useHeights, useIsDragged, useIsRenaming, useProject, useRow, useSettings } from "../../store/hooks";
+import { Cards } from "./cards";
+import { setHoverCardOpen, useHoverCardOpen } from "./hover-state";
+import { HoverBody } from "./HoverBody";
+import { ChildList } from "./ChildList";
+import { RowContextMenu } from "./RowMenu";
+import { useSidebarThreadSplit } from "./use-split";
 
 /**
  * A card calls this while it is on screen, so the Settle sweep plays on it
@@ -41,117 +29,93 @@ export function useCardDrawn(threadId: string, drawn: boolean): void {
   useEffect(() => (drawn ? registerCard(threadId) : undefined), [threadId, drawn]);
 }
 
-const BUTTON = "h-6 shrink-0 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring";
-
 export const ThreadRow = memo(function ThreadRow({ threadId }: { threadId: string }) {
   const row = useRow(threadId);
-  const commands = useCommands();
-  const editing = useIsRenaming(threadId);
-  const sweeping = useIsSweeping(threadId);
-  const minute = useMinute();
-  const project = useProject(row?.thread.projectId ?? "");
-  const heights = useHeights();
+  // bb's drag-to-split hook runs once per render, even for a row that is gone.
   const split = useSidebarThreadSplit(threadId);
-  useCardDrawn(threadId, row !== undefined && row.card !== "slim");
+  useCardDrawn(threadId, row !== undefined);
   if (row === undefined) return null;
-  const { thread } = row;
-  const now = minute * 60_000;
-  const label = shelfLabel(row, now);
-  const tinted = row.focused ? "tg-row-open" : row.openElsewhere ? "tg-row-elsewhere" : "";
-  const restore =
-    row.shelf === "parked"
-      ? { name: "Resume thread", run: () => void commands.resume(threadId) }
-      : row.shelf === "snoozed"
-        ? { name: "Wake thread now", run: () => void commands.wakeNow(threadId) }
-        : row.shelf === "settled"
-          ? { name: "Un-settle thread", run: () => void commands.unsettle(threadId) }
-          : null;
-  return (
-    <div className="flex h-full min-w-0 flex-col">
-      <div
-        data-thread-id={threadId}
-        data-card={row.card}
-        data-shelf-of={row.shelf ?? undefined}
-        data-focused={row.focused ? "" : undefined}
-        data-open-elsewhere={row.openElsewhere ? "" : undefined}
-        style={{ height: cardHeight(row.card, heights) }}
-        className={cn("relative flex min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-sm", tinted)}
-      >
-        {editing ? (
-          <RenameEditor
-            initial={thread.displayTitle}
-            label={`Rename ${thread.displayTitle}`}
-            onSave={(title) => void commands.rename(threadId, title)}
-            onDone={commands.endRename}
-            className="min-w-0 flex-1 rounded-md bg-transparent px-1 outline-none ring-1 ring-sidebar-ring"
-          />
-        ) : (
-          <a
-            href={thread.href}
-            {...split.splitProps}
-            data-sidebar-thread-shortcut-target=""
-            data-sidebar-thread-id={thread.id}
-            aria-current={row.focused ? "page" : undefined}
-            onClick={(event) => {
-              if (event.button !== 0 || event.altKey || event.shiftKey) return;
-              event.preventDefault();
-              commands.open(threadId, { split: event.ctrlKey || event.metaKey });
-            }}
-            onDoubleClick={() => commands.beginRename(threadId)}
-            className={cn("flex min-w-0 flex-1 items-center gap-1 truncate outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring", row.woke !== null && "font-semibold")}
-          >
-            <span className="shrink-0 text-muted-foreground">{project?.name ?? ""}</span>
-            <span aria-hidden className="text-muted-foreground">
-              ·
-            </span>
-            <span className="min-w-0 truncate">{thread.displayTitle}</span>
-          </a>
-        )}
-        {row.woke !== null ? (
-          <>
-            <span className="shrink-0 text-xs font-medium text-muted-foreground">Woke</span>
-            <button type="button" aria-label="Dismiss Woke marker" className={BUTTON} onClick={() => void commands.dismissWoke(threadId)}>
-              ×
-            </button>
-          </>
-        ) : null}
-        {label !== null ? <span className="shrink-0 text-xs text-muted-foreground">{label}</span> : null}
-        {restore !== null ? (
-          <button type="button" aria-label={restore.name} className={BUTTON} onClick={restore.run}>
-            {restore.name}
-          </button>
-        ) : null}
-        {sweeping ? <span aria-hidden data-sweep="" className="tg-sweep" /> : null}
-      </div>
-      <ChildList ids={row.shownChildIds} depth={0} />
-    </div>
-  );
+  return <RowBody row={row} split={split} />;
 });
 
-/** The children listed under a card: a stand-in line each, with their own lists below. */
-function ChildList({ ids, depth }: { ids: readonly string[]; depth: number }) {
-  const children = useRowsOf(ids);
-  if (children.length === 0) return null;
+function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSidebarThreadSplit> }) {
+  const threadId = row.id;
+  const commands = useCommands();
+  const heights = useHeights();
+  const editing = useIsRenaming(threadId);
+  const dragged = useIsDragged(threadId);
+  const sweeping = useIsSweeping(threadId);
+  const hoverOpen = useHoverCardOpen(threadId);
+  const { stripesIn } = useSettings();
+  const project = useProject(row.thread.projectId);
+  const projectIds = useProjectIds();
+  const colour = useProjectColour(row.thread.projectId, projectIds);
+  const stripe = colour !== null && stripeShown(stripesIn, row.card === "full" ? "full" : "collapsed") ? colour : null;
+  const tinted = row.focused ? "tg-row-open" : row.openElsewhere ? "tg-row-elsewhere" : "";
   return (
-    <ul className="flex flex-col">
-      {children.map((child) => (
-        <ChildRow key={child.id} child={child} depth={depth} />
-      ))}
-    </ul>
+    <div className="flex h-full min-w-0 flex-col">
+      <RowContextMenu thread={row.thread} disabled={editing} dragging={dragged}>
+        <HoverCard
+          open={hoverOpen && !editing && !dragged}
+          openDelay={250}
+          closeDelay={300}
+          onOpenChange={(open) => setHoverCardOpen(threadId, open)}
+        >
+          <div
+            data-thread-id={threadId}
+            data-card={row.card}
+            data-shelf-of={row.shelf ?? undefined}
+            data-focused={row.focused ? "" : undefined}
+            data-open-elsewhere={row.openElsewhere ? "" : undefined}
+            style={{ height: cardHeight(row.card, heights, row.grouped) }}
+            className={cn("group/card relative flex min-w-0 flex-col justify-center overflow-hidden rounded-md px-2.5 text-sm", tinted, tinted === "" && "hover:bg-sidebar-accent/60")}
+          >
+            {sweeping ? <span aria-hidden data-sweep="" className="tg-sweep" /> : null}
+            <ProjectStripe colour={stripe} />
+            {editing ? null : (
+              <HoverCardTrigger asChild>
+                <a
+                  href={row.thread.href}
+                  {...split.splitProps}
+                  data-sidebar-thread-shortcut-target=""
+                  data-sidebar-thread-id={row.thread.id}
+                  aria-label={row.thread.displayTitle}
+                  aria-current={row.focused ? "page" : undefined}
+                  draggable={false}
+                  onFocus={(event) => {
+                    // A click focuses the link too; only keyboard focus opens the card at once.
+                    if (!isKeyboardFocus(event.currentTarget)) event.preventDefault();
+                  }}
+                  onClick={(event) => {
+                    if (event.button !== 0 || event.altKey || event.shiftKey) return;
+                    event.preventDefault();
+                    if (event.detail > 1) return;
+                    commands.open(threadId, { split: event.ctrlKey || event.metaKey });
+                  }}
+                  onDoubleClick={(event) => {
+                    event.preventDefault();
+                    commands.beginRename(threadId);
+                  }}
+                  className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-inset"
+                />
+              </HoverCardTrigger>
+            )}
+            <Cards row={row} editing={editing} projectName={project?.name ?? row.thread.projectId} colour={colour} />
+          </div>
+          <HoverCardContent side="right" align="start" className="w-64 p-3">
+            <HoverBody row={row} />
+          </HoverCardContent>
+        </HoverCard>
+      </RowContextMenu>
+      <ChildList ids={row.shownChildIds} depth={0} parentProjectId={row.thread.projectId} />
+    </div>
   );
 }
 
-const ChildRow = memo(function ChildRow({ child, depth }: { child: RowView; depth: number }) {
-  const commands = useCommands();
-  const heights = useHeights();
-  return (
-    <li data-child-of-thread={child.thread.parentThreadId ?? undefined} className="flex flex-col">
-      <div style={{ height: heights.childRow, paddingLeft: 12 + depth * 12 }} className="flex items-center text-xs text-muted-foreground">
-        <button type="button" className="min-w-0 truncate text-left" onClick={() => commands.open(child.id)}>
-          {child.thread.displayTitle}
-        </button>
-      </div>
-      <ChildList ids={child.shownChildIds} depth={depth + 1} />
-    </li>
-  );
-});
+function isKeyboardFocus(element: HTMLElement): boolean {
+  try {
+    return element.matches(":focus-visible");
+  } catch {
+    return isLastInputKeyboard();
+  }
+}
