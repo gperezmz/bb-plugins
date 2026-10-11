@@ -6,9 +6,11 @@ A sidebar thread list for [bb](https://getbb.app) that keeps threads on shelves.
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
+That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
+
 Then choose **Thread Glance** under Settings → Appearance → Sidebar.
 
-`bb thread-glance prefs` and the `thread-glance` agent skill are gone for now; they return in a later release, over the new settings.
+What becomes of `bb thread-glance prefs` and the `thread-glance` agent skill is in [Where a new install starts](../../docs/reference/thread-glance-settings.md#where-a-new-install-starts).
 
 - [First run](../../docs/tutorials/thread-glance-first-run.md)
 - [Switch the sidebar between Thread Glance and bb's list](../../docs/how-to/thread-glance-switch-sidebar.md)

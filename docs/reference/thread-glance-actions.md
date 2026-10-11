@@ -6,9 +6,9 @@ stateDiagram-v2
   Active --> Snoozed: Snooze
   Active --> Parked: Park thread
   Active --> Settled: Settle, or automatic settle
-  Snoozed --> Active: Wake thread now, wake time, attention
-  Parked --> Active: Resume thread, attention
-  Settled --> Active: Un-settle thread, attention
+  Snoozed --> Active: Wake, wake time, attention
+  Parked --> Active: Resume, attention
+  Settled --> Active: Un-settle, attention
   Snoozed --> Parked: Park thread
   Snoozed --> Settled: Settle
   Parked --> Snoozed: Snooze
@@ -54,13 +54,13 @@ The dialog re-reads the clock every 15 s while it is open.
 
 ### Waking
 
-The Snoozed shelf sorts by soonest wake. **Wake thread now** clears the snooze and toasts "Thread woke up" with **Undo**; Undo snoozes the thread again only while its old wake time is still ahead. A thread otherwise wakes at its time or on [attention](../../GLOSSARY.md) and is then [woke](thread-glance-list.md#woke).
+The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button (**Wake now** in the thread menu), clears the snooze and toasts "Thread woke up" with **Undo**; Undo snoozes the thread again only while its old wake time is still ahead. A thread otherwise wakes at its time or on [attention](../../GLOSSARY.md) and is then [woke](thread-glance-list.md#woke).
 
 ## Park
 
 **Park thread**, in the thread menu and the clock menu. It unpins the thread, records the park time and reclaims. The toast reads "Thread parked", with **Undo** (resume).
 
-**Resume thread**, on the Parked slim row and in the thread menu, returns the thread to Active and toasts "Thread returned to Active", with **Undo** (park). Attention also returns a parked thread to Active.
+**Resume**, the Parked slim row's button and the thread menu's item, returns the thread to Active and toasts "Thread returned to Active", with **Undo** (park). Attention also returns a parked thread to Active.
 
 ## Settle
 
@@ -73,7 +73,7 @@ The Snoozed shelf sorts by soonest wake. **Wake thread now** clears the snooze a
 
 The toast reads "Thread settled", plus what was reclaimed, with **Undo**, for 4 s, or 10 s with a reclaim note. The server keeps the settle's snapshot in memory until Undo can no longer be pressed. **Undo** restores each thread's previous shelf where nothing changed since and toasts "Settling undone". If the snapshot is gone, as after a plugin restart, the toast reads "This Settle can no longer be undone. Use Un-settle instead."
 
-**Un-settle thread**, on the Settled slim row and in the thread menu, returns the thread to Active, returns its settled descendants to the automatic rules and reopens its ancestors. The toast reads "Thread returned to Active", with **Undo** (settle).
+**Un-settle**, the Settled slim row's button and the thread menu's item, returns the thread to Active, returns its settled descendants to the automatic rules and reopens its ancestors. The toast reads "Thread returned to Active", with **Undo** (settle).
 
 [Automatic settle](../explanation/thread-glance-shelves.md#automatic-settle) uses the same marks without a toast.
 
@@ -107,12 +107,15 @@ Thread Glance adds its actions to bb's thread menu, which appears on a row's **�
 
 bb's own Rename, Mark read or unread, Archive and Delete keep their places. Delete is bb's, which confirms child threads.
 
+Parent…, **Project ▸** and **Pick date & time…** open dialogs that Thread Glance mounts in bb's app overlay. A bb without that slot keeps the menu entries, and choosing one toasts "This action needs bb's app overlay, which this version of bb does not offer."
+
 ### Parent…
 
 Opens a search dialog.
 
 - The first option is **None**, always shown.
 - The candidates are every non-archived thread except the thread itself and its descendants, plus the current parent even if archived. Same-project threads come first, then by recent activity. Other-project threads read "Project · Title". The current parent is checked.
+- A thread that sits below the thread, even through an archived thread, is refused with "That thread sits below this one, so it can't be its parent."
 - Choosing a parent unpins a pinned thread, with a note saying so. **None** keeps the pin.
 
 Toasts read "Parent updated", "Parent removed" or "Parent updated, but unpinning could not be confirmed".
@@ -123,7 +126,7 @@ Toasts read "Parent updated", "Parent removed" or "Parent updated, but unpinning
 |---|---|
 | **Project settings** | Opens bb's page for the project |
 | **Rename project** | Renames it; up to 500 characters |
-| **Add local path** | A machine picker and a folder up to 4,096 characters. Hidden without machines, and disabled with "Could not load machines" |
+| **Add local path** | A machine picker and a folder up to 4,096 characters. Hidden without machines, and disabled with "Could not load machines"; the machines are listed again every 30 s while there are none or listing failed |
 | **Remove project** | Needs the project's exact name typed, and removes its colour and icon too |
 
 ## Thread header buttons

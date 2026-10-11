@@ -14,6 +14,8 @@ Until Thread Glance 1.0.0, install it with:
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
+That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
+
 bb shows what it will install and asks to confirm; `--yes` skips the question, for scripts. The bb server builds the plugin after cloning it, so it needs `npm` on its `PATH`.
 
 Then turn it on where it shows:

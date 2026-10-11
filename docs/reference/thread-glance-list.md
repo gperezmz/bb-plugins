@@ -116,13 +116,13 @@ One line: project name · title, then the children chip, an unpin button and the
 
 ### Slim row
 
-One line: project name · title and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch. The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
+One line: project name · title and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
 
 | Shelf | Label | Restore button |
 |---|---|---|
-| Parked | "Waiting Nd" | **Resume thread** |
-| Snoozed | The wake time ("now", "Nm", "Nh" or "Nd", rounded up) | **Wake thread now** |
-| Settled | The status slot's status, or the age | **Un-settle thread** |
+| Parked | "Waiting Nd" | **Resume** |
+| Snoozed | The wake time ("now", "Nm", "Nh" or "Nd", rounded up) | **Wake** |
+| Settled | The status slot's status, or the age | **Un-settle** |
 
 ### Stripe, colour and icon
 

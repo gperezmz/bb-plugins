@@ -8,11 +8,13 @@ In this tutorial you install Thread Glance, switch the sidebar to it, and put th
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
+That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
+
 In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**. Every window you have open switches too.
 
 The list opens on its [defaults](../reference/thread-glance-settings.md#where-a-new-install-starts): every thread starts on Active, and no thread is snoozed, parked or settled.
 
-`bb thread-glance prefs` and the `thread-glance` agent skill are gone for now. They return in a later release, over the settings page you use in step 6.
+What becomes of `bb thread-glance prefs` and the `thread-glance` agent skill is in [Where a new install starts](../reference/thread-glance-settings.md#where-a-new-install-starts).
 
 ## 2. Read the list
 
@@ -26,17 +28,17 @@ Pick a thread that is not working. Hover its card and click the clock button, th
 
 The card leaves Active and a **Snoozed** shelf appears, collapsed and reading `Snoozed (1)`. Open it: the thread is a one-line row with the time it wakes. A toast says "Thread snoozed", with **Undo**.
 
-Click **Wake thread now** on the row. The thread returns to Active and the toast reads "Thread woke up". Snooze it again and let the toast pass; the [snooze presets](../reference/thread-glance-actions.md#snooze-presets) say what else the clock menu offers, and **Pick date & time…** takes any moment within a year.
+Click **Wake** on the row. The thread returns to Active and the toast reads "Thread woke up". Snooze it again and let the toast pass; the [snooze presets](../reference/thread-glance-actions.md#snooze-presets) say what else the clock menu offers, and **Pick date & time…** takes any moment within a year.
 
 ## 4. Park a thread
 
-Open the clock menu on another thread that is not working and choose **Park thread**. The thread goes to a collapsed **Parked** shelf, where its row shows how long it has waited. Parking is for a thread waiting on someone else: it needs no time, and it returns by itself when new attention arrives. Click **Resume thread** to bring it back by hand.
+Open the clock menu on another thread that is not working and choose **Park thread**. The thread goes to a collapsed **Parked** shelf, where its row shows how long it has waited. Parking is for a thread waiting on someone else: it needs no time, and it returns by itself when new attention arrives. Click **Resume** to bring it back by hand.
 
 ## 5. Settle a thread, and undo it
 
 Hover a card and click **Settle**. The card sweeps across and the thread moves to **Settled**, with the toast "Thread settled" and **Undo**. Click **Undo**: the thread goes back to the shelf it was on.
 
-Settle it again, and let the toast go. Open **Settled** and click **Un-settle thread** on its row to return it to Active. A settle covers the thread's whole tree, so a parent with a working child refuses: "Cannot settle while <child title> is working or waiting for input". The [children chip](../reference/thread-glance-list.md#children-chip) on a parent's card is where the child list opens.
+Settle it again, and let the toast go. Open **Settled** and click **Un-settle** on its row to return it to Active. A settle covers the thread's whole tree, so a parent with a working child refuses: "Cannot settle while <child title> is working or waiting for input". The [children chip](../reference/thread-glance-list.md#children-chip) on a parent's card is where the child list opens.
 
 ## 6. Put Active in your own order and change a setting
 
