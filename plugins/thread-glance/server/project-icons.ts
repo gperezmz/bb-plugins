@@ -1,7 +1,8 @@
 // Project icons: the uploads, and the HTTP route that serves a project's icon.
 // An uploaded image wins; otherwise the project's own favicon is looked for in
-// its files, and with neither the route answers 404 so the browser draws the
-// monogram. The response is private and revalidated, sandboxed and nosniff.
+// its files, and with neither the route answers 204, which the browser logs no
+// error for (a 404 is logged as a failed request), so it draws the monogram.
+// 503 is reserved for an icon that may exist but could not be read. The response is private and revalidated, sandboxed and nosniff.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { MAX_ICON_BYTES } from "../shared/project-icon";
 import type { AppearanceStore } from "./appearance-store";
@@ -154,7 +155,7 @@ export function createProjectIcons(deps: ProjectIconsDeps): ProjectIcons {
       if (!projectId) return withHeaders(400, { "Cache-Control": "no-store" }, "Missing project");
       const resolution = await resolve(projectId);
       if (resolution.kind === "unreadable") return withHeaders(503, { "Cache-Control": "no-store" });
-      if (resolution.kind === "missing") return withHeaders(404, { "Cache-Control": "no-store" });
+      if (resolution.kind === "missing") return withHeaders(204, { "Cache-Control": "no-store" });
       const { icon } = resolution;
       const headers = {
         "Cache-Control": "private, no-cache",

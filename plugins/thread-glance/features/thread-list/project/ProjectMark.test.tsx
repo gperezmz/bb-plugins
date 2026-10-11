@@ -1,53 +1,76 @@
 // @vitest-environment jsdom
-// AC24 and AC25 on a row: the project's mark is its icon once it has loaded,
-// else its monogram, a failure is shared by every row of the project, and the
-// icon is tried again after a growing wait.
+// AC24 and AC25 on a row: the project's mark is its icon once the server has
+// answered with one, else its monogram, and a project with no icon is asked
+// for once, whatever its rows do.
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { iconHealth } from "./icon-health";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { iconLoader } from "./icon-loader";
 import { ProjectMark } from "./ProjectMark";
+
+const asked: string[] = [];
+let answer: () => Response;
+
+beforeEach(() => {
+  asked.length = 0;
+  answer = () => new Response(new Blob(["x"], { type: "image/png" }), { status: 200 });
+  vi.stubGlobal("fetch", async (url: string) => {
+    asked.push(url);
+    return answer();
+  });
+  let made = 0;
+  URL.createObjectURL = () => `blob:icon-${++made}`;
+  URL.revokeObjectURL = () => undefined;
+});
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  iconHealth.clear();
+  vi.unstubAllGlobals();
+  iconLoader.clear();
 });
 
-const hidden = (container: HTMLElement) => container.querySelector<HTMLImageElement>("img.hidden");
+const loaded = () => act(() => vi.waitFor(() => expect(asked.length).toBeGreaterThan(0)).then(() => new Promise((done) => setTimeout(done, 0))));
 
 describe("ProjectMark", () => {
-  it("draws the monogram while the icon loads, and the icon once it has", () => {
+  it("draws the monogram while the icon is asked for, and the icon once the server has sent it", async () => {
     const { container } = render(<ProjectMark projectId="p1" name="Thread Glance" colour={null} />);
     expect(container.querySelector("[data-monogram]")?.textContent).toBe("T");
-    expect(hidden(container)?.getAttribute("src")).toBe("/api/v1/plugins/thread-glance/http/project-icon?project=p1");
-    fireEvent.load(hidden(container)!);
-    expect(container.querySelector("[data-project-icon]")).not.toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    await loaded();
+    expect(asked).toEqual(["/api/v1/plugins/thread-glance/http/project-icon?project=p1"]);
+    expect(container.querySelector("img[data-project-icon]")?.getAttribute("src")).toBe("blob:icon-1");
     expect(container.querySelector("[data-monogram]")).toBeNull();
   });
 
-  it("keeps the monogram after a failed load, for every row of the project, until the wait has passed", () => {
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  it("keeps an icon-less project's monogram and does not ask again when its rows mount again (AC1, AC2)", async () => {
+    answer = () => new Response(null, { status: 204 });
     const first = render(<ProjectMark projectId="p2" name="Alpha" colour={null} />);
     const second = render(<ProjectMark projectId="p2" name="Alpha" colour={null} />);
-    fireEvent.error(hidden(first.container)!);
-    expect(first.container.querySelector("img")).toBeNull();
+    await loaded();
     expect(first.container.querySelector("[data-monogram]")).not.toBeNull();
-    // The other row learns of the failure when it next renders, and does not ask again.
-    second.rerender(<ProjectMark projectId="p2" name="Alpha" colour={null} />);
-    expect(second.container.querySelector("img")).toBeNull();
-    act(() => void vi.advanceTimersByTime(14_999));
-    expect(first.container.querySelector("img")).toBeNull();
-    act(() => void vi.advanceTimersByTime(1));
-    expect(hidden(first.container)?.getAttribute("src")).toContain("&attempt=1");
-    fireEvent.error(hidden(first.container)!);
-    expect(iconHealth.retryAt("p2", Date.now())).toBe(Date.now() + 30_000);
+    expect(second.container.querySelector("[data-monogram]")).not.toBeNull();
+    first.unmount();
+    second.unmount();
+    const again = render(<ProjectMark projectId="p2" name="Alpha" colour={null} />);
+    await loaded();
+    expect(again.container.querySelector("[data-monogram]")).not.toBeNull();
+    expect(asked).toHaveLength(1);
+  });
+
+  it("falls back to the monogram when the browser cannot draw the icon", async () => {
+    const { container } = render(<ProjectMark projectId="p5" name="Epsilon" colour={null} />);
+    await loaded();
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("[data-monogram]")).not.toBeNull();
   });
 
   it("asks for an upload's own URL, so a new upload is a new image", async () => {
     const { pluginData } = await import("../sync");
     pluginData.appearanceSignal({ epoch: "e", version: 1, value: { colours: {}, icons: { p3: { name: "logo.png", mime: "image/png", updatedAt: 42 } } } });
-    const { container } = render(<ProjectMark projectId="p3" name="Gamma" colour={null} />);
-    expect(hidden(container)?.getAttribute("src")).toContain("&v=42");
+    render(<ProjectMark projectId="p3" name="Gamma" colour={null} />);
+    await loaded();
+    expect(asked[0]).toContain("&v=42");
   });
 
   it("tints the monogram with the project colour at 20 %", () => {

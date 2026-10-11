@@ -338,7 +338,7 @@ describe("project appearance", () => {
     await harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "#aabbcc" });
     await harness.behavior.callRpc("forgetProject", { projectId: "p1" });
     expect((await sync(harness)).appearance.value).toEqual({ colours: {}, icons: {} });
-    expect((await harness.behavior.fetchHttp("GET", "/project-icon?project=p1")).status).toBe(404);
+    expect((await harness.behavior.fetchHttp("GET", "/project-icon?project=p1")).status).toBe(204);
   });
 
   it("clears an uploaded icon and publishes only when there was one", async () => {
