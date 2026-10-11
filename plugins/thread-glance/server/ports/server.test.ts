@@ -101,17 +101,15 @@ const ports = async (harness: Awaited<ReturnType<typeof load>>["harness"], fresh
   (await harness.behavior.callRpc("ports", { fresh })) as Versioned<PortsSnapshot>;
 
 /**
- * Runs Clean with its settle wait on a fake clock, advanced once the wait is
- * the one timer pending, rather than sleeping 750 ms of real time. A run that
- * requested no port waits for nothing and answers first.
+ * Runs Clean with its settle wait on a fake clock, advanced one settle wait at
+ * a time until Clean answers, however long Clean takes to reach the wait.
  */
 async function runClean(harness: Awaited<ReturnType<typeof load>>["harness"], token: string) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     let answered = false;
     const running = harness.behavior.callRpc("runClean", { token }).finally(() => (answered = true));
-    await vi.waitFor(() => expect(answered || vi.getTimerCount() === 1).toBe(true));
-    await vi.advanceTimersByTimeAsync(SETTLE_WAIT_MS);
+    while (!answered) await vi.advanceTimersByTimeAsync(SETTLE_WAIT_MS);
     return await running;
   } finally {
     vi.useRealTimers();
