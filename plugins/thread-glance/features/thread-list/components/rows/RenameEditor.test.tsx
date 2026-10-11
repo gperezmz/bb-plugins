@@ -254,7 +254,7 @@ describe("what leaves the editor", () => {
     expect(isHeldByDialog(document.getElementById("c"), none)).toBe(false);
     expect(isHeldByDialog(null, none)).toBe(false);
     expect(isHeldByDialog(document.getElementById("a"), openDialogs())).toBe(false);
-    expect(isInFrame(document.createElement("iframe"))).toBe(true);
+    for (const tag of ["iframe", "webview", "embed", "object"]) expect(isInFrame(document.createElement(tag))).toBe(true);
     expect(isInFrame(document.getElementById("c"))).toBe(false);
     document.body.innerHTML = "";
   });

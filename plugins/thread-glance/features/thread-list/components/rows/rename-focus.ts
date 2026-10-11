@@ -18,9 +18,11 @@ export function isHeldByDialog(target: EventTarget | null, before: ReadonlySet<E
   return dialog !== null && !before.has(dialog);
 }
 
-/** Focus that went into a frame: the user pressed in it, where the page sees no pointer press. */
+const EMBEDS = new Set(["IFRAME", "WEBVIEW", "EMBED", "OBJECT"]);
+
+/** Focus that went into embedded content: the user pressed in it, where the page sees no pointer press. */
 export function isInFrame(target: EventTarget | null): boolean {
-  return target instanceof HTMLIFrameElement;
+  return target instanceof Element && EMBEDS.has(target.tagName);
 }
 
 /** Focus on nothing while the window has it: the body holds it, as when the focused element was removed. */

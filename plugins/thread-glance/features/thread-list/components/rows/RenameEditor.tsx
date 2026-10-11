@@ -5,9 +5,9 @@
 // handing focus to its trigger, or focus falling to nothing as the focused
 // item of a closing menu or dialog is removed. Leaving the window is not
 // leaving the editor, and a dialog that opens on its own keeps the focus it
-// took; focus that goes into a frame is the user pressing in it, so it leaves.
-// Enter and leaving save a trimmed, changed title; Escape cancels. The row
-// stays on its shelf until the editor ends.
+// took; focus that goes into embedded content (a frame, a webview) is the user
+// pressing in it, so it leaves. Enter and leaving save a trimmed, changed
+// title; Escape cancels. The row stays on its shelf until the editor ends.
 import { useEffect, useRef, useState } from "react";
 import { isFocusOnNothing, isHeldByDialog, isInFrame, leavesByKey, openDialogs } from "./rename-focus";
 
