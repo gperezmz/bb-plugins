@@ -62,14 +62,6 @@ Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding`, 
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
 ```
 
-Until Thread Glance 1.0.0, install it with:
-
-```sh
-bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
-```
-
-That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
-
 [Install, update or remove a plugin](docs/how-to/install-plugins.md) covers pinning a release, installing a prebuilt package from npm, updating and removing; [develop a plugin](docs/how-to/develop-plugins.md) covers running one from a checkout.
 
 ## Contributing

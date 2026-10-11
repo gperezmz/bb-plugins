@@ -5,10 +5,8 @@ In this tutorial you install Thread Glance, switch the sidebar to it, and put th
 ## 1. Install it and switch the sidebar
 
 ```sh
-bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
+bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
 ```
-
-That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
 
 In bb, open Settings → Appearance → Sidebar and choose **Thread Glance**. Every window you have open switches too.
 

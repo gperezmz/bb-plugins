@@ -8,14 +8,6 @@ Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `team
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
 ```
 
-Until Thread Glance 1.0.0, install it with:
-
-```sh
-bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
-```
-
-That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
-
 bb shows what it will install and asks to confirm; `--yes` skips the question, for scripts. The bb server builds the plugin after cloning it, so it needs `npm` on its `PATH`.
 
 Then turn it on where it shows:
@@ -29,16 +21,16 @@ Then turn it on where it shows:
 
 ## Pin a release
 
-Releases are tagged per plugin with the plugin's name as prefix, `thread-glance/v0.1.0` for example. Install a tag instead of `main`:
+Releases are tagged per plugin with the plugin's name as prefix, `thread-glance/v1.0.0` for example. Install a tag instead of `main`:
 
 ```sh
-bb plugin install git:https://github.com/gperezmz/bb-plugins.git@thread-glance/v0.1.0 --plugin thread-glance
+bb plugin install git:https://github.com/gperezmz/bb-plugins.git@thread-glance/v1.0.0 --plugin thread-glance
 ```
 
 or a semver range over one plugin's tags:
 
 ```sh
-bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.1.0' --plugin thread-glance --tag-prefix thread-glance/
+bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^1.0.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
 
 ## Install a prebuilt package from npm
@@ -46,10 +38,10 @@ bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.1.0' --plug
 Each release is also published to npm as `@gperezmz/bb-plugin-<name>`, with its bundles already built:
 
 ```sh
-bb plugin install 'npm:@gperezmz/bb-plugin-thread-glance@^0.1.0'
+bb plugin install 'npm:@gperezmz/bb-plugin-thread-glance@^1.0.0'
 ```
 
-bb installs the package with its own copy of npm, and builds nothing. The package lists as dependencies only the few packages its server needs when bb loads it from source; the bundles hold the rest. A `git:` install instead clones the repository, installs the plugin's dependencies and builds it on the server, which takes minutes on a small machine. A range such as `^0.1.0` tracks updates the way a `git:` range does; an exact version such as `@0.1.1` pins it.
+bb installs the package with its own copy of npm, and builds nothing. The package lists as dependencies only the few packages its server needs when bb loads it from source; the bundles hold the rest. A `git:` install instead clones the repository, installs the plugin's dependencies and builds it on the server, which takes minutes on a small machine. A range such as `^1.0.0` tracks updates the way a `git:` range does; an exact version such as `@1.0.0` pins it.
 
 A plugin already installed from `git:` moves to npm only by removing it first, which deletes its settings, as [Remove](#remove) says.
 
@@ -62,7 +54,7 @@ bb plugin update thread-glance
 
 `bb plugin outdated` lists installed plugins with a compatible update; `bb plugin update --all` updates every one of them.
 
-An install from `@main` follows `main`, and until Thread Glance 1.0.0 it gets the rewrite as it lands, replacing 0.11.2's layout and settings.
+A range keeps an install inside its major version, or inside its minor version below 1.0.0: a Thread Glance installed from `@^0.11.0` stays on 0.11.2 and `bb plugin outdated` lists nothing for it. To move it to 1.0.0, remove it and install it again with the `@main` line above. Remove deletes its settings, and 1.0.0 starts from its [defaults](../reference/thread-glance-settings.md#where-a-new-install-starts) either way.
 
 ## Remove
 
