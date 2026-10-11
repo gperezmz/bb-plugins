@@ -36,12 +36,12 @@ A run shares the machine with the user's own bb and editor, so it is
 **memory-capped**. `start` refuses while less than `DBP_MIN_FREE` (default
 `4G`) of memory is available once other runs have grown to their caps, and
 starts the run's fake API, bb server and host daemon in a systemd user scope,
-`dbp-<id>.scope`, capped at `DBP_MEMORY_MAX` (default `6G`) with no swap. Everything they start, Claude
-Code included, stays in the scope, so a run that passes its cap loses its own
-processes, all of them, and nothing else. An idle run takes about 1.7G and
-each loaded Claude Code session about 0.4G more. Where `systemd-run --user
---scope` fails, `start` refuses; `DBP_UNCAPPED=1` starts it uncapped, which
-is for a machine with no systemd user manager only.
+`dbp-<id>.scope`, capped at `DBP_MEMORY_MAX` (default `6G`) with no swap.
+Everything they start, Claude Code included, stays in the scope, so a run that
+passes its cap loses its own processes, all of them, and nothing else. An idle
+run takes about 1.7G and each loaded Claude Code session about 0.4G more. Where
+`systemd-run --user --scope` fails, `start` refuses; `DBP_UNCAPPED=1` starts it
+uncapped, which is for a machine with no systemd user manager only.
 
 The `run` line is the run's name. Every later command names it with
 `--run <run>` straight after the command, as every command below does.
@@ -98,10 +98,11 @@ entry point (`ui-tweaks.text-size/rpc`):
 .agents/skills/driving-bb-plugins/drive-bb-plugins bb --run <run> <label> -- <bb arguments>
 ```
 
-The arguments are `bb`'s own: `plugin rpc call <plugin> <method> --input-file
-<json file> --json`, `settings ui get|set <key>`, `plugin config <plugin> set
-<key> <value>`, and each plugin's command (`thread-glance prefs`,
-`thread-usage show`, `cache-keeper status`). A JSON input goes in a file,
+The arguments are `bb`'s own:
+`plugin rpc call <plugin> <method> --input-file <json file> --json`,
+`settings ui get|set <key>`, `plugin config <plugin> set <key> <value>`, and
+each plugin's command (`thread-usage show`, `cache-keeper status`), plus bb's
+own, such as `terminal create --thread <id>`. A JSON input goes in a file,
 passed with `--input-file`.
 
 Threads, for a feature that needs one, in the run's project, printing the id
@@ -124,16 +125,16 @@ ordinary turn never reaches:
   `drive-bb-plugins release --run <run> <thread>` stops both.
 
 A thread works in the project's checkout, or its parent's where it has one;
-`--worktree` gives it a git worktree of its own instead, and `--beside
-<thread>` puts it in that thread's.
+`--worktree` gives it a git worktree of its own instead, and
+`--beside <thread>` puts it in that thread's.
 
-At most `DBP_MAX_SESSIONS` (default 4, fixed at `start`) `spawn`s of a run
-hold a session at once, and the rest wait for a slot; bb's own
+At most `DBP_MAX_SESSIONS` (default 4, fixed at `start`) `spawn`s of a run hold
+a session at once, and the rest wait for a slot; bb's own
 `concurrency-limit global` is set to the same number. Threads are made by
-`spawn` and `seed` only: the `bb` command refuses `thread spawn`. A `bb thread
-tell` to many threads goes through a bounded pool such as `xargs -P
-<sessions>`, each followed by `bb thread stop` once `bb thread wait <id>
---status idle` returns.
+`spawn` and `seed` only: the `bb` command refuses `thread spawn`. A
+`bb thread tell` to many threads goes through a bounded pool such as
+`xargs -P <sessions>`, each followed by `bb thread stop` once
+`bb thread wait <id> --status idle` returns.
 
 ### Seeding
 
@@ -164,10 +165,10 @@ threads with 104 live, seeded in about 20 seconds:
   true. Roots are titled `<title> <n>` (`title` defaults
   to `quiet`, or `archived`), children `<title> <n>.<k>`. These are **quiet
   threads**: made over bb's HTTP API with no turn, they read `pending` in bb
-  and draw as a read `Idle` row finished when it was made, which settles like
-  any other; their hover card has no Last reply, Branch or Finished and
-  Model reads `Unknown`. A quiet thread has never run, so a drive that tells a
-  thread or reads its reply uses a `finished` one.
+  and draw as a read row finished when it was made, which settles like any
+  other; their hover card has no Branch and Model reads `Not set`. A quiet
+  thread has never run, so a drive that tells a thread or reads its reply uses
+  a `finished` one.
 - `states`: how many threads, titled `<state> <n>`, in each state only a turn
   or a fork makes. `finished` and `unread` are forks of one real turn, `Idle`
   read and `Unread`; `failed`, `working` (for `hold` seconds, default 600) and
