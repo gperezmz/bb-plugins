@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/error-message";
 import type { RpcContract } from "@/shared/contract";
-import { defaultMachineId, useMachineList } from "@/shared/machines";
+import { defaultMachineId, useMachineList } from "@/lib/machines";
 import { MACHINES_FAILED, type ProjectDialogKind } from "../model/menu";
 import { localPathError, MAX_LOCAL_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH, projectNameError } from "../model/projects";
 import { removeProject, RemoveProjectConfirmation } from "./RemoveProject";
@@ -73,12 +73,12 @@ function RenameProject({ projectId, name, onClose }: { projectId: string; name: 
 
 function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: string; onClose(): void }) {
   const sdk = useSdk();
-  const machines = useMachineList();
+  const list = useMachineList();
   const [picked, setPicked] = useState("");
-  const hostId = picked || defaultMachineId(machines);
+  const hostId = picked || defaultMachineId(list);
   const [path, setPath] = useState("");
   const error = localPathError(path);
-  const ready = machines.status === "ready" && hostId !== "" && error === null;
+  const ready = list.status === "ready" && hostId !== "" && error === null;
   return (
     <form
       className="grid gap-4"
@@ -98,7 +98,7 @@ function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: s
         <DialogTitle>Add local path</DialogTitle>
         <DialogDescription>{name}</DialogDescription>
       </DialogHeader>
-      {machines.status === "failed" ? (
+      {list.status === "failed" ? (
         <p role="alert" className="text-sm text-[color:var(--tg-failed)]">
           {MACHINES_FAILED}
         </p>
@@ -108,11 +108,11 @@ function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: s
         <select
           className="h-9 rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
           value={hostId}
-          disabled={machines.status !== "ready"}
+          disabled={list.status !== "ready"}
           onChange={(event) => setPicked(event.target.value)}
         >
-          {machines.status === "ready"
-            ? machines.machines.map((host) => (
+          {list.status === "ready"
+            ? list.machines.map((host) => (
                 <option key={host.id} value={host.id}>
                   {host.name}
                 </option>

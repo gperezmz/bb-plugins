@@ -2,7 +2,7 @@
 // stored on the device, never autosaved with the server settings, and follow
 // the other tabs of this browser.
 import { portLinkMachine, usePortLinkMachine } from "@/features/thread-list";
-import { useMachineList } from "@/shared/machines";
+import { useMachineList } from "@/lib/machines";
 import { Group, SelectRow } from "./Fields";
 
 export const NO_MACHINE_LABEL = "No machine";

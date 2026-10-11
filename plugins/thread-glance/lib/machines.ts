@@ -1,6 +1,4 @@
-// The machines bb lists, read once for each component that shows them. This
-// device's port link machine and the Project dialogs' machine choice both need
-// the same list, so the load and its three states live here, not in each.
+// The machines bb lists, read once for each component that shows them.
 import { useEffect, useState } from "react";
 import { useSdk } from "@get-bb/plugin-sdk/app";
 

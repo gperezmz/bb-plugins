@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultMachineId, useMachineList, type MachineList } from "./machines";
@@ -38,10 +38,12 @@ describe("useMachineList", () => {
     expect(await screen.findByText("failed")).toBeTruthy();
   });
 
-  it("sets nothing when the load ends after the component unmounts", async () => {
+  it("lets a load that ends after the component unmounts finish quietly", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     let finish: (hosts: { id: string; name: string }[]) => void = () => {};
-    const view = renderSlot({ component: Probe }, {}, { sdk: { hosts: { list: () => new Promise((resolve) => (finish = resolve)) } } } as never);
+    const list = vi.fn(() => new Promise<{ id: string; name: string }[]>((resolve) => (finish = resolve)));
+    const view = renderSlot({ component: Probe }, {}, { sdk: { hosts: { list } } } as never);
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
     view.unmount();
     await act(async () => finish([{ id: "host_1", name: "Laptop" }]));
     expect(errors).not.toHaveBeenCalled();

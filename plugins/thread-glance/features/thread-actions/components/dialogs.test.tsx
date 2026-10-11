@@ -277,6 +277,15 @@ describe("Project ▸ dialogs (AC22)", () => {
     expect(calls).toContainEqual({ method: "sources.add", args: { projectId: "proj_a", type: "local_path", hostId: "h2", path: "/srv/app" } });
   });
 
+  it("adds a local path on the first machine bb lists when none is picked", async () => {
+    const { calls } = mountDialogs();
+    act(() => requestProjectDialog("add-path", "proj_a"));
+    await waitFor(() => expect(screen.getByRole("option", { name: "Laptop" })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/srv/app" } });
+    await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Add path" })));
+    expect(calls).toContainEqual({ method: "sources.add", args: { projectId: "proj_a", type: "local_path", hostId: "h1", path: "/srv/app" } });
+  });
+
   it("says 'Could not load machines' and cannot add when the machines fail to load", async () => {
     mountDialogs({ sdk: { hosts: { list: vi.fn(async () => Promise.reject(new Error("offline"))) } } });
     act(() => requestProjectDialog("add-path", "proj_a"));
