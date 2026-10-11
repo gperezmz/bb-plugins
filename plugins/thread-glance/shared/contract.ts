@@ -48,6 +48,9 @@ const actionOutputSchema = z.strictObject({
   note: z.nullable(z.string()),
 });
 
+export type Change = z.infer<typeof changeSchema>;
+export type ActionOutput = z.infer<typeof actionOutputSchema>;
+
 const settingsVersionedSchema = versionedSchema(settingsSchema);
 const orderVersionedSchema = versionedSchema(z.array(z.string()));
 const appearanceVersionedSchema = versionedSchema(appearanceSchema);
