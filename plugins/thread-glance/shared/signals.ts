@@ -30,6 +30,8 @@ export const CHANNELS = {
   settings: "settings",
   order: "order",
   appearance: "appearance",
+  /** The workspace ports snapshot; see ports.ts. */
+  ports: "ports",
 } as const;
 
 /**

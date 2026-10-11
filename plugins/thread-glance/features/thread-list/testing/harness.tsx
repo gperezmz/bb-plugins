@@ -1,7 +1,7 @@
 // The shared setup of the list's tests: the plugin app loaded once against
 // the fake host, and a `mount` that opens a window on a scenario.
 import { cleanup, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll } from "vitest";
+import { afterEach, beforeAll, vi } from "vitest";
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { flushListStores } from "../store/list-store";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type ServerState, type SlotExtras } from "./fake-host";
@@ -80,4 +80,16 @@ export async function flush(): Promise<void> {
   await Promise.resolve();
   flushListStores();
   await Promise.resolve();
+}
+
+/**
+ * Fakes `setTimeout` and `clearTimeout` before a window mounts, so timers the
+ * mount starts (the ports refresh) can be advanced. Testing Library waits with
+ * `waitFor` only if it believes Jest's fake timers are on, and then advances
+ * them through a `jest` global, which this stands in for; `vi.useRealTimers()`
+ * and `vi.unstubAllGlobals()` undo it.
+ */
+export function fakeTimersFromMount(): void {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.stubGlobal("jest", { advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms) });
 }

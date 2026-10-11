@@ -3,6 +3,7 @@
 // It applies the rules the real server does only as far as the list's tests
 // look: a call writes the row the shared constructors build and publishes it.
 import { SNOOZE_ENDED } from "@/shared/messages";
+import { EMPTY_PORTS, type PortsSnapshot } from "@/shared/ports";
 import { EMPTY_RECLAIM } from "@/shared/reclaim-note";
 import { activeRow, parkedRow, settledRow, snoozedRow, sameRow, type LifecycleRow } from "@/shared/lifecycle";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
@@ -31,7 +32,18 @@ export interface FakeServerOptions {
   holdSync?: boolean;
   /** Holds `reorder` unanswered until `releaseReorder`, which then answers as `refuse` says. */
   holdReorder?: boolean;
+  /** The workspace ports snapshot held at the start. */
+  ports?: Partial<Omit<PortsSnapshot, "at">>;
+  /**
+   * What the port and Clean calls answer, by method, instead of their defaults
+   * (nothing owned, nothing to clean): a value, or a function of the input that
+   * returns it or a promise of it.
+   */
+  answers?: Partial<Record<PortsMethod, unknown>>;
 }
+
+/** The calls of workspace ports and Clean the fake answers. */
+type PortsMethod = "stopPort" | "ownedPorts" | "closePorts" | "previewClean" | "runClean";
 
 type Change = { threadId: string; before: LifecycleRow | null; after: LifecycleRow | null; unpinned: boolean };
 
@@ -55,6 +67,10 @@ export function createFakeServer(options: FakeServerOptions = {}) {
   let held: (() => void)[] = [];
   let holdingReorder = options.holdReorder ?? false;
   let heldReorders: (() => void)[] = [];
+  let ports: Versioned<PortsSnapshot> = { epoch, version: 1, value: { ...EMPTY_PORTS, at: Date.now(), ...options.ports } };
+  const answers: Partial<Record<PortsMethod, unknown>> = { ...options.answers };
+  /** Failures injected for the next call of a method only. */
+  const failures = new Map<string, string>();
 
   const publish = async (channel: string, payload: unknown) => {
     server.signals.push({ channel, payload });
@@ -77,6 +93,11 @@ export function createFakeServer(options: FakeServerOptions = {}) {
     return { threadId, before, after, unpinned: false };
   };
   const refusing = (method: string) => {
+    const once = failures.get(method);
+    if (once !== undefined) {
+      failures.delete(method);
+      throw new Error(once);
+    }
     const text = options.refuse?.[method];
     if (text !== undefined) throw new Error(text);
   };
@@ -86,6 +107,15 @@ export function createFakeServer(options: FakeServerOptions = {}) {
     const change = write(threadId, after);
     await publishRows([threadId]);
     return { changes: [change], reclaim: EMPTY_RECLAIM, note: options.note ?? null };
+  };
+
+  /** A port or Clean call: logged, refused when asked to, and answered with what `answers` holds, else `fallback`. */
+  const portsCall = (method: PortsMethod, fallback: unknown) => async (input: unknown) => {
+    server.calls.push({ method, input });
+    refusing(method);
+    const answer = answers[method];
+    if (typeof answer === "function") return (answer as (input: unknown) => unknown)(input);
+    return answer ?? fallback;
   };
 
   const server = {
@@ -151,6 +181,16 @@ export function createFakeServer(options: FakeServerOptions = {}) {
       },
       dismissWoke: ({ threadId }: { threadId: string }) => action("dismissWoke", threadId, null),
       clearPinned: ({ threadId }: { threadId: string }) => action("clearPinned", threadId, null),
+      async ports(input: { fresh: boolean }) {
+        server.calls.push({ method: "ports", input });
+        refusing("ports");
+        return ports;
+      },
+      stopPort: portsCall("stopPort", { outcome: "requested" }),
+      ownedPorts: portsCall("ownedPorts", { ports: [] }),
+      closePorts: portsCall("closePorts", { outcome: "requested" }),
+      previewClean: portsCall("previewClean", { token: "clean-1", expiresAt: Date.now() + 120_000, threads: [] }),
+      runClean: portsCall("runClean", { expired: false, closedTerminals: 0, portRequests: 0, stillListening: [], issues: [] }),
       runAutoSettle: async () => {
         refusing("runAutoSettle");
         server.calls.push({ method: "runAutoSettle", input: {} });
@@ -200,6 +240,19 @@ export function createFakeServer(options: FakeServerOptions = {}) {
     async setOrder(next: string[]): Promise<void> {
       order = { epoch, version: order.version + 1, value: next };
       await publish(CHANNELS.order, order);
+    },
+    /** Replaces the ports snapshot (what `patch` gives, over an empty one) and publishes it, as the server's refresh does. */
+    async setPorts(patch: Partial<Omit<PortsSnapshot, "at">>): Promise<void> {
+      ports = { epoch, version: ports.version + 1, value: { ...EMPTY_PORTS, at: Date.now(), ...patch } };
+      await publish(CHANNELS.ports, ports);
+    },
+    /** What the port and Clean calls answer from now on. */
+    answer(method: PortsMethod, value: unknown): void {
+      answers[method] = value;
+    },
+    /** Makes the next call of `method` fail with `text`. */
+    failOnce(method: string, text: string): void {
+      failures.set(method, text);
     },
     /** Answers every held `sync`, and stops holding. */
     releaseSync(): void {

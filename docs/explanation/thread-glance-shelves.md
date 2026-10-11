@@ -69,13 +69,23 @@ flowchart TD
 - A parent settles only when its whole tree is settled or settling.
 - A pass that started under older settings is thrown away, and only one runs at a time with one more queued, so changing a setting never settles by the old one.
 
-An automatic settle reclaims and shows no toast: nothing asked for it, so nothing interrupts.
+An automatic settle reclaims and shows no toast: nothing asked for it, so nothing interrupts. For the same reason it holds back a thread that still serves a port, and every thread of a machine it cannot scan: a dev server left running is a sign the work may not be over, and settling without a person there to answer the [prompt to close ports](../reference/thread-glance-actions.md#close-a-settled-threads-ports) would leave it running with nobody looking.
 
 ## Reclaim
 
 A thread you put away is not coming back soon, and keeping its agent runtime and terminals running costs memory for nothing. So after a park, snooze or settle, Thread Glance stops the thread's runtime and closes the terminals nobody has typed into. It re-checks before each step that the thread is still unpinned, not busy and unchanged, because a person may have pinned it or started a turn since. It leaves a terminal that has had input, since that may hold a process you started. Stopping a runtime does not itself count as attention, so it does not bring the thread straight back.
 
 Archiving from any bb menu also stops the thread's runtime and its idle children's runtimes, so archived work does not keep running. A working child is left alone.
+
+## Ports belong to whoever started them
+
+Agents start dev servers and watchers and leave them running. Thread Glance shows them so you can see what a thread left listening, and closes them only where it can tell whose they are. bb gives every process an agent starts the thread's id in `BB_THREAD_ID`, so a process naming exactly one thread that works in that environment is that thread's. Any other listener in the workspace, one you started yourself or one that names two threads, is shown and can be stopped by hand, but nothing closes it for you.
+
+Reading other processes is the one thing in Thread Glance that reaches beyond bb, so it is held to what that needs: a host entry on each machine reads the listening sockets, and of each process its executable name, working directory, start time and the single `BB_THREAD_ID` entry. Its command line is used on the machine only to skip bb's own processes, and nothing else of it or of its environment is returned or logged.
+
+A process is signalled only when the machine finds the same PID and start time on the port at the moment of the request: PIDs are reused, and a stop aimed at yesterday's dev server must not reach whatever holds its number today.
+
+**Clean** is Reclaim's deliberate counterpart. Reclaim runs on its own, so it closes only terminals nobody typed into; Clean runs when you press it after a preview, so it closes every running terminal and the threads' owned ports. A thread sharing its workspace with live work is left out, since closing a shared workspace's terminals and ports would reach into a thread that is not done.
 
 ## Manual order
 

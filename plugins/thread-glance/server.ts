@@ -30,6 +30,13 @@ import { runStartup } from "./server/startup";
 import { createThreadEvents } from "./server/thread-events";
 import { createSdkThreads } from "./server/threads";
 import { createVersionedChannel } from "./server/versioned";
+import { createPortActions } from "./server/ports/actions";
+import { createClean } from "./server/ports/clean";
+import { createPortsEngine } from "./server/ports/engine";
+import { cachedEnvironments, createSdkEnvironments } from "./server/ports/environments";
+import { createHoldBack } from "./server/ports/hold-back";
+import { createSdkPortsHost } from "./server/ports/host";
+import { createPreviewStore } from "./server/ports/preview-store";
 
 export default function threadGlance(bb: BbPluginApi): void {
   // zod/mini carries no messages of its own. The server shows refusals in
@@ -51,6 +58,17 @@ export default function threadGlance(bb: BbPluginApi): void {
   const threads = createSdkThreads(bb);
   const runtime = createSdkRuntime(bb);
   const warn = (message: string) => bb.log.warn(message);
+  const portsHost = createSdkPortsHost(bb);
+  const portsChannel = createVersionedChannel(bb, CHANNELS.ports, epoch, () => ports.current().snapshot);
+  const ports = createPortsEngine({
+    threads,
+    environments: cachedEnvironments(createSdkEnvironments(bb)),
+    host: portsHost,
+    publish: (snapshot) => void portsChannel.publish(snapshot),
+    warn,
+  });
+  const portActions = createPortActions({ threads, lifecycle, engine: ports, host: portsHost });
+  const clean = createClean({ threads, lifecycle, runtime, engine: ports, host: portsHost, previews: createPreviewStore(db), warn });
   const reclaim = createReclaimer({ lifecycle, threads, runtime, warn });
   const releaseArchived = createArchiveRelease({ threads, runtime, warn });
   const icons = createProjectIcons({ appearance, files: (projectId) => createSdkProjectFiles(bb, projectId), warn });
@@ -91,6 +109,7 @@ export default function threadGlance(bb: BbPluginApi): void {
     threads,
     pullRequests: createSdkPullRequests(bb),
     settings,
+    heldBack: createHoldBack(ports),
     reclaim,
     change,
     warn,
@@ -146,6 +165,16 @@ export default function threadGlance(bb: BbPluginApi): void {
     },
 
     runAutoSettle: () => autoSettle.run(),
+
+    async ports({ fresh }) {
+      await ports.read({ fresh });
+      return portsChannel.current();
+    },
+    stopPort: (input) => portActions.stop(input),
+    ownedPorts: ({ threadId }) => portActions.owned(threadId),
+    closePorts: (input) => portActions.close(input),
+    previewClean: ({ projectId }) => clean.preview(projectId),
+    runClean: ({ token }) => clean.run(token),
   });
 
   bb.events.on("thread.created", ({ thread }) => events.created(thread));

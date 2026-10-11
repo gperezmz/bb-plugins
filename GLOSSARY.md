@@ -92,6 +92,24 @@ _Avoid_: Custom order, drag order
 What Thread Glance does after a park, snooze or settle, once the thread is still unpinned, not busy and unchanged: it stops the thread's agent runtime and closes its terminals that are running but have never had input, leaving the rest.
 _Avoid_: Cleanup
 
+**Port indicator**:
+The small mark on a card, shown while a listening process works inside the thread's workspace; its hover card lists every listener in that environment.
+_Avoid_: Port badge, port chip
+
+**Owned port**:
+A listening port whose process carries, once, the thread id bb gives every process an agent starts, naming a thread that works in the same environment. Any other port in a workspace belongs to the workspace only.
+
+Only owned ports are closed after a settle and by Clean, and an owned port holds back auto-settle.
+_Avoid_: Thread port, claimed port
+
+**Clean**:
+Closing the live terminals and owned ports of settled threads, from a button on the Settled header after a preview. Unlike Reclaim, it closes every running terminal, typed into or not, and no thread leaves Settled.
+_Avoid_: Purge, resource cleanup
+
+**Port link machine**:
+The machine, chosen per device on the settings page, whose ports a row links to from this device; with none chosen, ports are not links.
+_Avoid_: Link host, port host
+
 **Project scope**:
 The picker at the top of Thread Glance's list that limits every shelf to one project or to all of them. It is not saved: each time the list mounts it starts on All projects.
 _Avoid_: Project filter
@@ -318,4 +336,6 @@ _Avoid_: Mention menu, popup, slash menu
 
 - "Active thread" is a thread on the Active shelf; the thread in the pane that has focus is the focused thread.
 - The settings page spells its labels in US English ("Project colors", "Thread behavior"); the docs name those labels as they read and write colour otherwise.
+- "Thread ports" and "thread-owned ports" appear only in the settle prompt's messages, worded as the spec gives them; they mean owned ports.
+- "Cleanup" is only the name of Clean's expired preview message; the action is Clean, and what Thread Glance does after a park, snooze or settle is Reclaim.
 - "bb's own list" and "bb's list" name the built-in thread list, a plugin Thread Glance replaces, not bb core; what that list does is not what bb does.

@@ -21,6 +21,7 @@ export {
 export { pluginData } from "./sync";
 /** Drops everything the plugin's data holds, as a reload of the app does: for tests, which load the app once per file. */
 export { endPluginLifetime } from "./sync/lifetime";
+export { portLinkMachine, usePortLinkMachine } from "./storage/port-link-machine";
 export { requestSnoozePicker, useSnoozePickerRequests } from "./commands/snooze-picker-request";
 // What the thread header's buttons and the settings preview draw with: the
 // project mark and colours, the child marks, and the Status slot.

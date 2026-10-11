@@ -2,6 +2,8 @@
 // and the two that clear a row (a dismissed Woke marker, a pinned thread).
 // Every entry point (a row's buttons, the slim row's restore button, the
 // thread menu) calls these, so the toasts, Undo and refusals are the same.
+// A settle ends by offering to close the thread's ports (./ports-prompt), and
+// every command on the thread dismisses that offer.
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { isBusy } from "@/shared/busy";
@@ -11,6 +13,7 @@ import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { ActionOutput, Change, RpcContract } from "@/shared/contract";
 import { messageOf } from "@/lib/error-message";
 import { prefersReducedMotion } from "../model/motion";
+import { dismissPortsPrompt, offerToClosePorts } from "./ports-prompt";
 import { isCardDrawn, isSweeping, playSweep } from "./sweep";
 
 const SETTLE_TOAST_MS = 4_000;
@@ -72,6 +75,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
   };
   /** Undo that puts the changed rows back, and says why a row could not be. */
   const undoChanges = (changes: Change[]) => async () => {
+    for (const change of changes) dismissPortsPrompt(change.threadId);
     try {
       const { skipped } = await rpc().call("undoLifecycle", { changes });
       for (const entry of skipped) toast.error(entry.reason);
@@ -91,6 +95,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
   const commands: LifecycleCommands = {
     async snooze(threadId, until) {
       if (refuseIfBusy("snooze", threadId)) return;
+      dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("snooze", { threadId, until }));
       if (result === null) return;
       toast.success("Thread snoozed", {
@@ -101,6 +106,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async wakeNow(threadId) {
+      dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("wake", { threadId }));
       if (result === null || result.changes.length === 0) return;
       toast.success("Thread woke up", { action: { label: "Undo", onClick: undoChanges(result.changes) } });
@@ -108,6 +114,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
 
     async park(threadId) {
       if (refuseIfBusy("park", threadId)) return;
+      dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("park", { threadId }));
       if (result === null) return;
       toast.success("Thread parked", {
@@ -118,6 +125,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async resume(threadId, { quiet = false } = {}) {
+      dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("resume", { threadId }));
       if (result === null || quiet) return;
       toast.success("Thread returned to Active", {
@@ -128,6 +136,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     async settle(threadId) {
       if (refuseIfBusy("settle", threadId)) return;
       if (isSweeping(threadId)) return;
+      dismissPortsPrompt(threadId);
       if (isCardDrawn(threadId) && !prefersReducedMotion()) await playSweep(threadId);
       let result;
       try {
@@ -142,6 +151,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
         action: {
           label: "Undo",
           onClick: async () => {
+            dismissPortsPrompt(threadId);
             try {
               await rpc().call("undoSettle", { threadId, undoToken });
               toast.success("Settling undone");
@@ -152,9 +162,12 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
         },
         duration: result.note !== null ? RECLAIM_TOAST_MS : SETTLE_TOAST_MS,
       });
+      // After the toast and without waiting: the lookup never holds the settle back.
+      void offerToClosePorts(rpc, threadId);
     },
 
     async unsettle(threadId) {
+      dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("unsettle", { threadId }));
       if (result === null) return;
       toast.success("Thread returned to Active", {
@@ -163,10 +176,12 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async dismissWoke(threadId) {
+      dismissPortsPrompt(threadId);
       await run(() => rpc().call("dismissWoke", { threadId }));
     },
 
     async clearPinned(threadId) {
+      dismissPortsPrompt(threadId);
       await run(() => rpc().call("clearPinned", { threadId }));
     },
   };

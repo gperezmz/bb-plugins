@@ -14,7 +14,9 @@ import {
   recordsSignalSchema,
   settingsSignalSchema,
 } from "@/shared/signals";
+import { portsSignalSchema } from "@/shared/ports";
 import { pluginData } from "./plugin-data";
+import { documentPage, followPorts } from "./ports-requests";
 import { requestSync } from "./requests";
 
 /** How long a keeper waits for realtime to connect before it asks `sync` without it. */
@@ -65,6 +67,9 @@ function Following() {
     return () => window.removeEventListener("pagehide", onHide);
   }, []);
 
+  // The workspace ports: read now, 10 s after each read while the page is visible, and when it is shown again.
+  useEffect(() => followPorts(rpc, documentPage), [rpc]);
+
   useRealtime(CHANNELS.records, (payload) => {
     const parsed = recordsSignalSchema.safeParse(payload);
     if (!parsed.success) return;
@@ -81,6 +86,10 @@ function Following() {
   useRealtime(CHANNELS.appearance, (payload) => {
     const parsed = appearanceSignalSchema.safeParse(payload);
     if (parsed.success) pluginData.appearanceSignal(parsed.data);
+  });
+  useRealtime(CHANNELS.ports, (payload) => {
+    const parsed = portsSignalSchema.safeParse(payload);
+    if (parsed.success) pluginData.portsSignal(parsed.data);
   });
   return null;
 }

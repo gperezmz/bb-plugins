@@ -4,7 +4,7 @@
 flowchart LR
   page["Settings page"] -->|"edited fields, after 500 ms"| server[("Server: settings, lifecycle rows, manual order, project colours and icons")]
   server -->|"every change"| windows["Every open window"]
-  device[("This browser: shelf collapse, Active sort, group collapse, open child lists")] --> windows
+  device[("This browser: shelf collapse, Active sort, group collapse, open child lists, port link machine")] --> windows
 ```
 
 Thread Glance's settings are one validated record on the bb server, edited on its settings page and followed by every window and device. A few choices are kept in the browser instead, and stay on that device. Source: [`shared/settings.ts`](../../plugins/thread-glance/shared/settings.ts).
@@ -59,7 +59,11 @@ The settings live in a bb settings section with a navigation strip and six group
 
 ### This device
 
-Empty for now. The choices [kept on this device](#kept-on-this-device) are not on the page.
+| Setting | Default | Does |
+|---|---|---|
+| Port link machine | No machine | The machine whose [workspace ports](thread-glance-list.md#workspace-ports) are links from this browser. Lists bb's machines; a failed list keeps the current choice and reads "Could not load machines" |
+
+It is kept in this browser and follows other tabs at once. The other choices [kept on this device](#kept-on-this-device) are not on the page.
 
 ### Project management
 
@@ -92,9 +96,10 @@ These are not settings and are not on the page. Each belongs to the browser it w
 | Active sort | The [Active sort](thread-glance-actions.md#active-sort) |
 | Project group collapse | The collapsed project groups, up to 200 |
 | Open child lists | The last 100 parents whose [children chip](thread-glance-list.md#children-chip) you opened |
+| Port link machine | The [port link machine](#this-device), the only one of these on the page |
 | Caches | The manual order (up to 2,000 ids), project colours and icons, up to 500 lifecycle rows and the settings, so the first draw does not wait for the server |
 
-Browser storage is bounded. When it is full the caches go first (the manual order's, then the colours and icons', then the lifecycle rows', then the settings'), never the four kept choices, and a write that still fails drops only its own key.
+Browser storage is bounded. When it is full the caches go first (the manual order's, then the colours and icons', then the lifecycle rows', then the settings'), never the kept choices, and a write that still fails drops only its own key.
 
 ## Where a new install starts
 

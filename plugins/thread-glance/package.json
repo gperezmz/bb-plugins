@@ -13,7 +13,8 @@
       "icon": "ListView"
     },
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "host": "./host.ts"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.3.5",
@@ -78,7 +79,9 @@
     "tsconfig.json",
     "THIRD_PARTY_NOTICES.md",
     "app.tsx",
+    "host.ts",
     "server",
+    "host",
     "shared",
     "features",
     "components",

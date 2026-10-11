@@ -3,6 +3,7 @@
 // controller's (components/reorder); this module decides and writes.
 import { toast } from "sonner";
 import { pluginData } from "../sync";
+import { dismissPortsPrompt } from "./ports-prompt";
 import { afterHover, idsOfUnits, keyboardMove, orderAfterReorder, pinNeighbours, type Hover } from "../model/reorder";
 import type { ListStore } from "../store/list-store";
 
@@ -94,6 +95,8 @@ export function createReorderCommands(store: ListStore): ReorderCommands {
       const list = model()?.reorderLists.get(listKey);
       if (list === undefined || !list.units.some((unit) => unit.key === unitKey)) return false;
       origin = list.units.map((unit) => unit.key);
+      // A row's unit key is its thread id: dragging it is an action on the thread.
+      dismissPortsPrompt(unitKey);
       store.setUi({ dragging: { listKey, unitKey } });
       store.feed({ drag: { listKey, unitKeys: list.units.map((unit) => unit.key) } });
       return true;
@@ -130,6 +133,7 @@ export function createReorderCommands(store: ListStore): ReorderCommands {
       const list = place === undefined ? undefined : model()?.reorderLists.get(place.listKey);
       if (place === undefined || list === undefined) return;
       const move = keyboardMove(list, place.unitKey, direction);
+      dismissPortsPrompt(place.unitKey);
       announce(move.announcement);
       if (move.moved) void write(place.listKey, move.unitKeys, place.unitKey);
     },
