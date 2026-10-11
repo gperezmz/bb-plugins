@@ -1,8 +1,9 @@
-// Thread Glance frontend entry: registers the sidebar thread list, the icons
-// bb lacks, and where bb offers its always-mounted app overlay slot, the
-// component there that keeps the list's data current while bb's Settings or
-// Plugins page has the sidebar unmounted.
+// Thread Glance frontend entry: registers the sidebar thread list, its settings
+// section, the icons bb lacks, and where bb offers its always-mounted app
+// overlay slot, the component there that keeps the list's data current while
+// bb's Settings or Plugins page has the sidebar unmounted.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import { SettingsPage } from "@/features/settings";
 import { ThreadActionDialogs, registerThreadActions } from "@/features/thread-actions";
 import { ChildrenButton, ParentButton } from "@/features/thread-header";
 import { EXTRA_ICONS, OverlaySyncKeeper, ThreadList } from "@/features/thread-list";
@@ -16,6 +17,7 @@ export default definePluginApp((app) => {
     description: "Shelves for every thread: active, snoozed, parked and settled.",
     component: ThreadList,
   });
+  app.slots.settingsSection({ id: "thread-glance", component: SettingsPage });
   app.slots.experimental_threadHeaderAction({ id: "thread-glance-parent", title: "Parent thread", component: ParentButton });
   app.slots.experimental_threadHeaderAction({ id: "thread-glance-children", title: "Child threads", component: ChildrenButton });
   // A bb without the slot has the list follow realtime itself instead.

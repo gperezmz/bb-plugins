@@ -11,11 +11,11 @@ Thread Glance's settings are one validated record on the bb server, edited on it
 
 ## The settings page
 
-The settings live in a bb settings section with a navigation strip and five groups of settings, below.
+The settings live in a bb settings section with a navigation strip and six groups, below.
 
 - Every change saves by itself after 500 ms, and only the edited fields are sent.
 - The page heading shows "Saving…", then "Saved" for 2 s, or "Not saved" with the toast "Could not save sidebar settings".
-- A value outside its range shows an inline error and is not saved.
+- A value outside its range shows an inline error and is not saved; the other edited fields still are.
 - A pending save is flushed when you leave the page.
 - A change made in another window reloads the page without overwriting a field you are editing.
 - A fresh browser shows the defaults, so Inactive is on, until the server's settings arrive.
@@ -56,6 +56,10 @@ The settings live in a bb settings section with a navigation strip and five grou
 | Show children that need attention | On | Keeps children with a status in a closed child list, and keeps a collapsed shelf or project group showing any thread whose tree needs you or failed |
 | Order | Date created, Oldest first | Sorts children by **Date created** or **Last activity**, **Oldest first** or **Newest first** |
 | Icon | Colour circle | A child's mark: **Colour circle** or **Provider icon** |
+
+### This device
+
+Empty for now. The choices [kept on this device](#kept-on-this-device) are not on the page.
 
 ### Project management
 
