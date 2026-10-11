@@ -3,6 +3,8 @@
 import BetterSqlite3 from "better-sqlite3";
 import type { Database } from "../database";
 import { MIGRATIONS } from "../database";
+import type { PullRequests, PullRequestStatus } from "../pull-requests";
+import type { RuntimeTerminal, ThreadRuntime } from "../runtime";
 import type { ServerThread, ThreadGateway } from "../threads";
 
 /** An idle, visible, unpinned thread; override what a test cares about. */
@@ -11,6 +13,7 @@ export function makeServerThread(id: string, overrides: Partial<ServerThread> = 
     id,
     projectId: "project-1",
     parentThreadId: null,
+    environmentId: null,
     pinSortKey: null,
     pinnedAt: null,
     isPinned: false,
@@ -145,8 +148,14 @@ export function listedThread(id: string, overrides: Partial<ListedThread> = {}):
  * test can change them) and `archived`: the listing pages the way bb does, and
  * pin, unpin and reorder change the list.
  */
-export function sdkWith(threads: () => ListedThread[], archived: () => ListedThread[] = () => []) {
+export function sdkWith(
+  threads: () => ListedThread[],
+  archived: () => ListedThread[] = () => [],
+  extra: { threads?: Record<string, unknown> } & Record<string, unknown> = {},
+) {
+  const { threads: extraThreads, ...otherAreas } = extra;
   return {
+    ...otherAreas,
     threads: {
       async list({ archived: wantArchived, offset }: { archived?: boolean; offset?: number } = {}) {
         return offset ? [] : wantArchived ? archived() : threads();
@@ -164,6 +173,79 @@ export function sdkWith(threads: () => ListedThread[], archived: () => ListedThr
       async reorderPinned() {
         return [];
       },
+      ...extraThreads,
     },
   } as never;
+}
+
+export interface FakeRuntime extends ThreadRuntime {
+  /** Thread ids whose runtime was stopped, in order. */
+  stopped: string[];
+  /** Ids of the terminals that were closed, in order. */
+  closed: string[];
+  terminalsByThread: Map<string, RuntimeTerminal[]>;
+  /** Runs before each call, named like the call and its argument; lets a test change bb between two steps. */
+  onCall: ((call: string) => void) | null;
+  failStop: Set<string>;
+}
+
+/** A thread runtime that records what it was asked and holds terminals per thread. */
+export function createFakeRuntime(terminalsByThread: Record<string, RuntimeTerminal[]> = {}): FakeRuntime {
+  const fake: FakeRuntime = {
+    stopped: [],
+    closed: [],
+    terminalsByThread: new Map(Object.entries(terminalsByThread)),
+    onCall: null,
+    failStop: new Set(),
+    async stop(threadId) {
+      fake.onCall?.(`stop ${threadId}`);
+      if (fake.failStop.has(threadId)) throw new Error("bb refused");
+      fake.stopped.push(threadId);
+    },
+    async terminals(threadId) {
+      fake.onCall?.(`terminals ${threadId}`);
+      return (fake.terminalsByThread.get(threadId) ?? []).map((terminal) => ({ ...terminal }));
+    },
+    async terminal(terminalId) {
+      fake.onCall?.(`terminal ${terminalId}`);
+      for (const terminals of fake.terminalsByThread.values()) {
+        const found = terminals.find((terminal) => terminal.id === terminalId);
+        if (found) return { ...found };
+      }
+      return undefined;
+    },
+    async closeIfUntouched(terminalId) {
+      fake.onCall?.(`close ${terminalId}`);
+      for (const [threadId, terminals] of fake.terminalsByThread) {
+        const found = terminals.find((terminal) => terminal.id === terminalId);
+        if (!found) continue;
+        if (found.lastUserInputAt !== null) return false;
+        fake.terminalsByThread.set(threadId, terminals.filter((terminal) => terminal.id !== terminalId));
+        fake.closed.push(terminalId);
+        return true;
+      }
+      return false;
+    },
+  };
+  return fake;
+}
+
+export function terminal(id: string, overrides: Partial<RuntimeTerminal> = {}): RuntimeTerminal {
+  return { id, status: "running", lastUserInputAt: null, ...overrides };
+}
+
+/** Pull requests by environment id; an environment not listed has none. */
+export function createFakePullRequests(byEnvironment: Record<string, PullRequestStatus> = {}): PullRequests & {
+  reads: string[];
+  byEnvironment: Record<string, PullRequestStatus>;
+} {
+  const fake = {
+    reads: [] as string[],
+    byEnvironment,
+    async read(environmentId: string): Promise<PullRequestStatus> {
+      fake.reads.push(environmentId);
+      return fake.byEnvironment[environmentId] ?? { kind: "absent" };
+    },
+  };
+  return fake;
 }

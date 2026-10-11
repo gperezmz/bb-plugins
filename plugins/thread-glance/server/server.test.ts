@@ -294,13 +294,106 @@ describe("project appearance", () => {
     await expect(harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "red" })).rejects.toThrow();
   });
 
-  it("answers the RPCs another phase owes with an error that names them", async () => {
-    const { harness } = await load();
+  it("stores an uploaded icon, serves it from the plugin route and drops it with the project", async () => {
+    const { harness } = await load(sdkWith(() => [], () => [], { projects: { get: async () => ({ sources: [] }) } }));
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+    const uploaded = (await harness.behavior.callRpc("uploadProjectIcon", {
+      projectId: "p1",
+      name: "mark.png",
+      mime: "image/png",
+      dataBase64: png.toString("base64"),
+    })) as Versioned<{ icons: Record<string, { name: string; mime: string }> }>;
+    expect(uploaded.value.icons.p1).toMatchObject({ name: "mark.png", mime: "image/png" });
+    const response = await harness.behavior.fetchHttp("GET", "/project-icon?project=p1");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toBe("sandbox");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
     await expect(
-      harness.behavior.callRpc("uploadProjectIcon", { projectId: "p1", name: "a.png", mime: "image/png", dataBase64: "" }),
-    ).rejects.toThrow(/uploadProjectIcon is not built yet \(project icons\)/);
-    await expect(harness.behavior.callRpc("clearProjectIcon", { projectId: "p1" })).rejects.toThrow(/clearProjectIcon is not built yet/);
-    await expect(harness.behavior.callRpc("runAutoSettle", {})).rejects.toThrow(/runAutoSettle is not built yet \(auto-settle\)/);
+      harness.behavior.callRpc("uploadProjectIcon", { projectId: "p1", name: "a.txt", mime: "text/plain", dataBase64: Buffer.from("hi").toString("base64") }),
+    ).rejects.toThrow(/Use an SVG, PNG, ICO, JPEG, GIF, AVIF or WebP image/);
+    await harness.behavior.callRpc("setProjectColour", { projectId: "p1", colour: "#aabbcc" });
+    await harness.behavior.callRpc("forgetProject", { projectId: "p1" });
+    expect((await sync(harness)).appearance.value).toEqual({ colours: {}, icons: {} });
+    expect((await harness.behavior.fetchHttp("GET", "/project-icon?project=p1")).status).toBe(404);
+  });
+
+  it("clears an uploaded icon and publishes only when there was one", async () => {
+    const { harness } = await load();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]).toString("base64");
+    await harness.behavior.callRpc("uploadProjectIcon", { projectId: "p1", name: "a.png", mime: "image/png", dataBase64: png });
+    await harness.behavior.callRpc("clearProjectIcon", { projectId: "p1" });
+    await harness.behavior.callRpc("clearProjectIcon", { projectId: "p1" });
+    expect(signalsOn(harness, CHANNELS.appearance)).toHaveLength(2);
+    expect((await sync(harness)).appearance.value.icons).toEqual({});
+  });
+});
+
+describe("reclaim, archive release and auto-settle over the SDK", () => {
+  const stoppable = (stopped: string[], terminals: Record<string, unknown[]> = {}, closed: string[] = []) => ({
+    threads: {
+      async stop({ threadId }: { threadId: string }) {
+        stopped.push(threadId);
+      },
+    },
+    terminals: {
+      async list({ scope }: { scope: { threadId: string } }) {
+        return { sessions: terminals[scope.threadId] ?? [] };
+      },
+      async get({ terminalId }: { terminalId: string }) {
+        return Object.values(terminals).flat().find((session) => (session as { id: string }).id === terminalId);
+      },
+      async close({ terminalId, mode }: { terminalId: string; mode: string }) {
+        if (mode !== "if-clean") throw new Error("must not force");
+        closed.push(terminalId);
+      },
+    },
+  });
+
+  it("stops the runtime and closes the untouched terminal when a thread is snoozed, and reports it for the toast", async () => {
+    const stopped: string[] = [];
+    const closed: string[] = [];
+    const session = (id: string, lastUserInputAt: number | null) => ({ id, status: "running", lastUserInputAt });
+    const { harness } = await load(
+      sdkWith(() => [listedThread("a")], () => [], stoppable(stopped, { a: [session("idle", null), session("typed", 5)] }, closed)),
+    );
+    const result = (await harness.behavior.callRpc("snooze", { threadId: "a", until: Date.now() + 3_600_000 })) as { note: string | null };
+    expect(stopped).toEqual(["a"]);
+    expect(closed).toEqual(["idle"]);
+    expect(result.note).toBe("Agent session stopped · closed 1 terminal nobody used · 1 terminal left running");
+  });
+
+  it("stops an archived thread's runtime and its idle children's, and leaves a working child alone", async () => {
+    const stopped: string[] = [];
+    const { harness } = await load(
+      sdkWith(
+        () => [
+          listedThread("idle-kid", { parentThreadId: "root" }),
+          listedThread("busy-kid", { parentThreadId: "root", status: "active", runtime: { displayStatus: "active" } }),
+        ],
+        () => [],
+        stoppable(stopped),
+      ),
+    );
+    await harness.behavior.emitThreadEvent("thread.archived", { thread: makeThreadResponse({ id: "root", archivedAt: 5 }) });
+    expect(stopped.sort()).toEqual(["idle-kid", "root"]);
+  });
+
+  it("runs a pass over RPC and on the five-minute schedule, and a pass on a settings change", async () => {
+    const now = Date.now();
+    const old = (id: string) => listedThread(id, { createdAt: now - 9 * 86_400_000, updatedAt: now - 9 * 86_400_000, latestAttentionAt: now - 9 * 86_400_000 });
+    const threads = [old("old")];
+    const { harness } = await load(sdkWith(() => threads, () => [], stoppable([])));
+    expect(harness.registrations.schedules.map(({ name, cron }) => [name, cron])).toContainEqual(["auto-settle", "*/5 * * * *"]);
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["old"], unsettled: [] });
+    expect(rowOf(await sync(harness), "old")).toMatchObject({ settledKind: "auto" });
+
+    threads.push(old("older"));
+    await harness.behavior.runSchedule("auto-settle");
+    expect(rowOf(await sync(harness), "older")).toMatchObject({ settledKind: "auto" });
+
+    threads.push(old("third"));
+    await harness.behavior.callRpc("writeSettings", { patch: { daysBeforeAutoSettle: 5 } });
+    await vi.waitFor(async () => expect(rowOf(await sync(harness), "third")).toMatchObject({ settledKind: "auto" }));
   });
 });
 
