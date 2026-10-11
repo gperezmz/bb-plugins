@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSystemProbe, type HostProbe } from "./probe";
 import { scanListeners, signalListener } from "./scan";
-import { createFakeSystem, procStat, type FakeSystemOptions } from "./testing/fake-system";
+import { createFakeSystem, linuxListener, procStat, type FakeSystemOptions } from "./testing/fake-system";
 
 const SECRET = "s3cr3t";
 const BOOT = 1_700_000_000;
@@ -10,18 +10,21 @@ const LSOF = "lsof -nP -iTCP -sTCP:LISTEN -F pcn +c 0";
 
 /** A dev server in /work/app/web that holds a secret in its environment and its command line. */
 function linux(overrides: { environ?: string; stat?: string; extra?: Partial<FakeSystemOptions> } = {}) {
+  const sockets = linuxListener(4242, 5173, 9001, 9002);
   return createFakeSystem({
     platform: "linux",
-    commands: { [LSOF]: "p4242\ncMainThread\nf21\nn*:5173\nf22\nn[::1]:5173\n", ...overrides.extra?.commands },
+    commands: { ...overrides.extra?.commands },
     files: {
+      ...sockets.files,
       "/proc/stat": `cpu 1 2 3\nbtime ${BOOT}\n`,
       "/proc/4242/stat": overrides.stat ?? procStat(4242, "node", 123_456),
-      "/proc/4242/comm": "MainThread\n",
       "/proc/4242/cmdline": `node\0server.js\0--token=${SECRET}\0`,
       "/proc/4242/environ": overrides.environ ?? `PATH=/bin\0TG_TEST_SECRET=${SECRET}\0BB_THREAD_ID=thr_abc123\0`,
+      ...overrides.extra?.files,
     },
-    links: { "/proc/4242/cwd": "/work/app/web", "/proc/4242/exe": "/usr/bin/node" },
-    ...overrides.extra,
+    dirs: sockets.dirs,
+    links: { ...sockets.links, "/proc/4242/cwd": "/work/app/web", "/proc/4242/exe": "/usr/bin/node" },
+    realpaths: overrides.extra?.realpaths,
   });
 }
 
@@ -98,12 +101,13 @@ describe("scan on Linux", () => {
   });
 
   it("skips this worker, its parent, and bb's own processes", async () => {
+    const sockets = linuxListener(4242, 5173);
     const own = createFakeSystem({
       platform: "linux",
       pid: 4242,
       ppid: 1,
-      commands: { [LSOF]: "p4242\ncnode\nn*:5173\n" },
-      links: { "/proc/4242/cwd": "/work/app" },
+      ...sockets,
+      links: { ...sockets.links, "/proc/4242/cwd": "/work/app" },
     });
     expect((await scanListeners(createSystemProbe(own), ["/work/app"])).listeners).toEqual([]);
 
@@ -119,9 +123,36 @@ describe("scan on Linux", () => {
     expect(system.ran).toEqual([]);
   });
 
-  it("rejects without the text of anything it read when lsof is missing", async () => {
+  it("rejects when /proc/net/tcp cannot be read, naming nothing but that", async () => {
     const system = createFakeSystem({ platform: "linux" });
-    await expect(scanListeners(createSystemProbe(system), ["/work/app"])).rejects.toThrow("lsof is not installed");
+    await expect(scanListeners(createSystemProbe(system), ["/work/app"])).rejects.toThrow("/proc/net/tcp is not readable");
+  });
+
+  it("needs no lsof", async () => {
+    const system = linux();
+    await scanListeners(createSystemProbe(system), ["/work/app"]);
+    expect(system.ran.filter((line) => line.startsWith("lsof"))).toEqual([]);
+  });
+
+  it("skips a process whose fd directory it cannot read, and finds the one it can", async () => {
+    const mine = linuxListener(4242, 5173);
+    const theirs = linuxListener(5000, 6000, 9100);
+    const system = createFakeSystem({
+      platform: "linux",
+      files: {
+        ...mine.files,
+        ...theirs.files,
+        "/proc/net/tcp": `${mine.files!["/proc/net/tcp"]}${theirs.files!["/proc/net/tcp"].split("\n").slice(1).join("\n")}`,
+        "/proc/stat": `btime ${BOOT}\n`,
+        "/proc/4242/stat": procStat(4242, "node", 1),
+        "/proc/5000/stat": procStat(5000, "node", 1),
+      },
+      // Another user's process: it is listed in /proc, but its fd directory has no entry here, as when it cannot be read.
+      dirs: { "/proc": ["4242", "5000"], "/proc/4242/fd": mine.dirs!["/proc/4242/fd"] },
+      links: { ...mine.links, ...theirs.links, "/proc/4242/cwd": "/work/app", "/proc/5000/cwd": "/work/app" },
+    });
+    const reply = await scanListeners(createSystemProbe(system), ["/work/app"]);
+    expect(reply.listeners.map((listener) => listener.pid)).toEqual([4242]);
   });
 });
 
@@ -171,7 +202,7 @@ describe("Docker", () => {
   const elsewhere = JSON.stringify({ name: "other-1", ports: "0.0.0.0:9090->90/tcp", dir: "/srv/other" });
 
   it("adds a port with no process and sets the container of a port a process already serves", async () => {
-    const system = linux({ extra: { commands: { [LSOF]: "p4242\ncnode\nn*:5173\n", [dockerLine]: `${web}\n${elsewhere}\n` } } });
+    const system = linux({ extra: { commands: { [dockerLine]: `${web}\n${elsewhere}\n` } } });
     const reply = await scanListeners(createSystemProbe(system), ["/work/app"]);
     const byPort = new Map(reply.listeners.map((listener) => [listener.port, listener]));
     expect(byPort.get(5173)).toMatchObject({ pid: 4242, ownerThreadId: "thr_abc123", container: "app-web-1" });
@@ -225,7 +256,8 @@ describe("signal", () => {
 
   it("signals nothing for bb's own processes or this worker", async () => {
     const kill = vi.fn();
-    const own = createFakeSystem({ platform: "linux", pid: 4242, commands: { [LSOF]: "p4242\ncnode\nn*:5173\n" }, links: { "/proc/4242/cwd": "/work/app" } });
+    const sockets = linuxListener(4242, 5173);
+    const own = createFakeSystem({ platform: "linux", pid: 4242, ...sockets, links: { ...sockets.links, "/proc/4242/cwd": "/work/app" } });
     expect(await signalListener(createSystemProbe(own), kill, input)).toBe("changed");
     expect(kill).not.toHaveBeenCalled();
   });

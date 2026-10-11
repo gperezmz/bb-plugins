@@ -8,10 +8,13 @@ import {
   parseDockerPs,
   parseLsofCwds,
   parseLsofListeners,
+  parseProcNetTcp,
+  procNetAddress,
+  socketInode,
   parseProcStart,
   parsePsStart,
 } from "./parse";
-import { procStat } from "./testing/fake-system";
+import { netTcp, netTcpLine, procStat } from "./testing/fake-system";
 
 describe("parseLsofListeners", () => {
   it("reads one socket per process and port, whichever address family lists it first", () => {
@@ -35,6 +38,41 @@ describe("parseLsofListeners", () => {
 
   it("keeps two processes that share a port", () => {
     expect(parseLsofListeners("p1\nca\nn*:80\np2\ncb\nn*:80\n").map((listener) => listener.pid)).toEqual([1, 2]);
+  });
+});
+
+describe("/proc/net/tcp", () => {
+  it("writes addresses the way lsof does", () => {
+    expect(procNetAddress("0100007F")).toBe("127.0.0.1");
+    expect(procNetAddress("00000000")).toBe("*");
+    expect(procNetAddress("0A14A8C0")).toBe("192.168.20.10");
+    expect(procNetAddress("00000000000000000000000000000000")).toBe("[::]");
+    expect(procNetAddress("00000000000000000000000001000000")).toBe("[::1]");
+    expect(procNetAddress("0000000000000000FFFF00000100007F")).toBe("127.0.0.1");
+    expect(procNetAddress("B80D0120000000000000000001000000")).toBe("[2001:db8::1]");
+    expect(procNetAddress("zz")).toBeNull();
+    expect(procNetAddress("0100")).toBeNull();
+  });
+
+  it("lists sockets in LISTEN state, with their port and inode", () => {
+    const text = netTcp(
+      netTcpLine("0100007F", 5173, 111),
+      netTcpLine("00000000", 80, 222, "01"),
+      netTcpLine("00000000000000000000000001000000", 3000, 333),
+      "garbage line",
+    );
+    expect(parseProcNetTcp(text)).toEqual([
+      { address: "127.0.0.1", port: 5173, inode: 111 },
+      { address: "[::1]", port: 3000, inode: 333 },
+    ]);
+    expect(parseProcNetTcp("")).toEqual([]);
+  });
+
+  it("reads the inode of a socket link and nothing else", () => {
+    expect(socketInode("socket:[12345]")).toBe(12345);
+    expect(socketInode("/dev/null")).toBeNull();
+    expect(socketInode("pipe:[12345]")).toBeNull();
+    expect(socketInode("anon_inode:[eventpoll]")).toBeNull();
   });
 });
 

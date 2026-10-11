@@ -14,8 +14,10 @@ import {
   parseDockerPs,
   parseLsofCwds,
   parseLsofListeners,
+  parseProcNetTcp,
   parseProcStart,
   parsePsStart,
+  socketInode,
   type DockerPort,
   type RawListener,
 } from "./parse";
@@ -35,7 +37,12 @@ export interface HostProbe {
   platform: NodeJS.Platform;
   /** Processes whose listeners are never reported: this worker and its parent, the host daemon. */
   ownPids: readonly number[];
-  /** Every listening TCP socket the machine shows. Rejects when the system cannot list them. */
+  /**
+   * Every listening TCP socket the machine shows, with the process holding it:
+   * on Linux from `/proc/net/tcp*` and the sockets in `/proc/<pid>/fd` (a
+   * process whose fd directory is unreadable is skipped), on macOS from `lsof`.
+   * Rejects when the system cannot list them.
+   */
   listening(): Promise<RawListener[]>;
   /** The working directory of each of `pids` it can read. */
   cwds(pids: readonly number[]): Promise<Map<number, string>>;
@@ -49,6 +56,8 @@ export interface HostProbe {
 }
 
 const DOCKER_TIMEOUT_MS = 3_000;
+/** Processes whose fd directories are read at once. */
+const FD_SCAN_CONCURRENCY = 16;
 const LSOF_ARGS = ["-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn", "+c", "0"];
 
 export function createSystemProbe(system: SystemAccess): HostProbe {
@@ -56,6 +65,50 @@ export function createSystemProbe(system: SystemAccess): HostProbe {
   let bootTime: Promise<number | null> | null = null;
   const readBootTime = () => (bootTime ??= system.readFile("/proc/stat").then(parseBootTime, () => null));
   const attempt = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
+
+  /** The processes that hold each of `inodes`, found through the `socket:[inode]` links in their fd directories. */
+  async function socketHolders(inodes: ReadonlySet<number>): Promise<Map<number, number[]>> {
+    const holders = new Map<number, number[]>();
+    const pids = (await system.readdir("/proc")).filter((name) => /^\d+$/.test(name)).map(Number);
+    for (let start = 0; start < pids.length && holders.size < inodes.size; start += FD_SCAN_CONCURRENCY) {
+      await Promise.all(
+        pids.slice(start, start + FD_SCAN_CONCURRENCY).map(async (pid) => {
+          const fds = await attempt(system.readdir(`/proc/${pid}/fd`));
+          if (fds === null) return;
+          await Promise.all(
+            fds.map(async (fd) => {
+              const target = await attempt(system.readlink(`/proc/${pid}/fd/${fd}`));
+              const inode = target === null ? null : socketInode(target);
+              if (inode === null || !inodes.has(inode)) return;
+              const pidsOfInode = holders.get(inode) ?? [];
+              if (!pidsOfInode.includes(pid)) pidsOfInode.push(pid);
+              holders.set(inode, pidsOfInode);
+            }),
+          );
+        }),
+      );
+    }
+    return holders;
+  }
+
+  async function linuxListening(): Promise<RawListener[]> {
+    const [v4, v6] = await Promise.all([attempt(system.readFile("/proc/net/tcp")), attempt(system.readFile("/proc/net/tcp6"))]);
+    if (v4 === null && v6 === null) throw new Error("/proc/net/tcp is not readable");
+    const sockets = [...parseProcNetTcp(v4 ?? ""), ...parseProcNetTcp(v6 ?? "")];
+    if (sockets.length === 0) return [];
+    const holders = await socketHolders(new Set(sockets.map((socket) => socket.inode)));
+    const names = new Map<number, string>();
+    const found = new Map<string, RawListener>();
+    for (const socket of sockets) {
+      for (const pid of holders.get(socket.inode) ?? []) {
+        const key = `${pid}:${socket.port}`;
+        if (found.has(key)) continue;
+        if (!names.has(pid)) names.set(pid, ((await attempt(system.readFile(`/proc/${pid}/comm`))) ?? "").trim());
+        found.set(key, { pid, command: names.get(pid) ?? "", address: socket.address, port: socket.port });
+      }
+    }
+    return [...found.values()];
+  }
 
   const linuxIdentity = async (pid: number): Promise<ProcessIdentity> => {
     const [stat, boot, exe, comm, cmdline] = await Promise.all([
@@ -89,7 +142,7 @@ export function createSystemProbe(system: SystemAccess): HostProbe {
     platform,
     ownPids: [system.pid, system.ppid],
     async listening() {
-      return parseLsofListeners(await run("lsof", LSOF_ARGS));
+      return platform === "linux" ? linuxListening() : parseLsofListeners(await run("lsof", LSOF_ARGS));
     },
     async cwds(pids) {
       if (pids.length === 0) return new Map();

@@ -60,6 +60,73 @@ export function parseLsofListeners(output: string): RawListener[] {
   return [...found.values()];
 }
 
+/** A listening socket as `/proc/net/tcp` and `/proc/net/tcp6` list it. */
+export interface ProcNetSocket {
+  address: string;
+  port: number;
+  /** The socket's inode, which `/proc/<pid>/fd/<n>` links name as `socket:[inode]`. */
+  inode: number;
+}
+
+/** Four hextets of 16 bits to the shortest IPv6 text, with `::` for the longest run of zeros. */
+function ipv6Text(hextets: readonly number[]): string {
+  let best = { start: -1, length: 0 };
+  for (let start = 0; start < 8; start++) {
+    let length = 0;
+    while (start + length < 8 && hextets[start + length] === 0) length++;
+    if (length > best.length) best = { start, length };
+  }
+  const hex = (values: readonly number[]) => values.map((value) => value.toString(16)).join(":");
+  if (best.length < 2) return hex(hextets);
+  return `${hex(hextets.slice(0, best.start))}::${hex(hextets.slice(best.start + best.length))}`;
+}
+
+/**
+ * An address from the hex `/proc/net/tcp` prints, written the way lsof prints
+ * it: `*` for any IPv4 address, `[::]` for any IPv6 one, `[::1]`, a dotted
+ * IPv4 address (also when IPv6-mapped). The kernel prints each 32-bit word in
+ * host byte order; the supported machines are little-endian.
+ */
+export function procNetAddress(hex: string): string | null {
+  const bytes = hex.match(/../g)?.map((pair) => Number.parseInt(pair, 16));
+  if (bytes === undefined || bytes.some((byte) => Number.isNaN(byte))) return null;
+  const network = (word: number) => bytes.slice(word * 4, word * 4 + 4).reverse();
+  if (bytes.length === 4) {
+    const octets = network(0);
+    return octets.every((octet) => octet === 0) ? "*" : octets.join(".");
+  }
+  if (bytes.length !== 16) return null;
+  const octets = [0, 1, 2, 3].flatMap(network);
+  if (octets.slice(0, 10).every((octet) => octet === 0) && octets[10] === 0xff && octets[11] === 0xff) return octets.slice(12).join(".");
+  const text = ipv6Text(Array.from({ length: 8 }, (_, index) => octets[index * 2] * 256 + octets[index * 2 + 1]));
+  return `[${text}]`;
+}
+
+/**
+ * The sockets in LISTEN state (`0A`) of `/proc/net/tcp` or `/proc/net/tcp6`
+ * text. A line that does not parse is skipped.
+ */
+export function parseProcNetTcp(text: string): ProcNetSocket[] {
+  const sockets: ProcNetSocket[] = [];
+  for (const line of text.split("\n").slice(1)) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 10 || fields[3] !== "0A") continue;
+    const [addressHex, portHex] = fields[1].split(":");
+    const address = procNetAddress(addressHex ?? "");
+    const port = Number.parseInt(portHex ?? "", 16);
+    const inode = Number(fields[9]);
+    if (address === null || !Number.isInteger(port) || port < 1 || port > 65_535 || !Number.isInteger(inode) || inode <= 0) continue;
+    sockets.push({ address, port, inode });
+  }
+  return sockets;
+}
+
+/** The inode of a `/proc/<pid>/fd/<n>` link's target `socket:[12345]`; null for any other target. */
+export function socketInode(linkTarget: string): number | null {
+  const match = /^socket:\[(\d+)\]$/.exec(linkTarget);
+  return match === null ? null : Number(match[1]);
+}
+
 /** Reads `lsof -a -d cwd -Fn` output into the working directory of each process it lists. */
 export function parseLsofCwds(output: string): Map<number, string> {
   const cwds = new Map<number, string>();

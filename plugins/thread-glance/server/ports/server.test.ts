@@ -5,7 +5,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createHostEntry } from "../../host/handlers";
 import { createSystemProbe } from "../../host/probe";
-import { createFakeSystem, procStat, type FakeSystem } from "../../host/testing/fake-system";
+import { createFakeSystem, linuxListener, procStat, type FakeSystem } from "../../host/testing/fake-system";
 import plugin from "../../server";
 import { CHANNELS, type Versioned } from "../../shared/signals";
 import type { PortsSnapshot } from "../../shared/ports";
@@ -15,16 +15,18 @@ const SECRET = "s3cr3t";
 const LSOF = "lsof -nP -iTCP -sTCP:LISTEN -F pcn +c 0";
 
 function linux(): FakeSystem {
+  const sockets = linuxListener(4242, 5173);
   return createFakeSystem({
     platform: "linux",
-    commands: { [LSOF]: "p4242\ncnode\nf21\nn*:5173\n" },
+    dirs: sockets.dirs,
     files: {
+      ...sockets.files,
       "/proc/stat": "btime 1700000000\n",
       "/proc/4242/stat": procStat(4242, "node", 123_456),
       "/proc/4242/cmdline": `node\0server.js\0--token=${SECRET}\0`,
       "/proc/4242/environ": `PATH=/bin\0TG_TEST_SECRET=${SECRET}\0BB_THREAD_ID=thr_abc123\0`,
     },
-    links: { "/proc/4242/cwd": "/work/app/web", "/proc/4242/exe": "/usr/bin/node" },
+    links: { ...sockets.links, "/proc/4242/cwd": "/work/app/web", "/proc/4242/exe": "/usr/bin/node" },
   });
 }
 
@@ -148,16 +150,27 @@ describe("the ports RPC and channel", () => {
     expect((await ports(harness)).value).toMatchObject({ environments: {}, failedHosts: [] });
   });
 
-  it("keeps the last snapshot, and lists no failure, when one refresh errors", async () => {
-    let fail = false;
-    const system = linux();
-    const flaky = { ...system, run: (...args: Parameters<FakeSystem["run"]>) => (fail ? Promise.reject(new Error("lsof failed")) : system.run(...args)) };
-    const { harness } = await load(flaky as FakeSystem);
-    const before = await ports(harness);
-    fail = true;
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const after = await ports(harness);
-    expect(after.value.environments).toEqual(before.value.environments);
+  it("keeps the last snapshot, and lists no failure, when one refresh errors (AC3)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      let fail = false;
+      const system = linux();
+      const flaky = {
+        ...system,
+        readFile: (path: string) => (fail && path.startsWith("/proc/net/") ? Promise.reject(new Error("EIO")) : system.readFile(path)),
+      };
+      const { harness } = await load(flaky as FakeSystem);
+      const before = await ports(harness);
+      expect(Object.keys(before.value.environments)).toEqual(["env-1"]);
+      fail = true;
+      vi.setSystemTime(Date.now() + 31_000);
+      const after = await ports(harness, false);
+      expect(harness.inspection.experimental_hostRpcCalls.filter((call) => call.method === "scan")).toHaveLength(2);
+      expect(after.value.environments).toEqual(before.value.environments);
+      expect(after.value.failedHosts).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

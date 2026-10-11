@@ -1,7 +1,7 @@
 // The host entry against a real process: a node child that listens on a
 // loopback port, works in a temporary directory and holds BB_THREAD_ID in its
-// environment. Runs on Linux with `lsof` on the PATH.
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+// environment. Runs on Linux; the host entry needs no `lsof` there.
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,9 +10,7 @@ import { createSystemProbe } from "./probe";
 import { scanListeners, signalListener } from "./scan";
 import { nodeSystem } from "./system";
 
-const hasLsof = spawnSync("lsof", ["-v"], { stdio: "ignore" }).error === undefined;
-
-describe.skipIf(process.platform !== "linux" || !hasLsof)("host entry on Linux, real processes", () => {
+describe.skipIf(process.platform !== "linux")("host entry on Linux, real processes", () => {
   const cleanup: (() => void)[] = [];
   afterEach(() => {
     for (const task of cleanup.splice(0)) task();

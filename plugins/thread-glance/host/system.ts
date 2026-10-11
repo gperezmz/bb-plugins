@@ -2,7 +2,7 @@
 // reading files. `SystemAccess` is the port the probe works on; `nodeSystem`
 // is the adapter and the only code here that spawns a process or opens a file.
 import { execFile } from "node:child_process";
-import { readFile, readlink, realpath } from "node:fs/promises";
+import { readdir, readFile, readlink, realpath } from "node:fs/promises";
 
 export interface RunOptions {
   timeoutMs?: number;
@@ -24,6 +24,8 @@ export interface SystemAccess {
   run(file: string, args: readonly string[], options?: RunOptions): Promise<string>;
   /** Rejects when the file cannot be read. */
   readFile(path: string): Promise<string>;
+  /** The names in a directory. Rejects when it cannot be read. */
+  readdir(path: string): Promise<string[]>;
   /** Rejects when the path is not a link or cannot be read. */
   readlink(path: string): Promise<string>;
   /** Rejects when the path cannot be resolved. */
@@ -58,6 +60,7 @@ export const nodeSystem: SystemAccess = {
     });
   },
   readFile: (path) => readFile(path, "utf8"),
+  readdir: (path) => readdir(path),
   readlink: (path) => readlink(path),
   realpath: (path) => realpath(path),
 };
