@@ -2,7 +2,7 @@
 // three marks, opening a 320 px popover that lists the children. The label is
 // dropped on a compact viewport. The popover closes when the thread changes or
 // its last child goes away.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { experimental_useSidebarThreads as useSidebarThreads, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread, PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
 import { CompactViewportContext } from "@/components/ui/hooks/use-compact-viewport";
@@ -39,17 +39,18 @@ function ChildItem({ child, onOpen }: { child: PluginSidebarThread; onOpen(): vo
   );
 }
 
-export function ChildrenButton({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
+export function ChildrenButton(props: PluginThreadHeaderActionProps) {
   const { threads } = useSidebarThreads();
+  const settings = useServerSettings();
+  const children = directChildren(threads, props.threadId, settings);
+  // Keyed by thread, and gone with the last child: the popover starts closed again for either.
+  return children.length === 0 ? null : <ChildrenPopover key={props.threadId} {...props} childThreads={children} />;
+}
+
+function ChildrenPopover({ isCompactViewport, childThreads: children }: PluginThreadHeaderActionProps & { childThreads: readonly PluginSidebarThread[] }) {
   const navigate = useBbNavigate();
   const settings = useServerSettings();
   const [open, setOpen] = useState(false);
-  const children = directChildren(threads, threadId, settings);
-  useEffect(() => setOpen(false), [threadId]);
-  useEffect(() => {
-    if (children.length === 0) setOpen(false);
-  }, [children.length]);
-  if (children.length === 0) return null;
   const label = childrenLabel(children);
   const marks = chipMarkIds(children.map((child) => child.id));
   return (
