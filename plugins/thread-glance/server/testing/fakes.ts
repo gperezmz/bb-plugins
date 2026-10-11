@@ -187,6 +187,8 @@ export interface FakeRuntime extends ThreadRuntime {
   stopped: string[];
   /** Ids of the terminals that were closed, in order. */
   closed: string[];
+  /** Ids of the terminals that were force-closed, in order. */
+  forceClosed: string[];
   terminalsByThread: Map<string, RuntimeTerminal[]>;
   /** Runs before each call, named like the call and its argument; lets a test change bb between two steps. */
   onCall: ((call: string) => void) | null;
@@ -198,6 +200,7 @@ export function createFakeRuntime(terminalsByThread: Record<string, RuntimeTermi
   const fake: FakeRuntime = {
     stopped: [],
     closed: [],
+    forceClosed: [],
     terminalsByThread: new Map(Object.entries(terminalsByThread)),
     onCall: null,
     failStop: new Set(),
@@ -226,6 +229,16 @@ export function createFakeRuntime(terminalsByThread: Record<string, RuntimeTermi
         if (found.lastUserInputAt !== null) return false;
         fake.terminalsByThread.set(threadId, terminals.filter((terminal) => terminal.id !== terminalId));
         fake.closed.push(terminalId);
+        return true;
+      }
+      return false;
+    },
+    async closeForce(terminalId) {
+      fake.onCall?.(`force ${terminalId}`);
+      for (const [threadId, terminals] of fake.terminalsByThread) {
+        if (!terminals.some((terminal) => terminal.id === terminalId)) continue;
+        fake.terminalsByThread.set(threadId, terminals.filter((terminal) => terminal.id !== terminalId));
+        fake.forceClosed.push(terminalId);
         return true;
       }
       return false;

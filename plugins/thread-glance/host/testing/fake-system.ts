@@ -9,7 +9,7 @@ export interface FakeSystemOptions {
   ppid?: number;
   /** Output by command line, `file arg arg`. */
   commands?: Record<string, string>;
-  /** File contents by path. */
+  /** The text of each file, by path. */
   files?: Record<string, string>;
   /** Link targets by path. */
   links?: Record<string, string>;

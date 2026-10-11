@@ -19,4 +19,5 @@ export const MIGRATIONS: readonly string[] = [
   "CREATE TABLE thread_lifecycle (thread_id TEXT PRIMARY KEY NOT NULL, settled_at INTEGER, settled_kind TEXT, parked_at INTEGER, snooze_until INTEGER, snoozed_at INTEGER, active_override INTEGER NOT NULL DEFAULT 0) WITHOUT ROWID",
   "CREATE TABLE manual_order (thread_id TEXT PRIMARY KEY NOT NULL, position INTEGER NOT NULL) WITHOUT ROWID",
   "CREATE TABLE project_appearance (project_id TEXT PRIMARY KEY NOT NULL, colour TEXT, icon_name TEXT, icon_mime TEXT, icon_data BLOB, icon_updated_at INTEGER) WITHOUT ROWID",
+  "CREATE TABLE clean_previews (token TEXT PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, data TEXT NOT NULL) WITHOUT ROWID",
 ];

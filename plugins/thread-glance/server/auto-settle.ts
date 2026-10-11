@@ -37,6 +37,11 @@ export interface AutoSettleDeps {
   threads: Pick<ThreadGateway, "snapshot">;
   pullRequests: PullRequests;
   settings: { read(): Promise<Settings> };
+  /**
+   * The ids of the threads to leave alone for this pass because they serve a
+   * port or their machine cannot be scanned; see `holdBackThreads`.
+   */
+  heldBack: (threads: readonly ServerThread[]) => Promise<ReadonlySet<string>>;
   reclaim: Reclaimer;
   change: ChangeRecords;
   now?: () => number;
@@ -102,16 +107,17 @@ function decide(
 }
 
 /**
- * The threads to settle and to return, from the threads bb has now. A parent
- * settles only when every visible thread below it is settled or settling and
- * no hidden one is busy, and an automatic settle of a parent whose tree is no
- * longer so is returned.
+ * The threads to settle and to return, from the threads bb has now. A thread
+ * in `heldBack` is not settled this pass. A parent settles only when every
+ * visible thread below it is settled or settling and no hidden one is busy,
+ * and an automatic settle of a parent whose tree is no longer so is returned.
  */
 export function planAutoSettle(input: {
   threads: readonly ServerThread[];
   rows: (threadId: string) => LifecycleRow | null;
   pullRequests: ReadonlyMap<string, PullRequestStatus>;
   settings: AutoSettings;
+  heldBack: ReadonlySet<string>;
   now: number;
 }): { settle: string[]; unsettle: string[] } {
   const { threads, rows, settings, now } = input;
@@ -124,8 +130,9 @@ export function planAutoSettle(input: {
     const status: PullRequestStatus =
       environmentId === null ? { kind: "absent" } : (input.pullRequests.get(environmentId) ?? { kind: "unknown" });
     const decision = decide(thread, rows(thread.id), status, settings, now);
-    if (decision === "settle") settle.add(thread.id);
-    else if (decision === "unsettle") unsettle.add(thread.id);
+    if (decision === "settle") {
+      if (!input.heldBack.has(thread.id)) settle.add(thread.id);
+    } else if (decision === "unsettle") unsettle.add(thread.id);
   }
 
   const childrenOf = new Map<string, string[]>();
@@ -196,16 +203,20 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
       if (thread.environmentId !== null && needsPullRequest(thread, lifecycle.get(thread.id))) environmentIds.add(thread.environmentId);
     }
     const pullRequests = await readPullRequests([...environmentIds]);
+    // Read before the change runs so that a scan never holds up other changes to records.
+    const heldBack = await deps.heldBack(first);
 
     const outcome = await change(async (changed) => {
       // A pass is for the settings it started under; the settings change that started the next one is queued.
       if (!sameSettings(started, await deps.settings.read())) return null;
       const at = now();
+      const current = await deps.threads.snapshot();
       const { settle, unsettle } = planAutoSettle({
-        threads: await deps.threads.snapshot(),
+        threads: current,
         rows: (threadId) => lifecycle.get(threadId),
         pullRequests,
         settings: started,
+        heldBack,
         now: at,
       });
       changed(

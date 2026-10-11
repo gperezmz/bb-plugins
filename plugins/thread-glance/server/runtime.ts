@@ -24,6 +24,11 @@ export interface ThreadRuntime {
    * bb refused because someone had, or the terminal is already gone.
    */
   closeIfUntouched(terminalId: string): Promise<boolean>;
+  /**
+   * Closes a terminal whether or not anyone typed into it. Resolves to false
+   * when bb refused or the terminal is already gone.
+   */
+  closeForce(terminalId: string): Promise<boolean>;
 }
 
 export function isLiveTerminal(terminal: Pick<RuntimeTerminal, "status">): boolean {
@@ -58,6 +63,14 @@ export function createSdkRuntime(bb: Pick<BbPluginApi, "sdk">): ThreadRuntime {
     async closeIfUntouched(terminalId) {
       try {
         await terminals.close({ terminalId, mode: "if-clean" });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async closeForce(terminalId) {
+      try {
+        await terminals.close({ terminalId, mode: "force" });
         return true;
       } catch {
         return false;

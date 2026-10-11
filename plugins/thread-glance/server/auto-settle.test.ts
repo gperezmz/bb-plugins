@@ -28,7 +28,7 @@ const prAt = (state: "closed" | "draft" | "merged" | "open", ageDays: number): P
   updatedAt: NOW - ageDays * DAY,
 });
 
-function setup(threadList: ServerThread[], options: { rows?: [string, LifecycleRow][]; settings?: Partial<Settings>; pullRequests?: Record<string, PullRequestStatus> } = {}) {
+function setup(threadList: ServerThread[], options: { rows?: [string, LifecycleRow][]; settings?: Partial<Settings>; pullRequests?: Record<string, PullRequestStatus>; heldBack?: ReadonlySet<string> } = {}) {
   const lifecycle = createLifecycleStore(memoryDatabase());
   lifecycle.putMany(options.rows ?? []);
   const threads = createFakeThreads(threadList);
@@ -53,6 +53,7 @@ function setup(threadList: ServerThread[], options: { rows?: [string, LifecycleR
     threads,
     pullRequests,
     settings: { read: async () => settings },
+    heldBack: async () => options.heldBack ?? new Set(),
     reclaim: async (targets) => {
       reclaimed.push([...targets]);
       return { stoppedRuntime: true, closedTerminals: 0, keptTerminals: 0 };
@@ -213,6 +214,37 @@ describe("what a pass decides", () => {
     const { autoSettle, published } = setup([idleFor("a", 9), idleFor("b", 9), idleFor("c", 1)]);
     await autoSettle.run();
     expect(published).toEqual([["a", "b"]]);
+  });
+});
+
+describe("ports hold-back (AC7)", () => {
+  it("does not settle a held-back thread this pass and settles the others", async () => {
+    const { autoSettle, lifecycle } = setup([idleFor("serving", 9), idleFor("quiet", 9)], { heldBack: new Set(["serving"]) });
+    expect(await autoSettle.run()).toEqual({ settled: ["quiet"], unsettled: [] });
+    expect(lifecycle.get("serving")).toBeNull();
+  });
+
+  it("does not settle a parent whose child is held back", async () => {
+    const threads = [idleFor("parent", 9), idleFor("child", 9, { parentThreadId: "parent" })];
+    const { autoSettle } = setup(threads, { heldBack: new Set(["child"]) });
+    expect((await autoSettle.run()).settled).toEqual([]);
+  });
+
+  it("settles it on a later pass once nothing holds it back", async () => {
+    const held = new Set(["a"]);
+    const { autoSettle } = setup([idleFor("a", 9)], { heldBack: held });
+    expect((await autoSettle.run()).settled).toEqual([]);
+    held.clear();
+    expect((await autoSettle.run()).settled).toEqual(["a"]);
+  });
+
+  it("leaves an automatic settle already made as it is", async () => {
+    const { autoSettle, lifecycle } = setup([idleFor("a", 9)], {
+      rows: [["a", settledRow(NOW - DAY, "auto")]],
+      heldBack: new Set(["a"]),
+    });
+    expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
+    expect(lifecycle.get("a")).toEqual(settledRow(NOW - DAY, "auto"));
   });
 });
 
