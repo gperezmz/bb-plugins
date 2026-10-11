@@ -25,7 +25,7 @@ afterEach(() => {
   Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: viewport });
 });
 
-const mountedRows = () => document.querySelectorAll("[data-thread-id]").length;
+const mountedRows = () => document.querySelectorAll("[data-card]").length;
 
 describe("AC30: the list at 2,000 threads", () => {
   const threads = Array.from({ length: 2_000 }, (_, index) => thread(index));

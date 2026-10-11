@@ -18,7 +18,7 @@ export const CAPS = {
 const PREFIX = "thread-glance:";
 
 /** Keys that hold what the person set on this device; nothing evicts them. */
-export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "expandedParents";
+export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "expandedParents" | "workingSince";
 
 /** Keys that cache what the server sends, listed least important first: the order eviction takes them in. */
 export const CACHE_KEYS = ["cache.order", "cache.appearance", "cache.rows", "cache.settings"] as const;

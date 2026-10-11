@@ -77,3 +77,8 @@ export const PROJECTS: PluginSidebarProject[] = [
 
 export const HOUR = 60 * 60 * 1000;
 export const DAY = 24 * HOUR;
+
+/** The title a row draws, whatever else its card shows. */
+export function titleOf(card: Element): string {
+  return card.querySelector("[data-title]")?.textContent?.trim() ?? "";
+}

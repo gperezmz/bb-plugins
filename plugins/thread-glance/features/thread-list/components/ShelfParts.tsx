@@ -5,8 +5,12 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { SHELF_ICONS, SHELF_NAMES } from "../icons";
 import type { ListItem } from "../model/list-model";
+import { stripeShown } from "../model/project-colour";
+import { ProjectMark, ProjectName, ProjectStripe } from "../project/ProjectMark";
+import { useProjectColour } from "../project/use-project-colour";
+import { useProjectIds } from "../project/use-project-ids";
 import { ACTIVE_SORT_LABELS, ACTIVE_SORTS, type ActiveSort } from "../storage/device-state";
-import { useActiveSort, useCommands, useIsDragged, useProject } from "../store/hooks";
+import { useActiveSort, useCommands, useIsDragged, useProject, useSettings } from "../store/hooks";
 
 type ShelfItem = Extract<ListItem, { kind: "shelf" }>;
 type GroupItem = Extract<ListItem, { kind: "group" }>;
@@ -63,15 +67,19 @@ export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item
 /** A Project-mode group's header: the project's name, its count and a chevron. The header moves as a unit. */
 export const GroupHeader = memo(function GroupHeader({ item, size }: { item: GroupItem; size: number }) {
   const commands = useCommands();
+  const { stripesIn } = useSettings();
   const project = useProject(item.projectId);
   const dragged = useIsDragged(item.key);
   const name = project?.name ?? item.projectId;
+  const projectIds = useProjectIds();
+  const colour = useProjectColour(item.projectId, projectIds);
   return (
     <div
       data-group-key={item.key}
       style={{ height: size }}
-      className={cn("flex items-center gap-1 rounded-md pl-2 pr-1 text-xs text-muted-foreground select-none", dragged && "opacity-60")}
+      className={cn("relative flex items-center gap-1 rounded-md pl-2 pr-1 text-xs text-muted-foreground select-none", dragged && "opacity-60")}
     >
+      <ProjectStripe colour={colour !== null && stripeShown(stripesIn, "group") ? colour : null} />
       <button
         type="button"
         aria-expanded={!item.collapsed}
@@ -79,7 +87,8 @@ export const GroupHeader = memo(function GroupHeader({ item, size }: { item: Gro
         onClick={() => commands.setGroupCollapsed(item.projectId, !item.collapsed)}
         className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
-        <span className="min-w-0 truncate font-medium">{name}</span>
+        <ProjectMark projectId={item.projectId} name={name} colour={colour} className="size-3" />
+        <ProjectName name={name} colour={colour} className="min-w-0 truncate font-medium" />
         <span className="shrink-0 tabular-nums">{item.count}</span>
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
       </button>

@@ -4,7 +4,7 @@ import { cleanup, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll } from "vitest";
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { flushListStores } from "../store/list-store";
-import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type ServerState } from "./fake-host";
+import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type ServerState, type SlotExtras } from "./fake-host";
 import type { FakeServerOptions } from "./fake-server";
 import { PROJECTS } from "./fixtures";
 
@@ -35,6 +35,8 @@ export interface Scenario {
   isCompactViewport?: boolean;
   failReorderPinned?: boolean;
   onThreadsRead?(): void;
+  /** bb's side of the slot beyond the threads: pull requests, harnesses, SDK fakes. */
+  slot?: SlotExtras;
 }
 
 export interface Mounted {
@@ -54,7 +56,7 @@ export async function mount(scenario: Scenario): Promise<Mounted> {
     failReorderPinned: scenario.failReorderPinned,
     onThreadsRead: scenario.onThreadsRead,
   });
-  const view = mountList(app, server);
+  const view = mountList(app, server, scenario.slot);
   await settle();
   return { host, server, view };
 }

@@ -1,0 +1,194 @@
+// @vitest-environment jsdom
+// AC18: the Children chip on a parent's card, and the child lists under it.
+import { act, fireEvent, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { makeThread, PROJECTS } from "../testing/fixtures";
+import { flush, mount, useListHarness } from "../testing/harness";
+
+useListHarness();
+
+const NOW = Date.now();
+const MIN = 60_000;
+const at = (minutesAgo: number) => ({ createdAt: NOW - minutesAgo * MIN, updatedAt: NOW - minutesAgo * MIN, latestAttentionAt: NOW - minutesAgo * MIN });
+const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+const chip = (id: string) => card(id).querySelector<HTMLElement>("[data-children-chip]")!;
+const childTitles = () => [...document.querySelectorAll<HTMLElement>("[data-child-id] > div a")].map((link) => link.textContent!.trim());
+const childRow = (id: string) => document.querySelector<HTMLElement>(`[data-child-id="${id}"]`)!;
+
+const family = () => [
+  makeThread({ id: "p", title: "Parent", ...at(60) }),
+  makeThread({ id: "c1", title: "Failing", parentThreadId: "p", indicator: "unread-error", ...at(50) }),
+  makeThread({ id: "c2", title: "Asking", parentThreadId: "p", hasPendingInteraction: true, indicator: "waiting-for-input", ...at(40) }),
+  makeThread({ id: "c3", title: "Working", parentThreadId: "p", status: "active", runtimeStatus: "active", indicator: "runtime", ...at(30) }),
+  makeThread({ id: "c4", title: "Done", parentThreadId: "p", indicator: "unread-success", ...at(20) }),
+  makeThread({ id: "c5", title: "Quiet", parentThreadId: "p", ...at(10) }),
+];
+
+describe("AC18: the Children chip", () => {
+  it("counts the direct children and words the subtree in its tooltip", async () => {
+    await mount({ threads: family() });
+    expect(chip("p").getAttribute("aria-label")).toBe("5 child threads, 1 failed, 1 need you, 1 done, 1 working");
+    expect(chip("p").textContent).toContain("5");
+  });
+
+  it("shows up to three child marks and the most urgent glyph in the subtree", async () => {
+    await mount({ threads: family() });
+    expect(chip("p").querySelectorAll("[data-child-mark]")).toHaveLength(3);
+    expect(chip("p").querySelector("[data-urgency]")?.getAttribute("data-urgency")).toBe("failed");
+  });
+
+  it("falls to needs you, then done, then working as the more urgent ones go", async () => {
+    const m = await mount({ threads: family() });
+    const urgency = () => chip("p").querySelector("[data-urgency]")?.getAttribute("data-urgency");
+    act(() => m.host.updateThread("c1", { indicator: "none" }));
+    await flush();
+    expect(urgency()).toBe("needs-you");
+    act(() => m.host.updateThread("c2", { indicator: "none", hasPendingInteraction: false }));
+    await flush();
+    expect(urgency()).toBe("done");
+    act(() => m.host.updateThread("c4", { indicator: "none" }));
+    await flush();
+    expect(urgency()).toBe("working");
+  });
+
+  it("counts a grandchild's failure in the subtree but only the direct children in the count", async () => {
+    await mount({
+      threads: [
+        makeThread({ id: "p", ...at(30) }),
+        makeThread({ id: "c", parentThreadId: "p", ...at(20) }),
+        makeThread({ id: "g", parentThreadId: "c", indicator: "unread-error", ...at(10) }),
+      ],
+    });
+    expect(chip("p").getAttribute("aria-label")).toBe("1 child thread, 1 failed");
+    expect(chip("p").querySelector("[data-urgency]")?.getAttribute("data-urgency")).toBe("failed");
+  });
+
+  it("opens and closes the child list per device, for the last 100 parents", async () => {
+    const first = await mount({ threads: family() });
+    expect(chip("p").getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(chip("p").getAttribute("aria-expanded")).toBe("true");
+    expect(childTitles()).toEqual(["Failing", "Asking", "Working", "Done", "Quiet"]);
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+    first.view.unmount();
+    await mount({ threads: family() });
+    expect(childTitles()).toHaveLength(5);
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childTitles()).toEqual(["Failing", "Asking", "Working", "Done"]);
+  });
+});
+
+describe("AC18: a closed child list", () => {
+  it("shows the children with a status when Show children that need attention is on, and none when it is off", async () => {
+    const on = await mount({ threads: family() });
+    expect(childTitles()).toEqual(["Failing", "Asking", "Working", "Done"]);
+    on.view.unmount();
+    await mount({ threads: family(), server: { settings: { showChildrenNeedingAttention: false } } });
+    expect(childTitles()).toEqual([]);
+  });
+
+  it("keeps the path to the open thread", async () => {
+    await mount({
+      threads: [
+        makeThread({ id: "p", ...at(30) }),
+        makeThread({ id: "c", title: "Middle", parentThreadId: "p", ...at(20) }),
+        makeThread({ id: "g", title: "Open one", parentThreadId: "c", ...at(10) }),
+        makeThread({ id: "x", title: "Aside", parentThreadId: "p", ...at(5) }),
+      ],
+      activeThreadId: "g",
+      server: { settings: { showChildrenNeedingAttention: false } },
+    });
+    expect(childTitles()).toEqual(["Middle", "Open one"]);
+    expect(childRow("g").querySelector("[aria-current=page]")).not.toBeNull();
+  });
+});
+
+describe("AC18: child rows", () => {
+  const deep = () => [
+    makeThread({ id: "p", ...at(60) }),
+    makeThread({ id: "c", title: "Child", parentThreadId: "p", ...at(50) }),
+    makeThread({ id: "g", title: "Grand", parentThreadId: "c", ...at(40) }),
+    makeThread({ id: "gg", title: "Great", parentThreadId: "g", ...at(30) }),
+    makeThread({ id: "ggg", title: "Deep", parentThreadId: "gg", ...at(20) }),
+  ];
+
+  it("names the disclosure of each child's own children by depth", async () => {
+    await mount({ threads: deep() });
+    fireEvent.click(chip("p"));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Grandchildren of Child" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Great-grandchildren of Grand" }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Descendants of Great" }));
+    await flush();
+    expect(childTitles()).toEqual(["Child", "Grand", "Great", "Deep"]);
+  });
+
+  it("gives a child its status or age", async () => {
+    await mount({ threads: family() });
+    fireEvent.click(chip("p"));
+    await flush();
+    const text = (id: string) => childRow(id).querySelector("[data-status]")?.textContent;
+    expect([text("c1"), text("c2"), text("c3"), text("c4"), text("c5")]).toEqual(["Failed", "Needs you", "Working", "Unread", "10m"]);
+  });
+
+  it("carries the project icon of a child from another project", async () => {
+    await mount({
+      threads: [
+        makeThread({ id: "p", projectId: "proj_a", ...at(30) }),
+        makeThread({ id: "same", parentThreadId: "p", projectId: "proj_a", ...at(20) }),
+        makeThread({ id: "other", parentThreadId: "p", projectId: "proj_b", ...at(10) }),
+      ],
+      projects: PROJECTS,
+    });
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childRow("same").querySelector("[data-monogram]")).toBeNull();
+    expect(childRow("other").querySelector("[data-monogram]")?.textContent).toBe("B");
+  });
+
+  it("sorts by the Child threads settings", async () => {
+    const threads = [
+      makeThread({ id: "p", ...at(60) }),
+      makeThread({ id: "a", title: "A", parentThreadId: "p", ...at(50), updatedAt: NOW - 5 * MIN }),
+      makeThread({ id: "b", title: "B", parentThreadId: "p", ...at(40), updatedAt: NOW - 30 * MIN }),
+    ];
+    const open = async (settings: object) => {
+      const m = await mount({ threads, server: { settings } });
+      fireEvent.click(chip("p"));
+      await flush();
+      const titles = childTitles();
+      m.view.unmount();
+      localStorage.clear();
+      return titles;
+    };
+    expect(await open({})).toEqual(["A", "B"]);
+    expect(await open({ childDirection: "newest" })).toEqual(["B", "A"]);
+    expect(await open({ childOrder: "activity", childDirection: "oldest" })).toEqual(["B", "A"]);
+    expect(await open({ childOrder: "activity", childDirection: "newest" })).toEqual(["A", "B"]);
+  });
+
+  it("marks children by the Icon setting: a colour circle, or the provider's logo", async () => {
+    const circle = await mount({ threads: family() });
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childRow("c1").querySelector("[data-child-mark]")?.getAttribute("data-child-mark")).toBe("circle");
+    circle.view.unmount();
+    await mount({ threads: family(), server: { settings: { childIcon: "provider-icon" } } });
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childRow("c1").querySelector("[data-child-mark]")?.getAttribute("data-child-mark")).toBe("provider");
+    expect(within(childRow("c1")).queryByRole("link")).not.toBeNull();
+  });
+
+  it("opens a child on click", async () => {
+    const m = await mount({ threads: family() });
+    fireEvent.click(chip("p"));
+    await flush();
+    fireEvent.click(within(childRow("c3")).getByRole("link"));
+    expect(m.view.navigateCalls.at(-1)).toEqual({ method: "toThread", threadId: "c3" });
+  });
+});

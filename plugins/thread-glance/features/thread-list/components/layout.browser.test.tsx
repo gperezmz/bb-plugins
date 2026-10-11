@@ -127,3 +127,47 @@ describe("the windowed rows", () => {
     expect(list.offsetWidth).toBe(list.clientWidth);
   });
 });
+
+describe("the cards' lines", () => {
+  const heights = heightsFor(false);
+  const threads = [
+    makeThread({ id: "full", title: "A title that is far too long to fit on one line of a narrow sidebar column", ...at(5), isPinned: true, pinnedAt: NOW, activity: { workflows: 2, backgroundAgents: 1 }, environment: { branchName: "feature/a-branch-with-a-very-long-name" } }),
+    makeThread({ id: "work", title: "Working one", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
+    makeThread({ id: "pk", title: "Parked one", ...old }),
+  ];
+  const draw = (compactWorkingThreads: boolean) => render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { compactWorkingThreads, inactiveShelf: false }, order: ["full", "work", "pk"] });
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+
+  it("fits each card in its height and its width, truncating what is too long", async () => {
+    await draw(false);
+    screen.getByRole("button", { name: "Parked (1)" }).click();
+    await waitFor(() => expect(card("pk")).not.toBeNull());
+    await frames();
+    const expected = { full: heights.fullCard, work: heights.fullCard, pk: heights.slimRow };
+    for (const [id, height] of Object.entries(expected)) {
+      const el = card(id);
+      expect(el.getBoundingClientRect().height, id).toBe(height);
+      expect(el.scrollHeight, id).toBeLessThanOrEqual(el.clientHeight);
+      expect(el.scrollWidth, id).toBeLessThanOrEqual(el.clientWidth);
+    }
+  });
+
+  it("fits a folded card in one line", async () => {
+    await draw(true);
+    const el = card("work");
+    expect(el.dataset.card).toBe("folded");
+    expect(el.getBoundingClientRect().height).toBe(heights.foldedCard);
+    expect(el.scrollHeight).toBeLessThanOrEqual(el.clientHeight);
+    expect(el.scrollWidth).toBeLessThanOrEqual(el.clientWidth);
+  });
+
+  it("puts the Status slot at 80 px at the right edge of the card's first line", async () => {
+    await draw(false);
+    const slot = card("full").querySelector<HTMLElement>("[data-status-slot]")!;
+    const box = slot.getBoundingClientRect();
+    expect(box.width).toBe(80);
+    const cardBox = card("full").getBoundingClientRect();
+    expect(Math.round(cardBox.right - box.right)).toBe(10);
+    expect(box.top - cardBox.top).toBeLessThan(heights.fullCard / 2);
+  });
+});

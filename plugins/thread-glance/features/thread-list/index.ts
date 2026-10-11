@@ -19,3 +19,26 @@ export {
 } from "./sync/hooks";
 export { pluginData } from "./sync";
 export { requestSnoozePicker, useSnoozePickerRequests } from "./commands/snooze-picker-request";
+// What the thread header's buttons and the settings preview draw with: the
+// project mark and colours, the child marks, and the Status slot.
+export { ProjectMark, ProjectMonogram, ProjectName, ProjectStripe } from "./project/ProjectMark";
+export { useBbProjectIds, useProjectColour } from "./project/use-project-colour";
+export {
+  automaticColour,
+  contrastRatio,
+  MONOGRAM_ALPHA,
+  projectColours,
+  readableColour,
+  stripeShown,
+  withAlpha,
+  type ProjectColour,
+  type StripeSurface,
+  type ThemeMode,
+} from "./model/project-colour";
+export { monogramLetter, monogramTile, MONOGRAM_TILE_COLOURS } from "./model/monogram";
+export { ChildMark } from "./components/rows/ChildMark";
+export { StatusView } from "./components/rows/StatusView";
+export { Tip } from "./components/rows/Tip";
+export { ageLabel, statusSlot, type StatusSlot } from "./model/status-slot";
+export { childComparator, isListed } from "./model/forest";
+export { chipMarkIds } from "./model/children-chip";

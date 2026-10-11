@@ -4,6 +4,7 @@
 // Plugins page has the sidebar unmounted.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 import { ThreadActionDialogs, registerThreadActions } from "@/features/thread-actions";
+import { ChildrenButton, ParentButton } from "@/features/thread-header";
 import { EXTRA_ICONS, OverlaySyncKeeper, ThreadList } from "@/features/thread-list";
 import "@/features/thread-list/theme/theme.css";
 
@@ -15,6 +16,8 @@ export default definePluginApp((app) => {
     description: "Shelves for every thread: active, snoozed, parked and settled.",
     component: ThreadList,
   });
+  app.slots.experimental_threadHeaderAction({ id: "thread-glance-parent", title: "Parent thread", component: ParentButton });
+  app.slots.experimental_threadHeaderAction({ id: "thread-glance-children", title: "Child threads", component: ChildrenButton });
   // A bb without the slot has the list follow realtime itself instead.
   if (typeof app.slots.experimental_appOverlay === "function") {
     app.slots.experimental_appOverlay({ id: "thread-glance-sync", component: OverlaySyncKeeper });
