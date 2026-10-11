@@ -1,7 +1,8 @@
 // Thread Glance server: lifecycle rows, the manual order, the settings and
 // the project appearance, served to the app through `sync` and realtime. The
 // app imports the RPC contract's types from shared/contract.ts and the
-// signals' from shared/signals.ts.
+// signals' from shared/signals.ts. `bb thread-glance prefs` edits the settings
+// through the same write as the settings page.
 import { randomUUID } from "node:crypto";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { en } from "zod/locales";
@@ -9,13 +10,14 @@ import { config } from "zod/mini";
 import { rpcContract } from "./shared/contract";
 import { applySubsetOrder } from "./shared/manual-order";
 import { PROJECT_ICON_ROUTE } from "./shared/project-icon";
-import { affectsAutoSettle } from "./shared/settings";
+import { affectsAutoSettle, type SettingKey } from "./shared/settings";
 import { CHANNELS } from "./shared/signals";
 import { createLifecycleActions, type ChangeRecords } from "./server/actions";
 import { createAppearanceStore } from "./server/appearance-store";
 import { createArchiveRelease } from "./server/archive-release";
 import { createArchivedThreads } from "./server/archived";
 import { createAutoSettle } from "./server/auto-settle";
+import { createCli } from "./server/cli";
 import { MIGRATIONS } from "./server/database";
 import { createLifecycleStore } from "./server/lifecycle-store";
 import { createOrderStore } from "./server/order-store";
@@ -104,6 +106,9 @@ export default function threadGlance(bb: BbPluginApi): void {
     return published;
   };
 
+  const writeSettings = (patch: unknown) => settingsInOrder(async () => publishSettings(await settings.write(patch)));
+  const resetSettings = (keys?: readonly SettingKey[]) => settingsInOrder(async () => publishSettings(await settings.reset(keys)));
+
   const autoSettle = createAutoSettle({
     lifecycle,
     threads,
@@ -144,8 +149,8 @@ export default function threadGlance(bb: BbPluginApi): void {
       return orderChannel.publish([...order.get()]);
     },
 
-    writeSettings: ({ patch }) => settingsInOrder(async () => publishSettings(await settings.write(patch))),
-    resetSettings: ({ keys }) => settingsInOrder(async () => publishSettings(await settings.reset(keys))),
+    writeSettings: ({ patch }) => writeSettings(patch),
+    resetSettings: ({ keys }) => resetSettings(keys),
 
     async setProjectColour({ projectId, colour }) {
       return appearance.setColour(projectId, colour) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();
@@ -176,6 +181,10 @@ export default function threadGlance(bb: BbPluginApi): void {
     previewClean: ({ projectId }) => clean.preview(projectId),
     runClean: ({ token }) => clean.run(token),
   });
+
+  bb.cli.register(
+    createCli({ read: () => settings.read(), write: writeSettings, reset: resetSettings }),
+  );
 
   bb.events.on("thread.created", ({ thread }) => events.created(thread));
   bb.events.on("thread.active", ({ thread }) => events.active(thread));
