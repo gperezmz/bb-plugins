@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  automaticColour,
-  contrastRatio,
-  hexToRgb,
-  hueOf,
-  projectColours,
-  readableColour,
-  stripeShown,
-  themeBackground,
-  withAlpha,
-} from "./project-colour";
+import { automaticColour, contrastRatio, hexToRgb, hueOf, projectColours, readableColour, stripeShown, themeBackground, withAlpha } from "./project-colour";
 
 /** HSL saturation and lightness (0 to 100) of a `#rrggbb`. */
 function saturationLightness(hex: string): { s: number; l: number } {

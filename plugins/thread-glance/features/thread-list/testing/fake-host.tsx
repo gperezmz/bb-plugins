@@ -5,7 +5,9 @@
 import { useSyncExternalStore, type ComponentType } from "react";
 import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import type {
+  PluginProvidersState,
   PluginSidebarProject,
+  PluginSidebarPullRequest,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
   PluginThreadListProps,
@@ -149,6 +151,13 @@ function fakeHooks(testRuntime: Runtime): Runtime {
   };
 }
 
+/** What a test adds to bb's side of the slot: pull requests, providers, and SDK areas the list calls. */
+export interface SlotExtras {
+  sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
+  providers?: Partial<PluginProvidersState>;
+  sdk?: Record<string, Record<string, unknown>>;
+}
+
 type PluginApp = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: PluginApp | null = null;
 
@@ -180,13 +189,13 @@ export function serverState(held: FakeServerOptions = {}): ServerState {
   return createFakeServer(held);
 }
 
-/** bb's SDK calls the list makes, answered at once and recorded. */
-function sdkFakes() {
+/** bb's SDK calls the list makes, answered at once and recorded; `extra` adds areas and methods. */
+function sdkFakes(extra: Record<string, Record<string, unknown>> = {}) {
   const record = (method: string) => async (args: unknown) => {
     hostOrThrow().sdkCalls.push({ method, args });
     return {};
   };
-  return {
+  const base: Record<string, Record<string, unknown>> = {
     threads: {
       update: async (args: { threadId: string; title?: string }) => {
         hostOrThrow().sdkCalls.push({ method: "threads.update", args });
@@ -215,7 +224,10 @@ function sdkFakes() {
         return {};
       },
     },
-  } as never;
+  };
+  const merged = { ...base };
+  for (const [area, methods] of Object.entries(extra)) merged[area] = { ...base[area], ...methods };
+  return merged as never;
 }
 
 function comparePinKeys(a: PluginSidebarThread, b: PluginSidebarThread): number {
@@ -223,8 +235,9 @@ function comparePinKeys(a: PluginSidebarThread, b: PluginSidebarThread): number 
 }
 
 /** The list as a window mounts it, fed props by the fake host. */
-export function mountList(loaded: PluginApp, server: ServerState): RenderedSlot {
+export function mountList(loaded: PluginApp, server: ServerState, slot: SlotExtras = {}): RenderedSlot {
   const List = loaded.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
   const Window = () => <List {...useHost((state) => state.props)} />;
-  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: sdkFakes(), realtimeConnectionState: "connected" }));
+  const { sdk, ...options } = slot;
+  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: sdkFakes(sdk), realtimeConnectionState: "connected", ...options }));
 }

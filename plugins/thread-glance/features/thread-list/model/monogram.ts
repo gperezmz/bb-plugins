@@ -9,7 +9,12 @@ const GENERIC_WORDS = new Set(["bb", "plugin", "the", "my"]);
 
 function words(name: string): string[] {
   // An npm scope or a path says where the project lives, not what it is.
-  const base = name.trim().replace(/^@[^/]+\//u, "").split(/[\\/]/u).at(-1) ?? "";
+  const base =
+    name
+      .trim()
+      .replace(/^@[^/]+\//u, "")
+      .split(/[\\/]/u)
+      .at(-1) ?? "";
   return base
     .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
     .split(/[^\p{L}\p{N}]+/u)

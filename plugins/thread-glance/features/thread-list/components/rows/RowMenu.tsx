@@ -1,6 +1,10 @@
 // bb's thread menu on a row: the "…" button and the right-click menu. The
 // menu is bb's own, with the actions this plugin and bb contribute to it.
-import { experimental_Icon as Icon, experimental_ThreadActionsContextMenu as ThreadActionsContextMenu, experimental_ThreadActionsMenu as ThreadActionsMenu } from "@get-bb/plugin-sdk/app";
+import {
+  experimental_Icon as Icon,
+  experimental_ThreadActionsContextMenu as ThreadActionsContextMenu,
+  experimental_ThreadActionsMenu as ThreadActionsMenu,
+} from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread, PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -50,7 +54,11 @@ export function MoreButton({ thread, className }: { thread: PluginSidebarThread;
             event.stopPropagation();
             props.onClick?.(event);
           }}
-          className={cn(props.className, "pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring", className)}
+          className={cn(
+            props.className,
+            "pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+            className,
+          )}
         >
           <Icon name="MoreHorizontal" aria-hidden className="size-3.5" />
         </button>

@@ -6,26 +6,10 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 export type StatusTone = "failed" | "needs-you" | "working" | "unread" | "draft" | "muted";
 
 /** The glyph a status draws: a bb icon by name, or the unread dot. */
-export type StatusGlyph =
-  | { kind: "icon"; name: string; spin?: boolean; shine?: boolean }
-  | { kind: "dot" };
+export type StatusGlyph = { kind: "icon"; name: string; spin?: boolean; shine?: boolean } | { kind: "dot" };
 
 export type StatusKind =
-  | "needs-you"
-  | "send-failed"
-  | "queued"
-  | "failed"
-  | "unread"
-  | "working"
-  | "monitoring"
-  | "workflow"
-  | "agent"
-  | "command"
-  | "planning"
-  | "goal"
-  | "draft"
-  | "drafting"
-  | "age";
+  "needs-you" | "send-failed" | "queued" | "failed" | "unread" | "working" | "monitoring" | "workflow" | "agent" | "command" | "planning" | "goal" | "draft" | "drafting" | "age";
 
 export interface StatusSlot {
   kind: StatusKind;

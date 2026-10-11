@@ -20,16 +20,22 @@ export function lookUpModel(sdk: PluginBrowserBbSdk, thread: { id: string; provi
     const catalogKey = `${thread.providerId}:${thread.host?.id ?? ""}`;
     let catalog = catalogs.get(catalogKey);
     if (catalog === undefined) {
-      catalog = sdk.providers.models(thread.host ? { providerId: thread.providerId, hostId: thread.host.id } : { providerId: thread.providerId }).then(
-        (result) => result.models,
-        () => [],
-      );
+      const args = thread.host ? { providerId: thread.providerId, hostId: thread.host.id } : { providerId: thread.providerId };
+      // Called inside the chain, so a call that throws leaves the catalog empty and the id stands for the name.
+      catalog = Promise.resolve()
+        .then(() => sdk.providers.models(args))
+        .then(
+          (result) => result.models,
+          () => [],
+        );
       catalogs.set(catalogKey, catalog);
     }
     const names = catalog;
-    pending = sdk.threads.defaultExecutionOptions({ threadId: thread.id }).then(async (options) =>
-      options === null ? { model: null, reasoningLevel: null } : { model: modelDisplayName(options.model, await names), reasoningLevel: options.reasoningLevel },
-    );
+    pending = Promise.resolve()
+      .then(() => sdk.threads.defaultExecutionOptions({ threadId: thread.id }))
+      .then(async (options) =>
+        options === null ? { model: null, reasoningLevel: null } : { model: modelDisplayName(options.model, await names), reasoningLevel: options.reasoningLevel },
+      );
     // A failed lookup is asked again the next time a card opens.
     pending.catch(() => answers.delete(key));
     answers.set(key, pending);

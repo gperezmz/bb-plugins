@@ -42,9 +42,21 @@ describe("the precedence", () => {
   });
 
   it("names each indicator", () => {
-    const labels = (["unread-error", "waiting-for-input", "unread-success", "runtime", "workflow", "background-agent", "background-command", "plan-mode", "goal", "draft", "working-draft"] as const).map(
-      (indicator) => slot({ indicator }).label,
-    );
+    const labels = (
+      [
+        "unread-error",
+        "waiting-for-input",
+        "unread-success",
+        "runtime",
+        "workflow",
+        "background-agent",
+        "background-command",
+        "plan-mode",
+        "goal",
+        "draft",
+        "working-draft",
+      ] as const
+    ).map((indicator) => slot({ indicator }).label);
     expect(labels).toEqual(["Failed", "Needs you", "Unread", "Working", "Workflow", "Agent", "Command", "Planning", "Goal", "Draft", "Drafting"]);
   });
 

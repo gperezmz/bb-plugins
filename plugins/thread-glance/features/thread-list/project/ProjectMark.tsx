@@ -25,7 +25,11 @@ export function ProjectMonogram({ name, colour, className }: { name: string; col
       aria-hidden
       data-monogram=""
       style={{ backgroundColor: withAlpha(tile, MONOGRAM_ALPHA), color: colour?.text }}
-      className={cn("flex size-3.5 shrink-0 items-center justify-center rounded-[3px] text-[8px] font-semibold leading-none", colour === null && "text-muted-foreground", className)}
+      className={cn(
+        "flex size-3.5 shrink-0 items-center justify-center rounded-[3px] text-[8px] font-semibold leading-none",
+        colour === null && "text-muted-foreground",
+        className,
+      )}
     >
       {monogramLetter(name)}
     </span>

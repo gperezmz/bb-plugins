@@ -24,6 +24,8 @@ export interface FakeServerOptions {
   refuse?: Record<string, string>;
   /** The reclaim note the lifecycle calls answer with. */
   note?: string | null;
+  /** Project colour overrides and icon uploads held at the start. */
+  appearance?: Partial<Appearance>;
   /** Holds `sync` unanswered until `releaseSync`. */
   holdSync?: boolean;
 }
@@ -45,7 +47,7 @@ export function createFakeServer(options: FakeServerOptions = {}) {
   const windows = new Set<FakeWindow>();
   let settings: Versioned<Settings> = { epoch, version: 1, value: { ...DEFAULT_SETTINGS, ...options.settings } };
   let order: Versioned<string[]> = { epoch, version: 1, value: options.order ?? [] };
-  const appearance: Versioned<Appearance> = { epoch, version: 1, value: { colours: {}, icons: {} } };
+  const appearance: Versioned<Appearance> = { epoch, version: 1, value: { colours: options.appearance?.colours ?? {}, icons: options.appearance?.icons ?? {} } };
   let holding = options.holdSync ?? false;
   let held: (() => void)[] = [];
 

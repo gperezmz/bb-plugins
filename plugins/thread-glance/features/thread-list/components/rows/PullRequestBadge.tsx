@@ -27,7 +27,10 @@ export function PullRequestBadge({ threadId }: { threadId: string }) {
         data-pull-request={pullRequest.attention}
         aria-label={`Pull request #${pullRequest.number}, ${pullRequestLabel(pullRequest)}: ${pullRequest.title}`}
         onClick={(event) => event.stopPropagation()}
-        className={cn("pointer-events-auto relative shrink-0 rounded font-mono tabular-nums outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring", PULL_REQUEST_TONE_CLASS[pullRequestTone(pullRequest)])}
+        className={cn(
+          "pointer-events-auto relative shrink-0 rounded font-mono tabular-nums outline-none hover:underline focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          PULL_REQUEST_TONE_CLASS[pullRequestTone(pullRequest)],
+        )}
       >
         #{pullRequest.number}
       </a>

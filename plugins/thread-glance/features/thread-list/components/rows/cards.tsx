@@ -9,7 +9,7 @@ import type { ProjectColour } from "../../model/project-colour";
 import { restoreAction, shelfLabel } from "../../model/shelf-label";
 import type { StatusSlot } from "../../model/status-slot";
 import { ProjectMark, ProjectName } from "../../project/ProjectMark";
-import { useCommands, useMinute } from "../../store/hooks";
+import { useCommands, useNow } from "../../store/hooks";
 import { ChildrenChip } from "./ChildrenChip";
 import { HarnessLogo } from "./HarnessLogo";
 import { HoverActions, offersHoverActions } from "./HoverActions";
@@ -82,7 +82,10 @@ function UnpinButton({ row, className }: { row: RowView; className?: string }) {
           event.stopPropagation();
           void commands.unpin(row.id);
         }}
-        className={cn("pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring", className)}
+        className={cn(
+          "pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          className,
+        )}
       >
         <Icon name="PinOff" aria-hidden className="size-3.5" />
       </button>
@@ -178,7 +181,9 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
     <div className="pointer-events-none relative flex h-[18px] items-center gap-1.5 text-[10px] text-muted-foreground">
       <Location thread={thread} />
       {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
-      {thread.environment?.branchName && thread.host ? <Icon name="Computer" aria-label={`Machine: ${thread.host.name}`} className="size-3 shrink-0 text-muted-foreground/60" /> : null}
+      {thread.environment?.branchName && thread.host ? (
+        <Icon name="Computer" aria-label={`Machine: ${thread.host.name}`} className="size-3 shrink-0 text-muted-foreground/60" />
+      ) : null}
       <Counts row={row} />
       <PullRequestBadge threadId={row.id} />
       <HarnessLogo providerId={thread.providerId} />
@@ -229,11 +234,11 @@ function FoldedCard({ row, editing, projectName, colour }: CardProps) {
 
 function SlimRow({ row, editing, projectName, colour }: CardProps) {
   const commands = useCommands();
-  const minute = useMinute();
+  const now = useNow();
   const status = useRowStatus(row);
   const hint = useJumpHint(row.id);
   const { thread } = row;
-  const label = shelfLabel(row, minute * 60_000);
+  const label = shelfLabel(row, now);
   const restore = restoreAction(row.shelf);
   const settled = row.shelf === "settled";
   let right: ReactNode = null;
@@ -249,7 +254,10 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
       </span>
       <Title row={row} editing={editing} className="text-xs" />
       {right}
-      <span data-slim-actions="" className="flex shrink-0 items-center gap-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex [@media(hover:hover)]:group-focus-within/card:flex">
+      <span
+        data-slim-actions=""
+        className="flex shrink-0 items-center gap-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex [@media(hover:hover)]:group-focus-within/card:flex"
+      >
         {restore === null ? null : (
           <button
             type="button"

@@ -19,7 +19,11 @@ function rowTitles(): string[] {
 }
 
 function groupHeaders(): string[] {
-  return [...document.querySelectorAll<HTMLElement>("[data-group-key]")].map((header) => header.textContent!.trim());
+  return [...document.querySelectorAll<HTMLElement>("[data-group-key]")].map((header) => {
+    const copy = header.cloneNode(true) as HTMLElement;
+    for (const mark of copy.querySelectorAll("[data-monogram],[data-project-icon]")) mark.remove();
+    return copy.textContent!.trim();
+  });
 }
 
 const sortSelect = () => screen.getByRole("combobox", { name: "Sort Active" }) as HTMLSelectElement;

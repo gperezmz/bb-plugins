@@ -55,7 +55,9 @@ const ChildRow = memo(function ChildRow({ child, depth, parentProjectId }: { chi
           >
             <ChildMark threadId={child.id} providerId={thread.providerId} style={childIcon} />
             {otherProject ? <ProjectMark projectId={thread.projectId} name={project?.name ?? thread.projectId} colour={colour} className="size-3" /> : null}
-            <span className={cn("min-w-0 flex-1 truncate", thread.isUnread && "font-semibold", !thread.isUnread && thread.indicator === "none" && "text-muted-foreground")}>{thread.displayTitle}</span>
+            <span className={cn("min-w-0 flex-1 truncate", thread.isUnread && "font-semibold", !thread.isUnread && thread.indicator === "none" && "text-muted-foreground")}>
+              {thread.displayTitle}
+            </span>
           </a>
           <StatusView status={status} className="w-auto shrink-0" />
           {child.children === null ? null : (

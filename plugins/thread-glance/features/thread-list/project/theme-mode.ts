@@ -35,5 +35,9 @@ function subscribe(listener: () => void): () => void {
 
 /** bb's theme now: `dark` when the document has the `dark` class, else `light`. */
 export function useThemeMode(): ThemeMode {
-  return useSyncExternalStore(subscribe, () => (listeners.size === 0 ? read() : mode), () => "light");
+  return useSyncExternalStore(
+    subscribe,
+    () => (listeners.size === 0 ? read() : mode),
+    () => "light",
+  );
 }

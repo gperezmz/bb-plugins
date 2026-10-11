@@ -16,7 +16,8 @@ export function offersHoverActions(row: RowView): boolean {
   return row.woke === null && !isBusy(row.thread);
 }
 
-const ACTION = "pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring";
+const ACTION =
+  "pointer-events-auto flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring";
 
 /** The presets of the clock menu, worked out when the menu opens. */
 function SnoozeItems({ threadId }: { threadId: string }) {
@@ -60,7 +61,13 @@ export function HoverActions({ threadId, title, className }: { threadId: string;
         </DropdownMenuContent>
       </DropdownMenu>
       <Tip label="Settle thread">
-        <button type="button" data-no-drag="" aria-label={`Settle ${title}`} onClick={() => void commands.settle(threadId)} className={cn(ACTION, "hover:text-[color:var(--tg-unread)]")}>
+        <button
+          type="button"
+          data-no-drag=""
+          aria-label={`Settle ${title}`}
+          onClick={() => void commands.settle(threadId)}
+          className={cn(ACTION, "hover:text-[color:var(--tg-unread)]")}
+        >
           <Icon name="Check" aria-hidden className="size-3.5" />
         </button>
       </Tip>

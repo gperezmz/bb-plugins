@@ -55,12 +55,7 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
   return (
     <div className="flex h-full min-w-0 flex-col">
       <RowContextMenu thread={row.thread} disabled={editing} dragging={dragged}>
-        <HoverCard
-          open={hoverOpen && !editing && !dragged}
-          openDelay={250}
-          closeDelay={300}
-          onOpenChange={(open) => setHoverCardOpen(threadId, open)}
-        >
+        <HoverCard open={hoverOpen && !editing && !dragged} openDelay={250} closeDelay={300} onOpenChange={(open) => setHoverCardOpen(threadId, open)}>
           <div
             data-thread-id={threadId}
             data-card={row.card}
@@ -68,7 +63,11 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
             data-focused={row.focused ? "" : undefined}
             data-open-elsewhere={row.openElsewhere ? "" : undefined}
             style={{ height: cardHeight(row.card, heights, row.grouped) }}
-            className={cn("group/card relative flex min-w-0 flex-col justify-center overflow-hidden rounded-md px-2.5 text-sm", tinted, tinted === "" && "hover:bg-sidebar-accent/60")}
+            className={cn(
+              "group/card relative flex min-w-0 flex-col justify-center overflow-hidden rounded-md px-2.5 text-sm",
+              tinted,
+              tinted === "" && "hover:bg-sidebar-accent/60",
+            )}
           >
             {sweeping ? <span aria-hidden data-sweep="" className="tg-sweep" /> : null}
             <ProjectStripe colour={stripe} />
@@ -83,8 +82,9 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
                   aria-current={row.focused ? "page" : undefined}
                   draggable={false}
                   onFocus={(event) => {
-                    // A click focuses the link too; only keyboard focus opens the card at once.
-                    if (!isKeyboardFocus(event.currentTarget)) event.preventDefault();
+                    // Radix opens on focus after its delay; keyboard focus opens the card at once, and a click's focus not at all.
+                    event.preventDefault();
+                    if (isLastInputKeyboard()) setHoverCardOpen(threadId, true);
                   }}
                   onClick={(event) => {
                     if (event.button !== 0 || event.altKey || event.shiftKey) return;
@@ -102,7 +102,7 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
             )}
             <Cards row={row} editing={editing} projectName={project?.name ?? row.thread.projectId} colour={colour} />
           </div>
-          <HoverCardContent side="right" align="start" className="w-64 p-3">
+          <HoverCardContent side="right" align="start" data-hover-card="" className="w-64 p-3">
             <HoverBody row={row} />
           </HoverCardContent>
         </HoverCard>
@@ -110,12 +110,4 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
       <ChildList ids={row.shownChildIds} depth={0} parentProjectId={row.thread.projectId} />
     </div>
   );
-}
-
-function isKeyboardFocus(element: HTMLElement): boolean {
-  try {
-    return element.matches(":focus-visible");
-  } catch {
-    return isLastInputKeyboard();
-  }
 }

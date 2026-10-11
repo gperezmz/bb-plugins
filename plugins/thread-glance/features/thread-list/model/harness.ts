@@ -1,10 +1,7 @@
 // What the Hover card says about a thread's harness: the model and reasoning
 // level bb reports, while they load and when they cannot be had. Pure.
 
-export type ModelState =
-  | { status: "loading" }
-  | { status: "unavailable" }
-  | { status: "ready"; model: string | null; reasoningLevel: string | null };
+export type ModelState = { status: "loading" } | { status: "unavailable" } | { status: "ready"; model: string | null; reasoningLevel: string | null };
 
 export interface ModelLines {
   model: string;

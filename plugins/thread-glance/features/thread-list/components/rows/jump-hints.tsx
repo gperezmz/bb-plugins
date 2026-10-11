@@ -69,7 +69,14 @@ export function useJumpHints(rootRef: RefObject<HTMLElement | null>): void {
 
 export function JumpHint({ label, className }: { label: string; className?: string }) {
   return (
-    <kbd aria-hidden data-jump-hint="" className={cn("pointer-events-none inline-flex shrink-0 items-center justify-center rounded-sm bg-state-hover px-1.5 py-1 font-sans text-[10px] leading-none font-normal whitespace-nowrap text-subtle-foreground tabular-nums opacity-80", className)}>
+    <kbd
+      aria-hidden
+      data-jump-hint=""
+      className={cn(
+        "pointer-events-none inline-flex shrink-0 items-center justify-center rounded-sm bg-state-hover px-1.5 py-1 font-sans text-[10px] leading-none font-normal whitespace-nowrap text-subtle-foreground tabular-nums opacity-80",
+        className,
+      )}
+    >
       {label}
     </kbd>
   );

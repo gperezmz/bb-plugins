@@ -65,14 +65,23 @@ function Subthreads({ ids }: { ids: readonly string[] }) {
   const children = useRowsOf(ids);
   return (
     <div data-section="subthreads" className="flex flex-col gap-1">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex items-center gap-1 text-left font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-left font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      >
         Subthreads ({ids.length})
       </button>
       {open ? (
         <ul className="flex flex-col gap-0.5">
           {children.map((child) => (
             <li key={child.id}>
-              <button type="button" onClick={() => commands.open(child.id)} className="w-full truncate text-left text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring">
+              <button
+                type="button"
+                onClick={() => commands.open(child.id)}
+                className="w-full truncate text-left text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 {child.thread.displayTitle}
               </button>
             </li>

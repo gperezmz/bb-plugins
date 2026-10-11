@@ -69,11 +69,7 @@ const MERGEABILITY: Partial<Record<PluginSidebarPullRequest["experimental_mergea
 /** Checks, review and mergeability of an open pull request, as one line; empty once it is merged or closed. */
 export function pullRequestFacts(pullRequest: PluginSidebarPullRequest): string {
   if (pullRequest.state === "merged" || pullRequest.state === "closed") return "";
-  return [
-    CHECKS[pullRequest.experimental_checks.state],
-    REVIEW[pullRequest.experimental_review.state],
-    MERGEABILITY[pullRequest.experimental_mergeability.state],
-  ]
+  return [CHECKS[pullRequest.experimental_checks.state], REVIEW[pullRequest.experimental_review.state], MERGEABILITY[pullRequest.experimental_mergeability.state]]
     .filter((fact): fact is string => fact !== undefined)
     .join(" · ");
 }

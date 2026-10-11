@@ -30,7 +30,12 @@ export function StatusView({ status, className }: { status: StatusSlot; classNam
     <span
       data-status={status.kind}
       aria-label={status.ariaLabel}
-      className={cn("flex max-w-full min-w-0 items-center justify-end gap-1 text-[10px] leading-none font-medium", TONE_CLASS[status.tone], status.timed && "tabular-nums", className)}
+      className={cn(
+        "flex max-w-full min-w-0 items-center justify-end gap-1 text-[10px] leading-none font-medium",
+        TONE_CLASS[status.tone],
+        status.timed && "tabular-nums",
+        className,
+      )}
     >
       {status.glyph === null ? null : <GlyphMark glyph={status.glyph} />}
       <span className="min-w-0 truncate">{status.label}</span>

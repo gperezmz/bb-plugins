@@ -39,7 +39,12 @@ export function ChildrenChip({ parentId, info, expanded }: { parentId: string; i
         {urgency === null ? null : urgency.icon === null ? (
           <span aria-hidden data-urgency="done" className={cn("inline-block size-[6px] rounded-full bg-current", TONE_CLASS[urgency.tone])} />
         ) : (
-          <Icon name={urgency.icon} aria-hidden data-urgency={info.urgency ?? undefined} className={cn("size-3", TONE_CLASS[urgency.tone], urgency.tone === "working" && "animate-spin")} />
+          <Icon
+            name={urgency.icon}
+            aria-hidden
+            data-urgency={info.urgency ?? undefined}
+            className={cn("size-3", TONE_CLASS[urgency.tone], urgency.tone === "working" && "animate-spin")}
+          />
         )}
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 transition-transform duration-150", expanded && "rotate-90")} />
       </button>
