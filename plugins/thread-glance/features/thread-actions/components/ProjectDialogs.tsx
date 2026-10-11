@@ -1,13 +1,13 @@
 // The Project ▸ dialogs: rename, add a local path on a machine, and remove.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRpc, useSdk } from "@get-bb/plugin-sdk/app";
-import type { PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { messageOf } from "@/lib/error-message";
 import type { RpcContract } from "@/shared/contract";
+import { defaultMachineId, useMachineList } from "@/shared/machines";
 import { MACHINES_FAILED, type ProjectDialogKind } from "../model/menu";
 import { localPathError, MAX_LOCAL_PATH_LENGTH, MAX_PROJECT_NAME_LENGTH, projectNameError } from "../model/projects";
 import { removeProject, RemoveProjectConfirmation } from "./RemoveProject";
@@ -71,29 +71,12 @@ function RenameProject({ projectId, name, onClose }: { projectId: string; name: 
   );
 }
 
-type MachinesRead = { status: "loading" } | { status: "failed" } | { status: "ready"; hosts: Awaited<ReturnType<PluginBrowserBbSdk["hosts"]["list"]>> };
-
 function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: string; onClose(): void }) {
   const sdk = useSdk();
-  const [machines, setMachines] = useState<MachinesRead>({ status: "loading" });
-  const [hostId, setHostId] = useState("");
+  const machines = useMachineList();
+  const [picked, setPicked] = useState("");
+  const hostId = picked || defaultMachineId(machines);
   const [path, setPath] = useState("");
-  useEffect(() => {
-    let current = true;
-    Promise.resolve()
-      .then(() => sdk.hosts.list())
-      .then(
-        (hosts) => {
-          if (!current) return;
-          setMachines({ status: "ready", hosts });
-          setHostId((chosen) => chosen || hosts[0]?.id || "");
-        },
-        () => current && setMachines({ status: "failed" }),
-      );
-    return () => {
-      current = false;
-    };
-  }, [sdk]);
   const error = localPathError(path);
   const ready = machines.status === "ready" && hostId !== "" && error === null;
   return (
@@ -126,10 +109,10 @@ function AddLocalPath({ projectId, name, onClose }: { projectId: string; name: s
           className="h-9 rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
           value={hostId}
           disabled={machines.status !== "ready"}
-          onChange={(event) => setHostId(event.target.value)}
+          onChange={(event) => setPicked(event.target.value)}
         >
           {machines.status === "ready"
-            ? machines.hosts.map((host) => (
+            ? machines.machines.map((host) => (
                 <option key={host.id} value={host.id}>
                   {host.name}
                 </option>
