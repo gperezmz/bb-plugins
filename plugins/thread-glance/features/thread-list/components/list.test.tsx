@@ -122,13 +122,16 @@ describe("settled paging", () => {
     await flush();
     expect(titles()).toHaveLength(10);
     expect(titles()[0]).toBe("t0");
-    fireEvent.click(screen.getByRole("button", { name: "Load 25 more" }));
+    // Found by text, not role: a role query by name works out the accessible
+    // name of every button in the list, which at 50 rows was most of this
+    // test's time and ran past its 5 s on a busy machine.
+    fireEvent.click(screen.getByText("Load 25 more", { selector: "button" }));
     await flush();
     expect(titles()).toHaveLength(35);
-    fireEvent.click(screen.getByRole("button", { name: "Load 15 more" }));
+    fireEvent.click(screen.getByText("Load 15 more", { selector: "button" }));
     await flush();
     expect(titles()).toHaveLength(50);
-    expect(screen.queryByRole("button", { name: /Load/ })).toBeNull();
+    expect(screen.queryByText(/Load/, { selector: "button" })).toBeNull();
   });
 });
 
