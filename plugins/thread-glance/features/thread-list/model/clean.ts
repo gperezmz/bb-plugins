@@ -46,3 +46,44 @@ export function terminalsText(count: number): string {
 export function portsText(ports: PreviewCleanOutput["threads"][number]["ports"]): string {
   return ports.map(({ port, process }) => (process === null ? `:${port}` : `:${port} ${process}`)).join(", ");
 }
+
+/** What the dialog draws for a state: which parts and buttons show, and how they read. */
+export interface CleanView {
+  /** The preview that is listed, or null while there is none. */
+  preview: PreviewCleanOutput | null;
+  /** The preview lists threads to clean. */
+  found: boolean;
+  /** Nothing is left to do: the result is shown, or the preview found nothing. */
+  finished: boolean;
+  /** The preview was read and holds nothing to close. */
+  nothingFound: boolean;
+  /** The label of the button that closes the dialog. */
+  closeLabel: "Cancel" | "Close";
+  /** The button that closes the dialog, and Escape, work. Not while the run is going. */
+  dismissible: boolean;
+  /** Refresh preview is offered. */
+  showRefresh: boolean;
+  /** Clean resources is offered; `cleanLabel` is its label and `cleanDisabled` says whether it works. */
+  showClean: boolean;
+  cleanLabel: "Clean resources" | "Cleaning...";
+  cleanDisabled: boolean;
+}
+
+export function cleanView(state: CleanState): CleanView {
+  const preview = state.phase === "preview" || state.phase === "running" ? state.preview : null;
+  const found = preview !== null && hasResources(preview);
+  const finished = state.phase === "done" || (state.phase === "preview" && !found);
+  const running = state.phase === "running";
+  return {
+    preview,
+    found,
+    finished,
+    nothingFound: preview !== null && !found,
+    closeLabel: finished || state.phase === "expired" || state.phase === "failed" ? "Close" : "Cancel",
+    dismissible: !running,
+    showRefresh: state.phase === "expired" || state.phase === "failed",
+    showClean: found,
+    cleanLabel: running ? "Cleaning..." : "Clean resources",
+    cleanDisabled: running,
+  };
+}

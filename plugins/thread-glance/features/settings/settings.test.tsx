@@ -524,6 +524,8 @@ describe("This device: the port link machine (AC5)", () => {
     expect(select().value).toBe("host_2");
     expect(server.calls).toEqual([]);
     cleanup();
+    // A reload of the app: what is read back is what the storage holds.
+    endPluginLifetime();
     await opened(server);
     expect(select().value).toBe("host_2");
     await act(async () => void fireEvent.change(select(), { target: { value: "" } }));

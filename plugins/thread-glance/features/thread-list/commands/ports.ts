@@ -5,6 +5,7 @@ import type { RpcContract } from "@/shared/contract";
 import type { PortTarget } from "@/shared/ports";
 import { messageOf } from "@/lib/error-message";
 import { STOP_PORT_TEXT } from "../model/ports";
+import { dismissPortsPrompt } from "./ports-prompt";
 import { requestPorts } from "../sync/ports-requests";
 
 export interface PortCommands {
@@ -15,6 +16,7 @@ export interface PortCommands {
 export function createPortCommands(rpc: () => PluginRpcClient<RpcContract>): PortCommands {
   return {
     async stopPort(threadId, target) {
+      dismissPortsPrompt(threadId);
       try {
         const { outcome } = await rpc().call("stopPort", { threadId, ...target });
         if (outcome === "requested") {

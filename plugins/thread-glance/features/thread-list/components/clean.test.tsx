@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // AC8: the Clean button on the Settled header and the dialog behind it.
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { settledRow } from "@/shared/lifecycle";
 import { CLEAN_EXPIRED_TEXT, CLEAN_NOTHING_TEXT } from "@/shared/ports";
@@ -124,6 +124,28 @@ describe("AC8: the dialog", () => {
     expect(box.textContent).toContain("Dev server: could not close a terminal");
     expect(within(box).queryByRole("button", { name: "Clean resources" })).toBeNull();
     expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown requests sent", { description: "Still listening after the request: :3000, :5173" });
+  });
+
+  it("cannot be closed while it runs, and still reports in a toast when the list is gone before the answer", async () => {
+    let finish!: (value: unknown) => void;
+    const m = await mount({ threads, server: { rows, answers: { previewClean: preview(), runClean: () => new Promise((resolve) => (finish = resolve)) } } });
+    await openDialog(m);
+    await press("Clean resources");
+    expect((within(dialog()).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(dialog(), { key: "Escape" });
+    await flush();
+    expect(screen.queryByRole("alertdialog")).not.toBeNull();
+    cleanup();
+    await act(async () => finish(result({ stillListening: [5173] })));
+    expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown requests sent", { description: "Still listening after the request: :5173" });
+  });
+
+  it("closes on Escape when nothing runs", async () => {
+    const m = await mount({ threads, server: { rows, answers: { previewClean: preview() } } });
+    await openDialog(m);
+    fireEvent.keyDown(dialog(), { key: "Escape" });
+    await flush();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("says No resources were closed. when nothing was", async () => {

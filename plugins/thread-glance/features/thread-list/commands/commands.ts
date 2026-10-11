@@ -48,6 +48,7 @@ export type Commands = ListCommands & LifecycleCommands & ReorderCommands & Port
 export function createCommands(store: ListStore): Commands {
   const own: ListCommands = {
     open(threadId, options) {
+      dismissPortsPrompt(threadId);
       store.edge.navigate.toThread(threadId, options?.split ? { split: true } : undefined);
       store.edge.onNavigate();
     },
@@ -89,6 +90,7 @@ export function createCommands(store: ListStore): Commands {
     },
 
     async rename(threadId, title) {
+      dismissPortsPrompt(threadId);
       const row = store.getState().model?.rows.get(threadId);
       const next = title.trim();
       if (row === undefined || next === "" || next === row.thread.displayTitle) return;
