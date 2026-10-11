@@ -4,7 +4,7 @@
 // project colour and the icon upload.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { endPluginLifetime, pluginData } from "@/features/thread-list";
 import { makeProject } from "@/testing/fixtures";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
@@ -18,7 +18,11 @@ vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error
 
 const PROJECTS = [makeProject("proj_personal", "Personal", { isPersonal: true }), makeProject("proj_a", "Alpha"), makeProject("proj_b", "Beta")];
 
+// React reports each DOM-nesting warning once per module instance, and vitest
+// clears a spy's calls between tests, so the errors are kept for the whole file.
+const consoleErrors: string[] = [];
 beforeAll(() => {
+  vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void consoleErrors.push(args.map(String).join(" ")));
   globalThis.ResizeObserver ??= class {
     observe() {}
     unobserve() {}
@@ -33,6 +37,11 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
 });
+afterAll(() => vi.restoreAllMocks());
+
+function nestingWarnings(): string[] {
+  return consoleErrors.filter((text) => /cannot be a descendant|hydration error/i.test(text));
+}
 
 /** The plugin server's settings and appearance as the page's calls change them. */
 function fakeServer(held: Partial<Settings> = {}) {
@@ -181,6 +190,12 @@ describe("the page (AC26)", () => {
     ]);
     typeInto("Snooze shortcuts", "90m, Standup=tomorrow@10:30");
     expect(within(preview).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["90 minutes", "Standup"]);
+  });
+
+  it("renders the snooze preview without a DOM-nesting or hydration warning", () => {
+    openPage(fakeServer());
+    typeInto("Snooze shortcuts", "90m, Standup=tomorrow@10:30");
+    expect(nestingWarnings()).toEqual([]);
   });
 
   it("refuses an invalid snooze shortcut inline and saves nothing", async () => {
