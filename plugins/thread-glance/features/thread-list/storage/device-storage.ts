@@ -17,6 +17,9 @@ export const CAPS = {
 
 const PREFIX = "thread-glance:";
 
+/** The keys an earlier version of the plugin stored under, which nothing reads any more. */
+const LEGACY_KEYS = ["bb.thread-glance.client.v1", "bb.thread-glance.preferences.v1"] as const;
+
 /** Keys that hold what the person set on this device; nothing evicts them. */
 export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "expandedParents" | "workingSince";
 
@@ -48,6 +51,8 @@ export interface DeviceStorage {
    */
   write(key: StorageKey, value: unknown): boolean;
   remove(key: StorageKey): void;
+  /** Removes the keys an earlier version stored under, by name. */
+  removeLegacy(): void;
 }
 
 export function createDeviceStorage(storage: StorageLike | null = defaultStorage()): DeviceStorage {
@@ -99,6 +104,15 @@ export function createDeviceStorage(storage: StorageLike | null = defaultStorage
         storage?.removeItem(name(key));
       } catch {
         // A key that cannot be removed stays as it is.
+      }
+    },
+    removeLegacy() {
+      for (const key of LEGACY_KEYS) {
+        try {
+          storage?.removeItem(key);
+        } catch {
+          // A key that cannot be removed stays as it is.
+        }
       }
     },
   };

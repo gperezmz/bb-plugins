@@ -53,6 +53,15 @@ describe("the first draw", () => {
     expect(pluginData.settings().hoursBeforeInactive).toBe(DEFAULT_SETTINGS.hoursBeforeInactive);
   });
 
+  it("removes the keys an earlier version stored under, and leaves every other key", () => {
+    const storage = memory();
+    storage.items.set("bb.thread-glance.client.v1", "{}");
+    storage.items.set("bb.thread-glance.preferences.v1", "{}");
+    storage.items.set("somebody-else", "kept");
+    pluginData.hydrate(createDeviceStorage(storage));
+    expect([...storage.items.keys()]).toEqual(["somebody-else"]);
+  });
+
   it("writes the cache after a change, once the burst is over", () => {
     vi.useFakeTimers();
     const storage = memory();

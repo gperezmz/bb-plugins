@@ -122,6 +122,7 @@ export const pluginData = {
     if (hydrated) return;
     hydrated = true;
     storage = device;
+    device.removeLegacy();
     if (data.records.point !== null) return;
     const rows = readRowsCache(device);
     const order = readOrderCache(device);
@@ -196,6 +197,9 @@ export const pluginData = {
     set({ appearance }, { kind: "appearance" });
     schedulePersist("appearance");
   },
+
+  /** Whether a component follows realtime now. */
+  isFollowing: (): boolean => following > 0,
 
   /** A component starts following realtime; returns the call that stops it. */
   follow(): () => void {
