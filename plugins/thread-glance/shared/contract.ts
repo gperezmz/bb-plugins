@@ -3,6 +3,20 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
 import { lifecycleRowSchema } from "./lifecycle";
+import {
+  closePortsInputSchema,
+  closePortsOutputSchema,
+  ownedPortsInputSchema,
+  ownedPortsOutputSchema,
+  portsInputSchema,
+  portsSignalSchema,
+  previewCleanInputSchema,
+  previewCleanOutputSchema,
+  runCleanInputSchema,
+  runCleanOutputSchema,
+  stopPortInputSchema,
+  stopPortOutputSchema,
+} from "./ports";
 import { SETTING_KEYS, type SettingKey } from "./settings";
 import {
   appearanceSignalSchema,
@@ -173,6 +187,19 @@ export const rpcContract = defineRpcContract({
     input: z.strictObject({}),
     output: z.strictObject({ settled: z.array(z.string()), unsettled: z.array(z.string()) }),
   },
+
+  /** The workspace ports snapshot, read now (see `portsInputSchema`). Windows also follow the `ports` channel. */
+  ports: { input: portsInputSchema, output: portsSignalSchema },
+  /** Stop on one listener of a thread's environment. Signals only a process the snapshot lists there and the host still finds with the same port, PID and start time. */
+  stopPort: { input: stopPortInputSchema, output: stopPortOutputSchema },
+  /** The ports a thread owns now, from a fresh read; rejects when the lookup fails. */
+  ownedPorts: { input: ownedPortsInputSchema, output: ownedPortsOutputSchema },
+  /** Close on the settle prompt: signals the listed ports that are still the thread's, only while the thread is settled. */
+  closePorts: { input: closePortsInputSchema, output: closePortsOutputSchema },
+  /** Previews what Clean closes for the settled threads in scope, as a single-use token valid for 2 minutes. */
+  previewClean: { input: previewCleanInputSchema, output: previewCleanOutputSchema },
+  /** Runs a preview once, checking each thread, workspace, terminal and port again as it goes. */
+  runClean: { input: runCleanInputSchema, output: runCleanOutputSchema },
 });
 
 export type RpcContract = typeof rpcContract;

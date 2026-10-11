@@ -31,6 +31,10 @@ import { createThreadEvents } from "./server/thread-events";
 import { createSdkThreads } from "./server/threads";
 import { createVersionedChannel } from "./server/versioned";
 
+const notBuilt = (name: string) => async (): Promise<never> => {
+  throw new Error(`${name} is not built yet`);
+};
+
 export default function threadGlance(bb: BbPluginApi): void {
   // zod/mini carries no messages of its own. The server shows refusals in
   // English, so the locale is set here rather than in the app. Like full zod,
@@ -146,6 +150,14 @@ export default function threadGlance(bb: BbPluginApi): void {
     },
 
     runAutoSettle: () => autoSettle.run(),
+
+    // Not built yet: the ports service replaces these (spec #210).
+    ports: notBuilt("ports"),
+    stopPort: notBuilt("stopPort"),
+    ownedPorts: notBuilt("ownedPorts"),
+    closePorts: notBuilt("closePorts"),
+    previewClean: notBuilt("previewClean"),
+    runClean: notBuilt("runClean"),
   });
 
   bb.events.on("thread.created", ({ thread }) => events.created(thread));
