@@ -1,7 +1,6 @@
 // The list's clock: it ticks every minute (row times) and at the next
-// deadline (a scheduled send, a failure about to become an Orphaned
-// failure), so rows change without a request. It stops while the window is
-// hidden, and ticks once when it is shown again.
+// deadline (a snooze ending), so rows change without a request. It stops
+// while the window is hidden, and ticks once when it is shown again.
 
 export interface Clock {
   /** Reads the next deadline again, after it changed. */

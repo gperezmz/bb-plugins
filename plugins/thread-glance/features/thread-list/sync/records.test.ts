@@ -1,48 +1,74 @@
-// The steps that change the thread records a window holds: an answer made
-// before a signal cannot put back what the signal replaced, a full answer
-// replaces what was held, and a signal from another epoch asks for one.
+// The held thread records: a sync answer, a records signal, and the revisions
+// that stop an older answer putting back what a later signal replaced.
 import { describe, expect, it } from "vitest";
-import { makeThread } from "../testing/fixtures";
-import { applyFetched, applySignal, applySync, NO_RECORDS, threadsToFetch } from "./records";
+import { parkedRow, settledRow, type LifecycleRow } from "@/shared/lifecycle";
+import { applySignal, applySync, NO_RECORDS, recordsFromCache } from "./records";
 
-const done = (text: string) => ({ done: { kind: "done" as const, text, at: 1 } });
-const full = (revision: number, records: Parameters<typeof applySync>[1]["records"], epoch = "e1") =>
-  ({ epoch, revision, full: true, records });
+const rec = (lifecycle: LifecycleRow | null) => ({ lifecycle });
+const answer = (revision: number, records: Record<string, ReturnType<typeof rec>>, full = true, epoch = "e1") => ({ epoch, revision, full, records });
 
-describe("thread records a window holds", () => {
-  it("keeps a signal's record over an answer made before it", () => {
-    let held = applySync(NO_RECORDS, full(1, { a: { stamps: { startedAt: 1 }, notes: null } }));
-    held = applySignal(held, { epoch: "e1", revision: 3, records: { a: { stamps: { startedAt: 3 }, notes: done("new") } } })!;
-    held = applySync(held, { epoch: "e1", revision: 2, full: false, records: { a: { stamps: { startedAt: 2 }, notes: done("old") } } });
-    expect(held.stamps.startedAt).toEqual({ a: 3 });
-    expect(held.notes).toEqual({ a: done("new") });
-    expect(held.point).toEqual({ epoch: "e1", revision: 3 });
+describe("sync answers", () => {
+  it("a full answer replaces what was held and names the point", () => {
+    const first = applySync(NO_RECORDS, answer(3, { a: rec(parkedRow(1)), b: rec(settledRow(2, "auto")) }));
+    expect(Object.keys(first.lifecycle).sort()).toEqual(["a", "b"]);
+    expect(first.point).toEqual({ epoch: "e1", revision: 3 });
+    const second = applySync(first, answer(5, { b: rec(settledRow(2, "auto")) }));
+    expect(Object.keys(second.lifecycle)).toEqual(["b"]);
+    expect(second.lifecycle.b).toBe(first.lifecycle.b);
   });
 
-  it("drops a thread whose record comes back empty", () => {
-    let held = applySync(NO_RECORDS, full(1, { a: { stamps: { seenAt: 1 }, notes: done("x") } }));
-    held = applySignal(held, { epoch: "e1", revision: 2, records: { a: { stamps: null, notes: null } } })!;
-    expect(held.stamps.seenAt).toEqual({});
-    expect(held.notes).toEqual({});
+  it("a delta changes only what it names, and a null record deletes the row", () => {
+    const held = applySync(NO_RECORDS, answer(3, { a: rec(parkedRow(1)), b: rec(parkedRow(2)) }));
+    const next = applySync(held, answer(4, { a: rec(null) }, false));
+    expect(Object.keys(next.lifecycle)).toEqual(["b"]);
+    expect(next.point!.revision).toBe(4);
   });
 
-  it("replaces everything on a full answer, keeping what came later by signal", () => {
-    let held = applySync(NO_RECORDS, full(1, { a: { stamps: { seenAt: 1 }, notes: null }, b: { stamps: { seenAt: 1 }, notes: null } }));
-    held = applySignal(held, { epoch: "e1", revision: 5, records: { c: { stamps: { seenAt: 5 }, notes: null } } })!;
-    held = applySync(held, full(4, { a: { stamps: { seenAt: 4 }, notes: null } }));
-    expect(held.stamps.seenAt).toEqual({ a: 4, c: 5 });
+  it("a new epoch is a full replacement", () => {
+    const held = applySync(NO_RECORDS, answer(9, { a: rec(parkedRow(1)) }));
+    const next = applySync(held, answer(1, { b: rec(parkedRow(2)) }, true, "e2"));
+    expect(Object.keys(next.lifecycle)).toEqual(["b"]);
+    expect(next.point).toEqual({ epoch: "e2", revision: 1 });
   });
 
-  it("asks for a full sync on a signal from another epoch", () => {
-    const held = applySync(NO_RECORDS, full(1, {}));
+  it("keeps a record that came by signal after the answer was made", () => {
+    let held = applySync(NO_RECORDS, answer(3, { a: rec(parkedRow(1)) }));
+    held = applySignal(held, { epoch: "e1", revision: 6, records: { a: rec(null), c: rec(parkedRow(6)) } })!;
+    const next = applySync(held, answer(5, { a: rec(parkedRow(1)) }));
+    expect(Object.keys(next.lifecycle)).toEqual(["c"]);
+    expect(next.point!.revision).toBe(6);
+  });
+});
+
+describe("records signals", () => {
+  it("applies a newer record and ignores an older one", () => {
+    const held = applySync(NO_RECORDS, answer(5, { a: rec(parkedRow(1)) }));
+    const newer = applySignal(held, { epoch: "e1", revision: 6, records: { a: rec(settledRow(9, "manual")) } })!;
+    expect(newer.lifecycle.a!.settledAt).toBe(9);
+    const older = applySignal(newer, { epoch: "e1", revision: 4, records: { a: rec(parkedRow(1)) } })!;
+    expect(older.lifecycle.a!.settledAt).toBe(9);
+    expect(older.point!.revision).toBe(6);
+  });
+
+  it("is refused from another epoch, which only a full sync settles", () => {
+    const held = applySync(NO_RECORDS, answer(5, {}));
     expect(applySignal(held, { epoch: "e2", revision: 1, records: {} })).toBeNull();
+    expect(applySignal(NO_RECORDS, { epoch: "e2", revision: 1, records: {} })).toBe(NO_RECORDS);
   });
 
-  it("fetches each thread without a record once, and none created since the window went live", () => {
-    const threads = [makeThread({ id: "a", createdAt: 10 }), makeThread({ id: "b", createdAt: 10 }), makeThread({ id: "new", createdAt: 100 })];
-    const held = applySync(NO_RECORDS, full(1, { a: { stamps: { seenAt: 1 }, notes: null } }));
-    expect(threadsToFetch(held, threads, 50)).toEqual(["b"]);
-    const fetched = applyFetched(held, ["b"], { epoch: "e1", revision: 1, records: {} });
-    expect(threadsToFetch(fetched, threads, 50)).toEqual([]);
+  it("keeps the held object for a record that did not change", () => {
+    const row = parkedRow(1);
+    const held = applySync(NO_RECORDS, answer(5, { a: rec(row) }));
+    const next = applySignal(held, { epoch: "e1", revision: 6, records: { a: rec({ ...row }) } })!;
+    expect(next.lifecycle.a).toBe(row);
+  });
+});
+
+describe("rows cached in the browser", () => {
+  it("are shown without a point, so the first answer replaces them whole", () => {
+    const cached = recordsFromCache({ a: parkedRow(1) });
+    expect(cached.point).toBeNull();
+    const next = applySync(cached, answer(2, { b: rec(parkedRow(2)) }));
+    expect(Object.keys(next.lifecycle)).toEqual(["b"]);
   });
 });

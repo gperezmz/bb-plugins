@@ -1,6 +1,6 @@
 # bb plugins
 
-Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -20,8 +20,8 @@ flowchart LR
   localmodel["Local model server, optional"]
   logs["Harness session logs"]
   manifest["onboarding.yaml on the server"]
-  events -->|state and timing of each thread| tg
-  tg -->|thread list| ui
+  events -->|state of each thread| tg
+  tg -->|shelf list| ui
   events -->|tokens per turn| tu
   logs -->|tokens bb never sees| tu
   gateway -->|spend per request| tu
@@ -46,7 +46,7 @@ flowchart LR
 The pages each plugin's behaviour rests on:
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md): where each part runs, what it stores, and the words the plugins share.
-- [What "Needs attention" means](explanation/thread-glance-attention.md) in Thread Glance.
+- [Why Thread Glance keeps threads on shelves](explanation/thread-glance-shelves.md): snooze, park, settle, automatic settle and reclaim.
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md).
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
@@ -76,9 +76,9 @@ The pages each plugin's behaviour rests on:
 
 **Reference** lists every part, one entry each.
 
-- [Thread Glance: states and glyphs](reference/thread-glance-states.md)
-- [Thread Glance: menus, dragging and keys](reference/thread-glance-actions.md)
-- [Thread Glance: preferences and `bb thread-glance prefs`](reference/thread-glance-preferences.md)
+- [Thread Glance: the list, its shelves and rows](reference/thread-glance-list.md)
+- [Thread Glance: actions, menus and reordering](reference/thread-glance-actions.md)
+- [Thread Glance: settings and what it stores](reference/thread-glance-settings.md)
 - [Thread Usage: settings](reference/thread-usage-settings.md)
 - [Thread Usage: `bb thread-usage`](reference/thread-usage-cli.md)
 - [Thread Usage: the `thread_usage` agent tool](reference/thread-usage-agent-tool.md)
@@ -95,7 +95,7 @@ The pages each plugin's behaviour rests on:
 **Explanation** says why things work the way they do.
 
 - [How the plugins fit into bb](explanation/how-the-plugins-fit-bb.md)
-- [What "Needs attention" means](explanation/thread-glance-attention.md)
+- [Why Thread Glance keeps threads on shelves](explanation/thread-glance-shelves.md)
 - [How Thread Usage counts tokens and cost](explanation/thread-usage-counting.md)
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md)
 - [How an AI task is sent](explanation/openai-inference-requests.md)

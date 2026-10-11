@@ -7,12 +7,16 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useRealtime, useRealtimeConnectionState, useRpc } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
-import { CHANNELS, recordsSignalSchema, type PreferenceSignal, type ScheduledSignal } from "@/shared/signals";
-import { isPreferenceKey, parsePreference } from "@/shared/preferences";
+import {
+  appearanceSignalSchema,
+  CHANNELS,
+  orderSignalSchema,
+  recordsSignalSchema,
+  settingsSignalSchema,
+} from "@/shared/signals";
 import { pluginData } from "./plugin-data";
 import { requestSync } from "./requests";
 
-const NONE: Readonly<Record<string, number>> = {};
 /** How long a keeper waits for realtime to connect before it asks `sync` without it. */
 const UNCONNECTED_WAIT_MS = 3_000;
 
@@ -54,21 +58,29 @@ function Following() {
     return () => clearTimeout(timer);
   }, [connection, rpc]);
 
+  // The cache is written before the page goes.
+  useEffect(() => {
+    const onHide = () => pluginData.flush();
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, []);
+
   useRealtime(CHANNELS.records, (payload) => {
     const parsed = recordsSignalSchema.safeParse(payload);
     if (!parsed.success) return;
     if (!pluginData.signal(parsed.data)) void requestSync(rpc, "missed");
   });
-  useRealtime(CHANNELS.preferences, (payload) => {
-    const signal = payload as PreferenceSignal;
-    if (!isPreferenceKey(signal?.key)) return;
-    const parsed = parsePreference(signal.key, signal.value);
-    if (parsed.success) pluginData.preferenceSignal(signal.key, parsed.value);
+  useRealtime(CHANNELS.settings, (payload) => {
+    const parsed = settingsSignalSchema.safeParse(payload);
+    if (parsed.success) pluginData.settingsSignal(parsed.data);
   });
-  useRealtime(CHANNELS.scheduled, (payload) => {
-    const signal = payload as ScheduledSignal;
-    if (signal === null || typeof signal !== "object") return;
-    pluginData.scheduledSignal(signal.status === "ready" && signal.scheduled ? signal.scheduled : NONE);
+  useRealtime(CHANNELS.order, (payload) => {
+    const parsed = orderSignalSchema.safeParse(payload);
+    if (parsed.success) pluginData.orderSignal(parsed.data);
+  });
+  useRealtime(CHANNELS.appearance, (payload) => {
+    const parsed = appearanceSignalSchema.safeParse(payload);
+    if (parsed.success) pluginData.appearanceSignal(parsed.data);
   });
   return null;
 }

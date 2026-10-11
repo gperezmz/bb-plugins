@@ -2,21 +2,15 @@
 // thin useSyncExternalStore over one selector, so a component renders only
 // when its part changes. Components read the store through these alone.
 import { createContext, useContext, useRef, useSyncExternalStore } from "react";
-import type { PluginEnvironmentProvider, PluginSidebarThreadRowStatus } from "@get-bb/plugin-sdk/app";
-import type { Stamps, ThreadNotes } from "@/shared/signals";
-import type { ClientPreferences, Preferences } from "@/shared/preferences";
+import type { PluginSidebarProject } from "@get-bb/plugin-sdk/app";
+import type { Shelf } from "@/shared/lifecycle";
+import type { Settings } from "@/shared/settings";
 import type { Commands } from "../commands/commands";
-import { EMPTY_COUNTERS, type Counters } from "../model/counters";
-import { providerDisplays, type ProviderDisplay } from "../model/provider-mark";
-import type { MiniMapPane } from "../model/split";
-import type { ThreadInfo, ThreadTree } from "../model/trees";
-import type { GroupView, Row } from "../model/view";
-import { itemKeyOf } from "../model/layout-items";
-import type { KeptRows } from "../model/windowing";
-import type { HostData, ListModel } from "./derive";
-import { listStatusOf, type DropState, type ListLayout, type ListState, type ListStore, type ListUi, type OpenCard, type OpenMenu, type RowPlace } from "./list-store";
-
-export type { ListLayout };
+import { heightsFor, type Heights } from "../model/heights";
+import type { ListItem, ListModel, RowView, Scene } from "../model/list-model";
+import { resolveScope } from "../model/scope";
+import { isShelfCollapsed, type ActiveSort, type DeviceState } from "../storage/device-state";
+import { listStatusOf, type ListState, type ListStore } from "./list-store";
 
 /** The mounted list's store and commands; one object for the list's life. */
 export interface ListHandle {
@@ -37,7 +31,7 @@ function useHandle(): ListHandle {
 }
 
 /** The part of `store`'s state `select` picks; `select` returns a value that keeps its identity while unchanged. */
-function useSelect<T>(store: ListStore, select: (state: ListState) => T): T {
+export function useSelect<T>(store: ListStore, select: (state: ListState) => T): T {
   return useSyncExternalStore(store.subscribe, () => select(store.getState()));
 }
 
@@ -49,18 +43,12 @@ export function useCommands(): Commands {
   return useHandle().commands;
 }
 
-const NO_IDS: readonly string[] = [];
-/** Harness displays while the list has no model, as it unmounts. */
-const NO_PROVIDERS = providerDisplays([]);
-
-// ——— The list's edge, which holds its store before it provides it ———
-
-const showArchivedOf = (state: ListState) => state.inputs.prefs.showArchived;
-
-/** Show archived, which the edge passes to bb's thread hook. */
-export function useShowArchivedOf(store: ListStore): boolean {
-  return useSelect(store, showArchivedOf);
+export function useListStore(): ListStore {
+  return useHandle().store;
 }
+
+const NO_ITEMS: readonly ListItem[] = [];
+const NO_ROWS: readonly RowView[] = [];
 
 // ——— The list ———
 
@@ -69,263 +57,127 @@ export function useListStatus(): "error" | "loading" | "ready" {
   return useListSelect(listStatusOf);
 }
 
-export function useFocusedThreadId(): string | null {
-  return useListSelect((state) => state.inputs.activeThreadId);
+export function useCompact(): boolean {
+  return useListSelect((state) => state.inputs.compact);
 }
 
-export function useHasNoThreads(): boolean {
-  return useListSelect((state) => state.inputs.host.threads.length === 0);
+export function useHeights(): Heights {
+  return heightsFor(useCompact());
 }
 
-export function useArchived(): HostData["archived"] {
-  return useListSelect((state) => state.inputs.host.archived);
+export function useSettings(): Settings {
+  return useListSelect((state) => state.inputs.settings);
 }
 
-export function useBranchedProjectIds(): readonly string[] {
-  return useListSelect((state) => state.model?.branchedProjectIds ?? NO_IDS);
+export function useDevice(): DeviceState {
+  return useListSelect((state) => state.inputs.device);
 }
 
-export function useLayout(): ListLayout {
-  return useListSelect((state) => state.layout);
+export function useActiveSort(): ActiveSort {
+  return useListSelect((state) => state.inputs.device.activeSort);
 }
 
-export function usePrefs(): Preferences {
-  return useListSelect((state) => state.inputs.prefs);
+export function useShelfCollapsed(shelf: Shelf): boolean {
+  return useListSelect((state) => isShelfCollapsed(state.inputs.device, shelf));
 }
 
-export function useClient(): ClientPreferences {
-  return useListSelect((state) => state.inputs.client);
+export function useGroupCollapsed(projectId: string): boolean {
+  return useListSelect((state) => state.inputs.device.collapsedGroups.includes(projectId));
 }
 
-export function useShowArchived(): boolean {
-  return useListSelect(showArchivedOf);
+export function useScene(): Scene | null {
+  return useListSelect((state) => state.model?.scene ?? null);
 }
 
-/** The list's dialogs and what they show. */
-export function useListUi(): ListUi {
-  return useListSelect((state) => state.ui);
+/** The upper group's items: Pinned, then Active. */
+export function useUpperItems(): readonly ListItem[] {
+  return useListSelect((state) => state.model?.upper ?? NO_ITEMS);
 }
 
-/** The whole model, for what spans the list (its dialogs); null until built. */
-export function useListModel(): ListModel | null {
-  return useListSelect((state) => state.model);
+/** The lower group's items: Working, Inactive, Snoozed, Parked, Settled. */
+export function useLowerItems(): readonly ListItem[] {
+  return useListSelect((state) => state.model?.lower ?? NO_ITEMS);
 }
 
-// ——— The list header ———
-
-export function useNeedYouCount(): number {
-  return useListSelect((state) => state.model?.view.needYouCount ?? 0);
+/** The model's rows, for the windowing layout. */
+export function useRows(): ReadonlyMap<string, RowView> {
+  return useListSelect((state) => state.model?.rows ?? NO_ROW_MAP);
 }
 
-export function useNeedYouOn(): boolean {
-  return useListSelect((state) => state.inputs.needYouOn);
+const NO_ROW_MAP: ReadonlyMap<string, RowView> = new Map();
+
+/** The project scope in force and the projects it picks among. */
+export function useScope(): { scopeId: string | null; projects: readonly PluginSidebarProject[] } {
+  const store = useListStore();
+  const last = useRef<{ scopeId: string | null; projects: readonly PluginSidebarProject[] } | null>(null);
+  return useSelect(store, (state) => {
+    const { scopeId, host } = state.inputs;
+    const next = { scopeId: resolveScope(scopeId, host.projects), projects: host.projects };
+    const previous = last.current;
+    if (previous !== null && previous.scopeId === next.scopeId && previous.projects === next.projects) return previous;
+    last.current = next;
+    return next;
+  });
 }
 
-export function useListHasUnread(): boolean {
-  return useListSelect((state) => state.model?.view.hasUnread ?? false);
-}
-
-// ——— Groups ———
-
-export function useGroupIds(): readonly string[] {
-  return useListSelect((state) => state.model?.groupIds ?? NO_IDS);
-}
-
-export function useMoreIds(): readonly string[] {
-  return useListSelect((state) => state.model?.moreIds ?? NO_IDS);
-}
-
-export function useMoreCounters(): Counters {
-  return useListSelect((state) => state.model?.view.moreCounters ?? EMPTY_COUNTERS);
-}
-
-export function useGroup(groupId: string): GroupView | undefined {
-  return useListSelect((state) => state.model?.groupsById.get(groupId));
-}
-
-/** A dragged group header is over this group. */
-export function useIsGroupDropTarget(groupId: string): boolean {
-  return useListSelect((state) => state.ui.dropGroupId === groupId);
-}
-
-/** The group holds the focused thread: on phones only it shows `+`. */
-export function useHoldsFocus(groupId: string): boolean {
-  return useListSelect((state) => state.model?.activeGroupId === groupId);
+/** A project by id, or null. */
+export function useProject(projectId: string): PluginSidebarProject | null {
+  return useListSelect((state) => state.inputs.host.projects.find((project) => project.id === projectId) ?? null);
 }
 
 // ——— Rows ———
 
-/** A thread row's own part of the list: focus, rename, split mini-map, draft, row status, and its menu or drag. */
-export interface RowState {
-  focused: boolean;
-  editing: boolean;
-  miniMap: readonly MiniMapPane[] | null;
-  hasDraft: boolean;
-  rowStatus: PluginSidebarThreadRowStatus | null;
-  /** A menu or context menu is open from this row. */
-  menuOpen: boolean;
-  /** This row is being dragged. */
-  dragging: boolean;
+/** One row's part of the model, by thread id: it changes only when that thread's row does. */
+export function useRow(threadId: string): RowView | undefined {
+  return useListSelect((state) => state.model?.rows.get(threadId));
 }
 
-const ROW_STATE_KEYS: readonly (keyof RowState)[] = ["focused", "editing", "miniMap", "hasDraft", "rowStatus", "menuOpen", "dragging"];
-
-function sameRow(place: RowPlace, groupId: string, rowKey: string): boolean {
-  return place.groupId === groupId && place.rowKey === rowKey;
-}
-
-/** A thread row's state, one object while its parts hold. */
-export function useRow(threadId: string, groupId: string, rowKey: string): RowState {
-  const store = useHandle().store;
-  const last = useRef<RowState | null>(null);
+/** The rows of `ids`, the same array while every one of them holds. */
+export function useRowsOf(ids: readonly string[]): readonly RowView[] {
+  const store = useListStore();
+  const last = useRef<readonly RowView[]>(NO_ROWS);
   return useSelect(store, (state) => {
-    const { ui, inputs } = state;
-    const menu = ui.menu;
-    const next: RowState = {
-      focused: inputs.activeThreadId === threadId,
-      editing: ui.editingId === threadId,
-      miniMap: state.model?.miniMaps.get(threadId) ?? null,
-      hasDraft: inputs.host.draftIds.has(threadId),
-      rowStatus: inputs.host.rowStatuses.get(threadId) ?? null,
-      menuOpen: menu !== null && menu.kind !== "group" && sameRow(menu, groupId, rowKey),
-      dragging: ui.dragging?.kind === "thread" && sameRow(ui.dragging, groupId, rowKey),
-    };
-    const previous = last.current;
-    if (previous !== null && ROW_STATE_KEYS.every((name) => previous[name] === next[name])) return previous;
-    last.current = next;
-    return next;
-  });
-}
-
-/** The group header, or with `rowKey` the environment row, is being renamed. */
-export function useRenaming(groupId: string, rowKey: string | null): boolean {
-  return useListSelect((state) => state.ui.renaming?.groupId === groupId && state.ui.renaming.rowKey === rowKey);
-}
-
-/** An environment row's menu is open. */
-export function useEnvironmentMenuOpen(groupId: string, rowKey: string): boolean {
-  return useListSelect((state) => state.ui.menu?.kind === "environment" && sameRow(state.ui.menu, groupId, rowKey));
-}
-
-/**
- * The focused thread's rows, the row being renamed, the row holding keyboard
- * focus, the row a menu, context menu or hover card is open from, and the
- * row being dragged.
- */
-export function useKeptRows(): KeptRows {
-  const store = useHandle().store;
-  const last = useRef<KeptRows | null>(null);
-  return useSelect(store, (state) => {
-    const { ui, inputs } = state;
-    const threadIds = [inputs.activeThreadId, ui.editingId].filter((id): id is string => id !== null);
-    const itemKeys: string[] = [];
-    if (ui.focusKey !== null) itemKeys.push(ui.focusKey);
-    if (ui.renaming !== null && ui.renaming.rowKey !== null) itemKeys.push(itemKeyOf(ui.renaming.groupId, ui.renaming.rowKey));
-    if (ui.menu !== null && ui.menu.kind !== "group") itemKeys.push(itemKeyOf(ui.menu.groupId, ui.menu.rowKey));
-    if (ui.card !== null) itemKeys.push(itemKeyOf(ui.card.groupId, ui.card.rowKey));
-    if (ui.dragging?.kind === "thread") itemKeys.push(itemKeyOf(ui.dragging.groupId, ui.dragging.rowKey));
-    const previous = last.current;
-    if (previous !== null && previous.threadIds.join(" ") === threadIds.join(" ") && previous.itemKeys.join(" ") === itemKeys.join(" ")) return previous;
-    const next = { threadIds, itemKeys };
-    last.current = next;
-    return next;
-  });
-}
-
-/** The group header being dragged. */
-export function useIsGroupDragged(groupId: string): boolean {
-  return useListSelect((state) => state.ui.dragging?.kind === "group" && state.ui.dragging.groupId === groupId);
-}
-
-/** The group's menu is open. */
-export function useGroupMenuOpen(groupId: string): boolean {
-  return useListSelect((state) => state.ui.menu?.kind === "group" && state.ui.menu.groupId === groupId);
-}
-
-/** The menu open in the list, for its host. */
-export function useOpenMenu(): OpenMenu | null {
-  return useListSelect((state) => state.ui.menu);
-}
-
-/** The hover card open in the list, for its host. */
-export function useOpenCard(): OpenCard | null {
-  return useListSelect((state) => state.ui.card);
-}
-
-/** A row by its group and key, while it is drawn. */
-export function useRowAt(groupId: string, rowKey: string): Row | undefined {
-  return useListSelect((state) => state.model?.groupsById.get(groupId)?.rows.find((row) => row.key === rowKey));
-}
-
-/** The thread under the pointer, for bb's one drag-to-split hook. */
-export function useProbeId(): string | null {
-  return useListSelect((state) => state.ui.probeId ?? state.inputs.activeThreadId ?? state.inputs.host.threads[0]?.id ?? null);
-}
-
-/** bb offers splits here. */
-export function useSplitAvailable(): boolean {
-  return useListSelect((state) => state.ui.splitAvailable);
-}
-
-/** Groups' views for `ids`, the same array while every one of them holds. */
-export function useGroups(ids: readonly string[]): readonly GroupView[] {
-  const store = useHandle().store;
-  const last = useRef<readonly GroupView[]>([]);
-  return useSelect(store, (state) => {
-    const groups = ids.flatMap((id) => {
-      const group = state.model?.groupsById.get(id);
-      return group === undefined ? [] : [group];
+    const found = ids.flatMap((id) => {
+      const row = state.model?.rows.get(id);
+      return row === undefined ? [] : [row];
     });
     const previous = last.current;
-    if (previous.length === groups.length && previous.every((group, index) => group === groups[index])) return previous;
-    last.current = groups;
-    return groups;
+    if (previous.length === found.length && previous.every((row, index) => row === found[index])) return previous;
+    last.current = found;
+    return found;
   });
 }
 
-/** One object per harness, the same on every call. */
-export function useProviderDisplay(providerId: string): ProviderDisplay {
-  return useListSelect((state) => (state.model?.providerDisplay ?? NO_PROVIDERS)(providerId));
+/** The thread is being renamed in place. */
+export function useIsRenaming(threadId: string): boolean {
+  return useListSelect((state) => state.ui.editingId === threadId);
 }
 
-export function useEnvironmentProviderList(): readonly PluginEnvironmentProvider[] {
-  return useListSelect((state) => state.inputs.host.environmentProviders);
+/** The row or group is being dragged. */
+export function useIsDragged(unitKey: string): boolean {
+  return useListSelect((state) => state.ui.dragging?.unitKey === unitKey);
 }
 
-// ——— Details, for an open hover card or dialog ———
-
-export function useStampMaps(): Stamps {
-  return useListSelect((state) => state.inputs.stamps);
+/** Whether a drag runs anywhere in the list. */
+export function useIsDragging(): boolean {
+  return useListSelect((state) => state.ui.dragging !== null);
 }
 
-/** The list clock's time. */
+/** The live region's text. */
+export function useAnnouncement(): string {
+  return useListSelect((state) => state.ui.announcement);
+}
+
+/** The list clock's time in whole minutes, for labels that read "5m" and refresh every minute. */
+export function useMinute(): number {
+  return useListSelect((state) => Math.floor(state.inputs.now / 60_000));
+}
+
+/** The list clock's time. It changes every minute and at a snooze's end. */
 export function useNow(): number {
   return useListSelect((state) => state.inputs.now);
 }
 
-export function useNotesOf(threadId: string): ThreadNotes | undefined {
-  return useListSelect((state) => state.inputs.notes[threadId]);
-}
-
-export function useTreeOf(threadId: string): ThreadTree | undefined {
-  return useListSelect((state) => state.model?.forest.treeOf.get(threadId));
-}
-
-/** A thread's info while it is loaded, for an open hover card. */
-export function useThreadInfo(threadId: string): ThreadInfo | undefined {
-  return useListSelect((state) => state.model?.forest.infos.get(threadId));
-}
-
-/** The drop feedback drawn while a thread is dragged over a row: the row's thread and what dropping does. */
-export function useDropFeedback(): { threadId: string; state: DropState } | null {
-  const store = useHandle().store;
-  const last = useRef<{ threadId: string; state: DropState } | null>(null);
-  return useSelect(store, (state) => {
-    const first = state.ui.dropStates.entries().next();
-    const next = first.done ? null : { threadId: first.value[0], state: first.value[1] };
-    const previous = last.current;
-    if (previous?.threadId === next?.threadId && previous?.state === next?.state) return previous;
-    last.current = next;
-    return next;
-  });
+export function useModel(): ListModel | null {
+  return useListSelect((state) => state.model);
 }

@@ -1,472 +1,110 @@
-// What a person can do in the list, as plain commands with one identity for
-// the list's life. Each reads the store and bb's calls when it runs, so no
-// component is handed a callback that changes when threads change.
+// The list's commands: what a person does to the list (open a thread, fold a
+// shelf, pick a scope, rename), with the lifecycle commands and the reorder
+// commands under the same object. Components and menus call these and nothing
+// else; each runs against the store's edge when it is called.
 import { toast } from "sonner";
-import type { ClientPreferences, Preferences } from "@/shared/preferences";
-import { itemKeyOf } from "../model/layout-items";
-import { resolveDrop, type DraggedThread, type DropAction, type DropContext, type DropTarget } from "../model/drag";
-import { pruneTargets } from "../model/expansion";
-import { isPinnedThread, moveGroup, ORDER_PREFERENCE } from "../model/groups";
+import type { Shelf } from "@/shared/lifecycle";
+import { SETTLED_PAGE } from "../model/list-model";
 import {
-  markAllReadPlan,
-  markReadPlanFor,
-  toggleChip,
-  toggleGroup,
-  toggleOlder,
-  toggleSettled,
-  type MarkAllRead,
-  type ToggleOutcome,
-} from "../model/toggles";
-import type { ThreadTree } from "../model/trees";
-import type { GroupView, ListView, OlderRow, SettledRow, ThreadRow } from "../model/view";
-import { NO_DROPS, type Dragging, type DropState, type ListModel, type ListStore, type OpenMenu } from "../store/api";
-import { inPool } from "./pool";
-import { lookUpModel, type ModelInfo } from "../sync";
+  withActiveSort,
+  withGroupCollapsed,
+  withParentExpanded,
+  withShelfCollapsed,
+  isShelfCollapsed,
+  type ActiveSort,
+} from "../storage/device-state";
+import type { ListStore } from "../store/list-store";
+import { createLifecycleCommands, type LifecycleCommands } from "./lifecycle";
+import { createReorderCommands, type ReorderCommands } from "./reorder";
 
-const PLUGIN_ID = "thread-glance";
-/** Mark all read: above this many threads, ask first. */
-export const MARK_ALL_CONFIRM_ABOVE = 20;
-/** Read requests bb is sent at once by a bulk read. */
-const READS_IN_FLIGHT = 6;
-
-/** What is being dragged, as dnd-kit's active data carries it. */
-export type Dragged = { kind: "thread"; thread: DraggedThread } | { kind: "group"; groupId: string };
-
-export interface Commands {
-  navigate(): void;
-  openInSplit(threadId: string): void;
-  copyThreadId(threadId: string): void;
-  /** Marks the thread and every thread below it read. */
-  markTreeRead(threadId: string): void;
-  showDetails(threadId: string): void;
-  /** Opens the search for a new parent thread. */
-  startMove(threadId: string): void;
-  /** Starts renaming a thread, or stops with null. */
-  editTitle(threadId: string | null): void;
-  renameThread(threadId: string, title: string): Promise<void>;
-  closeDetails(): void;
-  /** Opens the thread the details dialog shows. */
-  openFromDetails(threadId: string): void;
-  loadModel(threadId: string, status: string): Promise<ModelInfo | null>;
-  toggleChip(row: ThreadRow): void;
-  toggleOlder(row: OlderRow): void;
-  toggleSettled(row: SettledRow): void;
-  toggleEnvironment(environmentId: string): void;
-  newThreadInEnvironment(environmentId: string, projectId: string, sectionId: string | null): void;
-  renameEnvironment(environmentId: string, name: string): Promise<void>;
-  archiveEnvironment(environmentId: string): void;
-  toggleGroup(groupId: string): void;
-  newThreadInGroup(groupId: string): void;
-  hideGroup(groupId: string): void;
-  showGroup(groupId: string): void;
-  renameGroup(groupId: string, name: string): Promise<void>;
-  removeSection(groupId: string): void;
-  /** Asks first, as bb does: the project's threads go with it. */
-  removeProject(groupId: string): void;
-  markGroupRead(groupId: string): void;
-  toggleArchived(): void;
-  setCustomizeOpen(open: boolean): void;
-  setNewSectionOpen(open: boolean): void;
-  createSection(name: string): Promise<void>;
-  toggleGroupHidden(groupId: string): void;
-  moveGroupInOrder(groupId: string, direction: -1 | 1): void;
-  toggleNeedYou(): void;
-  markListRead(): void;
-  confirm(): void;
-  dismissConfirm(): void;
-  setMoveQuery(query: string): void;
-  closeMove(): void;
-  moveUnder(parentThreadId: string | null): void;
-  updatePreferences(patch: Partial<Preferences>): void;
-  updateClient(patch: Partial<ClientPreferences>): void;
-  /** Drop feedback for `dragged` over `target`. */
-  dragOver(dragged: Dragged | undefined, target: DropTarget | null): void;
-  /** Drops `dragged` on `target`; `placement` says which side of a group header. */
-  drop(dragged: Dragged | undefined, target: DropTarget | null, placement: "before" | "after"): void;
-  dragCancel(): void;
-  /** A drag began: the dragged row or header dims and stays mounted. */
-  dragStart(dragging: Dragging): void;
-  /** Opens one of the list's menus; any other closes. */
-  openMenu(menu: OpenMenu): void;
-  closeMenu(): void;
-  /** Starts renaming a group header (`rowKey` null) or an environment row. */
-  startRename(groupId: string, rowKey: string | null): void;
+export interface ListCommands {
+  /** Opens a thread; `split` asks for bb's split placement. */
+  open(threadId: string, options?: { split?: boolean }): void;
+  toggleShelf(shelf: Shelf): void;
+  setActiveSort(sort: ActiveSort): void;
+  /** Collapses or opens a Project-mode group. */
+  setGroupCollapsed(projectId: string, collapsed: boolean): void;
+  /** Opens or closes a parent's child list on this device. */
+  setExpanded(parentId: string, expanded: boolean): void;
+  /** Picks the project scope (null for All projects) for this mount of the list. */
+  setScope(projectId: string | null): void;
+  /** Shows the next page of Settled. */
+  loadMoreSettled(): void;
+  /** Starts renaming a row in place; the row keeps its shelf until `endRename`. */
+  beginRename(threadId: string): void;
   endRename(): void;
-  /** Keyboard focus is in the row `groupId/rowKey`; null when it left `from`. */
-  focusRow(key: string | null, from?: string): void;
-  /** The pointer is over this thread's row: bb's drag-to-split serves it. */
-  pointAt(threadId: string): void;
-  setSplitAvailable(available: boolean): void;
-  /** bb offers splits here now: Ctrl or Cmd+click opens one. */
-  splitAvailable(): boolean;
-  reloadPlugin(): void;
+  /** Saves a trimmed, changed title. */
+  rename(threadId: string, title: string): Promise<void>;
+  unpin(threadId: string): Promise<void>;
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function copyText(text: string, message: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(message);
-  } catch (error) {
-    toast.error("Couldn't copy", { description: describeError(error) });
-  }
-}
-
-const fail = (message: string) => (error: unknown) => toast.error(message, { description: describeError(error) });
-
-/** Where each drawn thread is, for drop rules. */
-function dropContextOf(model: ListModel, mode: DropContext["mode"]): DropContext & { groupOfThread(id: string): string } {
-  const view: ListView = model.view;
-  const groupOfThread = new Map<string, string>();
-  for (const group of [...view.groups, ...view.more]) {
-    for (const row of group.rows) if (row.type === "thread") groupOfThread.set(row.info.thread.id, group.descriptor.id);
-  }
-  const pinned = view.groups.find((group) => group.descriptor.id === "pinned");
-  return {
-    mode,
-    parentOf: (id) => model.byId.get(id)?.parentThreadId ?? null,
-    pinnedOrder: (pinned?.rows ?? []).flatMap((row) => (row.type === "thread" && row.depth === 0 ? [row.info.thread.id] : [])),
-    groupOfThread: (id) => groupOfThread.get(id) ?? "threads",
-  };
-}
+export type Commands = ListCommands & LifecycleCommands & ReorderCommands;
 
 export function createCommands(store: ListStore): Commands {
-  const edge = () => store.edge;
-  const inputs = () => store.getState().inputs;
-  let dropContext: { model: ListModel; context: ReturnType<typeof dropContextOf> } | null = null;
+  const own: ListCommands = {
+    open(threadId, options) {
+      store.edge.navigate.toThread(threadId, options?.split ? { split: true } : undefined);
+      store.edge.onNavigate();
+    },
 
-  const groupOf = (groupId: string): GroupView | undefined => store.getState().model?.groupsById.get(groupId);
+    toggleShelf(shelf) {
+      store.updateDevice((device) => withShelfCollapsed(device, shelf, !isShelfCollapsed(device, shelf)));
+    },
 
-  const applyToggle = (outcome: ToggleOutcome) => {
-    const { targets } = inputs();
-    const pruned = outcome.drop === null ? targets : pruneTargets(targets, outcome.drop);
-    store.updatePreferences(outcome.patch, pruned === targets ? {} : { targets: pruned });
-  };
+    setActiveSort(sort) {
+      store.updateDevice((device) => withActiveSort(device, sort));
+    },
 
-  const readContext = () => {
-    const { activeThreadId, stamps } = inputs();
-    return {
-      activeThreadId,
-      openThreadIds: store.getState().model?.openThreadIds ?? new Set<string>(),
-      finishedAt: stamps.finishedAt,
-      seenAt: stamps.seenAt,
-    };
-  };
+    setGroupCollapsed(projectId, collapsed) {
+      store.updateDevice((device) => withGroupCollapsed(device, projectId, collapsed));
+    },
 
-  /**
-   * Shows the plan's threads read at once and sends their read requests
-   * behind it, READS_IN_FLIGHT at a time. A thread whose request fails shows
-   * as bb has it again, and `onFail` reports it.
-   */
-  const markPlanRead = (plan: MarkAllRead, onFail?: (error: unknown) => void) => {
-    store.showRead(plan.read, plan.seen);
-    void inPool(plan.read, READS_IN_FLIGHT, async (threadId) => {
+    setExpanded(parentId, expanded) {
+      store.updateDevice((device) => withParentExpanded(device, parentId, expanded));
+    },
+
+    setScope(projectId) {
+      store.feed({ scopeId: projectId });
+    },
+
+    loadMoreSettled() {
+      store.feed(({ settledShown }) => ({ settledShown: settledShown + SETTLED_PAGE }));
+    },
+
+    beginRename(threadId) {
+      const shelf = store.getState().model?.rows.get(threadId)?.shelf ?? null;
+      store.setUi({ editingId: threadId });
+      if (shelf === null) return;
+      store.feed(({ frozenShelves }) => ({ frozenShelves: new Map(frozenShelves).set(threadId, shelf) }));
+    },
+
+    endRename() {
+      store.setUi({ editingId: null });
+      store.feed(({ frozenShelves }) => (frozenShelves.size === 0 ? {} : { frozenShelves: new Map() }));
+    },
+
+    async rename(threadId, title) {
+      const row = store.getState().model?.rows.get(threadId);
+      const next = title.trim();
+      if (row === undefined || next === "" || next === row.thread.displayTitle) return;
       try {
-        await edge().sdk.threads.markRead({ threadId });
-      } catch (error) {
-        store.revertRead([threadId]);
-        onFail?.(error);
+        await store.edge.sdk.threads.update({ threadId, title: next });
+      } catch {
+        toast.error("Could not rename thread");
       }
-    });
-  };
-
-  /** Marks every unread thread in the trees read, asking first above MARK_ALL_CONFIRM_ABOVE. `where` names them. */
-  const markTreesRead = (trees: readonly ThreadTree[], where: string) => {
-    const plan = markAllReadPlan(trees, readContext());
-    // Mark all read reports no failures.
-    const run = () => markPlanRead(plan);
-    if (plan.read.length > MARK_ALL_CONFIRM_ABOVE) {
-      store.setUi({
-        confirm: {
-          title: `Mark ${plan.read.length} threads read?`,
-          description: `Every unread thread in ${where}, child threads included, will be marked read.`,
-          confirmLabel: "Mark all read",
-          run,
-        },
-      });
-    } else {
-      run();
-    }
-  };
-
-  const runDrop = async (action: DropAction) => {
-    const { sdk } = edge();
-    switch (action.type) {
-      case "nest":
-        if (action.unpinFirst) await sdk.threads.unpin({ threadId: action.threadId });
-        await sdk.threads.update({ threadId: action.threadId, parentThreadId: action.parentThreadId });
-        return;
-      case "move":
-        await sdk.threads.update({
-          threadId: action.threadId,
-          sectionId: action.sectionId,
-          ...(action.detach ? { parentThreadId: null } : {}),
-        });
-        return;
-      case "detach":
-        await sdk.threads.update({ threadId: action.threadId, parentThreadId: null });
-        return;
-      case "pin":
-        await sdk.threads.pin({ threadId: action.threadId });
-        return;
-      case "unpin":
-        await sdk.threads.unpin({ threadId: action.threadId });
-        return;
-      case "reorder-pinned":
-        await sdk.threads.reorderPinned({
-          threadId: action.threadId,
-          previousThreadId: action.previousThreadId,
-          nextThreadId: action.nextThreadId,
-        });
-        return;
-      case "blocked":
-      case "unchanged":
-        return;
-    }
-  };
-
-  const currentDropContext = (model: ListModel) => {
-    if (dropContext?.model !== model) dropContext = { model, context: dropContextOf(model, inputs().prefs.organizationMode) };
-    return dropContext.context;
-  };
-
-  const commands: Commands = {
-    navigate: () => edge().onNavigate(),
-
-    openInSplit(threadId) {
-      edge().navigate.toThread(threadId, { split: true });
-      edge().onNavigate();
-    },
-    copyThreadId: (threadId) => void copyText(threadId, "Thread ID copied"),
-    markTreeRead(threadId) {
-      const forest = store.getState().model?.forest;
-      const plan = forest === undefined ? { read: [threadId], seen: [] } : markReadPlanFor(threadId, forest, readContext());
-      markPlanRead(plan, fail("Couldn't mark read"));
-    },
-    showDetails: (threadId) => store.setUi({ detailsId: threadId }),
-    startMove: (threadId) => store.setUi({ moveQuery: "", moveId: threadId }),
-
-    editTitle: (threadId) => store.setUi({ editingId: threadId }),
-    async renameThread(threadId, title) {
-      await edge().sdk.threads.update({ threadId, title });
-    },
-    closeDetails: () => store.setUi({ detailsId: null }),
-    openFromDetails(threadId) {
-      store.setUi({ detailsId: null });
-      edge().navigate.toThread(threadId);
-      edge().onNavigate();
     },
 
-    loadModel: (threadId, status) => lookUpModel(edge().sdk, store.getState().model?.byId.get(threadId), threadId, status),
-
-    toggleChip(row) {
-      const forest = store.getState().model?.forest;
-      if (forest !== undefined) applyToggle(toggleChip(row, inputs().prefs, forest));
-    },
-    toggleOlder(row) {
-      const forest = store.getState().model?.forest;
-      if (forest !== undefined) applyToggle(toggleOlder(row, inputs().prefs, forest));
-    },
-    toggleSettled: (row) => applyToggle(toggleSettled(row, inputs().prefs)),
-    toggleEnvironment(environmentId) {
-      const { collapsedEnvironments } = inputs().prefs;
-      store.updatePreferences({
-        collapsedEnvironments: collapsedEnvironments.includes(environmentId)
-          ? collapsedEnvironments.filter((id) => id !== environmentId)
-          : [...collapsedEnvironments, environmentId],
-      });
-    },
-    newThreadInEnvironment(environmentId, projectId, sectionId) {
-      edge().navigate.toCompose({ projectId, environmentId, ...(sectionId ? { placement: { sectionId, pinned: false } } : {}), focusPrompt: true });
-      edge().onNavigate();
-    },
-    async renameEnvironment(environmentId, name) {
-      await edge().sdk.environments.update({ environmentId, name });
-    },
-    archiveEnvironment(environmentId) {
-      // bb has shown its own error toast when this rejects.
-      edge().archiveEnvironmentThreads(environmentId).catch(() => {});
-    },
-
-    toggleGroup(groupId) {
-      const group = groupOf(groupId);
-      const forest = store.getState().model?.forest;
-      if (group !== undefined && forest !== undefined) applyToggle(toggleGroup(group, inputs().prefs, forest));
-    },
-    newThreadInGroup(groupId) {
-      const descriptor = groupOf(groupId)?.descriptor;
-      if (descriptor === undefined) return;
-      edge().navigate.toCompose({ ...descriptor.newThread, focusPrompt: true });
-      edge().onNavigate();
-    },
-    hideGroup: (groupId) => store.updatePreferences({ hiddenGroups: [...inputs().prefs.hiddenGroups, groupId] }),
-    showGroup: (groupId) => store.updatePreferences({ hiddenGroups: inputs().prefs.hiddenGroups.filter((id) => id !== groupId) }),
-    async renameGroup(groupId, name) {
-      const descriptor = groupOf(groupId)?.descriptor;
-      if (descriptor?.kind === "project") await edge().sdk.projects.update({ projectId: descriptor.entityId!, name });
-      else if (descriptor?.kind === "section") await edge().sdk.threadSections.update({ id: descriptor.entityId!, name });
-      else if (descriptor?.kind === "machine") await edge().sdk.hosts.update({ hostId: descriptor.entityId!, name });
-    },
-    removeSection(groupId) {
-      const entityId = groupOf(groupId)?.descriptor.entityId;
-      if (entityId == null) return;
-      store.setUi({
-        confirm: {
-          title: "Remove section?",
-          description: "Threads in this section will move back to Threads.",
-          confirmLabel: "Remove",
-          destructive: true,
-          run: () => {
-            edge().sdk.threadSections.delete({ id: entityId }).catch(fail("Couldn't remove the section"));
-          },
-        },
-      });
-    },
-    removeProject(groupId) {
-      const descriptor = groupOf(groupId)?.descriptor;
-      if (descriptor?.kind !== "project" || descriptor.entityId === null) return;
-      const projectId = descriptor.entityId;
-      store.setUi({
-        confirm: {
-          title: `Remove ${descriptor.label}?`,
-          description: "The project and its threads are removed from bb. This cannot be undone.",
-          confirmLabel: "Remove project",
-          destructive: true,
-          run: () => {
-            edge().sdk.projects.delete({ projectId }).catch(fail("Couldn't remove the project"));
-          },
-        },
-      });
-    },
-    markGroupRead(groupId) {
-      const group = groupOf(groupId);
-      const forest = store.getState().model?.forest;
-      if (group === undefined || forest === undefined) return;
-      // Folded roots count too: every tree bucketed in the group.
-      markTreesRead(
-        group.rootIds.flatMap((id) => forest.treeOf.get(id) ?? []),
-        group.descriptor.label,
-      );
-    },
-    toggleArchived: () => store.updatePreferences({ showArchived: !inputs().prefs.showArchived }),
-    setCustomizeOpen: (open) => store.setUi({ customizeOpen: open }),
-    setNewSectionOpen: (open) => store.setUi({ newSectionOpen: open }),
-    async createSection(name) {
+    async unpin(threadId) {
       try {
-        await edge().sdk.threadSections.create({ name });
-      } catch (error) {
-        toast.error("Couldn't create the section", { description: describeError(error) });
-        throw error;
+        await store.edge.sdk.threads.unpin({ threadId });
+      } catch {
+        toast.error("Could not unpin thread");
       }
-    },
-    toggleGroupHidden(groupId) {
-      const { hiddenGroups } = inputs().prefs;
-      store.updatePreferences({
-        hiddenGroups: hiddenGroups.includes(groupId) ? hiddenGroups.filter((id) => id !== groupId) : [...hiddenGroups, groupId],
-      });
-    },
-    moveGroupInOrder(groupId, direction) {
-      const order = store.getState().model?.view.order;
-      if (order === undefined) return;
-      const neighbour = order[order.indexOf(groupId) + direction];
-      if (neighbour === undefined) return;
-      store.updatePreferences({
-        [ORDER_PREFERENCE[inputs().prefs.organizationMode]]: moveGroup(order, groupId, neighbour, direction < 0 ? "before" : "after"),
-      });
-    },
-
-    toggleNeedYou: () => store.feed(({ needYouOn }) => ({ needYouOn: !needYouOn })),
-    markListRead: () => markTreesRead(store.getState().model?.forest.trees ?? [], "the list"),
-
-    confirm() {
-      store.getState().ui.confirm?.run();
-      store.setUi({ confirm: null });
-    },
-    dismissConfirm: () => store.setUi({ confirm: null }),
-
-    setMoveQuery: (query) => store.setUi({ moveQuery: query }),
-    closeMove: () => store.setUi({ moveId: null }),
-    moveUnder(parentThreadId) {
-      const moveId = store.getState().ui.moveId;
-      const thread = moveId === null ? undefined : store.getState().model?.byId.get(moveId);
-      if (thread === undefined) return;
-      const { sdk } = edge();
-      const move = async () => {
-        if (parentThreadId !== null && isPinnedThread(thread)) {
-          await sdk.threads.unpin({ threadId: thread.id });
-        }
-        await sdk.threads.update({ threadId: thread.id, parentThreadId });
-      };
-      move().catch(fail("Failed to move thread."));
-    },
-
-    updatePreferences: (patch) => store.updatePreferences(patch),
-    updateClient: (patch) => store.updateClient(patch),
-
-    dragOver(dragged, target) {
-      const model = store.getState().model;
-      if (dragged?.kind !== "thread" || target === null || target.kind === "group" || model === null) {
-        store.setUi({
-          dropStates: NO_DROPS,
-          dropGroupId: target?.kind === "group" && dragged !== undefined ? target.groupId : null,
-        });
-        return;
-      }
-      const outcome = resolveDrop(dragged.thread, target, currentDropContext(model));
-      const state: DropState =
-        outcome.type === "blocked"
-          ? "blocked"
-          : outcome.type === "unchanged"
-            ? "unchanged"
-            : target.zone === "middle"
-              ? "valid"
-              : target.zone;
-      const current = store.getState().ui.dropStates;
-      // The same feedback keeps its map, so no row renders for it.
-      const same = current.size === 1 && current.get(target.threadId) === state;
-      store.setUi({ dropStates: same ? current : new Map([[target.threadId, state]]), dropGroupId: null });
-    },
-
-    drop(dragged, target, placement) {
-      store.setUi({ dropStates: NO_DROPS, dropGroupId: null, dragging: null });
-      const model = store.getState().model;
-      if (dragged === undefined || target === null || model === null) return;
-      if (dragged.kind === "group") {
-        if (target.kind !== "group" || target.groupId === dragged.groupId) return;
-        const key = ORDER_PREFERENCE[inputs().prefs.organizationMode];
-        store.updatePreferences({ [key]: moveGroup(model.view.order, dragged.groupId, target.groupId, placement) });
-        return;
-      }
-      const action = resolveDrop(dragged.thread, target, currentDropContext(model));
-      runDrop(action).catch(fail("Failed to move thread."));
-    },
-
-    dragCancel: () => store.setUi({ dropStates: NO_DROPS, dropGroupId: null, dragging: null }),
-    dragStart: (dragging) => store.setUi({ dragging, card: null }),
-    openMenu: (menu) => store.setUi({ menu, card: null }),
-    closeMenu() {
-      const { menu } = store.getState().ui;
-      // The menu's row stays mounted for the focus a closing menu returns to
-      // it, wherever the list is scrolled: it is the row holding focus now.
-      const focusKey = menu === null || menu.kind === "group" ? store.getState().ui.focusKey : itemKeyOf(menu.groupId, menu.rowKey);
-      store.setUi({ menu: null, focusKey });
-    },
-    startRename: (groupId, rowKey) => store.setUi({ renaming: { groupId, rowKey } }),
-    endRename: () => store.setUi({ renaming: null }),
-    focusRow(key, from) {
-      if (key === null && store.getState().ui.focusKey !== from) return;
-      store.setUi({ focusKey: key });
-    },
-    pointAt: (threadId) => store.setUi({ probeId: threadId }),
-    setSplitAvailable: (available) => store.setUi({ splitAvailable: available }),
-    splitAvailable: () => store.getState().ui.splitAvailable,
-
-    reloadPlugin() {
-      edge().sdk.plugins.reload({ pluginId: PLUGIN_ID }).catch(() => window.location.reload());
     },
   };
-  return commands;
+  const lifecycle = createLifecycleCommands({
+    rpc: () => store.edge.rpc,
+    thread: (threadId) => store.getState().model?.rows.get(threadId)?.thread ?? null,
+  });
+  return { ...own, ...lifecycle, ...createReorderCommands(store) };
 }

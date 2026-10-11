@@ -1,6 +1,6 @@
 # bb plugins
 
-Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list, so you can see which threads need attention and what their child threads are doing without opening them. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -20,8 +20,8 @@ flowchart LR
   localmodel["Local model server, optional"]
   logs["Harness session logs"]
   manifest["onboarding.yaml on the server"]
-  events -->|state and timing of each thread| tg
-  tg -->|thread list| ui
+  events -->|state of each thread| tg
+  tg -->|shelf list| ui
   events -->|tokens per turn| tu
   logs -->|tokens bb never sees| tu
   gateway -->|spend per request| tu
@@ -47,7 +47,7 @@ The documentation starts at [docs/README.md](docs/README.md): tutorials for a fi
 
 | Plugin | What it does |
 |---|---|
-| [thread-glance](plugins/thread-glance) | Sidebar thread list that shows each thread's state, harness and child threads at a glance. |
+| [thread-glance](plugins/thread-glance) | Sidebar thread list of shelves: snooze, park or settle a thread, keep Active in your own order, and see each thread's state, branch and children at a glance. |
 | [thread-usage](plugins/thread-usage) | Cost, tokens and time of a thread and all the threads it spawned, from bb or from your AI gateway. |
 | [team-onboarding](plugins/team-onboarding) | A live setup checklist from your team's manifest: GitHub over HTTPS or SSH, agent logins, skills, plugins and tools, checked and fixed on every machine. |
 | [openai-inference](plugins/openai-inference) | Thread titles and commit messages from a LiteLLM gateway or a local OpenAI-compatible server, in place of bb's built-in Codex service. |
@@ -67,6 +67,8 @@ Until Thread Glance 1.0.0, install it with:
 ```sh
 bb plugin install 'git:https://github.com/gperezmz/bb-plugins.git@^0.11.0' --plugin thread-glance --tag-prefix thread-glance/
 ```
+
+That installs 0.11.2; the pages describe the shelf list, which ships in 1.0.0.
 
 [Install, update or remove a plugin](docs/how-to/install-plugins.md) covers pinning a release, installing a prebuilt package from npm, updating and removing; [develop a plugin](docs/how-to/develop-plugins.md) covers running one from a checkout.
 

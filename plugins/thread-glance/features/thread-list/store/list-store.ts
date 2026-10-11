@@ -1,122 +1,43 @@
 // The list store: everything the sidebar list is built from, the list model
-// its derive step builds, and the list's own state, outside React. Rows,
-// group headers and the list header each read their own part, so an event
-// renders only what it changed. bb's data and the plugin server's signals
-// are applied once per animation frame, so a turn's burst of them renders
-// once; everything else, and whatever a person does, is applied at once.
-// What the plugin server and bb's lookups answered comes from the plugin's
-// data (../sync), which outlives the store, so a list mounted again starts
-// from it.
-import type {
-  BbNavigate,
-  PluginBrowserBbSdk,
-  PluginRpcClient,
-  PluginSidebarSection,
-} from "@get-bb/plugin-sdk/app";
-import { toast } from "sonner";
+// its derive step builds, and the list's own state, outside React. Rows read
+// their own part of the model by thread id, so an event renders only what it
+// changed. bb's data and the plugin server's signals are applied once per
+// animation frame, so a turn's burst of them renders once; everything else,
+// and whatever a person does, is applied at once. What the plugin server
+// answered comes from the plugin's data (../sync), which outlives the store,
+// so a list mounted again starts from it.
+import type { BbNavigate, PluginBrowserBbSdk, PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
+import { pluginData, type DataChange } from "../sync";
+import type { ListModel } from "../model/list-model";
+import { resolveScope } from "../model/scope";
 import {
-  CLIENT_PREFERENCES_STORAGE_KEY,
-  coercePreferences,
-  isPreferenceKey,
-  parseClientPreferences,
-  PREFERENCES_MIRROR_STORAGE_KEY,
-  type ClientPreferences,
-  type HarnessIcon,
-  type OrganizationMode,
-  type PreferenceKey,
-  type Preferences,
-} from "@/shared/preferences";
-import { changedThreads, trackIdle, type IdleTracker } from "../model/attention";
-import { share } from "../model/share";
-import { fetchMissing, pluginData, readJson, writeJson, type DataChange } from "../sync";
+  readDeviceState,
+  saveDeviceState,
+  type DeviceState,
+} from "../storage/device-state";
+import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
+import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
-import { derive, FIRST_STEP, NO_HOST, NO_PENDING_READ, onlyReadChanged, type DeriveMemory, type HostData, type ListInputs, type ListModel } from "./derive";
+import { derive, FIRST_SETTLED_SHOWN, NO_HOST, type HostData, type ListInputs } from "./derive";
 import { createStore, type StoreApi } from "./vanilla";
+import { createWorkingSince, type WorkingSince } from "./working-since";
 
-/** A row's drop feedback while a thread is dragged over it. */
-export type DropState = "valid" | "blocked" | "unchanged" | "before" | "after";
-
-/** A confirmation the list asks for before it acts. */
-interface Confirm {
-  title: string;
-  description: string;
-  confirmLabel: string;
-  destructive?: boolean;
-  run(): void;
-}
-
-/** A row as the list draws it: its group, and its key within the group. */
-export interface RowPlace {
-  groupId: string;
-  rowKey: string;
-}
-
-/**
- * The one menu open in the list, and the row or group it belongs to. A
- * thread row's menus are bb's own, drawn by the row, which reports them open
- * here; the list's own "…" menus anchor to the button that opened them.
- */
-export type OpenMenu =
-  | (RowPlace & { kind: "thread"; threadId: string })
-  | (RowPlace & { kind: "environment"; anchor: HTMLElement })
-  | { kind: "group"; groupId: string; anchor: HTMLElement };
-
-/** The row whose hover card is open, anchored to it. */
-export interface OpenCard extends RowPlace {
-  threadId: string;
-  anchor: HTMLElement;
-}
-
-/** What is being dragged: a thread's row or a group header. */
-export type Dragging = (RowPlace & { kind: "thread"; threadId: string }) | { kind: "group"; groupId: string };
-
-/** The list's own state: what it shows open, renamed or dragged over. */
+/** The list's own state: what it shows open, renamed or dragged. */
 export interface ListUi {
   /** The thread whose title is being renamed. */
   editingId: string | null;
-  detailsId: string | null;
-  moveId: string | null;
-  moveQuery: string;
-  customizeOpen: boolean;
-  newSectionOpen: boolean;
-  confirm: Confirm | null;
-  /** Drop feedback by thread id. */
-  dropStates: ReadonlyMap<string, DropState>;
-  /** The group a dragged group header would drop on. */
-  dropGroupId: string | null;
-  menu: OpenMenu | null;
-  card: OpenCard | null;
-  dragging: Dragging | null;
-  /** A group header (`rowKey` null) or environment row being renamed. */
-  renaming: { groupId: string; rowKey: string | null } | null;
-  /** The row holding keyboard focus, as `groupId/rowKey`. */
-  focusKey: string | null;
-  /** The thread under the pointer, whose drag-to-split bb's one hook serves. */
-  probeId: string | null;
-  /** bb offers splits here: rows offer Open in split, and Ctrl or Cmd+click opens one. */
-  splitAvailable: boolean;
-}
-
-/** How every row is drawn: one object, the same while none of it changes. */
-export interface ListLayout {
-  /** bb's compact viewport: a phone. */
-  compact: boolean;
-  density: ClientPreferences["density"];
-  branchLine: boolean;
-  harnessIcon: HarnessIcon;
-  mode: OrganizationMode;
-  /** Rows offer Move to section. */
-  hasSections: boolean;
-  sections: readonly PluginSidebarSection[];
+  /** The row or group being dragged, as `listKey/unitKey`; null when no drag runs. */
+  dragging: { listKey: string; unitKey: string } | null;
+  /** The text of the list's live region: reorder announcements. */
+  announcement: string;
 }
 
 export interface ListState {
   inputs: ListInputs;
-  /** Null until bb's threads are ready. */
+  /** Null until bb's threads and the server's rows are there. */
   model: ListModel | null;
   ui: ListUi;
-  layout: ListLayout;
 }
 
 /** bb's and the plugin server's calls, kept behind one reference: commands read them when they run. */
@@ -124,20 +45,15 @@ export interface Edge {
   navigate: BbNavigate;
   sdk: PluginBrowserBbSdk;
   rpc: PluginRpcClient<RpcContract>;
-  /** bb's own archive of an environment's thread trees; rejects once bb has shown its error. */
-  archiveEnvironmentThreads(environmentId: string): Promise<void>;
+  /** Closes bb's mobile drawer after a thread is opened. */
   onNavigate(): void;
-  /** This list is the one in the browser that reports changes to idle bb sends no event for. */
-  isIdleReporter(): boolean;
 }
 
-/**
- * The list store: a vanilla store of `ListState`, and the calls that feed it
- * and act on it (the command API), each of which runs the derive step where
- * the model's inputs change.
- */
 export interface ListStore extends StoreApi<ListState> {
   edge: Edge;
+  storage: DeviceStorage;
+  /** When each working thread was first seen working, for the Status slot's elapsed time. */
+  workingSince: WorkingSince;
   /** bb's list data, applied on the next animation frame. */
   feedHost(host: HostData): void;
   /** The focused thread and the viewport, applied at once. */
@@ -147,35 +63,16 @@ export interface ListStore extends StoreApi<ListState> {
   /** Any other input, applied at once. */
   feed(change: Partial<Omit<ListInputs, "host">> | ((inputs: ListInputs) => Partial<Omit<ListInputs, "host">>)): void;
   setUi(change: Partial<ListUi> | ((ui: ListUi) => Partial<ListUi>)): void;
+  /** Changes the device's state and writes what changed to the browser's storage. */
+  updateDevice(change: (device: DeviceState) => DeviceState): void;
   /** Applies bb data still waiting for its frame. */
   flush(): void;
-  /** The server's preferences, keeping any this window has not written yet. */
-  receivePreferences(preferences: unknown): void;
-  /** One preference another window or the CLI changed. */
-  receivePreference(key: PreferenceKey, value: unknown): void;
-  /** A preference change this window made; `also` changes other inputs in the same step. */
-  updatePreferences(patch: Partial<Preferences>, also?: Partial<Omit<ListInputs, "host" | "prefs">>): void;
-  /** Sends every preference write not yet sent. */
-  flushPreferences(): void;
-  updateClient(patch: Partial<ClientPreferences>): void;
-  /**
-   * Shows `read` read at once, while their read requests are pending, and
-   * marks `seen` seen, in one step.
-   */
-  showRead(read: readonly string[], seen: readonly string[]): void;
-  /** Stops showing threads read whose read request failed: they show as bb has them. */
-  revertRead(threadIds: readonly string[]): void;
-  clearSeen(threadIds: readonly string[]): void;
   /**
    * Starts the clock, follows the plugin's data and sends what waited for the
    * list to mount; returns the call that stops them.
    */
   attach(): () => void;
 }
-
-const WRITE_DEBOUNCE_MS = 150;
-/** No drop feedback. */
-export const NO_DROPS: ReadonlyMap<string, DropState> = new Map();
 
 const unset = (): never => {
   throw new Error("the list store's edge is not set yet");
@@ -191,37 +88,17 @@ const UNSET_EDGE: Edge = {
   get rpc(): never {
     return unset();
   },
-  get archiveEnvironmentThreads(): never {
-    return unset();
-  },
   onNavigate() {},
-  isIdleReporter: () => false,
 };
 
-const CLOSED_UI: ListUi = {
-  editingId: null,
-  detailsId: null,
-  moveId: null,
-  moveQuery: "",
-  customizeOpen: false,
-  newSectionOpen: false,
-  confirm: null,
-  dropStates: NO_DROPS,
-  dropGroupId: null,
-  menu: null,
-  card: null,
-  dragging: null,
-  renaming: null,
-  focusKey: null,
-  probeId: null,
-  splitAvailable: false,
-};
+const CLOSED_UI: ListUi = { editingId: null, dragging: null, announcement: "" };
 
-/** What the list draws: bb's error, a skeleton while anything it needs is on its way, or the list. */
+const NO_ORDER: readonly string[] = [];
+
+/** What the list draws: bb's error, a loading state while anything it needs is on its way, or the list. */
 export function listStatusOf(state: ListState): "error" | "loading" | "ready" {
-  const { host, hydrated } = state.inputs;
-  if (host.status === "error") return "error";
-  return host.status === "loading" || !hydrated || state.model === null ? "loading" : "ready";
+  if (state.inputs.host.status === "error") return "error";
+  return state.model === null ? "loading" : "ready";
 }
 
 /** Stores with a mounted list, for tests to flush. */
@@ -237,34 +114,6 @@ export function attachedListStores(): readonly ListStore[] {
   return [...attached];
 }
 
-/** bb's data with each list that arrived equal to the last one's kept, so an equal list is no change. */
-function shareHost(previous: HostData, next: HostData): HostData {
-  return {
-    ...next,
-    projects: share(previous.projects, next.projects),
-    sections: share(previous.sections, next.sections),
-    providers: share(previous.providers, next.providers),
-    environmentProviders: share(previous.environmentProviders, next.environmentProviders),
-    draftIds: share(previous.draftIds, next.draftIds),
-    rowStatuses: shareStatuses(previous.rowStatuses, next.rowStatuses),
-    splitLayout: share(previous.splitLayout, next.splitLayout),
-  };
-}
-
-/** Row statuses with each unchanged one kept, the previous map itself when nothing changed. */
-function shareStatuses(previous: HostData["rowStatuses"], next: HostData["rowStatuses"]): HostData["rowStatuses"] {
-  if (previous === next) return previous;
-  let changed = previous.size !== next.size;
-  const shared = new Map<string, NonNullable<ReturnType<HostData["rowStatuses"]["get"]>>>();
-  for (const [id, status] of next) {
-    const before = previous.get(id);
-    const kept = before === undefined ? status : share(before, status);
-    if (kept !== before) changed = true;
-    shared.set(id, kept);
-  }
-  return changed ? shared : previous;
-}
-
 function sameHost(a: HostData, b: HostData): boolean {
   return (Object.keys(a) as (keyof HostData)[]).every((key) => a[key] === b[key]);
 }
@@ -276,68 +125,54 @@ const frames = {
     typeof cancelAnimationFrame === "function" ? cancelAnimationFrame(id) : clearTimeout(id as unknown as ReturnType<typeof setTimeout>),
 };
 
-function layoutOf(previous: ListLayout | null, inputs: ListInputs, compact: boolean): ListLayout {
-  const { prefs, client, host } = inputs;
-  const next: ListLayout = {
-    compact,
-    density: client.density,
-    branchLine: client.branchLine,
-    harnessIcon: prefs.harnessIcon,
-    mode: prefs.organizationMode,
-    hasSections: prefs.organizationMode === "chronological" || host.sections.length > 0,
-    sections: host.sections,
-  };
-  return previous === null ? next : share(previous, next);
-}
-
 /** The inputs the plugin's data gives, as it stands. */
-function dataInputs(): Pick<ListInputs, "stamps" | "notes" | "scheduled" | "stampsLoaded" | "hydrated" | "system" | "defaultBranches"> {
+function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "settings" | "order"> {
   const data = pluginData.get();
   return {
-    stamps: data.records.stamps,
-    notes: data.records.notes,
-    scheduled: data.scheduled,
-    // Stamps held from an earlier answer are what the list was drawn from.
-    stampsLoaded: data.records.point !== null || data.status === "failed",
-    // A list mounted while realtime went unfollowed waits for what it missed.
-    hydrated: data.status !== "waiting",
-    system: data.system,
-    defaultBranches: data.defaultBranches,
+    lifecycle: data.records.lifecycle,
+    // An answer, a cache of earlier answers, or a failed answer: any of them is a list to draw.
+    rowsReady: data.records.point !== null || data.cached || data.status === "failed",
+    settings: pluginData.settings(),
+    order: data.order?.value ?? NO_ORDER,
   };
 }
 
-export function createListStore(): ListStore {
-  const known = pluginData.get().preferences;
+export interface ListStoreOptions {
+  storage?: DeviceStorage;
+}
+
+export function createListStore(options: ListStoreOptions = {}): ListStore {
+  const storage = options.storage ?? createDeviceStorage();
+  pluginData.hydrate(storage);
   const inputs: ListInputs = {
     host: NO_HOST,
     activeThreadId: null,
-    prefs: known ?? coercePreferences(readJson(PREFERENCES_MIRROR_STORAGE_KEY)),
-    client: parseClientPreferences(readJson(CLIENT_PREFERENCES_STORAGE_KEY)),
+    compact: false,
     ...dataInputs(),
+    pendingOrder: null,
+    pinnedOverride: null,
+    device: readDeviceState(storage),
+    scopeId: null,
     now: Date.now(),
-    idleSince: {},
-    needYouOn: false,
-    targets: new Map(),
-    pendingRead: NO_PENDING_READ,
+    settledShown: FIRST_SETTLED_SHOWN,
+    frozenShelves: new Map(),
+    drag: null,
   };
-  const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI, layout: layoutOf(null, inputs, false) });
-  let memory: DeriveMemory = FIRST_STEP;
-  let compact = false;
+  const workingSince = createWorkingSince(storage);
+  const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI });
   /** bb's latest data, applied or waiting for its frame. */
   let host: HostData = NO_HOST;
   let frame: number | null = null;
   // Signals waiting for the frame, in the order they came.
   let signals: ((inputs: ListInputs) => Partial<Omit<ListInputs, "host">>)[] = [];
-  let tracker: IdleTracker | null = null;
-  let tracked: HostData["threads"] | null = null;
   let clock: Clock | null = null;
   let mounted = false;
-  // Requests the derive step or the idle tracker asked for before the list mounted.
+  // Requests the derive step asked for before the list mounted.
   let waiting: (() => void)[] = [];
-  // Preference writes not yet sent: a reload or an echo must not put back
-  // the value one of them replaced.
-  const pending = new Map<PreferenceKey, unknown>();
-  let writeTimer: ReturnType<typeof setTimeout> | null = null;
+  // Woke threads this window has asked the server to clear because they are open.
+  const wokeClearAsked = new Set<string>();
+  // Pinned threads whose lifecycle row this window has asked the server to clear.
+  const pinClearAsked = new Set<string>();
 
   const whenMounted = (request: () => void) => {
     if (mounted) request();
@@ -346,13 +181,45 @@ export function createListStore(): ListStore {
 
   /** Runs the derive step over `next` and publishes the result. */
   const commit = (next: ListInputs) => {
-    const step = derive(next, memory, Date.now());
-    memory = step.memory;
+    // A project scope whose project is gone is All projects again.
+    const scopeId = resolveScope(next.scopeId, next.host.projects);
+    const checked = scopeId === next.scopeId ? next : { ...next, scopeId };
     const current = api.getState();
+    const model = derive(checked, current.model);
+    // A thread deleted or archived mid-drag ends the drag.
+    const { dragging } = current.ui;
+    if (dragging !== null && model !== null && checked.drag !== null) {
+      const present = model.reorderLists.get(dragging.listKey)?.units.some((unit) => unit.key === dragging.unitKey) ?? false;
+      if (!present) {
+        api.setState({ ui: { ...current.ui, dragging: null } });
+        commit({ ...checked, drag: null });
+        return;
+      }
+    }
     const deadline = current.model?.nextDeadline ?? null;
-    api.setState({ inputs: step.inputs, model: step.model, layout: layoutOf(current.layout, step.inputs, compact) });
-    if (step.seen.length > 0) whenMounted(() => void store.edge.rpc.call("markSeen", { threadIds: step.seen }).catch(() => undefined));
-    if ((step.model?.nextDeadline ?? null) !== deadline) clock?.reschedule();
+    // Stamped before the rows are told, so a row that renders for its thread working reads the stamp.
+    if (model !== null) {
+      const workingIds: string[] = [];
+      for (const row of model.rows.values()) if (isWorking(row.thread)) workingIds.push(row.id);
+      workingSince.observe(workingIds, Date.now());
+    }
+    api.setState({ inputs: checked, model });
+    if (model !== null) {
+      for (const threadId of model.pinnedWithRow) {
+        if (pinClearAsked.has(threadId)) continue;
+        pinClearAsked.add(threadId);
+        whenMounted(() => void store.edge.rpc.call("clearPinned", { threadId }).catch(() => undefined));
+      }
+      for (const threadId of [...pinClearAsked]) if (!model.pinnedWithRow.includes(threadId)) pinClearAsked.delete(threadId);
+      // Opening a woke thread clears its Woke marker.
+      const open = checked.activeThreadId === null ? undefined : model.rows.get(checked.activeThreadId);
+      if (open?.woke != null && !wokeClearAsked.has(open.id)) {
+        wokeClearAsked.add(open.id);
+        whenMounted(() => void store.edge.rpc.call("dismissWoke", { threadId: open.id }).catch(() => undefined));
+      }
+      for (const threadId of [...wokeClearAsked]) if (model.rows.get(threadId)?.woke == null) wokeClearAsked.delete(threadId);
+    }
+    if ((model?.nextDeadline ?? null) !== deadline) clock?.reschedule();
   };
 
   /** Applies bb's latest data and the signals waiting with it, as one step. */
@@ -362,100 +229,42 @@ export function createListStore(): ListStore {
     const waitingSignals = signals;
     signals = [];
     const current = api.getState().inputs;
-    let next = current.host === host ? current : { ...current, host, idleSince: tracker?.idleSince ?? current.idleSince };
+    let next = current.host === host ? current : { ...current, host };
     for (const change of waitingSignals) next = { ...next, ...change(next) };
     if (next === current) return;
-    // bb answering a read of a thread already shown read changes nothing
-    // drawn: the list keeps its model and takes bb's data for the next step.
-    const model = api.getState().model;
-    if (waitingSignals.length === 0 && model !== null && onlyReadChanged(current, next, model)) {
-      api.setState({ inputs: next });
-      return;
-    }
     commit(next);
   };
   const requestFrame = () => {
     if (frame === null) frame = frames.request(applyFrame);
   };
-  /** The server's preferences, keeping any this window has not written yet. */
-  const withPending = (preferences: unknown): Preferences => {
-    const next = coercePreferences(preferences);
-    // Keys with a write in flight keep the local value.
-    for (const [key, value] of pending) (next as Record<string, unknown>)[key] = value;
-    writeJson(PREFERENCES_MIRROR_STORAGE_KEY, next);
-    return next;
-  };
-  /** The plugin data's inputs, with its preferences over the list's, any this window has not written yet kept. */
-  const dataPatch = ({ prefs }: ListInputs) => {
-    const known = pluginData.get().preferences;
-    return { ...dataInputs(), prefs: known === null ? prefs : share(prefs, withPending(known)) };
-  };
-  const fetchMissingRecords = () => whenMounted(() => fetchMissing(store.edge.rpc, host.threads));
-  const records = () => {
-    const { stamps, notes } = pluginData.get().records;
-    return { stamps, notes };
-  };
+
   /** Applies a change of the plugin's data: signals with the next frame, answers at once. */
   const onData = (change: DataChange) => {
-    const data = pluginData.get();
     switch (change.kind) {
       case "synced":
-        store.feed(dataPatch);
-        fetchMissingRecords();
-        return;
       case "failed":
-        store.feed({ hydrated: true, stampsLoaded: true });
+      case "settings":
+        store.feed(dataInputs);
         return;
       case "records":
-        if (change.at === "now") store.feed(records());
-        else store.feedSignal(records);
+      case "order":
+        store.feedSignal(dataInputs);
         return;
-      case "scheduled":
-        store.feedSignal(() => ({ scheduled: pluginData.get().scheduled }));
-        return;
-      case "preference":
-        store.receivePreference(change.key, change.value);
-        return;
-      case "facts":
-        store.feed({ system: data.system, defaultBranches: data.defaultBranches });
+      case "appearance":
         return;
     }
-  };
-
-  const scheduleWrite = () => {
-    if (writeTimer !== null) clearTimeout(writeTimer);
-    writeTimer = setTimeout(() => {
-      writeTimer = null;
-      store.flushPreferences();
-    }, WRITE_DEBOUNCE_MS);
   };
 
   const store: ListStore = {
     ...api,
     edge: UNSET_EDGE,
+    storage,
+    workingSince,
 
     feedHost(next) {
-      const shared = shareHost(host, next);
-      if (sameHost(shared, host)) return;
+      if (sameHost(next, host)) return;
       const first = host === NO_HOST;
-      host = shared;
-      if (shared.threads !== tracked) {
-        // Only the threads bb changed are read again, so bb answering reads
-        // one by one costs no pass over the whole list.
-        const changed = changedThreads(tracked, shared.threads);
-        tracked = shared.threads;
-        // A thread already listed was checked when it came, or by the last sync.
-        if (changed === null) fetchMissingRecords();
-        // When the change was seen, not when it is drawn: the orphaned-failure
-        // wait counts from here.
-        tracker = trackIdle(tracker, shared.threads, Date.now(), changed);
-        const unannounced = [...tracker.unannounced];
-        if (unannounced.length > 0) {
-          whenMounted(() => {
-            if (store.edge.isIdleReporter()) store.edge.rpc.call("reportIdle", { threadIds: unannounced }).catch(() => undefined);
-          });
-        }
-      }
+      host = next;
       // Nothing is drawn yet, so the first data is drawn at once.
       if (first) applyFrame();
       else requestFrame();
@@ -466,13 +275,10 @@ export function createListStore(): ListStore {
       requestFrame();
     },
 
-    feedFocus(activeThreadId, nextCompact) {
-      const { inputs: current, layout } = api.getState();
-      if (nextCompact !== compact) {
-        compact = nextCompact;
-        if (activeThreadId === current.activeThreadId) api.setState({ layout: layoutOf(layout, current, compact) });
-      }
-      if (activeThreadId !== current.activeThreadId) commit({ ...current, activeThreadId });
+    feedFocus(activeThreadId, compact) {
+      const current = api.getState().inputs;
+      if (activeThreadId === current.activeThreadId && compact === current.compact) return;
+      commit({ ...current, activeThreadId, compact });
     },
 
     feed(change) {
@@ -491,94 +297,29 @@ export function createListStore(): ListStore {
       api.setState({ ui: { ...ui, ...patch } });
     },
 
+    updateDevice(change) {
+      const previous = api.getState().inputs.device;
+      const device = change(previous);
+      if (device === previous) return;
+      saveDeviceState(storage, previous, device);
+      store.feed({ device });
+    },
+
     flush: applyFrame,
-
-    receivePreferences(preferences) {
-      const next = withPending(preferences);
-      store.feed(({ prefs }) => ({ prefs: share(prefs, next), hydrated: true }));
-    },
-
-    receivePreference(key, value) {
-      if (pending.has(key)) return;
-      store.feed(({ prefs: current }) => {
-        const prefs = { ...current, [key]: value };
-        writeJson(PREFERENCES_MIRROR_STORAGE_KEY, prefs);
-        return { prefs };
-      });
-    },
-
-    updatePreferences(patch, also = {}) {
-      const keys = Object.keys(patch);
-      const current = api.getState().inputs.prefs;
-      const prefs = keys.length === 0 ? current : { ...current, ...patch };
-      if (keys.length > 0) writeJson(PREFERENCES_MIRROR_STORAGE_KEY, prefs);
-      for (const [key, value] of Object.entries(patch)) if (isPreferenceKey(key)) pending.set(key, value);
-      store.feed({ ...also, prefs });
-      if (keys.length > 0) scheduleWrite();
-    },
-
-    flushPreferences() {
-      if (writeTimer !== null) clearTimeout(writeTimer);
-      writeTimer = null;
-      const writes = [...pending];
-      pending.clear();
-      for (const [key, value] of writes) {
-        store.edge.rpc.call("setPreference", { key, value }).catch((error: unknown) => {
-          toast.error(`Couldn't save the ${key} setting`, {
-            description: error instanceof Error ? error.message : String(error),
-          });
-        });
-      }
-    },
-
-    updateClient(patch) {
-      store.feed(({ client: current }) => {
-        const client = { ...current, ...patch };
-        writeJson(CLIENT_PREFERENCES_STORAGE_KEY, client);
-        return { client };
-      });
-    },
-
-    showRead(read, seen) {
-      if (read.length === 0 && seen.length === 0) return;
-      const byId = api.getState().model?.byId;
-      // Held by the plugin's data, so a list mounted again shows them; applied here with the reads, in one step.
-      if (seen.length > 0) pluginData.stamped("seenAt", seen, Date.now(), { quiet: true });
-      store.feed(({ pendingRead }) => {
-        const pending = new Map(pendingRead);
-        for (const id of read) {
-          const thread = byId?.get(id);
-          if (thread !== undefined) pending.set(id, thread.latestAttentionAt);
-        }
-        return { pendingRead: pending, ...(seen.length > 0 ? records() : {}) };
-      });
-      if (seen.length > 0) store.edge.rpc.call("markSeen", { threadIds: [...seen] }).catch(() => undefined);
-    },
-
-    revertRead(threadIds) {
-      store.feed(({ pendingRead }) => {
-        if (!threadIds.some((id) => pendingRead.has(id))) return {};
-        const pending = new Map(pendingRead);
-        for (const id of threadIds) pending.delete(id);
-        return { pendingRead: pending };
-      });
-    },
-
-    clearSeen(threadIds) {
-      if (threadIds.length === 0) return;
-      pluginData.stamped("seenAt", threadIds, null);
-      store.edge.rpc.call("clearSeen", { threadIds: [...threadIds] }).catch(() => undefined);
-    },
 
     attach() {
       mounted = true;
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
       // What changed between the store's creation and its mount.
-      store.feed(dataPatch);
+      store.feed(dataInputs);
       const requests = waiting;
       waiting = [];
       for (const request of requests) request();
+      // A list mounting is a reason to run an auto-settle pass.
+      void Promise.resolve()
+        .then(() => store.edge.rpc.call("runAutoSettle", {}))
+        .catch(() => undefined);
       clock = startClock({
         tick: () => store.feed({ now: Date.now() }),
         nextDeadline: () => api.getState().model?.nextDeadline ?? null,
@@ -589,7 +330,6 @@ export function createListStore(): ListStore {
         clock = null;
         if (frame !== null) frames.cancel(frame);
         frame = null;
-        store.flushPreferences();
         attached.delete(store);
         mounted = false;
       };

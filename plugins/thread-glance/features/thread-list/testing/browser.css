@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* The list fills the page, as bb's sidebar area fills its column. */
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body > div {
+  height: 100%;
+}
+
 /* The tests measure where the row's boxes end up; fades would only delay it. */
 *,
 *::before,

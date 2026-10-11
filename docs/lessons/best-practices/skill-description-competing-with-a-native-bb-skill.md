@@ -44,7 +44,7 @@ then went to thread-list.
   - It names every kind of request the native skill would also catch.
 
   The wording in
-  [`plugins/thread-glance/skills/thread-glance/SKILL.md:3`](../../../plugins/thread-glance/skills/thread-glance/SKILL.md)
+  [`plugins/thread-glance/skills/thread-glance/SKILL.md:3`](https://github.com/gperezmz/bb-plugins/blob/thread-glance/v0.11.2/plugins/thread-glance/skills/thread-glance/SKILL.md)
   reads awkwardly and is kept on purpose, because each smoother wording
   tried lost trials:
 

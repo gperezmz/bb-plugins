@@ -1,140 +1,95 @@
 // Work done once per server start, in a background service because `bb.sdk`
 // is bind-gated in the factory.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import type { ChangeRecords } from "./actions";
 import type { ArchivedThreads } from "./archived";
-import type { ScheduledTracker } from "./scheduled";
+import { removeLegacyData } from "./legacy-cleanup";
+import type { Database } from "./database";
+import type { LifecycleStore } from "./lifecycle-store";
+import type { OrderStore } from "./order-store";
+import { reconcileState } from "./reconcile";
+import type { ServerThread, ThreadGateway, ThreadPresence } from "./threads";
+import { errorMessage } from "./error-message";
 
-const THREAD_PAGE_SIZE = 500;
-const SEED_RETRY_MS = 60_000;
-
-type Sdk = BbPluginApi["sdk"];
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** Every thread bb has, hidden ones included, and which of them are archived. */
-interface ThreadIds {
-  all: Set<string>;
-  archived: Set<string>;
-}
-
-/**
- * Returns the id of every thread bb has, archived and hidden ones included.
- *
- * It lists active and archived threads separately and pages each with
- * limit and offset, since the list is capped per call.
- */
-async function listAllThreadIds(sdk: Sdk, signal?: AbortSignal): Promise<ThreadIds> {
-  const ids: ThreadIds = { all: new Set(), archived: new Set() };
-  for (const archived of [false, true]) {
-    for (let offset = 0; ; offset += THREAD_PAGE_SIZE) {
-      const page = await sdk.threads.list({
-        archived,
-        includeHidden: true,
-        limit: THREAD_PAGE_SIZE,
-        offset,
-        signal,
-      });
-      for (const thread of page) {
-        ids.all.add(thread.id);
-        if (archived) ids.archived.add(thread.id);
-      }
-      if (page.length < THREAD_PAGE_SIZE) break;
-    }
-  }
-  return ids;
-}
-
-/** A per-thread store, such as stamps or notes, that startup prunes. */
-export interface PrunableStore {
-  /** What the store holds, for the log line. */
-  name: string;
-  prune(liveIds: ReadonlySet<string>, before: number): Promise<string[]>;
-}
-
-/**
- * Drops per-thread rows of threads bb no longer has, and tells `archived`
- * which threads bb holds as archived. Logs and returns on failure.
- */
-async function pruneDeletedThreads(
-  bb: Pick<BbPluginApi, "sdk" | "log">,
-  stores: readonly PrunableStore[],
-  archived: ArchivedThreads,
-  signal?: AbortSignal,
-): Promise<void> {
-  const before = Date.now();
-  let live: ThreadIds;
-  try {
-    const listing = listAllThreadIds(bb.sdk, signal);
-    archived.listing(listing);
-    live = await listing;
-  } catch (error) {
-    bb.log.warn(`could not list threads to prune deleted ones: ${errorMessage(error)}`);
-    return;
-  }
-  archived.replace(live.archived);
-  for (const store of stores) {
-    const pruned = await store.prune(live.all, before);
-    if (pruned.length > 0) {
-      bb.log.info(`pruned ${store.name} of ${pruned.length} deleted threads`);
-    }
-  }
-}
-
-/** Seeds the scheduled-send tracker from every queued row in bb. */
-function seedScheduled(
-  bb: Pick<BbPluginApi, "sdk" | "log">,
-  tracker: ScheduledTracker,
-  signal?: AbortSignal,
-): Promise<boolean> {
-  return tracker.seed(async () => {
-    try {
-      return await bb.sdk.threads.queue.list({ signal });
-    } catch (error) {
-      bb.log.warn(`could not list queued messages: ${errorMessage(error)}`);
-      throw error;
-    }
-  });
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(done, ms);
-    function done(): void {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", done);
-      resolve();
-    }
-    signal.addEventListener("abort", done, { once: true });
-  });
-}
+/** Lookups of threads missing from the listing in flight at once. */
+const STRAY_LOOKUP_CONCURRENCY = 8;
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();
   return new Promise((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
 }
 
+export interface StartupDeps {
+  bb: Pick<BbPluginApi, "storage" | "log">;
+  db: Database;
+  threads: ThreadGateway;
+  lifecycle: LifecycleStore;
+  order: OrderStore;
+  archived: ArchivedThreads;
+  change: ChangeRecords;
+  orderChanged(): void;
+}
+
 /**
- * The `startup` service: seeds scheduled sends, retrying every minute until
- * one seed succeeds, prunes `stores` and reads the archived threads once,
- * then waits for `signal` to abort.
+ * The threads that have stored state but are missing from the listing, which
+ * bb still has: one created while the listing was read, or one a page
+ * boundary skipped. Rejects when bb cannot say, so nothing is forgotten on
+ * a guess.
  */
-export async function runStartup(
-  bb: Pick<BbPluginApi, "sdk" | "log">,
-  stores: readonly PrunableStore[],
-  tracker: ScheduledTracker,
-  archived: ArchivedThreads,
-  signal: AbortSignal,
-  retryMs = SEED_RETRY_MS,
-): Promise<void> {
-  const seeded = seedScheduled(bb, tracker, signal);
-  await pruneDeletedThreads(bb, stores, archived, signal);
-  let ok = await seeded;
-  while (!ok && !signal.aborted) {
-    await sleep(retryMs, signal);
-    if (signal.aborted) break;
-    ok = await seedScheduled(bb, tracker, signal);
+async function findStrays(
+  deps: StartupDeps,
+  snapshot: readonly ServerThread[],
+  archivedIds: ReadonlySet<string>,
+): Promise<{ threads: (ServerThread | ThreadPresence)[]; archivedIds: Set<string> }> {
+  const listed = new Set([...snapshot.map((thread) => thread.id), ...archivedIds]);
+  const missing = [...new Set([...deps.lifecycle.all().keys(), ...deps.order.get()])].filter((id) => !listed.has(id));
+  const threads: (ServerThread | ThreadPresence)[] = [...snapshot];
+  const archived = new Set(archivedIds);
+  for (let start = 0; start < missing.length; start += STRAY_LOOKUP_CONCURRENCY) {
+    const found = await Promise.all(missing.slice(start, start + STRAY_LOOKUP_CONCURRENCY).map((id) => deps.threads.find(id)));
+    for (const thread of found) {
+      if (thread === undefined) continue;
+      if (thread.archived) archived.add(thread.id);
+      else threads.push(thread);
+    }
   }
+  return { threads, archivedIds: archived };
+}
+
+/**
+ * Reads the threads bb has and brings the stored state in line with them:
+ * `reconcileState`, then the archived set. What the listing missed is asked
+ * of bb one thread at a time before anything is forgotten, inside the change
+ * that writes, so no thread created meanwhile is forgotten either. Logs and
+ * returns on failure, so the next start tries again.
+ */
+export async function reconcileWithBb(deps: StartupDeps): Promise<void> {
+  try {
+    const listing = Promise.all([deps.threads.snapshot(), deps.threads.archivedIds()]);
+    deps.archived.listing(listing);
+    const [snapshot, archivedIds] = await listing;
+    deps.archived.replace(archivedIds);
+    await deps.change(async (changed) => {
+      const known = await findStrays(deps, snapshot, archivedIds);
+      const result = reconcileState({ lifecycle: deps.lifecycle, order: deps.order }, known.threads, known.archivedIds);
+      changed(result.rows);
+      if (result.orderChanged) deps.orderChanged();
+    });
+  } catch (error) {
+    deps.bb.log.warn(`could not reconcile with bb's threads: ${errorMessage(error)}`);
+  }
+}
+
+/**
+ * The `startup` service: removes the earlier list's data, reconciles with
+ * bb's threads once, then waits for `signal` to abort.
+ */
+export async function runStartup(deps: StartupDeps, signal: AbortSignal): Promise<void> {
+  try {
+    await removeLegacyData({ storage: deps.bb.storage, log: deps.bb.log }, deps.db);
+  } catch (error) {
+    deps.bb.log.warn(`could not remove the earlier list's data: ${errorMessage(error)}`);
+  }
+  await reconcileWithBb(deps);
   await waitForAbort(signal);
 }

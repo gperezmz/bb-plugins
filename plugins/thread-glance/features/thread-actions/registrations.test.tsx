@@ -1,0 +1,214 @@
+// @vitest-environment jsdom
+// Thread Glance's actions in bb's thread menu: where bb's menu puts them
+// (AC20) and that they run through the window's lifecycle commands.
+import { act, cleanup, waitFor } from "@testing-library/react";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+import type { PluginThreadAction, PluginThreadActionRegistration } from "@get-bb/plugin-sdk/app";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
+import type { MenuData } from "./model/menu";
+import { targetOf } from "./model/testing";
+
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
+
+type Registration = PluginThreadActionRegistration<unknown>;
+let registrations: Registration[];
+
+beforeAll(async () => {
+  const app = await loadPluginApp(() => import("../../app"));
+  registrations = app.threadActions;
+});
+afterEach(() => {
+  cleanup();
+  toasts.success.mockClear();
+  toasts.error.mockClear();
+});
+
+/** bb 0.46's own thread actions, as its app bundle registers them, before any plugin's. */
+const BB_ACTIONS: { label: string; group: string; order?: number }[] = [
+  { label: "Open in split", group: "1_open" },
+  { label: "New thread in environment", group: "2_organize", order: 10 },
+  { label: "Copy thread link", group: "2_organize", order: 20 },
+  { label: "Mark read", group: "2_organize", order: 30 },
+  { label: "Pin", group: "2_organize", order: 40 },
+  { label: "Rename", group: "2_organize", order: 60 },
+  { label: "Archive", group: "4_lifecycle" },
+  { label: "Delete", group: "4_lifecycle" },
+];
+
+/** The menu bb draws for `data`: sorted by group, then order (unset last), then registration order. */
+function menuFor(thread: ReturnType<typeof makeThread>, data: MenuData) {
+  const mine = registrations.flatMap((registration) => {
+    const action = registration.item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never });
+    return action === null ? [] : [{ label: action.label, group: registration.group, order: registration.order, action }];
+  });
+  const entries = [...BB_ACTIONS.map((entry) => ({ ...entry, action: null as PluginThreadAction | null })), ...mine];
+  return entries
+    .map((entry, index) => ({ ...entry, index }))
+    .sort(
+      (a, b) =>
+        a.group.localeCompare(b.group) || (a.order ?? Infinity) - (b.order ?? Infinity) || a.index - b.index,
+    );
+}
+
+describe("registrations", () => {
+  it("registers every action of the thread menu once", () => {
+    expect(registrations.map((registration) => registration.id)).toEqual([
+      "parent",
+      "project",
+      "copy-branch",
+      "copy-thread-id",
+      "snooze",
+      "wake",
+      "park",
+      "resume",
+      "settle",
+      "unsettle",
+    ]);
+  });
+});
+
+describe("where the actions sit in bb's menu (AC20)", () => {
+  const idle = makeThread({ id: "t1", title: "Idle", environment: { branchName: "feat/x" } });
+  const data = (() => {
+    const now = Date.now();
+    return {
+      now,
+      facts: new Map([["t1", { busy: false, woke: false, mark: "active" as const, branch: "feat/x" }]]),
+      projects: new Map([["proj_a", { name: "Alpha", isPersonal: false, settingsHref: "/p" }]]),
+      presets: [],
+      machines: { count: 1 },
+      commands: {} as never,
+      ports: {} as never,
+    } satisfies MenuData;
+  })();
+
+  it("puts Parent… and Project after Open in split, the lifecycle actions after Pin and the copies after Copy thread link", () => {
+    const labels = menuFor(idle, data).map((entry) => entry.label);
+    expect(labels).toEqual([
+      "Open in split",
+      "Parent…",
+      "Project",
+      "New thread in environment",
+      "Copy thread link",
+      "Copy branch",
+      "Copy thread ID",
+      "Mark read",
+      "Pin",
+      "Snooze",
+      "Park thread",
+      "Settle",
+      "Rename",
+      "Archive",
+      "Delete",
+    ]);
+  });
+
+  it("offers Snooze, Park thread and Settle in the thread header's menu on a thread that is not busy", () => {
+    const names = menuFor(idle, data).flatMap((entry) => (entry.action === null ? [] : [entry.label]));
+    expect(names).toEqual(expect.arrayContaining(["Snooze", "Park thread", "Settle"]));
+  });
+
+  it("gives Snooze a choice list, so bb draws a submenu", () => {
+    const snooze = menuFor(idle, data).find((entry) => entry.label === "Snooze")!;
+    expect(snooze.action!.choices!.items.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the window's data", () => {
+  it("runs Park through the lifecycle commands, with the threads and rows the window holds", async () => {
+    const thread = makeThread({ id: "t1", title: "Idle" });
+    const calls: string[] = [];
+    let data: MenuData | undefined;
+    const park = registrations.find((registration) => registration.id === "park")!;
+    function Probe() {
+      data = park.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, {
+      sidebarThreads: { status: "ready", threads: [thread], projects: PROJECTS },
+      rpc: {
+        park: async () => {
+          calls.push("park");
+          return { changes: [], reclaim: { stopped: false, closed: 0, left: 0 }, note: null };
+        },
+      } as never,
+      sdk: { hosts: { list: async () => [{ id: "h1", name: "Laptop" }] } } as never,
+    });
+    await waitFor(() => expect(data?.machines).toEqual({ count: 1 }));
+    expect(data!.facts.get("t1")).toEqual({ busy: false, woke: false, mark: "active", branch: "main" });
+    expect(data!.presets.map((preset) => preset.label)).toContain("1 hour");
+
+    const action = park.item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never })!;
+    await act(async () => {
+      await action.run({ requestRename: () => {} });
+    });
+    expect(calls).toEqual(["park"]);
+    expect(toasts.success).toHaveBeenCalledWith("Thread parked", expect.anything());
+  });
+
+  it("opens a project's settings page in bb's own router, as a history entry it follows", async () => {
+    let data: MenuData | undefined;
+    const project = registrations.find((registration) => registration.id === "project")!;
+    function Probe() {
+      data = project.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, { sidebarThreads: { status: "ready", threads: [makeThread({ id: "t1" })], projects: PROJECTS } });
+    await waitFor(() => expect(data).toBeDefined());
+    const popped = vi.fn();
+    window.addEventListener("popstate", popped);
+    try {
+      data!.ports.openPage(`/settings/projects/${PROJECTS[0]!.id}`);
+      expect(window.location.pathname).toBe(`/settings/projects/${PROJECTS[0]!.id}`);
+      expect(popped).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener("popstate", popped);
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
+  it("marks Add local path unavailable when the machines cannot be listed", async () => {
+    let data: MenuData | undefined;
+    const project = registrations.find((registration) => registration.id === "project")!;
+    function Probe() {
+      data = project.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, {
+      sidebarThreads: { status: "ready", threads: [makeThread({ id: "t1" })], projects: PROJECTS },
+      sdk: { hosts: { list: async () => Promise.reject(new Error("offline")) } } as never,
+    });
+    await waitFor(() => expect(data?.machines).toBe("failed"));
+  });
+
+  it("lists the machines again when they could not be listed, or there were none, and stops once they were", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const answers: (() => Promise<{ id: string; name: string }[]>)[] = [
+      () => Promise.reject(new Error("offline")),
+      async () => [],
+      async () => [{ id: "h1", name: "Laptop" }],
+    ];
+    const list = vi.fn(() => answers[Math.min(list.mock.calls.length - 1, answers.length - 1)]!());
+    let data: MenuData | undefined;
+    const project = registrations.find((registration) => registration.id === "project")!;
+    function Probe() {
+      data = project.useData!({ threadIds: ["t1"] }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, {
+      sidebarThreads: { status: "ready", threads: [makeThread({ id: "t1" })], projects: PROJECTS },
+      sdk: { hosts: { list } } as never,
+    });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(0)));
+    expect(data?.machines).toBe("failed");
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(data?.machines).toEqual({ count: 0 });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(30_000)));
+    expect(data?.machines).toEqual({ count: 1 });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(300_000)));
+    expect(list).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+});

@@ -1,0 +1,287 @@
+// @vitest-environment jsdom
+// AC19: the Hover card and the Jump hints; and AC5's clock menu on a card.
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import type { PluginSidebarPullRequest } from "@get-bb/plugin-sdk/app";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useSnoozePickerRequests } from "../commands/snooze-picker-request";
+import { makeThread } from "@/testing/fixtures";
+import { flush, mount, useListHarness } from "../testing/harness";
+import { forgetModelLookups } from "../sync/model-lookup";
+import { closeHoverCards } from "./rows/hover-state";
+
+useListHarness();
+
+const NOW = Date.now();
+const MIN = 60_000;
+const fresh = { createdAt: NOW - 5 * MIN, updatedAt: NOW - 5 * MIN, latestAttentionAt: NOW - 5 * MIN };
+const anchor = (id: string) => document.querySelector<HTMLElement>(`a[data-sidebar-thread-id="${id}"]`)!;
+const cards = () => document.querySelectorAll("[data-hover-card]");
+
+afterEach(() => {
+  vi.useRealTimers();
+  closeHoverCards();
+  forgetModelLookups();
+});
+
+const pullRequest = (patch: Partial<PluginSidebarPullRequest> = {}): PluginSidebarPullRequest => ({
+  experimental_autoMerge: false,
+  experimental_inMergeQueue: null,
+  experimental_checks: { state: "failing" },
+  experimental_review: { state: "review_requested" },
+  experimental_mergeability: { state: "mergeable" },
+  number: 7,
+  title: "Add shelves",
+  url: "https://example.test/pr/7",
+  state: "open",
+  attention: "checks_failed",
+  ...patch,
+});
+
+const models = (options: unknown) => ({
+  threads: { defaultExecutionOptions: async () => options },
+  providers: { models: async () => ({ models: [{ id: "claude-x", model: "claude-x", displayName: "Claude X" }] }) },
+});
+
+/** Keyboard focus, which opens the card at once. */
+async function focusWithKeyboard(element: HTMLElement) {
+  fireEvent.keyDown(document.body, { key: "Tab" });
+  await act(async () => element.focus());
+  await flush();
+}
+
+describe("AC19: the Hover card", () => {
+  it("opens on keyboard focus at once, to the right, 256 px wide, with the title, project, machine and branch", async () => {
+    await mount({
+      threads: [makeThread({ id: "a", title: "Fix the thing", ...fresh, environment: { branchName: "feat/x" } })],
+      slot: { sdk: models({ model: "claude-x", reasoningLevel: "high" }) },
+    });
+    expect(cards()).toHaveLength(0);
+    await focusWithKeyboard(anchor("a"));
+    const hover = document.querySelector<HTMLElement>("[data-hover-card]")!;
+    expect(hover.getAttribute("data-side")).toBe("right");
+    expect(hover.className).toContain("w-64");
+    const text = hover.textContent!;
+    for (const part of ["Fix the thing", "Alpha", "Laptop", "feat/x"]) expect(text).toContain(part);
+  });
+
+  it("does not open when a click focuses the link", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })] });
+    fireEvent.pointerDown(document.body);
+    await act(async () => anchor("a").focus());
+    await flush();
+    expect(cards()).toHaveLength(0);
+  });
+
+  it("shows the harness with its status glyph, then the model and reasoning level loaded from bb", async () => {
+    let release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => (release = resolve));
+    await mount({
+      threads: [makeThread({ id: "a", ...fresh, indicator: "unread-error" })],
+      slot: {
+        sdk: {
+          threads: { defaultExecutionOptions: () => pending },
+          providers: { models: async () => ({ models: [{ id: "claude-x", model: "claude-x", displayName: "Claude X" }] }) },
+        },
+      },
+    });
+    await focusWithKeyboard(anchor("a"));
+    const hover = document.querySelector<HTMLElement>("[data-hover-card]")!;
+    expect(within(hover).getAllByText("Loading…")).toHaveLength(2);
+    expect(hover.querySelector("[data-harness=claude-code]")).not.toBeNull();
+    expect(hover.querySelector("[title=Failed]")).not.toBeNull();
+    await act(async () => release({ model: "claude-x", reasoningLevel: "high" }));
+    await flush();
+    expect(hover.textContent).toContain("Claude X");
+    expect(hover.textContent).toContain("high");
+  });
+
+  it("says Not set when bb has no model and Unavailable when it cannot be loaded", async () => {
+    await mount({
+      threads: [makeThread({ id: "a", ...fresh }), makeThread({ id: "b", ...fresh })],
+      slot: {
+        sdk: {
+          threads: {
+            defaultExecutionOptions: async ({ threadId }: { threadId: string }) => {
+              if (threadId === "b") throw new Error("no");
+              return null;
+            },
+          },
+        },
+      },
+    });
+    await focusWithKeyboard(anchor("a"));
+    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Not set")).toHaveLength(2);
+    await focusWithKeyboard(anchor("b"));
+    await flush();
+    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Unavailable")).toHaveLength(2);
+  });
+
+  it("shows the branch's pull request with bb's attention, in red when checks failed", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sidebarPullRequests: { a: pullRequest() }, sdk: models(null) } });
+    await focusWithKeyboard(anchor("a"));
+    const section = document.querySelector<HTMLElement>("[data-section=pull-request]")!;
+    expect(section.textContent).toContain("#7");
+    expect(section.textContent).toContain("Add shelves");
+    expect(section.textContent).toContain("Checks failing · Review requested · Mergeable");
+    const label = section.querySelector<HTMLElement>("[data-pull-request-label]")!;
+    expect(label.textContent).toBe("Checks failed");
+    expect(label.className).toContain("var(--tg-failed)");
+    expect(section.querySelector<HTMLAnchorElement>("a")!.href).toBe("https://example.test/pr/7");
+  });
+
+  it("has no pull request section for a branch without one", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sdk: models(null) } });
+    await focusWithKeyboard(anchor("a"));
+    expect(cards()).toHaveLength(1);
+    expect(document.querySelector("[data-section=pull-request]")).toBeNull();
+  });
+
+  it("shows one card at a time", async () => {
+    await mount({ threads: [makeThread({ id: "a", title: "First", ...fresh }), makeThread({ id: "b", title: "Second", ...fresh })], slot: { sdk: models(null) } });
+    await focusWithKeyboard(anchor("a"));
+    await focusWithKeyboard(anchor("b"));
+    expect(cards()).toHaveLength(1);
+    expect(cards()[0]!.textContent).toContain("Second");
+  });
+
+  it("lists the direct children under Subthreads (N), each opening that child", async () => {
+    const m = await mount({
+      threads: [
+        makeThread({ id: "p", ...fresh }),
+        makeThread({ id: "c1", title: "One", parentThreadId: "p", ...fresh }),
+        makeThread({ id: "c2", title: "Two", parentThreadId: "p", ...fresh }),
+      ],
+      slot: { sdk: models(null) },
+    });
+    await focusWithKeyboard(anchor("p"));
+    const hover = document.querySelector<HTMLElement>("[data-hover-card]")!;
+    fireEvent.click(within(hover).getByRole("button", { name: "Subthreads (2)" }));
+    fireEvent.click(within(hover).getByRole("button", { name: "Two" }));
+    expect(m.view.navigateCalls.at(-1)).toEqual({ method: "toThread", threadId: "c2" });
+  });
+
+  it("opens 250 ms after the pointer enters and closes 300 ms after it leaves, and never for touch", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sdk: models(null) } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    fireEvent.pointerEnter(anchor("a"), { pointerType: "touch" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
+    expect(cards()).toHaveLength(0);
+    fireEvent.pointerEnter(anchor("a"), { pointerType: "mouse" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(249)));
+    expect(cards()).toHaveLength(0);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
+    expect(cards()).toHaveLength(1);
+    fireEvent.pointerLeave(anchor("a"), { pointerType: "mouse" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(299)));
+    expect(cards()).toHaveLength(1);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
+    await flush();
+    expect(cards()).toHaveLength(0);
+  });
+});
+
+describe("AC19: Jump hints", () => {
+  const threads = () =>
+    Array.from({ length: 11 }, (_, index) =>
+      makeThread({ id: `t${index}`, title: `T${index}`, createdAt: NOW - (index + 1) * MIN, updatedAt: NOW - (index + 1) * MIN, latestAttentionAt: NOW - (index + 1) * MIN }),
+    );
+  const hints = () => [...document.querySelectorAll("[data-jump-hint]")].map((hint) => hint.textContent);
+  const press = (type: "keydown" | "keyup", init: KeyboardEventInit) => act(() => void window.dispatchEvent(new KeyboardEvent(type, init)));
+
+  it("labels the first nine rows after Ctrl is held alone for 700 ms, and clears on release", async () => {
+    await mount({ threads: threads(), server: { order: threads().map((thread) => thread.id) } });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    press("keydown", { key: "Control", ctrlKey: true });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(699)));
+    expect(hints()).toEqual([]);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
+    expect(hints()).toEqual(Array.from({ length: 9 }, (_, index) => `Ctrl + ${index + 1}`));
+    press("keyup", { key: "Control" });
+    expect(hints()).toEqual([]);
+  });
+
+  it("cancels on another key, on Shift and on blur", async () => {
+    await mount({ threads: threads() });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    press("keydown", { key: "Control", ctrlKey: true });
+    press("keydown", { key: "a", ctrlKey: true });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
+    expect(hints()).toEqual([]);
+    press("keydown", { key: "Control", ctrlKey: true, shiftKey: true });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
+    expect(hints()).toEqual([]);
+    press("keydown", { key: "Control", ctrlKey: true });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(700)));
+    expect(hints()).toHaveLength(9);
+    act(() => void window.dispatchEvent(new Event("blur")));
+    expect(hints()).toEqual([]);
+  });
+});
+
+describe("AC5: a card's clock menu", () => {
+  const MONDAY_19 = new Date(2026, 9, 5, 19, 0, 0);
+
+  async function openClockMenu() {
+    const m = await mount({ threads: [makeThread({ id: "a", ...fresh })] });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(MONDAY_19);
+    const trigger = screen.getByRole("button", { name: "Snooze Thread a" });
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    });
+    return { m, menu: screen.getByRole("menu") };
+  }
+
+  it("offers the presets, disables a time that has passed with its reason, and resolves Next week to next Monday 09:00", async () => {
+    const { menu } = await openClockMenu();
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent!.split(/(?=(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),)/)[0])).toEqual([
+      "1 hour",
+      "Wait refresh (5 hours)",
+      "This evening",
+      "Tomorrow morning",
+      "Next week",
+      "Pick date & time…",
+      "Park thread",
+    ]);
+    const evening = within(menu).getByRole("menuitem", { name: /This evening/ });
+    expect(evening.getAttribute("aria-disabled")).toBe("true");
+    expect(within(menu).getByRole("menuitem", { name: /Next week/ }).textContent).toContain("Mon, Oct 12, 9:00 AM");
+    fireEvent.pointerMove(evening.parentElement!);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(500)));
+    expect(screen.getAllByText("Today's time has passed").length).toBeGreaterThan(0);
+  });
+
+  it("snoozes until a preset's time", async () => {
+    const { m, menu } = await openClockMenu();
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: /Tomorrow morning/ }));
+    });
+    await flush();
+    const call = m.server.calls.find((entry) => entry.method === "snooze")!;
+    expect(call.input).toEqual({ threadId: "a", until: new Date(2026, 9, 6, 9, 0, 0).getTime() });
+  });
+
+  it("asks for the Snooze until dialog from Pick date & time…", async () => {
+    const asked: string[] = [];
+    function Probe() {
+      useSnoozePickerRequests((threadId) => asked.push(threadId));
+      return null;
+    }
+    render(<Probe />);
+    const { menu } = await openClockMenu();
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Pick date & time…" }));
+    });
+    expect(asked).toEqual(["a"]);
+  });
+
+  it("parks from the clock menu", async () => {
+    const { m, menu } = await openClockMenu();
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Park thread" }));
+    });
+    await flush();
+    expect(m.server.calls.some((entry) => entry.method === "park")).toBe(true);
+  });
+});
