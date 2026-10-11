@@ -36,6 +36,7 @@ function macos(environment = `BB_THREAD_ID=thr_abc123 TG_TEST_SECRET=${SECRET}`)
     platform: "darwin",
     commands: {
       [LSOF]: "p4242\ncnode\nf21\nn127.0.0.1:5173\n",
+      [`${LSOF} -a -p 4242`]: "p4242\ncnode\nf21\nn127.0.0.1:5173\n",
       "lsof -a -d cwd -Fn -p 4242": "p4242\nfcwd\nn/Users/me/work/app/web\n",
       "ps -ww -o lstart=,comm= -p 4242": "Sat Oct 11 07:04:05 2026 /usr/local/bin/node\n",
       "ps -ww -o command= -p 4242": `${command}\n`,
@@ -233,6 +234,12 @@ describe("signal", () => {
     const kill = vi.fn();
     expect(await signalListener(probe(), kill, input)).toBe("sent");
     expect(kill).toHaveBeenCalledExactlyOnceWith(4242, "SIGTERM");
+  });
+
+  it("looks only at the target process's sockets, not at every process", async () => {
+    const system = linux();
+    expect(await signalListener(createSystemProbe(system), vi.fn(), input)).toBe("sent");
+    expect(system.listed).toEqual(["/proc/4242/fd"]);
   });
 
   it("signals nothing when the PID was reused by a process that started later (AC4)", async () => {

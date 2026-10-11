@@ -5,6 +5,7 @@
 // The environment of a process is read only inside `ownerOf`, which returns
 // the single `BB_THREAD_ID` value and nothing else. No command's output or
 // failure text is passed on: a failure names the command and why it failed.
+import { inBatches } from "../shared/batches";
 import {
   DOCKER_PS_FORMAT,
   executableName,
@@ -41,9 +42,10 @@ export interface HostProbe {
    * Every listening TCP socket the machine shows, with the process holding it:
    * on Linux from `/proc/net/tcp*` and the sockets in `/proc/<pid>/fd` (a
    * process whose fd directory is unreadable is skipped), on macOS from `lsof`.
-   * Rejects when the system cannot list them.
+   * With `pid`, only that process's sockets, without looking at any other
+   * process. Rejects when the system cannot list them.
    */
-  listening(): Promise<RawListener[]>;
+  listening(pid?: number): Promise<RawListener[]>;
   /** The working directory of each of `pids` it can read. */
   cwds(pids: readonly number[]): Promise<Map<number, string>>;
   identify(pid: number): Promise<ProcessIdentity>;
@@ -66,37 +68,35 @@ export function createSystemProbe(system: SystemAccess): HostProbe {
   const readBootTime = () => (bootTime ??= system.readFile("/proc/stat").then(parseBootTime, () => null));
   const attempt = <T>(read: Promise<T>): Promise<T | null> => read.catch(() => null);
 
-  /** The processes that hold each of `inodes`, found through the `socket:[inode]` links in their fd directories. */
-  async function socketHolders(inodes: ReadonlySet<number>): Promise<Map<number, number[]>> {
+  /** The processes among `pids` that hold each of `inodes`, found through the `socket:[inode]` links in their fd directories. */
+  async function socketHolders(inodes: ReadonlySet<number>, pids: readonly number[]): Promise<Map<number, number[]>> {
     const holders = new Map<number, number[]>();
-    const pids = (await system.readdir("/proc")).filter((name) => /^\d+$/.test(name)).map(Number);
-    for (let start = 0; start < pids.length && holders.size < inodes.size; start += FD_SCAN_CONCURRENCY) {
+    await inBatches(pids, FD_SCAN_CONCURRENCY, async (pid) => {
+      if (holders.size >= inodes.size) return;
+      const fds = await attempt(system.readdir(`/proc/${pid}/fd`));
+      if (fds === null) return;
       await Promise.all(
-        pids.slice(start, start + FD_SCAN_CONCURRENCY).map(async (pid) => {
-          const fds = await attempt(system.readdir(`/proc/${pid}/fd`));
-          if (fds === null) return;
-          await Promise.all(
-            fds.map(async (fd) => {
-              const target = await attempt(system.readlink(`/proc/${pid}/fd/${fd}`));
-              const inode = target === null ? null : socketInode(target);
-              if (inode === null || !inodes.has(inode)) return;
-              const pidsOfInode = holders.get(inode) ?? [];
-              if (!pidsOfInode.includes(pid)) pidsOfInode.push(pid);
-              holders.set(inode, pidsOfInode);
-            }),
-          );
+        fds.map(async (fd) => {
+          const target = await attempt(system.readlink(`/proc/${pid}/fd/${fd}`));
+          const inode = target === null ? null : socketInode(target);
+          if (inode === null || !inodes.has(inode)) return;
+          const pidsOfInode = holders.get(inode) ?? [];
+          if (!pidsOfInode.includes(pid)) pidsOfInode.push(pid);
+          holders.set(inode, pidsOfInode);
         }),
       );
-    }
+    });
     return holders;
   }
 
-  async function linuxListening(): Promise<RawListener[]> {
+  async function linuxListening(only?: number): Promise<RawListener[]> {
     const [v4, v6] = await Promise.all([attempt(system.readFile("/proc/net/tcp")), attempt(system.readFile("/proc/net/tcp6"))]);
     if (v4 === null && v6 === null) throw new Error("/proc/net/tcp is not readable");
     const sockets = [...parseProcNetTcp(v4 ?? ""), ...parseProcNetTcp(v6 ?? "")];
     if (sockets.length === 0) return [];
-    const holders = await socketHolders(new Set(sockets.map((socket) => socket.inode)));
+    const pids =
+      only !== undefined ? [only] : (await system.readdir("/proc")).filter((name) => /^\d+$/.test(name)).map(Number);
+    const holders = await socketHolders(new Set(sockets.map((socket) => socket.inode)), pids);
     const names = new Map<number, string>();
     const found = new Map<string, RawListener>();
     for (const socket of sockets) {
@@ -141,8 +141,9 @@ export function createSystemProbe(system: SystemAccess): HostProbe {
   return {
     platform,
     ownPids: [system.pid, system.ppid],
-    async listening() {
-      return platform === "linux" ? linuxListening() : parseLsofListeners(await run("lsof", LSOF_ARGS));
+    async listening(pid) {
+      if (platform === "linux") return linuxListening(pid);
+      return parseLsofListeners(await run("lsof", pid === undefined ? LSOF_ARGS : [...LSOF_ARGS, "-a", "-p", String(pid)]));
     },
     async cwds(pids) {
       if (pids.length === 0) return new Map();

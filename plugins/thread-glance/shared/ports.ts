@@ -40,6 +40,8 @@ export const hostListenerSchema = z.strictObject({
 export type HostListener = z.infer<typeof hostListenerSchema>;
 
 export const MAX_WORKSPACES_PER_SCAN = 2_000;
+/** The most listeners one `scan` reply holds. */
+export const MAX_LISTENERS_PER_SCAN = 5_000;
 
 export const hostContract = {
   /**
@@ -49,7 +51,7 @@ export const hostContract = {
    */
   scan: {
     input: z.strictObject({ workspaces: z.array(z.string().check(z.maxLength(4096))).check(z.maxLength(MAX_WORKSPACES_PER_SCAN)) }),
-    output: z.strictObject({ supported: z.boolean(), listeners: z.array(hostListenerSchema).check(z.maxLength(5_000)) }),
+    output: z.strictObject({ supported: z.boolean(), listeners: z.array(hostListenerSchema).check(z.maxLength(MAX_LISTENERS_PER_SCAN)) }),
   },
   /**
    * Sends SIGTERM to the process listening on `port` only if it still has
@@ -67,6 +69,9 @@ export const hostContract = {
     output: z.strictObject({ result: z.enum(["sent", "changed", "failed"]) }),
   },
 } as const;
+
+/** What the host answers to `signal`. */
+export type HostSignalResult = z.infer<typeof hostContract.signal.output>["result"];
 
 // --- The server's snapshot and its channel. ---
 

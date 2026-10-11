@@ -22,6 +22,8 @@ export interface FakeSystemOptions {
 export interface FakeSystem extends SystemAccess {
   /** The command lines run, in order. */
   ran: string[];
+  /** The directories listed, in order. */
+  listed: string[];
 }
 
 export function createFakeSystem(options: FakeSystemOptions): FakeSystem {
@@ -30,6 +32,7 @@ export function createFakeSystem(options: FakeSystemOptions): FakeSystem {
     pid: options.pid ?? 900,
     ppid: options.ppid ?? 800,
     ran: [],
+    listed: [],
     async run(file, args) {
       const line = [file, ...args].join(" ");
       fake.ran.push(line);
@@ -43,6 +46,7 @@ export function createFakeSystem(options: FakeSystemOptions): FakeSystem {
       return content;
     },
     async readdir(path) {
+      fake.listed.push(path);
       const names = options.dirs?.[path];
       if (names === undefined) throw new Error("ENOENT");
       return [...names];

@@ -1,15 +1,14 @@
 // The host entry's two operations, on the `HostProbe` port: list the
 // listeners inside some workspaces, and signal one of them. The command line
 // is read only to skip bb's own processes; the environment only for the owner.
-import type { HostListener } from "../shared/ports";
+import { inBatches } from "../shared/batches";
+import { MAX_LISTENERS_PER_SCAN, type HostListener, type HostSignalResult, type PortTarget } from "../shared/ports";
 import { isBbCommandLine } from "./parse";
 import type { HostProbe } from "./probe";
 import { matchWorkspace, workspaceMatchers, type WorkspaceMatcher } from "./workspaces";
 
 /** Processes inspected at once. */
 const CONCURRENCY = 6;
-/** The most listeners a reply holds, as the contract allows. */
-const MAX_LISTENERS = 5_000;
 
 const SUPPORTED_PLATFORMS: readonly NodeJS.Platform[] = ["linux", "darwin"];
 
@@ -17,14 +16,6 @@ async function matchers(probe: HostProbe, workspaces: readonly string[]): Promis
   const real = new Map<string, string | null>();
   await Promise.all(workspaces.map(async (path) => real.set(path, await probe.realpath(path))));
   return workspaceMatchers(workspaces, (path) => real.get(path) ?? null);
-}
-
-async function inBatches<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = [];
-  for (let start = 0; start < items.length; start += CONCURRENCY) {
-    results.push(...(await Promise.all(items.slice(start, start + CONCURRENCY).map(work))));
-  }
-  return results;
 }
 
 export async function scanListeners(
@@ -44,7 +35,7 @@ export async function scanListeners(
   });
 
   const identities = new Map<number, { startedAt: number; executable: string | null; owner: string | null } | null>();
-  await inBatches([...new Set(matched.map(({ socket }) => socket.pid))], async (pid) => {
+  await inBatches([...new Set(matched.map(({ socket }) => socket.pid))], CONCURRENCY, async (pid) => {
     const identity = await probe.identify(pid);
     if (identity.startedAt === null || (identity.commandLine !== null && isBbCommandLine(identity.commandLine))) {
       identities.set(pid, null);
@@ -90,10 +81,8 @@ export async function scanListeners(
       container: published.container,
     });
   }
-  return { supported: true, listeners: listeners.slice(0, MAX_LISTENERS) };
+  return { supported: true, listeners: listeners.slice(0, MAX_LISTENERS_PER_SCAN) };
 }
-
-export type SignalResult = "sent" | "changed" | "failed";
 
 /**
  * Sends SIGTERM to the process listening on `port` only if it has `pid` and
@@ -102,10 +91,11 @@ export type SignalResult = "sent" | "changed" | "failed";
 export async function signalListener(
   probe: HostProbe,
   kill: (pid: number, signal: "SIGTERM") => void,
-  input: { port: number; pid: number; startedAt: number; workspaces: readonly string[] },
-): Promise<SignalResult> {
+  input: PortTarget & { workspaces: readonly string[] },
+): Promise<HostSignalResult> {
   if (!SUPPORTED_PLATFORMS.includes(probe.platform) || probe.ownPids.includes(input.pid)) return "changed";
-  const sockets = await probe.listening();
+  // Only the target process is looked at, not every process on the machine.
+  const sockets = await probe.listening(input.pid);
   if (!sockets.some((socket) => socket.port === input.port && socket.pid === input.pid)) return "changed";
   const cwd = (await probe.cwds([input.pid])).get(input.pid);
   if (cwd === undefined || matchWorkspace(cwd, await matchers(probe, input.workspaces)) === null) return "changed";

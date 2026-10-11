@@ -68,7 +68,7 @@ export interface ProcNetSocket {
   inode: number;
 }
 
-/** Four hextets of 16 bits to the shortest IPv6 text, with `::` for the longest run of zeros. */
+/** Eight hextets of 16 bits to the shortest IPv6 text, with `::` for the longest run of zeros. */
 function ipv6Text(hextets: readonly number[]): string {
   let best = { start: -1, length: 0 };
   for (let start = 0; start < 8; start++) {
@@ -247,7 +247,7 @@ export function parseDockerPs(output: string): DockerPort[] {
       // `0.0.0.0:8080->80/tcp`, `:::8080->80/tcp`, `127.0.0.1:3000-3002->3000-3002/tcp`
       const match = /^\s*(.*):(\d+)(?:-(\d+))?->[^/]+\/tcp\s*$/.exec(published);
       if (match === null) continue;
-      const address = match[1] === "::" ? "::" : match[1];
+      const address = match[1];
       const first = Number(match[2]);
       const last = match[3] === undefined ? first : Number(match[3]);
       for (let port = first; port <= last && port < first + MAX_RANGE; port++) {
