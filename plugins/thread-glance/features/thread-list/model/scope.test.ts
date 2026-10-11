@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeProject, PROJECTS } from "../testing/fixtures";
+import { makeProject, PROJECTS } from "@/testing/fixtures";
 import { ALL_PROJECTS, filterScopeOptions, moveHighlight, resolveScope, scopeLabel, scopeOptions } from "./scope";
 
 describe("the project scope", () => {

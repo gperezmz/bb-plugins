@@ -5,7 +5,7 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { parkedRow, settledRow, snoozedRow, type LifecycleRow } from "@/shared/lifecycle";
-import { DAY, HOUR, makeProject, makeThread, PROJECTS, working } from "../testing/fixtures";
+import { DAY, HOUR, makeProject, makeThread, PROJECTS, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { SWEEP_MS } from "../commands/sweep";
 

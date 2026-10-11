@@ -5,9 +5,8 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { pluginData } from "@/features/thread-list";
-import { makeProject } from "@/features/thread-list/testing/fixtures";
-import { endPluginLifetime } from "@/features/thread-list/sync/lifetime";
+import { endPluginLifetime, pluginData } from "@/features/thread-list";
+import { makeProject } from "@/testing/fixtures";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
 import type { Appearance } from "@/shared/signals";
 import { SAVE_DELAY_MS, SAVED_SHOWN_MS } from "./model/autosave";

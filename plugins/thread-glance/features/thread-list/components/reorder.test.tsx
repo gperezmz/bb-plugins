@@ -3,7 +3,7 @@
 // than Manual order turns reordering off in Active while Pinned still moves.
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeThread, PROJECTS, titleOf } from "../testing/fixtures";
+import { makeThread, PROJECTS, titleOf } from "@/testing/fixtures";
 import { installRowBoxes, rowY } from "../testing/dom-layout";
 import { flush, mount, useListHarness, type Mounted } from "../testing/harness";
 

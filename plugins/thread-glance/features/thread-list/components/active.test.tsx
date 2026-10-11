@@ -3,7 +3,7 @@
 // (AC4).
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { makeThread, PROJECTS, titleOf } from "../testing/fixtures";
+import { makeThread, PROJECTS, titleOf } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 
 useListHarness();

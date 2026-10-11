@@ -7,7 +7,6 @@ import { SettingsPage } from "@/features/settings";
 import { ThreadActionDialogs, registerThreadActions } from "@/features/thread-actions";
 import { ChildrenButton, ParentButton } from "@/features/thread-header";
 import { EXTRA_ICONS, OverlaySyncKeeper, ThreadList } from "@/features/thread-list";
-import "@/features/thread-list/theme/theme.css";
 
 export default definePluginApp((app) => {
   for (const [name, component] of Object.entries(EXTRA_ICONS)) app.experimental_icons.register({ name, component });

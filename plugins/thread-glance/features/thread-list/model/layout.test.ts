@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@/shared/settings";
 import { INITIAL_DEVICE_STATE, withParentExpanded } from "../storage/device-state";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { heightsFor } from "./heights";
 import { itemIndexAt, itemsBetween, layoutItems, rowHeight } from "./layout";
 import { buildModel } from "./list-model";

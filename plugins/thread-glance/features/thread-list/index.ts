@@ -3,7 +3,8 @@
 // other parts of the plugin (the thread menu's actions, the thread header's
 // buttons, the settings page) use: the lifecycle commands, the Settle sweep,
 // and hooks for the server's data. Nothing else of the feature is reached
-// from outside.
+// from outside. Importing it brings its stylesheet.
+import "./theme/theme.css";
 export { ThreadList } from "./components/ThreadList";
 export { OverlaySyncKeeper } from "./sync/SyncKeeper";
 export { EXTRA_ICONS } from "./icons";
@@ -18,6 +19,8 @@ export {
   useServerSettings,
 } from "./sync/hooks";
 export { pluginData } from "./sync";
+/** Drops everything the plugin's data holds, as a reload of the app does: for tests, which load the app once per file. */
+export { endPluginLifetime } from "./sync/lifetime";
 export { requestSnoozePicker, useSnoozePickerRequests } from "./commands/snooze-picker-request";
 // What the thread header's buttons and the settings preview draw with: the
 // project mark and colours, the child marks, and the Status slot.

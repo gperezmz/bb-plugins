@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeThread, PROJECTS } from "../thread-list/testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { ChildrenButton } from "./ChildrenButton";
 import { ParentButton } from "./ParentButton";
 import { childrenLabel } from "./model";

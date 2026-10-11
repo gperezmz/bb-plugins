@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@/shared/settings";
 import { parkedRow, settledRow, snoozedRow, type LifecycleRow } from "@/shared/lifecycle";
 import { INITIAL_DEVICE_STATE, withGroupCollapsed, withParentExpanded, withShelfCollapsed, type DeviceState } from "../storage/device-state";
-import { DAY, HOUR, makeThread, PROJECTS, working } from "../testing/fixtures";
+import { DAY, HOUR, makeThread, PROJECTS, working } from "@/testing/fixtures";
 import { buildModel, type ListItem, type ModelInputs } from "./list-model";
 
 const NOW = Date.now();

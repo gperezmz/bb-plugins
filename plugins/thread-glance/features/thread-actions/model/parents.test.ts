@@ -1,6 +1,6 @@
 // The Parent… dialog's options (AC21).
 import { describe, expect, it } from "vitest";
-import { makeThread } from "@/features/thread-list/testing/fixtures";
+import { makeThread } from "@/testing/fixtures";
 import { NO_PARENT_LABEL, parentOptions, unpinsOnChoice, type ParentThread } from "./parents";
 
 const NAMES = new Map([

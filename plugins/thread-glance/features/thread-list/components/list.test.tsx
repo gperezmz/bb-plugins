@@ -4,7 +4,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
-import { DAY, HOUR, makeThread, working, titleOf } from "../testing/fixtures";
+import { DAY, HOUR, makeThread, working, titleOf } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 
 useListHarness();

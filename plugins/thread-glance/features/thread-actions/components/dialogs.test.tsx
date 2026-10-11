@@ -4,7 +4,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeThread, PROJECTS } from "@/features/thread-list/testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { requestSnoozePicker } from "@/features/thread-list";
 import { requestParentDialog, requestProjectDialog } from "../requests";
 import { PARENT_REMOVED, PARENT_UPDATED, UNPIN_UNCONFIRMED } from "./ParentDialog";

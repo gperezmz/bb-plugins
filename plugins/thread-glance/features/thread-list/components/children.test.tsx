@@ -2,7 +2,7 @@
 // AC18: the Children chip on a parent's card, and the child lists under it.
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 
 useListHarness();

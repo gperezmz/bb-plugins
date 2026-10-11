@@ -4,7 +4,7 @@
 // list with the arrow keys.
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { DAY, makeProject, makeThread, PROJECTS, titleOf } from "../testing/fixtures";
+import { DAY, makeProject, makeThread, PROJECTS, titleOf } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { parkedRow } from "@/shared/lifecycle";
 

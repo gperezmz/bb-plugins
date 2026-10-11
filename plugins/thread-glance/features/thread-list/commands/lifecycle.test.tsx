@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
-import { DAY, HOUR, makeThread, working } from "../testing/fixtures";
+import { DAY, HOUR, makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { createLifecycleCommands, lifecycleHostOf } from "./lifecycle";
 import { registerCard, SWEEP_MS } from "./sweep";

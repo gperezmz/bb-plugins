@@ -6,7 +6,7 @@ import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-s
 import { flushListStores } from "../store/list-store";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type ServerState, type SlotExtras } from "./fake-host";
 import type { FakeServerOptions } from "./fake-server";
-import { PROJECTS } from "./fixtures";
+import { PROJECTS } from "@/testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadWithFakeHost>>;
 let app: App;

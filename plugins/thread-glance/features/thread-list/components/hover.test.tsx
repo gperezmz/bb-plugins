@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { PluginSidebarPullRequest } from "@get-bb/plugin-sdk/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSnoozePickerRequests } from "../commands/snooze-picker-request";
-import { makeThread } from "../testing/fixtures";
+import { makeThread } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { forgetModelLookups } from "../sync/model-lookup";
 import { closeHoverCards } from "./rows/hover-state";

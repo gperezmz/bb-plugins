@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parkedRow } from "@/shared/lifecycle";
 import { WORKING_LINES } from "../model/scenes";
-import { DAY, makeThread, working } from "../testing/fixtures";
+import { DAY, makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { WorkingScene } from "./States";
 import { slideRows } from "./reorder/slide";

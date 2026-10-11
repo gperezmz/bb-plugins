@@ -3,7 +3,7 @@
 // are not mounted, and no row asks the server for anything.
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeThread } from "../testing/fixtures";
+import { makeThread } from "@/testing/fixtures";
 import { resetRowRenderCounts, rowRenderCounts } from "../testing/fake-host";
 import { flush, mount, useListHarness } from "../testing/harness";
 

@@ -5,7 +5,7 @@ import { act, cleanup, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadAction, PluginThreadActionRegistration } from "@get-bb/plugin-sdk/app";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { makeThread, PROJECTS } from "@/features/thread-list/testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 import type { MenuData } from "./model/menu";
 import { targetOf } from "./model/testing";
 import { resetWindowState } from "./window-state";

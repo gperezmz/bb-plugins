@@ -1,6 +1,6 @@
 // What the menu keeps of a thread, and that it keeps its identity while that is unchanged.
 import { describe, expect, it } from "vitest";
-import { makeThread, working } from "@/features/thread-list/testing/fixtures";
+import { makeThread, working } from "@/testing/fixtures";
 import { snoozedRow } from "@/shared/lifecycle";
 import { menuFactsOf, shareFacts } from "./facts";
 

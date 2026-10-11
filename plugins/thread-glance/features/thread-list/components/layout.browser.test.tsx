@@ -10,7 +10,7 @@ import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-
 import { parkedRow, snoozedRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
-import { makeThread, PROJECTS } from "../testing/fixtures";
+import { makeThread, PROJECTS } from "@/testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;

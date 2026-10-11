@@ -1,7 +1,7 @@
 // The thread menu's actions for one thread: which apply, the Snooze list
 // (AC5, menu half), and a Park chosen after the thread started a turn (AC7).
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeThread, working } from "@/features/thread-list/testing/fixtures";
+import { makeThread, working } from "@/testing/fixtures";
 import { createLifecycleCommands, lifecycleHostOf } from "@/features/thread-list";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { busyRefusal } from "@/shared/messages";
