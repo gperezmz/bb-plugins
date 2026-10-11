@@ -3,6 +3,7 @@
 // component there that keeps the list's data current while bb's Settings or
 // Plugins page has the sidebar unmounted.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
+import { ThreadActionDialogs, registerThreadActions } from "@/features/thread-actions";
 import { EXTRA_ICONS, OverlaySyncKeeper, ThreadList } from "@/features/thread-list";
 import "@/features/thread-list/theme/theme.css";
 
@@ -17,5 +18,8 @@ export default definePluginApp((app) => {
   // A bb without the slot has the list follow realtime itself instead.
   if (typeof app.slots.experimental_appOverlay === "function") {
     app.slots.experimental_appOverlay({ id: "thread-glance-sync", component: OverlaySyncKeeper });
+    app.slots.experimental_appOverlay({ id: "thread-glance-dialogs", component: ThreadActionDialogs });
   }
+  // Snooze, Park, Settle, Parent… and the rest join bb's thread menu; a bb without the slot has no menu to join.
+  if (typeof app.slots.experimental_threadAction === "function") registerThreadActions(app);
 });

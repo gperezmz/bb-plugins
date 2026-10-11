@@ -1,0 +1,75 @@
+// The options of the Parent… dialog: None first, then the threads the chosen
+// thread may sit under. Pure.
+import { lastActivityAt } from "@/shared/lifecycle";
+import { descendantIds } from "@/shared/thread-tree";
+
+/** What the options read from a thread. */
+export interface ParentThread {
+  id: string;
+  displayTitle: string;
+  projectId: string;
+  parentThreadId: string | null;
+  isArchived: boolean;
+  isHidden: boolean;
+  createdAt: number;
+  updatedAt: number;
+  latestAttentionAt: number;
+}
+
+export interface ParentOption {
+  /** The thread to make the parent, or null for None. */
+  id: string | null;
+  label: string;
+  /** Whether it is the thread's current parent (None, for a thread without one). */
+  checked: boolean;
+}
+
+export const NO_PARENT_LABEL = "None";
+
+export interface ParentOptionsInput {
+  thread: ParentThread;
+  /** The threads bb lists: every non-archived thread, hidden ones included. */
+  threads: readonly ParentThread[];
+  /** The current parent when it is archived and so not among `threads`. */
+  currentParent: ParentThread | null;
+  projectNames: ReadonlyMap<string, string>;
+  query: string;
+}
+
+/**
+ * None, then every non-archived, visible thread except the thread itself and
+ * its descendants, and the current parent even when it is archived. Threads
+ * of the thread's own project come first, then the others, each by recent
+ * activity; another project's thread reads "Project · Title". `query` keeps
+ * the options whose label contains it; None always stays.
+ */
+export function parentOptions({ thread, threads, currentParent, projectNames, query }: ParentOptionsInput): ParentOption[] {
+  const excluded = new Set([thread.id, ...descendantIds(threads, thread.id)]);
+  const candidates = new Map<string, ParentThread>();
+  for (const candidate of threads) {
+    if (excluded.has(candidate.id)) continue;
+    if (candidate.id === thread.parentThreadId || (!candidate.isArchived && !candidate.isHidden)) candidates.set(candidate.id, candidate);
+  }
+  if (currentParent !== null && !excluded.has(currentParent.id) && currentParent.id === thread.parentThreadId) {
+    candidates.set(currentParent.id, currentParent);
+  }
+  const labelOf = (candidate: ParentThread): string =>
+    candidate.projectId === thread.projectId
+      ? candidate.displayTitle
+      : `${projectNames.get(candidate.projectId) ?? "Unknown project"} · ${candidate.displayTitle}`;
+  const needle = query.trim().toLowerCase();
+  const options = [...candidates.values()]
+    .sort((a, b) => {
+      const sameA = a.projectId === thread.projectId ? 0 : 1;
+      const sameB = b.projectId === thread.projectId ? 0 : 1;
+      return sameA - sameB || lastActivityAt(b) - lastActivityAt(a) || a.id.localeCompare(b.id);
+    })
+    .map((candidate): ParentOption => ({ id: candidate.id, label: labelOf(candidate), checked: candidate.id === thread.parentThreadId }))
+    .filter((option) => needle === "" || option.label.toLowerCase().includes(needle));
+  return [{ id: null, label: NO_PARENT_LABEL, checked: thread.parentThreadId === null }, ...options];
+}
+
+/** What changing the parent does to the thread's pin: choosing a parent unpins a pinned thread, None keeps it. */
+export function unpinsOnChoice(isPinned: boolean, parentId: string | null): boolean {
+  return isPinned && parentId !== null;
+}
