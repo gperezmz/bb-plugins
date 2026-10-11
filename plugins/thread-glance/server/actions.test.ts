@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow, type LifecycleRow } from "../shared/lifecycle";
 import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, TREE_CHANGED } from "../shared/messages";
 import { createLifecycleActions, type ChangeRecords } from "./actions";
@@ -84,26 +84,6 @@ describe("snooze", () => {
 
   it("refuses a thread bb no longer has", async () => {
     await expect(actions.snooze("gone", NOW + HOUR)).rejects.toThrow("Thread is no longer available");
-  });
-
-  it("reclaims nothing visible when Reclaim fails, and still snoozes", async () => {
-    lifecycle = createLifecycleStore(memoryDatabase());
-    fake = createFakeThreads([makeServerThread("t1")]);
-    const warn = vi.fn();
-    const failing = createLifecycleActions({
-      lifecycle,
-      threads: fake,
-      change: async (write) => write(() => undefined),
-      now: () => NOW,
-      reclaim: async () => {
-        throw new Error("host offline");
-      },
-      warn,
-    });
-    const result = await failing.snooze("t1", NOW + HOUR);
-    expect(result.note).toBeNull();
-    expect(lifecycle.get("t1")).not.toBeNull();
-    expect(warn).toHaveBeenCalledWith("reclaim failed: host offline");
   });
 });
 

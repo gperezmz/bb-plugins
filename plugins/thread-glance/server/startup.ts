@@ -9,13 +9,10 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
 import { reconcileState } from "./reconcile";
 import type { ServerThread, ThreadGateway, ThreadPresence } from "./threads";
+import { errorMessage } from "./error-message";
 
 /** Lookups of threads missing from the listing in flight at once. */
 const STRAY_LOOKUP_CONCURRENCY = 8;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();

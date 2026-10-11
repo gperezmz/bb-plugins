@@ -9,6 +9,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
 import { clearStaleRows } from "./reconcile";
 import type { ThreadGateway } from "./threads";
+import { hasMark } from "../shared/lifecycle";
 
 /** The part of bb's thread payload the handlers read. */
 export interface EventThread {
@@ -59,16 +60,13 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
 
   /** Clears the parked, snoozed or settled mark of each ancestor of the thread whose parent is `parentId`. */
   async function reopenAncestors(parentId: string | null): Promise<string[]> {
-    const marked = [...lifecycle.all().values()].some(
-      (row) => row.parkedAt !== null || row.snoozeUntil !== null || row.settledAt !== null,
-    );
-    if (!marked) return [];
+    if (![...lifecycle.all().values()].some(hasMark)) return [];
     const reopen: [string, null][] = [];
     const seen = new Set<string>();
     for (let id = parentId; id !== null && id !== undefined && !seen.has(id) && seen.size < MAX_ANCESTOR_DEPTH; ) {
       seen.add(id);
       const row = lifecycle.get(id);
-      if (row !== null && (row.parkedAt !== null || row.snoozeUntil !== null || row.settledAt !== null)) {
+      if (hasMark(row)) {
         reopen.push([id, null]);
       }
       id = await threads.parentOf(id).catch(() => undefined) ?? null;

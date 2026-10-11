@@ -78,6 +78,14 @@ export default function threadGlance(bb: BbPluginApi): void {
   // Settings edits read the record, change it and store it: one at a time.
   const settingsInOrder = createSerialQueue();
 
+  /** Publishes the settings a write or reset left, and starts the auto-settle pass they call for; unchanged settings publish nothing. */
+  const publishSettings = (result: Awaited<ReturnType<typeof settings.write>>) => {
+    if (result.changed.length === 0) return settingsChannel.current();
+    const published = settingsChannel.publish(result.settings);
+    if (affectsAutoSettle(result.changed)) autoSettle.onSettingsChanged(result.changed);
+    return published;
+  };
+
   const autoSettle = createAutoSettle({
     lifecycle,
     threads,
@@ -117,22 +125,8 @@ export default function threadGlance(bb: BbPluginApi): void {
       return orderChannel.publish([...order.get()]);
     },
 
-    writeSettings: ({ patch }) =>
-      settingsInOrder(async () => {
-        const result = await settings.write(patch);
-        if (result.changed.length === 0) return settingsChannel.current();
-        const published = settingsChannel.publish(result.settings);
-        if (affectsAutoSettle(result.changed)) autoSettle.onSettingsChanged(result.changed);
-        return published;
-      }),
-    resetSettings: ({ keys }) =>
-      settingsInOrder(async () => {
-        const result = await settings.reset(keys);
-        if (result.changed.length === 0) return settingsChannel.current();
-        const published = settingsChannel.publish(result.settings);
-        if (affectsAutoSettle(result.changed)) autoSettle.onSettingsChanged(result.changed);
-        return published;
-      }),
+    writeSettings: ({ patch }) => settingsInOrder(async () => publishSettings(await settings.write(patch))),
+    resetSettings: ({ keys }) => settingsInOrder(async () => publishSettings(await settings.reset(keys))),
 
     async setProjectColour({ projectId, colour }) {
       return appearance.setColour(projectId, colour) ? appearanceChannel.publish(appearance.read()) : appearanceChannel.current();

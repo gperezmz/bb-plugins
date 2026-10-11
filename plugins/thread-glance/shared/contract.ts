@@ -3,13 +3,14 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
 import { lifecycleRowSchema } from "./lifecycle";
-import { settingsSchema, SETTING_KEYS, type SettingKey } from "./settings";
+import { SETTING_KEYS, type SettingKey } from "./settings";
 import {
-  appearanceSchema,
+  appearanceSignalSchema,
+  orderSignalSchema,
   projectColourSchema,
+  settingsSignalSchema,
   syncPointSchema,
   threadRecordsSchema,
-  versionedSchema,
 } from "./signals";
 
 const idSchema = z.string().check(z.minLength(1), z.maxLength(1024));
@@ -51,10 +52,6 @@ const actionOutputSchema = z.strictObject({
 export type Change = z.infer<typeof changeSchema>;
 export type ActionOutput = z.infer<typeof actionOutputSchema>;
 
-const settingsVersionedSchema = versionedSchema(settingsSchema);
-const orderVersionedSchema = versionedSchema(z.array(z.string()));
-const appearanceVersionedSchema = versionedSchema(appearanceSchema);
-
 const settingKeySchema = z.enum(SETTING_KEYS as [SettingKey, ...SettingKey[]]);
 
 export const rpcContract = defineRpcContract({
@@ -72,9 +69,9 @@ export const rpcContract = defineRpcContract({
       revision: z.number(),
       full: z.boolean(),
       records: recordsOutputSchema,
-      settings: settingsVersionedSchema,
-      order: orderVersionedSchema,
-      appearance: appearanceVersionedSchema,
+      settings: settingsSignalSchema,
+      order: orderSignalSchema,
+      appearance: appearanceSignalSchema,
     }),
   },
 
@@ -101,10 +98,7 @@ export const rpcContract = defineRpcContract({
    */
   settle: {
     input: threadIdSchema,
-    output: z.strictObject({
-      changes: z.array(changeSchema),
-      reclaim: reclaimSchema,
-      note: z.nullable(z.string()),
+    output: z.extend(actionOutputSchema, {
       undoToken: z.string(),
       /** Epoch ms after which `undoSettle` answers that the Settle can no longer be undone. */
       undoUntil: z.number(),
@@ -143,36 +137,36 @@ export const rpcContract = defineRpcContract({
    * Puts the threads of `threadIds` (a subset, in their new sequence) in
    * Manual order, leaving the places of every other thread.
    */
-  reorder: { input: z.strictObject({ threadIds: threadIdsSchema }), output: orderVersionedSchema },
+  reorder: { input: z.strictObject({ threadIds: threadIdsSchema }), output: orderSignalSchema },
 
   /**
    * Saves the edited settings fields (a `SettingsPatch`). The server checks
    * them field by field and refuses with each invalid field's message, so the
    * patch is not narrowed here.
    */
-  writeSettings: { input: z.strictObject({ patch: z.record(z.string(), z.unknown()) }), output: settingsVersionedSchema },
+  writeSettings: { input: z.strictObject({ patch: z.record(z.string(), z.unknown()) }), output: settingsSignalSchema },
   /** Resets the named settings, or all of them, to their defaults. */
   resetSettings: {
     input: z.strictObject({ keys: z.optional(z.array(settingKeySchema)) }),
-    output: settingsVersionedSchema,
+    output: settingsSignalSchema,
   },
 
   /** Sets a project's colour override. */
   setProjectColour: {
     input: z.strictObject({ projectId: idSchema, colour: projectColourSchema }),
-    output: appearanceVersionedSchema,
+    output: appearanceSignalSchema,
   },
   /** Removes a project's colour override. */
-  resetProjectColour: { input: z.strictObject({ projectId: idSchema }), output: appearanceVersionedSchema },
+  resetProjectColour: { input: z.strictObject({ projectId: idSchema }), output: appearanceSignalSchema },
   /** Forgets a removed project's colour and icon. */
-  forgetProject: { input: z.strictObject({ projectId: idSchema }), output: appearanceVersionedSchema },
+  forgetProject: { input: z.strictObject({ projectId: idSchema }), output: appearanceSignalSchema },
   /** Stores an uploaded project icon (SVG, PNG, ICO, JPEG, GIF, AVIF or WebP, up to 1 MB). */
   uploadProjectIcon: {
     input: z.strictObject({ projectId: idSchema, name: z.string(), mime: z.string(), dataBase64: z.string() }),
-    output: appearanceVersionedSchema,
+    output: appearanceSignalSchema,
   },
   /** Removes an uploaded project icon, so the favicon or the monogram shows (Use automatic). */
-  clearProjectIcon: { input: z.strictObject({ projectId: idSchema }), output: appearanceVersionedSchema },
+  clearProjectIcon: { input: z.strictObject({ projectId: idSchema }), output: appearanceSignalSchema },
 
   /** Runs an auto-settle pass now, queued behind the one running; returns the threads it settled and un-settled. */
   runAutoSettle: {

@@ -11,6 +11,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { PullRequestStatus, PullRequests } from "./pull-requests";
 import type { Reclaimer } from "./reclaim";
 import type { ServerThread, ThreadGateway } from "./threads";
+import { errorMessage } from "./error-message";
 
 export interface AutoSettleResult {
   /** Threads the pass settled. */
@@ -221,13 +222,7 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
       const row = lifecycle.get(threadId);
       return row === null ? [] : [{ threadId, row }];
     });
-    if (targets.length > 0) {
-      try {
-        await deps.reclaim(targets);
-      } catch (error) {
-        warn(`reclaim after auto-settle failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    if (targets.length > 0) await deps.reclaim(targets);
     return { settled: outcome.settle, unsettled: outcome.unsettle };
   }
 
@@ -262,7 +257,7 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
     run,
     onSettingsChanged(keys) {
       if (!affectsAutoSettle(keys)) return;
-      run().catch((error) => warn(`auto-settle failed: ${error instanceof Error ? error.message : String(error)}`));
+      run().catch((error) => warn(`auto-settle failed: ${errorMessage(error)}`));
     },
   };
 }
