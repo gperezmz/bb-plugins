@@ -17,8 +17,8 @@ export interface AppearanceStore {
   setColour(projectId: string, colour: string | null): boolean;
   /** Stores a project's uploaded icon, replacing any, or removes it with null. Returns whether it changed. */
   setIcon(projectId: string, icon: StoredIcon | null, at: number): boolean;
-  /** The bytes of a project's uploaded icon. */
-  readIcon(projectId: string): StoredIcon | null;
+  /** The bytes of a project's uploaded icon and when it was uploaded. */
+  readIcon(projectId: string): (StoredIcon & { updatedAt: number }) | null;
   /** Deletes everything held for a project. Returns whether anything was. */
   forget(projectId: string): boolean;
 }
@@ -54,7 +54,9 @@ export function createAppearanceStore(db: Database): AppearanceStore {
   const upsertIcon = db.prepare(
     "INSERT INTO project_appearance (project_id, icon_name, icon_mime, icon_data, icon_updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(project_id) DO UPDATE SET icon_name = excluded.icon_name, icon_mime = excluded.icon_mime, icon_data = excluded.icon_data, icon_updated_at = excluded.icon_updated_at",
   );
-  const selectIcon = db.prepare("SELECT icon_name, icon_mime, icon_data FROM project_appearance WHERE project_id = ?").raw(true);
+  const selectIcon = db
+    .prepare("SELECT icon_name, icon_mime, icon_data, icon_updated_at FROM project_appearance WHERE project_id = ?")
+    .raw(true);
   const remove = db.prepare("DELETE FROM project_appearance WHERE project_id = ?");
   const dropEmpty = db.prepare(
     "DELETE FROM project_appearance WHERE project_id = ? AND colour IS NULL AND icon_name IS NULL",
@@ -99,9 +101,9 @@ export function createAppearanceStore(db: Database): AppearanceStore {
       return true;
     },
     readIcon(projectId) {
-      const raw = selectIcon.get(projectId) as [string | null, string | null, Buffer | null] | undefined;
+      const raw = selectIcon.get(projectId) as [string | null, string | null, Buffer | null, number | null] | undefined;
       if (raw === undefined || raw[0] === null || raw[1] === null || raw[2] === null) return null;
-      return { name: raw[0], mime: raw[1], data: raw[2] };
+      return { name: raw[0], mime: raw[1], data: raw[2], updatedAt: raw[3] ?? 0 };
     },
     forget(projectId) {
       if (!rows.has(projectId)) return false;
