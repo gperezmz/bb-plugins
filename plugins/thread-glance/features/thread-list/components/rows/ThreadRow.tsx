@@ -54,8 +54,9 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
   const tinted = row.focused ? "tg-row-open" : row.openElsewhere ? "tg-row-elsewhere" : "";
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <RowContextMenu thread={row.thread} disabled={editing} dragging={dragged}>
-        <HoverCard open={hoverOpen && !editing && !dragged} openDelay={250} closeDelay={300} onOpenChange={(open) => setHoverCardOpen(threadId, open)}>
+      <HoverCard open={hoverOpen && !editing && !dragged} openDelay={250} closeDelay={300} onOpenChange={(open) => setHoverCardOpen(threadId, open)}>
+        {/* The menu wraps the card's element: the hover card draws none, so a menu around it would reach no DOM node. */}
+        <RowContextMenu thread={row.thread} disabled={editing} dragging={dragged}>
           <div
             data-thread-id={threadId}
             data-card={row.card}
@@ -102,11 +103,11 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
             )}
             <Cards row={row} editing={editing} projectName={project?.name ?? row.thread.projectId} colour={colour} />
           </div>
-          <HoverCardContent side="right" align="start" data-hover-card="" className="w-64 p-3">
-            <HoverBody row={row} />
-          </HoverCardContent>
-        </HoverCard>
-      </RowContextMenu>
+        </RowContextMenu>
+        <HoverCardContent side="right" align="start" data-hover-card="" className="w-64 p-3">
+          <HoverBody row={row} />
+        </HoverCardContent>
+      </HoverCard>
       <ChildList ids={row.shownChildIds} depth={0} parentProjectId={row.thread.projectId} />
     </div>
   );
