@@ -113,6 +113,20 @@ describe("keeping focus", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(onDone).not.toHaveBeenCalled();
   });
+
+  it("takes focus back when the dialog holding it closes and focus falls to the body", async () => {
+    const { input, onDone } = setup();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const dialog = document.body.appendChild(document.createElement("div"));
+    dialog.setAttribute("role", "dialog");
+    dialog.innerHTML = '<button type="button">Pick</button>';
+    dialog.querySelector("button")!.focus();
+    dialog.remove();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {});
+    expect(document.activeElement).toBe(input);
+    expect(onDone).not.toHaveBeenCalled();
+  });
 });
 
 describe("a dialog that was open before the editor", () => {

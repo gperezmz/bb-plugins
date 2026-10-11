@@ -22,3 +22,8 @@ export function isHeldByDialog(target: EventTarget | null, before: ReadonlySet<E
 export function isInFrame(target: EventTarget | null): boolean {
   return target instanceof HTMLIFrameElement;
 }
+
+/** Focus on nothing while the window has it: the body holds it, as when the focused element was removed. */
+export function isFocusOnNothing(): boolean {
+  return (document.activeElement === null || document.activeElement === document.body) && document.hasFocus();
+}
