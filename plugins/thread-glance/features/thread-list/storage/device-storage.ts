@@ -21,13 +21,18 @@ const PREFIX = "thread-glance:";
 const LEGACY_KEYS = ["bb.thread-glance.client.v1", "bb.thread-glance.preferences.v1"] as const;
 
 /** Keys that hold what the person set on this device; nothing evicts them. */
-export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "expandedParents" | "workingSince";
+export type StateKey = "collapsedShelves" | "activeSort" | "collapsedGroups" | "expandedParents" | "workingSince" | "portLinkMachine";
 
 /** Keys that cache what the server sends, listed least important first: the order eviction takes them in. */
 export const CACHE_KEYS = ["cache.order", "cache.appearance", "cache.rows", "cache.settings"] as const;
 export type CacheKey = (typeof CACHE_KEYS)[number];
 
 export type StorageKey = StateKey | CacheKey;
+
+/** The name `key` is stored under in the browser's storage, which a `storage` event names. */
+export function storedKeyName(key: StorageKey): string {
+  return `${PREFIX}${key}`;
+}
 
 /** The part of `Storage` the list uses. */
 export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -56,7 +61,7 @@ export interface DeviceStorage {
 }
 
 export function createDeviceStorage(storage: StorageLike | null = defaultStorage()): DeviceStorage {
-  const name = (key: StorageKey) => `${PREFIX}${key}`;
+  const name = storedKeyName;
   const tryWrite = (key: StorageKey, raw: string): boolean => {
     try {
       storage?.setItem(name(key), raw);

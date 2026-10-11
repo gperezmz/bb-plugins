@@ -7,11 +7,11 @@ import { useServerSettings } from "@/features/thread-list";
 import type { SaveStatus } from "../model/autosave";
 import { shownSettings } from "../model/edits";
 import { useAutosave } from "../use-autosave";
-import { Group } from "./Fields";
 import type { Form } from "./form";
 import { ProjectAppearance } from "./ProjectAppearance";
 import { ProjectManagement } from "./ProjectManagement";
 import { ChildThreads, SidebarLayout, ThreadBehavior } from "./SettingsGroups";
+import { ThisDevice } from "./ThisDevice";
 
 /** The groups, in page order: the strip's buttons and the headings they jump to. */
 export const GROUPS = [
@@ -57,7 +57,7 @@ export function SettingsPage() {
       <ProjectAppearance form={form} projects={projects} />
       <ThreadBehavior form={form} />
       <ChildThreads form={form} />
-      <Group id="tg-this-device" title="This device" />
+      <ThisDevice />
       <ProjectManagement projects={projects} />
     </div>
   );

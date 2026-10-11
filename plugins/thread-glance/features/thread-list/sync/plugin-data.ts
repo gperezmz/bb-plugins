@@ -5,6 +5,7 @@
 // here and asks only for what it lacks. One per window.
 import type { PluginRealtimeConnectionState } from "@get-bb/plugin-sdk/app";
 import type { LifecycleRow } from "@/shared/lifecycle";
+import type { PortsSnapshot } from "@/shared/ports";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
 import type { Appearance, RecordsSignal, Versioned } from "@/shared/signals";
 import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
@@ -18,6 +19,7 @@ import {
   writeRowsCache,
   writeSettingsCache,
 } from "../storage/device-state";
+import { sharePorts } from "../model/ports";
 import { applySignal, applySync, NO_RECORDS, recordsFromCache, type HeldRecords, type RecordsAt } from "./records";
 import type { SyncReason } from "./requests";
 import { newer } from "./versioned";
@@ -44,6 +46,8 @@ export interface PluginData {
   settings: Versioned<Settings> | null;
   order: Versioned<string[]> | null;
   appearance: Versioned<Appearance> | null;
+  /** The workspace ports snapshot; null until the first answer. Never cached: it is only as old as the last read. */
+  ports: Versioned<PortsSnapshot> | null;
   status: DataStatus;
   /** Rows, order and settings shown come from the browser's cache until the first answer lands. */
   cached: boolean;
@@ -56,13 +60,15 @@ export type DataChange =
   | { kind: "records" }
   | { kind: "settings" }
   | { kind: "order" }
-  | { kind: "appearance" };
+  | { kind: "appearance" }
+  | { kind: "ports" };
 
 const INITIAL: PluginData = {
   records: NO_RECORDS,
   settings: null,
   order: null,
   appearance: null,
+  ports: null,
   status: "waiting",
   cached: false,
 };
@@ -196,6 +202,16 @@ export const pluginData = {
     if (appearance === data.appearance) return;
     set({ appearance }, { kind: "appearance" });
     schedulePersist("appearance");
+  },
+
+  /**
+   * A snapshot from the `ports` channel or the `ports` call: the highest
+   * version of an epoch is kept, and what did not change keeps its identity.
+   */
+  portsSignal(value: Versioned<PortsSnapshot>): void {
+    const ports = newer(data.ports, value);
+    if (ports === data.ports) return;
+    set({ ports: sharePorts(data.ports, ports) }, { kind: "ports" });
   },
 
   /** Whether a component follows realtime now. */

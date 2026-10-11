@@ -1,6 +1,6 @@
 // The Hover card's content: the thread's title, project, machine and branch,
 // its harness with model and reasoning level, the branch's pull request from
-// bb, and its subthreads.
+// bb, the ports listening in its environment, and its subthreads.
 import { useEffect, useState } from "react";
 import { experimental_useSidebarThreadPullRequest as usePullRequest } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import type { RowView } from "../../model/list-model";
 import { lookUpModel } from "../../sync/model-lookup";
 import { useCommands, useListStore, useProject, useRowsOf } from "../../store/hooks";
 import { HarnessLogo, useHarnessName } from "./HarnessLogo";
+import { PortsSection } from "./PortsSection";
 import { PULL_REQUEST_TONE_CLASS } from "./PullRequestBadge";
 import { GlyphMark, TONE_CLASS } from "./StatusView";
 import { useRowStatus } from "./use-row-status";
@@ -121,6 +122,7 @@ export function HoverBody({ row }: { row: RowView }) {
         <Line label="Reasoning">{lines.reasoning}</Line>
       </dl>
       <PullRequestSection threadId={thread.id} />
+      <PortsSection threadId={thread.id} environmentId={thread.environment?.id} />
       {row.children === null ? null : <Subthreads ids={row.children.ids} />}
     </div>
   );

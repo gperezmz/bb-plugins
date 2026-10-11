@@ -358,6 +358,6 @@ describe("commands outside the list", () => {
     gone();
     const later = lifecycle.settle("a");
     await later;
-    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls.filter(([method]) => method === "settle")).toHaveLength(2);
   });
 });

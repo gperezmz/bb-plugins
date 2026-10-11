@@ -4,6 +4,7 @@ import { memo } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { SHELF_ICONS, SHELF_NAMES } from "../icons";
+import { CLEAN_BUTTON_LABEL, CLEAN_BUTTON_TIP } from "../model/clean";
 import type { ListItem } from "../model/list-model";
 import { stripeShown } from "../model/project-colour";
 import { ProjectMark, ProjectName, ProjectStripe } from "../project/ProjectMark";
@@ -11,6 +12,7 @@ import { useProjectColour } from "../project/use-project-colour";
 import { useProjectIds } from "../project/use-project-ids";
 import { ACTIVE_SORT_LABELS, ACTIVE_SORTS, type ActiveSort } from "../storage/device-state";
 import { useActiveSort, useCommands, useIsDragged, useProject, useSettings } from "../store/hooks";
+import { Tip } from "./rows/Tip";
 
 type ShelfItem = Extract<ListItem, { kind: "shelf" }>;
 type GroupItem = Extract<ListItem, { kind: "group" }>;
@@ -41,7 +43,25 @@ function ActiveSortSelect() {
   );
 }
 
-/** A shelf's header: its icon and name, "Name (count)" while collapsed, and Active's sort. */
+/** Settled's Clean button, which opens the dialog that closes the terminals and ports of settled threads. Shown while the shelf is collapsed too. */
+function CleanButton() {
+  const commands = useCommands();
+  return (
+    <Tip label={CLEAN_BUTTON_TIP}>
+      <button
+        type="button"
+        data-no-drag=""
+        aria-label={CLEAN_BUTTON_LABEL}
+        onClick={() => commands.openClean()}
+        className="h-6 shrink-0 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      >
+        Clean
+      </button>
+    </Tip>
+  );
+}
+
+/** A shelf's header: its icon and name, "Name (count)" while collapsed, Active's sort and Settled's Clean. */
 export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item: ShelfItem; gap: number; size: number }) {
   const commands = useCommands();
   const name = SHELF_NAMES[item.shelf];
@@ -60,6 +80,7 @@ export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
       </button>
       {item.shelf === "active" && !item.collapsed ? <ActiveSortSelect /> : null}
+      {item.shelf === "settled" ? <CleanButton /> : null}
     </div>
   );
 });

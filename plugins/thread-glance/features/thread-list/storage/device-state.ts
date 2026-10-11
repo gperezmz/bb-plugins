@@ -169,3 +169,16 @@ export function readAppearanceCache(storage: DeviceStorage): Appearance | null {
 export function writeAppearanceCache(storage: DeviceStorage, appearance: Appearance): void {
   storage.write("cache.appearance", appearance);
 }
+
+// ——— The port link machine ———
+
+/** The id of the machine whose web ports the hover card links to, or null for "No machine". */
+export function readPortLinkMachine(storage: DeviceStorage): string | null {
+  const stored = storage.read("portLinkMachine");
+  return typeof stored === "string" && stored !== "" ? stored : null;
+}
+
+export function writePortLinkMachine(storage: DeviceStorage, machineId: string | null): void {
+  if (machineId === null) storage.remove("portLinkMachine");
+  else storage.write("portLinkMachine", machineId);
+}

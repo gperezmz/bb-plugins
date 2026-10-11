@@ -31,6 +31,8 @@ export interface ListUi {
   dragging: { listKey: string; unitKey: string } | null;
   /** The text of the list's live region: reorder announcements. */
   announcement: string;
+  /** The Clean settled resources dialog is open. */
+  cleanOpen: boolean;
 }
 
 export interface ListState {
@@ -91,7 +93,7 @@ const UNSET_EDGE: Edge = {
   onNavigate() {},
 };
 
-const CLOSED_UI: ListUi = { editingId: null, dragging: null, announcement: "" };
+const CLOSED_UI: ListUi = { editingId: null, dragging: null, announcement: "", cleanOpen: false };
 
 const NO_ORDER: readonly string[] = [];
 
@@ -251,6 +253,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         store.feedSignal(dataInputs);
         return;
       case "appearance":
+      case "ports":
         return;
     }
   };

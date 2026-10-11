@@ -6,6 +6,7 @@ import { memo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { useCommands, useLowerItems, useListStatus, useScene, useSettings, useUpperItems } from "../store/hooks";
 import { Announcer } from "./Announcer";
+import { CleanDialog } from "./CleanDialog";
 import { ItemList } from "./ItemList";
 import { useJumpHints } from "./rows/jump-hints";
 import { ProjectScope } from "./ProjectScope";
@@ -51,6 +52,7 @@ function ReadyList() {
     <div ref={root} onKeyDown={onKeyDown} data-list-ready="" data-dock={dockShelves ? "bottom" : undefined} className="flex h-full min-h-0 w-full min-w-0 flex-col">
       <ProjectScope />
       <Announcer />
+      <CleanDialog />
       {dockShelves ? (
         <>
           <Scroller label="upper" className="flex-1 px-1.5">

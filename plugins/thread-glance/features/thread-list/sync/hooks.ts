@@ -4,8 +4,10 @@
 // while nothing they read changed.
 import { useSyncExternalStore } from "react";
 import type { LifecycleRow } from "@/shared/lifecycle";
+import type { PortListener, PortsSnapshot } from "@/shared/ports";
 import type { Settings } from "@/shared/settings";
 import type { Appearance } from "@/shared/signals";
+import { listenersOf } from "../model/ports";
 import { pluginData, type PluginData } from "./plugin-data";
 
 const NO_APPEARANCE: Appearance = { colours: {}, icons: {} };
@@ -41,4 +43,14 @@ export function useAppearance(): Appearance {
 /** Manual order, top first. */
 export function useManualOrder(): readonly string[] {
   return usePluginData((data) => data.order?.value ?? NO_ORDER);
+}
+
+/** What the ports snapshot holds for one environment, or null; the same object until that environment's listeners change. */
+export function usePortEnvironment(environmentId: string | null | undefined): PortsSnapshot["environments"][string] | null {
+  return usePluginData((data) => (environmentId == null ? null : (data.ports?.value.environments[environmentId] ?? null)));
+}
+
+/** The listeners of one environment; the same array until they change, so a row re-renders only for its own. */
+export function usePortListeners(environmentId: string | null | undefined): readonly PortListener[] {
+  return usePluginData((data) => listenersOf(data.ports?.value ?? null, environmentId));
 }
