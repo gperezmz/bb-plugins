@@ -63,7 +63,7 @@ describe("the Inbox toasts", () => {
   });
 
   it("draws nothing", () => {
-    const { container } = render(<InboxToasts />);
-    expect(container.innerHTML).toBe("");
+    const view = render(<InboxToasts />);
+    expect(view.baseElement.textContent).toBe("");
   });
 });

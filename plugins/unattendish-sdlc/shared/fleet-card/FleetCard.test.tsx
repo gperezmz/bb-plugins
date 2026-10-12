@@ -63,7 +63,7 @@ describe("a fleet card", () => {
 });
 
 describe("why a fleet is not fully watched", () => {
-  it("lists every reason, each linking to where it is fixed", () => {
+  it("lists every reason, each linking to the place that mends it", () => {
     show({
       reasons: [
         { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } },

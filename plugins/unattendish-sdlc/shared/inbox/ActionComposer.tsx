@@ -48,7 +48,8 @@ export function ActionComposer({
         }}
       />
       <div className="flex items-center justify-end gap-2">
-        <span className="mr-auto text-xs text-muted-foreground">⌘/Ctrl+Enter sends · Esc cancels</span>
+        {/* A phone has no such keys. */}
+        <span className="mr-auto hidden text-xs text-muted-foreground md:inline">⌘/Ctrl+Enter sends · Esc cancels</span>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
