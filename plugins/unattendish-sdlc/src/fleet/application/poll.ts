@@ -87,7 +87,10 @@ interface Reading {
   readonly refusedPrefix: string | null;
   /** The first source whose read, every part of it, failed as `UnreadableWhy` says. */
   readonly unreadable: { readonly prefix: string; readonly why: UnreadableWhy } | null;
-  /** Whether any source's adapter was asked to read: a poll that asked none says nothing of whether a source is readable. */
+  /**
+   * Whether any source's adapter was asked to read and gave an answer other than a rate limit: a poll that asked
+   * none, or was only told to wait, says nothing of whether a source is readable.
+   */
   readonly attempted: boolean;
   readonly expiries: Record<string, string | null>;
 }
@@ -137,7 +140,6 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       continue;
     }
     let derived: Derived | null = null;
-    attempted = true;
     try {
       const outcome = await deps.adapters[resolved.credential.service].read({
         source: resolved.source,
@@ -152,9 +154,11 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
         signal,
       });
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
+      attempted = true;
       const kind = unreadableKind(outcome);
       if (kind !== null) unreadable ??= { prefix, why: kind };
     } catch (error) {
+      if (!(error instanceof HttpError && error.kind === "rate-limit")) attempted = true;
       if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
       const kind = error instanceof HttpError ? unreadableOf(error) : error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") ? "unreachable" : null;
       if (kind !== null) unreadable ??= { prefix, why: kind };
@@ -208,11 +212,16 @@ interface Refusal {
  * Whether the fleet's credential counts as refused after this poll, why, and
  * since when: a 401 at once, from this poll; a source unreadable for
  * `UNREADABLE_POLLS` polls in a row, from the first of them. A poll that asked
- * no adapter to read leaves the count of unreadable polls as it was.
+ * no adapter to read, or was only told to wait, leaves the refusal, its time
+ * and the count of unreadable polls as they were.
  */
 const refusalOf = (fleet: StoredFleet, reading: Reading, now: string): Refusal => {
-  const unreadablePolls = reading.unreadable !== null ? fleet.unreadablePolls + 1 : reading.attempted ? 0 : fleet.unreadablePolls;
-  const unreadableSince = reading.unreadable !== null ? (fleet.unreadablePolls > 0 ? (fleet.unreadableSince ?? now) : now) : reading.attempted ? null : fleet.unreadableSince;
+  if (!reading.attempted) {
+    const kept = fleet.refused;
+    return { cause: kept === null ? null : { since: kept.since, prefix: kept.prefix, why: kept.why }, unreadablePolls: fleet.unreadablePolls, unreadableSince: fleet.unreadableSince };
+  }
+  const unreadablePolls = reading.unreadable !== null ? fleet.unreadablePolls + 1 : 0;
+  const unreadableSince = reading.unreadable !== null ? (fleet.unreadablePolls > 0 ? (fleet.unreadableSince ?? now) : now) : null;
   if (reading.refusedPrefix !== null) return { cause: { since: now, prefix: reading.refusedPrefix, why: "refused" }, unreadablePolls, unreadableSince };
   if (reading.unreadable !== null && unreadablePolls >= UNREADABLE_POLLS) return { cause: { ...reading.unreadable, since: unreadableSince ?? now }, unreadablePolls, unreadableSince };
   return { cause: null, unreadablePolls, unreadableSince };

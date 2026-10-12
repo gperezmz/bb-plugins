@@ -787,6 +787,42 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(w.store.getFleet(REPO_KEY)!.unreadablePolls).toBe(0);
   });
 
+  it("tells the manager of an outage once, though a rate limit cuts into it", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    const during = w.store.getFleet(REPO_KEY)!;
+    await pollWith(w, new HttpError("rate-limit", "GET /x answered 429", 429, 150_000));
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: during.refused, unreadablePolls: during.unreadablePolls, unreadableSince: during.unreadableSince });
+    await poll(w);
+    w.clock.advance(120_000);
+    expect(w.adapters.github.reads).toHaveLength(4);
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: during.refused, unreadablePolls: during.unreadablePolls, unreadableSince: during.unreadableSince });
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }]);
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(w.store.getFleet(REPO_KEY)!.refused).toEqual({ ...during.refused, announced: true });
+  });
+
+  it("keeps counting the polls in a row across a poll that got no token and asked no adapter", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    const token = w.credentials.token.bind(w.credentials);
+    w.credentials.token = async () => {
+      throw new Error("No token is set for github.com/org");
+    };
+    await poll(w);
+    w.clock.advance(120_000);
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ unreadablePolls: 2, unreadableSince: "2026-10-12T10:00:00.000Z", refused: null });
+    w.credentials.token = token;
+    await pollWith(w, forbidden);
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden");
+  });
+
   it("counts nothing for a read that gave back anything, or failed some other way", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
