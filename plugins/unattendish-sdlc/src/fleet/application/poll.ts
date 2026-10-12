@@ -1,6 +1,6 @@
 // One poll of one fleet: read what changed in its sources, sort every change
 // into woken, echo, out of scope or held, and send the manager one wake.
-import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type Derived } from "../domain/changes";
+import { byTimeThenKey, deriveChanges, outageKind, partitionRevisit, type Derived } from "../domain/changes";
 import { classify } from "../domain/echo";
 import { formatRepo, repoId, trackerSource, urlUnder } from "../domain/identity";
 import type { Change, Disposition, NotWatched, RefusedWhy, Registration, ServiceKind, SourceRole, UnreadableWhy, WatchedItem } from "../domain/model";
@@ -87,8 +87,8 @@ interface Finding {
   readonly prefix: string;
   /** The service answered 401. */
   readonly refused: boolean;
-  /** How the source's read, every part of it, failed, or null when it did not. */
-  readonly unreadable: UnreadableWhy | null;
+  /** How the source's read counts toward its not being watched, as `outageKind` says, or null when it does not. */
+  readonly unreadable: Exclude<RefusedWhy, "refused"> | null;
 }
 
 interface Reading {
@@ -159,10 +159,12 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
         signal,
       });
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
-      findings[role] = { prefix, refused: false, unreadable: unreadableKind(outcome) };
+      findings[role] = { prefix, refused: false, unreadable: outageKind(outcome) };
     } catch (error) {
       const kind = error instanceof HttpError ? unreadableOf(error) : error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") ? "unreachable" : null;
-      if (!(error instanceof HttpError && error.kind === "rate-limit")) findings[role] = { prefix, refused: error instanceof HttpError && error.kind === "auth", unreadable: kind };
+      const refused = error instanceof HttpError && error.kind === "auth";
+      // Any other error read nothing, the listing included, so it counts as a failed listing.
+      if (!(error instanceof HttpError && error.kind === "rate-limit")) findings[role] = { prefix, refused, unreadable: kind ?? (refused ? null : "listing-failed") };
       if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
     }

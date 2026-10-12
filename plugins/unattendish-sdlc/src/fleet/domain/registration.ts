@@ -139,7 +139,10 @@ export const catchUp = (lastPolledAt: string | null, now: string, intervalMs: nu
   return gap > Math.max(AWAY_INTERVALS * intervalMs, AWAY_MIN_MS) ? gap : null;
 };
 
-/** Polls in a row whose read of a source is unreadable, every read failed as `UnreadableWhy` says, before its fleet is not watched. */
+/**
+ * Polls in a row whose read of a source is unreadable, every read failed as `UnreadableWhy` says, or whose listing
+ * failed, before its fleet is not watched.
+ */
 export const UNREADABLE_POLLS = 3;
 
 /** What became of the reads with the credential for `prefix`, in lower case, as the wake's closing line and the status both word it. */
@@ -151,6 +154,8 @@ export const refusedText = (prefix: string, why: RefusedWhy): string => {
       return `the credential for ${prefix} was forbidden to read what the fleet needs (403)`;
     case "unreachable":
       return `the service did not answer reads with the credential for ${prefix}`;
+    case "listing-failed":
+      return `the service keeps failing to list what changed with the credential for ${prefix}`;
     case "not-found":
       return `the credential for ${prefix} could not find what the fleet needs (404)`;
     case "outside-fleet":

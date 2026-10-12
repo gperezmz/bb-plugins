@@ -350,7 +350,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       it("records why each credential counts as refused, and the count of unreadable polls and when they began", () => {
-        for (const why of ["refused", "forbidden", "unreachable", "not-found", "outside-fleet"] as const) {
+        for (const why of ["refused", "forbidden", "unreachable", "not-found", "outside-fleet", "listing-failed"] as const) {
           const outage = refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why }, 3);
           store.savePollState(REPO, pollState({ outages: { forge: outage } }));
           expect(store.getFleet(REPO)!.outages.forge).toEqual(outage);

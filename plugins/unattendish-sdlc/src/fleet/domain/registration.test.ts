@@ -157,6 +157,7 @@ describe("credentialRefused", () => {
     expect(credentialRefused("github.com/org", "refused")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was refused by the service" });
     expect(credentialRefused("github.com/org", "forbidden")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" });
     expect(credentialRefused("github.com/org", "unreachable")).toEqual({ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" });
+    expect(credentialRefused("github.com/org", "listing-failed")).toEqual({ code: "credential-refused", text: "The service keeps failing to list what changed with the credential for github.com/org" });
   });
 
   it("says when every read found nothing (404) or found what it read outside the fleet", () => {

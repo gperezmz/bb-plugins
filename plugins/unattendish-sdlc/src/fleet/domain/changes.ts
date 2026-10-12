@@ -11,6 +11,7 @@ import {
   type ItemState,
   type ReadFailure,
   type ReadOutcome,
+  type RefusedWhy,
   type SourceCursor,
   type SourceRole,
   type Transition,
@@ -155,6 +156,15 @@ export const unreadableKind = (outcome: ReadOutcome): UnreadableWhy | null => {
   if ((kinds.has("not-found") || kinds.has("outside-fleet")) && !outcome.failures.some((failure) => failure.ref === null)) return null;
   return UNREADABLE.find((kind) => kinds.has(kind)) ?? null;
 };
+
+/**
+ * How a source's read counts toward its not being watched, or null when it
+ * does not: as `unreadableKind` says, else `listing-failed` where a listing
+ * failed (`ref` null), though items read. A listing cut off at its page
+ * limit is no failure and counts toward nothing.
+ */
+export const outageKind = (outcome: ReadOutcome): Exclude<RefusedWhy, "refused"> | null =>
+  unreadableKind(outcome) ?? (outcome.failures.some((failure) => failure.ref === null) ? "listing-failed" : null);
 
 /** Orders changes, and ledger rows, by the time they happened, then by key. */
 export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, b: { readonly at: string; readonly key: string }): number =>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, outageKind, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -516,5 +516,25 @@ describe("byTimeThenKey", () => {
     const rows = [{ at: "2026-10-12T10:00:02.000Z", key: "a" }, { at: "2026-10-12T10:00:01.000Z", key: "z" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }];
     expect([...rows].sort(byTimeThenKey).map((row) => `${row.at.slice(17, 19)}${row.key}`)).toEqual(["01b", "01b", "01z", "02a"]);
     expect(byTimeThenKey(rows[2]!, rows[3]!)).toBe(0);
+  });
+});
+
+describe("outageKind", () => {
+  const listing = { ref: null, reason: "the listing answered 422" };
+
+  it("says how every read failed where unreadableKind does", () => {
+    expect(outageKind(outcome({ failures: [{ ref: null, reason: "403", kind: "forbidden" }] }))).toBe("forbidden");
+  });
+
+  it("says listing-failed for a failed listing, of any kind or none, though items read", () => {
+    expect(outageKind(outcome({ snapshots: [snapshot()], failures: [listing] }))).toBe("listing-failed");
+    expect(outageKind(outcome({ events: [event()], failures: [{ ...listing, kind: "forbidden" }] }))).toBe("listing-failed");
+    expect(outageKind(outcome({ failures: [listing, { ref: "#1", reason: "no answer", kind: "unreachable" }] }))).toBe("listing-failed");
+  });
+
+  it("is null where only items failed, or the listing was cut off at its page limit", () => {
+    expect(outageKind(outcome({ snapshots: [snapshot()], failures: [{ ref: "#2", reason: "403", kind: "forbidden" }] }))).toBeNull();
+    expect(outageKind(outcome({ snapshots: [snapshot()], listingCutAt: startedAt }))).toBeNull();
+    expect(outageKind(outcome())).toBeNull();
   });
 });

@@ -837,16 +837,42 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden");
   });
 
-  it("counts nothing for a read that gave back anything, or failed some other way", async () => {
+  it("counts nothing for a read where only items failed while the listing read", async () => {
     const w = world();
-    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await start(w, manifest({ inbox: [inboxRow(7), inboxRow(8)] }));
     for (let i = 0; i < 4; i += 1) {
-      await pollWith(w, outcome({ snapshots: [snapshot(7)], failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }] }));
-      await pollWith(w, outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "a field is missing" }] }));
+      await pollWith(w, outcome({ snapshots: [snapshot(8)], failures: [{ ref: "#7", reason: "#7 answered 403", kind: "forbidden" }] }));
+      await pollWith(w, outcome({ failures: [{ ref: "#7", reason: "a field is missing" }] }));
     }
     expect(w.channel.sent).toEqual([]);
     expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
   });
+
+  it("is not watched after three polls in a row whose listing failed, though the items read, and is watched again once it lists", async () => {
+    const listingFailed = "The service keeps failing to list what changed with the credential for github.com/org";
+    for (const failure of [{ ref: null, reason: "the listing answered 422" }, { ref: null, reason: "the listing answered 403", kind: "forbidden" as const }]) {
+      const w = world();
+      await start(w, manifest({ inbox: [inboxRow(7)] }));
+      await pollWith(w, outcome({ snapshots: [snapshot(7)], failures: [failure] }));
+      await pollWith(w, new Error("the listing gave an entry with no reference"));
+      expect(w.channel.sent).toEqual([]);
+      await pollWith(w, outcome({ snapshots: [snapshot(7)], failures: [failure] }));
+      expect(w.channel.sent).toHaveLength(1);
+      expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the service keeps failing to list what changed with the credential for github.com/org.");
+      expect(await statusOf(w)).toMatchObject({ watched: false, notWatched: [{ code: "credential-refused", text: listingFailed }] });
+      await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
+      expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
+    }
+  });
+
+  it("counts nothing for a listing cut off at its page limit", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 4; i += 1) await pollWith(w, outcome({ snapshots: [snapshot(7)], listingCutAt: "2026-10-12T10:00:00.000Z" }));
+    expect(w.store.getFleet(REPO_KEY)!.outages).toEqual({});
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
+  });
+
 });
 
 describe("what status and the ledger report (AC11, AC13)", () => {
