@@ -533,6 +533,57 @@ describe("HttpClient", () => {
       expect(seen).toHaveLength(6);
     });
 
+    describe("a page that came with no next link", () => {
+      /** A list of `pages` pages that answers 304 to any page whose etag it is shown, as an append-only list can for a full last page. */
+      const growing = async () => {
+        const state = { pages: 3 };
+        const served = await serve((request, response) => {
+          const page = Number(new URL(request.url!, "http://x").searchParams.get("page") ?? "1");
+          const etag = `"p${page}"`;
+          if (request.headers["if-none-match"] === etag) {
+            response.writeHead(304, { etag });
+            response.end();
+            return;
+          }
+          const next = `<http://127.0.0.1:${served.port}/api/list?page=${page + 1}>; rel="next"`;
+          json(response, [page], 200, { etag, ...(page < state.pages ? { link: next } : {}) });
+        });
+        return { ...served, state };
+      };
+
+      it("is read fresh, so a page added after it is found", async () => {
+        const { credential, state, seen } = await growing();
+        const session = client().session(credential(), TOKEN);
+        expect(await session.paginate({ path: "/list" }, { maxPages: 10 })).toEqual({ items: [1, 2, 3], truncated: false });
+        state.pages = 4;
+        seen.length = 0;
+        expect(await session.paginate({ path: "/list" }, { maxPages: 10 })).toEqual({ items: [1, 2, 3, 4], truncated: false });
+        expect(seen.map((entry) => [entry.url, entry.headers["if-none-match"]])).toEqual([
+          ["/api/list", '"p1"'],
+          ["/api/list?page=2", '"p2"'],
+          ["/api/list?page=3", undefined],
+          ["/api/list?page=4", undefined],
+        ]);
+      });
+
+      it("is read fresh when a request for a list page is made on its own", async () => {
+        const { credential, seen } = await growing();
+        const session = client().session(credential(), TOKEN);
+        await session.request({ method: "GET", path: "/list", query: { page: 3 }, list: true });
+        await session.request({ method: "GET", path: "/list", query: { page: 3 }, list: true });
+        expect(seen.map((entry) => entry.headers["if-none-match"])).toEqual([undefined, undefined]);
+      });
+
+      it("stays conditional when it is an item read, not a page of a list", async () => {
+        const { credential, seen } = await growing();
+        const session = client().session(credential(), TOKEN);
+        await session.request({ method: "GET", path: "/list", query: { page: 3 } });
+        const second = await session.request({ method: "GET", path: "/list", query: { page: 3 } });
+        expect(second.notModified).toBe(true);
+        expect(seen.map((entry) => entry.headers["if-none-match"])).toEqual([undefined, '"p3"']);
+      });
+    });
+
     it("refuses a next link on another host", async () => {
       const { credential } = await serve((_, response) => json(response, [1], 200, { link: '<https://example.net/x?page=2>; rel="next"' }));
       await expect(client().session(credential(), TOKEN).paginate({ path: "/list" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });

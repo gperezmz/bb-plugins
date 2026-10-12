@@ -358,6 +358,7 @@ describe("the updated listing", () => {
     const outcome = await read([]);
     expect(outcome.updated).toHaveLength(1000);
     expect(outcome.failures).toEqual([{ ref: null, reason: expect.stringContaining("cut off") }]);
+    expect(outcome.listingCutAt).toBeUndefined();
   });
 });
 

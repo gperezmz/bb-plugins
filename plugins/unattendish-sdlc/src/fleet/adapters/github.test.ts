@@ -519,12 +519,52 @@ describe("GitHub adapter: the updated listing", () => {
     expect(server.requests.some((request) => request.url.includes("since=2026-10-10T00%3A00%3A00Z"))).toBe(true);
   });
 
-  it("cuts a listing off past 10 pages of 100 and says so without naming an item", async () => {
-    const issues = Array.from({ length: 1001 }, (_, index) => issue(index + 1));
-    const { read } = await harness(repo({ issues }));
-    const outcome = await read();
-    expect(outcome.failures).toEqual([{ ref: null, reason: expect.stringContaining("10 pages") }]);
-    expect(outcome.updated).toEqual([]);
+  describe("a listing cut off at 10 pages of 100", () => {
+    const minute = (index: number) => new Date(Date.parse(AFTER) + index * 60_000).toISOString();
+    const stepped = (count: number) => Array.from({ length: count }, (_, index) => issue(index + 1, { updatedAt: minute(index) }));
+
+    it("returns what it listed oldest first and where it stopped, no failure, and the next poll goes on from there", async () => {
+      const { read } = await harness(repo({ issues: stepped(1050) }));
+      const first = await read();
+      expect(first.failures).toEqual([]);
+      expect(first.updated).toHaveLength(1000);
+      expect(first.updated[0]).toMatchObject({ ref: "#1", at: minute(0) });
+      expect(first.updated[999]).toMatchObject({ ref: "#1000", at: minute(999) });
+      const cut = first.listingCutAt!;
+      expect(cut).toBe(new Date(Date.parse(minute(999)) - 1000).toISOString());
+
+      const second = await read({ since: cut });
+      expect(second.failures).toEqual([]);
+      expect(second.listingCutAt).toBeUndefined();
+      expect(second.updated.map((one) => one.ref)).toEqual(["#1000", ...Array.from({ length: 50 }, (_, index) => `#${1001 + index}`)]);
+    });
+
+    it("leaves listingCutAt unset where the listing fits", async () => {
+      const { read } = await harness(repo({ issues: stepped(1000) }));
+      const outcome = await read();
+      expect(outcome.updated).toHaveLength(1000);
+      expect(outcome.listingCutAt).toBeUndefined();
+    });
+
+    it("is a failure with no ref where the last issue it listed does not move the cursor", async () => {
+      const issues = Array.from({ length: 1001 }, (_, index) => issue(index + 1));
+      const { read } = await harness(repo({ issues }));
+      const first = await read();
+      expect(first.listingCutAt).toBe("2026-10-10T09:59:59.000Z");
+      const stuck = await read({ since: first.listingCutAt! });
+      expect(stuck.failures).toEqual([{ ref: null, reason: expect.stringContaining("10 pages") }]);
+      expect(stuck.listingCutAt).toBeUndefined();
+    });
+
+    it("is not a cut-off where the listing failed for another reason", async () => {
+      const state = repo({ issues: stepped(3) });
+      state.faults = [{ pathIncludes: "/issues", status: 422 }];
+      const { read } = await harness(state);
+      const outcome = await read();
+      expect(outcome.failures).toHaveLength(1);
+      expect(outcome.failures[0]!.ref).toBeNull();
+      expect(outcome.listingCutAt).toBeUndefined();
+    });
   });
 
   it("follows the pages of a listing that fits", async () => {
@@ -724,6 +764,16 @@ describe("GitHub adapter: lists over one page, linked as /repositories/{id}/", (
     expect(followed(server, "/issues/1/timeline").length + followed(server, "/issues/1/events").length).toBeGreaterThan(0);
   });
 
+  it("finds a page added after a full last page that the service would answer 304 for", async () => {
+    const events = Array.from({ length: 100 }, (_, index) => event(index + 1, 1, "labeled", { label: "bug" }));
+    const { read, fake } = await harness(repo({ issues: [issue(1)], events }));
+    expect((await read({ items: [1] })).snapshots[0]!.transitions).toEqual([]);
+    (fake.getState() as FakeGithubState).repos[REPO]!.events.push(event(101, 1, "closed"));
+    const outcome = await read({ items: [1] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots[0]!.transitions).toEqual([{ kind: "closed", actor: "olivia", at: "2026-10-10T10:00:00.000Z", id: "github:event:101" }]);
+  });
+
   it("reads a pull request's review comments over 100 to the last page", async () => {
     const reviewComments = Array.from({ length: 150 }, (_, index) => reviewComment(index + 1, 2, { reviewId: 7 }));
     const { read, server } = await harness(repo({ issues: [pull(2)], reviews: [review(7, 2, "COMMENTED")], reviewComments }));
@@ -829,7 +879,7 @@ describe("GitHub adapter: only reads", () => {
 });
 
 describe("GitHub adapter: conditional requests", () => {
-  it("answers a repeat read from 304s that the service does not count", async () => {
+  it("answers a repeat read of an item from 304s that the service does not count, and reads each list page that had no next link fresh", async () => {
     const { read, http } = await harness(
       repo({
         issues: [pull(1, { labels: ["spec"], assignees: ["olivia"] })],
@@ -848,7 +898,12 @@ describe("GitHub adapter: conditional requests", () => {
     const secondRequests = http.drainRequests();
     expect(second).toEqual(first);
     expect(secondRequests).toHaveLength(firstRequests.length);
-    expect(secondRequests.every((request) => request.status === 304 && !request.counted)).toBe(true);
+    const itemReads = secondRequests.filter((request) => /\/(issues|pulls)\/1$/.test(request.path));
+    expect(itemReads).toHaveLength(2);
+    expect(itemReads.every((request) => request.status === 304 && !request.counted)).toBe(true);
+    const listReads = secondRequests.filter((request) => !itemReads.includes(request));
+    expect(listReads.length).toBeGreaterThan(0);
+    expect(listReads.every((request) => request.status === 200 && request.counted)).toBe(true);
   });
 
   it("sees a change made between two reads", async () => {

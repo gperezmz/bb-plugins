@@ -216,7 +216,9 @@ class Session implements HttpSession {
     const cacheKey = `${this.credential.prefix} ${request.method} ${url.toString()}`;
     const cached = request.method === "GET" ? this.cache.get(cacheKey) : undefined;
     const headers: Record<string, string> = { ...defaultHeaders(this.service), ...request.headers, authorization: authorization(this.service, this.token) };
-    if (cached !== undefined) headers["if-none-match"] = cached.etag;
+    // A page of a list that came with no next link is read fresh (see `HttpRequest.list`); an item read stays conditional.
+    const conditional = cached !== undefined && !(request.list === true && cached.link === null);
+    if (conditional) headers["if-none-match"] = cached.etag;
     let body: string | undefined;
     if (request.graphql !== undefined) {
       headers["content-type"] = "application/json";
@@ -253,7 +255,7 @@ class Session implements HttpSession {
         redirects += 1;
         continue;
       }
-      if (response.status === 304 && cached !== undefined) {
+      if (response.status === 304 && conditional) {
         const kept = (name: string) => (name.toLowerCase() === "link" ? (header(name) ?? cached.link) : header(name));
         return { status: 304, json: cached.json, notModified: true, header: kept };
       }
@@ -293,14 +295,14 @@ class Session implements HttpSession {
     options: { readonly maxPages: number; readonly signal?: AbortSignal },
   ): Promise<{ readonly items: unknown[]; readonly truncated: boolean }> {
     const items: unknown[] = [];
-    let next: HttpRequest | null = { ...request, method: "GET" };
+    let next: HttpRequest | null = { ...request, method: "GET", list: true };
     for (let page = 0; next !== null; page += 1) {
       if (page >= options.maxPages) return { items, truncated: true };
       const response: HttpResponse = await this.request(next, options);
       if (!Array.isArray(response.json)) throw new HttpError("server", `GET ${next.path} answered a body that is not a list`, response.status);
       items.push(...response.json);
       const link = nextLink(response.header("link"));
-      next = link === null ? null : { method: "GET", path: link, ...(request.stayUnder === undefined ? {} : { stayUnder: request.stayUnder }) };
+      next = link === null ? null : { method: "GET", path: link, list: true, ...(request.stayUnder === undefined ? {} : { stayUnder: request.stayUnder }) };
     }
     return { items, truncated: false };
   }

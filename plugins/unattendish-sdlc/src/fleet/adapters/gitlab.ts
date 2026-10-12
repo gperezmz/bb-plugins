@@ -9,6 +9,11 @@
 //   (`iid`, `state`, `labels`, `assignees`, `author.username`, `web_url`,
 //   `merged_at`, `sha`, `head_pipeline` in the single answer): /api/issues/
 //   and /api/merge_requests/. The project is `:id`, URL-encoded.
+// - Order of the updated listing: `order_by` takes `updated_at` and `sort` takes `asc` or `desc` on both lists, and
+//   `updated_after` is "updated on or after" a time (/api/issues/, /api/merge_requests/). The listing runs
+//   `updated_at` ascending, so one cut off at its page limit reports the last `updated_at` it read as where the
+//   cursor may move. The docs do not say that offset pagination keeps a stable order under `updated_at`; a
+//   listing that changes between pages can repeat an item, which the cursor tolerates.
 // - Pagination (`Link` rel="next", `X-Next-Page`, `per_page` at most 100):
 //   /api/rest/.
 // - Comments: the notes list gives an issue's comments, with `system` true for
@@ -145,9 +150,13 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
 const get = async (context: Context, path: string, query?: Record<string, string | number | undefined>): Promise<unknown> =>
   (await context.http.request({ method: "GET", path, query, stayUnder: context.stayUnder }, { signal: context.request.signal })).json;
 
+/** The entries of a list read in pages of 100, up to 10 pages, and whether more were left. */
+const listPages = (context: Context, path: string, query: Record<string, string | number | undefined>) =>
+  context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: context.stayUnder }, { maxPages: MAX_PAGES, signal: context.request.signal });
+
 /** Every entry of a list, read in pages of 100; a list longer than 10 pages is a problem. */
 async function list(context: Context, path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown[]> {
-  const { items, truncated } = await context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: context.stayUnder }, { maxPages: MAX_PAGES, signal: context.request.signal });
+  const { items, truncated } = await listPages(context, path, query);
   if (truncated) throw new ReadProblem(`${path.replace(/%2F/gi, "/")} has more than ${MAX_PAGES} pages`);
   return items;
 }
@@ -277,20 +286,32 @@ async function scanPartition(context: Context): Promise<string[]> {
   return [...refs];
 }
 
-/** The items of this project GitLab lists as updated since `since`. */
-async function listUpdated(context: Context, roleOf: (ref: string) => SourceRole): Promise<UpdatedItem[]> {
+/**
+ * The items of this project GitLab lists as updated since `since`, oldest first, issues and merge requests apart. A
+ * listing cut off at its page limit keeps what it read, and the earliest `updated_at` that a cut-off listing ended at is
+ * `cutAt`: everything older was listed in both. It is no failure unless it is not after `since`, when the listing could
+ * not move the cursor.
+ */
+async function listUpdated(context: Context, roleOf: (ref: string) => SourceRole): Promise<{ updated: UpdatedItem[]; cutAt: string | null }> {
   const updated: UpdatedItem[] = [];
+  let cutAt: number | null = null;
+  const sinceMs = Date.parse(context.request.since);
   for (const kind of ["issues", "merge_requests"] as const) {
     const found = await guarded(context, null, async () => {
-      const entries = await list(context, `/projects/${context.project}/${kind}`, { updated_after: context.request.since, state: "all", order_by: "updated_at", sort: "desc" });
-      return entries.map((raw) => parse(listedSchema, raw, `a ${kind} listing entry`));
+      const { items, truncated } = await listPages(context, `/projects/${context.project}/${kind}`, { updated_after: context.request.since, state: "all", order_by: "updated_at", sort: "asc" });
+      return { entries: items.map((raw) => parse(listedSchema, raw, `a ${kind} listing entry`)), truncated };
     });
-    for (const entry of found ?? []) {
+    if (found === undefined) continue;
+    for (const entry of found.entries) {
       const ref = refOf(kind, entry.iid);
       updated.push({ role: roleOf(ref), ref, url: entry.web_url, at: new Date(entry.updated_at).toISOString() });
     }
+    if (!found.truncated) continue;
+    const last = found.entries.length === 0 ? null : Date.parse(found.entries[found.entries.length - 1]!.updated_at);
+    if (last !== null && last > sinceMs) cutAt = cutAt === null ? last : Math.min(cutAt, last);
+    else context.failures.push({ ref: null, reason: `/projects/${decodeURIComponent(context.project)}/${kind} has more than ${MAX_PAGES} pages` });
   }
-  return updated;
+  return { updated, cutAt: cutAt === null ? null : new Date(cutAt).toISOString() };
 }
 
 /** Creates the adapter for GitLab, gitlab.com or self-managed; the session's base URL is the instance's `/api/v4`. */
@@ -317,15 +338,16 @@ export function createGitlabAdapter(): ServiceAdapter {
 
       for (const item of request.items) await readOne(item, !request.stateOnly && request.watchedRefs.has(item.ref));
       let updated: UpdatedItem[] = [];
+      let listingCutAt: string | null = null;
       if (!request.stateOnly) {
         if (request.scanPartition) {
           for (const ref of await scanPartition(context)) {
             if (!snapshots.has(ref) && !context.failures.some((f) => f.ref === ref)) await readOne({ role: roleOf(ref), ref, url: null }, false);
           }
         }
-        updated = await listUpdated(context, roleOf);
+        ({ updated, cutAt: listingCutAt } = await listUpdated(context, roleOf));
       }
-      return { snapshots: [...snapshots.values()], events, updated, failures: context.failures };
+      return { snapshots: [...snapshots.values()], events, updated, failures: context.failures, ...(listingCutAt === null ? {} : { listingCutAt }) };
     },
   };
 }

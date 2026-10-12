@@ -302,13 +302,13 @@ describe("the GitLab adapter: reviewers", () => {
     expect(outcome.events.some((event) => event.kind === "reviewed: changes requested" || event.kind === "reviewed: commented")).toBe(false);
   });
 
-  it("reads the same reviewers twice alike, the second time as a conditional request", async () => {
+  it("reads the same reviewers twice alike, the list fresh the second time", async () => {
     const { read, http } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "requested_changes" }])] } });
     const first = await read({ items: [watch("!4")] });
     http.drainRequests();
     const second = await read({ items: [watch("!4")] });
     expect(second.snapshots).toEqual(first.snapshots);
-    expect(http.drainRequests().filter((record) => record.path.endsWith("/reviewers")).map((record) => record.status)).toEqual([304]);
+    expect(http.drainRequests().filter((record) => record.path.endsWith("/reviewers")).map((record) => record.status)).toEqual([200]);
   });
 
   it("reads reviewers in a state-only read too, and gives an issue none", async () => {
@@ -615,12 +615,48 @@ describe("the GitLab adapter: pages", () => {
     expect(only(outcome.failures)).toMatchObject({ ref: "#1", reason: expect.stringContaining("more than 10 pages") });
   });
 
-  it("reports a cut-off listing of updates as a failure with no reference, keeping what it read", async () => {
-    const issues = Array.from({ length: 25 }, (_, i) => issue(i + 1));
-    const { read } = await world({ [PATH]: { issues } }, { maxPerPage: 2 });
-    const { updated, failures } = await read();
-    expect(updated).toEqual([]);
-    expect(failures).toEqual([{ ref: null, reason: expect.stringContaining("more than 10 pages") }]);
+  describe("a listing of updates cut off at 10 pages", () => {
+    const minute = (index: number) => new Date(Date.parse(AFTER) + index * 60_000).toISOString();
+    const stepped = (count: number, make: (iid: number, extra: Partial<FakeItem>) => FakeItem = issue) => Array.from({ length: count }, (_, i) => make(i + 1, { updated_at: minute(i) }));
+
+    it("returns what it read oldest first and where it stopped, with no failure, and the next poll goes on from there", async () => {
+      const { read } = await world({ [PATH]: { issues: stepped(25) } }, { maxPerPage: 2 });
+      const first = await read();
+      expect(first.failures).toEqual([]);
+      expect(first.updated.map((u) => u.ref)).toEqual(Array.from({ length: 20 }, (_, i) => `#${i + 1}`));
+      expect(first.listingCutAt).toBe(minute(19));
+
+      const second = await read({ since: first.listingCutAt });
+      expect(second.failures).toEqual([]);
+      expect(second.listingCutAt).toBeUndefined();
+      expect(second.updated.map((u) => u.ref)).toEqual(["#20", "#21", "#22", "#23", "#24", "#25"]);
+    });
+
+    it("stops the cursor at the earlier of two listings that were cut off, and at the cut one where the other fits", async () => {
+      const both = await world({ [PATH]: { issues: stepped(25), mergeRequests: stepped(22, mr).map((one) => ({ ...one, updated_at: minute(Number(one.iid) * 2) })) } }, { maxPerPage: 2 });
+      expect((await both.read()).listingCutAt).toBe(minute(19));
+      const one = await world({ [PATH]: { issues: stepped(25), mergeRequests: stepped(3, mr) } }, { maxPerPage: 2 });
+      const outcome = await one.read();
+      expect(outcome.listingCutAt).toBe(minute(19));
+      expect(outcome.updated.filter((u) => u.ref.startsWith("!"))).toHaveLength(3);
+    });
+
+    it("is a failure with no ref where the last item it read does not move the cursor", async () => {
+      const issues = Array.from({ length: 25 }, (_, i) => issue(i + 1));
+      const { read } = await world({ [PATH]: { issues } }, { maxPerPage: 2 });
+      const first = await read({ since: AFTER });
+      expect(first.listingCutAt).toBeUndefined();
+      expect(first.failures).toEqual([{ ref: null, reason: expect.stringContaining("more than 10 pages") }]);
+      expect(first.updated).toHaveLength(20);
+    });
+
+    it("asks for the oldest first", async () => {
+      const { read, mounted } = await world({ [PATH]: { issues: [issue(1)] } });
+      await read();
+      const listing = mounted.requests.map((r) => new URL(r.url, mounted.url)).filter((u) => u.searchParams.has("updated_after"));
+      expect(listing.length).toBeGreaterThan(0);
+      expect(listing.every((u) => u.searchParams.get("order_by") === "updated_at" && u.searchParams.get("sort") === "asc")).toBe(true);
+    });
   });
 
   it("reads 10 full pages of 100 as complete", async () => {
@@ -644,7 +680,7 @@ describe("the GitLab adapter: requests", () => {
     expect(mounted.requests.every((r) => r.method === "GET" && r.body === "" && r.hasAuthorization)).toBe(true);
   });
 
-  it("answers a repeat read with conditional requests", async () => {
+  it("answers a repeat read of an item with conditional requests, and reads each list page that had no next link fresh", async () => {
     const { read, http } = await world({ [PATH]: { issues: [issue(1, { notes: [note(1, "x")] })], mergeRequests: [mr(2)] } });
     const request = { items: [watch("#1"), watch("!2")], watchedRefs: new Set(["#1", "!2"]), scanPartition: true };
     const first = await read(request);
@@ -653,7 +689,12 @@ describe("the GitLab adapter: requests", () => {
     expect(second).toEqual(first);
     const records = http.drainRequests();
     expect(records.length).toBeGreaterThan(5);
-    expect(records.filter((r) => r.status === 304).length).toBe(records.filter((r) => !r.path.endsWith("/personal_access_tokens/self")).length);
+    const objects = records.filter((r) => /\/(issues|merge_requests)\/\d+$|\/approvals$/.test(r.path));
+    expect(objects).toHaveLength(3);
+    expect(objects.every((r) => r.status === 304)).toBe(true);
+    const lists = records.filter((r) => !objects.includes(r) && !r.path.endsWith("/personal_access_tokens/self"));
+    expect(lists.length).toBeGreaterThan(5);
+    expect(lists.every((r) => r.status === 200)).toBe(true);
   });
 
   it("reports the token's expiry once per read, and a failure of that call is no failure of the read", async () => {

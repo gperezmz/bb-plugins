@@ -419,12 +419,46 @@ describe("the Jira adapter's updated listing", () => {
     expect(searches(live)[1]!.get("nextPageToken")).not.toBeNull();
   });
 
-  it("reports a listing cut off after ten pages, with what it listed", async () => {
-    const issues = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(i + 1) }));
-    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
-    const out = await read();
-    expect(out.updated).toHaveLength(20);
-    expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+  describe("an updated listing cut off after ten pages", () => {
+    const paged = { pageSize: 2, etag: false, alsoListed: [], failures: [] };
+    const thirty = () => Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(i + 1) }));
+
+    it("returns what it listed and where it stopped, with no failure, and the next poll goes on from there", async () => {
+      const { read } = await world({ issues: thirty(), settings: paged });
+      const first = await read();
+      expect(first.failures).toEqual([]);
+      expect(first.updated).toHaveLength(20);
+      expect(first.updated[0]!.ref).toBe("PROJ-1");
+      expect(first.listingCutAt).toBe(iso(20));
+
+      const second = await read({ since: first.listingCutAt });
+      expect(second.failures).toEqual([]);
+      expect(second.listingCutAt).toBeUndefined();
+      expect(second.updated.map((u) => u.ref)).toEqual(Array.from({ length: 11 }, (_, i) => `PROJ-${20 + i}`));
+    });
+
+    it("is a failure with no ref where the last issue it listed does not move the cursor", async () => {
+      const same = Array.from({ length: 25 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(5) }));
+      const { read } = await world({ issues: same, settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(out.listingCutAt).toBeUndefined();
+      expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+    });
+
+    it("is a failure with no ref where the service did not list oldest first", async () => {
+      const { read } = await world({ issues: thirty(), settings: { ...paged, unordered: true } });
+      const out = await read();
+      expect(out.listingCutAt).toBeUndefined();
+      expect(out.updated).toHaveLength(20);
+      expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+    });
+
+    it("leaves listingCutAt unset where the listing fits", async () => {
+      const { read } = await world({ issues: thirty().slice(0, 20), settings: paged });
+      const out = await read();
+      expect(out.updated).toHaveLength(20);
+      expect(out.listingCutAt).toBeUndefined();
+    });
   });
 
   it("reports a listing that fails with no ref, and still returns the items it read", async () => {
