@@ -32,15 +32,12 @@ describe("useLive", () => {
   it("fetches again when the connection comes back, but not on the first connection", async () => {
     const load = vi.fn(async () => "view");
     sdk.connection = "connecting";
-    const { result, rerender } = renderHook(() => useLive(load, []));
+    const { result } = renderHook(() => useLive(load, []));
     await waitFor(() => expect(result.current.data).toBe("view"));
-    sdk.connection = "connected";
-    rerender();
+    sdk.setConnection("connected");
     expect(load).toHaveBeenCalledTimes(1);
-    sdk.connection = "reconnecting";
-    rerender();
-    sdk.connection = "connected";
-    rerender();
+    sdk.setConnection("reconnecting");
+    sdk.setConnection("connected");
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
   });
 

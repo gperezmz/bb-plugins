@@ -2,10 +2,12 @@
 //   vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
 // and drives the state below: the thread in view, the navigation calls, realtime signals.
 import { act } from "@testing-library/react";
-import { useEffect, useRef, type AnchorHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type AnchorHTMLAttributes, type ReactNode } from "react";
 import { vi } from "vitest";
 
 type Handler = (payload: unknown) => void;
+type Connection = "connected" | "connecting" | "reconnecting";
+const connectionListeners = new Set<() => void>();
 
 export const sdk = {
   context: { projectId: null as string | null, threadId: null as string | null },
@@ -16,7 +18,14 @@ export const sdk = {
     openThreadPanel: vi.fn(() => true),
     openUrl: vi.fn(() => true),
   },
-  connection: "connected" as "connected" | "connecting" | "reconnecting",
+  /** The realtime connection's state; change it with `setConnection`, which redraws whoever reads it. */
+  connection: "connected" as Connection,
+  setConnection(state: Connection) {
+    sdk.connection = state;
+    act(() => {
+      for (const listener of [...connectionListeners]) listener();
+    });
+  },
   pluginId: "unattendish-sdlc",
   handlers: new Map<string, Set<Handler>>(),
   /** Delivers a realtime signal to every component listening on the channel. */
@@ -33,6 +42,16 @@ export const sdk = {
     sdk.handlers.clear();
   },
 };
+
+function useConnection(): Connection {
+  return useSyncExternalStore(
+    (listener) => {
+      connectionListeners.add(listener);
+      return () => connectionListeners.delete(listener);
+    },
+    () => sdk.connection,
+  );
+}
 
 function useRealtime(channel: string, handler: Handler) {
   const latest = useRef(handler);
@@ -63,7 +82,7 @@ export function sdkModule() {
     useBbContext: () => sdk.context,
     useBbNavigate: () => sdk.navigate,
     useRealtime,
-    useRealtimeConnectionState: () => sdk.connection,
+    useRealtimeConnectionState: useConnection,
     useSettings: () => ({ values: {}, isLoading: false }),
     useRpc: () => ({ call: async () => ({}) }),
     experimental_usePluginId: () => sdk.pluginId,
