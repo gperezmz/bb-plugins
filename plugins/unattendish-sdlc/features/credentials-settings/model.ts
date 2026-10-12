@@ -16,7 +16,10 @@ export const AUTH_CHOICES: readonly { readonly id: Auth; readonly label: string 
 
 export const SERVICE_CHOICES = ["", "github", "gitlab", "linear", "jira"] as const;
 
-/** What the form holds while a credential is added or edited. The token is write-only: it is never filled from the server. */
+/**
+ * What the form holds while a credential is added or edited. The token is write-only: it is never filled from the
+ * server, and it is not held here at all, only whether the field has text; the field itself is read when the form is sent.
+ */
 export interface Form {
   /** The prefix of the entry being edited; null when adding. */
   readonly was: string | null;
@@ -24,24 +27,25 @@ export interface Form {
   readonly auth: Auth;
   readonly service: string;
   readonly baseUrl: string;
-  readonly token: string;
+  /** True while the token field has text. */
+  readonly tokenTyped: boolean;
 }
 
-export const emptyForm = (): Form => ({ was: null, prefix: "", auth: "token", service: "", baseUrl: "", token: "" });
+export const emptyForm = (): Form => ({ was: null, prefix: "", auth: "token", service: "", baseUrl: "", tokenTyped: false });
 
 export function formFrom(setting: CredentialSettingView): Form {
-  return { was: setting.prefix, prefix: setting.prefix, auth: setting.auth, service: setting.service ?? "", baseUrl: setting.baseUrl ?? "", token: "" };
+  return { was: setting.prefix, prefix: setting.prefix, auth: setting.auth, service: setting.service ?? "", baseUrl: setting.baseUrl ?? "", tokenTyped: false };
 }
 
 /** Why the form cannot be sent yet, or null. */
 export function formProblem(form: Form): string | null {
   if (form.prefix.trim() === "") return "Enter the prefix the credential applies to.";
-  if (form.auth === "token" && form.was === null && form.token.trim() === "") return "Paste the token.";
+  if (form.auth === "token" && form.was === null && !form.tokenTyped) return "Paste the token.";
   return null;
 }
 
-/** The call for a form: empty optional fields are left out, and a blank token leaves the stored one as it is. */
-export function draftFrom(form: Form): CredentialDraft {
+/** The call for a form and the token read from its field: empty optional fields are left out, and a blank token leaves the stored one as it is. */
+export function draftFrom(form: Form, token: string): CredentialDraft {
   const service = form.service.trim();
   const baseUrl = form.baseUrl.trim();
   return {
@@ -50,7 +54,7 @@ export function draftFrom(form: Form): CredentialDraft {
     auth: form.auth,
     ...(service !== "" ? { service } : {}),
     ...(baseUrl !== "" ? { baseUrl } : {}),
-    ...(form.auth === "token" && form.token.trim() !== "" ? { token: form.token.trim() } : {}),
+    ...(form.auth === "token" && token.trim() !== "" ? { token: token.trim() } : {}),
   };
 }
 

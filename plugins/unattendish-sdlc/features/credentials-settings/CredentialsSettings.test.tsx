@@ -32,6 +32,15 @@ const show = async () => {
   await screen.findByRole("heading", { name: "Credentials" });
 };
 
+/** Every attribute in the page whose value carries `text`. */
+function attributesHolding(text: string): string[] {
+  const holding: string[] = [];
+  for (const element of document.body.querySelectorAll("*")) {
+    for (const attribute of element.getAttributeNames()) if (element.getAttribute(attribute)?.includes(text)) holding.push(`${element.tagName.toLowerCase()}[${attribute}]`);
+  }
+  return holding;
+}
+
 describe("the credentials", () => {
   it("lists every credential with its prefix, kind and expiry where known, and a note where it cannot be used", async () => {
     await show();
@@ -59,6 +68,7 @@ describe("the credentials", () => {
     expect(token.type).toBe("password");
     expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(token, { target: { value: FAKE_TOKEN } });
+    expect(attributesHolding(FAKE_TOKEN)).toEqual([]);
     fake.api.saveCredential.mockResolvedValue({ ok: true, settings: stored });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(fake.api.saveCredential).toHaveBeenCalledWith({ prefix: "github.com/other", auth: "token", token: FAKE_TOKEN }));
@@ -66,6 +76,29 @@ describe("the credentials", () => {
     expect(document.body.innerHTML).not.toContain(FAKE_TOKEN);
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  it("keeps a typed token out of every attribute and clears the field on Cancel, Save and a refusal", async () => {
+    await show();
+    fireEvent.click(screen.getByRole("button", { name: "Add a credential" }));
+    fireEvent.change(screen.getByLabelText("Prefix"), { target: { value: "github.com/other" } });
+    const field = () => screen.getByLabelText("Token") as HTMLInputElement;
+    fireEvent.change(field(), { target: { value: FAKE_TOKEN } });
+    expect(field().value).toBe(FAKE_TOKEN);
+    expect(attributesHolding(FAKE_TOKEN)).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a credential" }));
+    expect(field().value).toBe("");
+    // A refusal leaves the field empty, and Add disabled until a token is typed again.
+    fireEvent.change(screen.getByLabelText("Prefix"), { target: { value: "github.com/other" } });
+    fireEvent.change(field(), { target: { value: FAKE_TOKEN } });
+    fake.api.saveCredential.mockResolvedValue({ ok: false, reason: "baseUrl must be https" });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("alert");
+    expect(field().value).toBe("");
+    expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(attributesHolding(FAKE_TOKEN)).toEqual([]);
+    expect(document.body.innerHTML).not.toContain(FAKE_TOKEN);
   });
 
   it("adds a gh login without a token field", async () => {

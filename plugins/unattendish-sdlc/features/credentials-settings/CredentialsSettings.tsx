@@ -18,12 +18,14 @@ export function CredentialsSettings() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeRefusal, setRemoveRefusal] = useState<string | null>(null);
 
-  async function save(): Promise<void> {
+  async function save(token: string): Promise<void> {
     if (form === null) return;
     setSaving(true);
     setRefusal(null);
+    // The field was cleared as the token was read, so a refusal leaves it empty to be typed again.
+    setForm({ ...form, tokenTyped: false });
     try {
-      const result = await api.saveCredential(draftFrom(form));
+      const result = await api.saveCredential(draftFrom(form, token));
       if (result.ok) {
         setForm(null);
         await live.refetch();
@@ -102,7 +104,7 @@ export function CredentialsSettings() {
                 </p>
               ) : null}
               {form !== null ? (
-                <CredentialForm form={form} onChange={setForm} onSave={() => void save()} onCancel={() => setForm(null)} saving={saving} refusal={refusal} />
+                <CredentialForm form={form} onChange={setForm} onSave={(token) => void save(token)} onCancel={() => setForm(null)} saving={saving} refusal={refusal} />
               ) : (
                 <div>
                   <Button

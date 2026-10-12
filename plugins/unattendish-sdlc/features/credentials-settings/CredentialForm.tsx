@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AUTH_CHOICES, formProblem, SERVICE_CHOICES, type Auth, type Form } from "./model";
@@ -6,7 +6,11 @@ import { AUTH_CHOICES, formProblem, SERVICE_CHOICES, type Auth, type Form } from
 const SELECT_CLASS =
   "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring max-md:pointer-coarse:h-11 max-md:pointer-coarse:text-base";
 
-/** Adds or edits one credential. The token field is write-only: the stored token is never shown, and blank keeps it. */
+/**
+ * Adds or edits one credential. The token field is write-only: the stored token is never shown, and blank keeps it.
+ * The field is uncontrolled, so what is typed never becomes an attribute of the page; it is read when the form is sent,
+ * and the field is cleared when the form is sent or cancelled.
+ */
 export function CredentialForm({
   form,
   onChange,
@@ -17,11 +21,18 @@ export function CredentialForm({
 }: {
   form: Form;
   onChange(form: Form): void;
-  onSave(): void;
+  /** Sends the form with the token read from its field. */
+  onSave(token: string): void;
   onCancel(): void;
   saving: boolean;
   refusal: string | null;
 }) {
+  const tokenField = useRef<HTMLInputElement>(null);
+  const takeToken = (): string => {
+    const token = tokenField.current?.value ?? "";
+    if (tokenField.current !== null) tokenField.current.value = "";
+    return token;
+  };
   const ids = { prefix: useId(), auth: useId(), service: useId(), baseUrl: useId(), token: useId() };
   const problem = formProblem(form);
   const editing = form.was !== null;
@@ -31,14 +42,14 @@ export function CredentialForm({
       className="flex flex-col gap-3 rounded-md border border-border p-3"
       onSubmit={(event) => {
         event.preventDefault();
-        if (problem === null && !saving) onSave();
+        if (problem === null && !saving) onSave(takeToken());
       }}
     >
       <Field id={ids.prefix} label="Prefix">
         <Input id={ids.prefix} value={form.prefix} placeholder="github.com/acme/web" onChange={(event) => onChange({ ...form, prefix: event.target.value })} />
       </Field>
       <Field id={ids.auth} label="Kind">
-        <select id={ids.auth} className={SELECT_CLASS} value={form.auth} onChange={(event) => onChange({ ...form, auth: event.target.value as Auth })}>
+        <select id={ids.auth} className={SELECT_CLASS} value={form.auth} onChange={(event) => onChange({ ...form, auth: event.target.value as Auth, tokenTyped: false })}>
           {AUTH_CHOICES.map((choice) => (
             <option key={choice.id} value={choice.id}>
               {choice.label}
@@ -60,7 +71,16 @@ export function CredentialForm({
       </Field>
       {form.auth === "token" ? (
         <Field id={ids.token} label="Token" hint={editing ? "Leave blank to keep the stored token." : undefined}>
-          <Input id={ids.token} type="password" autoComplete="new-password" value={form.token} onChange={(event) => onChange({ ...form, token: event.target.value })} />
+          <Input
+            id={ids.token}
+            ref={tokenField}
+            type="password"
+            autoComplete="new-password"
+            onChange={(event) => {
+              const typed = event.target.value.trim() !== "";
+              if (typed !== form.tokenTyped) onChange({ ...form, tokenTyped: typed });
+            }}
+          />
         </Field>
       ) : null}
       {refusal !== null ? (
@@ -70,7 +90,15 @@ export function CredentialForm({
       ) : null}
       <div className="flex items-center justify-end gap-2">
         {problem !== null ? <span className="mr-auto text-xs text-muted-foreground">{problem}</span> : null}
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            takeToken();
+            onCancel();
+          }}
+        >
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={problem !== null || saving}>
