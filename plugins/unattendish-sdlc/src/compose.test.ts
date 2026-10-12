@@ -35,7 +35,7 @@ const load = async (fetch: typeof globalThis.fetch) => {
   const host = createFakePluginHost({
     pluginId: "unattendish-sdlc",
     settings: {
-      credentials: JSON.stringify([{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: "https://api.github.example" }]),
+      credentials: JSON.stringify([{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: "https://github.example/api/v3" }]),
       tokens: JSON.stringify({ "github.example/org": "ghp_compose_test_token_value" }),
     },
     sdk: { threads: { get: async () => ({ id: MANAGER, archivedAt: null, deletedAt: null }), send: async () => ({ delivery: "sent", ok: true }) } },
