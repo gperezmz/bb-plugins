@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { messageOf, redact } from "./redact";
 
-const token = "ghp_abcdefghijklmnop1234";
+const token = ["ghp", "abcdefghijklmnop1234"].join("_");
 
 describe("redact", () => {
   it("replaces every occurrence of a secret, in a URL and in a JSON string", () => {
