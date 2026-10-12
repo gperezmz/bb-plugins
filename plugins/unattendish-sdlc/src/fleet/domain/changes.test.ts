@@ -272,6 +272,17 @@ describe("events and out of scope", () => {
     ]);
   });
 
+  it("carries the other names the service knows an actor by from an event and from a transition, and leaves the field out otherwise", () => {
+    const watchedOne = new Set(["#1"]);
+    const viaEvent = derive({ watchedRefs: watchedOne, outcome: outcome({ events: [event({ actorAliases: ["bot@example.com"] }), event({ id: "e2", actorAliases: [] })] }) }).changes;
+    expect(viaEvent.find((c) => c.key === "github:issuecomment:5")!.actorAliases).toEqual(["bot@example.com"]);
+    expect("actorAliases" in viaEvent.find((c) => c.key === "e2")!).toBe(false);
+    const prev = cursor({ "forge:#1": state() });
+    const labelled = snapshot({ fleetLabels: ["in progress"], transitions: [transition({ label: "in progress", actorAliases: ["bot@example.com"] })] });
+    const [viaTransition] = derive({ prev, watchedRefs: watchedOne, outcome: outcome({ snapshots: [labelled] }) }).changes;
+    expect(viaTransition!.actorAliases).toEqual(["bot@example.com"]);
+  });
+
   it("lists updated items that are not watched as out of scope", () => {
     const updated = [
       { role: "forge" as const, ref: "#1", url: "https://github.com/org/repo/issues/1", at: "2026-10-12T09:50:00.000Z" },

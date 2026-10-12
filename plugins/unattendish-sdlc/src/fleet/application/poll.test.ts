@@ -120,6 +120,14 @@ describe("what is dropped as the fleet's own (AC5)", () => {
     expect(rows(w)[0]).toMatchObject({ rule: "echo actor" });
   });
 
+  it("drops a change whose actor is known by an echo actor's name", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }), { echoActors: ["fleetbot"] });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7, { actor: "Fleet Bot", actorAliases: ["FleetBot"] })] }));
+    expect(await poll(w)).toMatchObject({ woke: 0, echoes: 1 });
+    expect(rows(w)[0]).toMatchObject({ disposition: "echo", rule: "echo actor" });
+  });
+
   it("drops a change to the in-progress label and wakes once for the ready label the manager adds", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7, "ready")] }));

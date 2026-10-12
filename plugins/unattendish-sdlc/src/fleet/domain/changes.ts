@@ -88,7 +88,7 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   if (!stateOnly) {
     for (const event of outcome.events) {
       if (!watchedRefs.has(event.ref)) continue;
-      changes.push({ key: event.id, role: event.role, ref: event.ref, url: event.url, kind: event.kind, label: null, actor: event.actor, at: event.at, lastLine: event.lastLine });
+      changes.push({ key: event.id, role: event.role, ref: event.ref, url: event.url, kind: event.kind, label: null, actor: event.actor, at: event.at, lastLine: event.lastLine, ...aliasesOf(event) });
     }
   }
 
@@ -155,6 +155,7 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
     actor: transition?.actor ?? null,
     at: transition?.at ?? context.startedAt,
     lastLine: null,
+    ...(transition === undefined ? {} : aliasesOf(transition)),
   });
 
   const registered: readonly { readonly label: string; readonly partitioned: boolean }[] = [
@@ -214,6 +215,10 @@ const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemS
   }
   return { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
 };
+
+/** The other names the service knows an actor by, as the field of a `Change`; nothing when there are none. */
+const aliasesOf = (source: { readonly actorAliases?: readonly string[] | undefined }): { readonly actorAliases?: readonly string[] } =>
+  source.actorAliases === undefined || source.actorAliases.length === 0 ? {} : { actorAliases: [...source.actorAliases] };
 
 const isFinal = (outcome: ChecksOutcome): boolean => outcome !== "pending";
 
