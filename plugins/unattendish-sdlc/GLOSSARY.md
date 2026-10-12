@@ -86,6 +86,10 @@ _Avoid_: Fleet panel, Fleet detail
 The control in a manager thread's header that spells out the fleet's counts and opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
 _Avoid_: Header chip, Fleet badge
 
+**Connect popup**:
+The popup that connects an account to the fleet half it reads, or adds an account on its own, opened by Connect… or Change account… on a card, in Waits on you on the Fleets page or on a toast, by Renew on a card or in Settings, and by Add account or Add token for another owner in Settings. It opens over the current view.
+_Avoid_: Credential wizard
+
 **Action**:
 A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.
 _Avoid_: Command, reply
