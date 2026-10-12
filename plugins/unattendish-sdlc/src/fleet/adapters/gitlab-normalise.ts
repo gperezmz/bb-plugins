@@ -5,15 +5,9 @@
 // Each rule rests on GitLab's own documentation (docs.gitlab.com, REST API
 // v4); the adapter's header comment names the pages.
 import { z } from "zod";
+import { combineChecks } from "../domain/checks";
 import type { ChecksOutcome, FleetLabels, Transition } from "../domain/model";
-
-/** A read that cannot be trusted. `message` names a field or a count and never carries text written on the service. */
-export class ReadProblem extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReadProblem";
-  }
-}
+import { parseAnswer, ReadProblem } from "./service-support";
 
 const timestamp = z.string().refine((value) => !Number.isNaN(Date.parse(value)));
 const username = z.object({ username: z.string().min(1) });
@@ -68,12 +62,8 @@ const stateNameSchema = z.object({ state: z.string().optional() });
 export const tokenSchema = z.object({ expires_at: z.string().nullish() });
 
 /** Checks `value` against `schema`; the problem names the fields that failed and nothing they held. */
-export function parse<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
-  const result = schema.safeParse(value);
-  if (result.success) return result.data;
-  const fields = [...new Set(result.error.issues.map((issue) => issue.path.join(".") || "(whole answer)"))].join(", ");
-  throw new ReadProblem(`${what} lacks or malforms: ${fields}`);
-}
+export const parse = <T>(schema: z.ZodType<T>, value: unknown, what: string): T =>
+  parseAnswer(schema, value, { root: "(whole answer)", message: (fields) => `${what} lacks or malforms: ${fields}` });
 
 const iso = (value: string): string => new Date(value).toISOString();
 
@@ -92,16 +82,6 @@ export function inPartition(item: { readonly assignees: readonly { readonly user
   const who = operator.toLowerCase();
   if (item.assignees.length === 0) return item.author.username.toLowerCase() === who;
   return item.assignees.some((assignee) => assignee.username.toLowerCase() === who);
-}
-
-/** The last non-blank line of a body, trimmed and cut to 500 characters; null where there is none. */
-export function lastLine(body: string): string | null {
-  const lines = body.split(/\r\n|\r|\n/);
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const line = lines[i]!.trim();
-    if (line !== "") return line.slice(0, 500);
-  }
-  return null;
 }
 
 /**
@@ -140,8 +120,7 @@ export function checksOutcome(statuses: readonly string[]): ChecksOutcome | null
     if (outcome === null) throw new ReadProblem("a pipeline has a status outside the documented list");
     return outcome;
   });
-  if (outcomes.includes("pending")) return "pending";
-  return outcomes.includes("failed") ? "failed" : "passed";
+  return combineChecks(outcomes);
 }
 
 /** A note's author and time as the Fleet reads a comment, or null for a system note (GitLab's record of its own actions). */

@@ -48,6 +48,7 @@ import type { z } from "zod";
 import type { ReadRequest, ServiceAdapter } from "../application/ports";
 import { HttpError } from "../application/ports";
 import type { ActivityEvent, FleetLabels, ItemSnapshot, ReadFailure, ReadOutcome, Transition, UpdatedItem } from "../domain/model";
+import { lastLine } from "../domain/text";
 import {
   COMMENT_REPLIES,
   commentReplies,
@@ -59,27 +60,16 @@ import {
   issuesListed,
   MAX_PAGES,
   NotFoundProblem,
-  ReadProblem,
   send,
   type Comment,
   type HistoryEntry,
   type Person,
 } from "./linear-graphql";
+import { isFatal, ReadProblem } from "./service-support";
 
 const CLOSED_TYPES = ["completed", "canceled", "duplicate"];
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LAST_LINE_LIMIT = 500;
-
-/** The last non-blank line of a comment, trimmed and cut to 500 characters; null where nothing is written. */
-export const lastLineOf = (body: string): string | null => {
-  const lines = body.split(/\r?\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index]!.trim();
-    if (line !== "") return [...line].slice(0, LAST_LINE_LIMIT).join("");
-  }
-  return null;
-};
 
 /** Whether `operator` names the person, by email, display name or account id, ignoring case. */
 export const isOperator = (person: Person | null, operator: string): boolean => {
@@ -135,8 +125,6 @@ const failureReason = (error: unknown): string => {
   return "Linear answered something the adapter could not read";
 };
 
-/** An error that ends the whole read: a refused credential or a rate limit. */
-const isFatal = (error: unknown): boolean => error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit");
 
 class LinearAdapter implements ServiceAdapter {
   readonly service = "linear" as const;
@@ -251,7 +239,7 @@ class LinearAdapter implements ServiceAdapter {
         actor: comment.user?.id ?? null,
         ...aliasesOf(comment.user),
         at: comment.createdAt,
-        lastLine: lastLineOf(comment.body),
+        lastLine: lastLine(comment.body),
       }));
   }
 

@@ -3,6 +3,7 @@
 // the fields a change depends on; anything else GitHub sends is ignored.
 import type { components } from "@octokit/openapi-types";
 import { z } from "zod";
+import { parseAnswer, ReadProblem } from "./service-support";
 
 type Schemas = components["schemas"];
 
@@ -30,21 +31,9 @@ type CommitStatusRead = Read<Schemas["simple-commit-status"], "state">;
 type Accepts<Shape extends z.ZodType, Wire> = [Wire] extends [z.input<Shape>] ? true : false;
 type Proof<Entries extends readonly true[]> = Entries;
 
-/** An answer that is not of the documented shape. `message` names fields and never carries anything the service wrote. */
-export class Malformed extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "Malformed";
-  }
-}
-
-/** Parses `value` as `schema`, or throws a `Malformed` naming the offending fields and nothing of their values. */
-export const parse = <T>(what: string, schema: z.ZodType<T>, value: unknown): T => {
-  const result = schema.safeParse(value);
-  if (result.success) return result.data;
-  const fields = [...new Set(result.error.issues.map((issue) => (issue.path.length === 0 ? "(body)" : issue.path.join("."))))];
-  throw new Malformed(`${what} lacked or misspelled ${fields.join(", ")}`);
-};
+/** Parses `value` as `schema`, or throws a `ReadProblem` naming the offending fields and nothing of their values. */
+export const parse = <T>(what: string, schema: z.ZodType<T>, value: unknown): T =>
+  parseAnswer(schema, value, { root: "(body)", message: (fields) => `${what} lacked or misspelled ${fields}` });
 
 const time = z.string().refine((text) => !Number.isNaN(Date.parse(text)), "not a time");
 const login = z.object({ login: z.string() });
@@ -100,21 +89,8 @@ export const labelName = (wire: IssueWire["labels"][number]): string => (typeof 
 /** The logins an issue is assigned to; `assignees` where GitHub sent it, else the single `assignee`. */
 export const assigneesOf = (issue: IssueWire): string[] => {
   if (issue.assignees !== undefined) return issue.assignees.map((assignee) => assignee.login);
-  if (issue.assignee === undefined) throw new Malformed("an issue lacked assignees");
+  if (issue.assignee === undefined) throw new ReadProblem("an issue lacked assignees");
   return issue.assignee === null ? [] : [issue.assignee.login];
-};
-
-const MAX_LAST_LINE = 500;
-
-/** The last non-blank line of a body, trimmed and cut to 500 characters; null where there is none. */
-export const lastLineOf = (text: string | null | undefined): string | null => {
-  if (text === null || text === undefined) return null;
-  const lines = text.split(/\r\n|\r|\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = (lines[index] ?? "").trim();
-    if (line !== "") return Array.from(line).slice(0, MAX_LAST_LINE).join("");
-  }
-  return null;
 };
 
 /** The issue number of a `#<n>` reference, or null for anything else. */

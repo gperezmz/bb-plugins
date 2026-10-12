@@ -61,6 +61,7 @@
 //   lists state no order, so every list is read in full (10 pages of 100).
 import { HttpError, type HttpSession, type ReadRequest, type ServiceAdapter } from "../application/ports";
 import type { ActivityEvent, ItemSnapshot, ReadFailure, ReadOutcome, SourceRole, Transition, UpdatedItem, WatchedItem } from "../domain/model";
+import { lastLine } from "../domain/text";
 import {
   approvalsSchema,
   atOrAfter,
@@ -72,17 +73,16 @@ import {
   inPartition,
   issueSchema,
   labelTransitions,
-  lastLine,
   listedSchema,
   mergedFromFields,
   mergeRequestSchema,
   parse,
   pipelinesSchema,
-  ReadProblem,
   stateTransitions,
   tokenSchema,
   userNote,
 } from "./gitlab-normalise";
+import { isFatal, ReadProblem } from "./service-support";
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
@@ -110,8 +110,8 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
   try {
     return await run();
   } catch (error) {
+    if (isFatal(error)) throw error;
     if (error instanceof HttpError) {
-      if (error.kind === "auth" || error.kind === "rate-limit") throw error;
       context.failures.push(ref !== null && error.kind === "not-found" ? { ref, reason: error.message, kind: "not-found" } : { ref, reason: error.message });
       return undefined;
     }

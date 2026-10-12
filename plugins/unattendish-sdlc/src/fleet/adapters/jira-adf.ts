@@ -1,11 +1,10 @@
-// Atlassian Document Format to the one line the plugin needs from a comment.
+// Atlassian Document Format to the text the plugin reads a comment's last line from.
 // Node names and attributes follow https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
 // and the per-node pages under .../document/nodes/: a `doc` of block nodes holding inline nodes, `text` carrying
 // its words in `text`, `hardBreak` a newline, `mention` and `emoji` their `attrs.text`, `inlineCard` its `attrs.url`.
 // The pages say nothing of how a block boundary reads, so each block node here starts and ends a line.
 
 const MAX_DEPTH = 50;
-const LINE_LIMIT = 500;
 
 const INLINE_TEXT = new Set(["text"]);
 const INLINE_ATTRIBUTE: Record<string, readonly string[]> = {
@@ -44,15 +43,5 @@ const render = (node: unknown, depth: number): string => {
 /** Whether a value has the shape of an ADF document: an object whose `type` is `doc`. */
 export const isDocument = (body: unknown): boolean => isNode(body) && body.type === "doc";
 
-/**
- * The last non-blank line of an ADF document's rendered text, trimmed and cut
- * to 500 characters; null when the document holds none.
- */
-export const lastLineOf = (body: unknown): string | null => {
-  const lines = render(body, 0)
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-  const last = lines.at(-1);
-  return last === undefined ? null : last.slice(0, LINE_LIMIT);
-};
+/** An ADF document's rendered text: each block and each `hardBreak` on its own line. */
+export const documentText = (body: unknown): string => render(body, 0);

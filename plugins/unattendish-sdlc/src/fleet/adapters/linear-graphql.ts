@@ -5,6 +5,7 @@
 // `linear.ts` lists page by page.
 import { z } from "zod";
 import { HttpError, type HttpSession } from "../application/ports";
+import { parseAnswer, ReadProblem } from "./service-support";
 
 /** Items per page: the default Linear documents for `first` (https://linear.app/developers/pagination), whose maximum the docs do not state. */
 export const PAGE_SIZE = 50;
@@ -135,9 +136,6 @@ export const issuesListed = z.object({
 
 // ---- sending a query ----
 
-/** A read that failed in a way specific to one item or listing. `reason` never carries text from the service. */
-export class ReadProblem extends Error {}
-
 /** A read of an issue that Linear says does not exist (or that the key may not see). */
 export class NotFoundProblem extends ReadProblem {}
 
@@ -194,10 +192,5 @@ export async function send<T>(
     if (Array.isArray(errors) && isNotFound(errors)) throw new NotFoundProblem("Linear answered that the entity was not found");
     throw new ReadProblem(Array.isArray(errors) && errors.length > 0 ? "Linear answered errors and no data" : "Linear answered no data");
   }
-  const parsed = schema.safeParse(data);
-  if (!parsed.success) {
-    const where = [...new Set(parsed.error.issues.map((issue) => issue.path.join(".") || "(root)"))].slice(0, 5).join(", ");
-    throw new ReadProblem(`Linear answered without a field a change depends on: ${where}`);
-  }
-  return parsed.data;
+  return parseAnswer(schema, data, { root: "(root)", limit: 5, message: (fields) => `Linear answered without a field a change depends on: ${fields}` });
 }
