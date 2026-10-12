@@ -319,6 +319,59 @@ describe("a read that fails (AC9)", () => {
   });
 });
 
+describe("a service that asks to be left alone", () => {
+  const limited = (retryAfterMs: number | null) => new HttpError("rate-limit", "GET /x answered 429", 429, retryAfterMs);
+  const failedReads = (w: World) => ledger(w, { done: "failed read" }).flatMap((e) => (e.type === "failed read" ? [e] : []));
+
+  it("is not read again until the time it gave, which a failed read says once per poll, and the fleet stays watched", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(limited(300_000));
+    await poll(w);
+    expect(w.adapters.github.reads).toHaveLength(1);
+    for (let i = 0; i < 2; i += 1) {
+      w.clock.advance(120_000);
+      w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+      expect(await poll(w)).toMatchObject({ polled: true, woke: 0, delivery: "none" });
+    }
+    expect(w.adapters.github.reads).toHaveLength(1);
+    expect(failedReads(w).filter((read) => read.reason.includes("rate limited"))).toHaveLength(2);
+    expect(failedReads(w).find((read) => read.reason.includes("rate limited"))!.reason).toContain("github.com/org");
+    expect(w.channel.sent).toEqual([]);
+    expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]).toMatchObject({ watched: true });
+
+    w.clock.advance(120_000);
+    expect(await poll(w)).toMatchObject({ woke: 1, delivery: "sent" });
+    expect(w.adapters.github.reads).toHaveLength(2);
+  });
+
+  it("is read at the next poll when the service gave no time", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(limited(null));
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    expect(w.adapters.github.reads).toHaveLength(2);
+  });
+
+  it("holds back only the credential it limited", async () => {
+    const w = world();
+    w.credentials.set([{ prefix: "github.com/org", service: "github", token: TOKEN }, { prefix: "linear:ENG", service: "linear", token: "lin_api_secret_value" }]);
+    await start(w, manifest({ inbox: ["| ENG-1 | A parked question | answer | 2026-10-12T09:00:00Z | https://linear.app/acme/issue/ENG-1/slug |"] }), { tracker: "linear:ENG" });
+    w.adapters.github.queue(limited(600_000));
+    w.adapters.linear.queue(outcome());
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome());
+    w.adapters.linear.queue(outcome());
+    await poll(w);
+    expect(w.adapters.github.reads).toHaveLength(1);
+    expect(w.adapters.linear.reads).toHaveLength(2);
+  });
+});
+
 describe("a fleet with no manager (AC2)", () => {
   it("holds the changes once, keeps the cursors, and gives them to the manager that takes the fleet over", async () => {
     const w = world();

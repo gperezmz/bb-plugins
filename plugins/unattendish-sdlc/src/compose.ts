@@ -86,6 +86,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     manifests: new FileManifests(),
     clock,
     log,
+    rateLimits: new Map(),
   };
   const queue = new SerialQueue();
 

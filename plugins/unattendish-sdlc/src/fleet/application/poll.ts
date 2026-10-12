@@ -34,6 +34,8 @@ export interface PollDeps {
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
   readonly log: { warn(message: string): void };
+  /** Per credential prefix, the time (epoch milliseconds) before which the service asked to be left alone. Lives in memory: a restart forgets it and the first refusal sets it again. */
+  readonly rateLimits: Map<string, number>;
 }
 
 export interface PollOptions {
@@ -97,6 +99,8 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
   const stateOnly = options.stateOnly === true;
   const signal = options.signal ?? AbortSignal.timeout(120_000);
   const secrets = () => deps.credentials.secrets();
+  const nowMs = Date.parse(now);
+  const limited = new Set<string>();
   const reading: Reading = { reads: [], notWatched: [...watching.notWatched], refusedPrefix: null, expiries: { ...fleet.expiries } };
   let refusedPrefix: string | null = null;
 
@@ -112,6 +116,15 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       : [...wanted, ...partitionRevisit(cursor, role, registration.labels, watchedRefs)];
     if (stateOnly && items.length === 0) continue;
     const since = cursor?.since ?? registration.registeredAt;
+
+    const prefix = resolved.credential.prefix;
+    const notBefore = deps.rateLimits.get(prefix);
+    if (notBefore !== undefined && notBefore > nowMs) {
+      if (!limited.has(prefix)) deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: `${prefix} is rate limited; not read until ${new Date(notBefore).toISOString()}` });
+      limited.add(prefix);
+      continue;
+    }
+    deps.rateLimits.delete(prefix);
 
     let session;
     try {
@@ -138,6 +151,7 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
     } catch (error) {
       if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
+      if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
     }
     const requests = session.drainRequests();

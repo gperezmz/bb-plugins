@@ -42,7 +42,7 @@ export const world = () => {
   const store = new InMemoryStore();
   const adapters = { github: new FakeAdapter("github"), gitlab: new FakeAdapter("gitlab"), linear: new FakeAdapter("linear"), jira: new FakeAdapter("jira") } satisfies Record<ServiceKind, FakeAdapter>;
   const warnings: string[] = [];
-  const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, log: { warn: (m) => warnings.push(m) } };
+  const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
   const register: RegisterDeps = { store, threads, credentials, manifests, clock };
   return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register };
 };
