@@ -70,6 +70,8 @@ export interface InboxRow {
   readonly waitsFor: WaitsFor;
   readonly since: string;
   readonly link: string;
+  /** 1-based line of the row in the manifest file; absent on a row built by hand. */
+  readonly line?: number;
 }
 export interface InFlightRow {
   readonly ref: string;
@@ -78,17 +80,23 @@ export interface InFlightRow {
   readonly since: string;
   readonly builder: string;
   readonly link: string;
+  /** 1-based line of the row in the manifest file; absent on a row built by hand. */
+  readonly line?: number;
 }
 export interface BlockedRow {
   readonly ref: string;
   readonly blockedOn: readonly string[];
   readonly link: string;
+  /** 1-based line of the row in the manifest file; absent on a row built by hand. */
+  readonly line?: number;
 }
 export interface LandedRow {
   readonly ref: string;
   readonly spec: string;
   readonly merged: string;
   readonly link: string;
+  /** 1-based line of the row in the manifest file; absent on a row built by hand. */
+  readonly line?: number;
 }
 
 /** A row the plugin cannot read by the contract: skipped, and named in the fleet's status. */
