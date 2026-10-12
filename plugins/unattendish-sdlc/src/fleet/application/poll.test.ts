@@ -192,6 +192,56 @@ describe("one wake per poll (AC7)", () => {
   });
 });
 
+describe("a queued wake keeps what it says (AC7, AC12)", () => {
+  const SITE = "github.com/org";
+  const linearIssue = (n: number) => `https://linear.app/acme/issue/ENG-${n}/slug`;
+  const linearStart = async (w: World) => {
+    w.credentials.set([{ prefix: SITE, service: "github", token: TOKEN }, { prefix: "linear:ENG", service: "linear", token: "lin_api_secret_value" }]);
+    await start(w, manifest({ inbox: [`| ENG-1 | A parked question | answer | 2026-10-12T09:00:00Z | ${linearIssue(1)} |`] }), { tracker: "linear:ENG" });
+  };
+  const trackerChange = (id: string, actor: string) =>
+    outcome({ snapshots: [snapshot(1, { role: "tracker", ref: "ENG-1", url: linearIssue(1) })], events: [event(id, 1, { role: "tracker", ref: "ENG-1", url: linearIssue(1), actor })] });
+
+  it("still says the credential was refused when a later poll's changes are added to the queued wake", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await linearStart(w);
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l1", "alice"));
+    await poll(w);
+    expect(w.channel.queue.get("q1")!.text).toContain("Not watched since");
+    w.clock.advance(120_000);
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l2", "bob"));
+    expect(await poll(w)).toMatchObject({ delivery: "amended" });
+    const text = w.channel.queue.get("q1")!.text;
+    expect(text).toContain("commented by bob");
+    expect(text).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was refused by the service.");
+    w.clock.advance(120_000);
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l3", "dora"));
+    await poll(w);
+    expect(w.channel.queue.get("q1")!.text).toContain("Not watched since");
+    expect(w.channel.sent).toHaveLength(1);
+  });
+
+  it("adds changes to a queued wake that only said the credential was refused, instead of sending a second", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    expect(await poll(w)).toMatchObject({ delivery: "queued", woke: 0 });
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    expect(await poll(w)).toMatchObject({ delivery: "amended", woke: 1 });
+    expect(w.channel.sent).toHaveLength(1);
+    const text = w.channel.queue.get("q1")!.text;
+    expect(text).toContain("#7 commented by alice");
+    expect(text).toContain("Not watched since");
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ kind: "changes" });
+  });
+});
+
 describe("no change is lost (AC8)", () => {
   it("offers the same changes again when bb refuses the send, and moves no cursor", async () => {
     const w = world();

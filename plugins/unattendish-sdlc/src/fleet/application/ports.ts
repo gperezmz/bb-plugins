@@ -233,6 +233,8 @@ export interface StoredWake {
   readonly since: string;
   readonly catchUpMs: number | null;
   readonly heldSince: string | null;
+  /** The "not watched since" line the wake carries, kept so it is worded again whenever the queued wake is amended. */
+  readonly notWatched: { readonly since: string; readonly prefix: string } | null;
 }
 
 export interface LedgerRow {
@@ -311,12 +313,14 @@ export interface Store {
 
   /** `dispatchedAt` is set for a wake bb sent at once, and left out for one waiting in bb's queue. */
   createWake(repo: string, wake: Omit<StoredWake, "id" | "repo" | "dispatchedAt"> & { readonly dispatchedAt?: string | null }): StoredWake;
-  /** The wake still waiting in bb's queue, if any. */
+  /** The latest wake, of either kind, still waiting in bb's queue, if any. */
   openWake(repo: string): StoredWake | null;
   markWoke(repo: string, wakeId: number, keys: readonly string[]): void;
   /** Keys of the changes a wake carries. */
   wakeChanges(repo: string, wakeId: number): Change[];
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void;
+  /** Records what an amendment made of a queued wake: its kind, and the lines it now carries. */
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void;
   markDispatched(queuedMessageId: string, at: string): void;
 
   ledger(repo: string, query: LedgerQuery): LedgerEntry[];

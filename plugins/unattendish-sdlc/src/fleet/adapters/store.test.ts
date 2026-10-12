@@ -7,8 +7,14 @@ import type { Registration } from "../domain/model";
 import { describeStore } from "../testing/store-contract";
 import { MIGRATIONS, SqliteStore } from "./store";
 
-const migrated = (db: Database.Database): Database.Database => {
-  for (const statement of MIGRATIONS) db.exec(statement);
+/** What the host does: each statement runs once, by its index, which the database remembers. */
+const migrated = (db: Database.Database, upTo = MIGRATIONS.length): Database.Database => {
+  db.exec("CREATE TABLE IF NOT EXISTS applied_migrations (n INTEGER NOT NULL)");
+  const done = (db.prepare("SELECT COUNT(*) AS n FROM applied_migrations").get() as { n: number }).n;
+  for (let at = done; at < upTo; at += 1) {
+    db.exec(MIGRATIONS[at]!);
+    db.prepare("INSERT INTO applied_migrations (n) VALUES (?)").run(at);
+  }
   return db;
 };
 
@@ -38,10 +44,12 @@ describe("SqliteStore on a database", () => {
     folder = undefined;
   });
 
-  it("applies its migrations twice without error", () => {
-    const db = new Database(":memory:");
+  it("reads a wake stored before the not-watched line was kept as one without it", () => {
+    const before = MIGRATIONS.findIndex((statement) => statement.startsWith("ALTER TABLE wakes"));
+    const db = migrated(new Database(":memory:"), before);
+    db.prepare("INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, since) VALUES ('r', 'changes', 'thr_manager', 'msg_1', '2026-10-12T10:00:00.000Z', '2026-10-12T09:00:00.000Z')").run();
     migrated(db);
-    expect(() => migrated(db)).not.toThrow();
+    expect(new SqliteStore(db).openWake("r")).toMatchObject({ queuedMessageId: "msg_1", notWatched: null });
     db.close();
   });
 
@@ -84,7 +92,7 @@ describe("SqliteStore on a database", () => {
       disposition: "wake",
       rule: null,
     });
-    const wake = before.createWake("github.com/org/repo", { kind: "changes", threadId: "thr_manager", queuedMessageId: "msg_1", queuedAt: "2026-10-12T10:06:00.000Z", since: "2026-10-12T10:00:00.000Z", catchUpMs: null, heldSince: null });
+    const wake = before.createWake("github.com/org/repo", { kind: "changes", threadId: "thr_manager", queuedMessageId: "msg_1", queuedAt: "2026-10-12T10:06:00.000Z", since: "2026-10-12T10:00:00.000Z", catchUpMs: null, heldSince: null, notWatched: null });
     first.close();
 
     const second = migrated(new Database(file));
@@ -95,7 +103,7 @@ describe("SqliteStore on a database", () => {
     expect(after.getCursor("github.com/org/repo", "forge")).toEqual({ since: "2026-10-12T10:04:00.000Z", items: {} });
     expect(after.dispositions("github.com/org/repo", ["k1"]).get("k1")).toBe("wake");
     expect(after.openWake("github.com/org/repo")).toEqual(wake);
-    expect(after.createWake("github.com/org/repo", { kind: "changes", threadId: "thr_manager", queuedMessageId: null, queuedAt: "2026-10-12T10:07:00.000Z", since: "2026-10-12T10:00:00.000Z", catchUpMs: null, heldSince: null }).id).toBeGreaterThan(wake.id);
+    expect(after.createWake("github.com/org/repo", { kind: "changes", threadId: "thr_manager", queuedMessageId: null, queuedAt: "2026-10-12T10:07:00.000Z", since: "2026-10-12T10:00:00.000Z", catchUpMs: null, heldSince: null, notWatched: null }).id).toBeGreaterThan(wake.id);
     second.close();
   });
 

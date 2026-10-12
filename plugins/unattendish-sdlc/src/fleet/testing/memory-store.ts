@@ -187,13 +187,14 @@ export class InMemoryStore implements Store {
       since: wake.since,
       catchUpMs: wake.catchUpMs,
       heldSince: wake.heldSince,
+      notWatched: wake.notWatched === null ? null : { ...wake.notWatched },
     };
     this.wakes.push(stored);
     return { ...stored };
   }
 
   openWake(repo: string): StoredWake | null {
-    const open = this.wakes.filter((wake) => wake.repo === repo && wake.kind === "changes" && wake.queuedMessageId !== null && wake.dispatchedAt === null);
+    const open = this.wakes.filter((wake) => wake.repo === repo && wake.queuedMessageId !== null && wake.dispatchedAt === null);
     const latest = open[open.length - 1];
     return latest === undefined ? null : { ...latest };
   }
@@ -212,6 +213,11 @@ export class InMemoryStore implements Store {
 
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void {
     this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, queuedMessageId } : wake));
+  }
+
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+    const notWatched = update.notWatched === null ? null : { ...update.notWatched };
+    this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, kind: update.kind, heldSince: update.heldSince, notWatched } : wake));
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

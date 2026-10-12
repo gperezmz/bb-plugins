@@ -294,11 +294,16 @@ async function deliver(
   const thread = registration.managerThreadId;
 
   const open = deps.store.openWake(repo);
-  if (open !== null && open.threadId === thread && open.queuedMessageId !== null && wake.changes.length > 0) {
+  if (open !== null && open.threadId === thread && open.queuedMessageId !== null) {
     const merged = [...deps.store.wakeChanges(repo, open.id), ...wake.changes].sort(byTimeThenKey);
-    const text = formatWake({ since: open.since, changes: merged, catchUpMs: open.catchUpMs, heldSince: open.heldSince ?? wake.heldSince, notWatched: wake.notWatched });
+    const heldSince = open.heldSince ?? wake.heldSince;
+    const notWatched = wake.notWatched ?? open.notWatched;
+    const text = formatWake({ since: open.since, changes: merged, catchUpMs: open.catchUpMs, heldSince, notWatched });
     const amended = await deps.channel.amend(thread, open.queuedMessageId, text);
-    if (amended === "amended") return { result: "amended", wakeId: open.id };
+    if (amended === "amended") {
+      deps.store.updateWake(repo, open.id, { kind: merged.length > 0 ? "changes" : "not-watched", heldSince, notWatched });
+      return { result: "amended", wakeId: open.id };
+    }
     if (amended !== "gone") return { result: "refused" };
     // It left the queue since: its turn has started, so these changes go in a new wake.
     deps.store.markDispatched(open.queuedMessageId, wake.now);
@@ -318,6 +323,7 @@ async function deliver(
     since: wake.since,
     catchUpMs: wake.catchUpMs,
     heldSince: wake.heldSince,
+    notWatched: wake.notWatched,
     ...(sent.delivered === "sent" ? { dispatchedAt: wake.now } : {}),
   });
   return { result: sent.delivered, wakeId: stored.id };
