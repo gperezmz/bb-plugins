@@ -16,4 +16,9 @@ export class SerialQueue {
     this.tails.set(key, tail);
     return next;
   }
+
+  /** Whether work for the key is running or waiting. It is false by the time a caller awaiting that work continues. */
+  busy(key: string): boolean {
+    return this.tails.has(key);
+  }
 }

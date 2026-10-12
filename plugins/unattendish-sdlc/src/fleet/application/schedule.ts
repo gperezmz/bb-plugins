@@ -12,7 +12,9 @@ export const RETENTION_MS = 30 * 24 * 3_600_000;
 
 /**
  * Polls every fleet whose interval has run out, each behind any other work on
- * the same fleet.
+ * the same fleet. A fleet still being worked on is left to the next call.
+ * Every poll starts before this returns; the promise it returns settles when
+ * the polls it started have, and a caller that need not wait for them does not.
  */
 export async function pollDue(deps: PollDeps, queue: SerialQueue): Promise<void> {
   const now = deps.clock.now().toISOString();
@@ -20,6 +22,7 @@ export async function pollDue(deps: PollDeps, queue: SerialQueue): Promise<void>
   const started: Promise<void>[] = [];
   for (const fleet of due) {
     const key = repoId(fleet.registration.repo);
+    if (queue.busy(key)) continue;
     started.push(queue.run(key, () => pollFleet(deps, key)).then(() => undefined, (error: unknown) => deps.log.warn(`polling ${key} failed: ${messageOf(error, deps.credentials.secrets())}`)));
   }
   await Promise.all(started);

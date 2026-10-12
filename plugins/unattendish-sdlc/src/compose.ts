@@ -31,7 +31,7 @@ export interface ComposeOptions {
 
 export interface Fleets {
   readonly app: FleetCliApp;
-  /** Polls every fleet whose interval has run out. */
+  /** Starts the poll of every fleet whose interval has run out and is not being worked on; settles when those polls have. */
   pollDue(): Promise<void>;
   /** The manager's turn ended: reads the state of items the manifest now names, so changes before the next poll are changes. */
   refreshWatched(threadId: string): Promise<void>;
@@ -40,6 +40,8 @@ export interface Fleets {
   prune(): void;
   /** Logs a warning with every configured token scrubbed from it. */
   warn(message: string): void;
+  /** Logs that `what` failed with `error`, scrubbed of every configured token. */
+  failed(what: string, error: unknown): void;
   /** What is wrong with the settings, for a person. */
   settingsProblems(): string[];
 }
@@ -88,8 +90,9 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
   const queue = new SerialQueue();
 
   // Work that changes a fleet runs behind any poll of it; a caller that cannot wait gets its answer from the registry as it stands.
+  const failed = (what: string, error: unknown): void => log.warn(`${what} failed: ${messageOf(error, credentials.secrets())}`);
   const settle = (work: Promise<unknown>, what: string): void => {
-    work.catch((error: unknown) => log.warn(`${what} failed: ${messageOf(error, credentials.secrets())}`));
+    work.catch((error: unknown) => failed(what, error));
   };
 
   const app: FleetCliApp = {
@@ -120,6 +123,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     dispatched: (queuedMessageId) => store.markDispatched(queuedMessageId, clock.now().toISOString()),
     prune: () => pruneLedger(poll),
     warn: log.warn,
+    failed,
     settingsProblems: () => credentials.problems(),
   };
 }

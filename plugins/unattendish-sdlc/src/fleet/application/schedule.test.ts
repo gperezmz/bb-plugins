@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { args, manifest, MANAGER, MANIFEST_PATH, outcome, REPO_KEY, TOKEN, world, type World } from "../testing/kit";
 import { pollFleet } from "./poll";
 import { registerFleet } from "./register";
-import { refreshFleetsOf, setFleetInterval } from "./schedule";
+import { pollDue, refreshFleetsOf, setFleetInterval } from "./schedule";
 import { SerialQueue } from "./serial";
 
 const OTHER_REPO = "github.com/org/other";
@@ -72,6 +72,65 @@ describe("refreshing the fleets of a manager whose turn ended", () => {
     expect(w.warnings[0]).toContain(`reading ${REPO_KEY} after a turn failed`);
     expect(w.warnings[0]).not.toContain(TOKEN);
     expect(w.adapters.github.reads).toHaveLength(1);
+  });
+});
+
+describe("polling the fleets that are due", () => {
+  const blocked = (w: World) => {
+    let release!: () => void;
+    const log: string[] = [];
+    w.adapters.github.queue(async () => {
+      log.push("slow fleet reads");
+      await new Promise<void>((resolve) => (release = resolve));
+      return outcome();
+    });
+    return { log, release: () => release() };
+  };
+
+  it("starts a poll for every due fleet before it returns, and settles when they have", async () => {
+    const w = world();
+    await startBoth(w);
+    const queue = new SerialQueue();
+    const polling = pollDue(w.poll, queue);
+    expect(queue.busy(REPO_KEY)).toBe(true);
+    expect(queue.busy("github.com/org/other")).toBe(true);
+    await polling;
+    expect(w.adapters.github.reads).toHaveLength(2);
+    expect(queue.busy(REPO_KEY)).toBe(false);
+  });
+
+  it("does not start a fleet whose poll is still running, and does not wait for it", async () => {
+    const w = world();
+    await startBoth(w);
+    const slow = blocked(w);
+    const queue = new SerialQueue();
+    const first = pollDue(w.poll, queue);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(w.adapters.github.reads).toHaveLength(2);
+    expect(slow.log).toEqual(["slow fleet reads"]);
+
+    w.clock.advance(125_000);
+    await pollDue(w.poll, queue);
+    // The fast fleet was polled again; the slow one, still running, was left alone.
+    expect(w.adapters.github.reads).toHaveLength(3);
+    expect(slow.log).toEqual(["slow fleet reads"]);
+
+    slow.release();
+    await first;
+    w.clock.advance(125_000);
+    await pollDue(w.poll, queue);
+    expect(w.adapters.github.reads).toHaveLength(5);
+  });
+
+  it("warns, without a token, of a poll that fails, and goes on", async () => {
+    const w = world();
+    await startBoth(w);
+    w.store.getCursor = () => {
+      throw new Error(`the store failed with ${TOKEN}`);
+    };
+    await expect(pollDue(w.poll, new SerialQueue())).resolves.toBeUndefined();
+    expect(w.warnings).toHaveLength(2);
+    expect(w.warnings.join("\n")).not.toContain(TOKEN);
   });
 });
 

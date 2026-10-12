@@ -40,6 +40,20 @@ describe("SerialQueue", () => {
     expect(started).toBe(true);
   });
 
+  it("is busy while work runs or waits, and no longer by the time a caller awaiting it continues", async () => {
+    const queue = new SerialQueue();
+    const held = gate();
+    const first = queue.run("k", () => held.opened);
+    const second = queue.run("k", async () => undefined);
+    expect(queue.busy("k")).toBe(true);
+    expect(queue.busy("other")).toBe(false);
+    held.open();
+    await first;
+    expect(queue.busy("k")).toBe(true);
+    await second;
+    expect(queue.busy("k")).toBe(false);
+  });
+
   it("goes on after work that fails, and hands the failure to its own caller", async () => {
     const queue = new SerialQueue();
     const failing = queue.run("k", async () => {
@@ -48,10 +62,12 @@ describe("SerialQueue", () => {
     const after = queue.run("k", async () => "after");
     await expect(failing).rejects.toThrow("boom");
     expect(await after).toBe("after");
+    expect(queue.busy("k")).toBe(false);
   });
 
   it("turns work that throws before returning a promise into a rejection", async () => {
     const queue = new SerialQueue();
     await expect(queue.run("k", () => { throw new Error("sync"); })).rejects.toThrow("sync");
+    expect(queue.busy("k")).toBe(false);
   });
 });
