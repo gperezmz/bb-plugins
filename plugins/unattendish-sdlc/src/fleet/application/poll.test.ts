@@ -445,6 +445,20 @@ describe("no change is lost (AC8)", () => {
     expect(sentText(w, 1)).not.toContain("Catch-up");
   });
 
+  it("reads an event at exactly the cursor's time again, and does not wake for it twice", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const atCursor = event("c1", 7, { at: "2026-10-12T09:59:00.000Z" });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [atCursor] }));
+    expect(await poll(w)).toMatchObject({ woke: 1 });
+    expect(w.store.getCursor(REPO_KEY, "forge")!.since).toBe(atCursor.at);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [atCursor] }));
+    expect(await poll(w)).toMatchObject({ woke: 0, delivery: "none" });
+    expect(w.adapters.github.reads[1]!.since).toBe(atCursor.at);
+    expect(w.channel.sent).toHaveLength(1);
+  });
+
   it("does not send a change twice once it was woken", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
@@ -599,8 +613,11 @@ describe("a fleet with no manager (AC2)", () => {
     w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
     expect(await poll(w)).toMatchObject({ woke: 1, delivery: "sent" });
     expect(w.channel.sent[0]).toMatchObject({ threadId: "thr_next" });
-    expect(sentText(w)).toContain("Gathered while no manager held the fleet, since");
-    expect(sentText(w).split("\n").filter((line) => line.startsWith("#7 "))).toHaveLength(1);
+    expect(sentText(w).split("\n")).toEqual([
+      "Moved on the tracker or the forge since 2026-10-12 10:00 UTC:",
+      `#7 commented by alice ${issueUrl(7)}#issuecomment-c1`,
+      "Gathered while no manager held the fleet, since 2026-10-12T10:00:00.000Z.",
+    ]);
     expect(w.store.getFleet(REPO_KEY)!.heldSince).toBeNull();
   });
 
