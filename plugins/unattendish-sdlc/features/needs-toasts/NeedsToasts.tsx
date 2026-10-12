@@ -1,19 +1,33 @@
 import { useRealtime } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
+import { usePortalScopeProps } from "@/lib/portal-scope";
 import { FLEET_NEEDS } from "@/shared/client";
 import { openConnect } from "@/shared/connect/requests";
-import { parseFleetNeeds, toastId } from "./model";
+import { Glyph } from "@/shared/look/Glyph";
+import { ICONS } from "@/shared/look/icons";
+import { parseFleetNeeds, toastId, toastTitle } from "./model";
 
 /**
- * Mounted once per bb window as an app overlay. It draws nothing itself: when the server publishes that a
- * fleet newly needs an account it raises a toast saying what it needs, whose Connect… opens the popup over
- * the view that is open.
+ * Mounted once per bb window as an app overlay. It draws nothing itself: when the server publishes that a fleet newly
+ * needs an account it raises a toast led by a red plug, saying the fleet can't be read and, under that, what it needs,
+ * whose Connect… opens the popup over the view that is open.
  */
 export function NeedsToasts() {
+  // bb draws the toast in its own toaster, outside the plugin's root: these props scope the plugin's styles to it.
+  const scope = usePortalScopeProps();
   useRealtime(FLEET_NEEDS, (payload) => {
     const signal = parseFleetNeeds(payload);
     if (signal === null) return;
-    toast(signal.text, { id: toastId(signal), action: { label: "Connect…", onClick: () => openConnect({ target: { fleet: signal.fleet, role: signal.role } }) } });
+    toast(toastTitle(signal), {
+      id: toastId(signal),
+      icon: (
+        <span {...scope}>
+          <Glyph name={ICONS.connect} tone="red" className="size-4" />
+        </span>
+      ),
+      description: signal.text,
+      action: { label: "Connect…", onClick: () => openConnect({ target: { fleet: signal.fleet, role: signal.role } }) },
+    });
   });
   return null;
 }

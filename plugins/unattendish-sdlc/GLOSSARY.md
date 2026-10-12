@@ -75,8 +75,32 @@ A row of the manifest's Inbox: one thing that waits on the operator, with what i
 _Avoid_: Task, to-do
 
 **Fleets page**:
-The plugin's page in bb's navigation, listing every Inbox row of every fleet with its action, a card for each fleet, and what landed in the last 7 days.
+The plugin's page in bb's navigation: the fleet board over the queue.
 _Avoid_: Dashboard page, Fleet dashboard
+
+**Fleet board**:
+The top of the Fleets page: one line per fleet with its manager, Status, spend, polling and fix, problems first and quiet fleets folded. Clicking a line filters the queue to that fleet.
+_Avoid_: Fleet cards, fleet list
+
+**Queue**:
+The Fleets page's list of every Inbox row across fleets, oldest first, with tabs by what each row waits for and a Sent tab of the actions seen done in the last hour.
+_Avoid_: Waits on you table, inbox table
+
+**Status**:
+The fleet board's column of a fleet's four counts, always in this order: Blocked, In flight, Waits on you, and Landed in the last 7 days.
+_Avoid_: Counts column
+
+**Problem**:
+Something the server flags about a fleet that keeps it from being fully watched or run, such as a missing manifest, a half no account can read, or a manager that is gone; drawn red.
+_Avoid_: Error, reason
+
+**Warning**:
+Something the server flags about a fleet that needs the operator soon but stops nothing yet, such as a token expiring within 7 days or polling that is late; drawn amber.
+_Avoid_: Alert
+
+**Quiet fleet**:
+A fleet with every Status count at zero, no problem and no warning. The fleet board folds quiet fleets under one line.
+_Avoid_: Idle fleet
 
 **Fleet tab**:
 The tab in a manager thread's right panel that shows that fleet in full: its manifest, watched set, credentials, spend and ledger.
@@ -87,8 +111,10 @@ The control in a manager thread's header that spells out the fleet's counts and 
 _Avoid_: Header chip, Fleet badge
 
 **Connect popup**:
-The popup that connects an account to the fleet half it reads, or adds an account on its own, opened by Connect… or Change account… on a card, in Waits on you on the Fleets page or on a toast, by Renew on a card or in Settings, and by Add account or Add token for another owner in Settings. It opens over the current view.
+The popup that connects an account to the fleet half it reads, or adds an account on its own. It opens over the current view.
 _Avoid_: Credential wizard
+
+Connect… and Renew… open it on the fleet board, in the Fleet tab and on a toast; Change account… opens it on a Fleet tab credential; and Renew…, Add account or Add token for another owner open it in Settings.
 
 **Action**:
 A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.

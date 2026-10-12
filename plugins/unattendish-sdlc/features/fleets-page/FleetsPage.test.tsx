@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FleetCardView, ReasonView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
-import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, landedRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
+import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
+import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { BOARD_CHANGED } from "@/shared/client";
@@ -20,13 +22,40 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   closeConnect();
+  vi.useRealTimers();
 });
+
+const missing: ReasonView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
+const unreadableRows: ReasonView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
+const noForge: ReasonView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
+const noTracker: ReasonView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
+
+const fleet = (repo: string, over: Partial<FleetCardView> = {}) => fleetCard({ repo, managerThreadId: `thr_${repo}`, tracker: "forge-issues", ...over });
+
+async function show(view = fleetsView()) {
+  fake.api.fleets.mockResolvedValue(view);
+  const page = render(<FleetsPage />);
+  await screen.findByRole("region", { name: "Queue" }).catch(() => null);
+  return page;
+}
+
+const board = () => screen.getByRole("region", { name: "Fleet board" });
+const queue = () => screen.getByRole("region", { name: "Queue" });
+const line = (repo: string) => within(board()).getByRole("listitem", { name: `Fleet ${repo}` });
+const boardRepos = () => within(board()).getAllByRole("listitem").map((item) => item.getAttribute("aria-label")!.replace("Fleet ", ""));
+const queueRows = () => within(within(queue()).getByRole("tabpanel")).queryAllByRole("listitem");
+
+/** Focuses `element` and reads the tooltip its hover text shows. */
+async function hoverText(element: HTMLElement): Promise<string> {
+  act(() => element.focus());
+  return (await screen.findByRole("tooltip")).textContent ?? "";
+}
 
 describe("the header count", () => {
   it("counts every Inbox row across fleets", async () => {
-    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 3 }));
+    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 8 }));
     render(<FleetsHeaderCount />);
-    expect((await screen.findByLabelText("3 waiting on you")).textContent).toBe("3");
+    expect((await screen.findByLabelText("8 waiting on you")).textContent).toBe("8");
   });
 
   it("shows no count at zero", async () => {
@@ -43,111 +72,452 @@ describe("the header count", () => {
     sdk.emit(BOARD_CHANGED);
     await screen.findByLabelText("2 waiting on you");
   });
+
+  it("shows how old the data is in an amber pill when a refresh fails, and reloads from it at once (AC14)", async () => {
+    fake.api.fleets.mockResolvedValueOnce(fleetsView({ waiting: 1, generatedAt: new Date(Date.now() - 3 * MINUTE).toISOString() }));
+    render(<FleetsHeaderCount />);
+    await screen.findByLabelText("1 waiting on you");
+    fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
+    sdk.emit(BOARD_CHANGED);
+    const pill = await screen.findByLabelText("Couldn't refresh: the server is not running. Showing what was loaded 3m ago.");
+    expect(pill.textContent).toBe("3m old");
+    expect(pill.className).toContain("text-warning-text");
+    expect(screen.getByLabelText("1 waiting on you")).toBeTruthy();
+    expect(await hoverText(pill)).toContain("Couldn't refresh: the server is not running. Showing what was loaded 3m ago.");
+    const calls = fake.api.fleets.mock.calls.length;
+    fireEvent.click(within(pill).getByRole("button", { name: "Reload now" }));
+    expect(fake.api.fleets.mock.calls.length).toBe(calls + 1);
+  });
 });
 
-describe("the Fleets page", () => {
-  it("waits for the view, then fails in words when it cannot load", async () => {
+describe("the page's states (AC14)", () => {
+  it("draws grey bars while it loads", () => {
+    fake.api.fleets.mockReturnValue(new Promise(() => {}));
+    render(<FleetsPage />);
+    expect(screen.getByRole("status", { name: "Loading your fleets" })).toBeTruthy();
+  });
+
+  it("says it couldn't load, with the error, the retry note and Try again, which reloads at once", async () => {
     fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
     render(<FleetsPage />);
-    expect(screen.getByText(/Loading the Fleets page/)).toBeTruthy();
-    expect((await screen.findByRole("alert")).textContent).toContain("Could not load the Fleets page: the server is not running");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't load your fleets");
+    expect(alert.textContent).toContain("the server is not running");
+    expect(alert.textContent).toContain("It tries again every 1 minute.");
+    expect(drawnIcons(alert)).toEqual(["CloudOff"]);
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })] }));
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("region", { name: "Fleet board" })).toBeTruthy();
   });
 
-  it("says no fleet is registered, and how one appears, with the three empty states", async () => {
-    render(<FleetsPage />);
-    expect(await screen.findByText(/No fleet is registered\. A fleet appears here once/)).toBeTruthy();
+  it("keeps the board and queue as they were when a refresh fails", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash" })] }));
+    fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
+    sdk.emit(BOARD_CHANGED);
+    await waitFor(() => expect(fake.api.fleets).toHaveBeenCalledTimes(2));
+    expect(line("org/dash")).toBeTruthy();
+    expect(queueRows()).toHaveLength(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says no fleet is registered, and how one appears", async () => {
+    const page = await show();
+    expect(await screen.findByText("No fleet is registered")).toBeTruthy();
     expect(screen.getByText("/run-fleet")).toBeTruthy();
     expect(screen.getByText(/from unattendish-sdlc runs with this plugin installed\./)).toBeTruthy();
-    expect(screen.getByText("Nothing waits on you")).toBeTruthy();
-    expect(screen.getByText("Nothing landed in the last 7 days")).toBeTruthy();
+    expect(drawnIcons(page.baseElement)).toEqual(["unattendish-sdlc/fleet"]);
   });
 
-  it("lists the Inbox rows of every fleet in one table, the unreadable ones among them", async () => {
-    fake.api.fleets.mockResolvedValue(
+  it("says calmly that nothing waits, keeping the tabs and what was sent in the last hour", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash")], recentActions: [actionRecord({ fleet: "org/dash", state: "done", doneAt: ago(5 * MINUTE) })] }));
+    const panel = within(queue()).getByRole("tabpanel");
+    expect(within(panel).getByText("Nothing waits on you")).toBeTruthy();
+    expect(drawnIcons(panel)).toEqual(["CircleCheck"]);
+    fireEvent.click(within(queue()).getByRole("tab", { name: /Sent/ }));
+    expect(queueRows()).toHaveLength(1);
+  });
+});
+
+describe("the page (AC1)", () => {
+  it("is the board over one queue of every fleet's rows, with no cards, no needs list and no landed section", async () => {
+    const fleets = [
+      fleet("org/dash", { waiting: 3 }),
+      fleet("org/wake", { waiting: 3 }),
+      fleet("other-org/x", { waiting: 2, reasons: [noForge] }),
+      fleet("acme/web"),
+      fleet("acme/api"),
+      fleet("acme/docs", { inFlight: 1 }),
+    ];
+    const inbox = ["org/dash", "org/dash", "org/dash", "org/wake", "org/wake", "org/wake", "other-org/x", "other-org/x"].map((repo, n) => inboxRow({ id: `r${n}`, fleet: repo, since: ago((n + 1) * MINUTE) }));
+    await show(fleetsView({ waiting: 8, fleets, inbox, needsAccount: [{ fleet: "other-org/x", managerThreadId: "thr_other-org/x", role: "forge", text: "needs an account" }] }));
+    expect(boardRepos()).toEqual(["other-org/x", "org/dash", "org/wake", "acme/docs"]);
+    expect(queueRows()).toHaveLength(8);
+    expect(within(queue()).getByRole("tab", { name: "All 8" })).toBeTruthy();
+    expect(screen.queryByRole("article")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Needs an account" })).toBeNull();
+    expect(screen.queryByText(/Recently landed/)).toBeNull();
+  });
+
+  it("draws only icons bb resolves (AC18)", async () => {
+    const page = await show(
       fleetsView({
-        waiting: 3,
-        inbox: [inboxRow({ id: "a", ref: "ENG-212", fleet: "acme/web" }), inboxRow({ id: "b", ref: "#167", fleet: "org/tickets", what: "an oversized id answers 503", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })],
-        unreadableInbox: [unreadableInboxRow({ fleet: "group/billing", managerThreadId: "thr_billing" })],
-      }),
-    );
-    render(<FleetsPage />);
-    const table = await screen.findByRole("table");
-    expect(within(table).getAllByRole("row")).toHaveLength(4);
-    expect(within(table).getByText("org/tickets")).toBeTruthy();
-    expect(within(table).getByRole("button", { name: "Build it #167" })).toBeTruthy();
-    expect(within(table).getByText(/unreadable:/)).toBeTruthy();
-    fireEvent.click(within(table).getByRole("button", { name: "Open the Fleet tab of group/billing" }));
-    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_billing");
-  });
-
-  it("stacks the rows on a compact viewport", async () => {
-    setCompactViewport(true);
-    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, inbox: [inboxRow()] }));
-    render(<FleetsPage />);
-    const item = await screen.findByRole("listitem");
-    expect(item.className).toContain("flex-col");
-  });
-
-  it("lists the fleets that need an account at the top of Waits on you, each with Connect…, counted in the heading", async () => {
-    fake.api.fleets.mockResolvedValue(
-      fleetsView({
-        waiting: 3,
-        needsAccount: [
-          { fleet: "other-org/x", managerThreadId: "thr_x", role: "forge", text: "other-org/x needs a GitHub account that can read other-org" },
-          { fleet: "platform/infra", managerThreadId: "thr_i", role: "tracker", text: "platform/infra needs a Jira account for acme.atlassian.net" },
+        fleets: [
+          fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p" } }),
+          fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
+          fleet("org/gone", { forge: "gitlab", reasons: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
         ],
-        inbox: [inboxRow()],
+        inbox: [
+          inboxRow({ id: "a", fleet: "org/dash", waitsFor: "answer" }),
+          inboxRow({ id: "g", fleet: "org/dash", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } }),
+          inboxRow({ id: "b", fleet: "org/dash", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } }),
+          inboxRow({ id: "o", fleet: "org/dash", waitsFor: "other", offer: null }),
+          inboxRow({ id: "d", fleet: "org/dash", offer: null, action: actionRecord({ state: "done" }) }),
+        ],
+        unreadableInbox: [unreadableInboxRow({ fleet: "org/dash" })],
       }),
     );
-    render(<FleetsPage />);
-    const heading = await screen.findByRole("heading", { name: /Waits on you/ });
-    expect(heading.textContent).toBe("Waits on you 3");
-    const section = heading.parentElement!;
-    const needs = within(section).getByRole("list", { name: "Needs an account" });
-    expect(within(needs).getAllByRole("listitem").map((item) => item.firstChild?.textContent)).toEqual([
-      "other-org/x needs a GitHub account that can read other-org",
-      "platform/infra needs a Jira account for acme.atlassian.net",
-    ]);
-    expect(needs.compareDocumentPosition(within(section).getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(within(needs).getByRole("button", { name: "Connect… tracker of platform/infra" }));
-    expect(currentConnect()?.request).toEqual({ target: { fleet: "platform/infra", role: "tracker" } });
+    const icons = drawnIcons(page.baseElement);
+    expect(icons.length).toBeGreaterThan(15);
+    expectIconsResolve(icons);
+    fireEvent.click(within(queue()).getByRole("tab", { name: /Sent/ }));
+    expectIconsResolve(drawnIcons(page.baseElement));
+  });
+});
+
+describe("a board line (AC2–AC6)", () => {
+  it("shows the forge's logo and the name, then the tracker's logo and key where the tracker is a service of its own", async () => {
+    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", waiting: 1 }), fleet("org/dash", { waiting: 1 })] }));
+    const infra = line("platform/infra");
+    const parts = [...infra.querySelectorAll("[role=img], button, span")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
+    expect(parts.indexOf("GitHub")).toBeLessThan(parts.indexOf("platform/infra"));
+    expect(within(infra).getByText("Linear")).toBeTruthy();
+    expect(within(infra).getByText(/PLAT/)).toBeTruthy();
+    expect(within(line("org/dash")).queryByText("Linear")).toBeNull();
   });
 
-  it("does not say nothing waits while a fleet needs an account", async () => {
-    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, needsAccount: [{ fleet: "a/b", managerThreadId: "t", role: "forge", text: "a/b needs an account" }] }));
-    render(<FleetsPage />);
-    await screen.findByText("a/b needs an account");
-    expect(screen.queryByText("Nothing waits on you")).toBeNull();
+  it("names a GitLab forge, which has no logo to show", async () => {
+    await show(fleetsView({ fleets: [fleet("group/billing", { forge: "gitlab", waiting: 1 })] }));
+    expect(within(line("group/billing")).getByText("GitLab")).toBeTruthy();
   });
 
-  it("draws a card per registered fleet", async () => {
-    fake.api.fleets.mockResolvedValue(
-      fleetsView({ fleets: [fleetCard({ repo: "acme/web", managerThreadId: "thr_a" }), fleetCard({ repo: "org/tickets", managerThreadId: "thr_t", waiting: 1 })] }),
+  it("leaves spend empty where it is unknown, and shows it where it is known", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, cost: { amount: 4.2, currency: "$", period: "since this manager started" } }), fleet("org/wake", { waiting: 1, cost: null })] }));
+    expect(within(line("org/dash")).getByText("$4.20")).toBeTruthy();
+    expect(within(line("org/wake")).queryByText(/\$/)).toBeNull();
+  });
+
+  it("shows a working manager as a turning icon alone, and says so on hover", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, manager: { state: "working", since: ago(HOUR) } })] }));
+    const icon = within(line("org/dash")).getByRole("img", { name: "Manager working" });
+    expect(icon.className).toContain("motion-safe:animate-spin");
+    expect(icon.parentElement!.textContent).toBe("");
+    expect(await hoverText(icon.parentElement!)).toBe("Manager working");
+  });
+
+  it("shows an idle manager as a cup with how long it has been idle", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, manager: { state: "idle", since: ago(10 * MINUTE) } })] }));
+    const icon = within(line("org/dash")).getByRole("img", { name: "Manager idle for 10m" });
+    expect(drawnIcons(icon)).toEqual(["Coffee"]);
+    expect(icon.parentElement!.textContent).toBe("10m");
+  });
+
+  it("shows a fleet with no manager in red, with no duration", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, manager: { state: "none", since: null } })] }));
+    const icon = within(line("org/dash")).getByRole("img", { name: /No manager/ });
+    expect(icon.parentElement!.className).toContain("text-destructive-text");
+    expect(icon.parentElement!.textContent).toBe("");
+  });
+
+  it("keeps the four Status slots in place, so org/wake's 1 sits under org/dash's 6", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 6, landed: 1 }), fleet("org/wake", { waiting: 1 })] }));
+    const slotOf = (repo: string, label: string) => {
+      const slot = within(line(repo)).getByLabelText(label);
+      return [...slot.parentElement!.parentElement!.children].indexOf(slot.parentElement!);
+    };
+    expect(slotOf("org/dash", "6 waiting on you")).toBe(2);
+    expect(slotOf("org/wake", "1 waiting on you")).toBe(2);
+    expect(within(line("org/wake")).queryByLabelText(/blocked/)).toBeNull();
+    expect(await hoverText(within(line("org/dash")).getByLabelText("6 waiting on you"))).toBe("6 waiting on you");
+  });
+
+  it("lists the four counts on the Status header's hover", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })] }));
+    expect(await hoverText(within(board()).getByText("Status"))).toBe("Blocked · In flight · Waits on you · Landed in the last 7 days");
+  });
+
+  it("leaves polling empty while healthy, and says when it never ran or is late", async () => {
+    await show(
+      fleetsView({
+        fleets: [
+          fleet("org/ok", { waiting: 1 }),
+          fleet("org/new", { waiting: 1, warnings: [{ kind: "never-polled" }] }),
+          fleet("org/late", { waiting: 1, warnings: [{ kind: "polling-late", lastPolledAt: ago(9 * MINUTE) }] }),
+        ],
+      }),
     );
-    render(<FleetsPage />);
-    expect(await screen.findByRole("article", { name: "Fleet acme/web" })).toBeTruthy();
-    expect(screen.getByRole("article", { name: "Fleet org/tickets" })).toBeTruthy();
-    expect(screen.queryByText(/No fleet is registered/)).toBeNull();
+    expect(within(line("org/ok")).queryByText(/late|not yet/)).toBeNull();
+    expect(within(line("org/new")).getByText("not yet")).toBeTruthy();
+    expect(within(line("org/late")).getByText("9m late").className).toContain("text-warning-text");
   });
 
-  it("lists what landed in the last 7 days with a link to each pull request", async () => {
-    fake.api.fleets.mockResolvedValue(fleetsView({ landed: [landedRow({ fleet: "acme/web", ref: "ENG-198", spec: "dark mode" })] }));
-    render(<FleetsPage />);
-    const strip = (await screen.findByRole("heading", { name: /Recently landed/ })).parentElement!;
-    expect(within(strip).getByText("ENG-198 dark mode")).toBeTruthy();
-    expect(within(strip).getByRole("link", { name: /#88/ }).getAttribute("href")).toBe("https://github.test/acme/web/pull/88");
-    expect(within(strip).queryByText("Nothing landed in the last 7 days")).toBeNull();
+  it("marks a fleet with a missing manifest with a red bar and Review, which opens its Fleet tab", async () => {
+    await show(fleetsView({ fleets: [fleet("org/gone", { reasons: [missing] })] }));
+    const gone = line("org/gone");
+    expect(gone.querySelector(".bg-destructive")).not.toBeNull();
+    const review = within(gone).getByRole("button", { name: missing.text });
+    expect(review.textContent).toBe("Review");
+    fireEvent.click(review);
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_org/gone");
   });
 
-  it("lists recently finished actions briefly", async () => {
-    fake.api.fleets.mockResolvedValue(fleetsView({ recentActions: [actionRecord({ ref: "#163", state: "done", doneAt: ago(MINUTE), sentAt: ago(HOUR) })] }));
-    render(<FleetsPage />);
-    expect(await screen.findByText("acme/web answered #163 · done")).toBeTruthy();
+  it("shows the first of several flags with how many more, every sentence on hover", async () => {
+    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noForge, noTracker, unreadableRows] })] }));
+    const fix = within(line("platform/infra")).getByRole("button", { name: /2 manifest rows/ });
+    expect(fix.textContent).toBe("Review +2");
+    const text = await hoverText(fix);
+    for (const reason of [noForge, noTracker, unreadableRows]) expect(text).toContain(reason.text);
   });
 
-  it("shows an action sent from any window as sent, from the server's view", async () => {
-    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, inbox: [inboxRow({ offer: null, action: actionRecord({ sentAt: ago(3 * MINUTE) }) })] }));
-    render(<FleetsPage />);
-    expect(await screen.findByText("sent · 3m")).toBeTruthy();
+  it("offers Connect… in red where an account fixes it, which opens the Connect popup over the page", async () => {
+    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    const x = line("other-org/x");
+    expect(x.querySelector(".bg-destructive")).not.toBeNull();
+    const connect = within(x).getByRole("button", { name: "no GitHub account can read other-org" });
+    expect(connect.textContent).toBe("Connect…");
+    expect(connect.className).toContain("text-destructive-text");
+    expect(await hoverText(connect)).toBe("no GitHub account can read other-org");
+    fireEvent.click(connect);
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "other-org/x", role: "forge" } });
+  });
+
+  it("offers Renew… in amber for a token expiring soon, which opens the Connect popup to renew it", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { warnings: [{ kind: "expires", label: "GitHub · yuser for org", credentialId: "c1", accountId: "a1", role: "forge", expiresAt: ago(0), daysLeft: 3 }] })] }));
+    const dash = line("org/dash");
+    expect(dash.querySelector(".bg-warning")).not.toBeNull();
+    fireEvent.click(within(dash).getByRole("button", { name: "GitHub · yuser for org: token expires in 3 days" }));
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "a1", replaces: "c1" });
+  });
+
+  it("shows a red ✕ for a gone manager, saying to run /run-fleet in a new thread", async () => {
+    const gone: ReasonView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
+    await show(fleetsView({ fleets: [fleet("org/dash", { reasons: [gone] })] }));
+    const mark = within(line("org/dash")).getByLabelText(gone.text);
+    expect(mark.tagName).not.toBe("BUTTON");
+    expect(drawnIcons(mark)).toEqual(["CircleX"]);
+  });
+
+  it("shows only the Fleet tab icon for a fleet with no problem and no warning, and that icon opens the tab", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })] }));
+    expect(within(line("org/dash")).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual(["org/dash", "Open the Fleet tab of org/dash"]);
+    fireEvent.click(within(line("org/dash")).getByRole("button", { name: "Open the Fleet tab of org/dash" }));
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_org/dash");
+  });
+
+  it("leaves late polling to the polling cell, with no verb", async () => {
+    await show(fleetsView({ fleets: [fleet("org/late", { waiting: 1, warnings: [{ kind: "polling-late", lastPolledAt: ago(9 * MINUTE) }] })] }));
+    expect(line("org/late").querySelector(".bg-warning")).not.toBeNull();
+    expect(within(line("org/late")).getAllByRole("button")).toHaveLength(2);
+  });
+});
+
+describe("the board's order and quiet fleets (AC7)", () => {
+  it("folds a quiet fleet until its line is clicked", async () => {
+    await show(fleetsView({ fleets: [fleet("acme/web"), fleet("org/dash", { waiting: 1 })] }));
+    expect(boardRepos()).toEqual(["org/dash"]);
+    fireEvent.click(within(board()).getByRole("button", { name: "1 quiet fleet" }));
+    expect(boardRepos()).toEqual(["org/dash", "acme/web"]);
+  });
+
+  it("lists a fleet with a missing manifest and every count at zero first", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 9 }), fleet("org/gone", { reasons: [missing] })] }));
+    expect(boardRepos()).toEqual(["org/gone", "org/dash"]);
+  });
+
+  it("lists a quiet fleet that is the filter", async () => {
+    await show(fleetsView({ fleets: [fleet("acme/web"), fleet("org/dash", { waiting: 1 })] }));
+    fireEvent.click(within(board()).getByRole("button", { name: "1 quiet fleet" }));
+    fireEvent.click(within(line("acme/web")).getByRole("button", { name: "acme/web" }));
+    expect(boardRepos()).toContain("acme/web");
+    expect(within(board()).queryByRole("button", { name: "1 quiet fleet" })).toBeNull();
+  });
+});
+
+describe("filtering the queue to a fleet (AC8)", () => {
+  const view = () =>
+    fleetsView({
+      fleets: [fleet("org/dash", { waiting: 2 }), fleet("org/wake", { waiting: 1 })],
+      inbox: [inboxRow({ id: "1", fleet: "org/dash", since: ago(3 * MINUTE) }), inboxRow({ id: "2", fleet: "org/wake", since: ago(2 * MINUTE) }), inboxRow({ id: "3", fleet: "org/dash", since: ago(MINUTE) })],
+    });
+
+  it("filters to the fleet whose line is clicked, its tabs counting that fleet only, its fleet column hidden", async () => {
+    await show(view());
+    expect(within(queue()).getAllByText("org/wake").length).toBeGreaterThan(0);
+    fireEvent.click(line("org/dash"));
+    expect(queueRows()).toHaveLength(2);
+    expect(within(queue()).getByRole("tab", { name: "All 2" })).toBeTruthy();
+    expect(within(within(queue()).getByRole("tabpanel")).queryByText("org/dash")).toBeNull();
+    expect(within(line("org/dash")).getByRole("button", { name: "org/dash" }).getAttribute("aria-pressed")).toBe("true");
+    expect(line("org/dash").className).toContain("bg-accent");
+  });
+
+  it("shows a chip with the fleet's logo, its name and an ✕, which clears the filter", async () => {
+    await show(view());
+    fireEvent.click(within(line("org/dash")).getByRole("button", { name: "org/dash" }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Show every fleet, not only org/dash" }));
+    expect(queueRows()).toHaveLength(3);
+    expect(within(line("org/dash")).getByRole("button", { name: "org/dash" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("clears the filter when the line is clicked again", async () => {
+    await show(view());
+    fireEvent.click(line("org/dash"));
+    fireEvent.click(line("org/dash"));
+    expect(queueRows()).toHaveLength(3);
+  });
+
+  it("leaves the filter as it is when the Fleet tab icon is clicked", async () => {
+    await show(view());
+    fireEvent.click(line("org/dash"));
+    fireEvent.click(within(line("org/dash")).getByRole("button", { name: "Open the Fleet tab of org/dash" }));
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_org/dash");
+    expect(queueRows()).toHaveLength(2);
+  });
+});
+
+describe("the queue (AC9–AC13)", () => {
+  it("filters by kind, and shows Unreadable only while there is an unreadable row", async () => {
+    const inbox = [...[1, 2, 3, 4].map((n) => inboxRow({ id: `a${n}`, fleet: "org/dash" })), inboxRow({ id: "g", fleet: "org/dash", ref: "#9", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false } })];
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 5 })], inbox }));
+    expect(within(queue()).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["All 5", "Answer 4", "Grant 1", "Build 0", "Other 0", "Sent 0"]);
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Grant 1" }));
+    expect(queueRows()).toHaveLength(1);
+    expect(queueRows()[0]!.textContent).toContain("#9");
+  });
+
+  it("draws a row's kind icon, title, short link, age with a clock, fleet and action, the age amber after 8 hours", async () => {
+    await show(
+      fleetsView({
+        fleets: [fleet("org/dash", { waiting: 2 })],
+        inbox: [
+          inboxRow({ id: "old", fleet: "org/dash", ref: "#7", what: "Which cache to use", since: ago(11 * HOUR + 36 * MINUTE), link: { kind: "url", url: "https://github.test/org/dash/issues/7", text: "#7" } }),
+          inboxRow({ id: "new", fleet: "org/dash", since: ago(20_000) }),
+        ],
+      }),
+    );
+    const [old, fresh] = queueRows();
+    expect(drawnIcons(old!).slice(0, 2)).toEqual(["MessageSquare", "Clock"]);
+    expect(within(old!).getByText("#7 Which cache to use")).toBeTruthy();
+    expect(within(old!).getByRole("link", { name: "#7 ↗" })).toBeTruthy();
+    expect(within(old!).getByText("11h 36m").className).toContain("text-warning-text");
+    expect(within(fresh!).getByText("20s").className).toContain("text-muted-foreground");
+    expect(within(old!).getByText("org/dash")).toBeTruthy();
+    expect(within(old!).getByRole("button", { name: "Answer… #7" }).className).toContain("text-timeline-accent");
+  });
+
+  it("draws an unreadable row as a red line with Review, which opens the Fleet tab", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], unreadableInbox: [unreadableInboxRow({ fleet: "org/dash", managerThreadId: "thr_org/dash", line: 9 })] }));
+    const row = queueRows()[0]!;
+    expect(within(row).getByText('Unreadable Inbox row, line 9: the table has no "Waits for" column').className).toContain("text-destructive-text");
+    fireEvent.click(within(row).getByRole("button", { name: /Review/ }));
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_org/dash");
+    expect(within(queue()).getByRole("tab", { name: "Unreadable 1" })).toBeTruthy();
+  });
+
+  it("keeps each action state: sent with its age, done, watch only, and Re-grant beside Grant…", async () => {
+    await show(
+      fleetsView({
+        fleets: [fleet("org/dash", { waiting: 4 })],
+        inbox: [
+          inboxRow({ id: "s", fleet: "org/dash", ref: "#1", offer: null, action: actionRecord({ sentAt: ago(4 * MINUTE) }) }),
+          inboxRow({ id: "d", fleet: "org/dash", ref: "#2", waitsFor: "ready", offer: null, action: actionRecord({ kind: "build", state: "done", doneAt: ago(MINUTE) }) }),
+          inboxRow({ id: "o", fleet: "org/dash", ref: "#3", waitsFor: "other", offer: null }),
+          inboxRow({ id: "g", fleet: "org/dash", ref: "#4", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } }),
+        ],
+      }),
+    );
+    const [sent, done, other, grant] = queueRows();
+    expect(within(sent!).getByText("sent · 4m")).toBeTruthy();
+    expect(within(done!).getByText("done")).toBeTruthy();
+    expect(drawnIcons(done!)).toContain("Check");
+    expect(within(other!).getByText("watch only")).toBeTruthy();
+    expect(within(grant!).getByRole("button", { name: "Grant… #4" })).toBeTruthy();
+    expect(within(grant!).getByRole("button", { name: "Re-grant #4" })).toBeTruthy();
+  });
+
+  it("opens a composer under the row naming the item and the manager, and keeps the draft when bb refuses it", async () => {
+    let refuse: (value: { ok: false; reason: string }) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((resolve) => (refuse = resolve)));
+    await show(fleetsView({ fleets: [fleet("org/wake", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/wake", ref: "#7", what: "Which cache to use" })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #7" }));
+    const row = queueRows()[0]!;
+    expect(within(row).getByText("Your answer for #7 Which cache to use · goes to org/wake's manager")).toBeTruthy();
+    expect(within(row).getByText("composing…")).toBeTruthy();
+    expect(within(row).getByText("⌘↵ send · Esc cancel")).toBeTruthy();
+    fireEvent.change(within(row).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(row).getByRole("button", { name: "Send" }));
+    expect(await within(queueRows()[0]!).findByText("sending…")).toBeTruthy();
+    await act(async () => refuse({ ok: false, reason: "the manager thread is archived" }));
+    const refused = queueRows()[0]!;
+    expect(within(refused).getByRole("alert").textContent).toBe("Not sent: the manager thread is archived");
+    expect((within(refused).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
+    expect(within(refused).queryByText("⌘↵ send · Esc cancel")).toBeNull();
+  });
+
+  it("says not sent beside the title when bb refuses Build it, the reason on hover, and keeps the button", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#8", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #8" }));
+    const mark = await within(queue()).findByLabelText("not sent: the manager thread is archived");
+    expect(mark.textContent).toBe("not sent");
+    expect(await hoverText(mark)).toBe("the manager thread is archived");
+    expect(within(queue()).getByRole("button", { name: "Build it #8" })).toBeTruthy();
+  });
+
+  it("lists under Sent what was seen done in the last hour", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash")], recentActions: [actionRecord({ fleet: "org/dash", kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) })] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Sent 1" }));
+    const sent = queueRows()[0]!;
+    expect(sent.textContent).toBe("You answered #5 Which queue40m agoorg/dashdone");
+    expect(drawnIcons(sent)).toEqual(["MessageSquare", "GithubLogo", "Check"]);
+  });
+});
+
+describe("on a phone (AC15)", () => {
+  beforeEach(() => setCompactViewport(true));
+
+  it("condenses the board to three fleets, the rest folded", async () => {
+    await show(fleetsView({ fleets: ["a", "b", "c", "d", "e"].map((name, n) => fleet(`org/${name}`, { waiting: 5 - n })) }));
+    expect(boardRepos()).toEqual(["org/a", "org/b", "org/c"]);
+    fireEvent.click(within(board()).getByRole("button", { name: "2 more fleets" }));
+    expect(boardRepos()).toHaveLength(5);
+  });
+
+  it("filters the queue when a fleet's line is tapped", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 }), fleet("org/wake", { waiting: 1 })], inbox: [inboxRow({ id: "1", fleet: "org/dash" }), inboxRow({ id: "2", fleet: "org/wake" })] }));
+    fireEvent.click(line("org/dash"));
+    expect(queueRows()).toHaveLength(1);
+  });
+
+  it("makes a fleet's fix a touch-sized button named by its sentence, doing what the verb does", async () => {
+    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    const fix = within(line("other-org/x")).getByRole("button", { name: "no GitHub account can read other-org" });
+    expect(fix.className).toContain("size-11");
+    fireEvent.click(fix);
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "other-org/x", role: "forge" } });
+  });
+
+  it("shows a fleet's non-zero counts on the right", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 6, landed: 1 })] }));
+    expect(within(line("org/dash")).getByLabelText("6 waiting on you")).toBeTruthy();
+    expect(within(line("org/dash")).queryByLabelText(/blocked/)).toBeNull();
+  });
+
+  it("makes the kind tabs pills and each row two lines with a touch-sized button", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
+    expect(within(queue()).getByRole("tab", { name: "All 1" }).className).toContain("rounded-full");
+    const row = queueRows()[0]!;
+    expect(row.children[0]!.textContent).toContain("#7");
+    expect(row.children[1]!.textContent).toContain("org/dash");
+    expect(within(row).getByRole("button", { name: "Answer… #7" }).className).toContain("min-h-11");
   });
 });

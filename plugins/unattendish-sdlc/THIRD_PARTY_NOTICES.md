@@ -7,3 +7,18 @@ Unattendish's built files (`dist/`) include code from these packages. Each keeps
 | @radix-ui/react-compose-refs | 1.1.5 | MIT | Copyright (c) 2022 WorkOS | dist/app.js |
 | @radix-ui/react-slot | 1.5.0 | MIT | Copyright (c) 2022 WorkOS | dist/app.js |
 | zod | 4.6.6 | MIT | Copyright (c) 2025 Colin McDonnell | dist/server.js |
+
+## Icons
+
+These files under `icons/` are copied from icon sets, as single-colour drawings bb paints in the text colour.
+
+| File | Copied from | Version | Licence | Copyright |
+|---|---|---|---|---|
+| icons/circle-dashed.svg | Lucide (lucide-static): circle-dashed | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/hammer.svg | Lucide (lucide-static): hammer | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/hourglass.svg | Lucide (lucide-static): hourglass | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/key.svg | Lucide (lucide-static): key-round | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/lightbulb.svg | Lucide (lucide-static): lightbulb | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/rocket.svg | Lucide (lucide-static): rocket | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/scale.svg | Lucide (lucide-static): scale | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/user-x.svg | Lucide (lucide-static): user-x | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |

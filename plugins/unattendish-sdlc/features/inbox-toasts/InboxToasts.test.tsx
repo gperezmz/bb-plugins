@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import type { ReactElement } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/testing/sdk";
 import { INBOX_NEW } from "@/shared/client";
+import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { InboxToasts } from "./index";
 
 const toast = vi.hoisted(() => vi.fn());
@@ -42,7 +44,7 @@ describe("the Inbox toasts", () => {
     render(<InboxToasts />);
     sdk.emit(INBOX_NEW, signal);
     expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast.mock.calls[0]![0]).toBe("acme/web waits on you — ENG-212 which locale wins?");
+    expect(toast.mock.calls[0]![0]).toBe("ENG-212 which locale wins?");
     sdk.emit(INBOX_NEW, { ...signal, rowId: "row_2", ref: "#7" });
     expect(toast).toHaveBeenCalledTimes(2);
   });
@@ -60,6 +62,19 @@ describe("the Inbox toasts", () => {
     expect(action.label).toBe("Open Fleets");
     action.onClick();
     expect(sdk.navigate.toPluginPanel).toHaveBeenCalledWith("fleets");
+  });
+
+  it("leads with the kind's icon, and says under the title which fleet waits for what, with its logo", () => {
+    render(<InboxToasts />);
+    sdk.emit(INBOX_NEW, { ...signal, ref: "#7", what: "Which cache to use", fleet: "org/dash" });
+    const [title, options] = toast.mock.calls[0]! as [string, { icon: ReactElement; description: ReactElement }];
+    expect(title).toBe("#7 Which cache to use");
+    const icon = render(options.icon);
+    expect(drawnIcons(icon.baseElement)).toEqual(["MessageSquare"]);
+    const line = render(options.description);
+    expect(line.baseElement.textContent).toBe("org/dash waits for your answer");
+    expect(line.getByRole("img", { name: "GitHub" })).toBeTruthy();
+    expectIconsResolve([...drawnIcons(icon.baseElement), ...drawnIcons(line.baseElement)]);
   });
 
   it("ignores a payload that is not the signal", () => {

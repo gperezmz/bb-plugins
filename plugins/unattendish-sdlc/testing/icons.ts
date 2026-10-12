@@ -15,7 +15,7 @@ export function expectIconsResolve(names: Iterable<string>): void {
   expect(unresolvedIcons(names)).toEqual([]);
 }
 
-/** Every icon name drawn under `container`, as the SDK stub marks each. */
-export function drawnIcons(container: ParentNode): string[] {
-  return [...container.querySelectorAll("[data-icon]")].map((icon) => icon.getAttribute("data-icon")!);
+/** Every icon name drawn under `root`, as the SDK stub marks each. */
+export function drawnIcons(root: ParentNode): string[] {
+  return [...root.querySelectorAll("[data-icon]")].map((icon) => icon.getAttribute("data-icon")!);
 }
