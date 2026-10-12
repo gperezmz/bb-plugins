@@ -44,9 +44,9 @@
 // redirect or next link to any other path is a failure of kind `outside-fleet`.
 //
 // A 403 that is not a rate limit is the HTTP layer's `forbidden`: on the
-// pipelines of a merge request it leaves `checks` null and the rest of the item
-// is still read; anywhere else it fails that one item or listing. Only a 401 or
-// a rate limit ends the read.
+// pipelines or the reviewers of a merge request it leaves `checks` or `reviewers`
+// out and the rest of the item is still read; anywhere else it fails that one
+// item or listing. Only a 401 or a rate limit ends the read.
 //
 // Not confirmed by those pages, and what is done instead:
 // - Reviewers: "Retrieve merge request reviewers" (/api/merge_requests/,

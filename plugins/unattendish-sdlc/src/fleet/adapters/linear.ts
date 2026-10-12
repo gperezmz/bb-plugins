@@ -35,9 +35,11 @@
 //    `forbidden`, and the docs give no status or `code` for either, so an
 //    authentication error is matched wherever it comes (see `rethrowFatal`).
 //    An HTTP 401 is the layer's `auth`, and a 403 that is no rate limit, or a
-//    `forbidden` type, fails the one read as `forbidden`. A status other than
-//    these (the documented 400 of a rate limit, say) reaches the adapter
-//    without its body, so it fails the one read with no kind.
+//    `forbidden` type, fails the one read as `forbidden`. An HTTP 400 (the
+//    documented status of a rate limit) arrives with the GraphQL error codes
+//    the HTTP layer keeps (`HttpError.graphql`); `send` turns the ones it knows
+//    into the error they mean, and a 400 with no known code fails the one read
+//    with no kind.
 //  - What `issue(id:)` answers for an identifier the issue had before a move to another team: Linear's help center
 //    (linear.app/docs/move-to-new-team, excerpt only; the page itself answered 404) says a moved issue gets a new
 //    identifier and a search for the old one returns the current issue, and its API pages say nothing. The answer's

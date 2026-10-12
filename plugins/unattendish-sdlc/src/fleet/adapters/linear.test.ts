@@ -225,6 +225,17 @@ describe("events", () => {
     expect(JSON.stringify(outcome)).not.toContain("Fleet Bot");
   });
 
+  it("falls back to no alias, never to the display name, for an actor with no email at all", async () => {
+    const users = [{ id: "u-ghost", email: null as unknown as string, displayName: "Fleet Bot" }];
+    const history = [entry("h1", { actor: "u-ghost", fromState: "started", toState: "completed" })];
+    const comments = [comment("c1", { user: "u-ghost", body: "hello" })];
+    const { read } = await setup({ users, issues: [issue("ENG-1", { history, comments, assignee: null, creator: null })] });
+    const outcome = await read(["ENG-1"]);
+    expect(outcome.snapshots[0]!.transitions[0]).not.toHaveProperty("actorAliases");
+    expect(outcome.events[0]).not.toHaveProperty("actorAliases");
+    expect(JSON.stringify(outcome)).not.toContain("Fleet Bot");
+  });
+
   it("gives no alias for an actor whose email is blank, and none for the user id or display name", async () => {
     const blank = [{ id: "u-ghost", email: "", displayName: "" }];
     const history = [entry("h1", { actor: "u-ghost", fromState: "started", toState: "completed" })];

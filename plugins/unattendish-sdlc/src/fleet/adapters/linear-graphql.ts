@@ -169,7 +169,8 @@ const codesOf = (error: unknown): string[] => {
  * limit page names `extensions.code` `RATELIMITED`. Neither says which status
  * a refused key is answered with or whether `code` is set, so both fields
  * are read, with case, spaces and underscores ignored, and an authentication
- * error is taken wherever it comes (HTTP 200 with `errors` or 401).
+ * error is taken wherever it comes: HTTP 200 with `errors`, a 401, or an HTTP 400
+ * whose error codes the HTTP layer kept.
  */
 export const rethrowFatal = (errors: readonly unknown[]): void => {
   const codes = errors.flatMap(codesOf);
