@@ -107,10 +107,10 @@ In the text, `credentials` is one `credential {prefix} ({role}, {service}, {auth
 
 ```text
 bb unattendish fleet ledger <repo> [--item <value>] [--done <woke|echo|out-of-scope|held|failed-read>]
-  [--limit <1-5000>] [--json]
+  [--limit <1-250>] [--json]
 ```
 
-Prints the [ledger](../explanation/unattendish-polling.md) of a fleet, newest first, up to `--limit` entries (200 by default). The plugin keeps it 30 days. With nothing to show: `The ledger holds nothing for this.`
+Prints the [ledger](../explanation/unattendish-polling.md) of a fleet, newest first, up to `--limit` entries (200 by default, 250 at most: bb refuses a command that prints more than 1 MiB, and a higher value is refused with an error naming the cap). To stay within that, a string longer than 200 characters is cut and ends in `…`, and a poll lists its first 5 requests, with `requestsOmitted` in the JSON for the rest; the poll's `counted` and the text's request count stay whole, and the ledger itself holds everything. The plugin keeps it 30 days. With nothing to show: `The ledger holds nothing for this.`
 
 | Option | Keeps |
 |---|---|
@@ -123,7 +123,7 @@ With `--item` or `--done`, wakes and polls are left out. `--json` prints `{"entr
 |---|---|---|
 | `change` | `row`: `key`, `role`, `ref`, `url`, `kind`, `label`, `actor`, `at` (when it happened on the service), `seenAt` (when the plugin saw it), `disposition`, `rule`, `wakeId` | `{seenAt}  {ref} {kind} {label} by {actor}: {what was done}({rule})  {url}` |
 | `wake` | `wake`: `id`, `repo`, `kind`, `threadId`, `queuedMessageId`, `queuedAt`, `dispatchedAt`, `since`, `catchUpMs`, `heldSince` | `{queuedAt}  wake {id} to {thread}, dispatched {time}`, or `waiting in bb's queue` while it has not been dispatched |
-| `poll` | `poll`: `at`, `role`, `requests` (each `method`, `path`, `status`, `counted`, `at`), `counted`, `ok` | `{at}  poll of the {role}: {n} requests, {n} counted against the rate limit`, with `, failed` when the read failed |
+| `poll` | `poll`: `at`, `role`, `requests` (the first 5; each `method`, `path`, `status`, `counted`), `requestsOmitted` (how many more, when there are), `counted`, `ok` | `{at}  poll of the {role}: {n} requests, {n} counted against the rate limit`, with `, failed` when the read failed |
 | `failed read` | `at`, `role`, `ref`, `reason` | `{at}  failed read of the {role} {ref}: {reason}` |
 
 A `failed read` reason that reads `moved outside the fleet` is an item the service now answers for from another repository, project or team; it is not a change, and is never read. A change's `kind` is one of the [wake's changes](#the-wake), or `updated` for an item the service listed as changed that is not in the watched set. Its `disposition` is `wake`, `echo`, `out-of-scope` or `held`; `rule` is the echo rule that matched (`marker`, `label` or `echo actor`) or the hold reason (`no manager`), else `null`; `wakeId` is the wake that carried it. A wake's `kind` is `changes`, or `not-watched` for the one wake that says a source could not be read. `path` in a request is the URL's path without its query string, and `counted` says whether the service counted the request against its rate limit. A `reason` names what went wrong in the plugin's words and never quotes the service. The ledger holds no token, and a change holds no text written on the service.
