@@ -74,7 +74,11 @@ export interface Derived {
  * skip a change. Where no listing failed, some snapshot, event or updated
  * item came back, and the read was no `stateOnly` one, the hold reaches no
  * more than `MAX_HOLD_MS` before the poll's start, however many items
- * failed: items that never read cannot hold the source back for good. A `stateOnly` read, a failed listing, or a
+ * failed: items that never read cannot hold the source back for good.
+ * A listing cut off at its page limit (`listingCutAt`) is no failure: where
+ * nothing else holds `since`, it moves to the cut, or stays where it was if
+ * that is later, since everything older was listed and every watched item
+ * was read from the old `since`. A `stateOnly` read, a failed listing, or a
  * read where nothing came back holds `since` with no limit, since none of
  * them read the changes the hold keeps. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will
@@ -124,7 +128,10 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   const readable = outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0;
   const capped = !stateOnly && listed && readable;
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
-  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : capped && base < oldest ? oldest : base;
+  const held = capped && base < oldest ? oldest : base;
+  const cutAt = outcome.listingCutAt;
+  const read = cutAt === undefined ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : cutAt > base ? cutAt : base;
+  const since = holdsSince ? held : read;
 
   changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };

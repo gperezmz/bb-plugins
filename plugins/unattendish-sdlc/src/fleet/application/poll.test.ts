@@ -955,3 +955,21 @@ describe("polling on an interval (AC3)", () => {
     expect(w.adapters.github.reads).toHaveLength(2);
   });
 });
+
+describe("a listing cut off at its page limit", () => {
+  it("reads from the last update it listed at the next poll, and the fleet stays watched", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const cutAt = "2026-10-12T10:05:00.000Z";
+    w.clock.advance(600_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], updated: [{ role: "forge", ref: "#99", url: issueUrl(99), at: cutAt }], listingCutAt: cutAt }));
+    await poll(w);
+    for (let at = 0; at < 3; at += 1) {
+      w.clock.advance(120_000);
+      w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], updated: [{ role: "forge", ref: "#99", url: issueUrl(99), at: cutAt }], listingCutAt: cutAt }));
+      await poll(w);
+    }
+    expect(w.adapters.github.reads.slice(1).map((read) => read.since)).toEqual([cutAt, cutAt, cutAt]);
+    expect(w.store.getFleet(REPO_KEY)!.notWatched).toEqual([]);
+  });
+});

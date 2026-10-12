@@ -293,6 +293,28 @@ describe("failures", () => {
     expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe(old.since);
   });
 
+  it("moves since to the last update a cut-off listing read, never back past the previous since", () => {
+    const prev = cursor({});
+    const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
+    const cut = derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:30:00.000Z" }) });
+    expect(cut.nextCursor.since).toBe("2026-10-12T09:30:00.000Z");
+    expect(cut.failures).toEqual([]);
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T08:00:00.000Z" }) }).nextCursor.since).toBe(prev.since);
+    expect(derive({ outcome: outcome({ updated, listingCutAt: "2026-10-11T00:00:00.000Z" }) }).nextCursor.since).toBe(firstSince);
+    const gone = derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:30:00.000Z", failures: [{ ref: "#9", reason: "gone", kind: "not-found" }] }) });
+    expect(gone.nextCursor.since).toBe("2026-10-12T09:30:00.000Z");
+  });
+
+  it("does not move since to a cut-off listing's last update while an item failure holds it, or on a turn-end read", () => {
+    const prev = cursor({});
+    const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
+    const listingCutAt = "2026-10-12T09:30:00.000Z";
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt, failures: [{ ref: "#8", reason: "server error" }] }) }).nextCursor.since).toBe(prev.since);
+    expect(derive({ prev, stateOnly: true, outcome: outcome({ updated, listingCutAt }) }).nextCursor.since).toBe(prev.since);
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    expect(derive({ prev: old, outcome: outcome({ updated, listingCutAt, failures: [{ ref: "#8", reason: "server error" }] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+  });
+
   it("moves since to the poll's start less the overlap otherwise", () => {
     expect(derive({ outcome: outcome() }).nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
     expect(derive({ outcome: outcome(), overlapMs: 10_000 }).nextCursor.since).toBe("2026-10-12T09:59:50.000Z");
