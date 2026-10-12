@@ -159,24 +159,28 @@ const renewOf = (account: Account, credential: AccountCredential, now: Date): Cr
   return { kind: "paste" };
 };
 
+/** Which fleets read with each credential, by its id, and the ids of the credentials the services refuse now. */
+const usageOf = (deps: Pick<AccountsDeps, "store" | "credentials">): { readonly usedBy: Map<string, string[]>; readonly refused: Set<string> } => {
+  const usedBy = new Map<string, string[]>();
+  const refused = new Set<string>();
+  for (const fleet of deps.store.listFleets()) {
+    for (const role of rolesOf(fleet.registration)) {
+      const lookup = lookupOf(deps.credentials, fleet.registration, role);
+      if (!lookup.found) continue;
+      usedBy.set(lookup.credential.key, [...new Set([...(usedBy.get(lookup.credential.key) ?? []), formatRepo(fleet.registration.repo)])]);
+      const outage = fleet.outages[role]?.refused ?? null;
+      if (outage !== null && outage.why === "refused" && outage.credential === lookup.credential.label) refused.add(lookup.credential.key);
+    }
+  }
+  return { usedBy, refused };
+};
+
 export async function accountsView(deps: AccountsDeps): Promise<AccountSettingView[]> {
   const now = deps.clock.now();
   const accounts = deps.accounts.accounts();
   const credentials = deps.accounts.credentials();
   const assignments = deps.accounts.assignments();
-  const fleets = deps.store.listFleets();
-  // Which fleets read with each credential, and which credentials the services refuse now.
-  const usedBy = new Map<string, string[]>();
-  const refusedLabels = new Set<string>();
-  for (const fleet of fleets) {
-    for (const role of rolesOf(fleet.registration)) {
-      const lookup = lookupOf(deps.credentials, fleet.registration, role);
-      if (!lookup.found) continue;
-      usedBy.set(lookup.credential.key, [...new Set([...(usedBy.get(lookup.credential.key) ?? []), formatRepo(fleet.registration.repo)])]);
-      const refused = fleet.outages[role]?.refused ?? null;
-      if (refused !== null && refused.why === "refused" && refused.credential === lookup.credential.label) refusedLabels.add(lookup.credential.label);
-    }
-  }
+  const { usedBy, refused } = usageOf(deps);
   return accounts.map((account): AccountSettingView => {
     const own = assignments.filter((assignment) => assignment.accountId === account.id);
     const isDefault = own.some((assignment) => scopeKey(assignment.scope) === scopeKey(defaultScope(account)));
@@ -201,7 +205,7 @@ export async function accountsView(deps: AccountsDeps): Promise<AccountSettingVi
           canWrite: canWrite(credential.kind),
           expiresAt: credential.expiresAt,
           expiresInDays: daysLeftToWarn(credential.expiresAt, now),
-          refused: refusedLabels.has(credentialLabel(account, credential)),
+          refused: refused.has(credential.id),
           fleets: usedBy.get(credential.id) ?? [],
           renew: renewOf(account, credential, now),
         })),
@@ -221,6 +225,7 @@ const optionsOn = (deps: AccountsDeps, service: ServiceKind | null, place: strin
   const credentials = deps.accounts.credentials();
   const on = accounts.filter((account) => account.place === place && (service === null ? account.service === "github" || account.service === "gitlab" : account.service === service));
   const fallback = defaultAccountOf(service, place, assignments, accounts);
+  const { refused } = usageOf(deps);
   return on
     .map((account): AccountOptionView => {
       const credential = reach === null ? null : credentialFor(account, reach, credentials);
@@ -229,7 +234,8 @@ const optionsOn = (deps: AccountsDeps, service: ServiceKind | null, place: strin
         label: accountLabel(account),
         via: account.via,
         isDefault: fallback?.id === account.id,
-        reaches: credential !== null,
+        // A credential the service refuses reaches nothing: the operator goes to the token step for a new one.
+        reaches: credential !== null && !refused.has(credential.id),
         canWrite: account.via !== "token" || (credential !== null && canWrite(credential.kind)),
         loginProblem: account.via === "token" ? null : deps.loginStatus.loginProblem(account.id),
       };
@@ -411,7 +417,9 @@ const tokenOf = async (deps: AccountsDeps, chosen: Chosen, input: ConnectInput, 
       try {
         return { token: await deps.credentials.token(resolvedOf(chosen.account, credential)) };
       } catch (error) {
-        return { result: { outcome: "unreachable", text: error instanceof Error ? shown(error.message) : "no token could be had" } };
+        const text = error instanceof Error ? shown(error.message) : "no token could be had";
+        // A gh or glab login that gives no token of its own, or another user's, is put right by signing in again.
+        return { result: chosen.account.via === "token" ? { outcome: "unreachable", text } : { outcome: "wrong-login", text: `${text}.`, command: loginCommand(chosen.account) } };
       }
     }
   }

@@ -21,6 +21,7 @@ import {
   type ResolvedSource,
   type ServiceAdapter,
   type SourceOutage,
+  type ServiceProbe,
   type Store,
   type StoredFleet,
   type StoredWake,
@@ -37,6 +38,8 @@ export interface PollDeps {
   readonly channel: ManagerChannel;
   readonly credentials: Credentials;
   readonly accounts: AccountStore;
+  /** Asks a service whether a credential can read a half, as a fleet registers. */
+  readonly probe: ServiceProbe;
   readonly http: Http;
   readonly adapters: Readonly<Record<ServiceKind, ServiceAdapter>>;
   readonly manifests: ManifestFiles;

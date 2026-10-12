@@ -60,8 +60,8 @@ export const world = (options: { readonly accounts?: boolean } = {}) => {
   const fake = new FakeCredentials([{ prefix: "github.com/org", service: "github", token: TOKEN }]);
   const credentials = fromAccounts ?? fake;
   const loginStatus = fromAccounts ?? new FakeLoginStatus();
-  const poll: PollDeps = { store, threads, channel, credentials, accounts, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
-  const register: RegisterDeps = { store, threads, credentials, accounts, manifests, clock, events };
+  const poll: PollDeps = { store, threads, channel, credentials, accounts, probe, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
+  const register: RegisterDeps = { store, threads, credentials, accounts, probe, manifests, clock, events };
   const queue = new SerialQueue();
   const readNow: string[] = [];
   let ids = 0;

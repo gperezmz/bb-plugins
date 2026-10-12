@@ -5,7 +5,7 @@ import { PluginCliError } from "@get-bb/plugin-sdk";
 import { CachedCost } from "./fleet/application/cost-cache";
 import { createDashboard } from "./fleet/application/dashboard";
 import type { PollDeps } from "./fleet/application/poll";
-import { registerFleet } from "./fleet/application/register";
+import { checkFleetAccess, registerFleet } from "./fleet/application/register";
 import { pollDue, pruneLedger, readFleetNow, refreshFleetsOf, setFleetInterval } from "./fleet/application/schedule";
 import { SerialQueue } from "./fleet/application/serial";
 import { fleetStatus } from "./fleet/application/status";
@@ -91,6 +91,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     channel: new BbManagerChannel(sdk, bb.pluginId, () => credentials.secrets()),
     credentials,
     accounts,
+    probe,
     http,
     adapters,
     manifests: new FileManifests(),
@@ -108,9 +109,14 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
   };
 
   const app: FleetCliApp = {
-    register(thread, args) {
+    async register(thread, args) {
       const repo = parseRepo(args.repo);
-      return repo === null ? registerFleet(poll, thread, args) : queue.run(repoId(repo), () => registerFleet(poll, thread, args));
+      if (repo === null) return registerFleet(poll, thread, args);
+      const key = repoId(repo);
+      const outcome = await queue.run(key, () => registerFleet(poll, thread, args));
+      // Beside the fleet's queue, not in it: it writes only what a credential cannot read, which a poll may write as well.
+      if (outcome.outcome === "registered" || outcome.outcome === "taken-over") settle(checkFleetAccess(poll, key), `checking what ${key}'s credentials can read`);
+      return outcome;
     },
     unregister(repo) {
       const key = repoOf(repo);
