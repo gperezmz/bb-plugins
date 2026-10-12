@@ -155,6 +155,11 @@ export function loginTool(service: Service): "gh" | "glab" | null {
 
 export const secretNoun = (service: Service): string => (service === "linear" ? "key" : "token");
 
+/** The label of the secret's field: Jira and Linear name their own. */
+export function secretLabel(service: Service): string {
+  return service === "jira" ? "API token" : service === "linear" ? "API key" : "Token";
+}
+
 /** Which of the logins `gh` or `glab` holds to preselect: the account's own, where the label names it. */
 export function defaultLogin(logins: readonly string[], accountLabel: string | null): string {
   const named = accountLabel === null ? undefined : logins.find((login) => accountLabel.endsWith(` ${login}`) || accountLabel.endsWith(`· ${login}`));

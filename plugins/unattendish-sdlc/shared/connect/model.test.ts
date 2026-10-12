@@ -19,6 +19,7 @@ import {
   remedyText,
   resultActions,
   secretFor,
+  secretLabel,
   secretProblem,
   sentToText,
   setupFields,
@@ -131,6 +132,13 @@ describe("step 2", () => {
   it("names where the token goes", () => {
     expect(sentToText("github", page)).toBe("The token will be sent to api.github.com, and to nowhere else.");
     expect(sentToText("linear", page)).toBe("The key will be sent to api.github.com, and to nowhere else.");
+  });
+
+  it("labels the secret's field as its service names it", () => {
+    expect(secretLabel("github")).toBe("Token");
+    expect(secretLabel("gitlab")).toBe("Token");
+    expect(secretLabel("linear")).toBe("API key");
+    expect(secretLabel("jira")).toBe("API token");
   });
 
   it("will not send before the secret is given", () => {
