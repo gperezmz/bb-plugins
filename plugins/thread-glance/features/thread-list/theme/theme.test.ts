@@ -25,6 +25,17 @@ describe("the theme", () => {
     expect(failed(light)).toBe("#b91c1c");
   });
 
+  it("draws the shelf rule fainter than text, at its own strength in each theme", () => {
+    const light = /:root,\s*\.light\s*\{([^}]*)\}/.exec(css)![1]!;
+    const dark = /\.dark\s*\{([^}]*)\}/.exec(css)![1]!;
+    const strength = (block: string) => Number(/--tg-shelf-rule:\s*color-mix\(in oklab, var\(--foreground[^)]*\) (\d+)%, transparent\)/.exec(block)![1]);
+    for (const block of [light, dark]) {
+      expect(strength(block)).toBeGreaterThanOrEqual(8);
+      expect(strength(block)).toBeLessThanOrEqual(20);
+    }
+    expect(strength(light)).not.toBe(strength(dark));
+  });
+
   it("never reads the system's colour scheme", () => {
     expect(css).not.toMatch(/prefers-color-scheme/);
   });

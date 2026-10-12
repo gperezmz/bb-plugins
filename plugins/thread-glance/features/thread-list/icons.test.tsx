@@ -19,6 +19,12 @@ describe("the shelf icons", () => {
     ]);
   });
 
+  it("include every icon the list names that bb lacks, Clean's broom among them", () => {
+    const shelves = SHELVES.map((shelf) => SHELF_ICONS[shelf]).filter((name) => name.startsWith("thread-glance-"));
+    const named = [...shelves, "thread-glance-ports", "thread-glance-clean"];
+    for (const name of named) expect(Object.keys(EXTRA_ICONS), name).toContain(name);
+  });
+
   it("draw as sized outlines in the current colour", () => {
     for (const [name, Icon] of Object.entries(EXTRA_ICONS)) {
       const { container } = render(<Icon className="size-4" />);
