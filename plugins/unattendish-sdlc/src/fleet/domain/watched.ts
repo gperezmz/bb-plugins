@@ -86,6 +86,51 @@ const nameLink = (link: string, fleet: FleetIdentity): Named => {
   return OUTSIDE;
 };
 
+/** An item the manifest names, and every way the manifest names it, in the order they were first found. */
+export interface WatchedWithReasons extends WatchedItem {
+  readonly why: readonly string[];
+}
+
+/** The item a reference as the manifest writes it (`#163`, `!45`, `ENG-212`) names under this fleet, or null for `—` and a reference the fleet does not hold. */
+export const itemOfReference = (reference: string, fleet: FleetIdentity): Pick<WatchedItem, "role" | "ref"> | null => {
+  const named = nameReference(reference, fleet);
+  return named.kind === "item" ? { role: named.role, ref: named.ref } : null;
+};
+
+interface Collected {
+  readonly items: readonly WatchedWithReasons[];
+  readonly outside: readonly OutsideLink[];
+}
+
+const collect = (manifest: Manifest, fleet: FleetIdentity): Collected => {
+  const found = new Map<string, { role: WatchedItem["role"]; ref: string; url: string | null; why: string[] }>();
+  const outside: OutsideLink[] = [];
+  const mention = (named: Named, text: string, section: string, line: number, url: string | null, why: string): void => {
+    if (named.kind === "outside") outside.push({ text, section, line });
+    if (named.kind !== "item") return;
+    const key = itemId(named.role, named.ref);
+    const known = found.get(key);
+    if (known === undefined) found.set(key, { role: named.role, ref: named.ref, url, why: [why] });
+    else {
+      if (known.url === null) known.url = url;
+      if (!known.why.includes(why)) known.why.push(why);
+    }
+  };
+  const row = (section: string, line: number | undefined, ref: string, blockedOn: readonly string[], link: string): void => {
+    const at = line ?? 0;
+    // A Blocked row's own item is watched as blocked on what it lists; what it lists is named in Blocked.
+    const why = blockedOn.length > 0 ? `blocked on ${blockedOn.join(", ")}` : `named in ${section}`;
+    mention(nameReference(ref, fleet), ref, section, at, null, why);
+    for (const reference of blockedOn) mention(nameReference(reference, fleet), reference, section, at, null, `named in ${section}`);
+    const named = nameLink(link, fleet);
+    mention(named, link, section, at, named.kind === "item" ? link : null, why);
+  };
+  for (const r of manifest.inbox) row("Inbox", r.line, r.ref, [], r.link);
+  for (const r of manifest.inFlight) row("In flight", r.line, r.ref, [], r.link);
+  for (const r of manifest.blocked) row("Blocked", r.line, r.ref, r.blockedOn, r.link);
+  return { items: [...found.values()].map((item): WatchedWithReasons => ({ role: item.role, ref: item.ref, url: item.url, why: item.why })), outside };
+};
+
 /**
  * Every Ref and Link of the manifest's Inbox, In flight and Blocked rows and
  * every reference in a Blocked on column, as the items the fleet holds and the
@@ -95,25 +140,11 @@ const nameLink = (link: string, fleet: FleetIdentity): Named => {
  * with no line.
  */
 export function watchedSet(manifest: Manifest, fleet: FleetIdentity): WatchedSet {
-  const found = new Map<string, { role: WatchedItem["role"]; ref: string; url: string | null }>();
-  const outside: OutsideLink[] = [];
-  const mention = (named: Named, text: string, section: string, line: number, url: string | null): void => {
-    if (named.kind === "outside") outside.push({ text, section, line });
-    if (named.kind !== "item") return;
-    const key = itemId(named.role, named.ref);
-    const known = found.get(key);
-    if (known === undefined) found.set(key, { role: named.role, ref: named.ref, url });
-    else if (known.url === null) known.url = url;
-  };
-  const row = (section: string, line: number | undefined, ref: string, blockedOn: readonly string[], link: string): void => {
-    const at = line ?? 0;
-    mention(nameReference(ref, fleet), ref, section, at, null);
-    for (const reference of blockedOn) mention(nameReference(reference, fleet), reference, section, at, null);
-    const named = nameLink(link, fleet);
-    mention(named, link, section, at, named.kind === "item" ? link : null);
-  };
-  for (const r of manifest.inbox) row("Inbox", r.line, r.ref, [], r.link);
-  for (const r of manifest.inFlight) row("In flight", r.line, r.ref, [], r.link);
-  for (const r of manifest.blocked) row("Blocked", r.line, r.ref, r.blockedOn, r.link);
-  return { items: [...found.values()].map((item): WatchedItem => ({ role: item.role, ref: item.ref, url: item.url })), outside };
+  const { items, outside } = collect(manifest, fleet);
+  return { items: items.map((item): WatchedItem => ({ role: item.role, ref: item.ref, url: item.url })), outside };
+}
+
+/** The items `watchedSet` holds, each with every way the manifest names it: `named in Inbox`, `named in In flight`, `named in Blocked`, or `blocked on <references>` for a Blocked row's own item. */
+export function watchedWithReasons(manifest: Manifest, fleet: FleetIdentity): readonly WatchedWithReasons[] {
+  return collect(manifest, fleet).items;
 }
