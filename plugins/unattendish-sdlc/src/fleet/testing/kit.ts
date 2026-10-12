@@ -1,7 +1,9 @@
 // A fleet's world for the use-case tests: fakes for every port, a registration
 // to start from, and builders for what a source read says.
 import type { RegisterDeps } from "../application/register";
+import type { DashboardDeps } from "../application/dashboard";
 import type { PollDeps } from "../application/poll";
+import { SerialQueue } from "../application/serial";
 import { repoId, parseRepo } from "../domain/identity";
 import type { ActivityEvent, ItemSnapshot, ReadOutcome, ServiceKind } from "../domain/model";
 import type { RegisterArgs } from "../domain/registration";
@@ -48,7 +50,9 @@ export const world = () => {
   const admin = new FakeCredentialAdmin();
   const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
   const register: RegisterDeps = { store, threads, credentials, manifests, clock, events };
-  return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register, events, cost, repositories, admin };
+  const queue = new SerialQueue();
+  const dash: DashboardDeps = { store, threads, credentials, manifests, cost, clock, channel, events, repositories, admin, queue, log: { warn: (m) => warnings.push(m) }, secrets: () => credentials.secrets() };
+  return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register, events, cost, repositories, admin, queue, dash };
 };
 
 export type World = ReturnType<typeof world>;
