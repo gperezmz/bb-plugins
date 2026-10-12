@@ -1,6 +1,7 @@
 // `bb unattendish fleet ...`: the command line a manager (and the operator)
-// reaches the plugin through. No command takes a token: credentials are
-// entered in the plugin's settings.
+// reaches the plugin through. No command takes or prints a token: accounts
+// and their tokens are added through Connect… on the Fleets page or in the
+// plugin's settings section.
 import { cliCommand, defineCli, PluginCliError, type PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { FIELD_MAX, LEDGER_LIMIT } from "../application/dashboard";
 import type { FleetStatus } from "../application/status";
