@@ -62,7 +62,7 @@ describe("SqliteStore on a database", () => {
     ).run();
     migrated(db);
     const store = new SqliteStore(db);
-    expect(store.getFleet("r")).toMatchObject({ refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" }, unreadablePolls: 0 });
+    expect(store.getFleet("r")!.outages).toEqual({ forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } } });
     expect(store.openWake("r")!.notWatched).toEqual({ since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "refused" });
     db.close();
   });
@@ -71,7 +71,24 @@ describe("SqliteStore on a database", () => {
     const db = migrated(new Database(":memory:"), MIGRATIONS.indexOf("ALTER TABLE fleets ADD COLUMN unreadable_since TEXT"));
     db.prepare("INSERT INTO fleets (repo_id, registration, unreadable_polls) VALUES ('r', ?, 2)").run(JSON.stringify(registration));
     migrated(db);
-    expect(new SqliteStore(db).getFleet("r")).toMatchObject({ unreadablePolls: 2, unreadableSince: null });
+    expect(new SqliteStore(db).getFleet("r")!.outages).toEqual({ forge: { unreadablePolls: 2, unreadableSince: null, refused: null } });
+    db.close();
+  });
+
+  it("reads an outage stored for the fleet as a whole as every source's, and a poll's state then as each source's own", () => {
+    const db = migrated(new Database(":memory:"), MIGRATIONS.indexOf("ALTER TABLE fleets ADD COLUMN outages TEXT"));
+    const linear = { ...registration, tracker: { kind: "linear", team: "ENG" } };
+    db.prepare(
+      "INSERT INTO fleets (repo_id, registration, refused_since, refused_prefix, refused_announced, refused_why, unreadable_polls, unreadable_since) VALUES ('r', ?, '2026-10-12T09:00:00.000Z', 'linear', 1, 'forbidden', 4, '2026-10-12T09:00:00.000Z')",
+    ).run(JSON.stringify(linear));
+    db.prepare("INSERT INTO fleets (repo_id, registration) VALUES ('clean', ?)").run(JSON.stringify(linear));
+    migrated(db);
+    const store = new SqliteStore(db);
+    const outage = { unreadablePolls: 4, unreadableSince: "2026-10-12T09:00:00.000Z", refused: { since: "2026-10-12T09:00:00.000Z", prefix: "linear", announced: true, why: "forbidden" as const } };
+    expect(store.getFleet("r")!.outages).toEqual({ forge: outage, tracker: outage });
+    expect(store.getFleet("clean")!.outages).toEqual({});
+    store.savePollState("r", { lastPolledAt: "2026-10-12T10:00:00.000Z", notWatched: [], unreadableRows: [], outsideLinks: [], expiries: {}, heldSince: null, pendingCatchUpMs: null, outages: { tracker: { ...outage, unreadablePolls: 5, refused: { ...outage.refused, announced: false } } } });
+    expect(store.getFleet("r")!.outages).toEqual({ tracker: { ...outage, unreadablePolls: 5 } });
     db.close();
   });
 

@@ -2,19 +2,21 @@
 // cursors and the ledger. Rows hold what the types in the model hold and
 // nothing the services wrote beyond them; no column can carry a token.
 import type Database from "better-sqlite3";
-import type {
-  LedgerEntry,
-  LedgerQuery,
-  LedgerRow,
-  PollCommit,
-  PollRecord,
-  Store,
-  StoredFleet,
-  StoredWake,
-  WakeKind,
+import {
+  keptAnnounced,
+  type LedgerEntry,
+  type LedgerQuery,
+  type LedgerRow,
+  type PollCommit,
+  type PollRecord,
+  type SourceOutage,
+  type Store,
+  type StoredFleet,
+  type StoredWake,
+  type WakeKind,
 } from "../application/ports";
 import type { Change, ChangeKind, Disposition, NotWatched, RefusedWhy, Registration, SourceCursor, SourceRole } from "../domain/model";
-import { repoId } from "../domain/identity";
+import { repoId, trackerSource } from "../domain/identity";
 
 /** Entries a ledger query returns when it names no limit. */
 const DEFAULT_LEDGER_LIMIT = 200;
@@ -114,6 +116,7 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE wakes ADD COLUMN not_watched_why TEXT`,
   `ALTER TABLE fleets ADD COLUMN pending_catch_up_ms INTEGER`,
   `ALTER TABLE fleets ADD COLUMN unreadable_since TEXT`,
+  `ALTER TABLE fleets ADD COLUMN outages TEXT`,
 ];
 
 interface FleetRow {
@@ -121,6 +124,7 @@ interface FleetRow {
   interval_ms: number | null;
   last_polled_at: string | null;
   not_watched: string;
+  /** The `refused_*` and `unreadable_*` columns are read only where `outages` is null; nothing writes them. */
   refused_since: string | null;
   refused_prefix: string | null;
   refused_announced: number;
@@ -129,6 +133,11 @@ interface FleetRow {
   unreadable_polls: number;
   /** Null on a row written before the column existed, though `unreadable_polls` counts polls. */
   unreadable_since: string | null;
+  /**
+   * Each source's outage as JSON, by role. Null on a row written before the column existed, whose outage the
+   * `refused_*` and `unreadable_*` columns hold for the fleet as a whole.
+   */
+  outages: string | null;
   pending_catch_up_ms: number | null;
   unreadable_rows: string;
   outside_links: string;
@@ -189,18 +198,29 @@ const toFleet = (row: FleetRow): StoredFleet => ({
   registration: { ...(JSON.parse(row.registration) as Registration), intervalMs: row.interval_ms },
   lastPolledAt: row.last_polled_at,
   notWatched: JSON.parse(row.not_watched) as NotWatched[],
-  refused:
-    row.refused_since === null || row.refused_prefix === null
-      ? null
-      : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" },
-  unreadablePolls: row.unreadable_polls,
-  unreadableSince: row.unreadable_since,
+  outages: row.outages === null ? legacyOutages(row) : (JSON.parse(row.outages) as StoredFleet["outages"]),
   pendingCatchUpMs: row.pending_catch_up_ms,
   unreadableRows: JSON.parse(row.unreadable_rows) as StoredFleet["unreadableRows"],
   outsideLinks: JSON.parse(row.outside_links) as StoredFleet["outsideLinks"],
   expiries: JSON.parse(row.expiries) as StoredFleet["expiries"],
   heldSince: row.held_since,
 });
+
+/**
+ * The outage of a row written while it was kept for the fleet as a whole, which does not say which source it was of:
+ * it is taken as every source's, so the source that reads next ends its own copy and the one still down keeps its
+ * streak, its time and whether a wake said so.
+ */
+const legacyOutages = (row: FleetRow): StoredFleet["outages"] => {
+  const refused =
+    row.refused_since === null || row.refused_prefix === null
+      ? null
+      : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" };
+  if (refused === null && row.unreadable_polls === 0) return {};
+  const outage: SourceOutage = { unreadablePolls: row.unreadable_polls, unreadableSince: row.unreadable_since, refused };
+  const registration = JSON.parse(row.registration) as Registration;
+  return trackerSource(registration.tracker) === null ? { forge: outage } : { forge: outage, tracker: { ...outage } };
+};
 
 const toLedgerRow = (row: ChangeRow): LedgerRow => ({
   key: row.change_key,
@@ -305,13 +325,10 @@ export class SqliteStore implements Store {
 
   savePollState(repo: string, state: Parameters<Store["savePollState"]>[1]): void {
     this.db.transaction(() => {
-      const current = this.getFleet(repo)?.refused ?? null;
-      const refused = state.refused ?? null;
-      const announced = refused === null ? false : current !== null && current.since === refused.since && current.prefix === refused.prefix ? current.announced : refused.announced;
+      const outages = keptAnnounced(this.getFleet(repo)?.outages ?? {}, state.outages);
       this.db
         .prepare(
-          `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?,
-             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?, unreadable_since = ?, pending_catch_up_ms = ?
+          `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?, outages = ?, pending_catch_up_ms = ?
            WHERE repo_id = ?`,
         )
         .run(
@@ -321,20 +338,21 @@ export class SqliteStore implements Store {
           JSON.stringify(state.outsideLinks),
           JSON.stringify(state.expiries),
           state.heldSince,
-          refused?.since ?? null,
-          refused?.prefix ?? null,
-          announced ? 1 : 0,
-          refused?.why ?? null,
-          state.unreadablePolls,
-          state.unreadableSince,
+          JSON.stringify(outages),
           state.pendingCatchUpMs,
           repo,
         );
     })();
   }
 
-  markRefusedAnnounced(repo: string): void {
-    this.db.prepare("UPDATE fleets SET refused_announced = 1 WHERE repo_id = ? AND refused_since IS NOT NULL").run(repo);
+  markRefusedAnnounced(repo: string, role: SourceRole): void {
+    this.db.transaction(() => {
+      const fleet = this.getFleet(repo);
+      const outage = fleet?.outages[role];
+      if (fleet === null || outage?.refused == null) return;
+      const outages = { ...fleet.outages, [role]: { ...outage, refused: { ...outage.refused, announced: true } } };
+      this.db.prepare("UPDATE fleets SET outages = ? WHERE repo_id = ?").run(JSON.stringify(outages), repo);
+    })();
   }
 
   getCursor(repo: string, role: SourceRole): SourceCursor | null {

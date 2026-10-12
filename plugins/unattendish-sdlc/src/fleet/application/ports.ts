@@ -219,18 +219,47 @@ export interface Clock {
 
 // ---- the store: registrations, cursors, the ledger ----
 
+/**
+ * What the polls found of one source's reads: kept per source, and left as it was by a poll that did not read the
+ * source (rate limited, skipped, no token), so another source reading does not end it.
+ */
+export interface SourceOutage {
+  /** How many polls in a row found the source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
+  readonly unreadablePolls: number;
+  /** When the first of those polls ran (ISO 8601 UTC), which the fleet is not watched since; null while none did. */
+  readonly unreadableSince: string | null;
+  /** Set while the source's credential counts as refused: when the fleet stopped being watched, the prefix, why, and whether a wake has said so. */
+  readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
+}
+
+/**
+ * The outages a store keeps when a poll saves `next` over `stored`: `next`, with each source's `announced` taken from
+ * `stored` while its refusal's `since` and `prefix` stay the same, and false for any other refusal.
+ */
+export const keptAnnounced = (
+  stored: StoredFleet["outages"],
+  next: StoredFleet["outages"],
+): Partial<Record<SourceRole, SourceOutage>> => {
+  const kept: Partial<Record<SourceRole, SourceOutage>> = {};
+  for (const role of ["forge", "tracker"] as const) {
+    const outage = next[role];
+    if (outage === undefined) continue;
+    const before = stored[role]?.refused ?? null;
+    const refused = outage.refused;
+    const announced = refused !== null && before !== null && before.since === refused.since && before.prefix === refused.prefix ? before.announced : (refused?.announced ?? false);
+    kept[role] = { unreadablePolls: outage.unreadablePolls, unreadableSince: outage.unreadableSince, refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why } };
+  }
+  return kept;
+};
+
 export interface StoredFleet {
   readonly registration: Registration;
   /** ISO 8601 UTC of the last poll that ran, whether or not its cursors advanced. */
   readonly lastPolledAt: string | null;
   /** Why the fleet is not (fully) watched, as of the last poll or registration. Empty while watched. */
   readonly notWatched: readonly NotWatched[];
-  /** Set while a credential counts as refused: when the fleet stopped being watched, the prefix, and why. */
-  readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
-  /** How many polls in a row found a source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
-  readonly unreadablePolls: number;
-  /** When the first of those polls ran (ISO 8601 UTC), which the fleet is not watched since; null while no poll in a row found a source unreadable. */
-  readonly unreadableSince: string | null;
+  /** Each source's outage, by its role; a source absent here reads, or has never been found unreadable. */
+  readonly outages: Readonly<Partial<Record<SourceRole, SourceOutage>>>;
   /** The catch-up a wake bb refused carried, owed to the next wake bb accepts; null when none is owed. */
   readonly pendingCatchUpMs: number | null;
   readonly unreadableRows: readonly UnreadableRow[];
@@ -314,12 +343,17 @@ export interface Store {
   /** Deletes the registration and the cursors; the ledger (changes, failed reads, polls, wakes) stays until retention ages it out. Says whether a fleet was registered. */
   removeFleet(repo: string): boolean;
   setIntervalMs(repo: string, intervalMs: number | null): void;
-  /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
+  /**
+   * Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give, and
+   * each source's outage, which replaces those stored. A source's refusal keeps the `announced` stored for it while
+   * its `since` and `prefix` stay the same.
+   */
   savePollState(
     repo: string,
-    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls" | "unreadableSince" | "pendingCatchUpMs"> & { readonly refused?: StoredFleet["refused"] | undefined },
+    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "outages" | "pendingCatchUpMs">,
   ): void;
-  markRefusedAnnounced(repo: string): void;
+  /** Marks the refusal of the source in `role` as said by a wake; nothing while that source's credential is not refused. */
+  markRefusedAnnounced(repo: string, role: SourceRole): void;
 
   getCursor(repo: string, role: SourceRole): SourceCursor | null;
   /** Commits cursors. Never called before bb accepted the wake carrying their changes. */

@@ -1,6 +1,6 @@
 // The Fleet store as plain objects, for the use-case tests. It behaves as the
 // SQLite store does; `describeStore` runs the same suite over both.
-import type { LedgerEntry, LedgerQuery, LedgerRow, PollCommit, PollRecord, Store, StoredFleet, StoredWake } from "../application/ports";
+import { keptAnnounced, type LedgerEntry, type LedgerQuery, type LedgerRow, type PollCommit, type PollRecord, type Store, type StoredFleet, type StoredWake } from "../application/ports";
 import { byTimeThenKey } from "../domain/changes";
 import { repoId } from "../domain/identity";
 import type { Change, ChangeKind, Disposition, NotWatched, Registration, SourceCursor, SourceRole } from "../domain/model";
@@ -83,9 +83,7 @@ export class InMemoryStore implements Store {
     const data = this.data(repoId(registration.repo));
     data.fleet = {
       lastPolledAt: null,
-      refused: null,
-      unreadablePolls: 0,
-      unreadableSince: null,
+      outages: {},
       pendingCatchUpMs: null,
       unreadableRows: [],
       outsideLinks: [],
@@ -115,9 +113,6 @@ export class InMemoryStore implements Store {
   savePollState(repo: string, state: Parameters<Store["savePollState"]>[1]): void {
     const data = this.records.get(repo);
     if (data?.fleet == null) return;
-    const current = data.fleet.refused;
-    const refused = state.refused ?? null;
-    const announced = refused === null ? false : current !== null && current.since === refused.since && current.prefix === refused.prefix ? current.announced : refused.announced;
     data.fleet = {
       ...data.fleet,
       lastPolledAt: state.lastPolledAt,
@@ -126,16 +121,17 @@ export class InMemoryStore implements Store {
       outsideLinks: structuredClone([...state.outsideLinks]),
       expiries: structuredClone(state.expiries),
       heldSince: state.heldSince,
-      unreadablePolls: state.unreadablePolls,
-      unreadableSince: state.unreadableSince,
+      outages: keptAnnounced(data.fleet.outages, state.outages),
       pendingCatchUpMs: state.pendingCatchUpMs,
-      refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why },
     };
   }
 
-  markRefusedAnnounced(repo: string): void {
+  markRefusedAnnounced(repo: string, role: SourceRole): void {
     const fleet = this.records.get(repo)?.fleet;
-    if (fleet?.refused != null) this.records.get(repo)!.fleet = { ...fleet, refused: { ...fleet.refused, announced: true } };
+    const outage = fleet?.outages[role];
+    if (fleet != null && outage?.refused != null) {
+      this.records.get(repo)!.fleet = { ...fleet, outages: { ...fleet.outages, [role]: { ...outage, refused: { ...outage.refused, announced: true } } } };
+    }
   }
 
   getCursor(repo: string, role: SourceRole): SourceCursor | null {
