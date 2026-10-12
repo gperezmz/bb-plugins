@@ -18,6 +18,3 @@ apm_modules/
 # Build output
 node_modules/
 dist/
-
-# Evidence the driving-bb-plugins skill's drives leave behind
-.drives/

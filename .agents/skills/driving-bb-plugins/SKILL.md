@@ -1,6 +1,6 @@
 ---
 name: driving-bb-plugins
-description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Cache Keeper) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
+description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Cache Keeper, Unattendish) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
 ---
 
 # Driving bb-plugins
@@ -58,7 +58,9 @@ What a run holds:
   only provider, so a thread sent from the web UI's compose screen is one of
   these too;
 - bb's first-run setup guide marked done, so the web UI opens on the app;
-- `CACHE_KEEPER_DRIVE_CLOCK=1`, so `bb cache-keeper drive advance` exists.
+- `CACHE_KEEPER_DRIVE_CLOCK=1`, so `bb cache-keeper drive advance` exists;
+- with `unattendish-sdlc` started, a fake GitHub, GitLab, Linear and Jira
+  and one Unattendish account on each ([Fake services](#fake-services)).
 
 A run never touches the user's bb: every command the harness runs has the
 variables naming a bb unset or pointed at the run, and `HOME` inside the
@@ -66,8 +68,8 @@ run's scratch directory. Reach the run only through the harness's commands,
 since a bare `bb` in this shell talks to the user's own bb.
 
 Any number of runs go side by side, from one checkout or several: each
-`start` takes three free ports of its own and a scratch directory of its
-own, and `stop` touches only its own run. `DBP_SERVER_PORT`,
+`start` takes three free ports of its own (seven with `unattendish-sdlc`)
+and a scratch directory of its own, and `stop` touches only its own run. `DBP_SERVER_PORT`,
 `DBP_DAEMON_PORT` and `DBP_API_PORT` choose the ports instead, where
 something has to reach a run on a known one.
 
@@ -81,7 +83,8 @@ Teardown is [Cleanup](#cleanup).
 
 Exits 0 only when the run points away from the user's bb, its scope is active
 with the cap `start` printed and holds its bb server, its fake API, bb server
-and host daemon are alive, the server on the run's port serves the
+and host daemon are alive (and, with `unattendish-sdlc`, its fake services
+answer), the server on the run's port serves the
 run's own data directory, the machine is connected, and every plugin started
 runs from the run's copy. Run it before the first drive, after any drive that
 failed or surprised you, and whenever a command answers from a bb you did
@@ -95,8 +98,12 @@ CLI actions, each logged as evidence under a label naming the feature and the
 entry point (`ui-tweaks.text-size/rpc`):
 
 ```bash
-.agents/skills/driving-bb-plugins/drive-bb-plugins bb --run <run> <label> -- <bb arguments>
+.agents/skills/driving-bb-plugins/drive-bb-plugins bb --run <run> [--as <thread>] <label> -- <bb arguments>
 ```
+
+`--as <thread>` runs the command as that thread, with `BB_THREAD_ID` set,
+which is how bb tells a plugin command its calling thread: a manager
+registering an Unattendish fleet.
 
 The arguments are `bb`'s own:
 `plugin rpc call <plugin> <method> --input-file <json file> --json`,
@@ -181,6 +188,37 @@ threads beside the first's. `seed` prints what it made and writes every id,
 by title, to `seed.json` in the evidence. A real-turn child spawned under a
 quiet parent leaves the parent `pending`, with no turn and no wake.
 
+### Fake services
+
+A run started with `unattendish-sdlc` also runs
+`plugins/unattendish-sdlc/harness/fake-services.ts`: a fake GitHub, GitLab,
+Linear and Jira, each on a port `start` prints on its `fakes` line, and one
+account on each, added through the plugin's `connect` as its Connect popup
+adds one:
+
+| Account | The default for |
+| --- | --- |
+| `GitHub · operator` | `github.example`, a token for the owner `org` |
+| `GitLab · operator` | `gitlab.example` |
+| `Linear · operator@example.com` | `linear.app` |
+| `Jira · operator@example.com` | `acme.atlassian.net` |
+
+So a fleet on `github.example/org/<repo>`, `gitlab.example/group/<proj>`, or
+with tracker `linear:<team>` or `jira:acme.atlassian.net/<project>`, reads as
+one of them. A drive scripts a fake, logged in `cli.md`, with:
+
+```bash
+.agents/skills/driving-bb-plugins/drive-bb-plugins fake --run <run> <label> github|gitlab|linear|jira state [<file>]|requests|reset
+```
+
+`state <file>` loads the JSON the fake answers from (each fake's shape is in
+`plugins/unattendish-sdlc/test/fakes/`), `state` alone reads it, `requests`
+prints every request the plugin sent it, and `reset` empties that log. The
+fakes keep the times the state gives, so a change dated a few seconds ahead
+of now is read by the next poll. `plugins/unattendish-sdlc/harness/README.md`
+says what each of its own drives checks, and `harness/drives/lib.sh` builds
+the states and manifests they use.
+
 ### Snapshots
 
 A seeded bb is saved once per bb version and started from as often as
@@ -198,7 +236,8 @@ on `PATH`, in `$DBP_SNAPSHOT_ROOT` (default
 `~/.cache/drive-bb-plugins/snapshots`), shared by every checkout; it replaces
 a snapshot of that name. It refuses while a thread is working or a
 `--background` thread is unreleased, since a saved bb loses both: seed those
-on the restored run. `start --snapshot` copies the snapshot into the run's own
+on the restored run. It refuses a run started with `unattendish-sdlc`, whose
+accounts and fleets name that run's fake-service ports. `start --snapshot` copies the snapshot into the run's own
 scratch, points every path it saved at that scratch, reinstalls the plugins
 named (or the snapshot's) from this checkout and uninstalls any other it
 saved, in about 7 seconds for 802 threads. Any number of runs start from one
@@ -260,7 +299,9 @@ The script has Playwright's library and no test runner, so a check is a
 Locate by the roles and accessible names the plugin gives its elements, as
 the feature file lists them; no plugin sets `data-testid`. bb's own routes
 are plain paths under the root: `settings`, `settings/appearance`,
-`settings/plugins/<plugin>` for a plugin's settings section.
+`settings/plugins/<plugin>` for a plugin's settings section, and
+`projects/<project>/threads/<thread>` for a thread, its `projectId` in
+`bb thread show <thread> --json`.
 
 ## Evidence
 
@@ -286,7 +327,11 @@ verify the settings screen that writes it.
 
 ## Evidence location
 
-`.drives/<run id>/` at the repository root, ignored by git:
+`${TMPDIR:-/tmp}/drives-<uid>/bb-plugins/<run id>/`, the path `start` prints
+on its `evidence` line: private to the user, shared by every checkout, and
+outside the repository, so it outlives the worktree a drive ran from. The run
+a command acts on by default is the one this checkout started last, kept as
+`latest-<checkout key>` beside the runs:
 
 - `cli.md`: every `bb` and `spawn` command with its stdout, stderr and exit;
 - `ui/<label>/`: `NN-<name>.aria.yml`, `NN-<name>.png`, `actions.md`,
@@ -294,7 +339,8 @@ verify the settings screen that writes it.
   `ui/<plugin>.<verb>[-N]/`, the `verb.txt` that made them and its
   `result.json`;
 - after `stop`: `plugin-<id>.log`, `server.log`, `host-daemon.log`,
-  `fake-anthropic.log` and `requests.jsonl`;
+  `fake-anthropic.log`, `requests.jsonl` and, with Unattendish,
+  `fake-services.log`;
 - `seed.json`: the last `seed`'s threads, by title and id;
 - `pids`, `launch-pids`, `run.env` and `env.sh`: the handles `stop` kills by
   and the run's settings, its ports and scope included;
@@ -309,10 +355,10 @@ verify the settings screen that writes it.
 
 Run it after the last drive, and after every failed attempt before the next
 `start`, a run its cap ended included. It saves the logs into the evidence,
-kills each PID recorded in `.drives/<run>/pids` that still carries the run's
+kills each PID recorded in the evidence's `pids` that still carries the run's
 mark in its environment, stops and unloads the run's scope, releases the
 run's ports, removes the scratch directory, and keeps
-`.drives/<run>/`. Other runs, from this checkout or another, are left
+the evidence. Other runs, from this checkout or another, are left
 running. It exits 0 only
 when no process carrying the mark is left; otherwise it prints them and
 keeps the scratch.
@@ -320,12 +366,12 @@ keeps the scratch.
 Done when it exits 0, and this exits non-zero:
 
 ```bash
-ps -p "$(paste -sd, - < .drives/<run>/pids)"
+ps -p "$(paste -sd, - < "${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins/<run>/pids")"
 ```
 
 ## Helpers
 
-- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|spawn|seed|release|machine|<plugin>|ui|stop|save|snapshots`:
+- `.agents/skills/driving-bb-plugins/drive-bb-plugins start|doctor|bb|fake|spawn|seed|release|machine|<plugin>|ui|stop|save|snapshots`:
   the harness above. Run with no arguments, it prints its usage.
 - `.agents/skills/driving-bb-plugins/seed.mjs`: what `seed` runs for quiet
   threads; not called directly.
