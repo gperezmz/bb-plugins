@@ -171,7 +171,7 @@ polled() { [[ $(status "$1" | jq -r '.lastPolledAt // empty') != "" ]]; }
 ledger() {
   local repo=$1
   shift
-  bb unattendish fleet ledger "$repo" --json --limit 5000 "$@" | jq -c '.entries[]'
+  bb unattendish fleet ledger "$repo" --json --limit 250 "$@" | jq -c '.entries[]'
 }
 # ledger_rows <repo> [options]: the changes in the ledger, as JSON lines.
 ledger_rows() { ledger "$@" | jq -c 'select(.type == "change") | .row'; }
