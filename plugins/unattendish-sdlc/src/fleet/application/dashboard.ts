@@ -132,8 +132,10 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const limit = Math.max(1, Math.min(LEDGER_LIMIT, Math.trunc(wanted.limit ?? LEDGER_LIMIT)));
     const item = wanted.item?.trim() === "" ? undefined : wanted.item?.trim();
     const withItem = item === undefined ? {} : { item };
-    // One query for each thing done: a mix of them would let the polls crowd out the changes.
-    const dones = wanted.done === undefined ? (["woke", "echo", "out-of-scope", "held", "failed read"] as const) : ([wanted.done] as const);
+    // One query for each thing done: a mix of them would let the polls crowd out the changes. Under All the list holds the
+    // changes that were not dropped, cut to the limit among themselves: the dropped ones are listed, grouped by reason, in
+    // `dropped` from queries of their own, so that however many are newer they cannot push every woken change off.
+    const dones = wanted.done === undefined ? (["woke", "held", "failed read"] as const) : ([wanted.done] as const);
     const changes = dones
       .flatMap((done) => deps.store.ledger(key, { ...withItem, done, limit }))
       .flatMap((entry) => changeView(entry) ?? [])

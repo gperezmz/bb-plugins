@@ -16,6 +16,14 @@ export const httpStatusOf = (error: unknown): number | null => {
   return match === null ? null : Number(match[1]);
 };
 
+const NO_ANSWER = "no answer from bb";
+
+/** All of a failed call that may be logged or stored: its status, `HTTP <n>`, or `no answer from bb`; never bb's message, which can quote the text sent. */
+export const statusOf = (error: unknown): string => {
+  const status = httpStatusOf(error);
+  return status === null ? NO_ANSWER : `HTTP ${status}`;
+};
+
 /** The most characters of bb's own message a reason carries. */
 export const REASON_MESSAGE_MAX = 160;
 /** The text sent, or one of its lines, is replaced where bb quotes it only when it is at least this long, so a short one does not garble the message. */
@@ -33,7 +41,7 @@ const withoutQuotes = (text: string, quoted: readonly string[]): string =>
  */
 export const reasonOf = (error: unknown, sent: string, secrets: readonly string[]): string => {
   const status = httpStatusOf(error);
-  if (status === null) return "no answer from bb";
+  if (status === null) return NO_ANSWER;
   const raw = error instanceof Error ? error.message : "";
   const own = raw.replace(/^\s*HTTP \d{3}\b[\s:,-]*/i, "");
   const quoted = [sent, sent.trim(), sent.replace(/\s+/g, " ").trim(), ...sent.split(/\r\n|\r|\n/).map((line) => line.trim())].filter((quote) => quote.length >= QUOTED_LINE_MIN);
@@ -115,7 +123,7 @@ export class BbManagerChannel implements ManagerChannel {
       );
       return answer.delivery === "sent" ? { delivered: "sent" } : { delivered: "queued", queuedMessageId: answer.queuedMessage.id };
     } catch (error) {
-      return { delivered: "refused", reason: reasonOf(error, text, this.secrets()) };
+      return { delivered: "refused", status: statusOf(error), reason: reasonOf(error, text, this.secrets()) };
     }
   }
 
@@ -127,13 +135,13 @@ export class BbManagerChannel implements ManagerChannel {
    * is for a person typing in the queue, and `expectedUpdatedAt` already
    * guards the one write.
    */
-  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }> {
+  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string; readonly status: string }> {
     for (let attempt = 0; attempt < 2; attempt++) {
       let row: { id: string; updatedAt: number; editable: boolean } | undefined;
       try {
         row = (await bounded(() => this.sdk.threads.queuedMessages.list({ threadId }))).find((queued) => queued.id === queuedMessageId);
       } catch (error) {
-        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error, text, this.secrets()) };
+        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error, text, this.secrets()), status: statusOf(error) };
       }
       if (row === undefined || !row.editable) return "gone";
       try {
@@ -149,7 +157,7 @@ export class BbManagerChannel implements ManagerChannel {
       } catch (error) {
         const status = httpStatusOf(error);
         if (status === 404) return "gone";
-        if (status !== 409) return { refused: reasonOf(error, text, this.secrets()) };
+        if (status !== 409) return { refused: reasonOf(error, text, this.secrets()), status: statusOf(error) };
       }
     }
     return "gone";

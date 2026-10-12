@@ -42,7 +42,7 @@ describe("ledger", () => {
     expect(await createDashboard(world().dash).ledger({ repo: REPO })).toEqual({ ok: false, reason: `no fleet is registered for ${REPO}` });
   });
 
-  it("lists changes with what was done with each, newest first", async () => {
+  it("lists, under All, the changes that were not dropped: woke, held and failed read", async () => {
     const w = world();
     await start(w);
     record(w, { kind: "labelled", label: "status:ready", disposition: "wake" });
@@ -51,10 +51,39 @@ describe("ledger", () => {
     record(w, { disposition: "held", rule: "no manager" });
     w.store.recordFailedRead(REPO_KEY, { at: "2026-10-12T09:59:00.000Z", role: "forge", ref: "#2", reason: "HTTP 500 from GET /repos/org/repo/issues/2" });
     const { changes } = await ledgerOf(w);
-    expect(changes.map((change) => change.done)).toEqual(["failed read", "held", "out-of-scope", "echo", "woke"]);
-    expect(changes[4]).toMatchObject({ ref: "#1", url: "https://github.com/org/repo/issues/1", kind: "labelled status:ready", actor: "alice", rule: null });
-    expect(changes[3]).toMatchObject({ kind: "merged", actor: null, rule: "marker" });
+    expect(changes.map((change) => change.done)).toEqual(["failed read", "held", "woke"]);
+    expect(changes[2]).toMatchObject({ ref: "#1", url: "https://github.com/org/repo/issues/1", kind: "labelled status:ready", actor: "alice", rule: null });
     expect(changes[0]).toMatchObject({ ref: "#2", kind: "failed read of the forge", rule: "HTTP 500 from GET /repos/org/repo/issues/2" });
+  });
+
+  it("lists the dropped changes with their reasons when the filter asks for them", async () => {
+    const w = world();
+    await start(w);
+    record(w, { kind: "merged", disposition: "echo", rule: "marker", actor: null });
+    record(w, { disposition: "out-of-scope", kind: "updated", ref: "#99" });
+    expect((await ledgerOf(w, { done: "echo" })).changes).toMatchObject([{ done: "echo", kind: "merged", actor: null, rule: "marker" }]);
+    expect((await ledgerOf(w, { done: "out-of-scope" })).changes).toMatchObject([{ done: "out-of-scope", ref: "#99" }]);
+  });
+
+  it("keeps the woken changes in the list however many dropped ones are newer than the limit", async () => {
+    const w = world();
+    await start(w);
+    record(w, { ref: "#1", disposition: "wake", seenAt: "2026-10-12T08:00:00.000Z" });
+    record(w, { ref: "#2", disposition: "held", rule: "no manager", seenAt: "2026-10-12T08:01:00.000Z" });
+    for (let n = 0; n < 12; n += 1) record(w, { disposition: n % 2 === 0 ? "echo" : "out-of-scope", rule: n % 2 === 0 ? "marker" : null, seenAt: `2026-10-12T09:${String(10 + n)}:00.000Z` });
+    const all = await ledgerOf(w, { limit: 5 });
+    expect(all.changes.map((change) => [change.ref, change.done])).toEqual([["#2", "held"], ["#1", "woke"]]);
+    expect(all.dropped.map((group) => [group.reason, group.count])).toEqual([["echo: marker", 6], ["out of scope", 6]]);
+  });
+
+  it("cuts the list to the limit among the changes that were not dropped", async () => {
+    const w = world();
+    await start(w);
+    for (let n = 0; n < 8; n += 1) record(w, { ref: `#${n + 1}`, disposition: "wake", seenAt: `2026-10-12T08:0${n}:00.000Z` });
+    for (let n = 0; n < 8; n += 1) record(w, { disposition: "echo", rule: "label", seenAt: `2026-10-12T09:0${n}:00.000Z` });
+    const { changes, dropped } = await ledgerOf(w, { limit: 3 });
+    expect(changes.map((change) => change.ref)).toEqual(["#8", "#7", "#6"]);
+    expect(dropped[0]).toMatchObject({ reason: "echo: label", count: 8 });
   });
 
   it("filters by item and by what was done", async () => {
@@ -63,7 +92,8 @@ describe("ledger", () => {
     record(w, { ref: "#1", disposition: "wake" });
     record(w, { ref: "#2", url: "https://github.com/org/repo/issues/2", disposition: "echo", rule: "label" });
     record(w, { ref: "#2", url: "https://github.com/org/repo/issues/2", disposition: "wake" });
-    expect((await ledgerOf(w, { item: "#2" })).changes).toHaveLength(2);
+    expect((await ledgerOf(w, { item: "#2" })).changes).toHaveLength(1);
+    expect((await ledgerOf(w, { item: "#2" })).dropped).toMatchObject([{ reason: "echo: label", count: 1 }]);
     expect((await ledgerOf(w, { done: "echo" })).changes.map((change) => change.ref)).toEqual(["#2"]);
     expect((await ledgerOf(w, { item: "#2", done: "woke" })).changes).toHaveLength(1);
     expect((await ledgerOf(w, { item: "#7" })).changes).toEqual([]);
@@ -88,7 +118,7 @@ describe("ledger", () => {
     const w = world();
     await start(w);
     for (let n = 0; n < 40; n += 1) record(w, { disposition: "echo", rule: "marker" });
-    record(w, { disposition: "wake" });
+    for (let n = 0; n < 7; n += 1) record(w, { disposition: "wake" });
     expect((await ledgerOf(w, { done: "woke" })).dropped).toEqual([]);
     const all = await ledgerOf(w, { limit: 5 });
     expect(all.changes).toHaveLength(5);
