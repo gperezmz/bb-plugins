@@ -1061,6 +1061,42 @@ describe("an outage is kept per source (AC8, AC13)", () => {
     expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
   });
 
+  it("announces a tracker's outage that follows a forge's, from its own first poll, when a stored outage carries the forge's prefix", async () => {
+    const w = world();
+    await twoSources(w);
+    const stored = w.store.getFleet(REPO_KEY)!;
+    // What a fleet migrated from one outage per fleet holds: the forge's refusal, announced, copied to the tracker.
+    w.store.savePollState(REPO_KEY, {
+      lastPolledAt: stored.lastPolledAt,
+      notWatched: [],
+      unreadableRows: [],
+      outsideLinks: [],
+      expiries: {},
+      heldSince: null,
+      pendingCatchUpMs: null,
+      outages: { tracker: { unreadablePolls: 5, unreadableSince: "2026-10-01T00:00:00.000Z", refused: { since: "2026-10-01T00:00:00.000Z", prefix: "github.com/org", why: "forbidden", announced: true } } },
+    });
+    const down = outcome({ failures: [{ ref: null, reason: "Linear answered 403", kind: "forbidden" }, { ref: "ENG-1", reason: "ENG-1 answered 403", kind: "forbidden" }] });
+    for (let i = 0; i < 2; i += 1) await pollWith(w, outcome({ snapshots: [snapshot(7)] }), down);
+    expect(w.channel.sent).toEqual([]);
+    await pollWith(w, outcome({ snapshots: [snapshot(7)] }), down);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for linear:ENG was forbidden to read what the fleet needs (403).");
+    expect(w.store.getFleet(REPO_KEY)!.outages.tracker?.refused).toEqual({ since: "2026-10-12T10:00:00.000Z", prefix: "linear:ENG", why: "forbidden", announced: true });
+  });
+
+  it("shows the earlier of the two sources' times as the fleet's not watched since", async () => {
+    const w = world();
+    await twoSources(w);
+    for (let i = 0; i < 3; i += 1) await pollWith(w, forbidden, trackerReads());
+    const down = outcome({ failures: [{ ref: null, reason: "Linear answered 403", kind: "forbidden" }, { ref: "ENG-1", reason: "ENG-1 answered 403", kind: "forbidden" }] });
+    for (let i = 0; i < 3; i += 1) await pollWith(w, forbidden, down);
+    const outages = w.store.getFleet(REPO_KEY)!.outages;
+    expect(outages.forge?.refused?.since).toBe("2026-10-12T10:00:00.000Z");
+    expect(outages.tracker?.refused?.since).toBe("2026-10-12T10:06:00.000Z");
+    expect((await statusOf(w)).notWatchedSince).toBe("2026-10-12T10:00:00.000Z");
+  });
+
   it("tells the manager of each source's refusal, one wake for each, when both are down", async () => {
     const w = world();
     await twoSources(w);

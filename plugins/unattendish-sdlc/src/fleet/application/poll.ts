@@ -211,8 +211,11 @@ const unreadableOf = (error: HttpError): UnreadableWhy | null => {
  * asked to read, or only told to wait) keeps its outage as it was, whatever
  * the other source did. Undefined once the source reads.
  */
-const outageOf = (before: SourceOutage | undefined, finding: Finding | undefined, now: string): SourceOutage | undefined => {
-  if (finding === undefined) return before;
+const outageOf = (stored: SourceOutage | undefined, finding: Finding | undefined, now: string): SourceOutage | undefined => {
+  if (finding === undefined) return stored;
+  // An outage stored under another credential's prefix (a copy of the other source's, from a fleet migrated from one
+  // outage per fleet) is not this source's: its streak, its time and what was announced of it do not carry over.
+  const before = stored?.refused != null && stored.refused.prefix !== finding.prefix ? undefined : stored;
   const streak = before?.unreadablePolls ?? 0;
   const unreadablePolls = finding.unreadable !== null ? streak + 1 : 0;
   const unreadableSince = finding.unreadable !== null ? (streak > 0 ? (before?.unreadableSince ?? now) : now) : null;
