@@ -156,6 +156,9 @@ export function useConnectFlow(request: ConnectRequest): ConnectFlow {
     back: (to) => {
       pending.current = null;
       dispatch({ type: "back", to });
+      // An account that went straight to verifying with its stored credential never loaded the token step's page.
+      const { choice, page, setup, view, chosenService } = latest.current;
+      if (to === "token" && page === null && choice !== null && view !== null) void loadPage(setup, choice, view.place, view.service ?? chosenService);
     },
   };
 }

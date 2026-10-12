@@ -78,6 +78,18 @@ describe("step 1: which account", () => {
     expect(fake.api.tokenPage).not.toHaveBeenCalled();
   });
 
+  it("offers the token step for the same account when its stored credential is refused", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ id: "acc_buser", label: "GitHub · buser", reaches: true })] }) });
+    fake.api.connect.mockResolvedValue({ outcome: "refused", text: "GitHub rejected the token. Nothing was stored." });
+    fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage() });
+    await open(forge);
+    click("Continue");
+    await screen.findByText("GitHub rejected the token. Nothing was stored.");
+    click("Use another credential");
+    expect(await screen.findByLabelText("Token")).toBeTruthy();
+    expect(fake.api.tokenPage).toHaveBeenCalledWith({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_buser" } });
+  });
+
   it("shows a refusal to list the accounts", async () => {
     fake.api.connectView.mockResolvedValue({ ok: false, reason: "no such fleet" });
     await open(forge);
