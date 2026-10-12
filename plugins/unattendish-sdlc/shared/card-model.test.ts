@@ -32,6 +32,14 @@ describe("the cost", () => {
     expect(costText({ cost: { amount: 14.2, currency: "USD", period: "since this manager started" } })).toBe("$14.20 since this manager started");
   });
 
+  it("puts a symbol currency in front and keeps the period label", () => {
+    expect(costText({ cost: { amount: 0.17, currency: "$", period: "since this manager started" } })).toBe("$0.17 since this manager started");
+  });
+
+  it("puts a currency code after the amount when Intl does not know it", () => {
+    expect(costText({ cost: { amount: 0.17, currency: "not-a-code", period: "since this manager started" } })).toBe("0.17 not-a-code since this manager started");
+  });
+
   it("is left out when the card has none", () => {
     expect(costText({ cost: null })).toBeNull();
   });

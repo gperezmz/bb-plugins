@@ -40,8 +40,12 @@ export function intervalLabel(intervalMs: number): string {
   return `every ${intervalMs < HOUR && !wholeMinutes ? `${Math.round(intervalMs / SECOND)}s` : spanLabel(intervalMs)}`;
 }
 
-/** An amount in its currency; a code Intl does not know is written after the number. */
+/** True for a currency written as a symbol (`$`, `€`, `£`): a single character that is not a letter. */
+const isCurrencySymbol = (currency: string): boolean => /^[^\p{L}\d\s]$/u.test(currency);
+
+/** An amount in its currency: a symbol goes in front (`$0.17`), a code Intl knows is formatted by it, any other code goes after the number (`0.17 XYZ`). */
 export function formatMoney(amount: number, currency: string): string {
+  if (isCurrencySymbol(currency)) return `${currency}${amount.toFixed(2)}`;
   try {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
   } catch {
