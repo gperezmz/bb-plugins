@@ -251,6 +251,11 @@ export interface ReadOutcome {
   readonly events: readonly ActivityEvent[];
   readonly updated: readonly UpdatedItem[];
   readonly failures: readonly ReadFailure[];
+  /**
+   * Set when the listing of updated items, read oldest first, was cut off at its page limit: the `updated` time of
+   * the last item it listed. Everything older was listed, so the cursor may move to it; the rest is listed next poll.
+   */
+  readonly listingCutAt?: string;
 }
 
 /** The state a source keeps for one item between polls. */
