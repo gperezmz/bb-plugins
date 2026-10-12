@@ -65,8 +65,9 @@ export interface HttpRequest {
   readonly graphql?: { readonly query: string; readonly variables?: Readonly<Record<string, unknown>> };
   /**
    * A path prefix, such as `/repos/{owner}/{repo}/`, that the request, a redirect it meets and a pagination link must
-   * stay under. It is read after the credential's base path and compared without regard to case. A target outside it
-   * throws an `HttpError` of kind `outside-host`, whose message names no query and no token.
+   * stay under. It is read after the credential's base path and compared without regard to case. A GitHub pagination
+   * link may also be under `/repositories/{digits}/`, the form GitHub writes its links in. A target outside it throws an
+   * `HttpError` of kind `outside-host`, whose message names no query and no token.
    */
   readonly stayUnder?: string;
 }

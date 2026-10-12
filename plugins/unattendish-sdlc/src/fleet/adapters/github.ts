@@ -29,9 +29,19 @@
 // and /en/rest/repos/repos lists a 301 for a repository without saying when;
 // /en/rest/using-the-rest-api/best-practices-for-using-the-rest-api says to
 // follow a 301 to its `location`. The docs give no Location form (the
-// `/repositories/{id}/...` path is not documented), so every request is made with
-// `stayUnder` `/repos/{owner}/{repo}/`: a redirect or next link that leaves it,
+// `/repositories/{id}/...` path is not documented for it), so every request is
+// made with `stayUnder` `/repos/{owner}/{repo}/`: a redirect that leaves it,
 // whatever it looks like, is a failure of kind `outside-fleet`, never read.
+//
+// Next links: /en/rest/using-the-rest-api/using-pagination-in-the-rest-api shows
+// them as `https://api.github.com/repositories/1300192/issues?per_page=2&page=2`
+// for a request made under `/repos/{owner}/{repo}/`, and the repository's `id`
+// ("Get a repository", /en/rest/repos/repos) is an integer. The docs state no
+// rule, so the HTTP layer takes a next link under the repository's path or under
+// `/repositories/{digits}/` after the credential's base path (Enterprise Server's
+// pagination examples show no `/api/v3`; the base path is kept for them), and
+// any other next link is `outside-fleet`. The docs do not say whether the id in
+// the link is the repository's own, so it is not compared with anything.
 //
 // A 403 that is not a rate limit is the HTTP layer's `forbidden`. On the check
 // runs or commit statuses of a pull request it leaves `checks` null and the

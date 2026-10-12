@@ -30,7 +30,9 @@ const issue = (number: number, extra: Partial<FakeIssue> = {}): FakeIssue => ({
 });
 const pull = (number: number, extra: Partial<FakeIssue> = {}, merged = false): FakeIssue =>
   issue(number, { pull: { merged, headSha: `sha${number}` }, ...extra });
-const repo = (extra: Partial<FakeRepo> = {}): Partial<FakeGithubState> => ({ repos: { [REPO]: { issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [], ...extra } } });
+/** The fake repository's id: its `Link: rel="next"` headers name it as GitHub does, `/repositories/{id}/...`. */
+const REPO_ID = 4242;
+const repo = (extra: Partial<FakeRepo> = {}): Partial<FakeGithubState> => ({ repos: { [REPO]: { id: REPO_ID, issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [], ...extra } } });
 
 const comment = (id: number, issueNumber: number, extra: Partial<FakeComment> = {}): FakeComment => ({
   id,
@@ -706,6 +708,57 @@ describe("GitHub adapter: failures", () => {
     const outcome = await read({ watched: [1] });
     expect(outcome.failures).toHaveLength(1);
     expect(outcome.failures[0]!.reason).not.toMatch(/ghp_|\?/);
+  });
+});
+
+describe("GitHub adapter: lists over one page, linked as /repositories/{id}/", () => {
+  /** The paths read after the first page of a list: GitHub writes its next links under the repository's id. */
+  const followed = (server: Mounted, listing: string) => server.requests.map((request) => new URL(request.url, server.url).pathname).filter((path) => path.includes("/repositories/") && path.endsWith(listing));
+
+  it("reads a timeline over 100 events to its last page", async () => {
+    const events = [...Array.from({ length: 150 }, (_, index) => event(index + 1, 1, "labeled", { label: "bug" })), event(151, 1, "labeled", { label: "spec" })];
+    const { read, server } = await harness(repo({ issues: [issue(1)], events }));
+    const outcome = await read({ items: [1] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots[0]!.transitions).toEqual([{ kind: "labelled", label: "spec", actor: "olivia", at: "2026-10-10T10:00:00.000Z", id: "github:event:151" }]);
+    expect(followed(server, "/issues/1/timeline").length + followed(server, "/issues/1/events").length).toBeGreaterThan(0);
+  });
+
+  it("reads a pull request's review comments over 100 to the last page", async () => {
+    const reviewComments = Array.from({ length: 150 }, (_, index) => reviewComment(index + 1, 2, { reviewId: 7 }));
+    const { read, server } = await harness(repo({ issues: [pull(2)], reviews: [review(7, 2, "COMMENTED")], reviewComments }));
+    const outcome = await read({ watched: [2] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.events.filter((entry) => entry.id.startsWith("github:reviewcomment:"))).toHaveLength(150);
+    expect(followed(server, "/pulls/2/comments")).not.toHaveLength(0);
+  });
+
+  it("reads an updated listing over 100 issues to its last page", async () => {
+    const issues = Array.from({ length: 150 }, (_, index) => issue(index + 1));
+    const { read, server } = await harness(repo({ issues }));
+    const outcome = await read();
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.updated).toHaveLength(150);
+    expect(followed(server, "/issues")).not.toHaveLength(0);
+  });
+
+  it("reads check runs over 100 to the last page", async () => {
+    const checkRuns = Array.from({ length: 150 }, (_, index) => run(index + 1, "sha1", "completed", index === 149 ? "failure" : "success"));
+    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns }));
+    const outcome = await read({ items: [1] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots[0]!.checks).toEqual({ sha: "sha1", outcome: "failed" });
+    expect(followed(server, "/commits/sha1/check-runs")).not.toHaveLength(0);
+  });
+
+  it("fails a list whose next link is not under the repository or a repository id", async () => {
+    const comments = Array.from({ length: 150 }, (_, index) => comment(index + 1, 1));
+    const state = repo({ issues: [issue(1)], comments });
+    state.nextLinkPath = "/api/v3/user/repositories/42/issues/1/comments";
+    const { read, server } = await harness(state);
+    const outcome = await read({ watched: [1] });
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(server.requests.filter((request) => request.url.includes("/user/"))).toEqual([]);
   });
 });
 

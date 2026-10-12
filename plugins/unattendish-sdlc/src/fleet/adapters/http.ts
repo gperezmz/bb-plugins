@@ -172,28 +172,35 @@ class Session implements HttpSession {
   private url(request: HttpRequest): URL {
     const base = new URL(this.baseUrl);
     let url: URL;
-    if (/^https?:\/\//i.test(request.path)) {
+    const nextLink = /^https?:\/\//i.test(request.path);
+    if (nextLink) {
       url = new URL(request.path);
     } else {
       url = new URL(base.toString());
       const joined = `${base.pathname.replace(/\/+$/, "")}/${request.path.replace(/^\/+/, "")}`;
       url.pathname = request.path === "" ? base.pathname : joined;
     }
-    this.checkTarget(request.method, url, request.stayUnder);
+    this.checkTarget(request.method, url, request.stayUnder, nextLink);
     for (const [name, value] of Object.entries(request.query ?? {})) if (value !== undefined) url.searchParams.set(name, String(value));
     return url;
   }
 
   /**
    * Refuses a URL off the credential's host and port, or plain http anywhere but loopback; the token goes to no other.
-   * Where `stayUnder` is given, also refuses a path outside that prefix (after the credential's base path).
+   * Where `stayUnder` is given, also refuses a path outside that prefix (after the credential's base path). A GitHub
+   * pagination link (`nextLink`: a request whose path is an absolute URL, never a redirect) may instead be under
+   * `/repositories/{id}/` after the base path, the form GitHub writes its `Link` headers in.
    */
-  private checkTarget(method: string, url: URL, stayUnder?: string): void {
+  private checkTarget(method: string, url: URL, stayUnder?: string, nextLink = false): void {
     if (url.hostname !== this.credential.host || url.port !== new URL(this.baseUrl).port) throw new HttpError("outside-host", `${method} ${url.pathname} is not on the credential's host`);
     if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) throw new HttpError("outside-host", `${method} ${url.pathname} is not https`);
     if (stayUnder === undefined) return;
-    const prefix = `${new URL(this.baseUrl).pathname.replace(/\/+$/, "")}/${stayUnder.replace(/^\/+/, "").replace(/\/*$/, "/")}`.toLowerCase();
-    if (!url.pathname.toLowerCase().startsWith(prefix)) throw new HttpError("outside-host", `${describe(method, url, this.token)} is outside the repository the request is for`);
+    const basePath = new URL(this.baseUrl).pathname.replace(/\/+$/, "");
+    const prefix = `${basePath}/${stayUnder.replace(/^\/+/, "").replace(/\/*$/, "/")}`.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    if (path.startsWith(prefix)) return;
+    if (nextLink && this.service === "github" && path.startsWith(`${basePath.toLowerCase()}/repositories/`) && /^\d+\//.test(path.slice(basePath.length + "/repositories/".length))) return;
+    throw new HttpError("outside-host", `${describe(method, url, this.token)} is outside the repository the request is for`);
   }
 
   async request(request: HttpRequest, options: { readonly signal?: AbortSignal } = {}): Promise<HttpResponse> {
