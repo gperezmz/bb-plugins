@@ -101,11 +101,11 @@ bb unattendish fleet interval github.com/acme/widgets 30s
 On GitHub, comment on issue `#1`: `Go with Postgres.` Within the interval, a message arrives in the thread:
 
 ```text
-From Unattendish Fleet: changes since 2026-10-12T09:14:03.211Z
+Moved on the tracker or the forge since 2026-10-12 09:14 UTC:
 #1 commented by olivia https://github.com/acme/widgets/issues/1
 ```
 
-That is a wake. It says that `#1` was commented on, by whom and where to open it, and never what the comment said: the thread's agent opens the URL to read it. If the thread is mid-turn, the message waits in bb's queue until the turn ends.
+That is a wake, a plain message in your voice, as if you had written it. It says that `#1` was commented on, by whom and where to open it, and never what the comment said: the thread's agent opens the URL to read it. If the thread is mid-turn, the message waits in bb's queue until the turn ends.
 
 Now comment again, ending with the marker on its own last line:
 

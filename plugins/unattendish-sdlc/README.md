@@ -18,7 +18,7 @@ bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin u
 - [How Unattendish wakes a manager](../../docs/explanation/unattendish-polling.md): the poll, the watched set, echoes, cursors and credentials
 - [`bb unattendish fleet`](../../docs/reference/unattendish-cli.md) and the wake
 - [Settings and what it stores](../../docs/reference/unattendish-settings.md)
-- [The Fleet contract, version 1](../../docs/reference/unattendish-fleet-contract.md): register, the manifest, the wake and dashboard messages
+- [The Fleet contract, version 1](../../docs/reference/unattendish-fleet-contract.md): the register call and the manifest
 - [Install, update or remove a plugin](../../docs/how-to/install-plugins.md)
 - [Develop](../../docs/how-to/develop-plugins.md)
 

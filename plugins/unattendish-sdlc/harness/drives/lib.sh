@@ -120,7 +120,7 @@ messages() {
 }
 
 # wakes <thread>: the text of each wake the manager received, one JSON string per line.
-wakes() { messages "$1" | jq -c 'select(.text | startswith("From Unattendish Fleet:")) | .text'; }
+wakes() { messages "$1" | jq -c 'select(.text | (startswith("Moved on the tracker or the forge since") or startswith("Nothing moved on the tracker or the forge since"))) | .text'; }
 # wake_count <thread>
 wake_count() { wakes "$1" | wc -l; }
 # wake_text <thread> <n>: the nth wake's text, as written.

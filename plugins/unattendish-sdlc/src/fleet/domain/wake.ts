@@ -1,10 +1,14 @@
-// The wake's text, as the contract gives it. Nothing written on a service
-// reaches it: it is built from a closed list of change kinds, a reference, a
-// login that passed a strict test, and a URL that passed another.
+// The wake's text: a plain prompt in the operator's voice, with no header that
+// names the plugin, since the manager reads it as it reads anything the
+// operator writes. Nothing written on a service reaches it: it is built from a
+// closed list of change kinds, a reference, a login that passed a strict test,
+// and a URL that passed another.
 import type { Change } from "./model";
 
-/** The first words of every wake. */
-export const WAKE_HEADER = "From Unattendish Fleet:";
+/** The first words of a wake that carries changes. */
+export const WAKE_MOVED = "Moved on the tracker or the forge since";
+/** The first words of a wake that carries none, the one that says a credential was refused. */
+export const WAKE_NOTHING = "Nothing moved on the tracker or the forge since";
 
 export interface WakeInput {
   /** The time the changes run from (ISO 8601 UTC). */
@@ -24,7 +28,7 @@ const REF = /^[#!]?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const UNSAFE_URL_CHARACTERS = /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const CONTROL_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
-/** The change as the contract words it: `commented`, `reviewed: approved`, `labelled ready`, `checks failed`. */
+/** The change as the wake words it: `commented`, `reviewed: approved`, `labelled ready`, `checks failed`. */
 export const changeText = (change: Change): string => (change.label === null ? change.kind : `${change.kind} ${oneLine(change.label)}`);
 
 /** The actor's login or account id; `unknown` for anything else, so no free text rides in a login. */
@@ -43,9 +47,15 @@ export const formatDuration = (ms: number): string => {
   return parts.length === 0 ? "0s" : parts.map(([unit, value]) => `${value}${unit}`).join(" ");
 };
 
-/** The wake: a first line naming the time, one line per change, then the closing lines that apply. */
+/** An ISO 8601 time as `2026-10-12 14:02 UTC`: to the minute, rounded down, so it never names a time after the first change. */
+export const clockTime = (iso: string): string => {
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime()) ? "an unknown time" : `${parsed.toISOString().slice(0, 10)} ${parsed.toISOString().slice(11, 16)} UTC`;
+};
+
+/** The wake: a first line saying what moved since a time, one line per change, then the closing lines that apply. */
 export const formatWake = (input: WakeInput): string => {
-  const lines = [input.changes.length === 0 ? `${WAKE_HEADER} no changes since ${input.since}` : `${WAKE_HEADER} changes since ${input.since}`];
+  const lines = [input.changes.length === 0 ? `${WAKE_NOTHING} ${clockTime(input.since)}.` : `${WAKE_MOVED} ${clockTime(input.since)}:`];
   for (const change of input.changes) {
     const ref = REF.test(change.ref) ? change.ref : "unknown";
     lines.push(`${ref} ${changeText(change)} by ${safeActor(change.actor)} ${safeUrl(change.url)}`);

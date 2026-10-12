@@ -53,5 +53,5 @@ _Avoid_: Notification, ping
 ### The agreement with run-fleet
 
 **Contract version**:
-The integer naming the register call, manifest columns, wake format and dashboard messages a plugin and a skill share.
+The integer naming the register call and the manifest's columns that a plugin and a skill share.
 _Avoid_: Protocol version

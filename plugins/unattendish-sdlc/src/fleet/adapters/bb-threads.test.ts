@@ -55,9 +55,9 @@ describe("BbThreadDirectory", () => {
 describe("BbManagerChannel.send", () => {
   it("sends one text part, queued behind a running turn, as the plugin's own submission", async () => {
     const { sdk, harness } = fake({ threads: { send: async () => ({ ok: true, delivery: "sent" }) } });
-    expect(await new BbManagerChannel(sdk, "unattendish-sdlc").send("thr_1", "From Unattendish Fleet: ...")).toEqual({ delivered: "sent" });
+    expect(await new BbManagerChannel(sdk, "unattendish-sdlc").send("thr_1", "Moved on the tracker or the forge since 14:02:")).toEqual({ delivered: "sent" });
     expect(harness.callsTo("threads.send")).toEqual([
-      [{ threadId: "thr_1", input: [{ type: "text", text: "From Unattendish Fleet: ...", mentions: [] }], mode: "queue-if-active", pluginSubmission: { pluginId: "unattendish-sdlc", data: {} } }],
+      [{ threadId: "thr_1", input: [{ type: "text", text: "Moved on the tracker or the forge since 14:02:", mentions: [] }], mode: "queue-if-active", pluginSubmission: { pluginId: "unattendish-sdlc", data: {} } }],
     ]);
   });
 

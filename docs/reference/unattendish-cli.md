@@ -127,16 +127,16 @@ Sets how often the fleet is polled. `<interval>` is a number and a unit, `ms`, `
 
 ## The wake
 
-A message to the manager, sent as a plain message that waits behind a running turn. [The contract](unattendish-fleet-contract.md) is its one authority; this section shows the exact text the plugin builds.
+A message to the manager, sent as a plain message in the operator's voice that waits behind a running turn. It names no plugin: run-fleet reads it as it reads anything the operator writes, so it is not part of [the contract](unattendish-fleet-contract.md), which is only the register call and the manifest. This section is the one place that shows the exact text the plugin builds.
 
 ```text
-From Unattendish Fleet: changes since 2026-10-12T02:22:28.854Z
+Moved on the tracker or the forge since 2026-10-12 02:22 UTC:
 #7 commented by alice https://github.com/org/repo/issues/7
 #12 reviewed: approved by bob https://github.com/org/repo/pull/12
 Catch-up: the plugin was away for 8h 12m.
 ```
 
-- **First line**: `From Unattendish Fleet: changes since {time}`, the time the changes run from (ISO 8601, UTC). A wake with no changes, the one that says a credential was refused, reads `no changes since {time}`.
+- **First line**: `Moved on the tracker or the forge since {time}:`, with the time the changes run from to the minute, such as `2026-10-12 14:02 UTC`. A wake with no changes, the one that says a credential was refused, reads `Nothing moved on the tracker or the forge since {time}.`
 - **One line per change**: `{reference} {change} by {actor} {URL}`, in time order. The reference is `#163`, `!45` (a GitLab merge request), `ENG-212` or `PROJ-12`. The actor is a login or account id; a reference, actor or URL that does not pass the plugin's strict test prints as `unknown`.
 - **Closing lines**, each only where it applies:
   - `Gathered while no manager held the fleet, since {time}.`

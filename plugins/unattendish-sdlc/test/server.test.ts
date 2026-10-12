@@ -111,7 +111,7 @@ describe("the plugin's entry", () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ threadId: MANAGER, mode: "queue-if-active" });
-    expect(sent[0]!.input[0]!.text).toMatch(/^From Unattendish Fleet: changes since /);
+    expect(sent[0]!.input[0]!.text).toMatch(/^Moved on the tracker or the forge since /);
     expect(sent[0]!.input[0]!.text).toContain("#7 commented by alice https://github.example/org/repo/issues/7");
     expect(sent[0]!.input[0]!.text).not.toContain("Go with B");
 
