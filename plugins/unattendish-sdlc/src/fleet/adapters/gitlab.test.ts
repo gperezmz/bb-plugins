@@ -160,6 +160,18 @@ describe("the GitLab adapter: transitions", () => {
     ]);
   });
 
+  it("reads a reopening that arrives as an `opened` state event", async () => {
+    const { read } = await world({
+      [PATH]: {
+        issues: [issue(1, { stateEvents: [{ id: 20, user: "pat", created_at: "2026-10-11T02:00:00Z", state: "closed" }, { id: 21, user: "olga", created_at: "2026-10-11T03:00:00Z", state: "opened" }] })],
+      },
+    });
+    expect(only((await read({ items: [watch("#1")] })).snapshots).transitions).toEqual([
+      { kind: "closed", actor: "pat", at: "2026-10-11T02:00:00.000Z", id: "gitlab:state_event:20" },
+      { kind: "reopened", actor: "olga", at: "2026-10-11T03:00:00.000Z", id: "gitlab:state_event:21" },
+    ]);
+  });
+
   it("reads the merge from a merged state event when there is one, else from merged_at", async () => {
     const { read } = await world({
       [PATH]: {
