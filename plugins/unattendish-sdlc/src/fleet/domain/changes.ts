@@ -19,8 +19,8 @@ import {
 
 const DEFAULT_OVERLAP_MS = 60_000;
 /**
- * The furthest a failed read may hold a cursor's `since` back from the poll's start while the rest of the source
- * reads, so one item that never reads cannot make every later poll read ever more.
+ * The furthest a failed read may hold a cursor's `since` back from the poll's start while the listing and every
+ * other item of the source read, so one item that never reads cannot make every later poll read ever more.
  */
 export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
@@ -69,10 +69,12 @@ export interface Derived {
  * cursor gives the same keys. An item whose read failed leaves its previous
  * state in the cursor and gives no change. Such a failure, and a failed
  * listing, hold `since` where it was, so a failed read never lets the cursor
- * skip a change. While some snapshot, event or updated item came back, the
- * hold reaches no more than `MAX_HOLD_MS` before the poll's start: one item
- * that never reads cannot hold the source back for good. While nothing came
- * back, the hold has no limit. A failure of one item of kind `not-found` or
+ * skip a change. Where the listing and some snapshot, event or updated item
+ * read, and the read was no `stateOnly` one, the hold reaches no more than
+ * `MAX_HOLD_MS` before the poll's start: one item that never reads cannot
+ * hold the source back for good. A `stateOnly` read, a failed listing, or a
+ * read where nothing came back holds `since` with no limit, since none of
+ * them read the changes the hold keeps. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will
  * succeed.
  */
@@ -116,9 +118,11 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   }
 
   const holdsSince = outcome.failures.some((failure) => failure.ref === null || !isTerminal(failure)) || stateOnly;
+  const listed = !outcome.failures.some((failure) => failure.ref === null);
   const readable = outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0;
+  const capped = !stateOnly && listed && readable;
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
-  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : readable && base < oldest ? oldest : base;
+  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : capped && base < oldest ? oldest : base;
 
   changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };

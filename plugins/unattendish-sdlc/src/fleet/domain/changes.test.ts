@@ -257,14 +257,25 @@ describe("failures", () => {
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start while the rest of the source reads", () => {
+  it("holds since no further back than seven days before the poll's start while one item fails and the listing and every other item read", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
     const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    const listed = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: null, reason: "x" }] }) });
-    expect(listed.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+    const updated = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: "#8", reason: "x", kind: "unreachable" }] }) });
+    expect(updated.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("holds since with no limit on a turn-end read, however long the outage before it", () => {
+    const old = cursor({}, "2026-10-02T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe(old.since);
+  });
+
+  it("holds since with no limit on a failed listing, though the items read", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const listing = { ref: null, reason: "the listing failed" };
+    expect(derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [listing] }) }).nextCursor.since).toBe(old.since);
+    expect(derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [listing] }) }).nextCursor.since).toBe(old.since);
   });
 
   it("holds since with no limit while nothing of the source reads", () => {
