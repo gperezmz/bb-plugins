@@ -27,6 +27,8 @@ export interface HttpOptions {
 interface CacheEntry {
   readonly etag: string;
   readonly json: unknown;
+  /** The `Link` header the body came with: a 304 need not repeat it, and the next page is found through it. */
+  readonly link: string | null;
 }
 
 /** Whether a GraphQL document would write: a `mutation` or `subscription` operation. */
@@ -251,7 +253,10 @@ class Session implements HttpSession {
         redirects += 1;
         continue;
       }
-      if (response.status === 304 && cached !== undefined) return { status: 304, json: cached.json, notModified: true, header };
+      if (response.status === 304 && cached !== undefined) {
+        const kept = (name: string) => (name.toLowerCase() === "link" ? (header(name) ?? cached.link) : header(name));
+        return { status: 304, json: cached.json, notModified: true, header: kept };
+      }
       if (response.status >= 200 && response.status < 300) {
         let json: unknown;
         try {
@@ -260,7 +265,7 @@ class Session implements HttpSession {
           throw new HttpError("server", `${describe(request.method, url, this.token)} answered a body that is not JSON`, response.status);
         }
         const etag = header("etag");
-        if (request.method === "GET" && etag !== null) this.remember(cacheKey, { etag, json });
+        if (request.method === "GET" && etag !== null) this.remember(cacheKey, { etag, json, link: header("link") });
         return { status: response.status, json, notModified: false, header };
       }
 

@@ -515,6 +515,24 @@ describe("HttpClient", () => {
       expect(await session.paginate({ path: "/list" }, { maxPages: 2 })).toEqual({ items: [1, 2], truncated: true });
     });
 
+    it("reads every page again when each answers 304 without its Link header", async () => {
+      const { port, credential, seen } = await serve((request, response) => {
+        const page = Number(new URL(request.url!, "http://x").searchParams.get("page") ?? "1");
+        const etag = `"p${page}"`;
+        if (request.headers["if-none-match"] === etag) {
+          response.writeHead(304, { etag });
+          response.end();
+          return;
+        }
+        const next = `<http://127.0.0.1:${port}/api/list?page=${page + 1}>; rel="next"`;
+        json(response, [page], 200, { etag, ...(page < 3 ? { link: next } : {}) });
+      });
+      const session = client().session(credential(), TOKEN);
+      expect(await session.paginate({ path: "/list" }, { maxPages: 10 })).toEqual({ items: [1, 2, 3], truncated: false });
+      expect(await session.paginate({ path: "/list" }, { maxPages: 10 })).toEqual({ items: [1, 2, 3], truncated: false });
+      expect(seen).toHaveLength(6);
+    });
+
     it("refuses a next link on another host", async () => {
       const { credential } = await serve((_, response) => json(response, [1], 200, { link: '<https://example.net/x?page=2>; rel="next"' }));
       await expect(client().session(credential(), TOKEN).paginate({ path: "/list" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
