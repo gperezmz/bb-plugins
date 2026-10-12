@@ -60,12 +60,12 @@ import {
   issuesListed,
   MAX_PAGES,
   NotFoundProblem,
-  ReadProblem,
   send,
   type Comment,
   type HistoryEntry,
   type Person,
 } from "./linear-graphql";
+import { isFatal, ReadProblem } from "./service-support";
 
 const CLOSED_TYPES = ["completed", "canceled", "duplicate"];
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
@@ -125,8 +125,6 @@ const failureReason = (error: unknown): string => {
   return "Linear answered something the adapter could not read";
 };
 
-/** An error that ends the whole read: a refused credential or a rate limit. */
-const isFatal = (error: unknown): boolean => error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit");
 
 class LinearAdapter implements ServiceAdapter {
   readonly service = "linear" as const;

@@ -7,14 +7,7 @@
 import { z } from "zod";
 import { combineChecks } from "../domain/checks";
 import type { ChecksOutcome, FleetLabels, Transition } from "../domain/model";
-
-/** A read that cannot be trusted. `message` names a field or a count and never carries text written on the service. */
-export class ReadProblem extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ReadProblem";
-  }
-}
+import { parseAnswer, ReadProblem } from "./service-support";
 
 const timestamp = z.string().refine((value) => !Number.isNaN(Date.parse(value)));
 const username = z.object({ username: z.string().min(1) });
@@ -69,12 +62,8 @@ const stateNameSchema = z.object({ state: z.string().optional() });
 export const tokenSchema = z.object({ expires_at: z.string().nullish() });
 
 /** Checks `value` against `schema`; the problem names the fields that failed and nothing they held. */
-export function parse<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
-  const result = schema.safeParse(value);
-  if (result.success) return result.data;
-  const fields = [...new Set(result.error.issues.map((issue) => issue.path.join(".") || "(whole answer)"))].join(", ");
-  throw new ReadProblem(`${what} lacks or malforms: ${fields}`);
-}
+export const parse = <T>(schema: z.ZodType<T>, value: unknown, what: string): T =>
+  parseAnswer(schema, value, { root: "(whole answer)", message: (fields) => `${what} lacks or malforms: ${fields}` });
 
 const iso = (value: string): string => new Date(value).toISOString();
 

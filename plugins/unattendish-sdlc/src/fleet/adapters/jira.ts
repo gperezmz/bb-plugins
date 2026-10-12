@@ -33,13 +33,11 @@ import { HttpError, type ServiceAdapter, type ReadRequest } from "../application
 import type { ActivityEvent, FleetLabels, ItemSnapshot, ReadFailure, ReadOutcome, Transition, UpdatedItem, WatchedItem } from "../domain/model";
 import { lastLine } from "../domain/text";
 import { documentText, isDocument } from "./jira-adf";
+import { isFatal, ReadProblem } from "./service-support";
 
 const SEARCH = "/rest/api/3/search/jql";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
-
-/** A failure to read that the adapter reports in its own words: a `ReadFailure`'s reason never quotes the service. */
-class ReadProblem extends Error {}
 
 const user = z.object({ accountId: z.string(), emailAddress: z.string().nullish(), displayName: z.string().nullish() });
 type User = z.infer<typeof user>;
@@ -150,7 +148,7 @@ class Reading {
 
   /** Rethrows what ends the whole read, else records the failure for `ref`. */
   private settle(error: unknown, ref: string | null): void {
-    if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
+    if (isFatal(error)) throw error;
     if (this.request.signal.aborted) throw error;
     this.failures.push(ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) });
   }

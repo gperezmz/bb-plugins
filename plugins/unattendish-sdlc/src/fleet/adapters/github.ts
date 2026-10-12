@@ -74,7 +74,6 @@ import {
   issueShape,
   labelName,
   listedShape,
-  Malformed,
   numberOf,
   parse,
   pullShape,
@@ -82,6 +81,7 @@ import {
   reviewShape,
   type IssueWire,
 } from "./github-wire";
+import { isFatal, ReadProblem } from "./service-support";
 import { z } from "zod";
 
 const PAGE_SIZE = 100;
@@ -127,18 +127,13 @@ const nextLink = (link: string | null): string | null => {
 
 /** The reason a failed read may carry: the HTTP layer's own text, or the names of the fields an answer lacked. */
 const reasonOf = (error: unknown): string => {
-  if (error instanceof HttpError || error instanceof Malformed) return error.message;
+  if (error instanceof HttpError || error instanceof ReadProblem) return error.message;
   return "the answer could not be read";
 };
 
 /** A failed read of the item `ref`; one the service answers not-found is marked so, as no later read will do better. */
 const failureOf = (ref: string | null, error: unknown): ReadFailure =>
   ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) };
-
-/** Rethrows what fails the whole read: a refused credential or a rate limit. */
-const rethrowFatal = (error: unknown): void => {
-  if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
-};
 
 const repoPath = (path: string): string | null => {
   const parts = path.split("/");
@@ -182,7 +177,7 @@ class GithubAdapter implements ServiceAdapter {
         snapshots.push(read.snapshot);
         events.push(...read.events);
       } catch (error) {
-        rethrowFatal(error);
+        if (isFatal(error)) throw error;
         failures.push(failureOf(item.ref, error));
       }
     }
@@ -198,7 +193,7 @@ class GithubAdapter implements ServiceAdapter {
 
   private async readItem(reading: Reading, item: WatchedItem): Promise<ItemRead> {
     const number = numberOf(item.ref);
-    if (number === null) throw new Malformed("the reference is not a GitHub issue or pull request number");
+    if (number === null) throw new ReadProblem("the reference is not a GitHub issue or pull request number");
     const response = await this.get(reading, `${reading.repo}/issues/${number}`);
     const issue = parse(`issue ${item.ref}`, issueShape, response.json);
     return this.describe(reading, item.role, item.ref, issue, reading.request.watchedRefs.has(item.ref) && !reading.request.stateOnly);
@@ -249,7 +244,7 @@ class GithubAdapter implements ServiceAdapter {
       if (Date.parse(event.created_at) < reading.sinceMs) continue;
       const base = { actor: event.actor?.login ?? null, at: iso(event.created_at), id: `github:event:${event.id}` };
       if (transition === "labelled" || transition === "unlabelled") {
-        if (event.label === null || event.label === undefined) throw new Malformed(`a ${kind} event lacked label`);
+        if (event.label === null || event.label === undefined) throw new ReadProblem(`a ${kind} event lacked label`);
         const registered = reading.fleetLabels.get(event.label.name.toLowerCase());
         if (registered === undefined) continue;
         found.push({ kind: transition, label: registered, ...base });
@@ -282,11 +277,11 @@ class GithubAdapter implements ServiceAdapter {
       if (run.status !== "completed") outcomes.push("pending");
       else if (run.conclusion !== null && run.conclusion !== undefined && PASSED_CONCLUSIONS.has(run.conclusion)) outcomes.push("passed");
       else if (run.conclusion !== null && run.conclusion !== undefined && FAILED_CONCLUSIONS.has(run.conclusion)) outcomes.push("failed");
-      else throw new Malformed("a completed check run lacked a known conclusion");
+      else throw new ReadProblem("a completed check run lacked a known conclusion");
     }
     for (const entry of statuses) {
       const outcome = COMMIT_STATUS_OUTCOMES[parse("a commit status", commitStatusShape, entry).state];
-      if (outcome === undefined) throw new Malformed("a commit status lacked a known state");
+      if (outcome === undefined) throw new ReadProblem("a commit status lacked a known state");
       outcomes.push(outcome);
     }
     return combineChecks(outcomes);
@@ -318,7 +313,7 @@ class GithubAdapter implements ServiceAdapter {
       for (const review of reviews) {
         const kind = REVIEW_KINDS[review.state.toUpperCase()];
         if (kind === undefined) continue;
-        if (review.submitted_at === null || review.submitted_at === undefined) throw new Malformed("a submitted review lacked submitted_at");
+        if (review.submitted_at === null || review.submitted_at === undefined) throw new ReadProblem("a submitted review lacked submitted_at");
         if (Date.parse(review.submitted_at) >= reading.sinceMs) push(`github:review:${review.id}`, kind, review.user?.login, review.submitted_at, review.body);
       }
       for (const entry of await this.list(reading, `${reading.repo}/pulls/${number}/comments`, {}, `the review comments of ${ref}`)) {
@@ -347,7 +342,7 @@ class GithubAdapter implements ServiceAdapter {
       try {
         listed = await this.list(reading, `${reading.repo}/issues`, query, "the partition listing");
       } catch (error) {
-        rethrowFatal(error);
+        if (isFatal(error)) throw error;
         failures.push({ ref: null, reason: reasonOf(error) });
         continue;
       }
@@ -360,7 +355,7 @@ class GithubAdapter implements ServiceAdapter {
           seen.add(read.snapshot.ref);
           snapshots.push(read.snapshot);
         } catch (error) {
-          rethrowFatal(error);
+          if (isFatal(error)) throw error;
           failures.push(failureOf(ref, error));
         }
       }
@@ -372,7 +367,7 @@ class GithubAdapter implements ServiceAdapter {
     try {
       listed = await this.list(reading, `${reading.repo}/issues`, { state: "all", since: sinceParam(reading.sinceMs), sort: "updated", direction: "asc" }, "the updated listing");
     } catch (error) {
-      rethrowFatal(error);
+      if (isFatal(error)) throw error;
       failures.push({ ref: null, reason: reasonOf(error) });
       return;
     }
@@ -395,7 +390,7 @@ class GithubAdapter implements ServiceAdapter {
   /** Every entry of a list, page after page; a list longer than 10 pages is an error naming `what`. */
   private async list(reading: Reading, path: string, query: Query, what: string): Promise<unknown[]> {
     const { items, truncated } = await reading.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE } }, { maxPages: MAX_PAGES, signal: reading.request.signal });
-    if (truncated) throw new Malformed(`${what} was longer than ${MAX_PAGES} pages`);
+    if (truncated) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
     return items;
   }
 
@@ -405,11 +400,11 @@ class GithubAdapter implements ServiceAdapter {
     const items: unknown[] = [];
     let next: { path: string; query?: Query } | null = { path, query: { ...query, per_page: PAGE_SIZE } };
     for (let page = 0; next !== null; page += 1) {
-      if (page >= MAX_PAGES) throw new Malformed(`${what} was longer than ${MAX_PAGES} pages`);
+      if (page >= MAX_PAGES) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
       const response = await this.get(reading, next.path, next.query);
       const body = parse(what, wrapper, response.json);
       const list = body[key];
-      if (!Array.isArray(list)) throw new Malformed(`${what} lacked ${key}`);
+      if (!Array.isArray(list)) throw new ReadProblem(`${what} lacked ${key}`);
       items.push(...list);
       const link = nextLink(response.header("link"));
       next = link === null ? null : { path: link };
