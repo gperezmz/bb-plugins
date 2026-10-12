@@ -42,8 +42,14 @@
 // - The text of the system notes for an approval and for a request for changes
 //   is not documented, so no system note is read. An approval is read from the
 //   approvals list. `reviewed: changes requested` and `reviewed: commented`
-//   are never produced: no page says how a submitted review or a request for
-//   changes appears in the notes, discussions or approvals lists.
+//   are never produced. The merge request page's "Retrieve merge request
+//   reviewers" (`GET .../merge_requests/:iid/reviewers`) lists each reviewer's
+//   `user`, `state` and `created_at`, but shows only `unreviewed` and `reviewed`
+//   as states and gives no time or id for a change of state (its `created_at`
+//   dates the request, so a review could not be placed after `since` or keyed
+//   stably); `requested_changes` is documented as a reviewer state only in the
+//   webhook payloads (/user/project/integrations/webhook_events/), and the
+//   `reviewers[].state` of the merge request answer is the account's state.
 // - A state event's `merged` value is not documented. It is used when sent;
 //   otherwise a merged request's `merged_at` gives the `merged` transition.
 // - ETag and 304 are not documented for the REST API. The session sends a
