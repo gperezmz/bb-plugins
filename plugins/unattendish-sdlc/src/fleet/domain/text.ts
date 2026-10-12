@@ -20,6 +20,9 @@ export const lastLine = (body: string | null | undefined): string | null => {
   return null;
 };
 
+/** The most characters of one cell of a manifest row (a What, a Work) the dashboard carries, in a view and in a signal. */
+export const CELL_MAX_CHARS = 500;
+
 /** `text` cut to `max` code points, ending in `…` where it was cut (never through a surrogate pair). */
 export const clip = (text: string, max: number): string => {
   const points = Array.from(text);

@@ -54,6 +54,9 @@ export const assessWatching = async (deps: { credentials: Credentials; manifests
   return { manifest, watched, unreadableRows: manifest.status === "ok" ? manifest.manifest.unreadable : [], forge, tracker, notWatched };
 };
 
+/** The service behind the fleet's forge, GitHub where no credential is chosen for it. */
+export const forgeServiceOf = (watching: Pick<Watching, "forge">): "github" | "gitlab" => (watching.forge?.source.role === "forge" ? watching.forge.source.service : "github");
+
 /** Why the fleet is not watched for each source whose credential counts as refused, the forge's first, each text once. */
 export const refusedNotWatched = (outages: StoredFleet["outages"]): NotWatched[] => {
   const lines: NotWatched[] = [];

@@ -4,6 +4,7 @@
 // since the use cases build them.
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
+import { LEDGER_LIMIT } from "../application/dashboard";
 import { ACTION_TEXT_MAX_CHARS } from "../domain/actions";
 import type {
   ActionRecordView,
@@ -40,7 +41,7 @@ export const rpcContract = defineRpcContract({
   ledger: {
     input: z.strictObject({
       repo,
-      filter: z.optional(z.strictObject({ item: z.optional(text(300)), done: z.optional(done), limit: z.optional(z.number().check(z.int(), z.minimum(1), z.maximum(250))) })),
+      filter: z.optional(z.strictObject({ item: z.optional(text(300)), done: z.optional(done), limit: z.optional(z.number().check(z.int(), z.minimum(1), z.maximum(LEDGER_LIMIT))) })),
     }),
     output: z.custom<Result<{ ledger: LedgerView }>>(isObject),
   },

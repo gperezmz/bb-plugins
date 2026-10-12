@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compose } from "../../compose";
 import type { LedgerEntry, LedgerRow } from "../application/ports";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
-import { createFleetCli, MAX_LEDGER_LIMIT } from "./cli";
+import { LEDGER_LIMIT } from "../application/dashboard";
+import { createFleetCli } from "./cli";
 import { SqliteStore } from "./store";
 
 const REPO = "github.example/org/repo";
@@ -155,7 +156,7 @@ describe("fleet ledger", () => {
   describe("--limit and bb's output limit", () => {
     const huge = "x".repeat(1_000);
     /** The widest entries there can be, of every kind, more of them than any limit allows. */
-    function widest(store: SqliteStore, n = MAX_LEDGER_LIMIT + 50) {
+    function widest(store: SqliteStore, n = LEDGER_LIMIT + 50) {
       for (let i = 0; i < n; i += 1) {
         store.recordChange(REPO, row(`k${i}-${huge}`, `#${i}`, "echo", { url: `https://github.example/${huge}`, label: huge, actor: huge, rule: huge, seenAt: `2026-10-12T09:${String(i % 60).padStart(2, "0")}:00.${String(i).padStart(3, "0")}Z` }));
         store.recordFailedRead(REPO, { at: `2026-10-12T10:00:00.${String(i).padStart(3, "0")}Z`, role: "forge", ref: huge, reason: huge });
@@ -173,11 +174,11 @@ describe("fleet ledger", () => {
       const { store, run } = await load();
       await run(registerArgs(), MANAGER);
       widest(store);
-      const printed = await run(["fleet", "ledger", REPO, "--limit", String(MAX_LEDGER_LIMIT), ...flags]);
+      const printed = await run(["fleet", "ledger", REPO, "--limit", String(LEDGER_LIMIT), ...flags]);
       expect(printed.exitCode).toBe(0);
       expect(printed.stderr).toBe("");
       expect(Buffer.byteLength(printed.stdout)).toBeLessThan(PLUGIN_CLI_OUTPUT_MAX_BYTES);
-      if (flags.length > 0) expect(JSON.parse(printed.stdout).entries).toHaveLength(MAX_LEDGER_LIMIT);
+      if (flags.length > 0) expect(JSON.parse(printed.stdout).entries).toHaveLength(LEDGER_LIMIT);
     });
 
     it("cuts a long string and a poll's request list to what fits, and says how many requests it left out", async () => {
@@ -196,9 +197,9 @@ describe("fleet ledger", () => {
 
     it("refuses a limit above the cap, naming it", async () => {
       const { fails } = await load();
-      const error = await fails(["fleet", "ledger", REPO, "--limit", String(MAX_LEDGER_LIMIT + 1)]);
-      expect(error.message).toContain(String(MAX_LEDGER_LIMIT));
-      expect(MAX_LEDGER_LIMIT).toBe(250);
+      const error = await fails(["fleet", "ledger", REPO, "--limit", String(LEDGER_LIMIT + 1)]);
+      expect(error.message).toContain(String(LEDGER_LIMIT));
+      expect(LEDGER_LIMIT).toBe(250);
     });
 
     async function run_register(store: SqliteStore) {
