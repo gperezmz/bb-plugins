@@ -131,7 +131,11 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
   const held = capped && base < oldest ? oldest : base;
   const cutAt = outcome.listingCutAt;
-  const read = cutAt === undefined ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : cutAt > base ? cutAt : base;
+  // A cut-off listing still keeps the overlap: an event the service lists late, or one on a watched item that landed
+  // after the item was read but before the last update the listing reached, must be read again next poll.
+  const overlapStart = new Date(Date.parse(startedAt) - overlapMs).toISOString();
+  const cut = cutAt === undefined ? overlapStart : cutAt < overlapStart ? cutAt : overlapStart;
+  const read = cutAt === undefined ? overlapStart : cut > base ? cut : base;
   const since = holdsSince ? held : read;
 
   changes.sort(byTimeThenKey);

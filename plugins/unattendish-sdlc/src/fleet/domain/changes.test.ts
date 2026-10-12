@@ -305,6 +305,16 @@ describe("failures", () => {
     expect(gone.nextCursor.since).toBe("2026-10-12T09:30:00.000Z");
   });
 
+  it("keeps the overlap when a cut-off listing reached a later update than the poll's start less the overlap", () => {
+    const prev = cursor({});
+    const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:59:30.000Z" }];
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:59:30.000Z" }) }).nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T10:05:00.000Z" }) }).nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    expect(derive({ prev, overlapMs: 10_000, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:59:55.000Z" }) }).nextCursor.since).toBe("2026-10-12T09:59:50.000Z");
+    const late = cursor({}, "2026-10-12T09:59:45.000Z");
+    expect(derive({ prev: late, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:59:50.000Z" }) }).nextCursor.since).toBe("2026-10-12T09:59:45.000Z");
+  });
+
   it("does not move since to a cut-off listing's last update while an item failure holds it, or on a turn-end read", () => {
     const prev = cursor({});
     const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
