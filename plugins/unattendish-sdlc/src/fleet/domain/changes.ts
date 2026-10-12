@@ -20,8 +20,9 @@ import {
 
 const DEFAULT_OVERLAP_MS = 60_000;
 /**
- * The furthest a failed read may hold a cursor's `since` back from the poll's start while the listing and every
- * other item of the source read, so one item that never reads cannot make every later poll read ever more.
+ * The furthest a failed item read may hold a cursor's `since` back from the poll's start, on a poll that is no
+ * turn-end read, where no listing failed and some snapshot, event or updated item came back, however many items
+ * failed: items that never read cannot make every later poll read ever more.
  */
 export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
@@ -70,10 +71,10 @@ export interface Derived {
  * cursor gives the same keys. An item whose read failed leaves its previous
  * state in the cursor and gives no change. Such a failure, and a failed
  * listing, hold `since` where it was, so a failed read never lets the cursor
- * skip a change. Where the listing and some snapshot, event or updated item
- * read, and the read was no `stateOnly` one, the hold reaches no more than
- * `MAX_HOLD_MS` before the poll's start: one item that never reads cannot
- * hold the source back for good. A `stateOnly` read, a failed listing, or a
+ * skip a change. Where no listing failed, some snapshot, event or updated
+ * item came back, and the read was no `stateOnly` one, the hold reaches no
+ * more than `MAX_HOLD_MS` before the poll's start, however many items
+ * failed: items that never read cannot hold the source back for good. A `stateOnly` read, a failed listing, or a
  * read where nothing came back holds `since` with no limit, since none of
  * them read the changes the hold keeps. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will

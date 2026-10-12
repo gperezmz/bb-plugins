@@ -257,13 +257,19 @@ describe("failures", () => {
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start while one item fails and the listing and every other item read", () => {
+  it("holds since no further back than seven days before the poll's start while items fail, no listing failed and something read", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
     const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     const updated = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: "#8", reason: "x", kind: "unreachable" }] }) });
     expect(updated.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("caps the hold though two items fail while one other reads", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const failures = [{ ref: "#8", reason: "server error" }, { ref: "#9", reason: "x", kind: "forbidden" as const }];
+    expect(derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
   });
 
   it("holds since with no limit on a turn-end read, however long the outage before it", () => {
