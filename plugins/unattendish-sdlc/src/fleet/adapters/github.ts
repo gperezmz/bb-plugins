@@ -38,8 +38,9 @@
 //    timeline is passed on as GitHub gives it.
 //  - Whether a review, a label change or a check moves `updated_at`: watched
 //    items are read themselves, and the updated listing is only a hint.
-//  - Whether `since` on review comments reaches a comment drafted before `since`
-//    and submitted after: a review comment counts at its review's `submitted_at`.
+//  - Whether submitting a review moves the `updated_at` of its inline comments,
+//    which is what `since` filters them on: they are read without `since`, up to
+//    10 pages of 100, and a review comment counts at its review's `submitted_at`.
 //  - Whether the issue schema's `labels` are objects or names: both are read.
 import {
   HttpError,
@@ -320,7 +321,7 @@ class GithubAdapter implements ServiceAdapter {
         if (review.submitted_at === null || review.submitted_at === undefined) throw new Malformed("a submitted review lacked submitted_at");
         if (Date.parse(review.submitted_at) >= reading.sinceMs) push(`github:review:${review.id}`, kind, review.user?.login, review.submitted_at, review.body);
       }
-      for (const entry of await this.list(reading, `${reading.repo}/pulls/${number}/comments`, query, `the review comments of ${ref}`)) {
+      for (const entry of await this.list(reading, `${reading.repo}/pulls/${number}/comments`, {}, `the review comments of ${ref}`)) {
         const comment = parse("a review comment", reviewCommentShape, entry);
         const reviewId = comment.pull_request_review_id ?? null;
         if (reviewId !== null && pending.has(reviewId)) continue;

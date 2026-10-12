@@ -369,6 +369,27 @@ describe("GitHub adapter: events", () => {
     expect((await read({ watched: [2] })).events.map((entry) => entry.id)).toEqual(["github:review:7", "github:reviewcomment:1"]);
   });
 
+  it("reads a review comment last updated before `since` when its review was submitted after it", async () => {
+    const reviewComments = [
+      reviewComment(1, 2, { reviewId: 7, createdAt: BEFORE, updatedAt: BEFORE }),
+      reviewComment(2, 2, { reviewId: 6, createdAt: BEFORE, updatedAt: BEFORE }),
+    ];
+    const reviews = [review(7, 2, "COMMENTED"), review(6, 2, "COMMENTED", { submittedAt: BEFORE })];
+    const { read, server } = await harness(repo({ issues: [pull(2)], reviews, reviewComments }));
+    expect((await read({ watched: [2] })).events.map((entry) => entry.id)).toEqual(["github:review:7", "github:reviewcomment:1"]);
+    const asked = server.requests.filter((request) => request.url.includes("/pulls/2/comments"));
+    expect(asked).not.toHaveLength(0);
+    expect(asked.some((request) => request.url.includes("since="))).toBe(false);
+  });
+
+  it("fails the pull request's read when its review comments run past 10 pages", async () => {
+    const reviewComments = Array.from({ length: 1001 }, (_, index) => reviewComment(index + 1, 2, { reviewId: 7 }));
+    const { read } = await harness(repo({ issues: [pull(2)], reviews: [review(7, 2, "COMMENTED")], reviewComments }));
+    const outcome = await read({ watched: [2] });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("10 pages") }]);
+  });
+
   it("reads a pull request's conversation comments as well as its review comments", async () => {
     const { read } = await harness(repo({ issues: [pull(2)], comments: [comment(1, 2)], reviewComments: [reviewComment(2, 2)] }));
     expect((await read({ watched: [2] })).events.map((entry) => entry.id).sort()).toEqual(["github:issuecomment:1", "github:reviewcomment:2"]);
