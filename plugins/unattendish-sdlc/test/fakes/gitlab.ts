@@ -68,6 +68,8 @@ export interface FakeItem {
   stateEvents?: FakeStateEvent[];
   /** Fields left out of this item's answers, to script an answer that lacks one. */
   omit?: string[];
+  /** The id of the issue it was moved to. GitLab keeps a moved issue in its project, closed, and answers it as before. */
+  movedToId?: number;
 }
 
 export interface FakeMergeRequest extends FakeItem {
@@ -95,6 +97,10 @@ export interface FakeGitlabState {
   maxPerPage?: number;
   /** Requests whose path and query string contain `match` answer `status`. */
   faults?: { match: string; status: number }[];
+  /** Project paths that have been renamed or transferred, by old full path to the new one: a request under the old path answers 301 to the new. */
+  renames?: Record<string, string>;
+  /** A full path (API root included) every `Link: rel="next"` points at instead of the request's own, to script a link that leaves the project. */
+  nextLinkPath?: string;
 }
 
 const userId = (name: string): number => {
@@ -114,6 +120,8 @@ const normalise = (state: Partial<FakeGitlabState> | undefined): FakeGitlabState
   token: state?.token ?? null,
   maxPerPage: state?.maxPerPage ?? 100,
   faults: state?.faults ?? [],
+  renames: state?.renames ?? {},
+  ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }),
 });
 
 const time = (iso: string): number => Date.parse(iso);
@@ -148,7 +156,7 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
     if (next !== null) {
       const params = new URLSearchParams(url.searchParams);
       params.set("page", String(next));
-      headers.link = `<http://${request.headers.host}${url.pathname}?${params.toString()}>; rel="next"`;
+      headers.link = `<http://${request.headers.host}${state.nextLinkPath ?? url.pathname}?${params.toString()}>; rel="next"`;
     }
     ok(request, response, slice, headers);
   };
@@ -198,6 +206,7 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
         assignees: (item.assignees ?? []).map(userJson),
         assignee: (item.assignees ?? []).length > 0 ? userJson(item.assignees![0]!) : null,
         author: userJson(item.author),
+        moved_to_id: item.movedToId ?? null,
         web_url: webUrl(request, path, "issues", item),
       },
       item.omit,
@@ -308,6 +317,12 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
       }
       if (segments[0] !== "projects" || segments[1] === undefined) return false;
       const path = decodeURIComponent(segments[1]);
+      const renamed = state.renames?.[path];
+      if (renamed !== undefined) {
+        const moved = `${url.pathname.slice(0, marker)}/api/v4/projects/${encodeURIComponent(renamed)}/${segments.slice(2).join("/")}${url.search}`;
+        json(response, { message: "301 Moved Permanently" }, 301, { location: `http://${host}${moved}` });
+        return true;
+      }
       const project = state.projects[path];
       if (project === undefined) return notFound();
       const kind = segments[2];

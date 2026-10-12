@@ -456,6 +456,47 @@ describe("the GitLab adapter: failures", () => {
   });
 });
 
+describe("the GitLab adapter: a project or issue that moved", () => {
+  const asked = (mounted: Mounted) => mounted.requests.map((request) => decodeURIComponent(request.url));
+
+  it("reads an issue moved to another project where GitLab keeps it: in this project, closed", async () => {
+    const { read } = await world({ [PATH]: { issues: [issue(1, { state: "closed", movedToId: 77, stateEvents: [{ id: 5, user: "olga", created_at: AFTER, state: "closed" }] })] } });
+    const outcome = await read({ items: [watch("#1")] });
+    expect(outcome.failures).toEqual([]);
+    expect(only(outcome.snapshots)).toMatchObject({ ref: "#1", open: false, transitions: [{ kind: "closed", actor: "olga" }] });
+  });
+
+  it("fails every read of a renamed or transferred project as outside the fleet, and follows the redirect nowhere", async () => {
+    const { read, mounted } = await world(
+      { "org/new-name": { issues: [issue(1, { labels: ["spec"], assignees: ["olga"] })], mergeRequests: [mr(2)] } },
+      { renames: { [PATH]: "org/new-name" } },
+    );
+    const outcome = await read({ items: [watch("#1"), watch("!2")], scanPartition: true });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.updated).toEqual([]);
+    expect(outcome.failures.length).toBeGreaterThan(2);
+    expect(outcome.failures.every((failure) => failure.reason === "moved outside the fleet" && failure.kind === "outside-fleet")).toBe(true);
+    expect(outcome.failures.map((failure) => failure.ref)).toEqual(expect.arrayContaining(["#1", "!2", null]));
+    expect(asked(mounted).filter((url) => url.includes("org/new-name"))).toEqual([]);
+  });
+
+  it("fails an item whose list's next link leaves the project, and reads no further page", async () => {
+    const notes = Array.from({ length: 150 }, (_, index) => note(index + 1, "text"));
+    const { read, mounted } = await world({ [PATH]: { issues: [issue(1, { notes })] } }, { nextLinkPath: "/api/v4/projects/org%2Fother/issues/1/notes" });
+    const outcome = await read({ items: [watch("#1")], watchedRefs: new Set(["#1"]) });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(asked(mounted).filter((url) => url.includes("org/other"))).toEqual([]);
+  });
+
+  it("asks for the token's expiry outside the project's prefix without failing", async () => {
+    const { read, http } = await world({ [PATH]: { issues: [issue(1)] } }, { token: { expires_at: "2026-12-01" } });
+    expect((await read({ items: [watch("#1")] })).failures).toEqual([]);
+    expect(http.expiresAt()).toBe("2026-12-01T00:00:00.000Z");
+  });
+});
+
 describe("the GitLab adapter: pages", () => {
   it("follows the pages of a list", async () => {
     const notes = Array.from({ length: 7 }, (_, i) => note(i + 1, `comment ${i}`));
@@ -537,7 +578,7 @@ describe("the GitLab adapter: requests", () => {
 describe("the fake GitLab, driven over HTTP", () => {
   it("is loaded and read back as JSON through /__admin/state, and the adapter reads what was loaded", async () => {
     const { mounted, read } = await world({ [PATH]: {} });
-    const loaded = { projects: { [PATH]: { issues: [issue(1, { labels: ["spec"] })], mergeRequests: [] } }, token: null, maxPerPage: 100, faults: [] };
+    const loaded = { projects: { [PATH]: { issues: [issue(1, { labels: ["spec"] })], mergeRequests: [] } }, token: null, maxPerPage: 100, faults: [], renames: {} };
     const posted = await fetch(`${mounted.url}/__admin/state`, { method: "POST", body: JSON.stringify(loaded) });
     expect(posted.status).toBe(200);
     const back = await fetch(`${mounted.url}/__admin/state`);

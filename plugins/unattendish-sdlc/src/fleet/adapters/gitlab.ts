@@ -33,6 +33,16 @@
 // - Token expiry: `GET /personal_access_tokens/self`, `expires_at` as
 //   `YYYY-MM-DD` or null (/api/personal_access_tokens/).
 //
+// Moved items (docs.gitlab.com, read 2026-10-12): moving an issue "closes and copies
+// it to the target project" and "the original issue is not deleted"
+// (/user/project/issues/managing_issues/), so the old iid is read where it is,
+// closed. A renamed or transferred project's old path "is redirected to the new
+// one" and "API redirects might need to be followed explicitly"
+// (/user/project/working_with_projects/, /user/project/repository/, "Repository
+// path changes"); the status code is not given. Every request of the project is
+// made with `stayUnder` `/projects/:id/` (the id as read, URL-encoded), so a
+// redirect or next link to any other path is a failure of kind `outside-fleet`.
+//
 // A 403 that is not a rate limit is the HTTP layer's `forbidden`: on the
 // pipelines of a merge request it leaves `checks` null and the rest of the item
 // is still read; anywhere else it fails that one item or listing. Only a 401 or
@@ -82,6 +92,7 @@ import {
   tokenSchema,
   userNote,
 } from "./gitlab-normalise";
+import { forgeFailure } from "./forge-failure";
 import { isFatal, ReadProblem } from "./service-support";
 
 const PAGE_SIZE = 100;
@@ -92,6 +103,8 @@ interface Context {
   readonly http: HttpSession;
   /** The project's `:id`, URL-encoded. */
   readonly project: string;
+  /** The prefix every project request, redirect and next link must stay under: a renamed or transferred project answers elsewhere. */
+  readonly stayUnder: string;
   readonly failures: ReadFailure[];
 }
 
@@ -111,12 +124,8 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
     return await run();
   } catch (error) {
     if (isFatal(error)) throw error;
-    if (error instanceof HttpError) {
-      context.failures.push(ref !== null && error.kind === "not-found" ? { ref, reason: error.message, kind: "not-found" } : { ref, reason: error.message });
-      return undefined;
-    }
-    if (error instanceof ReadProblem) {
-      context.failures.push({ ref, reason: error.message });
+    if (error instanceof HttpError || error instanceof ReadProblem) {
+      context.failures.push(forgeFailure(ref, error));
       return undefined;
     }
     throw error;
@@ -124,11 +133,11 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
 }
 
 const get = async (context: Context, path: string, query?: Record<string, string | number | undefined>): Promise<unknown> =>
-  (await context.http.request({ method: "GET", path, query }, { signal: context.request.signal })).json;
+  (await context.http.request({ method: "GET", path, query, stayUnder: context.stayUnder }, { signal: context.request.signal })).json;
 
 /** Every entry of a list, read in pages of 100; a list longer than 10 pages is a problem. */
 async function list(context: Context, path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown[]> {
-  const { items, truncated } = await context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE } }, { maxPages: MAX_PAGES, signal: context.request.signal });
+  const { items, truncated } = await context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: context.stayUnder }, { maxPages: MAX_PAGES, signal: context.request.signal });
   if (truncated) throw new ReadProblem(`${path.replace(/%2F/gi, "/")} has more than ${MAX_PAGES} pages`);
   return items;
 }
@@ -136,7 +145,7 @@ async function list(context: Context, path: string, query: Record<string, string
 /** Reports the token's expiry when GitLab gives one; a failure of this call is not a failure of the read. */
 async function noteExpiry(context: Context): Promise<void> {
   try {
-    const answer = parse(tokenSchema, await get(context, "/personal_access_tokens/self"), "the token");
+    const answer = parse(tokenSchema, (await context.http.request({ method: "GET", path: "/personal_access_tokens/self" }, { signal: context.request.signal })).json, "the token");
     const expires = answer.expires_at === null || answer.expires_at === undefined ? null : expiryIso(answer.expires_at);
     if (expires !== null) context.http.noteExpiresAt(expires);
   } catch (error) {
@@ -267,7 +276,7 @@ export function createGitlabAdapter(): ServiceAdapter {
       if (request.source.service !== "gitlab") {
         return { snapshots: [], events: [], updated: [], failures: [{ ref: null, reason: "the source is not a GitLab project" }] };
       }
-      const context: Context = { request, http: request.http, project: encodeURIComponent(request.source.path), failures: [] };
+      const context: Context = { request, http: request.http, project: encodeURIComponent(request.source.path), stayUnder: `/projects/${encodeURIComponent(request.source.path)}/`, failures: [] };
       const roles = new Map(request.items.map((item) => [item.ref, item.role]));
       const roleOf = (ref: string): SourceRole => roles.get(ref) ?? request.source.role;
 
