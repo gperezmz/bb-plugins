@@ -30,9 +30,14 @@
 //    page of a history is read and filtered by time here, and a listing is
 //    filtered by `updatedAt: {gte: since}`, not cut at a cursor.
 //  - The maximum page size: pages are 50, the documented default.
-//  - The error code of a refused key: matched by its stem (see
-//    `rethrowFatal`); an HTTP 401 is the layer's `auth` already, and a 403 that
-//    is no rate limit is its `forbidden`, which fails the one read.
+//  - The status and error of a refused key: the SDK (packages/sdk/src/error.ts,
+//    types.ts) knows `extensions.type` values `authentication error` and
+//    `forbidden`, and the docs give no status or `code` for either, so an
+//    authentication error is matched wherever it comes (see `rethrowFatal`).
+//    An HTTP 401 is the layer's `auth`, and a 403 that is no rate limit, or a
+//    `forbidden` type, fails the one read as `forbidden`. A status other than
+//    these (the documented 400 of a rate limit, say) reaches the adapter
+//    without its body, so it fails the one read with no kind.
 //  - What `issue(id:)` answers for an identifier the issue had before a move to another team: Linear's help center
 //    (linear.app/docs/move-to-new-team, excerpt only; the page itself answered 404) says a moved issue gets a new
 //    identifier and a search for the old one returns the current issue, and its API pages say nothing. The answer's

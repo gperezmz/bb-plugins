@@ -467,6 +467,37 @@ describe("a read that fails", () => {
     expect((failure as HttpError).message).not.toContain(TOKEN);
   });
 
+  const answering = (json: unknown): HttpSession => ({
+    service: "linear",
+    baseUrl: "http://127.0.0.1:1/graphql",
+    request: async (): Promise<HttpResponse> => ({ status: 200, json, notModified: false, header: () => null }),
+    paginate: async () => ({ items: [], truncated: false }),
+    drainRequests: () => [],
+    expiresAt: () => null,
+    noteExpiresAt: () => undefined,
+  });
+
+  it.each([
+    ["the SDK's type, spelled with a space", { type: "authentication error" }],
+    ["the type spelled with an underscore", { type: "authentication_error" }],
+    ["the code AUTHENTICATION_ERROR", { code: "AUTHENTICATION_ERROR" }],
+    ["the code UNAUTHENTICATED", { code: "UNAUTHENTICATED" }],
+    ["the type and a user error flag", { type: "AuthenticationError", userError: true }],
+  ])("rethrows a refused key answered with %s, whatever the message says", async (_, extensions) => {
+    const { read } = await setup({ issues: [] });
+    const refused = await read(["ENG-1"], { http: answering({ errors: [{ message: "anything at all", extensions }] }) }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(HttpError);
+    expect(refused).toMatchObject({ kind: "auth" });
+    expect((refused as HttpError).message).not.toContain("anything at all");
+  });
+
+  it.each([{ type: "forbidden" }, { type: "Forbidden", userError: true }])("fails the item with the kind forbidden for a key that may not read it (%o)", async (extensions) => {
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: answering({ errors: [{ message: "No access", extensions }], data: null }) });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.not.stringContaining("No access"), kind: "forbidden" });
+  });
+
   it("fails the item, not the read, where the HTTP layer reports it forbidden (403)", async () => {
     const forbidden: HttpSession = {
       service: "linear",
