@@ -12,8 +12,10 @@
 // - Order of the updated listing: `order_by` takes `updated_at` and `sort` takes `asc` or `desc` on both lists, and
 //   `updated_after` is "updated on or after" a time (/api/issues/, /api/merge_requests/). The listing runs
 //   `updated_at` ascending, so one cut off at its page limit reports the last `updated_at` it read as where the
-//   cursor may move. The docs do not say that offset pagination keeps a stable order under `updated_at`; a
-//   listing that changes between pages can repeat an item, which the cursor tolerates.
+//   cursor may move. The docs do not say that offset pagination keeps a stable order under `updated_at`; under
+//   `asc`, an item updated while the pages are read moves to the end of the list and every later entry shifts one
+//   place earlier, so the entry at a page boundary can be skipped (never repeated, as under `desc`). The listing
+//   feeds only the ledger's out-of-scope rows, so a missed row is the cost; watched items are read one by one.
 // - Pagination (`Link` rel="next", `X-Next-Page`, `per_page` at most 100):
 //   /api/rest/.
 // - Comments: the notes list gives an issue's comments, with `system` true for

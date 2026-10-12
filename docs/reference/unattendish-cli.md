@@ -158,7 +158,7 @@ Catch-up: the plugin was away for 8h 12m.
     - `the service did not answer reads with the credential for {prefix}` (no answer, a 5xx, or a poll cut off at its deadline)
     - `the credential for {prefix} could not find what the fleet needs (404)` (the listing answers 404 and the rest fails too)
     - `everything the fleet reads with the credential for {prefix} has moved outside its repository, project or team`
-    - `the service keeps failing to list what changed with the credential for {prefix}` (the items read, and the listing fails with a 400, a 422 or an answer the plugin cannot read)
+    - `the service keeps failing to list what changed with the credential for {prefix}` (the items read, and the listing fails by itself: an error on the listing alone, the partition listing past the page limit, or a cut-off that cannot move the cursor)
 
     A 401 sends it at once; the others after 3 polls in a row in which every read failed, or in which the listing failed, and `{time}` is that of the first of the 3. All six are `credential-refused` in the status, which shows the same cause, capitalised, as `not watched: credential-refused: {text}`. An outage is kept per source, the forge and a tracker of its own, and a wake names one source's: two sources refused at once take two wakes, the forge's first. A rate-limited poll in the middle of an outage neither ends it nor sends the wake again.
 
