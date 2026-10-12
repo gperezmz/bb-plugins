@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The shelf icons: bb's by name, and the four bb lacks registered with it.
+// The shelf icons by name, and the icons bb lacks, registered with it.
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";

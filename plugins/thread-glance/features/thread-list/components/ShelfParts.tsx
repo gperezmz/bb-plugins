@@ -43,7 +43,7 @@ function ActiveSortSelect() {
   );
 }
 
-/** Settled's Clean button, which opens the dialog that closes the terminals and ports of settled threads. Shown while the shelf is collapsed too. */
+/** Settled's Clean button, a broom, which opens the dialog that closes the terminals and ports of settled threads. Shown while the shelf is collapsed too. */
 function CleanButton() {
   const commands = useCommands();
   return (
@@ -53,9 +53,9 @@ function CleanButton() {
         data-no-drag=""
         aria-label={CLEAN_BUTTON_LABEL}
         onClick={() => commands.openClean()}
-        className="h-6 shrink-0 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
-        Clean
+        <Icon name="thread-glance-clean" aria-hidden className="size-3.5" />
       </button>
     </Tip>
   );
