@@ -2,25 +2,44 @@
 # The npm-install check's fixture for Unattendish (see
 # scripts/ci/npm-install-check.sh). The throwaway bb has no manager thread and
 # no forge, so this checks what the plugin registers and answers without
-# either: bb lists its two settings, with the tokens setting secret; `bb
-# unattendish` lists the fleet commands; `fleet status` and `fleet ledger`
-# answer with nothing registered; `fleet register` refuses a call from outside
-# a thread with no_thread (the call runs without the caller's BB_THREAD_ID); and `fleet interval` refuses an interval under 30
-# seconds and a repository no fleet holds. No command takes a token.
+# either: it declares no setting (accounts and their tokens live in the plugin's
+# own database, never in bb's settings); its RPC answers `settings` with no
+# account; its RPC method `connect` refuses an API address off the account's own
+# host, before any request is made, and stores nothing; `bb unattendish` lists
+# the fleet commands; `fleet status` and `fleet ledger` answer with nothing
+# registered; `fleet register` refuses a call from outside a thread with
+# no_thread (the call runs without the caller's BB_THREAD_ID); and `fleet
+# interval` refuses an interval under 30 seconds and a repository no fleet
+# holds. No command takes a token.
 set -euo pipefail
 
 schema=$(bb plugin config "$PLUGIN_ID" --json | jq -c '.schema // {}')
-for key in credentials tokens; do
-  if [[ $(jq --arg key "$key" 'has($key)' <<< "$schema") != true ]]; then
-    echo "::error::bb holds no $key setting for $PLUGIN_ID: $schema" >&2
-    exit 1
-  fi
-done
-if [[ $(jq '.tokens.secret // false' <<< "$schema") != true ]]; then
-  echo "::error::the tokens setting of $PLUGIN_ID is not secret: $schema" >&2
+if [[ $schema != '{}' ]]; then
+  echo "::error::$PLUGIN_ID declares settings, but keeps accounts in its own database: $schema" >&2
   exit 1
 fi
-echo "The plugin holds the credentials and tokens settings, tokens secret"
+echo "The plugin declares no setting"
+
+# `bb plugin rpc call` prints the method's result.
+rpc() { bb plugin rpc call "$PLUGIN_ID" "$1" ${2:+--input-file "$2"} --json; }
+if [[ $(rpc settings | jq -c '.accounts') != '[]' ]]; then
+  echo "::error::the plugin's settings RPC lists an account on a fresh install: $(rpc settings)" >&2
+  exit 1
+fi
+echo "The plugin's RPC answers settings with no account"
+
+input="$FIXTURE_DIR/connect.json"
+jq -nc '{account: {service: "github", place: "github.com", apiUrl: "https://api.elsewhere.example"}, secret: {kind: "token", token: "ghp_fixture_token"}}' > "$input"
+out=$(rpc connect "$input")
+if [[ $(jq -r .outcome <<< "$out") != invalid ]] || grep -qF ghp_fixture_token <<< "$out"; then
+  echo "::error::connect did not refuse an API address off the account's own host, without the token: $out" >&2
+  exit 1
+fi
+if [[ $(rpc settings | jq -c '.accounts') != '[]' ]]; then
+  echo "::error::a refused connect stored an account" >&2
+  exit 1
+fi
+echo "connect refuses an API address off the account's host, and stores nothing"
 
 help=$(bb unattendish --help)
 for command in 'fleet register' 'fleet unregister' 'fleet status' 'fleet ledger' 'fleet interval'; do
