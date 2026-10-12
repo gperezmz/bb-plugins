@@ -308,6 +308,42 @@ describe("a queued wake keeps what it says (AC7, AC12)", () => {
     expect(text).toContain("Not watched since");
     expect(w.store.openWake(REPO_KEY)).toMatchObject({ kind: "changes" });
   });
+
+  it("keeps its catch-up, held and not-watched lines when a later poll's changes are added to it", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await linearStart(w);
+    await poll(w);
+    w.threads.states.set(MANAGER, "archived");
+    w.clock.advance(120_000);
+    w.adapters.linear.queue(trackerChange("l1", "alice"));
+    expect(await poll(w)).toMatchObject({ held: 1 });
+    w.clock.advance(20 * 60_000);
+    w.threads.states.set("thr_next", "live");
+    await registerFleet(w.register, "thr_next", args({ tracker: "linear:ENG" }));
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l1", "alice"));
+    expect(await poll(w)).toMatchObject({ delivery: "queued" });
+    const closing = w.channel.queue.get("q1")!.text.split("\n").slice(2);
+    expect(closing).toEqual([
+      "Gathered while no manager held the fleet, since 2026-10-12T10:02:00.000Z.",
+      "Catch-up: the plugin was away for 20m.",
+      "Not watched since 2026-10-12T10:22:00.000Z: the credential for github.com/org was refused by the service.",
+    ]);
+
+    w.clock.advance(120_000);
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l2", "bob"));
+    expect(await poll(w)).toMatchObject({ delivery: "amended" });
+    const text = w.channel.queue.get("q1")!.text.split("\n");
+    expect(text[2]).toMatch(/^ENG-1 commented by bob /);
+    expect(text.slice(3)).toEqual(closing);
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({
+      catchUpMs: 20 * 60_000,
+      heldSince: "2026-10-12T10:02:00.000Z",
+      notWatched: { since: "2026-10-12T10:22:00.000Z", prefix: "github.com/org", why: "refused" },
+    });
+  });
 });
 
 describe("an amendment that cannot be made (AC7, AC8)", () => {
