@@ -192,6 +192,36 @@ describe("checks", () => {
   });
 });
 
+describe("reviewers' states kept on the item", () => {
+  const reviewed = (reviewers: ItemSnapshot["reviewers"]) => snapshot({ ref: "!4", url: "https://gitlab.com/org/repo/-/merge_requests/4", reviewers });
+
+  it("reports a reviewer whose state is new or changed on a watched item, keyed by item, state, reviewer and since", () => {
+    const prev = cursor({ "forge:!4": state({ reviewers: { carol: "commented", dave: "approved" } }) });
+    const read = outcome({ snapshots: [reviewed([{ actor: "carol", state: "changes requested" }, { actor: "dave", state: "approved" }, { actor: "erin", state: "commented" }])] });
+    const { changes, nextCursor } = derive({ prev, outcome: read, watchedRefs: new Set(["!4"]) });
+    expect(changes.map((change) => [change.kind, change.actor, change.key])).toEqual([
+      ["reviewed: changes requested", "carol", "forge:!4|reviewed: changes requested|carol|since:2026-10-12T09:00:00.000Z"],
+      ["reviewed: commented", "erin", "forge:!4|reviewed: commented|erin|since:2026-10-12T09:00:00.000Z"],
+    ]);
+    expect(changes[0]).toMatchObject({ ref: "!4", url: "https://gitlab.com/org/repo/-/merge_requests/4", label: null, at: startedAt, lastLine: null });
+    expect(nextCursor.items["forge:!4"]!.reviewers).toEqual({ carol: "changes requested", dave: "approved", erin: "commented" });
+  });
+
+  it("takes first sight of the item, or of reviewers under a cursor that kept none, as a silent baseline", () => {
+    const read = outcome({ snapshots: [reviewed([{ actor: "carol", state: "approved" }])] });
+    const first = derive({ outcome: read, watchedRefs: new Set(["!4"]) });
+    expect(first.changes).toEqual([]);
+    expect(first.nextCursor.items["forge:!4"]!.reviewers).toEqual({ carol: "approved" });
+    expect(derive({ prev: cursor({ "forge:!4": state() }), outcome: read, watchedRefs: new Set(["!4"]) }).changes).toEqual([]);
+  });
+
+  it("reports nothing for an unwatched item, and keeps no reviewers for a service that gives none", () => {
+    const prev = cursor({ "forge:!4": state({ reviewers: {} }) });
+    expect(derive({ prev, outcome: outcome({ snapshots: [reviewed([{ actor: "carol", state: "approved" }])] }) }).changes).toEqual([]);
+    expect("reviewers" in derive({ outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.items["forge:#1"]!).toBe(false);
+  });
+});
+
 describe("failures", () => {
   it("leaves a failed item as it was, gives no change for it, and holds since", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#2": state() });

@@ -212,6 +212,15 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
     }
   }
 
+  // A reviewer's state read for the first time, on an item or under a cursor that kept none, is a silent baseline.
+  if (watched && before?.reviewers !== undefined) {
+    for (const { actor, state } of snapshot.reviewers ?? []) {
+      if (before.reviewers[actor] === state) continue;
+      const kind: ChangeKind = `reviewed: ${state}`;
+      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${actor}|since:${context.base}`, actor });
+    }
+  }
+
   const checks = snapshot.checks;
   if (watched && before !== undefined && checks !== null && checks.outcome !== "pending") {
     const known = before.checks !== null && before.checks.sha === checks.sha ? before.checks : null;
@@ -225,7 +234,8 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
 };
 
 /**
- * The item's state to keep. Final checks are kept as reported: they were
+ * The item's state to keep, with the reviewers' states where the service
+ * keeps them on the item. Final checks are kept as reported: they were
  * reported just now, before, or are a baseline nobody is told of. A pending
  * seen after a reported final on the same commit is a re-run: it opens the
  * next round, so the re-run's final outcome is reported under its own key.
@@ -240,7 +250,8 @@ const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemS
     const round = (known?.round ?? 0) + (known?.reported === true && !isFinal(checks.outcome) ? 1 : 0);
     kept = { sha: checks.sha, outcome: checks.outcome, reported: isFinal(checks.outcome), ...(round === 0 ? {} : { round }) };
   }
-  return { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+  const state: ItemState = { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+  return snapshot.reviewers === undefined ? state : { ...state, reviewers: Object.fromEntries(snapshot.reviewers.map(({ actor, state: review }) => [actor, review])) };
 };
 
 /**
