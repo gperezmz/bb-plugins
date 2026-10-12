@@ -110,6 +110,49 @@ describe("HttpClient", () => {
     });
   });
 
+  describe("a host that only looks like the credential's", () => {
+    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://api.github.com", host: "api.github.com" };
+    const fetching = (answer: (url: string) => Response) => {
+      const fetched: string[] = [];
+      return { fetched, fetch: (async (url: URL | string) => (fetched.push(String(url)), answer(String(url)))) as typeof fetch };
+    };
+    const lookalikes = ["https://evil-api.github.com/x", "https://api.github.com.evil.test/x", "https://xapi.github.com/x", "https://api.github.com@evil.test/x", "https://api.github.com:8443/x"];
+
+    it.each(lookalikes)("refuses %s as an absolute path before any request leaves", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response("{}"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: target })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual([]);
+    });
+
+    it.each(lookalikes)("does not follow a redirect to %s, and does not resend the token there", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response(null, { status: 302, headers: { location: target } }));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual(["https://api.github.com/x"]);
+    });
+
+    it.each(lookalikes)("refuses a next link to %s", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response("[1]", { headers: { link: `<${target}?page=2>; rel="next"` } }));
+      await expect(client({ fetch }).session(github, TOKEN).paginate({ path: "/x" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual(["https://api.github.com/x"]);
+    });
+
+    it("follows an absolute link on the credential's own host and port", async () => {
+      const { fetched, fetch } = fetching((url) => new Response(url.endsWith("/x") ? "[1]" : "[2]", { headers: url.endsWith("/x") ? { link: '<https://api.github.com/x?page=2>; rel="next"' } : {} }));
+      expect(await client({ fetch }).session(github, TOKEN).paginate({ path: "/x" }, { maxPages: 5 })).toEqual({ items: [1, 2], truncated: false });
+      expect(fetched).toEqual(["https://api.github.com/x", "https://api.github.com/x?page=2"]);
+    });
+
+    it("keeps a credential's own port: a link to the host without it, or to another port, is refused", async () => {
+      const enterprise: ResolvedCredential = { ...github, baseUrl: "https://ghe.example.com:8443/api/v3", host: "ghe.example.com" };
+      const { fetched, fetch } = fetching(() => new Response("{}"));
+      const session = client({ fetch }).session(enterprise, TOKEN);
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com/api/v3/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com:9443/api/v3/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com:8443/api/v3/x" })).resolves.toMatchObject({ status: 200 });
+      expect(fetched).toEqual(["https://ghe.example.com:8443/api/v3/x"]);
+    });
+  });
+
   it("follows a redirect on the same host", async () => {
     const { seen, credential } = await serve((request, response) => {
       if (request.url === "/api/old") {

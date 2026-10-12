@@ -148,9 +148,9 @@ class Session implements HttpSession {
     return url;
   }
 
-  /** Refuses a URL off the credential's host, or plain http anywhere but loopback; the token goes to no other. */
+  /** Refuses a URL off the credential's host and port, or plain http anywhere but loopback; the token goes to no other. */
   private checkTarget(method: string, url: URL): void {
-    if (url.hostname !== this.credential.host) throw new HttpError("outside-host", `${method} ${url.pathname} is not on the credential's host`);
+    if (url.hostname !== this.credential.host || url.port !== new URL(this.baseUrl).port) throw new HttpError("outside-host", `${method} ${url.pathname} is not on the credential's host`);
     if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) throw new HttpError("outside-host", `${method} ${url.pathname} is not https`);
   }
 
