@@ -22,9 +22,14 @@
 //   `user.username`, `created_at`, `id`) and resource state events (`state`,
 //   `user`, `created_at`, `id`): /api/resource_label_events/ and
 //   /api/resource_state_events/. Neither page states an order or a time filter.
-// - Checks: `GET .../merge_requests/:iid/pipelines` (`id`, `sha`, `status`)
-//   and the merge request's `head_pipeline`, with the status values listed
-//   under "List project pipelines" in /api/pipelines/.
+// - Checks: the merge request's `head_pipeline` ("Pipeline that runs on the HEAD
+//   commit of the merge request's source branch"; `id`, `sha`, `status`), alone:
+//   an older or since-rerun pipeline is not part of the set. Its `sha` is not
+//   compared with the merge request's, as the docs do not say a merged-results
+//   pipeline has the head commit's. Where the answer has none (it is exposed only
+//   to a user who can view pipelines), the newest pipeline, by `id`, of
+//   `GET .../merge_requests/:iid/pipelines` on the head commit stands in; that
+//   page gives no order. Status values: "List project pipelines" in /api/pipelines/.
 // - Token expiry: `GET /personal_access_tokens/self`, `expires_at` as
 //   `YYYY-MM-DD` or null (/api/personal_access_tokens/).
 //
@@ -133,6 +138,12 @@ async function noteExpiry(context: Context): Promise<void> {
   }
 }
 
+/** The newest pipeline of the merge request on its head commit, for an answer that carries no `head_pipeline`; undefined where there is none. */
+async function latestPipelineOf(context: Context, base: string, ref: string, sha: string): Promise<{ readonly id: number; readonly status: string } | undefined> {
+  const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${ref}`).filter((pipeline) => pipeline.sha === sha);
+  return listed.reduce<(typeof listed)[number] | undefined>((newest, pipeline) => (newest === undefined || pipeline.id > newest.id ? pipeline : newest), undefined);
+}
+
 async function readItem(context: Context, item: WatchedItem, withEvents: boolean): Promise<{ snapshot: ItemSnapshot; events: ActivityEvent[] }> {
   const { request } = context;
   const target = parseRef(item.ref);
@@ -153,10 +164,9 @@ async function readItem(context: Context, item: WatchedItem, withEvents: boolean
       if (merged !== null) transitions.push(merged);
     }
     try {
-      const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${item.ref}`);
-      const pipelines = new Map(listed.filter((p) => p.sha === found.sha).map((p) => [p.id, p.status]));
-      if (found.head_pipeline !== null && found.head_pipeline !== undefined && found.head_pipeline.sha === found.sha) pipelines.set(found.head_pipeline.id, found.head_pipeline.status);
-      const outcome = checksOutcome([...pipelines.values()]);
+      // The head pipeline is the merge request's own: a pipeline of an older commit, or a failed one a rerun has since passed, says nothing of it now.
+      const head = found.head_pipeline ?? (await latestPipelineOf(context, base, item.ref, found.sha));
+      const outcome = head === undefined ? null : checksOutcome([head.status]);
       if (outcome !== null) checks = { sha: found.sha, outcome };
     } catch (error) {
       // A project with CI off, or a token that may not read pipelines, leaves the merge request without checks and still read.

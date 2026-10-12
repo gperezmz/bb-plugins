@@ -257,12 +257,12 @@ describe("the GitLab adapter: checks", () => {
     return outcome.snapshots[0]?.checks ?? (outcome.failures.length > 0 ? outcome.failures : null);
   };
 
-  it("is pending while any pipeline is pending or running, whatever else has finished", async () => {
+  it("is pending while the head pipeline is pending or running, whatever an earlier one did", async () => {
     expect(await statuses([{ id: 1, sha: "head", status: "failed" }, { id: 2, sha: "head", status: "running" }])).toEqual({ sha: "head", outcome: "pending" });
     expect(await statuses([{ id: 1, sha: "head", status: "scheduled" }])).toEqual({ sha: "head", outcome: "pending" });
   });
 
-  it("is failed when any finished failed or was canceled, passed when all passed, skipped or manual", async () => {
+  it("is failed when the head pipeline failed or was canceled, passed when it passed, was skipped or is manual", async () => {
     expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "canceled" }])).toEqual({ sha: "head", outcome: "failed" });
     expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "skipped" }, { id: 3, sha: "head", status: "manual" }])).toEqual({ sha: "head", outcome: "passed" });
   });
@@ -270,6 +270,23 @@ describe("the GitLab adapter: checks", () => {
   it("is null for a merge request with no pipeline at its head, and ignores pipelines of older commits", async () => {
     expect(await statuses([])).toBeNull();
     expect(await statuses([{ id: 1, sha: "older", status: "failed" }])).toBeNull();
+  });
+
+  it("takes the head pipeline alone: a rerun that passed after a failure passes, and a rerun that failed after a pass fails", async () => {
+    expect(await statuses([{ id: 1, sha: "head", status: "failed" }, { id: 2, sha: "head", status: "success" }])).toEqual({ sha: "head", outcome: "passed" });
+    expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "failed" }])).toEqual({ sha: "head", outcome: "failed" });
+  });
+
+  it("reads a head pipeline that ran on another commit, as a merged-results pipeline does, and reports the head commit", async () => {
+    const headPipeline = { id: 9, sha: "merge-result", status: "running" };
+    const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", pipelines: [{ id: 3, sha: "head", status: "success" }, headPipeline], headPipeline })] } });
+    expect(only((await read({ items: [watch("!1")] })).snapshots).checks).toEqual({ sha: "head", outcome: "pending" });
+  });
+
+  it("falls back to the newest pipeline of the head commit where the answer has no head pipeline", async () => {
+    const pipelines = [{ id: 1, sha: "head", status: "failed" }, { id: 4, sha: "head", status: "success" }, { id: 7, sha: "older", status: "failed" }];
+    const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", pipelines, headPipeline: null })] } });
+    expect(only((await read({ items: [watch("!1")] })).snapshots).checks).toEqual({ sha: "head", outcome: "passed" });
   });
 
   it("is a failure for a status GitLab does not document", async () => {
