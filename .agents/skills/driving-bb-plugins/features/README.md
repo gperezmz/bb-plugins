@@ -75,9 +75,11 @@ handles, required state, commands, and observable evidence.
 - [UI Tweaks](./ui-tweaks.md): text size and transcript width, from the
   settings section and from RPC, applied live to the New-thread screen.
 - [Thread Glance](./thread-glance.md): the sidebar list's project scope,
-  shelves and cards, child-thread chips, hover card, Snooze, Park and Settle,
+  shelves, scenes and cards, child-thread chips, hover card, Snooze, Park and
+  Settle with Undo, the Woke marker, rename and the menu's dialogs,
   reordering, workspace ports (indicator, Stop, port link machine, the settle
-  prompt) and Clean, and the settings page, each a verb.
+  prompt) and Clean, the thread header's buttons, jump hints, and the settings
+  page with project appearance, each a verb.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab, the
   Thread usage page and the `thread-usage` CLI over a parent and child
   thread.
