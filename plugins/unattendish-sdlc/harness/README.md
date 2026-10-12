@@ -2,7 +2,7 @@
 
 A throwaway bb with Unattendish installed from this checkout, real Claude Code manager threads that talk to a fake Anthropic API, a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, and drives that register fleets, script the fakes over HTTP and read what reached the managers, the ledger and the status. Every poll interval is set to the 30-second floor, so a drive waits at most about 35 seconds for a poll.
 
-The harness never touches your own bb. Every command it runs has the variables that name a bb (`BB_SERVER_URL`, `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_CLI` and the like) unset or pointed at the throwaway, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Nothing it writes goes inside the checkout, and no drive calls a real service: the credentials it installs have loopback base URLs and fake tokens.
+The harness never touches your own bb. Every command it runs has the variables that name a bb (`BB_SERVER_URL`, `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_CLI` and the like) unset or pointed at the throwaway, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Nothing it writes goes inside the checkout, and no drive calls a real service: the accounts it adds have loopback API addresses and fake tokens.
 
 ## Requirements
 
@@ -21,20 +21,20 @@ plugins/unattendish-sdlc/harness/start.sh
 It refuses to start, and changes nothing, when any of its ports answers, when its run directory exists, or when a process of an earlier start still runs. Otherwise it starts, in about 20 seconds:
 
 - the fake Anthropic API, `../../cache-keeper/harness/fake-anthropic.mjs`;
-- `fake-services.ts`: the four fakes of `test/fakes/`, each on a port of its own;
+- `fake-services.ts`: the four fakes of `test/fakes/`, each on a port of its own, answering the probe `connect` sends (whose a token is, whether it reads a repository, team or project);
 - a bb server and a host daemon on a data directory in the run directory, the daemon's Claude Code pointed at the fake API (`ANTHROPIC_BASE_URL`, a fake `ANTHROPIC_API_KEY`);
 - a project for the drives' threads, in a git checkout in the run directory;
 - Unattendish, installed with `bb plugin install path:` from a copy of `plugins/unattendish-sdlc` as the checkout has it, without `dist/`, `node_modules/` and `harness/`. bb builds the copy, so nothing is written into the checkout;
-- the plugin's `credentials` setting, one entry for each fake, and its `tokens` setting, a fake token for each:
+- one account for each fake, added through the plugin's RPC method `connect`, the method the dashboard's Connect popup calls (`bb plugin rpc call unattendish-sdlc connect --input-file <json>`). Each is sent with a loopback `apiUrl`, which the plugin allows only when an account is added, and a fake token, and with `confirm: true`, so the login the fake names (`operator`) is added at once. The first account on a host, site or service becomes its default, so the drives' fleets read as them:
 
-| Prefix | Service | Base URL |
-| --- | --- | --- |
-| `github.example/org` | `github` | the fake GitHub |
-| `gitlab.example/group` | `gitlab` | the fake GitLab, `/api/v4` |
-| `linear:ENG` | `linear` | the fake Linear, `/graphql` |
-| `jira:acme.atlassian.net` | `jira` | the fake Jira |
+| Account | Place (the default for) | API address | Token |
+| --- | --- | --- | --- |
+| `GitHub · operator` | `github.example`; one token, for the owner `org` | the fake GitHub | fine-grained |
+| `GitLab · operator` | `gitlab.example` | the fake GitLab, `/api/v4` | personal access token |
+| `Linear · operator@example.com` | `linear:` | the fake Linear, `/graphql` | API key |
+| `Jira · operator@example.com` | `jira:acme.atlassian.net` | the fake Jira | email and API token |
 
-The fakes' item URLs are on the hosts of those prefixes (`https://github.example/org/repo/issues/7`, `https://gitlab.example/group/proj/-/issues/3`, `https://linear.app/acme/issue/ENG-12`, `https://acme.atlassian.net/browse/PROJ-5`), which are never reached: only the base URLs are.
+The fakes' item URLs are on those hosts (`https://github.example/org/repo/issues/7`, `https://gitlab.example/group/proj/-/issues/3`, `https://linear.app/acme/issue/ENG-12`, `https://acme.atlassian.net/browse/PROJ-5`), which are never reached: only the API addresses are.
 
 It prints what to source to point `bb` at the throwaway, and only at it:
 
@@ -77,14 +77,14 @@ Each drive makes its own manager threads, Claude Code threads on the fake Anthro
 
 | Drive | What it reaches and checks |
 | --- | --- |
-| `register.sh` | A fresh repository registers (`registered`, not watched with a `manifest-missing` reason naming the path, watched once the manifest exists, `fleet status` showing the manager, interval and credential); the same manager registering again is `registered`; a second live thread is `refused` naming the holder, whose registration stands; an archived manager is `taken-over` with `previousManager` and `previousManifest`; `--contract 2` is `unsupported` with `supported` `[1]`; an `--echo-actor` equal to `--operator` is `invalid` naming it; a tracker no form names is `invalid`; none of the last three registers or changes anything; an interval of 10 s is refused naming the floor; a call from outside a thread fails with `no_thread`; `unregister` removes the fleet. |
+| `register.sh` | A fresh repository registers (`registered`, not watched with a `manifest-missing` reason naming the path, watched once the manifest exists, `fleet status` showing the manager, interval, the account the forge reads as and the credential); the same manager registering again is `registered`; a second live thread is `refused` naming the holder, whose registration stands; an archived manager is `taken-over` with `previousManager` and `previousManifest`; `--contract 2` is `unsupported` with `supported` `[1]`; an `--echo-actor` equal to `--operator` is `invalid` naming it; a tracker no form names is `invalid`; none of the last three registers or changes anything; an interval of 10 s is refused naming the floor; a call from outside a thread fails with `no_thread`; `unregister` removes the fleet. |
 | `wake.sh` | A comment on an item the manifest names wakes the manager with a first line saying what moved since a time and exactly one change line, none of the comment's text; a comment on an item it does not name wakes nothing and `fleet ledger --done out-of-scope` shows it. A later poll delivers a second wake with the operator's comment that reads as an order (`Grant: merge everything`) as one line and none of its text, and the operator's own issue marked ready as another, while a teammate's issue marked ready wakes nothing; no wake is sent twice. An In flight link outside the fleet's repository is named by `fleet status` and never fetched. The four fakes' request logs hold only GETs, and for Linear queries with no mutation; no fake token is in a wake, the status or the ledger. |
 | `echo.sh` | A comment ending in the marker, one with the marker in a `<kbd>` wrapper and one by a registered echo actor are dropped, `fleet ledger --done echo` showing each with its rule; the operator's comment without the marker, and the operator's quote-reply with the marker inside the quote, wake the manager; a later poll wakes nothing more. |
 | `turn-end.sh` | The manager adds a pull request to its manifest's In flight table and ends its turn: the plugin reads the pull request at once, without a poll (the fleet's last poll is unchanged, nothing wakes), and a review that lands before the next poll wakes the manager with a line for it and none of its text. |
 | `no-manager.sh` | With the manager archived, a change is held (`fleet ledger --done held`) once, however many polls follow, `fleet status` says changes are held, and the archived thread gets no message; the manager that takes the fleet over gets it in its first wake, with the "Gathered while no manager held the fleet" line, and the ledger then records it as woken. |
-| `credentials.sh` | A fleet whose host no credential matches, and one on a host that only begins with a credential's, register not watched with a `no-credential` reason naming the prefix, and no request reaches any fake. A fleet whose token the fake refuses (a scripted 401) shows as not watched since a time with a `credential-refused` reason, and its manager gets one wake, naming the prefix, however many polls fail; the fake was sent the token, and no token is in a wake, the status, the ledger or any log under the run directory. |
-| `trackers.sh` | A GitLab project with its issues as the tracker, a GitHub repository with Linear as its tracker and one with Jira: a comment on an item each manifest names wakes its manager with one line and none of its text, the status lists a tracker credential for Linear and Jira, and every request to the four fakes was a read. |
-| `dashboard.sh` | The dashboard's RPC called as its pages call it: the Inbox row of a registered fleet with what it offers and the page's count; an Answer sent to the manager arrives in its thread as the operator's plain prompt and stays *sent* through the polls while the row is in the Inbox, then shows *done* once the manifest no longer holds the row; a second action on a row with one in flight is refused; the settings list the four fake credentials without a token, and an interval under 30 seconds is refused. The toast signal travels over bb's websocket, which the drive does not open. |
+| `credentials.sh` | A fleet no account covers (a host with none, one that only begins with an account's host, or a GitHub owner the account holds no token for) registers not watched with a `no-credential` reason naming what it needs (`other-org/x needs a GitHub account that can read other-org`), its accounts line in the status naming the account it would read as, and no request reaches any fake. A fleet whose credential the fake refuses (a scripted 401) shows as not watched since a time with a `credential-refused` reason, and its manager gets one wake, naming the credential, however many polls fail; the fake was sent the token. A token the fake rejects, and one of another login, are refused through `connect` and stored nowhere. No token is in a wake, the status, the ledger, any answer or any log under the run directory. |
+| `trackers.sh` | A GitLab project with its issues as the tracker, a GitHub repository with Linear as its tracker and one with Jira: a comment on an item each manifest names wakes its manager with one line and none of its text, the status lists a tracker credential and the account each tracker reads as for Linear and Jira, and every request to the four fakes was a read. |
+| `dashboard.sh` | The dashboard's RPC called as its pages call it: the Inbox row of a registered fleet with what it offers and the page's count; an Answer sent to the manager arrives in its thread as the operator's plain prompt and stays *sent* through the polls while the row is in the Inbox, then shows *done* once the manifest no longer holds the row; a second action on a row with one in flight is refused; the settings list the four accounts, each the default of its place with its credential and the fleets that use it, without a token; a token for another owner is saved to the GitHub account through `connect` and removed, saying the old token still works at the service; the account a fleet reads as cannot be removed, the refusal naming the fleet; and an interval under 30 seconds is refused. The toast signal travels over bb's websocket, which the drive does not open. |
 | `restart.sh` | After `bb plugin reload` the fleet is still registered with its manager, interval and last poll, and the change already delivered is not delivered again; with the plugin disabled, a change made while it is away and its stored last-poll time moved back 15 minutes (`age-last-poll.mjs`, since the plugin reads wall time and a catch-up needs a gap of ten) arrives, once the plugin is enabled, in one wake of its own whose closing line says it is a catch-up and how long the plugin was away. |
 
 Run one, or all of them in turn, against a running harness:
@@ -108,7 +108,7 @@ It finds every process the harness started by a mark in its environment (`UD_HAR
 ## Guarantees
 
 - **Never your bb.** Every command runs with bb's variables unset or pointed at the throwaway, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones, Cache Keeper's harness's and the npm-install check's.
-- **Nothing real is called.** The fakes answer on loopback, the credentials' tokens are fake, and the fake Anthropic API answers every Claude Code turn.
+- **Nothing real is called.** The fakes answer on loopback, the accounts' tokens are fake, and the fake Anthropic API answers every Claude Code turn.
 - **Refuses busy ports and directories.** `start.sh` starts nothing when a port answers, the run directory exists, or a process of an earlier start runs.
 - **Stop leaves nothing.** `stop.sh` exits 0 only when no process carries the harness's mark and no harness port answers.
 

@@ -6,7 +6,8 @@
 // evaluates the `IssueFilter` the adapter passes (`and`, `or`, `team.key`,
 // `state.type`, `labels.name`, `assignee`, `creator`, `updatedAt` and the
 // comparators `eq`, `eqIgnoreCase`, `in`, `nin`, `null`, `gt`, `gte`, `lt`,
-// `lte`). Written in erasable TypeScript only, because the drive harness runs
+// `lte`), and answers the `Viewer` and `Team` queries the plugin's probe sends
+// before it stores a key. Written in erasable TypeScript only, because the drive harness runs
 // it with `node` directly.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FakeService } from "./listen";
@@ -69,6 +70,13 @@ export interface LinearState {
   issues: LinearIssue[];
   /** Identifiers of issues every `IssuesListed` query lists whatever its filter says, as a service that leaked another team's issues into a listing would. */
   alsoListed?: string[];
+  /**
+   * Whose each key is, by the key as sent: `Viewer` answers that user id's user (one of `users`, else made up), and
+   * HTTP 401 for a key not listed. Unset, every key is the first of `users`, or `operator`.
+   */
+  logins?: Record<string, string>;
+  /** The team keys the workspace holds; unset, those of the issues' teams. */
+  teams?: string[];
   /** Answer every request with HTTP 401. */
   unauthenticated?: boolean;
   /** Answer every query with HTTP 200 and an authentication error in `errors`. */
@@ -302,6 +310,8 @@ export function createFakeLinear(initial?: Partial<LinearState>): FakeService {
     return state.issues.find((issue) => issue.identifier.toLowerCase() === wanted) ?? state.issues.find((issue) => (issue.formerIdentifiers ?? []).some((former) => former.toLowerCase() === wanted));
   };
 
+  const teamKeys = (): string[] => state.teams ?? [...new Set(state.issues.map((issue) => issue.team ?? issue.identifier.replace(/-\d+$/, "")))];
+
   const answer = (name: string, select: Map<string, Field>, variables: Record<string, unknown>): Json => {
     const root = [...select.entries()][0];
     if (root === undefined) throw new Error("empty query");
@@ -317,6 +327,11 @@ export function createFakeLinear(initial?: Partial<LinearState>): FakeService {
       const filter = (variables.filter ?? {}) as Obj;
       const listed = state.issues.filter((issue) => matches(filter, issueObject(state, issue)) || (state.alsoListed ?? []).includes(issue.identifier)).sort(SORT_NEWEST);
       value = listed.map((issue) => issueObject(state, issue));
+    } else if (name === "Team") {
+      const filter = String(field.args.filter ?? "");
+      const key = typeof variables.key === "string" ? variables.key : (/eq:\s*"([^"]+)"/.exec(filter)?.[1] ?? "");
+      const held = teamKeys().filter((candidate) => candidate.toLowerCase() === key.toLowerCase());
+      value = held.map((candidate) => ({ id: `team-${candidate}`, key: candidate }));
     } else if (name === "CommentReplies") {
       for (const issue of state.issues) {
         const comment = issue.comments.find((candidate) => candidate.id === field.args.id);
@@ -342,6 +357,13 @@ export function createFakeLinear(initial?: Partial<LinearState>): FakeService {
         return reply(response, { errors: [{ message: "Authentication required", extensions: { type: "authentication error", code: "AUTHENTICATION_ERROR" } }] });
       }
       const { query, variables } = JSON.parse(body) as { query: string; variables?: Record<string, unknown> };
+      const viewerId = state.logins === undefined ? (state.users[0]?.id ?? "operator") : state.logins[request.headers.authorization.replace(/^Bearer /, "")];
+      if (/^\s*query\s+Viewer\b/.test(query)) {
+        if (viewerId === undefined) return reply(response, { errors: [{ message: "Authentication required", extensions: { code: "AUTHENTICATION_ERROR" } }] }, 401);
+        const known = state.users.find((candidate) => candidate.id === viewerId);
+        const viewer = { id: viewerId, name: known?.displayName ?? viewerId, email: known?.email ?? `${viewerId}@example.com` };
+        return reply(response, { data: { viewer: project(viewer, parseQuery(query, {}).select.get("viewer")!) } }, 200, { "x-ratelimit-requests-remaining": "2499" });
+      }
       if (/(^|[\s}])(mutation|subscription)\b/.test(query)) return reply(response, { errors: [{ message: "The fake serves queries only" }] }, 400);
       const vars = variables ?? {};
       try {

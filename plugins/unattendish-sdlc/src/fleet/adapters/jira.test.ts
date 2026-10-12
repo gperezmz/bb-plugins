@@ -56,7 +56,7 @@ const world = async (state: Partial<FakeJiraState>) => {
   const fake = createFakeJira({ users: USERS, ...state });
   mounted = await listen(fake);
   const live = mounted;
-  const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: live.url, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: live.url, host: "127.0.0.1" };
   const session = new HttpClient({ sleep: async () => undefined }).session(credential, "me@example.com:token");
   const read = (over: Partial<ReadRequest> = {}): Promise<ReadOutcome> =>
     createJiraAdapter().read({
@@ -85,7 +85,7 @@ describe("the Jira adapter's snapshot of an issue", () => {
     const out = await read(watch("PROJ-1"));
     expect(out.failures).toEqual([]);
     expect(out.snapshots).toEqual([
-      { role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, open: true, merged: false, fleetLabels: ["Spec", "Needs-Input"], checks: null, inPartition: false, transitions: [] },
+      { role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, open: true, merged: false, fleetLabels: ["Spec", "Needs-Input"], inPartition: false, transitions: [] },
     ]);
   });
 
@@ -513,13 +513,6 @@ describe("the Jira adapter's fleet boundary", () => {
   });
 });
 
-describe("the Jira adapter's checks", () => {
-  it("reports no checks, as Jira has none", async () => {
-    const { read, watch } = await world({ issues: [issue("PROJ-1")] });
-    expect((await read(watch("PROJ-1"))).snapshots[0]!.checks).toBeNull();
-  });
-});
-
 describe("the Jira adapter's failures", () => {
   it("reports an issue answered without its status as a failure with no snapshot, naming no text from the service", async () => {
     const { read, watch } = await world({ issues: [issue("PROJ-1", { omit: ["status"], comments: [note("1", "x")] }), issue("PROJ-2")] });
@@ -650,7 +643,7 @@ describe("the Jira adapter's requests", () => {
     };
     const fake = createFakeJira({ users: USERS, issues: [issue("PROJ-1", { labels: ["spec"] })], settings: { pageSize: null, etag: true, alsoListed: [], failures: [] } });
     mounted = await listen(fake);
-    const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: mounted.url, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: mounted.url, host: "127.0.0.1" };
     const session = new HttpClient({ fetch: wrapped, sleep: async () => undefined }).session(credential, "me@example.com:token");
     const request = (): ReadRequest => ({
       source: { role: "tracker", service: "jira", site: SITE, project: "PROJ" },
@@ -681,7 +674,7 @@ describe("the fake Jira service, for the drive harness", () => {
     const back = (await (await fetch(`${mounted.url}/__admin/state`)).json()) as FakeJiraState;
     expect(back.issues).toEqual(state.issues);
     expect(back.statuses.map((status) => status.id)).toEqual([TODO, PROGRESS, DONE]);
-    const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: `${mounted.url}/jira-prefix`, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: `${mounted.url}/jira-prefix`, host: "127.0.0.1" };
     const session = new HttpClient({ sleep: async () => undefined }).session(credential, "me@example.com:token");
     const out = await createJiraAdapter().read({
       source: { role: "tracker", service: "jira", site: SITE, project: "PROJ" },

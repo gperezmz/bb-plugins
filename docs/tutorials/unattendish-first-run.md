@@ -1,11 +1,12 @@
 # Unattendish: first run
 
-In this tutorial you install Unattendish, give it a GitHub token, register a fleet from a thread the way a manager does, read its status, and watch the first wake arrive when a comment lands on an item the manager's manifest names. You need a bb server you can install plugins on, a GitHub repository with issues that you can comment on, and a bb thread whose agent can run `bb` commands. The thread plays the manager that run-fleet would normally be.
+In this tutorial you install Unattendish, register a fleet from a thread the way a manager does, connect it to your GitHub login with a read-only token, read its status, and watch the first wake arrive when a comment lands on an item the manager's manifest names. You need a bb server you can install plugins on, a GitHub repository with issues that you can comment on, and a bb thread whose agent can run `bb` commands. The thread plays the manager that run-fleet would normally be.
 
 ```mermaid
 flowchart LR
   gh["GitHub issue #1<br/>you comment"] -->|poll every 2 minutes| plugin["Unattendish"]
   manifest["fleet/manifest.md<br/>names #1"] -->|watched set| plugin
+  token["Account with a<br/>read-only token"] -->|reads as| plugin
   plugin -->|wake| thread["Your thread,<br/>the manager"]
   plugin --> ledger[("Ledger")]
 ```
@@ -21,25 +22,7 @@ bb unattendish fleet status
 
 The second command prints `No fleet is registered.` Unattendish polls nothing until a manager registers a fleet.
 
-## 2. Give it a GitHub token
-
-Create a [personal access token (classic)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) that can read the repository: the `repo` scope for a private repository. Unattendish only reads. Then, under Settings → Installed plugins → Unattendish:
-
-1. In **Credentials**, enter
-
-   ```json
-   [{"prefix": "github.com/acme/widgets", "auth": "token"}]
-   ```
-
-2. In **Tokens**, enter your token against the same prefix:
-
-   ```json
-   {"github.com/acme/widgets": "ghp_…"}
-   ```
-
-Save both. **Tokens** is a secret setting, and no `bb unattendish` command takes a token. [Set the credentials](../how-to/unattendish-set-credentials.md) covers a `gh` login, GitLab, Linear and Jira.
-
-## 3. Register a fleet from a thread
+## 2. Register a fleet from a thread
 
 In the thread, ask its agent to run this. A manager runs it from its own thread, and from your terminal, which names no thread, it exits with `no_thread`.
 
@@ -55,10 +38,20 @@ bb unattendish fleet register --contract 1 \
 The manifest does not exist yet, which is allowed, so the answer says:
 
 ```text
-Registered (not fully watched: The manifest at /home/you/widgets/fleet/manifest.md does not exist yet)
+Registered (not fully watched: The manifest at /home/you/widgets/fleet/manifest.md does not exist yet; acme/widgets needs a GitHub account that can read acme)
 ```
 
-Registered, but not yet watched on the manifest. The thread is now the manager of `github.com/acme/widgets`. [The contract](../reference/unattendish-fleet-contract.md) lists every outcome and option.
+Registered, but not yet watched: the manifest does not exist, and no account reads `acme/widgets`. The thread is now the manager of `github.com/acme/widgets`. [The contract](../reference/unattendish-fleet-contract.md) lists every outcome and option.
+
+## 3. Connect it to your GitHub login
+
+A toast in bb says `acme/widgets needs a GitHub account that can read acme`, with **Connect…**. If you missed it, open **Fleets** in bb's navigation: the same line is at the top of **Waits on you**, and the fleet's card says `forge acme/widgets · no account yet`. Press **Connect…**.
+
+1. The popup asks `Which account reads github.com/acme?`. You have no account yet, so the only choice is **a new login**. Choose it and press **Continue**.
+2. Press **Create token**. GitHub opens in your browser on a new fine-grained token, filled in for the owner `acme` with Issues, Pull requests and Metadata set to read, 90 days, and nothing else. Make sure the browser is signed in as your login, tick `acme/widgets` under repository access, create the token and copy it. Paste it into **Token** and press **Verify and save**.
+3. The popup says `This token belongs to olivia. Add as GitHub · olivia?`. Press **Add as GitHub · olivia**. It then says `Saved: GitHub · olivia, olivia, expires …` and `acme/widgets is read as GitHub · olivia.` Press **Done**.
+
+The plugin checked whose the token is and that it can read the repository before it stored anything, and read the fleet at once. `GitHub · olivia` is now the default account for github.com. No `bb unattendish` command takes a token. [Connect a fleet to an account](../how-to/unattendish-connect-a-fleet.md) covers a `gh` login, GitLab, Linear and Jira, and managing accounts in Settings.
 
 ## 4. Write the manifest
 
@@ -84,11 +77,12 @@ bb unattendish fleet status
 github.com/acme/widgets  tracker forge-issues
   manager thr_… (live), manifest /home/you/widgets/fleet/manifest.md
   last polled never, every 120 s, 0 requests this hour
-  credential github.com/acme/widgets (forge, github, token)
+  forge reads as GitHub · olivia
+  credential GitHub · olivia for acme (forge, github, token)
   watched
 ```
 
-`watched` means the manifest reads and a credential matches. Without it the fleet lists why, such as `no-credential`; [read why a fleet is not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched).
+`watched` means the manifest reads and an account with a credential reads each half of the fleet. Without it the fleet lists why, such as `no-credential`; [read why a fleet is not watched](../how-to/unattendish-connect-a-fleet.md#read-why-a-fleet-is-not-watched).
 
 To see a wake sooner than 2 minutes, poll every 30 seconds, the shortest allowed:
 
@@ -135,4 +129,4 @@ bb unattendish fleet ledger github.com/acme/widgets
 bb unattendish fleet unregister github.com/acme/widgets
 ```
 
-This removes the registration and its cursors; the ledger stays for 30 days. You registered a fleet, saw it watched, received a wake for a comment, and saw the fleet's own comment dropped. To see how a poll decides, read [how Unattendish wakes a manager](../explanation/unattendish-polling.md); for every command and field, [the CLI reference](../reference/unattendish-cli.md).
+This removes the registration and its cursors; the ledger stays for 30 days. The account stays too: to delete its token from the plugin, remove `GitHub · olivia` under Settings → Installed plugins → Unattendish, and revoke the token on GitHub, since removing it deletes only the plugin's copy. You registered a fleet, saw it watched, received a wake for a comment, and saw the fleet's own comment dropped. To see how a poll decides, read [how Unattendish wakes a manager](../explanation/unattendish-polling.md); for every command and field, [the CLI reference](../reference/unattendish-cli.md).

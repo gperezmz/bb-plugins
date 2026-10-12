@@ -1,7 +1,7 @@
 // What the Fleet tab says, decided from its views alone.
 import type { FleetCredentialView, InFlightRowView, LedgerChangeView, LedgerFilter, LedgerView, UnreadableRowView, WatchedItemView } from "@/src/fleet/application/views";
 import { credentialKind } from "@/shared/credentials";
-import { ageLabel, dateLabel, dateTimeLabel, plural } from "@/shared/format";
+import { ageLabel, dateTimeLabel, expiryText, plural } from "@/shared/format";
 
 /** `at the bar for 25m`: the stage a row is at and how long it has been there. */
 export function stageText(row: Pick<InFlightRowView, "stage" | "since">, now: string): string {
@@ -27,11 +27,13 @@ export function watchedHeading(count: number): string {
   return `Watched set (${plural(count, "item")})`;
 }
 
-/** A credential the fleet uses, as its parts: the prefix, its kind, the expiry date where the service reports one, and whether it shares the agents' rate limit. */
+/** A credential the fleet uses, as its parts: the account it belongs to, its kind, whether it can write, the expiry date where the service reports one, and whether it shares the agents' rate limit. */
 export function credentialParts(credential: FleetCredentialView): string[] {
   return [
-    credentialKind(credential.auth),
-    credential.expiresAt === null ? "no expiry reported" : `expires ${dateLabel(credential.expiresAt)}`,
+    credential.account.label,
+    credentialKind(credential.kind),
+    ...(credential.canWrite ? ["can write"] : []),
+    expiryText(credential.expiresAt),
     ...(credential.sharesAgentRateLimit ? ["shares the agents' rate limit"] : []),
   ];
 }

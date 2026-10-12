@@ -2,239 +2,52 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ResolvedCredential } from "../application/ports";
-import { parseRepo, parseTracker } from "../domain/identity";
-import type { RepoRef, TrackerSpec } from "../domain/model";
-import { CLI_FAILURE_TTL_MS, CLI_TOKEN_TTL_MS, execCli, glabTokenIn, SettingsCredentials, type RunCli, type SettingValues } from "./credentials";
+import { execCli, ExecCliLogins, ghLoginsIn, glabTokenIn, loginsInText, type RunCli } from "./credentials";
 
-const repo = (text: string): RepoRef => parseRepo(text)!;
-const tracker = (text: string): TrackerSpec => parseTracker(text)!;
-const list = (...entries: object[]) => JSON.stringify(entries);
-
-/** A clock tests move. */
-const clockAt = (start = "2026-10-12T09:00:00Z") => {
-  let now = new Date(start).getTime();
-  return { now: () => new Date(now), advance: (ms: number) => (now += ms) };
-};
-
-const setup = (values: SettingValues, runCli: RunCli = async () => Promise.reject(new Error("no CLI expected"))) => {
-  const clock = clockAt();
+const recording = (answer: (command: string, args: string[]) => Promise<string>) => {
   const calls: [string, string[]][] = [];
-  const cli: RunCli = (command, args) => {
+  const run: RunCli = (command, args) => {
     calls.push([command, args]);
-    return runCli(command, args);
+    return answer(command, args);
   };
-  return { credentials: new SettingsCredentials(() => values, cli, clock), clock, calls };
+  return { logins: new ExecCliLogins(run), calls };
 };
 
-const found = (lookup: ReturnType<SettingsCredentials["forForge"]>): ResolvedCredential => {
-  if (!lookup.found) throw new Error(`no credential for ${lookup.prefix}`);
-  return lookup.credential;
-};
-
-describe("forForge", () => {
-  it("uses the longest prefix matching the repository", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com", auth: "token" }, { prefix: "github.com/org", auth: "token" }, { prefix: "github.com/org/repo", auth: "gh" }), tokens: undefined });
-    expect(found(credentials.forForge(repo("github.com/org/repo"))).prefix).toBe("github.com/org/repo");
-    expect(found(credentials.forForge(repo("github.com/org/other"))).prefix).toBe("github.com/org");
-    expect(found(credentials.forForge(repo("github.com/else/x"))).prefix).toBe("github.com");
+describe("ExecCliLogins", () => {
+  it("lists gh's logins for a host from its JSON status", async () => {
+    const json = JSON.stringify({ hosts: { "github.com": [{ login: "yuser", active: true }, { login: "buser", active: false }], "ghe.example.com": [{ login: "other" }] } });
+    const { logins, calls } = recording(async () => json);
+    expect(await logins.logins("gh", "github.com")).toEqual(["yuser", "buser"]);
+    expect(calls).toEqual([["gh", ["auth", "status", "--hostname", "github.com", "--json", "hosts"]]]);
   });
 
-  it("matches whole host and whole path segments only", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "gitlab.com", auth: "token" }, { prefix: "github.com/org", auth: "token" }), tokens: undefined });
-    expect(credentials.forForge(repo("gitlab.com.evil.net/x"))).toEqual({ found: false, prefix: "gitlab.com.evil.net/x" });
-    expect(credentials.forForge(repo("github.com/organization/repo"))).toEqual({ found: false, prefix: "github.com/organization/repo" });
-    expect(credentials.forForge(repo("xgithub.com/org/repo")).found).toBe(false);
+  it("reads an older gh's status text when it has no JSON", async () => {
+    const { logins } = recording(async (_, args) => (args.includes("--json") ? Promise.reject(new Error("gh failed")) : "github.com\n  ✓ Logged in to github.com account yuser (keyring)\n  ✓ Logged in to github.com account buser (keyring)\n"));
+    expect(await logins.logins("gh", "github.com")).toEqual(["yuser", "buser"]);
   });
 
-  it("finds nothing when no entry matches, naming the repository as the missing prefix", () => {
-    const { credentials } = setup({ credentials: "[]", tokens: '{"github.com/org": "ghp_x"}' });
-    expect(credentials.forForge(repo("github.com/org/repo"))).toEqual({ found: false, prefix: "github.com/org/repo" });
+  it("reads glab's one login for a host, and none where it holds none", async () => {
+    expect(await recording(async () => "gitlab.example.com\n  ✓ Logged in to gitlab.example.com as yuser (config)\n").logins.logins("glab", "gitlab.example.com")).toEqual(["yuser"]);
+    expect(await recording(async () => Promise.reject(new Error("glab failed"))).logins.logins("glab", "gitlab.example.com")).toEqual([]);
   });
 
-  it("resolves the service, base URL and host by default for github.com, GitHub Enterprise and GitLab", () => {
-    const { credentials } = setup({
-      credentials: list({ prefix: "github.com", auth: "token" }, { prefix: "ghe.example.com", auth: "token", service: "github" }, { prefix: "gitlab.com", auth: "glab" }, { prefix: "git.example.com", auth: "token", service: "gitlab" }),
-      tokens: undefined,
-    });
-    expect(found(credentials.forForge(repo("github.com/o/r")))).toEqual({ prefix: "github.com", service: "github", auth: "token", baseUrl: "https://api.github.com", host: "api.github.com" });
-    expect(found(credentials.forForge(repo("ghe.example.com/o/r")))).toMatchObject({ service: "github", baseUrl: "https://ghe.example.com/api/v3", host: "ghe.example.com" });
-    expect(found(credentials.forForge(repo("gitlab.com/g/s/p")))).toMatchObject({ service: "gitlab", auth: "glab", baseUrl: "https://gitlab.com/api/v4", host: "gitlab.com" });
-    expect(found(credentials.forForge(repo("git.example.com/g/p")))).toMatchObject({ service: "gitlab", baseUrl: "https://git.example.com/api/v4" });
+  it("asks gh for the chosen login's token on the host, and trims it", async () => {
+    const { logins, calls } = recording(async () => "gho_b\n");
+    expect(await logins.token("gh", "github.com", "buser")).toBe("gho_b");
+    expect(calls).toEqual([["gh", ["auth", "token", "--hostname", "github.com", "--user", "buser"]]]);
   });
 
-  it("reports the prefix as written and keeps the entry's own base URL, even loopback over http", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "GitHub.com/Org", auth: "token", baseUrl: "http://127.0.0.1:4010" }), tokens: undefined });
-    expect(found(credentials.forForge(repo("github.com/org/r")))).toMatchObject({ prefix: "GitHub.com/Org", baseUrl: "http://127.0.0.1:4010", host: "127.0.0.1" });
+  it("reads glab's token from its status text, and rejects naming neither output nor error when there is none", async () => {
+    expect(await recording(async () => "✓ Token found in keyring: glpat-1\n").logins.token("glab", "gitlab.com", "yuser")).toBe("glpat-1");
+    const failed = await recording(async () => "Token: ****\n").logins.token("glab", "gitlab.com", "yuser").then(() => new Error("no refusal"), (error: unknown) => error as Error);
+    expect(failed.message).toBe("glab gave no token for yuser on gitlab.com");
+    const thrown = await recording(async () => Promise.reject(new Error("gho_leaked"))).logins.token("gh", "github.com", "yuser").then(() => new Error("no refusal"), (error: unknown) => error as Error);
+    expect(thrown.message).not.toContain("gho_leaked");
   });
 
-  it("finds nothing for a host that names no service and an entry that does not either", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "git.example.com", auth: "token" }), tokens: undefined });
-    expect(credentials.forForge(repo("git.example.com/g/p")).found).toBe(false);
-  });
-
-  it("finds no credential for a prefix whose baseUrl is on api.<host> of a host other than github.com", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "ghe.example.com", auth: "token", service: "github", baseUrl: "https://api.ghe.example.com" }), tokens: undefined });
-    expect(credentials.forForge(repo("ghe.example.com/o/r"))).toEqual({ found: false, prefix: "ghe.example.com/o/r" });
-    expect(credentials.problems()).toHaveLength(1);
-  });
-
-  it("does not fall back to a shorter prefix when the longest one was refused", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com", auth: "token" }, { prefix: "github.com/org", auth: "token", baseUrl: "https://evil.example" }), tokens: undefined });
-    expect(credentials.forForge(repo("github.com/org/r"))).toEqual({ found: false, prefix: "github.com/org/r" });
-    expect(found(credentials.forForge(repo("github.com/else/r"))).prefix).toBe("github.com");
-  });
-
-  it("does not use a Linear or Jira entry for a repository", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "linear:", auth: "token" }, { prefix: "jira:github.com", auth: "token" }), tokens: undefined });
-    expect(credentials.forForge(repo("github.com/o/r")).found).toBe(false);
-  });
-});
-
-describe("forTracker", () => {
-  const values: SettingValues = {
-    credentials: list({ prefix: "github.com/org", auth: "token" }, { prefix: "linear:", auth: "token" }, { prefix: "linear:ENG", auth: "token" }, { prefix: "jira:a.atlassian.net", auth: "token" }, { prefix: "jira:a.atlassian.net/PROJ", auth: "token" }),
-    tokens: undefined,
-  };
-
-  it("uses the forge's own credential for forge-issues", () => {
-    const { credentials } = setup(values);
-    expect(found(credentials.forTracker(tracker("forge-issues"), repo("github.com/org/repo"))).prefix).toBe("github.com/org");
-  });
-
-  it("looks a separate tracker up on its own, apart from the forge's", () => {
-    const { credentials } = setup(values);
-    const forge = repo("github.com/org/repo");
-    expect(found(credentials.forTracker(tracker("linear:eng"), forge))).toMatchObject({ prefix: "linear:ENG", service: "linear", baseUrl: "https://api.linear.app/graphql", host: "api.linear.app" });
-    expect(found(credentials.forTracker(tracker("linear:OPS"), forge)).prefix).toBe("linear:");
-    expect(found(credentials.forTracker(tracker("jira:a.atlassian.net/PROJ"), forge))).toMatchObject({ prefix: "jira:a.atlassian.net/PROJ", service: "jira", baseUrl: "https://a.atlassian.net", host: "a.atlassian.net" });
-    expect(found(credentials.forTracker(tracker("jira:a.atlassian.net/OTHER"), forge)).prefix).toBe("jira:a.atlassian.net");
-  });
-
-  it("finds nothing for a tracker no entry covers, naming it, even when the forge has a credential", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/org", auth: "token" }), tokens: undefined });
-    const forge = repo("github.com/org/repo");
-    expect(credentials.forTracker(tracker("linear:ENG"), forge)).toEqual({ found: false, prefix: "linear:ENG" });
-    expect(credentials.forTracker(tracker("jira:b.atlassian.net/X"), forge)).toEqual({ found: false, prefix: "jira:b.atlassian.net/X" });
-  });
-
-  it("does not use another Jira site's entry", () => {
-    const { credentials } = setup(values);
-    expect(credentials.forTracker(tracker("jira:b.atlassian.net/PROJ"), repo("github.com/org/repo")).found).toBe(false);
-  });
-});
-
-describe("token for a pasted token", () => {
-  it("returns the token pasted for exactly that prefix, whatever its spelling", async () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/org", auth: "token" }, { prefix: "github.com", auth: "token" }), tokens: '{"GitHub.com/ORG": "ghp_org", "github.com": "ghp_host"}' });
-    expect(await credentials.token(found(credentials.forForge(repo("github.com/org/r"))))).toBe("ghp_org");
-    expect(await credentials.token(found(credentials.forForge(repo("github.com/else/r"))))).toBe("ghp_host");
-  });
-
-  it("rejects when no token was pasted for the prefix, without borrowing another prefix's", async () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/org", auth: "token" }), tokens: '{"github.com": "ghp_host"}' });
-    await expect(credentials.token(found(credentials.forForge(repo("github.com/org/r"))))).rejects.toThrow("No token is set for github.com/org");
-  });
-
-  it("rejects a credential the settings no longer hold", async () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/org", auth: "token" }), tokens: '{"github.com/org": "ghp_x"}' });
-    const credential = found(credentials.forForge(repo("github.com/org/r")));
-    credentials.reload({ credentials: "[]", tokens: '{"github.com/org": "ghp_x"}' });
-    await expect(credentials.token(credential)).rejects.toThrow("No credential is configured");
-    await expect(credentials.token({ ...credential, auth: "gh" })).rejects.toThrow();
-  });
-
-  it("uses the Jira token as pasted, email and all", async () => {
-    const { credentials } = setup({ credentials: list({ prefix: "jira:a.atlassian.net", auth: "token" }), tokens: '{"jira:a.atlassian.net": "me@example.com:tok"}' });
-    expect(await credentials.token(found(credentials.forTracker(tracker("jira:a.atlassian.net/P"), repo("github.com/o/r"))))).toBe("me@example.com:tok");
-  });
-});
-
-describe("token from gh and glab", () => {
-  const ghValues: SettingValues = { credentials: list({ prefix: "github.com/org", auth: "gh" }), tokens: undefined };
-
-  it("asks gh for the host the prefix names, not the API host, and trims the answer", async () => {
-    const { credentials, calls } = setup(ghValues, async () => "gho_abc\n");
-    expect(await credentials.token(found(credentials.forForge(repo("github.com/org/r"))))).toBe("gho_abc");
-    expect(calls).toEqual([["gh", ["auth", "token", "--hostname", "github.com"]]]);
-  });
-
-  it("asks glab to show the token for the host and reads it from the status text", async () => {
-    const status = "gitlab.example.com\n  \u001b[32m✓\u001b[0m Logged in to gitlab.example.com as me\n  ✓ Token found in keyring: glpat-abc123\n";
-    const { credentials, calls } = setup({ credentials: list({ prefix: "gitlab.example.com", auth: "glab", service: "gitlab" }), tokens: undefined }, async () => status);
-    expect(await credentials.token(found(credentials.forForge(repo("gitlab.example.com/g/p"))))).toBe("glpat-abc123");
-    expect(calls).toEqual([["glab", ["auth", "status", "--hostname", "gitlab.example.com", "--show-token"]]]);
-  });
-
-  it("keeps a CLI token for 5 minutes, then asks again", async () => {
-    let n = 0;
-    const { credentials, calls, clock } = setup(ghValues, async () => `gho_${++n}\n`);
-    const credential = found(credentials.forForge(repo("github.com/org/r")));
-    expect(await credentials.token(credential)).toBe("gho_1");
-    clock.advance(CLI_TOKEN_TTL_MS - 1);
-    expect(await credentials.token(credential)).toBe("gho_1");
-    clock.advance(1);
-    expect(await credentials.token(credential)).toBe("gho_2");
-    expect(calls).toHaveLength(2);
-  });
-
-  it("asks again after the settings are reloaded", async () => {
-    let n = 0;
-    const { credentials, calls } = setup(ghValues, async () => `gho_${++n}`);
-    const credential = found(credentials.forForge(repo("github.com/org/r")));
-    await credentials.token(credential);
-    credentials.reload(ghValues);
-    await credentials.token(credential);
-    expect(calls).toHaveLength(2);
-  });
-
-  it("rejects when the CLI fails or prints nothing, naming neither the output nor the error", async () => {
-    const failing = setup(ghValues, async () => Promise.reject(new Error("stderr says gho_leaked")));
-    const credential = found(failing.credentials.forForge(repo("github.com/org/r")));
-    const error = await failing.credentials.token(credential).catch((e: Error) => e);
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toBe("gh gave no token for github.com");
-    const empty = setup(ghValues, async () => "  \n");
-    await expect(empty.credentials.token(found(empty.credentials.forForge(repo("github.com/org/r"))))).rejects.toThrow("gave no token");
-  });
-
-  it("remembers a failed lookup for 30 seconds, so a missing login does not run the CLI on every refresh, then asks again", async () => {
-    let fail = true;
-    const { credentials, calls, clock } = setup(ghValues, async () => (fail ? Promise.reject(new Error("not logged in")) : "gho_1"));
-    const credential = found(credentials.forForge(repo("github.com/org/r")));
-    await expect(credentials.token(credential)).rejects.toThrow("gh gave no token for github.com");
-    clock.advance(CLI_FAILURE_TTL_MS - 1);
-    await expect(credentials.token(credential)).rejects.toThrow("gh gave no token for github.com");
-    expect(calls).toHaveLength(1);
-    fail = false;
-    clock.advance(1);
-    expect(await credentials.token(credential)).toBe("gho_1");
-    expect(calls).toHaveLength(2);
-  });
-
-  it("asks again after the settings are reloaded, though a lookup failed a moment ago", async () => {
-    let fail = true;
-    const { credentials, calls } = setup(ghValues, async () => (fail ? Promise.reject(new Error("x")) : "gho_1"));
-    const credential = found(credentials.forForge(repo("github.com/org/r")));
-    await expect(credentials.token(credential)).rejects.toThrow();
-    fail = false;
-    credentials.reload(ghValues);
-    expect(await credentials.token(credential)).toBe("gho_1");
-    expect(calls).toHaveLength(2);
-  });
-
-  it("rejects glab output that has no token or a masked one", async () => {
-    for (const status of ["✓ Logged in to gitlab.com as me\n", "✓ Token found in keyring: **************************\n"]) {
-      const { credentials } = setup({ credentials: list({ prefix: "gitlab.com", auth: "glab" }), tokens: undefined }, async () => status);
-      await expect(credentials.token(found(credentials.forForge(repo("gitlab.com/g/p"))))).rejects.toThrow("glab gave no token for gitlab.com");
-    }
-  });
-
-  it("never runs a CLI for an entry whose auth is token, nor falls back to one", async () => {
-    const { credentials, calls } = setup({ credentials: list({ prefix: "github.com/org", auth: "token" }), tokens: undefined }, async () => "gho_x");
-    await expect(credentials.token(found(credentials.forForge(repo("github.com/org/r"))))).rejects.toThrow();
-    expect(credentials.forForge(repo("github.com/else/r")).found).toBe(false);
-    expect(calls).toEqual([]);
+  it("takes no login from output that names another host", () => {
+    expect(loginsInText("✓ Logged in to github.com.evil.net account yuser", "github.com")).toEqual([]);
+    expect(ghLoginsIn("not json", "github.com")).toBeNull();
   });
 });
 
@@ -247,40 +60,6 @@ describe("glabTokenIn", () => {
   it("takes none from text without a token line", () => {
     expect(glabTokenIn("")).toBeNull();
     expect(glabTokenIn("Token expired\n")).toBeNull();
-  });
-});
-
-describe("secrets and the rate limit", () => {
-  it("lists every pasted token and every token a CLI gave, even after its cache expired", async () => {
-    const { credentials, clock } = setup({ credentials: list({ prefix: "github.com/a", auth: "token" }, { prefix: "github.com/b", auth: "gh" }), tokens: '{"github.com/a": "ghp_a"}' }, async () => "gho_b\n");
-    expect(credentials.secrets()).toEqual(["ghp_a"]);
-    await credentials.token(found(credentials.forForge(repo("github.com/b/r"))));
-    clock.advance(CLI_TOKEN_TTL_MS * 2);
-    expect(credentials.secrets().sort()).toEqual(["gho_b", "ghp_a"]);
-  });
-
-  it("says a gh or glab login shares the agents' rate limit and a pasted token does not", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/a", auth: "token" }, { prefix: "github.com/b", auth: "gh" }, { prefix: "gitlab.com", auth: "glab" }), tokens: undefined });
-    expect(credentials.usesAgentRateLimit(found(credentials.forForge(repo("github.com/a/r"))))).toBe(false);
-    expect(credentials.usesAgentRateLimit(found(credentials.forForge(repo("github.com/b/r"))))).toBe(true);
-    expect(credentials.usesAgentRateLimit(found(credentials.forForge(repo("gitlab.com/g/p"))))).toBe(true);
-  });
-});
-
-describe("problems and reload", () => {
-  it("lists what is wrong with either setting, with no token in it", () => {
-    const { credentials } = setup({ credentials: list({ prefix: "github.com/a", auth: "token", baseUrl: "https://evil.example" }), tokens: '{"github.com/a": "two words ghp_leak"}' });
-    const problems = credentials.problems();
-    expect(problems).toHaveLength(2);
-    expect(problems.join("\n")).not.toContain("ghp_leak");
-  });
-
-  it("applies new settings on reload", async () => {
-    const { credentials } = setup({ credentials: "[]", tokens: undefined });
-    expect(credentials.forForge(repo("github.com/o/r")).found).toBe(false);
-    credentials.reload({ credentials: list({ prefix: "github.com", auth: "token" }), tokens: '{"github.com": "ghp_new"}' });
-    expect(await credentials.token(found(credentials.forForge(repo("github.com/o/r"))))).toBe("ghp_new");
-    expect(credentials.problems()).toEqual([]);
   });
 });
 

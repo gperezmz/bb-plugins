@@ -1,5 +1,5 @@
 // What a fleet card and the Fleet chip say, decided from the card's view alone.
-import type { CredentialWarningView, FleetCardView, ManagerView } from "@/src/fleet/application/views";
+import type { CredentialWarningView, FleetCardView, HalfView, ManagerView } from "@/src/fleet/application/views";
 import { ageLabel, formatMoney, plural, polledLabel } from "./format";
 
 /** The three counts, each as it is spelled, a count of zero left out. */
@@ -36,14 +36,38 @@ export function pollText(card: Pick<FleetCardView, "lastPolledAt">, now: string)
 export interface WarningLine {
   readonly text: string;
   /** The credential it is about. */
-  readonly prefix: string;
+  readonly label: string;
   /** `destructive` for a credential already expired, `warning` otherwise. */
   readonly tone: "warning" | "destructive";
 }
 
+/** What days left on a token warn: expired, expiring today, or expiring in so many days. */
+export function daysWarning(daysLeft: number): Pick<WarningLine, "text" | "tone"> {
+  if (daysLeft < 0) return { text: `token expired ${plural(-daysLeft, "day")} ago`, tone: "destructive" };
+  if (daysLeft === 0) return { text: "token expires today", tone: "warning" };
+  return { text: `token expires in ${plural(daysLeft, "day")}`, tone: "warning" };
+}
+
 export function warningLine(warning: CredentialWarningView): WarningLine {
-  if (warning.kind === "shares-rate-limit") return { text: "shares the agents' rate limit", prefix: warning.prefix, tone: "warning" };
-  if (warning.daysLeft < 0) return { text: `token expired ${plural(-warning.daysLeft, "day")} ago`, prefix: warning.prefix, tone: "destructive" };
-  if (warning.daysLeft === 0) return { text: "token expires today", prefix: warning.prefix, tone: "warning" };
-  return { text: `token expires in ${plural(warning.daysLeft, "day")}`, prefix: warning.prefix, tone: "warning" };
+  if (warning.kind === "shares-rate-limit") return { text: "shares the agents' rate limit", label: warning.label, tone: "warning" };
+  return { ...daysWarning(warning.daysLeft), label: warning.label };
+}
+
+/** What a half reads and as whom: `acme/web · reads as GitHub · yuser`, or `· no account yet` while no assignment covers it. */
+export function halfLine(half: HalfView): string {
+  return `${half.what} · ${half.account !== null ? `reads as ${half.account.label}` : "no account yet"}`;
+}
+
+/** The action a half offers: Connect… while it needs something, Change account… while it is read. */
+export function halfAction(half: HalfView): "Connect…" | "Change account…" {
+  return half.needs !== null ? "Connect…" : "Change account…";
+}
+
+/**
+ * The reasons a card lists below its halves: a reason Connect… fixes for a half that already says what it needs is
+ * left to that half's line, so the card says it, with its Connect…, once.
+ */
+export function cardReasons(card: Pick<FleetCardView, "reasons" | "halves">): FleetCardView["reasons"] {
+  const saying = new Set(card.halves.filter((half) => half.needs !== null).map((half) => half.role));
+  return card.reasons.filter((reason) => reason.fix.kind !== "connect" || !saying.has(reason.fix.role));
 }

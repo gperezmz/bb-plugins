@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
-import { actionRecord, ago, fleetCard, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
+import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { FleetTab } from "./index";
@@ -46,8 +46,8 @@ const showDetail = async (over = {}) => {
         { ref: "#171", url: null, why: ["named in Inbox", "blocked on #170"] },
       ],
       credentials: [
-        { role: "forge", prefix: "org", auth: "token", expiresAt: "2026-10-18T12:00:00Z", sharesAgentRateLimit: false },
-        { role: "forge", prefix: "github.com", auth: "gh", expiresAt: null, sharesAgentRateLimit: true },
+        fleetCredential({ label: "GitHub · yuser for acme", expiresAt: "2026-10-18T12:00:00Z" }),
+        fleetCredential({ label: "GitHub · buser for every owner", account: { id: "acc_buser", label: "GitHub · buser" }, kind: "gh", auth: "gh", canWrite: true, sharesAgentRateLimit: true }),
       ],
       requestsThisHour: 188,
       ...over,
@@ -151,13 +151,16 @@ describe("what is watched, and how", () => {
     expect(within(section).getByRole("link", { name: "#163" }).getAttribute("href")).toBe("https://github.test/issues/163");
   });
 
-  it("shows each credential with its prefix, kind, expiry date and whether it shares the rate limit", async () => {
+  it("shows each credential with the account it belongs to, its kind, expiry date, whether it can write and whether it shares the rate limit", async () => {
     await showDetail();
     const section = screen.getByRole("heading", { name: "Credentials" }).parentElement!;
-    expect(within(section).getByText("org")).toBeTruthy();
-    expect(within(section).getByText("pasted token")).toBeTruthy();
+    expect(within(section).getByText("GitHub · yuser for acme")).toBeTruthy();
+    expect(within(section).getByText("GitHub · yuser")).toBeTruthy();
+    expect(within(section).getByText("fine-grained token")).toBeTruthy();
     expect(within(section).getByText("expires 18 Oct")).toBeTruthy();
+    expect(within(section).getByText("GitHub · buser")).toBeTruthy();
     expect(within(section).getByText("gh login")).toBeTruthy();
+    expect(within(section).getByText("can write")).toBeTruthy();
     expect(within(section).getByText("shares the agents' rate limit")).toBeTruthy();
   });
 
@@ -171,7 +174,7 @@ describe("what is watched, and how", () => {
       card: fleetCard({
         cost: { amount: 14.2, currency: "USD", period: "since this manager started" },
         reasons: [
-          { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } },
+          { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "connect", role: "tracker" } },
           { code: "unreadable-rows", text: "1 manifest row cannot be read, in Blocked", fix: { kind: "fleet-tab" } },
         ],
       }),

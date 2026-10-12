@@ -236,7 +236,6 @@ class LinearAdapter implements ServiceAdapter {
       open: !closed,
       merged: false,
       fleetLabels: fleetLabelsIn(issue.labels.nodes.map((label) => label.name), request.labels),
-      checks: null,
       inPartition: partition,
       transitions: transitionsOf(history, request.labels, request.since),
     };

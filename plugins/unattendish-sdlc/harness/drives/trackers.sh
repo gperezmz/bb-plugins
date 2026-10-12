@@ -35,7 +35,8 @@ manifest "$manifests/jira.md" "$jir" PROJ-5 https://acme.atlassian.net/browse/PR
 check "a GitLab fleet registers, watched" eq "$(register "$a" "$lab" forge-issues "$manifests/gitlab.md" | jq -c '[.outcome, .watched]')" '["registered",true]'
 check "a fleet with its tracker in Linear registers, watched" eq "$(register "$b" "$lin" linear:ENG "$manifests/linear.md" --operator olivia@acme.test | jq -c '[.outcome, .watched]')" '["registered",true]'
 check "a fleet with its tracker in Jira registers, watched" eq "$(register "$c" "$jir" jira:acme.atlassian.net/PROJ "$manifests/jira.md" --operator acc-olivia | jq -c '[.outcome, .watched]')" '["registered",true]'
-check "status lists a tracker credential for each of the last two" eq "$(bb unattendish fleet status --json | jq -c '[.fleets[] | select(.repo != "'"$lab"'") | .credentials[] | select(.role == "tracker") | .service] | sort')" '["jira","linear"]'
+check "status lists a tracker credential for each of the last two, and the account each tracker reads as" eq "$(bb unattendish fleet status --json | jq -c '[.fleets[] | select(.repo != "'"$lab"'") | .credentials[] | select(.role == "tracker") | .service] | sort')" '["jira","linear"]'
+check "naming the Linear and Jira accounts" eq "$(bb unattendish fleet status --json | jq -c '[.fleets[] | select(.repo != "'"$lab"'") | .accounts[] | select(.role == "tracker") | .account] | sort')" '["Jira · operator@example.com","Linear · operator@example.com"]'
 
 check "the GitLab manager is woken" wait_wakes "$a" 1 40
 check "the Linear manager is woken" wait_wakes "$b" 1 40

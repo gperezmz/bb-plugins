@@ -3,8 +3,8 @@
 # drives: a fake Anthropic API (Cache Keeper's, so a Claude Code thread runs
 # without spending tokens), the fake GitHub, GitLab, Linear and Jira of
 # fake-services.ts, a bb server and a host daemon on a data dir under the run
-# directory, one project, and the plugin's credentials and tokens settings
-# pointed at the four fakes. Claude Code in it talks to the fake API, with HOME
+# directory, one project, and one account for each of the four fakes, added through the
+# plugin's RPC method `connect`. Claude Code in it talks to the fake API, with HOME
 # in the run directory, so it reads none of your own configuration.
 #
 # Refuses to start, changing nothing, when any of its ports answers, when the
@@ -106,18 +106,31 @@ tb bb plugin install "path:$run/plugin/unattendish-sdlc" --yes > "$run/install.l
 status=$(tb bb plugin list --json | jq -r '.plugins[] | select(.id == "unattendish-sdlc") | .status')
 [[ $status == running ]] || fail "the plugin's status is '$status', not running"
 
-# One credential for each fake: a loopback base URL, a fake token. The drives'
-# fleets are github.example/org/repo (tracker: its issues, linear:ENG or
-# jira:acme.atlassian.net/PROJ); the fakes' item URLs are on these hosts.
-credentials=$(jq -nc --arg github "http://127.0.0.1:$github_port" --arg gitlab "http://127.0.0.1:$gitlab_port/api/v4" \
-  --arg linear "http://127.0.0.1:$linear_port/graphql" --arg jira "http://127.0.0.1:$jira_port" '[
-    {prefix: "github.example/org", auth: "token", service: "github", baseUrl: $github},
-    {prefix: "gitlab.example/group", auth: "token", service: "gitlab", baseUrl: $gitlab},
-    {prefix: "linear:ENG", auth: "token", service: "linear", baseUrl: $linear},
-    {prefix: "jira:acme.atlassian.net", auth: "token", service: "jira", baseUrl: $jira}]')
-tokens='{"github.example/org":"ghp_harness_fake_token","gitlab.example/group":"glpat-harness-fake-token","linear:ENG":"lin_api_harness_fake_token","jira:acme.atlassian.net":"drive@example.invalid:harness-fake-token"}'
-tb bb plugin config unattendish-sdlc set credentials "$credentials" > /dev/null || fail "could not set the credentials setting"
-tb bb plugin config unattendish-sdlc set tokens "$tokens" > /dev/null || fail "could not set the tokens setting"
+# One account for each fake, added through the plugin's RPC method `connect`
+# as the dashboard's popup adds one: a loopback API address and a fake token.
+# The fake answers the probe with its default login, `operator`, and
+# `confirm: true` adds that login at once. The first account on a host or
+# service becomes its default, so the drives' fleets (github.example/org/repo,
+# gitlab.example/group/proj, tracker linear:ENG or jira:acme.atlassian.net/PROJ)
+# read as them; the fakes' item URLs are on those hosts, which are never reached.
+# A GitHub token is for one owner (`org`); GitLab's is for the host; Linear and
+# Jira take one key. The Jira token is `email:api-token`.
+connect() {
+  local what=$1 input=$2 answer
+  printf '%s' "$input" > "$run/tmp/connect.json"
+  answer=$(tb bb plugin rpc call unattendish-sdlc connect --input-file "$run/tmp/connect.json" --json) || fail "could not call connect for $what"
+  [[ $(jq -r '.result.outcome // .outcome' <<< "$answer") == saved ]] || fail "connect did not save the $what account: $(jq -c . <<< "$answer" | cut -c1-300)"
+}
+connect "GitHub" "$(jq -nc --arg api "http://127.0.0.1:$github_port" \
+  '{account: {service: "github", place: "github.example", apiUrl: $api}, owner: "org", secret: {kind: "token", token: "ghp_harness_fake_token"}, confirm: true}')"
+connect "GitLab" "$(jq -nc --arg api "http://127.0.0.1:$gitlab_port/api/v4" \
+  '{account: {service: "gitlab", place: "gitlab.example", apiUrl: $api}, secret: {kind: "token", token: "glpat-harness-fake-token"}, confirm: true}')"
+connect "Linear" "$(jq -nc --arg api "http://127.0.0.1:$linear_port/graphql" \
+  '{account: {service: "linear", place: "linear.app", apiUrl: $api}, secret: {kind: "token", token: "lin_api_harness_fake_token"}, confirm: true}')"
+connect "Jira" "$(jq -nc --arg api "http://127.0.0.1:$jira_port" \
+  '{account: {service: "jira", place: "acme.atlassian.net", apiUrl: $api}, secret: {kind: "jira", email: "drive@example.invalid", token: "harness-fake-token"}, confirm: true}')"
+rm -f "$run/tmp/connect.json"
+[[ $(tb bb plugin rpc call unattendish-sdlc settings --json | jq -c '[(.result // .).accounts[] | .service] | sort') == '["github","gitlab","jira","linear"]' ]] || fail "the plugin does not list the four accounts"
 [[ $(tb bb unattendish fleet status --json | jq -c .) == '{"fleets":[]}' ]] || fail "the plugin's fleet status is not empty on a fresh install"
 
 cat > "$run/env.sh" <<ENV

@@ -9,8 +9,9 @@ import { messageOf } from "../domain/redact";
 import { clip } from "../domain/text";
 import { effectiveInterval, validateInterval } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
-import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, recentActionsOf, watchedOf, type ViewDeps } from "./fleet-views";
-import type { CredentialAdmin, DashboardEvents, ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
+import { accountsView, checkAgain, connect, connectView, makeDefault, removeAccount, removeAssignment, removeCredential, tokenPage, type AccountsDeps } from "./accounts";
+import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
+import type { ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
 import { setFleetInterval } from "./schedule";
 import type { SerialQueue } from "./serial";
 import type {
@@ -24,11 +25,9 @@ import type {
   SettingsView,
 } from "./views";
 
-export interface DashboardDeps extends ViewDeps {
+export interface DashboardDeps extends AccountsDeps {
   readonly channel: ManagerChannel;
-  readonly events: DashboardEvents;
   readonly repositories: ThreadRepositories;
-  readonly admin: CredentialAdmin;
   readonly queue: SerialQueue;
   readonly log: { warn(message: string): void };
   /** Every token the plugin holds, to scrub from anything said of a failure. */
@@ -65,9 +64,11 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const gathered = await Promise.all(deps.store.listFleets().map((fleet) => gather(deps, fleet, false)));
     const parts = gathered.map((g) => ({ g, inbox: inboxOf(g) }));
     const cards = await Promise.all(parts.map(({ g }) => cardOf(deps, g, now)));
+    const needsAccount = parts.flatMap(({ g }) => needsAccountOf(g)).slice(0, MAX_ROWS);
     return {
       generatedAt: now.toISOString(),
-      waiting: cards.reduce((total, card) => total + card.waiting, 0),
+      waiting: cards.reduce((total, card) => total + card.waiting, 0) + needsAccount.length,
+      needsAccount,
       fleets: cards,
       inbox: oldestFirst(parts.flatMap(({ inbox }) => inbox.rows)).slice(0, MAX_ROWS * 2),
       unreadableInbox: parts.flatMap(({ inbox }) => inbox.unreadable).slice(0, MAX_ROWS * 2),
@@ -105,7 +106,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         card: await cardOf(deps, g, now),
         manifest: manifestViewOf(g, inbox, now),
         watched: watchedOf(deps, g),
-        credentials: credentialsOf(g),
+        credentials: credentialsOf(deps, g),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
         recentActions: recentActionsOf(g, inbox.ids, now),
       },
@@ -202,31 +203,19 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
   // ---- settings ----
 
   const settingsView = async (overlay?: { readonly repo: string; readonly intervalMs: number | null }): Promise<SettingsView> => {
-    const { entries, problems } = await deps.admin.list();
     const stored = deps.store.listFleets();
     return {
-      credentials: entries.map((entry) => ({
-        prefix: entry.prefix,
-        auth: entry.auth,
-        service: entry.service,
-        baseUrl: entry.baseUrl,
-        hasToken: entry.hasToken,
-        expiresAt: stored.map((fleet) => fleet.expiries[entry.prefix] ?? null).filter((at): at is string => at !== null).sort()[0] ?? null,
-        problem: entry.problem,
-      })),
+      accounts: await accountsView(deps),
       fleets: stored.map((fleet) => {
         const registration = overlay !== undefined && overlay.repo === repoId(fleet.registration.repo) ? { ...fleet.registration, intervalMs: overlay.intervalMs } : fleet.registration;
         return { repo: formatRepo(registration.repo), intervalMs: effectiveInterval(registration), isDefault: registration.intervalMs === null };
       }),
-      problems: [...problems],
     };
   };
 
-  const edited = async (result: { readonly ok: true } | { readonly ok: false; readonly reason: string }) => {
-    if (!result.ok) return refused(result.reason);
-    deps.events.boardChanged();
-    return { ok: true as const, settings: await settingsView() };
-  };
+  /** A settings change's answer: the settings as they now stand, with what the change returned. */
+  const withSettings = async <T extends object>(result: { readonly ok: true } & T | { readonly ok: false; readonly reason: string }) =>
+    result.ok ? { ...result, ok: true as const, settings: await settingsView() } : refused(result.reason);
 
   const setInterval: DashboardApi["setInterval"] = async ({ repo, seconds }) => {
     const key = keyOf(repo);
@@ -253,8 +242,15 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     ledger,
     sendAction,
     settings: () => settingsView(),
-    saveCredential: async (draft) => edited(await deps.admin.save(draft)),
-    removeCredential: async ({ prefix }) => edited(await deps.admin.remove(prefix)),
+    connectView: (target) => connectView(deps, target),
+    tokenPage: (input) => tokenPage(deps, input),
+    cliLogins: async ({ tool, host }) => ({ logins: await deps.logins.logins(tool, host.trim().toLowerCase()) }),
+    connect: (input) => connect(deps, input),
+    checkAgain: (input) => checkAgain(deps, input),
+    makeDefault: async ({ accountId }) => withSettings(makeDefault(deps, accountId)),
+    removeAssignment: async ({ scope }) => withSettings(removeAssignment(deps, scope)),
+    removeCredential: async ({ credentialId }) => withSettings(removeCredential(deps, credentialId)),
+    removeAccount: async ({ accountId }) => withSettings(removeAccount(deps, accountId)),
     setInterval,
   };
 }

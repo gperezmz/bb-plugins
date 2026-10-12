@@ -24,9 +24,16 @@ describe("the watched set", () => {
 });
 
 describe("a credential", () => {
-  it("gives its kind, its expiry date where the service reports one, and whether it shares the rate limit", () => {
-    expect(credentialParts({ role: "forge", prefix: "org", auth: "token", expiresAt: "2026-10-18T12:00:00Z", sharesAgentRateLimit: false })).toEqual(["pasted token", "expires 18 Oct"]);
-    expect(credentialParts({ role: "forge", prefix: "github.com", auth: "gh", expiresAt: null, sharesAgentRateLimit: true })).toEqual(["gh login", "no expiry reported", "shares the agents' rate limit"]);
+  const credential = { role: "forge", label: "GitHub · yuser for acme", account: { id: "a", label: "GitHub · yuser" }, kind: "fine-grained", auth: "token", expiresAt: null, canWrite: false, sharesAgentRateLimit: false } as const;
+
+  it("names its account and kind, and its expiry date where the service reports one", () => {
+    expect(credentialParts({ ...credential, expiresAt: "2026-10-18T12:00:00Z" })).toEqual(["GitHub · yuser", "fine-grained token", "expires 18 Oct"]);
+    expect(credentialParts(credential)).toEqual(["GitHub · yuser", "fine-grained token", "no expiry reported"]);
+  });
+
+  it("says when it can write and when it shares the agents' rate limit", () => {
+    expect(credentialParts({ ...credential, kind: "gh", auth: "gh", canWrite: true, sharesAgentRateLimit: true })).toEqual(["GitHub · yuser", "gh login", "can write", "no expiry reported", "shares the agents' rate limit"]);
+    expect(credentialParts({ ...credential, kind: "classic", canWrite: true })).toContain("classic token");
   });
 });
 

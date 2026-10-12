@@ -13,12 +13,11 @@ const snapshot = (over: Partial<ItemSnapshot> = {}): ItemSnapshot => ({
   open: true,
   merged: false,
   fleetLabels: [],
-  checks: null,
   inPartition: false,
   transitions: [],
   ...over,
 });
-const state = (over: Partial<ItemState> = {}): ItemState => ({ open: true, merged: false, fleetLabels: [], checks: null, inPartition: false, ...over });
+const state = (over: Partial<ItemState> = {}): ItemState => ({ open: true, merged: false, fleetLabels: [], inPartition: false, ...over });
 const cursor = (items: Record<string, ItemState>, since = "2026-10-12T09:00:00.000Z"): SourceCursor => ({ since, items });
 const outcome = (over: Partial<ReadOutcome> = {}): ReadOutcome => ({ snapshots: [], events: [], updated: [], failures: [], ...over });
 const transition = (over: Partial<Transition>): Transition => ({ kind: "labelled", actor: "bob", at: "2026-10-12T09:30:00.000Z", id: "t1", ...over });
@@ -125,70 +124,13 @@ describe("state", () => {
   });
 });
 
-describe("checks", () => {
-  const watched = new Set(["#7"]);
-  const pr = (outcomeOf: "pending" | "passed" | "failed", sha = "aaa") => snapshot({ ref: "#7", url: "https://github.com/org/repo/pull/7", checks: { sha, outcome: outcomeOf } });
-  const at = (item: ItemState) => cursor({ "forge:#7": item });
-
-  it("reports final checks once per head sha", () => {
-    const first = derive({ prev: at(state({ checks: { sha: "aaa", outcome: "pending", reported: false } })), watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) });
-    expect(first.changes).toMatchObject([{ kind: "checks passed", key: "forge:#7|checks passed|aaa", actor: null, at: startedAt }]);
-    expect(first.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "passed", reported: true });
-    const again = derive({ prev: first.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) });
-    expect(again.changes).toEqual([]);
-    const pushed = derive({ prev: first.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed", "bbb")] }) });
-    expect(kinds(pushed.changes)).toEqual(["checks failed"]);
-    expect(pushed.changes[0]!.key).toBe("forge:#7|checks failed|bbb");
-  });
-
-  it("reports a final outcome never reported for a sha", () => {
-    const prev = at(state({ checks: { sha: "aaa", outcome: "failed", reported: false } }));
-    expect(kinds(derive({ prev, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) }).changes)).toEqual(["checks failed"]);
-  });
-
-  it("never reports pending, and keeps it unreported", () => {
-    const derived = derive({ prev: at(state()), watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+describe("a cursor an earlier build stored with checks", () => {
+  it("wakes for nothing on them and keeps the item without them", () => {
+    const stored = { open: true, merged: false, fleetLabels: [], checks: { sha: "aaa", outcome: "pending", reported: false }, inPartition: false } as ItemState;
+    const pr = snapshot({ ref: "#7", url: "https://github.com/org/repo/pull/7" });
+    const derived = derive({ prev: cursor({ "forge:#7": stored }), watchedRefs: new Set(["#7"]), outcome: outcome({ snapshots: [pr] }) });
     expect(derived.changes).toEqual([]);
-    expect(derived.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "pending", reported: false });
-  });
-
-  it("takes first sight of final checks as a silent baseline", () => {
-    const derived = derive({ watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
-    expect(derived.changes).toEqual([]);
-    expect(derived.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true });
-  });
-
-  it("reports checks that settle again after a re-run on the same commit, once per round", () => {
-    let cursorNow = derive({ prev: at(state({ checks: { sha: "aaa", outcome: "pending", reported: false } })), watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
-    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa"]);
-
-    const rerun = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
-    expect(rerun.changes).toEqual([]);
-    expect(rerun.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "pending", reported: false, round: 1 });
-    const stillRunning = derive({ prev: rerun.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
-    expect(stillRunning.nextCursor.items["forge:#7"]!.checks).toMatchObject({ round: 1 });
-
-    cursorNow = derive({ prev: stillRunning.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
-    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa|round 1"]);
-    expect(cursorNow.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true, round: 1 });
-    expect(derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) }).changes).toEqual([]);
-
-    const second = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
-    const settled = derive({ prev: second.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) });
-    expect(settled.changes.map((c) => c.key)).toEqual(["forge:#7|checks passed|aaa|round 2"]);
-  });
-
-  it("starts the rounds again for a new commit, and reports nothing for a re-run no poll saw pending", () => {
-    const reported = at(state({ checks: { sha: "aaa", outcome: "failed", reported: true, round: 2 } }));
-    const pushed = derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending", "bbb")] }) });
-    expect(pushed.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "bbb", outcome: "pending", reported: false });
-    expect(derive({ prev: pushed.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed", "bbb")] }) }).changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|bbb"]);
-    // A re-run that never showed pending between two polls looks like the outcome already reported.
-    expect(derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
-  });
-
-  it("does not report checks of an unwatched item", () => {
-    expect(derive({ prev: at(state()), outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
+    expect(derived.nextCursor.items["forge:#7"]).toEqual(state());
   });
 });
 
@@ -378,15 +320,14 @@ describe("stateOnly", () => {
   it("records state and reports nothing, keeping what it did not read and holding since", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#9": state() });
     const read = outcome({
-      snapshots: [snapshot({ fleetLabels: [], inPartition: true, open: false }), snapshot({ ref: "#7", checks: { sha: "a", outcome: "passed" } })],
+      snapshots: [snapshot({ fleetLabels: [], inPartition: true, open: false })],
       events: [event({ ref: "#1" })],
     });
-    const derived = derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#1", "#7"]) });
+    const derived = derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#1"]) });
     expect(derived.changes).toEqual([]);
     expect(derived.nextCursor.since).toBe(prev.since);
     expect(derived.nextCursor.items["forge:#9"]).toEqual(prev.items["forge:#9"]);
     expect(derived.nextCursor.items["forge:#1"]).toEqual(state({ open: false, inPartition: true }));
-    expect(derived.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "a", outcome: "passed", reported: true });
   });
 });
 

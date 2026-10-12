@@ -20,8 +20,8 @@ export interface WakeInput {
   readonly catchUpMs: number | null;
   /** When the first change was gathered while no manager held the fleet. */
   readonly heldSince: string | null;
-  /** Since when the fleet has not been watched, the credential prefix whose reads failed, and how they failed. */
-  readonly notWatched: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
+  /** Since when the fleet has not been watched, the label of the credential whose reads failed, and how they failed. */
+  readonly notWatched: { readonly since: string; readonly credential: string; readonly why: RefusedWhy } | null;
 }
 
 const ACTOR = /^[A-Za-z0-9][A-Za-z0-9._@:+-]{0,99}$/;
@@ -29,7 +29,7 @@ const REF = /^[#!]?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const UNSAFE_URL_CHARACTERS = /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const CONTROL_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
-/** The change as the wake words it: `commented`, `reviewed: approved`, `labelled ready`, `checks failed`. */
+/** The change as the wake words it: `commented`, `reviewed: approved`, `labelled ready`, `merged`. */
 export const changeText = (change: Change): string => (change.label === null ? change.kind : `${change.kind} ${oneLine(change.label)}`);
 
 /** The actor's login or account id; `unknown` for anything else, so no free text rides in a login. */
@@ -63,7 +63,7 @@ export const formatWake = (input: WakeInput): string => {
   }
   if (input.heldSince !== null) lines.push(`Gathered while no manager held the fleet, since ${input.heldSince}.`);
   if (input.catchUpMs !== null) lines.push(`Catch-up: the plugin was away for ${formatDuration(input.catchUpMs)}.`);
-  if (input.notWatched !== null) lines.push(`Not watched since ${input.notWatched.since}: ${refusedText(oneLine(input.notWatched.prefix), input.notWatched.why)}.`);
+  if (input.notWatched !== null) lines.push(`Not watched since ${input.notWatched.since}: ${refusedText(oneLine(input.notWatched.credential), input.notWatched.why)}.`);
   return lines.join("\n");
 };
 

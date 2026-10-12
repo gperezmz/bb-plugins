@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ago, fleetCard, HOUR, NOW } from "@/testing/fixtures";
+import { ago, fleetCard, half, HOUR, NOW } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
+import { closeConnect, currentConnect } from "../connect/requests";
 import { clearFleetTabWishes, takeFleetTab } from "../pending-open";
 import { FleetCard } from "./FleetCard";
 
@@ -12,6 +13,7 @@ beforeEach(() => sdk.reset());
 afterEach(() => {
   cleanup();
   clearFleetTabWishes();
+  closeConnect();
 });
 
 const show = (over = {}) => render(<FleetCard card={fleetCard(over)} now={NOW} />);
@@ -63,35 +65,40 @@ describe("a fleet card", () => {
 });
 
 describe("why a fleet is not fully watched", () => {
-  it("lists every reason, each linking to the place that mends it", () => {
+  it("lists every reason, each offering the place that mends it", () => {
     show({
       reasons: [
-        { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } },
+        { code: "no-credential", text: "other-org/x needs a GitHub account that can read other-org", fix: { kind: "connect", role: "forge" } },
         { code: "unreadable-rows", text: "2 manifest rows cannot be read, in In flight", fix: { kind: "fleet-tab" } },
         { code: "manifest-missing", text: "no manifest at the registered path", fix: { kind: "none" } },
       ],
     });
-    expect(screen.getByText("Linear is not watched: token refused")).toBeTruthy();
+    expect(screen.getByText("other-org/x needs a GitHub account that can read other-org")).toBeTruthy();
     expect(screen.getByText("2 manifest rows cannot be read, in In flight")).toBeTruthy();
     expect(screen.getByText("no manifest at the registered path")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe("/settings/plugins/unattendish-sdlc");
     fireEvent.click(screen.getByRole("button", { name: "Open the Fleet tab" }));
     expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_acme");
-    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("opens Connect… for the role of a reason that names one, over the current view", () => {
+    show({ reasons: [{ code: "no-credential", text: "Linear needs an account", fix: { kind: "connect", role: "tracker" } }] });
+    fireEvent.click(screen.getByRole("button", { name: /^Connect… tracker of acme\/web/ }));
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "acme/web", role: "tracker" } });
   });
 });
 
 describe("a card inside its own Fleet tab", () => {
   const reasons = [
-    { code: "credential-refused" as const, text: "Linear is not watched: token refused", fix: { kind: "settings" as const } },
+    { code: "no-credential" as const, text: "Linear needs an account", fix: { kind: "connect" as const, role: "tracker" as const } },
     { code: "unreadable-rows" as const, text: "2 manifest rows cannot be read, in In flight", fix: { kind: "fleet-tab" as const } },
   ];
 
-  it("offers no link to the tab it is in, but still says the reason and links the settings", () => {
+  it("offers no link to the tab it is in, but still says the reason and offers Connect…", () => {
     render(<FleetCard card={fleetCard({ reasons })} now={NOW} inFleetTab />);
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open the Fleet tab" })).toBeNull();
     expect(screen.getByText("2 manifest rows cannot be read, in In flight")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open settings" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Connect…/ })).toBeTruthy();
   });
 
   it("offers both on the Fleets page", () => {
@@ -101,15 +108,42 @@ describe("a card inside its own Fleet tab", () => {
   });
 });
 
-describe("a card's warnings", () => {
-  it("warns of a credential expiring within days, in the warning tone", () => {
-    show({ warnings: [{ kind: "expires", prefix: "org", expiresAt: "2026-10-18", daysLeft: 6 }] });
-    expect(screen.getByText("token expires in 6 days").className).toContain("text-warning");
+describe("a card's halves", () => {
+  it("names the account each half reads as, with Change account… on a watched one", () => {
+    show({ halves: [half({ credential: "GitHub · yuser for acme" })] });
+    const halves = screen.getByRole("list", { name: "Accounts of acme/web" });
+    expect(within(halves).getByText("acme/web · reads as GitHub · yuser")).toBeTruthy();
+    fireEvent.click(within(halves).getByRole("button", { name: "Change account… forge of acme/web" }));
+    expect(currentConnect()?.request.target).toEqual({ fleet: "acme/web", role: "forge" });
   });
 
-  it("says a gh or glab login shares the agents' rate limit", () => {
-    show({ warnings: [{ kind: "shares-rate-limit", prefix: "github.com" }] });
-    expect(screen.getByText("shares the agents' rate limit")).toBeTruthy();
+  it("says what a half needs, with Connect… for it", () => {
+    show({ halves: [half({ role: "tracker", what: "OPS", account: null, credential: null, needs: "needs a Jira account for acme.atlassian.net" })] });
+    expect(screen.getByText("needs a Jira account for acme.atlassian.net")).toBeTruthy();
+    expect(screen.getByText("OPS · no account yet")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Connect… tracker of acme/web" }));
+    expect(currentConnect()?.request.target).toEqual({ fleet: "acme/web", role: "tracker" });
+  });
+
+  it("labels a half whose credential can write", () => {
+    show({ halves: [half({ canWrite: true })] });
+    expect(screen.getByText("can write")).toBeTruthy();
   });
 });
 
+describe("a card's warnings", () => {
+  const expires = { kind: "expires" as const, label: "GitHub · yuser for acme", credentialId: "cred_1", accountId: "acc_1", role: "forge" as const, expiresAt: "2026-10-18", daysLeft: 6 };
+
+  it("warns of a credential expiring within days, in the warning tone, with Renew", () => {
+    show({ warnings: [expires] });
+    expect(screen.getByText("token expires in 6 days").parentElement?.className).toContain("text-warning");
+    fireEvent.click(screen.getByRole("button", { name: "Renew GitHub · yuser for acme" }));
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "acme/web", role: "forge" }, account: "acc_1", replaces: "cred_1" });
+  });
+
+  it("says a gh or glab login shares the agents' rate limit, with nothing to renew", () => {
+    show({ warnings: [{ kind: "shares-rate-limit", label: "GitHub · yuser" }] });
+    expect(screen.getByText("shares the agents' rate limit")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Renew/ })).toBeNull();
+  });
+});

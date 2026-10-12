@@ -20,7 +20,7 @@ The manifest path may name a file not written yet: until it can be read, the fle
 
 | `outcome` | When | Also carries |
 | --- | --- | --- |
-| `registered` | No thread holds the repository, or this thread already does | `watched` (true or false) and `notWatched`, a list of reasons, empty while watched. Each reason is `{code, text}`: `code` is one of `manifest-missing`, `manifest-unreadable`, `no-credential` or `credential-refused`, and `text` says it for a person, naming the prefix or path |
+| `registered` | No thread holds the repository, or this thread already does | `watched` (true or false) and `notWatched`, a list of reasons, empty while watched. Each reason is `{code, text}`: `code` is one of `manifest-missing`, `manifest-unreadable`, `no-credential` or `credential-refused`, and `text` says it for a person, naming the account, credential or path it concerns. `no-credential` means no [account](unattendish-settings.md#accounts) reads the repository or the tracker; the operator connects it with **Connect…** |
 | `taken-over` | The thread holding the repository is archived | `previousManager`, the old manager's thread id; `previousManifest`, its manifest path; and `watched` and `notWatched` as for `registered` |
 | `refused` | Another unarchived thread holds the repository | `holder`, that thread's id |
 | `unsupported` | The contract version is not one this plugin speaks | `supported`, the versions it speaks |

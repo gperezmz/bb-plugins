@@ -46,6 +46,17 @@ export async function refreshFleetsOf(deps: PollDeps, queue: SerialQueue, thread
   );
 }
 
+/**
+ * Polls one fleet now, behind any other work on it, whatever its interval: a credential was saved or the operator
+ * asked to check again, and the card shows the result without waiting for the next poll.
+ */
+export async function readFleetNow(deps: PollDeps, queue: SerialQueue, repo: string): Promise<void> {
+  await queue.run(repo, () => pollFleet(deps, repo)).then(
+    () => undefined,
+    (error: unknown) => deps.log.warn(`reading ${repo} at once failed: ${messageOf(error, deps.credentials.secrets())}`),
+  );
+}
+
 /** Sets a fleet's poll interval, or back to the default with null. False, and nothing set, when no fleet holds the repository. */
 export function setFleetInterval(deps: { readonly store: Store }, repo: string, intervalMs: number | null): boolean {
   if (deps.store.getFleet(repo) === null) return false;

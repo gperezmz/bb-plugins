@@ -1,6 +1,7 @@
 // `bb unattendish fleet ...`: the command line a manager (and the operator)
-// reaches the plugin through. No command takes a token: credentials are
-// entered in the plugin's settings.
+// reaches the plugin through. No command takes or prints a token: accounts
+// and their tokens are added through Connect… on the Fleets page or in the
+// plugin's settings section.
 import { cliCommand, defineCli, PluginCliError, type PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { FIELD_MAX, LEDGER_LIMIT } from "../application/dashboard";
 import type { FleetStatus } from "../application/status";
@@ -52,7 +53,8 @@ const statusLines = (fleets: readonly FleetStatus[]): string => {
         `${fleet.repo}  tracker ${fleet.tracker}`,
         `  manager ${fleet.manager} (${fleet.managerState}), manifest ${fleet.manifest}`,
         `  last polled ${fleet.lastPolledAt ?? "never"}, every ${Math.round(fleet.intervalMs / 1000)} s, ${fleet.requestsThisHour} requests this hour`,
-        ...fleet.credentials.map((c) => `  credential ${c.prefix} (${c.role}, ${c.service}, ${c.auth})${c.expiresAt === null ? "" : `, expires ${c.expiresAt}`}${c.sharesAgentRateLimit ? ", shares the fleet's agents' rate limit" : ""}`),
+        ...fleet.accounts.map((a) => `  ${a.role} reads as ${a.account ?? "no account"}${a.needs === null ? "" : `: ${a.needs}`}`),
+        ...fleet.credentials.map((c) => `  credential ${c.credential} (${c.role}, ${c.service}, ${c.auth})${c.expiresAt === null ? "" : `, expires ${c.expiresAt}`}${c.canWrite ? ", can write" : ""}${c.sharesAgentRateLimit ? ", shares the fleet's agents' rate limit" : ""}`),
         fleet.watched ? "  watched" : `  not watched: ${fleet.notWatched.map((r) => `${r.code}: ${r.text}`).join("; ")}`,
         ...(fleet.notWatchedSince === null ? [] : [`  not watched since ${fleet.notWatchedSince}`]),
         ...fleet.unreadableRows.map((r) => `  unreadable manifest row: ${r.section}, line ${r.line}: ${r.reason}`),

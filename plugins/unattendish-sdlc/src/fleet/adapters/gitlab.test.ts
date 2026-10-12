@@ -5,7 +5,6 @@ import { HttpError, type ReadRequest, type ResolvedCredential } from "../applica
 import type { FleetLabels, ReadOutcome, WatchedItem } from "../domain/model";
 import { HttpClient } from "./http";
 import { createGitlabAdapter } from "./gitlab";
-import { checksOutcome, pipelineOutcome } from "./gitlab-normalise";
 
 const TOKEN = "glpat-secretsecretsecret";
 const PATH = "org/sub/repo";
@@ -26,7 +25,7 @@ const world = async (projects: Record<string, { issues?: FakeItem[]; mergeReques
   });
   const mounted = await listen(fake);
   mounts.push(mounted);
-  const credential: ResolvedCredential = { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${mounted.url}/api/v4`, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: `${mounted.url}/api/v4`, host: "127.0.0.1" };
   const http = new HttpClient({ sleep: async () => undefined }).session(credential, TOKEN);
   const read = (over: Partial<ReadRequest> = {}): Promise<ReadOutcome> =>
     createGitlabAdapter().read({
@@ -66,7 +65,6 @@ describe("the GitLab adapter: snapshots", () => {
       open: true,
       merged: false,
       fleetLabels: ["status:ready"],
-      checks: null,
       inPartition: true,
       transitions: [],
     });
@@ -344,53 +342,23 @@ describe("the GitLab adapter: reviewers", () => {
   });
 });
 
-describe("the GitLab adapter: checks", () => {
-  const statuses = async (pipelines: { id: number; sha: string; status: string }[], sha = "head") => {
-    const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha, pipelines })] } });
+describe("the GitLab adapter: CI", () => {
+  it("requests no pipeline for a merge request whose head pipeline failed, and reads the rest of it", async () => {
+    const failed = { id: 9, sha: "head", status: "failed" };
+    const { read, mounted } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", labels: ["spec"], pipelines: [failed], headPipeline: failed })] } });
+    const outcome = await read({ items: [watch("!1")], watchedRefs: new Set(["!1"]), scanPartition: true });
+    expect(outcome.failures).toEqual([]);
+    expect(only(outcome.snapshots)).toMatchObject({ ref: "!1", fleetLabels: ["spec"], open: true });
+    expect(only(outcome.snapshots)).not.toHaveProperty("checks");
+    expect(mounted.requests.some((r) => r.url.includes("/merge_requests/1"))).toBe(true);
+    expect(mounted.requests.filter((r) => /pipeline/.test(r.url))).toEqual([]);
+  });
+
+  it("reads a merge request whose answer carries no head pipeline without asking for the pipelines", async () => {
+    const { read, mounted } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", pipelines: [{ id: 1, sha: "head", status: "failed" }], headPipeline: null })] } });
     const outcome = await read({ items: [watch("!1")] });
-    return outcome.snapshots[0]?.checks ?? (outcome.failures.length > 0 ? outcome.failures : null);
-  };
-
-  it("is pending while the head pipeline is pending or running, whatever an earlier one did", async () => {
-    expect(await statuses([{ id: 1, sha: "head", status: "failed" }, { id: 2, sha: "head", status: "running" }])).toEqual({ sha: "head", outcome: "pending" });
-    expect(await statuses([{ id: 1, sha: "head", status: "scheduled" }])).toEqual({ sha: "head", outcome: "pending" });
-  });
-
-  it("is failed when the head pipeline failed or was canceled, passed when it passed, was skipped or is manual", async () => {
-    expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "canceled" }])).toEqual({ sha: "head", outcome: "failed" });
-    expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "skipped" }, { id: 3, sha: "head", status: "manual" }])).toEqual({ sha: "head", outcome: "passed" });
-  });
-
-  it("is null for a merge request with no pipeline at its head, and ignores pipelines of older commits", async () => {
-    expect(await statuses([])).toBeNull();
-    expect(await statuses([{ id: 1, sha: "older", status: "failed" }])).toBeNull();
-  });
-
-  it("takes the head pipeline alone: a rerun that passed after a failure passes, and a rerun that failed after a pass fails", async () => {
-    expect(await statuses([{ id: 1, sha: "head", status: "failed" }, { id: 2, sha: "head", status: "success" }])).toEqual({ sha: "head", outcome: "passed" });
-    expect(await statuses([{ id: 1, sha: "head", status: "success" }, { id: 2, sha: "head", status: "failed" }])).toEqual({ sha: "head", outcome: "failed" });
-  });
-
-  it("reads a head pipeline that ran on another commit, as a merged-results pipeline does, and reports the head commit", async () => {
-    const headPipeline = { id: 9, sha: "merge-result", status: "running" };
-    const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", pipelines: [{ id: 3, sha: "head", status: "success" }, headPipeline], headPipeline })] } });
-    expect(only((await read({ items: [watch("!1")] })).snapshots).checks).toEqual({ sha: "head", outcome: "pending" });
-  });
-
-  it("falls back to the newest pipeline of the head commit where the answer has no head pipeline", async () => {
-    const pipelines = [{ id: 1, sha: "head", status: "failed" }, { id: 4, sha: "head", status: "success" }, { id: 7, sha: "older", status: "failed" }];
-    const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha: "head", pipelines, headPipeline: null })] } });
-    expect(only((await read({ items: [watch("!1")] })).snapshots).checks).toEqual({ sha: "head", outcome: "passed" });
-  });
-
-  it("is a failure for a status GitLab does not document", async () => {
-    const result = await statuses([{ id: 1, sha: "head", status: "exploded" }]);
-    expect(result).toEqual([{ ref: "!1", reason: expect.not.stringContaining("exploded") }]);
-  });
-
-  it("gives an issue no checks", async () => {
-    const { read } = await world({ [PATH]: { issues: [issue(1)] } });
-    expect(only((await read({ items: [watch("#1")] })).snapshots).checks).toBeNull();
+    expect(outcome.failures).toEqual([]);
+    expect(mounted.requests.filter((r) => /pipeline/.test(r.url))).toEqual([]);
   });
 });
 
@@ -516,21 +484,11 @@ describe("the GitLab adapter: failures", () => {
     expect(outcome.failures.every((failure) => failure.kind === "unreachable")).toBe(true);
 
     const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(
-      { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
+      { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
       TOKEN,
     );
     const none = await broken.read({ http: silent, items: [watch("#1")], stateOnly: true });
     expect(none.failures).toEqual([{ ref: "#1", reason: expect.not.stringContaining("fetch failed"), kind: "unreachable" }]);
-  });
-
-  it("leaves checks null, and reads the rest of the merge request, where its pipelines are forbidden (CI off)", async () => {
-    const { read } = await world(
-      { [PATH]: { mergeRequests: [mr(3, { labels: ["spec"] })] } },
-      { faults: [{ match: "/merge_requests/3/pipelines", status: 403 }] },
-    );
-    const outcome = await read({ items: [watch("!3")], watchedRefs: new Set(["!3"]) });
-    expect(outcome.failures).toEqual([]);
-    expect(only(outcome.snapshots)).toMatchObject({ ref: "!3", checks: null, fleetLabels: ["spec"], open: true });
   });
 
   it("fails an item whose read errs otherwise, and goes on", async () => {
@@ -672,7 +630,7 @@ describe("the GitLab adapter: pages", () => {
 describe("the GitLab adapter: requests", () => {
   it("sends reads only, each with the credential", async () => {
     const { read, mounted } = await world(
-      { [PATH]: { issues: [issue(1, { labels: ["spec"], assignees: ["olga"] })], mergeRequests: [mr(2, { pipelines: [{ id: 1, sha: "sha2", status: "success" }] })] } },
+      { [PATH]: { issues: [issue(1, { labels: ["spec"], assignees: ["olga"] })], mergeRequests: [mr(2)] } },
       { token: { expires_at: "2027-03-01" } },
     );
     await read({ items: [watch("#1"), watch("!2")], watchedRefs: new Set(["#1", "!2"]), scanPartition: true });
@@ -728,28 +686,5 @@ describe("the fake GitLab, driven over HTTP", () => {
     const logged = (await (await fetch(`${mounted.url}/__admin/requests`)).json()) as { method: string }[];
     expect(logged.length).toBeGreaterThan(0);
     expect(logged.every((r) => r.method === "GET")).toBe(true);
-  });
-});
-
-describe("the rules the adapter rests on", () => {
-  it("maps every documented pipeline status", () => {
-    const expected = {
-      success: "passed",
-      skipped: "passed",
-      manual: "passed",
-      failed: "failed",
-      canceled: "failed",
-      created: "pending",
-      waiting_for_resource: "pending",
-      waiting_for_callback: "pending",
-      preparing: "pending",
-      pending: "pending",
-      running: "pending",
-      scheduled: "pending",
-      canceling: "pending",
-    } as const;
-    for (const [status, outcome] of Object.entries(expected)) expect(pipelineOutcome(status)).toBe(outcome);
-    expect(pipelineOutcome("blocked")).toBeNull();
-    expect(checksOutcome([])).toBeNull();
   });
 });

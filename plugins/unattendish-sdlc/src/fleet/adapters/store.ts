@@ -1,6 +1,8 @@
 // The Fleet context's store on the plugin's SQLite database: registrations,
 // cursors and the ledger. Rows hold what the types in the model hold and
-// nothing the services wrote beyond them; no column can carry a token.
+// nothing the services wrote beyond them; no column of theirs can carry a token.
+// The migrations also make the tables of `SqliteAccounts`, whose
+// `account_credentials.token` is the one column that holds a token.
 import type Database from "better-sqlite3";
 import {
   keptAnnounced,
@@ -139,6 +141,38 @@ export const MIGRATIONS: string[] = [
    )`,
   `CREATE INDEX IF NOT EXISTS inbox_seen_pruning ON inbox_seen (seen_at)`,
   `ALTER TABLE fleets ADD COLUMN inbox_baselined INTEGER NOT NULL DEFAULT 0`,
+  `CREATE TABLE IF NOT EXISTS accounts (
+     id TEXT PRIMARY KEY,
+     service TEXT NOT NULL,
+     place TEXT NOT NULL,
+     login TEXT NOT NULL,
+     name TEXT NOT NULL,
+     via TEXT NOT NULL,
+     api_url TEXT,
+     added_at TEXT NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS account_credentials (
+     id TEXT PRIMARY KEY,
+     account_id TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     owner TEXT,
+     token TEXT,
+     expires_at TEXT,
+     added_at TEXT NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS assignments (
+     scope_key TEXT PRIMARY KEY,
+     scope TEXT NOT NULL,
+     account_id TEXT NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS access_problems (
+     repo_id TEXT NOT NULL,
+     role TEXT NOT NULL,
+     credential_id TEXT NOT NULL,
+     why TEXT NOT NULL,
+     at TEXT NOT NULL,
+     PRIMARY KEY (repo_id, role)
+   )`,
 ];
 
 interface FleetRow {
@@ -233,13 +267,26 @@ const toFleet = (row: FleetRow): StoredFleet => ({
   registration: { ...(JSON.parse(row.registration) as Registration), intervalMs: row.interval_ms },
   lastPolledAt: row.last_polled_at,
   notWatched: JSON.parse(row.not_watched) as NotWatched[],
-  outages: row.outages === null ? legacyOutages(row) : (JSON.parse(row.outages) as StoredFleet["outages"]),
+  outages: row.outages === null ? legacyOutages(row) : outagesOf(row.outages),
   pendingCatchUpMs: row.pending_catch_up_ms,
   unreadableRows: JSON.parse(row.unreadable_rows) as StoredFleet["unreadableRows"],
   outsideLinks: JSON.parse(row.outside_links) as StoredFleet["outsideLinks"],
-  expiries: JSON.parse(row.expiries) as StoredFleet["expiries"],
   heldSince: row.held_since,
 });
+
+/** The `outages` column, where a refusal written before it named its credential's label under `prefix` reads as `credential`. */
+const outagesOf = (text: string): StoredFleet["outages"] => {
+  const stored = JSON.parse(text) as Record<string, (SourceOutage & { readonly refused: { readonly prefix?: string } | null }) | undefined>;
+  const outages: Partial<Record<"forge" | "tracker", SourceOutage>> = {};
+  for (const role of ["forge", "tracker"] as const) {
+    const outage = stored[role];
+    if (outage === undefined) continue;
+    const refused = outage.refused === null ? null : { ...outage.refused, credential: outage.refused.credential ?? outage.refused.prefix ?? "" };
+    if (refused !== null) delete (refused as { prefix?: string }).prefix;
+    outages[role] = { ...outage, refused };
+  }
+  return outages;
+};
 
 /**
  * The outage of a row written while it was kept for the fleet as a whole, which does not say which source it was of:
@@ -250,7 +297,7 @@ const legacyOutages = (row: FleetRow): StoredFleet["outages"] => {
   const refused =
     row.refused_since === null || row.refused_prefix === null
       ? null
-      : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" };
+      : { since: row.refused_since, credential: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" };
   if (refused === null && row.unreadable_polls === 0) return {};
   const outage: SourceOutage = { unreadablePolls: row.unreadable_polls, unreadableSince: row.unreadable_since, refused };
   const registration = JSON.parse(row.registration) as Registration;
@@ -299,7 +346,7 @@ const toWake = (row: WakeRow): StoredWake => ({
   notWatched:
     row.not_watched_since === null || row.not_watched_prefix === null
       ? null
-      : { since: row.not_watched_since, prefix: row.not_watched_prefix, why: row.not_watched_why ?? "refused" },
+      : { since: row.not_watched_since, credential: row.not_watched_prefix, why: row.not_watched_why ?? "refused" },
 });
 
 const toAction = (row: ActionRow): ActionRecord => ({
@@ -364,6 +411,8 @@ export class SqliteStore implements Store {
       // The ledger stays: retention ages it out, and a registration that follows still sees what it holds.
       this.db.prepare("DELETE FROM cursors WHERE repo_id = ?").run(repo);
       this.db.prepare("DELETE FROM actions WHERE repo_id = ?").run(repo);
+      // What a credential was found unable to read belongs to the registration: one made again reads afresh.
+      this.db.prepare("DELETE FROM access_problems WHERE repo_id = ?").run(repo);
       return this.db.prepare("DELETE FROM fleets WHERE repo_id = ?").run(repo).changes > 0;
     })();
   }
@@ -377,7 +426,7 @@ export class SqliteStore implements Store {
       const outages = keptAnnounced(this.getFleet(repo)?.outages ?? {}, state.outages);
       this.db
         .prepare(
-          `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?, outages = ?, pending_catch_up_ms = ?
+          `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, held_since = ?, outages = ?, pending_catch_up_ms = ?
            WHERE repo_id = ?`,
         )
         .run(
@@ -385,7 +434,6 @@ export class SqliteStore implements Store {
           JSON.stringify(state.notWatched),
           JSON.stringify(state.unreadableRows),
           JSON.stringify(state.outsideLinks),
-          JSON.stringify(state.expiries),
           state.heldSince,
           JSON.stringify(outages),
           state.pendingCatchUpMs,
@@ -481,7 +529,7 @@ export class SqliteStore implements Store {
         wake.catchUpMs,
         wake.heldSince,
         wake.notWatched?.since ?? null,
-        wake.notWatched?.prefix ?? null,
+        wake.notWatched?.credential ?? null,
         wake.notWatched?.why ?? null,
       );
     return {
@@ -529,7 +577,7 @@ export class SqliteStore implements Store {
   updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "catchUpMs" | "heldSince" | "notWatched">): void {
     this.db
       .prepare("UPDATE wakes SET kind = ?, catch_up_ms = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ?, not_watched_why = ? WHERE repo_id = ? AND id = ?")
-      .run(update.kind, update.catchUpMs, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, update.notWatched?.why ?? null, repo, wakeId);
+      .run(update.kind, update.catchUpMs, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.credential ?? null, update.notWatched?.why ?? null, repo, wakeId);
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

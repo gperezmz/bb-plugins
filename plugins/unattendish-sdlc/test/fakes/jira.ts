@@ -8,6 +8,8 @@
 //   GET /rest/api/3/issue/{key}/changelog   `startAt`/`maxResults` pages, oldest first, `isLast`
 //   GET /rest/api/3/issue/{key}/comment     `startAt`/`maxResults`/`orderBy`, `total`
 //   GET /rest/api/3/status              every status with its category
+//   GET /rest/api/3/myself              whose the token is (`accountId`, `emailAddress`, `displayName`)
+//   GET /rest/api/3/project/{key}       the project, or 404 for a key the fake holds none of
 //
 // The JQL it understands is what the adapter sends: `AND`/`OR`/parentheses over
 // `project`, `labels`, `statusCategory`, `assignee`, `creator` (`=`, `!=`, `in`,
@@ -108,6 +110,13 @@ export interface FakeJiraState {
   statuses: FakeJiraStatus[];
   issues: FakeJiraIssue[];
   settings: FakeJiraSettings;
+  /**
+   * Whose each token is, by the token as sent (`email:api-token` for a Basic credential): `GET /myself` answers that
+   * account id's user, and 401 for a token not listed. Unset, every token is the first of `users`, or `operator`.
+   */
+  logins?: Record<string, string>;
+  /** The project keys the site holds; unset, those of the issues' keys. */
+  projects?: string[];
 }
 
 export const DEFAULT_STATUSES: FakeJiraStatus[] = [
@@ -130,6 +139,8 @@ const normalise = (raw: Partial<FakeJiraState> | undefined): FakeJiraState => ({
   users: raw?.users ?? [],
   statuses: raw?.statuses ?? DEFAULT_STATUSES,
   issues: raw?.issues ?? [],
+  ...(raw?.logins === undefined ? {} : { logins: raw.logins }),
+  ...(raw?.projects === undefined ? {} : { projects: raw.projects }),
   settings: { pageSize: raw?.settings?.pageSize ?? null, etag: raw?.settings?.etag ?? false, alsoListed: raw?.settings?.alsoListed ?? [], failures: raw?.settings?.failures ?? [], unordered: raw?.settings?.unordered ?? false },
 });
 
@@ -417,6 +428,29 @@ export function createFakeJira(initial?: Partial<FakeJiraState>): FakeService {
         response.end(JSON.stringify({ errorMessages: ["failed on purpose"] }));
         return true;
       }
+    }
+
+    if (path === "/myself") {
+      const sent = request.headers.authorization ?? "";
+      const token = sent.startsWith("Basic ") ? Buffer.from(sent.slice("Basic ".length), "base64").toString() : sent.replace(/^Bearer /, "");
+      const accountId = state.logins === undefined ? (state.users[0]?.accountId ?? "operator") : state.logins[token];
+      if (accountId === undefined) {
+        send(request, response, { message: "Unauthorized" }, 401);
+        return true;
+      }
+      const user = state.users.find((candidate) => candidate.accountId === accountId);
+      send(request, response, { accountId, emailAddress: user === undefined ? `${accountId}@example.com` : user.emailAddress, displayName: user?.displayName ?? accountId, active: true });
+      return true;
+    }
+
+    const projectPath = /^\/project\/([^/]+)$/.exec(path);
+    if (projectPath !== null) {
+      const key = decodeURIComponent(projectPath[1]!);
+      const keys = state.projects ?? state.issues.map((issue) => issue.key.replace(/-\d+$/, ""));
+      const held = keys.find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+      if (held === undefined) send(request, response, { errorMessages: ["No project could be found with key '" + key + "'."], errors: {} }, 404);
+      else send(request, response, { id: String(10_000 + keys.indexOf(held)), key: held, name: `Project ${held}` });
+      return true;
     }
 
     if (path === "/search/jql") {

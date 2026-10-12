@@ -355,7 +355,7 @@ describe("a queued wake keeps what it says (AC7, AC12)", () => {
     expect(w.store.openWake(REPO_KEY)).toMatchObject({
       catchUpMs: 20 * 60_000,
       heldSince: "2026-10-12T10:02:00.000Z",
-      notWatched: { since: "2026-10-12T10:22:00.000Z", prefix: "github.com/org", why: "refused" },
+      notWatched: { since: "2026-10-12T10:22:00.000Z", credential: "github.com/org", why: "refused" },
     });
   });
 });
@@ -746,7 +746,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(await statusOf(w)).toMatchObject({
       watched: false,
       notWatchedSince: "2026-10-12T10:00:00.000Z",
-      notWatched: [{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }],
+      notWatched: [{ code: "credential-refused", text: expect.stringContaining("github.com/org cannot read org/repo: the repository is not ticked on the token"), role: "forge" }],
     });
     await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
     expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
@@ -785,7 +785,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     await pollWith(w, gone);
     expect(w.channel.sent).toHaveLength(1);
     expect(sentText(w)).toMatch(/\nNot watched since [^:]+:\d\d:\d\d\.000Z: the credential for github\.com\/org could not find what the fleet needs \(404\)\.$/);
-    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org could not find what the fleet needs (404)" }]);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org cannot read org/repo: the repository is not ticked on the token"), role: "forge" }]);
     expect(w.store.getFleet(REPO_KEY)!.outages.forge?.refused).toMatchObject({ why: "not-found" });
   });
 
@@ -826,7 +826,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     w.clock.advance(120_000);
     expect(w.adapters.github.reads).toHaveLength(4);
     expect(w.store.getFleet(REPO_KEY)!.outages).toEqual(during.outages);
-    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }]);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org cannot read org/repo: the repository is not ticked on the token"), role: "forge" }]);
     await pollWith(w, forbidden);
     await pollWith(w, forbidden);
     expect(w.channel.sent).toHaveLength(1);
@@ -889,6 +889,16 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
 });
 
 describe("what status and the ledger report (AC11, AC13)", () => {
+  it("keeps the expiry the service reports on the credential it read with (#253 AC10)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "fine-grained", owner: "org", expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, TOKEN);
+    w.http.expiresAt = "2026-11-01T00:00:00.000Z";
+    await poll(w);
+    expect(w.accounts.credentials()[0]!.expiresAt).toBe("2026-11-01T00:00:00.000Z");
+  });
+
   it("says a fleet is not watched when its credential gives no token, naming the prefix (AC13)", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
@@ -925,7 +935,8 @@ describe("what status and the ledger report (AC11, AC13)", () => {
       managerState: "live",
       intervalMs: 120_000,
       requestsThisHour: 1,
-      credentials: [{ prefix: "github.com/org", auth: "token", sharesAgentRateLimit: false }],
+      accounts: [{ role: "forge", account: "github.com/org", needs: null }],
+      credentials: [{ credential: "github.com/org", account: "github.com/org", auth: "token", canWrite: false, sharesAgentRateLimit: false }],
     });
     expect(status!.unreadableRows.length).toBeGreaterThan(0);
   });
@@ -1036,7 +1047,7 @@ describe("an outage is kept per source (AC8, AC13)", () => {
     expect(w.channel.sent).toHaveLength(1);
     expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden");
     const during = w.store.getFleet(REPO_KEY)!.outages;
-    expect(during).toEqual({ forge: { unreadablePolls: 3, unreadableSince: "2026-10-12T10:00:00.000Z", refused: { since: "2026-10-12T10:00:00.000Z", prefix: "github.com/org", why: "forbidden", announced: true } } });
+    expect(during).toEqual({ forge: { unreadablePolls: 3, unreadableSince: "2026-10-12T10:00:00.000Z", refused: { since: "2026-10-12T10:00:00.000Z", credential: "github.com/org", why: "forbidden", announced: true } } });
 
     await pollWith(w, new HttpError("rate-limit", "GET /x answered 429", 429, 150_000), trackerReads());
     expect(w.store.getFleet(REPO_KEY)!.outages).toEqual(during);
@@ -1044,7 +1055,7 @@ describe("an outage is kept per source (AC8, AC13)", () => {
     expect(w.adapters.github.reads).toHaveLength(4);
     expect(w.adapters.linear.reads).toHaveLength(5);
     expect(w.store.getFleet(REPO_KEY)!.outages).toEqual(during);
-    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }]);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org cannot read org/repo: the repository is not ticked on the token"), role: "forge" }]);
 
     await pollWith(w, forbidden, trackerReads());
     await pollWith(w, forbidden, trackerReads());
@@ -1065,7 +1076,7 @@ describe("an outage is kept per source (AC8, AC13)", () => {
     expect(await statusOf(w)).toMatchObject({
       watched: false,
       notWatchedSince: "2026-10-12T10:00:00.000Z",
-      notWatched: [{ code: "credential-refused", text: "The credential for linear:ENG was forbidden to read what the fleet needs (403)" }],
+      notWatched: [{ code: "credential-refused", text: expect.stringContaining("linear:ENG cannot read team ENG"), role: "tracker" }],
     });
     expect(w.store.getFleet(REPO_KEY)!.outages.forge).toBeUndefined();
 
@@ -1084,10 +1095,9 @@ describe("an outage is kept per source (AC8, AC13)", () => {
       notWatched: [],
       unreadableRows: [],
       outsideLinks: [],
-      expiries: {},
       heldSince: null,
       pendingCatchUpMs: null,
-      outages: { tracker: { unreadablePolls: 5, unreadableSince: "2026-10-01T00:00:00.000Z", refused: { since: "2026-10-01T00:00:00.000Z", prefix: "github.com/org", why: "forbidden", announced: true } } },
+      outages: { tracker: { unreadablePolls: 5, unreadableSince: "2026-10-01T00:00:00.000Z", refused: { since: "2026-10-01T00:00:00.000Z", credential: "github.com/org", why: "forbidden", announced: true } } },
     });
     const down = outcome({ failures: [{ ref: null, reason: "Linear answered 403", kind: "forbidden" }, { ref: "ENG-1", reason: "ENG-1 answered 403", kind: "forbidden" }] });
     for (let i = 0; i < 2; i += 1) await pollWith(w, outcome({ snapshots: [snapshot(7)] }), down);
@@ -1095,7 +1105,7 @@ describe("an outage is kept per source (AC8, AC13)", () => {
     await pollWith(w, outcome({ snapshots: [snapshot(7)] }), down);
     expect(w.channel.sent).toHaveLength(1);
     expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for linear:ENG was forbidden to read what the fleet needs (403).");
-    expect(w.store.getFleet(REPO_KEY)!.outages.tracker?.refused).toEqual({ since: "2026-10-12T10:00:00.000Z", prefix: "linear:ENG", why: "forbidden", announced: true });
+    expect(w.store.getFleet(REPO_KEY)!.outages.tracker?.refused).toEqual({ since: "2026-10-12T10:00:00.000Z", credential: "linear:ENG", why: "forbidden", announced: true });
   });
 
   it("shows the earlier of the two sources' times as the fleet's not watched since", async () => {

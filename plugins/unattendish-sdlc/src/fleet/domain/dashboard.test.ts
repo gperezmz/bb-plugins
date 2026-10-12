@@ -55,18 +55,18 @@ describe("reasonsOf", () => {
   it("gathers every reason with where it is put right", () => {
     const reasons = reasonsOf(
       [
-        { code: "no-credential", text: "No credential is chosen for github.com/org/repo" },
-        { code: "credential-refused", text: "The credential for github.com/org was refused" },
+        { code: "no-credential", text: "No credential is chosen for github.com/org/repo", role: "forge" },
+        { code: "credential-refused", text: "The credential for linear:ENG was refused", role: "tracker" },
         { code: "manifest-missing", text: "The manifest does not exist yet" },
-        { code: "no-credential", text: "No credential is chosen for github.com/org/repo" },
+        { code: "no-credential", text: "No credential is chosen for github.com/org/repo", role: "forge" },
       ],
       [{ section: "Landed", line: 2, reason: "x" }],
     );
     expect(reasons.map((reason) => [reason.code, reason.fix])).toEqual([
-      ["no-credential", "settings"],
-      ["credential-refused", "settings"],
-      ["manifest-missing", "fleet-tab"],
-      ["unreadable-rows", "fleet-tab"],
+      ["no-credential", { kind: "connect", role: "forge" }],
+      ["credential-refused", { kind: "connect", role: "tracker" }],
+      ["manifest-missing", { kind: "fleet-tab" }],
+      ["unreadable-rows", { kind: "fleet-tab" }],
     ]);
   });
 });
@@ -74,35 +74,36 @@ describe("reasonsOf", () => {
 describe("credentialWarnings", () => {
   const day = 86_400_000;
   const iso = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+  const credential = (label: string, auth: "token" | "gh" | "glab" = "token") => ({ role: "forge" as const, label, credentialId: `id:${label}`, accountId: "account", auth });
 
   it("warns of an expiry within seven days, counting days left up", () => {
-    const [warning] = credentialWarnings([{ prefix: "github.com/org", auth: "token", expiresAt: iso(2.5 * day) }], NOW);
-    expect(warning).toEqual({ kind: "expires", prefix: "github.com/org", expiresAt: iso(2.5 * day), daysLeft: 3 });
+    const [warning] = credentialWarnings([{ ...credential("github.com/org"), expiresAt: iso(2.5 * day) }], NOW);
+    expect(warning).toEqual({ kind: "expires", label: "github.com/org", credentialId: "id:github.com/org", accountId: "account", role: "forge", expiresAt: iso(2.5 * day), daysLeft: 3 });
   });
 
   it("warns at exactly seven days and not beyond", () => {
-    expect(credentialWarnings([{ prefix: "p", auth: "token", expiresAt: iso(7 * day) }], NOW)).toHaveLength(1);
-    expect(credentialWarnings([{ prefix: "p", auth: "token", expiresAt: iso(7 * day + 1000) }], NOW)).toEqual([]);
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(7 * day) }], NOW)).toHaveLength(1);
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(7 * day + 1000) }], NOW)).toEqual([]);
   });
 
   it("warns of an expiry already passed, with 0 days left", () => {
-    expect(credentialWarnings([{ prefix: "p", auth: "token", expiresAt: iso(-3 * day) }], NOW)).toMatchObject([{ kind: "expires", daysLeft: 0 }]);
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(-3 * day) }], NOW)).toMatchObject([{ kind: "expires", daysLeft: 0 }]);
   });
 
   it("warns of a shared rate limit for a gh or glab login, and not for a token", () => {
     const warnings = credentialWarnings(
       [
-        { prefix: "a", auth: "gh", expiresAt: null },
-        { prefix: "b", auth: "glab", expiresAt: iso(day) },
-        { prefix: "c", auth: "token", expiresAt: null },
+        { ...credential("a", "gh"), expiresAt: null },
+        { ...credential("b", "glab"), expiresAt: iso(day) },
+        { ...credential("c", "token"), expiresAt: null },
       ],
       NOW,
     );
-    expect(warnings.map((warning) => `${warning.kind}:${warning.prefix}`)).toEqual(["shares-rate-limit:a", "expires:b", "shares-rate-limit:b"]);
+    expect(warnings.map((warning) => `${warning.kind}:${warning.label}`)).toEqual(["shares-rate-limit:a", "expires:b", "shares-rate-limit:b"]);
   });
 
   it("ignores an expiry that cannot be read", () => {
-    expect(credentialWarnings([{ prefix: "p", auth: "token", expiresAt: "soon" }], NOW)).toEqual([]);
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: "soon" }], NOW)).toEqual([]);
   });
 });
 
@@ -117,7 +118,7 @@ describe("listWatched", () => {
     unreadable: [],
   };
   const fleet = { repo: { host: "github.com", path: "org/repo" }, tracker: { kind: "forge-issues" as const }, forge: "github" as const };
-  const state = (fleetLabels: string[], inPartition = true, open = true) => ({ open, merged: false, fleetLabels, checks: null, inPartition });
+  const state = (fleetLabels: string[], inPartition = true, open = true) => ({ open, merged: false, fleetLabels, inPartition });
   const cursor: SourceCursor = { since: "x", items: { "forge:#1": state(["spec", "status:ready"]), "forge:#9": state(["spec"]), "forge:#8": state(["spec"], false), "forge:#7": state(["status:ready"], true, false) } };
 
   it("gives each item every reason the manifest names it and the labels it carries, label-only items last", () => {

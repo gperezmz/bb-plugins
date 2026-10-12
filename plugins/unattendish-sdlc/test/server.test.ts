@@ -59,10 +59,6 @@ async function load(state: Partial<FakeGithubState>, sent: unknown[] = [], sdk: 
   });
   const host = createFakePluginHost({
     pluginId: "unattendish-sdlc",
-    settings: {
-      credentials: JSON.stringify([{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: fake.url }]),
-      tokens: JSON.stringify({ "github.example/org": TOKEN }),
-    },
     sdk: {
       threads: {
         get: sdk.get ?? (async () => ({ id: MANAGER, archivedAt: null, deletedAt: null })),
@@ -76,8 +72,16 @@ async function load(state: Partial<FakeGithubState>, sent: unknown[] = [], sdk: 
     },
   });
   await plugin(host.bb);
+  // The operator's account on github.example, whose API is the fake GitHub, as the popup adds it.
+  await connect(host.harness, { account: { service: "github", place: "github.example", apiUrl: fake.url }, owner: "org", secret: { kind: "token", token: TOKEN }, confirm: true });
   return { ...host, sent, fake, bearers };
 }
+
+const connect = async (harness: { callRpc(method: string, input: unknown): Promise<unknown> }, input: unknown) => {
+  const result = await harness.callRpc("connect", input);
+  expect(result).toMatchObject({ outcome: "saved" });
+  return result as { account: { id: string } };
+};
 
 const registerArgs = (manifest: string) => [
   "fleet", "register", "--contract", "1", "--repo", REPO, "--tracker", "forge-issues", "--manifest", manifest, "--operator", "olivia",
@@ -85,13 +89,12 @@ const registerArgs = (manifest: string) => [
 ];
 
 describe("the plugin's entry", () => {
-  it("registers the command line, the thread events and the polling service, and declares the two settings", async () => {
+  it("registers the command line, the thread events and the polling service, and declares no setting: accounts live in its database", async () => {
     const { harness } = await load({});
     expect(harness.registrations.cli?.name).toBe("unattendish");
     expect(harness.registrations.cli?.commands.map((c) => c.name)).toEqual(expect.arrayContaining(["fleet-register", "fleet-unregister", "fleet-status", "fleet-ledger", "fleet-interval"]));
     expect(harness.registrations.services.map((s) => s.name)).toEqual(["poll-fleets"]);
-    expect(Object.keys(harness.registrations.settingsDescriptors).sort()).toEqual(["credentials", "tokens"]);
-    expect(harness.registrations.settingsDescriptors.tokens).toMatchObject({ secret: true });
+    expect(Object.keys(harness.registrations.settingsDescriptors)).toEqual([]);
   });
 
   it("leaves no abort listener behind on the service's signal from the ticks that have passed", async () => {
@@ -262,7 +265,7 @@ describe("what the entry wires between bb and the fleets", () => {
     expect(await refs()).toEqual(["#102"]);
   });
 
-  it("uses a token pasted after the plugin loaded for the next read", async () => {
+  it("uses a token renewed after the plugin loaded for the next read", async () => {
     const { harness, bearers } = await registered({ repos: { "org/repo": { issues: [issue(7), issue(8)] } as never } });
     const service = harness.runService("poll-fleets");
     await until(() => bearers.length > 0);
@@ -272,7 +275,9 @@ describe("what the entry wires between bb and the fleets", () => {
     expect(new Set(bearers)).toEqual(new Set([`Bearer ${TOKEN}`]));
 
     const NEW_TOKEN = "ghp_pasted_after_load_value";
-    await harness.setSettings({ tokens: JSON.stringify({ "github.example/org": NEW_TOKEN }) });
+    const settings = (await harness.callRpc("settings", null)) as { accounts: { id: string; credentials: { id: string }[] }[] };
+    const account = settings.accounts[0]!;
+    await connect(harness, { account: { id: account.id }, owner: "org", secret: { kind: "token", token: NEW_TOKEN }, replaces: account.credentials[0]!.id });
     // The manager's turn ends with a second item in its manifest, which is read with whatever token is held now.
     writeFileSync(join(dir, "manifest.md"), manifestText(`${inbox(7)}\n${inbox(8)}`));
     const before = bearers.length;

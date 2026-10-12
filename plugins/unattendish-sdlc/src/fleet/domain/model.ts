@@ -57,6 +57,8 @@ export type NotWatchedCode = "manifest-missing" | "manifest-unreadable" | "no-cr
 export interface NotWatched {
   readonly code: NotWatchedCode;
   readonly text: string;
+  /** The half a credential reason is about; absent for a manifest reason. */
+  readonly role?: SourceRole;
 }
 
 /**
@@ -191,8 +193,6 @@ export interface Transition {
   readonly actorAliases?: readonly string[];
 }
 
-export type ChecksOutcome = "pending" | "passed" | "failed";
-
 /** One item as a source read it now. */
 export interface ItemSnapshot {
   readonly role: SourceRole;
@@ -203,8 +203,6 @@ export interface ItemSnapshot {
   readonly merged: boolean;
   /** Which of the four registered labels the item carries, as registered. */
   readonly fleetLabels: readonly string[];
-  /** A pull request's checks at its head, null for anything else. */
-  readonly checks: { readonly sha: string; readonly outcome: ChecksOutcome } | null;
   /** Assigned to the operator, or filed by them and assigned to nobody. */
   readonly inPartition: boolean;
   readonly transitions: readonly Transition[];
@@ -273,7 +271,6 @@ export interface ItemState {
   readonly open: boolean;
   readonly merged: boolean;
   readonly fleetLabels: readonly string[];
-  readonly checks: { readonly sha: string; readonly outcome: ChecksOutcome; readonly reported: boolean; readonly round?: number } | null;
   readonly inPartition: boolean;
   /** The reviewers' states as last read, by actor, for a service that keeps them on the item. */
   readonly reviewers?: Readonly<Record<string, "approved" | "changes requested" | "commented">>;
@@ -294,9 +291,7 @@ export type ChangeKind =
   | "unlabelled"
   | "closed"
   | "reopened"
-  | "merged"
-  | "checks passed"
-  | "checks failed";
+  | "merged";
 
 export interface Change {
   /** Unique within a fleet and stable across polls, so a change read twice is one change. */

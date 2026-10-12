@@ -9,9 +9,11 @@ import type { InboxRow, WrittenSection } from "../domain/model";
 import { effectiveInterval } from "../domain/registration";
 import { CELL_MAX_CHARS, clip } from "../domain/text";
 import { watchedWithReasons } from "../domain/watched";
-import type { Clock, Credentials, CostReader, ManifestFiles, Store, ThreadDirectory, ThreadStanding } from "./ports";
-import { assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
-import type { ActionRecordView, BlockedRowView, FleetCardView, FleetCredentialView, InboxRowView, InFlightRowView, LandedRowView, ManifestView, ManagerView, UnreadableInboxRowView, WatchedItemView } from "./views";
+import { accessProblemText, canWrite, halfWhat } from "../domain/accounts";
+import { credentialRefused } from "../domain/registration";
+import type { AccountStore, Clock, Credentials, CostReader, ManifestFiles, Store, ThreadDirectory, ThreadStanding } from "./ports";
+import { accessRolesOf, assessWatching, fixedByConnect, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
+import type { ActionRecordView, BlockedRowView, FleetCardView, FleetCredentialView, HalfView, InboxRowView, InFlightRowView, LandedRowView, ManifestView, ManagerView, NeedsAccountView, UnreadableInboxRowView, WatchedItemView } from "./views";
 import { identityOf } from "./observe";
 
 /** Most rows of one list a view carries, and most characters of one cell: a page lists what fits, and the counts still say how many there are. */
@@ -21,6 +23,7 @@ export interface ViewDeps {
   readonly store: Store;
   readonly threads: ThreadDirectory;
   readonly credentials: Credentials;
+  readonly accounts: AccountStore;
   readonly manifests: ManifestFiles;
   readonly cost: CostReader;
   readonly clock: Clock;
@@ -52,7 +55,7 @@ export async function gather(deps: ViewDeps, fleet: StoredFleetOf, withSections:
   }
   const repo = repoId(registration.repo);
   const [watching, standing] = await Promise.all([
-    assessWatching({ credentials: deps.credentials, manifests }, registration),
+    assessWatching({ credentials: deps.credentials, accounts: deps.accounts, manifests }, registration, repo),
     deps.threads.standing(registration.managerThreadId).catch((): ThreadStanding => ({ state: "gone" })),
   ]);
   return { fleet, repo, name: formatRepo(registration.repo), watching, written, records: heldBy(deps.store.actions(repo), registration.managerThreadId), standing };
@@ -99,16 +102,60 @@ export const recentActionsOf = (g: Gathered, ids: ReadonlySet<string>, now: Date
 
 // ---- the card ----
 
-export const credentialsOf = (g: Gathered): FleetCredentialView[] =>
-  [g.watching.forge, g.watching.tracker]
-    .filter((resolved) => resolved !== null)
-    .map((resolved) => ({
-      role: resolved.source.role,
-      prefix: resolved.credential.prefix,
-      auth: resolved.credential.auth,
-      expiresAt: g.fleet.expiries[resolved.credential.prefix] ?? null,
-      sharesAgentRateLimit: resolved.credential.auth !== "token",
-    }));
+/** The expiry the service last reported for each credential, by its id. */
+export const expiriesOf = (deps: Pick<ViewDeps, "accounts">): Map<string, string | null> => new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
+
+export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered): FleetCredentialView[] => {
+  const expiries = expiriesOf(deps);
+  return g.watching.halves.flatMap((half) => {
+    if (!half.lookup.found) return [];
+    const credential = half.lookup.credential;
+    return [
+      {
+        role: half.role,
+        label: credential.label,
+        account: { id: credential.accountId, label: credential.accountLabel },
+        kind: credential.kind,
+        auth: credential.auth,
+        expiresAt: expiries.get(credential.key) ?? null,
+        canWrite: canWrite(credential.kind),
+        sharesAgentRateLimit: credential.auth !== "token",
+      },
+    ];
+  });
+};
+
+/** The credentials the fleet reads with, as `credentialWarnings` weighs them. */
+const warnedOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered) => {
+  const expiries = expiriesOf(deps);
+  return g.watching.halves.flatMap((half) => {
+    if (!half.lookup.found) return [];
+    const credential = half.lookup.credential;
+    return [{ role: half.role, label: credential.label, credentialId: credential.key, accountId: credential.accountId, auth: credential.auth, expiresAt: expiries.get(credential.key) ?? null }];
+  });
+};
+
+/**
+ * Each half: the account it reads as, and what it needs, first of: no account or credential, no token, a credential
+ * that cannot read it, a credential the service refuses. A service that does not answer needs nothing of the operator.
+ */
+export const halvesOf = (g: Gathered): HalfView[] =>
+  g.watching.halves.map((half): HalfView => {
+    const registration = g.fleet.registration;
+    const what = halfWhat(registration.repo, registration.tracker, half.role);
+    if (!half.lookup.found) return { role: half.role, what, account: half.lookup.account, credential: null, canWrite: false, needs: half.lookup.need };
+    const credential = half.lookup.credential;
+    const refused = g.fleet.outages[half.role]?.refused ?? null;
+    const needs =
+      half.unavailable ??
+      (half.access !== null ? accessProblemText(credential, what) : null) ??
+      (refused !== null && refused.credential === credential.label && fixedByConnect(refused.why) ? credentialRefused(refused.credential, refused.why).text : null);
+    return { role: half.role, what, account: { id: credential.accountId, label: credential.accountLabel }, credential: credential.label, canWrite: canWrite(credential.kind), needs };
+  });
+
+/** The halves that need an account or a credential that reads them, for the top of Waits on you. */
+export const needsAccountOf = (g: Gathered): NeedsAccountView[] =>
+  halvesOf(g).flatMap((half) => (half.needs === null ? [] : [{ fleet: g.name, managerThreadId: g.fleet.registration.managerThreadId, role: half.role, text: half.needs }]));
 
 const managerOf = (standing: ThreadStanding): ManagerView => (standing.state === "live" ? { state: standing.busy ? "working" : "idle", since: standing.since } : { state: "none", since: null });
 
@@ -130,8 +177,9 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD },
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs: effectiveInterval(registration),
-    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages)], unreadable).map((reason) => ({ code: reason.code, text: reason.text, fix: { kind: reason.fix } })),
-    warnings: credentialWarnings(credentialsOf(g), now),
+    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable),
+    halves: halvesOf(g),
+    warnings: credentialWarnings(warnedOf(deps, g), now),
   };
 }
 

@@ -1,13 +1,14 @@
 import type { FleetsView } from "@/src/fleet/application/views";
 import { useDashboardApi } from "@/shared/client";
+import { openConnect } from "@/shared/connect/requests";
 import { FleetCard } from "@/shared/fleet-card/FleetCard";
 import { InboxTable } from "@/shared/inbox/InboxTable";
 import { recentActionText } from "@/shared/inbox/row-model";
 import { itemTitle } from "@/shared/item-title";
-import { ItemLink } from "@/shared/ItemLink";
+import { ItemLink, LINK_CLASS } from "@/shared/ItemLink";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
-import { landedDate, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_LANDED_TEXT } from "./model";
+import { landedDate, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_LANDED_TEXT, showsInbox } from "./model";
 
 /** Every fleet at a glance, and everything that waits on the operator, across fleets, with its action. */
 export function FleetsPage() {
@@ -29,7 +30,19 @@ function Sections({ view, refetch }: { view: FleetsView; refetch: () => Promise<
         <h2 id="fleets-inbox" className="text-base font-semibold">
           Waits on you <span className="font-normal text-muted-foreground">{view.waiting}</span>
         </h2>
-        <InboxTable rows={view.inbox} unreadable={view.unreadableInbox} now={view.generatedAt} inFleetTab={false} refetch={refetch} />
+        {view.needsAccount.length > 0 ? (
+          <ul aria-label="Needs an account" className="flex flex-col gap-1 text-sm">
+            {view.needsAccount.map((entry) => (
+              <li key={`${entry.fleet}:${entry.role}`} className="flex flex-wrap items-baseline gap-x-3">
+                <span>{entry.text}</span>
+                <button type="button" className={LINK_CLASS} aria-label={`Connect… ${entry.role} of ${entry.fleet}`} onClick={() => openConnect({ target: { fleet: entry.fleet, role: entry.role } })}>
+                  Connect…
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {showsInbox(view) ? <InboxTable rows={view.inbox} unreadable={view.unreadableInbox} now={view.generatedAt} inFleetTab={false} refetch={refetch} /> : null}
         {view.recentActions.length > 0 ? (
           <ul aria-label="Recently sent" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
             {view.recentActions.map((action) => (

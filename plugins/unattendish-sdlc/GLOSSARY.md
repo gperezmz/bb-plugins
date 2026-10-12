@@ -32,9 +32,27 @@ _Avoid_: Subscription, enrolment
 The plugin's record of every change it saw and what it did with it, kept for 30 days.
 _Avoid_: Audit trail
 
+**Account**:
+One login on one host or service, whose credentials the plugin reads as. Two logins on one host are two accounts.
+_Avoid_: Identity, profile
+
+An account's service, host or site, and API address are fixed once it is added, and its login is read from its first token rather than typed.
+
+**Half**:
+One of the two things a fleet reads: its forge, or its tracker where that is a service of its own. Each half reads as one account, and Connect fixes one half at a time.
+_Avoid_: Side
+
+**Place**:
+Where an account lives: a forge's host, a Jira site, or Linear. An assignment and a default name an account on their own place only.
+_Avoid_: Realm
+
 **Credential**:
-A token, or a chosen `gh` or `glab` login, and the prefix it applies to.
+A token, or a chosen `gh` or `glab` login, belonging to one account, and the owner or host it reaches.
 _Avoid_: Auth entry
+
+**Assignment**:
+Which account reads a host or an owner or group (on Linear, every team or one team; on Jira, a site or a project). The most specific assignment covering a fleet wins, and the one on a bare host or site, or on every Linear team, is that place's default.
+_Avoid_: Account rule
 
 ### What the plugin sends
 
@@ -67,6 +85,10 @@ _Avoid_: Fleet panel, Fleet detail
 **Fleet chip**:
 The control in a manager thread's header that spells out the fleet's counts and opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
 _Avoid_: Header chip, Fleet badge
+
+**Connect popup**:
+The popup that connects an account to the fleet half it reads, or adds an account on its own, opened by Connect… or Change account… on a card, in Waits on you on the Fleets page or on a toast, by Renew on a card or in Settings, and by Add account or Add token for another owner in Settings. It opens over the current view.
+_Avoid_: Credential wizard
 
 **Action**:
 A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.

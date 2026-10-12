@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { compose } from "./compose";
+import { SqliteAccounts } from "./fleet/adapters/account-store";
 import type { RegisterArgs } from "./fleet/domain/registration";
 
 const REPO = "github.example/org/repo";
@@ -34,13 +35,14 @@ const load = async (fetch: typeof globalThis.fetch) => {
   writeFileSync(manifest, `# Fleet: ${REPO}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://${REPO}/issues/7 |\n`);
   const host = createFakePluginHost({
     pluginId: "unattendish-sdlc",
-    settings: {
-      credentials: JSON.stringify([{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: "https://github.example/api/v3" }]),
-      tokens: JSON.stringify({ "github.example/org": "ghp_compose_test_token_value" }),
-    },
     sdk: { threads: { get: async () => ({ id: MANAGER, archivedAt: null, deletedAt: null }), send: async () => ({ delivery: "sent", ok: true }) } },
   });
   const fleets = await compose(host.bb, { fetch });
+  // The operator's account on github.example, stored as the popup would store it.
+  const accounts = new SqliteAccounts(host.bb.storage.database());
+  accounts.addAccount({ id: "a", service: "github", place: "github.example", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+  accounts.saveCredential({ id: "c", accountId: "a", kind: "fine-grained", owner: "org", expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, "ghp_compose_test_token_value");
+  accounts.assign("github.example", "a");
   const args: RegisterArgs = {
     contract: 1,
     repo: REPO,

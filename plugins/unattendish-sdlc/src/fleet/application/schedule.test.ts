@@ -43,7 +43,7 @@ describe("refreshing the fleets of a manager whose turn ended", () => {
     await startBoth(w);
     const row = (n: number) => `| #${n} | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/repo/issues/${n} |`;
     w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row(7)] }));
-    w.adapters.github.queue(outcome({ snapshots: [{ role: "forge", ref: "#7", url: "https://github.com/org/repo/issues/7", open: true, merged: false, fleetLabels: [], checks: null, inPartition: false, transitions: [] }] }));
+    w.adapters.github.queue(outcome({ snapshots: [{ role: "forge", ref: "#7", url: "https://github.com/org/repo/issues/7", open: true, merged: false, fleetLabels: [], inPartition: false, transitions: [] }] }));
     await pollFleet(w.poll, REPO_KEY);
     w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row(7), row(8)] }));
     await refreshFleetsOf(w.poll, new SerialQueue(), MANAGER);

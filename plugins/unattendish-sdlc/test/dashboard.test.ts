@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import plugin, { rpcContract } from "../server";
-import type { FleetCardView, FleetsView, Result, SettingsView, ThreadFleetView } from "../src/fleet/application/views";
+import type { ConnectResult, FleetCardView, FleetsView, Result, SettingsView, ThreadFleetView } from "../src/fleet/application/views";
+import { createFakeGithub } from "./fakes/github";
+import { listen, type Mounted } from "./fakes/listen";
 import { threadReport } from "./fixtures/thread-report";
 
 const REPO = "github.example/org/repo";
@@ -14,10 +16,15 @@ const TOKEN = "ghp_dashboard_token_value_1";
 const NEW_TOKEN = "ghp_dashboard_token_value_2";
 
 let dir: string;
+let fake: Mounted | undefined;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "unattendish-dashboard-"));
 });
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
+afterEach(async () => {
+  await fake?.close();
+  fake = undefined;
+  rmSync(dir, { recursive: true, force: true });
+});
 
 const manifestText = (rows: string, extra = "") => `# Fleet: ${REPO}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n${rows}\n${extra}`;
 const row = (n: number, waitsFor = "answer") => `| #${n} | A parked question | ${waitsFor} | 2026-10-12T09:00:00Z | https://github.example/org/repo/issues/${n} |`;
@@ -33,18 +40,22 @@ interface Options {
   report?: () => Promise<unknown>;
   remote?: string | null;
   threadStatus?: string;
-  /** No credential is chosen, so a poll reads the manifest and nothing from a service. */
+  /** No account reads the fleet, so a poll reads the manifest and nothing from a service. */
   noCredential?: boolean;
 }
 
+/** Adds the operator's GitHub account on github.example through the popup's RPC, its API on the fake GitHub. */
+const connectAccount = async (call: <T>(method: string, input?: unknown) => Promise<T>, apiUrl: string, token: string) => {
+  const result = await call<ConnectResult>("connect", { account: { service: "github", place: "github.example", apiUrl }, owner: "org", secret: { kind: "token", token }, confirm: true });
+  expect(result).toMatchObject({ outcome: "saved", account: { label: "GitHub · operator" } });
+  return result;
+};
+
 async function load(options: Options = {}) {
   const sent: Sent[] = [];
+  fake = await listen(createFakeGithub({ repos: { "org/repo": { issues: [] } as never } }));
   const host = createFakePluginHost({
     pluginId: "unattendish-sdlc",
-    settings: {
-      credentials: JSON.stringify(options.noCredential === true ? [] : [{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: "http://127.0.0.1:1" }]),
-      tokens: JSON.stringify({ "github.example/org": TOKEN }),
-    },
     sdk: {
       threads: {
         get: async ({ threadId }: { threadId: string }) => makeThreadResponse({ id: threadId, status: threadId === MANAGER ? ((options.threadStatus ?? "active") as "active") : "idle", projectId: "proj_1", updatedAt: Date.UTC(2026, 9, 12, 9, 30) }),
@@ -61,7 +72,8 @@ async function load(options: Options = {}) {
   });
   await plugin(host.bb);
   const call = <T>(method: string, input: unknown = null) => host.harness.callRpc(method, input) as Promise<T>;
-  return { ...host, sent, call };
+  if (options.noCredential !== true) await connectAccount(call, fake.url, TOKEN);
+  return { ...host, sent, call, apiUrl: fake.url };
 }
 
 const register = async (harness: Awaited<ReturnType<typeof load>>["harness"], manifest: string) => {
@@ -75,7 +87,7 @@ const register = async (harness: Awaited<ReturnType<typeof load>>["harness"], ma
 describe("the dashboard's RPC", () => {
   it("exports the contract the pages import the type of, with every DashboardApi method under its own name, and registers it", async () => {
     const { harness } = await load();
-    const names = ["fleets", "threadFleet", "fleetDetail", "ledger", "sendAction", "settings", "saveCredential", "removeCredential", "setInterval"];
+    const names = ["fleets", "threadFleet", "fleetDetail", "ledger", "sendAction", "settings", "connectView", "tokenPage", "cliLogins", "connect", "checkAgain", "makeDefault", "removeAssignment", "removeCredential", "removeAccount", "setInterval"];
     expect(Object.keys(rpcContract).sort()).toEqual([...names].sort());
     expect([...harness.registrations.rpcMethods].sort()).toEqual([...names].sort());
   });
@@ -183,21 +195,31 @@ describe("the dashboard's RPC", () => {
 });
 
 describe("the settings section through the RPC (AC16)", () => {
-  it("lists the credentials, adds one with a token that no output, log or signal carries, and removes it", async () => {
-    const { harness, call } = await load();
+  it("lists the accounts, adds a token for another owner that no output, log or signal carries, and removes it", async () => {
+    const { harness, call, apiUrl } = await load();
     const listed = await call<SettingsView>("settings");
-    expect(listed.credentials).toEqual([{ prefix: "github.example/org", auth: "token", service: "github", baseUrl: "http://127.0.0.1:1", hasToken: true, expiresAt: null, problem: null }]);
+    expect(listed.accounts).toMatchObject([{ label: "GitHub · operator", place: "github.example", defaultFor: ["github.example"], credentials: [{ reaches: "org", kindLabel: "fine-grained token" }] }]);
+    const accountId = listed.accounts[0]!.id;
 
-    const added = await call<Result<{ settings: SettingsView }>>("saveCredential", { prefix: "github.com/other", auth: "token", token: NEW_TOKEN });
-    expect(added).toMatchObject({ ok: true, settings: { credentials: [{ prefix: "github.example/org" }, { prefix: "github.com/other", hasToken: true }] } });
-    const refused = await call<Result<unknown>>("saveCredential", { prefix: "git.nowhere.net/x", auth: "token", token: NEW_TOKEN });
-    expect(refused).toMatchObject({ ok: false });
-    const removed = await call<Result<{ settings: SettingsView }>>("removeCredential", { prefix: "github.com/other" });
-    expect(removed).toMatchObject({ ok: true, settings: { credentials: [{ prefix: "github.example/org" }] } });
+    const added = await call<ConnectResult>("connect", { account: { id: accountId }, owner: "other", secret: { kind: "token", token: NEW_TOKEN } });
+    expect(added).toMatchObject({ outcome: "saved", login: "operator" });
+    const refused = await call<ConnectResult>("connect", { account: { service: "github", place: "github.example", apiUrl: "https://evil.example.net" }, owner: "org", secret: { kind: "token", token: NEW_TOKEN } });
+    expect(refused).toMatchObject({ outcome: "invalid" });
+    const credentialId = (await call<SettingsView>("settings")).accounts[0]!.credentials.find((credential) => credential.reaches === "other")!.id;
+    const removed = await call<Result<{ settings: SettingsView }>>("removeCredential", { credentialId });
+    expect(removed).toMatchObject({ ok: true, settings: { accounts: [{ credentials: [{ reaches: "org" }] }] }, revoke: { url: "https://github.example/settings/personal-access-tokens" } });
 
-    const everything = JSON.stringify([listed, added, refused, removed, harness.logEntries, harness.realtimeSignals]);
+    const everything = JSON.stringify([listed, added, refused, removed, harness.logEntries, harness.realtimeSignals, await call("settings"), await call("fleets")]);
     expect(everything).not.toContain(NEW_TOKEN);
     expect(everything).not.toContain(TOKEN);
+    expect(everything).not.toContain(apiUrl);
+  });
+
+  it("refuses an RPC that would move an account to another host or API address", async () => {
+    const { call } = await load();
+    const accountId = (await call<SettingsView>("settings")).accounts[0]!.id;
+    await expect(call("connect", { account: { id: accountId, apiUrl: "http://127.0.0.1:9999" }, owner: "org", secret: { kind: "stored" } })).rejects.toThrow();
+    await expect(call("connect", { account: { id: accountId, place: "gitlab.example.com" }, secret: { kind: "stored" } })).rejects.toThrow();
   });
 
   it("sets a fleet's interval in seconds, refusing under 30", async () => {

@@ -79,7 +79,7 @@ const harness = async (state: Partial<FakeGithubState>, prefix = "/api/v3") => {
   const fake = createFakeGithub(state);
   const server = await listen(fake);
   mounted.push(server);
-  const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}${prefix}`, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: `${server.url}${prefix}`, host: "127.0.0.1" };
   const http = new HttpClient({ sleep: async () => undefined }).session(credential, "ghp_secret");
   const adapter = createGithubAdapter();
   const read = (extra: Partial<Omit<ReadRequest, "items">> & { watched?: number[]; items?: number[] } = {}): Promise<ReadOutcome> => {
@@ -115,7 +115,6 @@ describe("GitHub adapter: a snapshot", () => {
       open: true,
       merged: false,
       fleetLabels: ["spec", "Status:Ready"],
-      checks: null,
       inPartition: true,
       transitions: [],
     });
@@ -145,7 +144,7 @@ describe("GitHub adapter: a snapshot", () => {
 
   it("reads a closed issue as not open", async () => {
     const { read } = await harness(repo({ issues: [issue(1, { state: "closed" })] }));
-    expect((await read({ items: [1] })).snapshots[0]).toMatchObject({ open: false, merged: false, checks: null });
+    expect((await read({ items: [1] })).snapshots[0]).toMatchObject({ open: false, merged: false });
   });
 
   it("reads a pull request as what it is: open, closed unmerged, or merged", async () => {
@@ -158,11 +157,9 @@ describe("GitHub adapter: a snapshot", () => {
     ]);
   });
 
-  it("finds out whether a reference is an issue or a pull request and reads the pull request's head", async () => {
-    const { read, server } = await harness(repo({ issues: [issue(1), pull(2)], checkRuns: [run(1, "sha2", "completed", "success")] }));
-    const { snapshots } = await read({ items: [1, 2] });
-    expect(snapshots[0]!.checks).toBeNull();
-    expect(snapshots[1]!.checks).toEqual({ sha: "sha2", outcome: "passed" });
+  it("finds out whether a reference is an issue or a pull request", async () => {
+    const { read, server } = await harness(repo({ issues: [issue(1), pull(2)] }));
+    await read({ items: [1, 2] });
     const paths = server.requests.map((request) => request.url.split("?")[0]);
     expect(paths).toContain("/api/v3/repos/org/repo/pulls/2");
     expect(paths).not.toContain("/api/v3/repos/org/repo/pulls/1");
@@ -176,93 +173,31 @@ describe("GitHub adapter: a snapshot", () => {
   });
 });
 
-describe("GitHub adapter: checks", () => {
-  const outcomeOf = async (extra: Partial<FakeRepo>) => {
-    const { read } = await harness(repo({ issues: [pull(1)], ...extra }));
-    const outcome = await read({ items: [1] });
-    return { checks: outcome.snapshots[0]?.checks ?? null, failures: outcome.failures };
-  };
+describe("GitHub adapter: CI", () => {
+  const CI_PATHS = ["/check-runs", "/status", "/statuses", "/actions"];
 
-  it("is pending while any check run is not completed", async () => {
-    for (const status of ["queued", "in_progress", "waiting", "requested", "pending"]) {
-      expect((await outcomeOf({ checkRuns: [run(1, "sha1", "completed", "success"), run(2, "sha1", status, null)] })).checks).toEqual({ sha: "sha1", outcome: "pending" });
-    }
+  it("requests no CI endpoint for a pull request whose checks fail, and reads the rest of it", async () => {
+    const state = repo({
+      issues: [pull(1, { labels: ["spec"] })],
+      checkRuns: [run(1, "sha1", "completed", "failure")],
+      statuses: [{ sha: "sha1", context: "ci", state: "failure" }],
+      comments: [comment(5, 1)],
+    });
+    const { read, server } = await harness(state);
+    const outcome = await read({ items: [1], watched: [1] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots[0]).toMatchObject({ ref: "#1", fleetLabels: ["spec"], open: true });
+    expect(outcome.snapshots[0]).not.toHaveProperty("checks");
+    expect(outcome.events.map((entry) => entry.id)).toEqual(["github:issuecomment:5"]);
+    const paths = server.requests.map((request) => request.url.split("?")[0]!);
+    expect(paths).toContain("/api/v3/repos/org/repo/pulls/1");
+    expect(paths.filter((path) => CI_PATHS.some((ci) => path.includes(ci)))).toEqual([]);
   });
 
-  it("is passed when every run finished passing, skipped or neutral", async () => {
-    const checkRuns = [run(1, "sha1", "completed", "success"), run(2, "sha1", "completed", "skipped"), run(3, "sha1", "completed", "neutral")];
-    expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "passed" });
-  });
-
-  it("is failed when one finished run failed and none is pending", async () => {
-    for (const conclusion of ["failure", "timed_out", "cancelled", "action_required"]) {
-      expect((await outcomeOf({ checkRuns: [run(1, "sha1", "completed", "success"), run(2, "sha1", "completed", conclusion)] })).checks).toEqual({ sha: "sha1", outcome: "failed" });
-    }
-  });
-
-  it("stays pending when a failure sits beside a run still going, since the set is not final", async () => {
-    const checkRuns = [run(1, "sha1", "completed", "failure"), run(2, "sha1", "in_progress", null)];
-    expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "pending" });
-  });
-
-  it("is null when the head has no check runs and no commit statuses", async () => {
-    expect((await outcomeOf({ checkRuns: [run(1, "other", "completed", "failure")] })).checks).toBeNull();
-  });
-
-  it("counts legacy commit statuses: pending, success, failure and error", async () => {
-    const status = (state: string, context = state) => ({ sha: "sha1", context, state });
-    expect((await outcomeOf({ statuses: [status("success")] })).checks).toEqual({ sha: "sha1", outcome: "passed" });
-    expect((await outcomeOf({ statuses: [status("success", "a"), status("pending", "b")] })).checks).toEqual({ sha: "sha1", outcome: "pending" });
-    expect((await outcomeOf({ statuses: [status("failure")] })).checks).toEqual({ sha: "sha1", outcome: "failed" });
-    expect((await outcomeOf({ statuses: [status("error")] })).checks).toEqual({ sha: "sha1", outcome: "failed" });
-  });
-
-  it("combines check runs and commit statuses", async () => {
-    const checkRuns = [run(1, "sha1", "completed", "success")];
-    expect((await outcomeOf({ checkRuns, statuses: [{ sha: "sha1", context: "ci", state: "failure" }] })).checks).toEqual({ sha: "sha1", outcome: "failed" });
-    expect((await outcomeOf({ checkRuns, statuses: [{ sha: "sha1", context: "ci", state: "pending" }] })).checks).toEqual({ sha: "sha1", outcome: "pending" });
-  });
-
-  it("asks for the latest check runs by name, so a run re-run green after a failure leaves the pull request passed", async () => {
-    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }, run(3, "sha1", "completed", "success")];
-    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
-    const outcome = await read({ items: [1] });
-    expect(outcome.snapshots[0]?.checks).toEqual({ sha: "sha1", outcome: "passed" });
-    const asked = server.requests.filter((request) => request.url.includes("/check-runs"));
-    expect(asked.length).toBeGreaterThan(0);
-    expect(asked.every((request) => new URL(request.url, server.url).searchParams.get("filter") === "latest")).toBe(true);
-  });
-
-  it("serves the most recent run of each name for filter=latest and by default, and every run for filter=all", async () => {
-    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }];
-    const { server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
-    const count = async (query: string) => ((await (await fetch(`${server.url}/api/v3/repos/org/repo/commits/sha1/check-runs${query}`)).json()) as { total_count: number }).total_count;
-    expect(await count("?filter=latest")).toBe(1);
-    expect(await count("")).toBe(1);
-    expect(await count("?filter=all")).toBe(2);
-  });
-
-  it("follows the pages of a long run list", async () => {
-    const checkRuns = Array.from({ length: 250 }, (_, index) => run(index + 1, "sha1", "completed", index === 249 ? "failure" : "success"));
-    expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "failed" });
-  });
-
-  it("leaves checks null, and reads the rest of the pull request, where the token may not read checks (403)", async () => {
-    for (const path of ["/check-runs", "/status"]) {
-      const state = repo({ issues: [pull(1, { labels: ["spec"] })], checkRuns: [run(1, "sha1", "completed", "failure")], comments: [comment(5, 1)] });
-      state.faults = [{ pathIncludes: path, status: 403 }];
-      const { read } = await harness(state);
-      const outcome = await read({ items: [1] });
-      expect(outcome.failures).toEqual([]);
-      expect(outcome.snapshots[0]).toMatchObject({ ref: "#1", checks: null, fleetLabels: ["spec"], open: true });
-      expect(outcome.events.map((entry) => entry.id)).toEqual(["github:issuecomment:5"]);
-    }
-  });
-
-  it("fails the pull request's read, with no snapshot, when a finished run lacks a known conclusion", async () => {
-    const { checks, failures } = await outcomeOf({ checkRuns: [run(1, "sha1", "completed", null)] });
-    expect(checks).toBeNull();
-    expect(failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+  it("requests no CI endpoint when it also lists the updated items and the partition", async () => {
+    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns: [run(1, "sha1", "completed", "failure")] }));
+    await read({ items: [1], watched: [1], scanPartition: true });
+    expect(server.requests.filter((request) => CI_PATHS.some((ci) => request.url.includes(ci)))).toEqual([]);
   });
 });
 
@@ -469,7 +404,7 @@ describe("GitHub adapter: the partition scan", () => {
     const { read } = await harness(scanState());
     const outcome = await read({ scanPartition: true });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref).sort()).toEqual(["#1", "#2", "#7", "#8"]);
-    expect(outcome.snapshots.find((snapshot) => snapshot.ref === "#7")).toMatchObject({ open: true, merged: false, checks: null, fleetLabels: ["Status:Ready"] });
+    expect(outcome.snapshots.find((snapshot) => snapshot.ref === "#7")).toMatchObject({ open: true, merged: false, fleetLabels: ["Status:Ready"] });
     expect(outcome.snapshots.every((snapshot) => snapshot.inPartition)).toBe(true);
     expect(outcome.events).toEqual([]);
   });
@@ -711,7 +646,7 @@ describe("GitHub adapter: failures", () => {
     expect((await read()).failures).toEqual([{ ref: null, reason: expect.any(String), kind: "unreachable" }]);
 
     const { server, adapter } = await harness(repo({ issues: [issue(1)] }));
-    const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
     const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(credential, "ghp_secret");
     const outcome = await adapter.read({
       source: { role: "forge", service: "github", host: "127.0.0.1", path: REPO },
@@ -790,15 +725,6 @@ describe("GitHub adapter: lists over one page, linked as /repositories/{id}/", (
     expect(outcome.failures).toEqual([]);
     expect(outcome.updated).toHaveLength(150);
     expect(followed(server, "/issues")).not.toHaveLength(0);
-  });
-
-  it("reads check runs over 100 to the last page", async () => {
-    const checkRuns = Array.from({ length: 150 }, (_, index) => run(index + 1, "sha1", "completed", index === 149 ? "failure" : "success"));
-    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns }));
-    const outcome = await read({ items: [1] });
-    expect(outcome.failures).toEqual([]);
-    expect(outcome.snapshots[0]!.checks).toEqual({ sha: "sha1", outcome: "failed" });
-    expect(followed(server, "/commits/sha1/check-runs")).not.toHaveLength(0);
   });
 
   it("fails a list whose next link is not under the repository or a repository id", async () => {
@@ -886,8 +812,6 @@ describe("GitHub adapter: conditional requests", () => {
         comments: [comment(1, 1)],
         reviews: [review(1, 1, "APPROVED")],
         events: [event(1, 1, "labeled", { label: "spec" })],
-        checkRuns: [run(1, "sha1", "completed", "success")],
-        statuses: [{ sha: "sha1", context: "ci", state: "success" }],
       }),
     );
     const first = await read({ items: [1], watched: [1], scanPartition: true });

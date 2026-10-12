@@ -1,7 +1,7 @@
 // A fake GitHub REST API: an in-memory model of repositories (issues, pull
-// requests, comments, review comments, reviews, issue events, check runs and
-// commit statuses) answering exactly the endpoints the GitHub adapter reads,
-// in the shapes docs.github.com documents, with `Link` pagination, `updated_at`
+// requests, comments, review comments, reviews, issue events, and the check runs
+// and commit statuses the adapter never asks for) answering the endpoints the
+// GitHub adapter reads, in the shapes docs.github.com documents, with `Link` pagination, `updated_at`
 // filtering, and `ETag` with `304`. Its state is plain JSON, so the drive
 // harness loads and reads it over `/__admin/state`. Written in erasable
 // TypeScript only (no enums, namespaces or parameter properties), because the
@@ -111,6 +111,16 @@ export interface FakeGithubState {
   renames: Record<string, string>;
   /** A full path (API root included) every `Link: rel="next"` points at instead of the request's own, to script a link that leaves the repository. */
   nextLinkPath?: string;
+  /**
+   * Whose each token is, by the token as sent: `GET /user` answers its login, and 401 for a token not listed. Unset,
+   * every token is `operator`'s.
+   */
+  logins?: Record<string, string>;
+  /**
+   * What `GET /user` says of a token as sent besides its login: `classic` adds the `X-OAuth-Scopes` header only a classic
+   * token's answers carry, and `expiration` is sent as `GitHub-Authentication-Token-Expiration`, as `2026-11-12 00:00:00 UTC`.
+   */
+  tokens?: Record<string, { classic?: boolean; expiration?: string }>;
 }
 
 const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] });
@@ -118,7 +128,14 @@ const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [
 const normalise = (state: Partial<FakeGithubState> | undefined): FakeGithubState => {
   const repos: Record<string, FakeRepo> = {};
   for (const [name, repo] of Object.entries(state?.repos ?? {})) repos[name] = { ...emptyRepo(), ...repo };
-  return { repos, faults: state?.faults ?? [], renames: state?.renames ?? {}, ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }) };
+  return {
+    repos,
+    faults: state?.faults ?? [],
+    renames: state?.renames ?? {},
+    ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }),
+    ...(state?.logins === undefined ? {} : { logins: state.logins }),
+    ...(state?.tokens === undefined ? {} : { tokens: state.tokens }),
+  };
 };
 
 const send = (response: ServerResponse, body: unknown, status = 200, headers: Record<string, string> = {}): void => {
@@ -209,6 +226,24 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
   const route = (request: IncomingMessage, response: ServerResponse): boolean => {
     const host = request.headers.host ?? "127.0.0.1";
     const url = new URL(request.url ?? "/", `http://${host}`);
+    if (url.pathname.endsWith("/user") && request.method === "GET") {
+      const fault = state.faults.find((candidate) => url.pathname.includes(candidate.pathIncludes));
+      if (fault !== undefined) {
+        send(response, { message: "scripted failure" }, fault.status, fault.headers ?? {});
+        return true;
+      }
+      const token = (request.headers.authorization ?? "").replace(/^Bearer /, "");
+      const login = state.logins === undefined ? "operator" : state.logins[token];
+      if (login === undefined) send(response, { message: "Bad credentials" }, 401);
+      else {
+        const info = state.tokens?.[token];
+        const headers: Record<string, string> = {};
+        if (info?.classic === true) headers["x-oauth-scopes"] = "repo";
+        if (info?.expiration !== undefined) headers["github-authentication-token-expiration"] = info.expiration;
+        send(response, userOf(login), 200, headers);
+      }
+      return true;
+    }
     const byId = url.pathname.indexOf("/repositories/");
     const split = byId >= 0 ? byId : url.pathname.indexOf("/repos/");
     if (split < 0) return false;
@@ -240,6 +275,10 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
       return true;
     }
     if (repo === undefined) return false;
+    if (tail.length === 0 || (tail.length === 1 && tail[0] === "")) {
+      send(response, { id: repo.id ?? 1, full_name: path, private: true });
+      return true;
+    }
 
     const respondConditional = (body: unknown): void => {
       const headers = withEtag(body, {});

@@ -52,7 +52,7 @@ const setup = async (state: Partial<LinearState>, options: { fetch?: typeof fetc
     return (options.fetch ?? fetch)(input, init);
   };
   const http = new HttpClient({ fetch: recording, sleep: async () => undefined }).session(
-    { prefix: "linear:ENG", service: "linear", auth: "token", baseUrl: `${mounted.url}/graphql`, host: "127.0.0.1" },
+    { key: "linear:ENG", label: "linear:ENG", accountId: "account", accountLabel: "linear:ENG", kind: "fine-grained", service: "linear", auth: "token", baseUrl: `${mounted.url}/graphql`, host: "127.0.0.1" },
     TOKEN,
   );
   const adapter = createLinearAdapter();
@@ -99,7 +99,6 @@ describe("the snapshot of an issue", () => {
         open: true,
         merged: false,
         fleetLabels: ["spec", "Ready"],
-        checks: null,
         inPartition: true,
         transitions: [],
       },
@@ -113,7 +112,7 @@ describe("the snapshot of an issue", () => {
 
   it.each(["completed", "canceled", "duplicate"])("counts a %s issue as closed and never merged", async (state) => {
     const { read } = await setup({ issues: [issue("ENG-1", { state })] });
-    expect((await read(["ENG-1"])).snapshots[0]).toMatchObject({ open: false, merged: false, checks: null });
+    expect((await read(["ENG-1"])).snapshots[0]).toMatchObject({ open: false, merged: false });
   });
 
   it.each([

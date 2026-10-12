@@ -1,29 +1,12 @@
-// Credentials from the plugin's settings. A credential is used only when the
-// operator chose it for a prefix that matches the fleet: there is no fallback
-// to a shorter or other entry, to a `gh` or `glab` login that was not chosen,
-// or to an environment variable.
+// The operator's `gh` and `glab` logins, run as processes: which logins each
+// holds for a host, and the token each gives. Neither is asked for a login the
+// operator did not choose, and neither answers from an environment variable.
 import { execFile } from "node:child_process";
-import type { Clock, CredentialLookup, Credentials, ResolvedCredential } from "../application/ports";
-import { formatRepo, longestMatch, parsePrefix, repoSubject, trackerSubject, type Prefix, type Subject } from "../domain/identity";
-import type { RepoRef, TrackerSpec } from "../domain/model";
-import { parseCredentialEntries, parseTokens, prefixKey, type CredentialEntry } from "./settings";
-
-/** The two settings' values as bb stores them; `tokens` is unset until a token is pasted. */
-export interface SettingValues {
-  readonly credentials: string;
-  readonly tokens: string | undefined;
-}
+import { CredentialUnavailable, type CliLogins } from "../application/ports";
 
 /** Runs `gh` or `glab` and returns what it printed. Rejects when it fails. */
 export type RunCli = (command: "gh" | "glab", args: string[]) => Promise<string>;
 
-/** How long a token obtained from `gh` or `glab` is kept before the CLI is asked again. */
-export const CLI_TOKEN_TTL_MS = 5 * 60_000;
-/**
- * How long a failed lookup of a CLI token is remembered. The dashboard asks for a fleet's token on every refresh of a
- * page, and a missing `gh` or `glab` login would run the CLI (up to its timeout) for each fleet each time.
- */
-export const CLI_FAILURE_TTL_MS = 30_000;
 const CLI_TIMEOUT_MS = 10_000;
 
 /** Environment variables `gh` and `glab` answer from before their own login, which would stand in for the login the operator chose. */
@@ -31,8 +14,9 @@ const TOKEN_VARIABLES = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT
 
 /**
  * The real `RunCli`: no shell, a 10 second limit, and none of the token
- * variables in the environment. `glab` prints what it reports on stderr in
- * some versions, so its answer is stdout followed by stderr.
+ * variables in the environment. `glab`, and `gh auth status` before gh 2.81,
+ * print what they report on stderr, so their answer is stdout followed by
+ * stderr.
  */
 export const execCli: RunCli = (command, args) => {
   const env = { ...process.env };
@@ -41,7 +25,7 @@ export const execCli: RunCli = (command, args) => {
     execFile(command, args, { timeout: CLI_TIMEOUT_MS, env, maxBuffer: 64 * 1024, shell: false, windowsHide: true }, (error, stdout, stderr) => {
       // The error carries the command's stderr, which this layer does not pass on.
       if (error !== null) reject(new Error(`${command} failed`));
-      else resolve(command === "glab" ? `${stdout}\n${stderr}` : stdout);
+      else resolve(command === "glab" || args[1] === "status" ? `${stdout}\n${stderr}` : stdout);
     });
   });
 };
@@ -59,127 +43,55 @@ export const glabTokenIn = (output: string): string | null => {
   return found === null || /^\*+$/.test(found) ? null : found;
 };
 
-const hostnameOf = (baseUrl: string): string => new URL(baseUrl).hostname.toLowerCase();
 
-const subjectText = (subject: Subject): string => {
-  switch (subject.kind) {
-    case "repo":
-      return [subject.host, ...subject.path].join("/");
-    case "linear":
-      return `linear:${subject.team}`;
-    case "jira":
-      return `jira:${subject.site}/${subject.project}`;
+/** The logins `gh auth status --json hosts` lists for a host; null for output that is no such answer. */
+export const ghLoginsIn = (output: string, host: string): string[] | null => {
+  try {
+    const parsed = JSON.parse(output) as { hosts?: Record<string, { login?: unknown }[]> };
+    const entries = parsed.hosts?.[host] ?? [];
+    return entries.flatMap((entry) => (typeof entry.login === "string" && entry.login !== "" ? [entry.login] : []));
+  } catch {
+    return null;
   }
 };
 
-interface Candidate {
-  readonly prefix: Prefix;
-  /** Null for an entry the settings refused: it still blocks a shorter prefix from standing in for it. */
-  readonly entry: CredentialEntry | null;
-}
+/** The logins an older `gh auth status`, or `glab auth status`, prints: `Logged in to <host> account <login>` or `as <login>`. */
+export const loginsInText = (output: string, host: string): string[] => {
+  // eslint-disable-next-line no-control-regex
+  const plain = output.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
+  const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = [...plain.matchAll(new RegExp(`Logged in to ${escaped} (?:account|as) ([A-Za-z0-9_.-]+)`, "g"))].map((match) => match[1]!);
+  return [...new Set(found)];
+};
 
-/** Looks credentials up in the plugin's settings and obtains their tokens. */
-export class SettingsCredentials implements Credentials {
-  private entries: CredentialEntry[] = [];
-  private candidates: Candidate[] = [];
-  private tokens = new Map<string, string>();
-  private settingProblems: string[] = [];
-  private readonly cliTokens = new Map<string, { token: string; expiresAt: number }>();
-  /** By the same key, when a failed lookup stops being remembered (epoch milliseconds). */
-  private readonly cliFailures = new Map<string, number>();
-  /** Every token a CLI has given, kept after its cache entry expires so text can still be scrubbed of it. */
-  private readonly cliSeen = new Set<string>();
+/** The operator's `gh` and `glab` logins, through `RunCli`. */
+export class ExecCliLogins implements CliLogins {
+  constructor(private readonly runCli: RunCli) {}
 
-  constructor(
-    read: () => SettingValues,
-    private readonly runCli: RunCli,
-    private readonly clock: Clock,
-  ) {
-    this.reload(read());
-  }
-
-  /** Reads the settings again, after either changed. Tokens obtained from a CLI are asked for again. */
-  reload(values: SettingValues): void {
-    const credentials = parseCredentialEntries(values.credentials);
-    const tokens = parseTokens(values.tokens ?? "");
-    this.entries = credentials.entries;
-    this.candidates = [...credentials.entries.map((entry) => ({ prefix: entry.prefix, entry })), ...credentials.unusable.map((u) => ({ prefix: u.prefix, entry: null }))];
-    this.tokens = tokens.tokens;
-    this.settingProblems = [...credentials.problems, ...tokens.problems];
-    this.cliTokens.clear();
-    this.cliFailures.clear();
-  }
-
-  /** What is wrong with the settings, for a person. Never carries a token. */
-  problems(): string[] {
-    return [...this.settingProblems];
-  }
-
-  forForge(repo: RepoRef): CredentialLookup {
-    return this.lookup(repoSubject(repo), formatRepo(repo));
-  }
-
-  forTracker(tracker: TrackerSpec, repo: RepoRef): CredentialLookup {
-    return this.lookup(trackerSubject(tracker, repo), subjectText(trackerSubject(tracker, repo)));
-  }
-
-  private lookup(subject: Subject, missing: string): CredentialLookup {
-    const best = longestMatch(this.candidates, subject)?.entry ?? null;
-    if (best === null) return { found: false, prefix: missing };
-    return {
-      found: true,
-      credential: { prefix: best.text, service: best.service, auth: best.auth, baseUrl: best.baseUrl, host: hostnameOf(best.baseUrl) },
-    };
-  }
-
-  async token(credential: ResolvedCredential): Promise<string> {
-    const parsed = parsePrefix(credential.prefix);
-    const entry = parsed === null ? undefined : this.entries.find((e) => prefixKey(e.prefix) === prefixKey(parsed) && e.auth === credential.auth);
-    if (parsed === null || entry === undefined) throw new Error(`No credential is configured for ${credential.prefix}`);
-    if (entry.auth === "token") {
-      const token = this.tokens.get(prefixKey(parsed));
-      if (token === undefined) throw new Error(`No token is set for ${credential.prefix}`);
-      return token;
+  async logins(tool: "gh" | "glab", host: string): Promise<string[]> {
+    if (tool === "gh") {
+      const json = await this.runCli("gh", ["auth", "status", "--hostname", host, "--json", "hosts"]).catch(() => null);
+      const listed = json === null ? null : ghLoginsIn(json, host);
+      if (listed !== null) return listed;
+      // gh before 2.81 has no --json here, and prints its status on stderr; it fails when a login is not valid.
+      const text = await this.runCli("gh", ["auth", "status", "--hostname", host]).catch(() => "");
+      return loginsInText(text, host);
     }
-    // A login is asked for the host the operator's prefix names, which is not the API host (`github.com`, not `api.github.com`).
-    const hostname = parsed.kind === "repo" ? parsed.host : "";
-    const key = `${entry.auth}:${hostname}`;
-    const cached = this.cliTokens.get(key);
-    if (cached !== undefined && cached.expiresAt > this.clock.now().getTime()) return cached.token;
-    const failedUntil = this.cliFailures.get(key);
-    if (failedUntil !== undefined && failedUntil > this.clock.now().getTime()) throw new Error(`${entry.auth} gave no token for ${hostname}`);
-    let token: string;
-    try {
-      token = await this.fromCli(entry.auth, hostname);
-    } catch (error) {
-      this.cliFailures.set(key, this.clock.now().getTime() + CLI_FAILURE_TTL_MS);
-      throw error;
-    }
-    this.cliFailures.delete(key);
-    this.cliTokens.set(key, { token, expiresAt: this.clock.now().getTime() + CLI_TOKEN_TTL_MS });
-    this.cliSeen.add(token);
-    return token;
+    const text = await this.runCli("glab", ["auth", "status", "--hostname", host]).catch(() => "");
+    return loginsInText(text, host);
   }
 
-  private async fromCli(auth: "gh" | "glab", hostname: string): Promise<string> {
-    const failure = () => new Error(`${auth} gave no token for ${hostname}`);
+  async token(tool: "gh" | "glab", host: string, login: string): Promise<string> {
+    const failure = () => new CredentialUnavailable(`${tool} gave no token for ${login} on ${host}`);
     let output: string;
     try {
-      output = auth === "gh" ? await this.runCli("gh", ["auth", "token", "--hostname", hostname]) : await this.runCli("glab", ["auth", "status", "--hostname", hostname, "--show-token"]);
+      // glab holds one login a host, so it is asked for that one; the account checks whose it is.
+      output = tool === "gh" ? await this.runCli("gh", ["auth", "token", "--hostname", host, "--user", login]) : await this.runCli("glab", ["auth", "status", "--hostname", host, "--show-token"]);
     } catch {
       throw failure();
     }
-    const token = auth === "gh" ? output.trim() : glabTokenIn(output);
+    const token = tool === "gh" ? output.trim() : glabTokenIn(output);
     if (token === null || token === "" || /\s/.test(token)) throw failure();
     return token;
-  }
-
-  secrets(): string[] {
-    return [...new Set([...this.tokens.values(), ...this.cliSeen])];
-  }
-
-  /** Whether the fleet's agents act through the same login, and so share its rate limit. */
-  usesAgentRateLimit(credential: ResolvedCredential): boolean {
-    return credential.auth !== "token";
   }
 }

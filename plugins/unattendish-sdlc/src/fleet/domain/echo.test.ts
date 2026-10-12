@@ -79,6 +79,6 @@ describe("classify", () => {
     expect(classify(change({ actor: "operator", lastLine: "Answer: two" }), fleet)).toEqual({ kind: "wake" });
   });
   it("wakes on a change with no actor", () => {
-    expect(classify(change({ kind: "checks failed", actor: null }), fleet)).toEqual({ kind: "wake" });
+    expect(classify(change({ kind: "closed", actor: null }), fleet)).toEqual({ kind: "wake" });
   });
 });

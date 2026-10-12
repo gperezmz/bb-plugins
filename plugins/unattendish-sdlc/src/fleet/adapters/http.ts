@@ -5,7 +5,7 @@
 import { HttpError, type Http, type HttpRequest, type HttpResponse, type HttpSession, type RequestRecord, type ResolvedCredential } from "../application/ports";
 import type { ServiceKind } from "../domain/model";
 import { redact } from "../domain/redact";
-import { isLoopbackHost } from "./settings";
+import { isLoopbackHost } from "../domain/accounts";
 
 const USER_AGENT = "bb-plugin-unattendish-sdlc";
 const TIMEOUT_MS = 30_000;
@@ -70,11 +70,17 @@ const retryAfter = (header: (name: string) => string | null, now: Date): number 
   return null;
 };
 
-const expiryOf = (header: (name: string) => string | null): string | null => {
-  // GitHub: "2026-11-12 00:00:00 UTC", sent for tokens that expire.
+/**
+ * When the token expires, from GitHub's `github-authentication-token-expiration`, sent for tokens that expire, as
+ * `2026-11-12 00:00:00 UTC` or with an offset, `2026-11-12 05:00:00 +0500`. Null where it is absent or unreadable.
+ */
+export const expiryOf = (header: (name: string) => string | null): string | null => {
   const raw = header("github-authentication-token-expiration");
   if (raw === null) return null;
-  const parsed = new Date(raw.replace(" UTC", "Z").replace(" ", "T"));
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s*(UTC|Z|[+-]\d{2}:?\d{2})$/.exec(raw.trim());
+  if (match === null) return null;
+  const zone = match[3] === "UTC" || match[3] === "Z" ? "Z" : `${match[3]!.slice(0, 3)}:${match[3]!.slice(-2)}`;
+  const parsed = new Date(`${match[1]}T${match[2]}${zone}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
@@ -213,7 +219,7 @@ class Session implements HttpSession {
       throw new HttpError("forbidden-write", `${String(request.method)} ${request.path} is not a read`);
     }
     let url = this.url(request);
-    const cacheKey = `${this.credential.prefix} ${request.method} ${url.toString()}`;
+    const cacheKey = `${this.credential.key} ${request.method} ${url.toString()}`;
     const cached = request.method === "GET" ? this.cache.get(cacheKey) : undefined;
     const headers: Record<string, string> = { ...defaultHeaders(this.service), ...request.headers, authorization: authorization(this.service, this.token) };
     // A page of a list that came with no next link is read fresh (see `HttpRequest.list`); an item read stays conditional.

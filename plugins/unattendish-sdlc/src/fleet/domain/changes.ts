@@ -5,7 +5,6 @@ import {
   itemId,
   type Change,
   type ChangeKind,
-  type ChecksOutcome,
   type FleetLabels,
   type ItemSnapshot,
   type ItemState,
@@ -32,7 +31,7 @@ export interface DeriveInput {
   /** The cursor the source kept, or null before its first poll. */
   readonly prev: SourceCursor | null;
   readonly outcome: ReadOutcome;
-  /** The refs of this source whose comments, reviews, state and checks matter. */
+  /** The refs of this source whose comments, reviews and state matter. */
   readonly watchedRefs: ReadonlySet<string>;
   readonly labels: FleetLabels;
   /** When the poll began (ISO 8601 UTC). */
@@ -101,7 +100,7 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     const watched = watchedRefs.has(snapshot.ref);
     if (!stateOnly) changes.push(...snapshotChanges({ snapshot, before, watched, labels, startedAt, base, id }));
     // A closed item nobody watches is not read again: the partition listings name open items only.
-    if (watched || snapshot.open) items[id] = stateOnly && before === undefined ? rewound(nextState(snapshot, before), snapshot.transitions) : nextState(snapshot, before);
+    if (watched || snapshot.open) items[id] = stateOnly && before === undefined ? rewound(nextState(snapshot), snapshot.transitions) : nextState(snapshot);
   }
 
   if (!stateOnly) {
@@ -256,36 +255,15 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
     }
   }
 
-  const checks = snapshot.checks;
-  if (watched && before !== undefined && checks !== null && checks.outcome !== "pending") {
-    const known = before.checks !== null && before.checks.sha === checks.sha ? before.checks : null;
-    if (known === null || !known.reported) {
-      const kind: ChangeKind = checks.outcome === "passed" ? "checks passed" : "checks failed";
-      const round = known?.round ?? 0;
-      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${checks.sha}${round === 0 ? "" : `|round ${round}`}` });
-    }
-  }
   return changes;
 };
 
 /**
  * The item's state to keep, with the reviewers' states where the service
- * keeps them on the item. Final checks are kept as reported: they were
- * reported just now, before, or are a baseline nobody is told of. A pending
- * seen after a reported final on the same commit is a re-run: it opens the
- * next round, so the re-run's final outcome is reported under its own key.
- * A re-run that no poll saw pending is not reported, since nothing tells it
- * from the outcome already reported.
+ * keeps them on the item.
  */
-const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemState => {
-  const checks = snapshot.checks;
-  let kept: ItemState["checks"] = null;
-  if (checks !== null) {
-    const known = before?.checks != null && before.checks.sha === checks.sha ? before.checks : null;
-    const round = (known?.round ?? 0) + (known?.reported === true && !isFinal(checks.outcome) ? 1 : 0);
-    kept = { sha: checks.sha, outcome: checks.outcome, reported: isFinal(checks.outcome), ...(round === 0 ? {} : { round }) };
-  }
-  const state: ItemState = { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+const nextState = (snapshot: ItemSnapshot): ItemState => {
+  const state: ItemState = { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], inPartition: snapshot.inPartition };
   return snapshot.reviewers === undefined ? state : { ...state, reviewers: Object.fromEntries(snapshot.reviewers.map(({ actor, state: review }) => [actor, review])) };
 };
 
@@ -322,8 +300,6 @@ const aliasesOf = (source: { readonly actorAliases?: readonly string[] | undefin
 
 /** A failure no later read can undo: the item is gone, or lies outside the fleet. */
 const isTerminal = (failure: ReadFailure): boolean => failure.kind === "not-found" || failure.kind === "outside-fleet";
-
-const isFinal = (outcome: ChecksOutcome): boolean => outcome !== "pending";
 
 /** The transition of this kind (and label) that happened last; the last listed of equal times. */
 const latest = (transitions: readonly Transition[], kind: Transition["kind"], label: string | null): Transition | undefined => {

@@ -3,7 +3,8 @@
 // section) are written against `DashboardApi` alone; the RPC contract in the
 // adapters region is this interface over the wire. Every time is ISO 8601 UTC,
 // and every view carries `generatedAt` so a page ages rows by the server's clock.
-import type { NotWatchedCode, Stage, WaitsFor } from "../domain/model";
+import type { AccountVia, CredentialKind } from "../domain/accounts";
+import type { NotWatchedCode, ServiceKind, SourceRole, Stage, WaitsFor } from "../domain/model";
 
 // ---- actions ----
 
@@ -113,9 +114,9 @@ export interface WrittenSectionView {
 
 // ---- a fleet ----
 
-/** Where a not-fully-watched reason is fixed. */
+/** Where a not-fully-watched reason is fixed: Connect… for the half that needs an account, or the Fleet tab for the manifest. */
 export type FixView =
-  | { readonly kind: "settings" }
+  | { readonly kind: "connect"; readonly role: SourceRole }
   | { readonly kind: "fleet-tab" }
   | { readonly kind: "none" };
 
@@ -126,13 +127,42 @@ export interface ReasonView {
   readonly fix: FixView;
 }
 
+/** An account as a page names it. */
+export interface AccountRefView {
+  readonly id: string;
+  /** `GitHub · yuser`. */
+  readonly label: string;
+}
+
+/**
+ * One half of a fleet (its forge, or its tracker where that is a service of its own): the account it reads as, and
+ * what it needs while it cannot be read. A watched half offers Change account…, one that is not offers Connect….
+ */
+export interface HalfView {
+  readonly role: SourceRole;
+  /** What the half reads: `acme/api`, `team ENG`, `OPS`. */
+  readonly what: string;
+  /** The account it reads as, or would once it has a credential; null where no assignment covers it. */
+  readonly account: AccountRefView | null;
+  /** The credential's label, `GitHub · yuser for acme`, while it has one. */
+  readonly credential: string | null;
+  /** Whether the credential can write: a classic token, or a `gh` or `glab` login. */
+  readonly canWrite: boolean;
+  /** What the half needs, in a sentence; null while it reads. */
+  readonly needs: string | null;
+}
+
 /** A credential a fleet uses. The token itself never appears. */
 export interface FleetCredentialView {
-  readonly role: "forge" | "tracker";
-  readonly prefix: string;
-  readonly auth: "token" | "gh" | "glab";
+  readonly role: SourceRole;
+  /** `GitHub · yuser for acme`. */
+  readonly label: string;
+  readonly account: AccountRefView;
+  readonly kind: CredentialKind;
+  readonly auth: AccountVia;
   /** Where the service reported the credential's expiry; null when it did not. */
   readonly expiresAt: string | null;
+  readonly canWrite: boolean;
   /** True for the gh or glab login, which the fleet's agents act through too. */
   readonly sharesAgentRateLimit: boolean;
 }
@@ -168,20 +198,33 @@ export interface FleetCardView {
   readonly intervalMs: number;
   /** Every reason the fleet is not fully watched. */
   readonly reasons: readonly ReasonView[];
+  /** The forge, then the tracker where it is a service of its own. */
+  readonly halves: readonly HalfView[];
   /** Credentials expiring within 7 days, and those sharing the agents' rate limit, for the card to warn of. */
   readonly warnings: readonly CredentialWarningView[];
 }
 
+/** An expiring credential carries what Renew needs: the credential, its account and the half it serves. */
 export type CredentialWarningView =
-  | { readonly kind: "expires"; readonly prefix: string; readonly expiresAt: string; readonly daysLeft: number }
-  | { readonly kind: "shares-rate-limit"; readonly prefix: string };
+  | { readonly kind: "expires"; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly role: SourceRole; readonly expiresAt: string; readonly daysLeft: number }
+  | { readonly kind: "shares-rate-limit"; readonly label: string };
+
+/** A fleet half that cannot be read, listed at the top of Waits on you with Connect…. */
+export interface NeedsAccountView {
+  readonly fleet: string;
+  readonly managerThreadId: string;
+  readonly role: SourceRole;
+  readonly text: string;
+}
 
 // ---- the Fleets page ----
 
 export interface FleetsView {
   readonly generatedAt: string;
-  /** Every Inbox row of every fleet, unreadable ones included, sent ones too: the header's count. */
+  /** Every Inbox row of every fleet, unreadable ones included, sent ones too, and every fleet half that needs an account: the header's count. */
   readonly waiting: number;
+  /** Fleet halves that cannot be read for want of an account or a credential that reads them, listed first. */
+  readonly needsAccount: readonly NeedsAccountView[];
   readonly fleets: readonly FleetCardView[];
   /** The rows the page lists, oldest wait first. */
   readonly inbox: readonly InboxRowView[];
@@ -274,36 +317,184 @@ export interface LedgerView {
   readonly wakes: readonly { readonly queuedAt: string; readonly dispatchedAt: string | null; readonly kind: string }[];
 }
 
-// ---- settings ----
+// ---- accounts ----
+
+/** How Renew replaces a credential: a new pre-filled token page, the key's field to paste a new one, or none for a login. */
+export type RenewView =
+  | { readonly kind: "create"; readonly url: string; readonly owner: string | null }
+  | { readonly kind: "paste" }
+  | { readonly kind: "login"; readonly command: string };
 
 export interface CredentialSettingView {
-  readonly prefix: string;
-  readonly auth: "token" | "gh" | "glab";
-  readonly service: string | null;
-  readonly baseUrl: string | null;
-  /** True when a pasted token is stored for the prefix. The token is never sent back. */
-  readonly hasToken: boolean;
-  /** Where any fleet using it learned the service reports an expiry; null when none did. */
+  readonly id: string;
+  /** What it reaches: an owner (`acme`), `every owner on github.com`, or the host or site. */
+  readonly reaches: string;
+  /** `fine-grained token`, `classic token`, `personal access token`, `API key`, `API token`, `gh login`, `glab login`. */
+  readonly kindLabel: string;
+  readonly kind: CredentialKind;
+  readonly canWrite: boolean;
+  /** Where the service reported an expiry; null shows as `no expiry reported`. */
   readonly expiresAt: string | null;
-  /** Why the entry cannot be used, where it cannot. */
-  readonly problem: string | null;
+  /** Days left where it expires within the window the cards warn in; null otherwise. */
+  readonly expiresInDays: number | null;
+  /** The service refuses it now. */
+  readonly refused: boolean;
+  /** The fleets that read with it. */
+  readonly fleets: readonly string[];
+  readonly renew: RenewView;
 }
 
-export interface CredentialDraft {
-  /** The prefix of the entry being edited; absent when adding. */
-  readonly was?: string;
-  readonly prefix: string;
-  readonly auth: "token" | "gh" | "glab";
-  readonly service?: string;
-  readonly baseUrl?: string;
-  /** A new token to store for the prefix; absent keeps the stored one. */
-  readonly token?: string;
+export interface AccountSettingView {
+  readonly id: string;
+  readonly label: string;
+  readonly service: ServiceKind;
+  /** The host, site or `linear.app`. */
+  readonly place: string;
+  readonly name: string;
+  readonly via: AccountVia;
+  /** True for a `gh` or `glab` account, which can write. */
+  readonly canWrite: boolean;
+  /** The places it is the default for (`github.com`, `acme.atlassian.net`, `linear:`). */
+  readonly defaultFor: readonly string[];
+  /** It is not its place's default, and Make default would make it so. */
+  readonly canMakeDefault: boolean;
+  /** For a login: `gh is signed in as yuser, not buser`, or why the tool gave no token; null otherwise. */
+  readonly loginProblem: string | null;
+  readonly credentials: readonly CredentialSettingView[];
+  /** The owners, groups, Linear teams and Jira projects assigned to it, besides its defaults; Remove returns each to the default. */
+  readonly assignments: readonly { readonly scope: string; readonly what: string }[];
+  /** Where the service lists its tokens, to revoke one there. */
+  readonly tokenPage: string;
+  /** GitHub accounts holding tokens: Add token for another owner. */
+  readonly addsOwners: boolean;
 }
 
 export interface SettingsView {
-  readonly credentials: readonly CredentialSettingView[];
+  readonly accounts: readonly AccountSettingView[];
   readonly fleets: readonly { readonly repo: string; readonly intervalMs: number; readonly isDefault: boolean }[];
-  readonly problems: readonly string[];
+}
+
+/** After a Remove or a Renew: the old token still works at the service until it expires or is revoked there. */
+export interface RevokeNotice {
+  readonly text: string;
+  readonly url: string;
+}
+
+/** An account the popup lists for a half: those on its host, site or service, the default first. */
+export interface AccountOptionView {
+  readonly id: string;
+  readonly label: string;
+  readonly via: AccountVia;
+  readonly isDefault: boolean;
+  /** It holds a credential reaching the half, so Connect goes straight to verifying. */
+  readonly reaches: boolean;
+  /** The credential that would read the half can write. */
+  readonly canWrite: boolean;
+  readonly loginProblem: string | null;
+}
+
+/** What Connect asks about: a fleet's half, or (from Add account) a service and place with no fleet. */
+export interface ConnectTarget {
+  readonly fleet?: string;
+  readonly role?: SourceRole;
+  readonly service?: ServiceKind;
+  /** The host, Jira site or `linear.app`. */
+  readonly place?: string;
+  /** GitHub: the owner a token is for, when there is no fleet to take it from. */
+  readonly owner?: string;
+}
+
+/** The popup's first step: which account reads the half. */
+export interface ConnectView {
+  readonly generatedAt: string;
+  readonly fleet: string | null;
+  readonly role: SourceRole | null;
+  /** The service, null where the host names none and no account is on it: the popup asks for GitHub or GitLab. */
+  readonly service: ServiceKind | null;
+  readonly place: string;
+  /** The owner or group, Linear team or Jira project an account chosen here is assigned; null without a fleet. */
+  readonly scope: string | null;
+  /** The GitHub owner a token must reach; null off GitHub, and without a fleet or an owner given. */
+  readonly owner: string | null;
+  /** `acme/api`, `team ENG`, `OPS`; null without a fleet. */
+  readonly what: string | null;
+  /** The accounts on the place, the default first; "a new login" is always offered beside them. */
+  readonly accounts: readonly AccountOptionView[];
+  /** The account the half reads as now, if any. */
+  readonly current: string | null;
+  /** Why the place cannot take an account (a Jira site off atlassian.net); null when it can. */
+  readonly problem: string | null;
+}
+
+/** The popup's second step for a token: where it will be sent, the page that creates it, and what to tick. */
+export interface TokenPageView {
+  /** The host or site the token will be sent to. */
+  readonly sentTo: string;
+  /** The pre-filled page Create token opens; null for Linear and Jira, which are pasted. */
+  readonly url: string | null;
+  /** The grants or scopes the page is filled in with, to fill a form that ignores the pre-fill by hand. */
+  readonly grants: readonly string[];
+  /** GitHub: every registered fleet's repository under the owner that reads as this account, or will once this Connect completes, to tick. */
+  readonly repositories: readonly string[];
+  /** GitLab: the expiry is chosen on the page. */
+  readonly chooseExpiry: boolean;
+  /** GitHub: when GitHub cannot issue a fine-grained token for the owner, and what to do instead. */
+  readonly note: string | null;
+  /** The login the browser must be signed in as; null for a new login. */
+  readonly signInAs: string | null;
+}
+
+/** A repository a saved credential could not read, with what to do. */
+export interface NotReadableView {
+  readonly fleet: string;
+  readonly text: string;
+  /** A fine-grained GitHub token: add the repository to the token, or create a new one. Otherwise: choose another account. */
+  readonly fineGrained: boolean;
+}
+
+export type ConnectSecret =
+  | { readonly kind: "token"; readonly token: string }
+  | { readonly kind: "jira"; readonly email: string; readonly token: string }
+  | { readonly kind: "login"; readonly tool: "gh" | "glab"; readonly login: string }
+  /** The account's stored credential reaching the half: no token is sent from the page. */
+  | { readonly kind: "stored" };
+
+export interface ConnectInput extends ConnectTarget {
+  /** An account the plugin holds, or a new login on a service and place. `apiUrl` is set only here, for an account being added. */
+  readonly account: { readonly id: string } | { readonly service: ServiceKind; readonly place: string; readonly apiUrl?: string };
+  readonly secret: ConnectSecret;
+  /** For a new login: the operator confirmed the login the token belongs to. */
+  readonly confirm?: boolean;
+  /** Renew: the credential the new token replaces. */
+  readonly replaces?: string;
+}
+
+/** What Verify and save found. Only `saved` stored anything. */
+export type ConnectResult =
+  | { readonly outcome: "confirm"; readonly login: string; readonly label: string; readonly text: string }
+  | { readonly outcome: "refused"; readonly text: string }
+  | { readonly outcome: "wrong-login"; readonly text: string; readonly command: string | null }
+  | { readonly outcome: "unreachable"; readonly text: string }
+  | { readonly outcome: "invalid"; readonly text: string }
+  | {
+      readonly outcome: "saved";
+      readonly account: AccountRefView;
+      /** Whose it is. */
+      readonly login: string;
+      readonly expiresAt: string | null;
+      readonly canWrite: boolean;
+      readonly notReadable: readonly NotReadableView[];
+      /** The half Connect was opened for, as read at once; null without a fleet. */
+      readonly half: HalfView | null;
+      readonly revoke: RevokeNotice | null;
+    };
+
+/** Signal: a fleet newly needs an account or credential for a half. */
+export interface FleetNeedsSignal {
+  readonly fleet: string;
+  readonly managerThreadId: string;
+  readonly role: SourceRole;
+  readonly text: string;
 }
 
 // ---- results ----
@@ -329,8 +520,22 @@ export interface DashboardApi {
    */
   sendAction(input: { fleet: string; rowId: string; kind: ActionKind; text?: string; regrant?: boolean }): Promise<Result<{ action: ActionRecordView }>>;
   settings(): Promise<SettingsView>;
-  saveCredential(input: CredentialDraft): Promise<Result<{ settings: SettingsView }>>;
-  removeCredential(input: { prefix: string }): Promise<Result<{ settings: SettingsView }>>;
+  /** The popup's first step for a fleet's half, or for a service and place from Add account. */
+  connectView(input: ConnectTarget): Promise<Result<{ connect: ConnectView }>>;
+  /** The popup's second step for a token: where it goes, the pre-filled page and what to tick. */
+  tokenPage(input: ConnectTarget & { readonly account: { readonly id: string } | { readonly service: ServiceKind; readonly place: string } }): Promise<Result<{ page: TokenPageView }>>;
+  /** The logins `gh` or `glab` holds for a host. */
+  cliLogins(input: { tool: "gh" | "glab"; host: string }): Promise<{ logins: readonly string[] }>;
+  /** Verify and save: checks the token, key or login, stores it where the service accepts it, assigns, and reads the fleet at once. */
+  connect(input: ConnectInput): Promise<ConnectResult>;
+  /** Check again: reads the fleet at once and answers how its half stands. */
+  checkAgain(input: { fleet: string; role: SourceRole }): Promise<Result<{ half: HalfView; notReadable: readonly NotReadableView[] }>>;
+  makeDefault(input: { accountId: string }): Promise<Result<{ settings: SettingsView }>>;
+  /** Returns an owner, group, team or project to its default. */
+  removeAssignment(input: { scope: string }): Promise<Result<{ settings: SettingsView }>>;
+  removeCredential(input: { credentialId: string }): Promise<Result<{ settings: SettingsView; revoke: RevokeNotice }>>;
+  /** Refused while a registered fleet reads as it, naming those fleets. */
+  removeAccount(input: { accountId: string }): Promise<Result<{ settings: SettingsView; revoke: RevokeNotice | null }>>;
   /** Refuses under 30 seconds. `null` returns the fleet to the default. */
   setInterval(input: { repo: string; seconds: number | null }): Promise<Result<{ settings: SettingsView }>>;
 }
@@ -340,6 +545,9 @@ export interface DashboardApi {
 /** The channels the server publishes on. Payloads are signals: pages refetch through the API. */
 export const BOARD_CHANGED = "board-changed";
 export const INBOX_NEW = "inbox-new";
+
+/** Published when a fleet newly needs an account or credential for a half; the payload is a `FleetNeedsSignal`. */
+export const FLEET_NEEDS = "fleet-needs";
 
 /** Published once for each Inbox row never seen before for its repository. */
 export interface InboxNewSignal {

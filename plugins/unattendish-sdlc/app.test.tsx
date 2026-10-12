@@ -43,8 +43,8 @@ describe("the app", () => {
     expect(registered.settingsSection).toHaveLength(1);
   });
 
-  it("registers the toast overlay where bb offers the slot", () => {
-    expect(collect().experimental_appOverlay).toHaveLength(1);
+  it("registers the toasts and the Connect popup as overlays where bb offers the slot", () => {
+    expect(collect().experimental_appOverlay!.map((overlay) => overlay.id)).toEqual(["inbox-toasts", "needs-toasts", "connect-popup"]);
   });
 
   it("registers everything else on a bb without the overlay slot", () => {
