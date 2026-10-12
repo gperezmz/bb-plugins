@@ -64,6 +64,8 @@ describe("failureOf", () => {
     expect(failureOf(null, error("network"), "r")).toEqual({ ref: null, reason: "r", kind: "unreachable" });
     expect(failureOf("#1", error("server"), "r")).toMatchObject({ kind: "unreachable" });
     expect(failureOf("#1", error("client"), "r")).toEqual({ ref: "#1", reason: "r" });
+    expect(failureOf("#1", new DOMException("aborted", "AbortError"), "r")).toEqual({ ref: "#1", reason: "r", kind: "unreachable" });
+    expect(failureOf("#1", new DOMException("timed out", "TimeoutError"), "r")).toMatchObject({ kind: "unreachable" });
     expect(failureOf("#1", new Error("x"), "r")).toEqual({ ref: "#1", reason: "r" });
   });
 });

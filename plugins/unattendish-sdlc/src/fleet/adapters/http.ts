@@ -20,6 +20,8 @@ export interface HttpOptions {
   readonly now?: () => Date;
   /** Waits between retries; tests pass one that returns at once. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /** How long one request may wait for an answer; 30 seconds by default. */
+  readonly timeoutMs?: number;
 }
 
 interface CacheEntry {
@@ -118,6 +120,7 @@ export class HttpClient implements Http {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => Date;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly timeoutMs: number;
   /** Conditional-request bodies, by credential and URL. */
   private readonly cache = new Map<string, CacheEntry>();
 
@@ -125,10 +128,11 @@ export class HttpClient implements Http {
     this.fetchImpl = options.fetch ?? fetch;
     this.now = options.now ?? (() => new Date());
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
   }
 
   session(credential: ResolvedCredential, token: string): HttpSession {
-    return new Session(credential, token, this.fetchImpl, this.now, this.sleep, this.cache);
+    return new Session(credential, token, this.fetchImpl, this.now, this.sleep, this.cache, this.timeoutMs);
   }
 }
 
@@ -145,6 +149,7 @@ class Session implements HttpSession {
     private readonly now: () => Date,
     private readonly sleep: (ms: number) => Promise<void>,
     private readonly cache: Map<string, CacheEntry>,
+    private readonly timeoutMs: number,
   ) {
     this.service = credential.service;
     this.baseUrl = credential.baseUrl;
@@ -210,14 +215,16 @@ class Session implements HttpSession {
     }
 
     for (let attempt = 0, redirects = 0; ; attempt += 1) {
-      const signal = AbortSignal.any([AbortSignal.timeout(TIMEOUT_MS), ...(options.signal === undefined ? [] : [options.signal])]);
+      const signal = AbortSignal.any([AbortSignal.timeout(this.timeoutMs), ...(options.signal === undefined ? [] : [options.signal])]);
       let response: Response;
       try {
         response = await this.fetchImpl(url, { method: request.method, headers, body, redirect: "manual", signal });
       } catch (error) {
         if (options.signal?.aborted === true) throw error;
         this.record(request.method, url, null, true);
-        if (attempt < MAX_RETRIES) {
+        // A service that took the request and never answered will not answer a second one in time: no retry.
+        const timedOut = error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError");
+        if (!timedOut && attempt < MAX_RETRIES) {
           await this.sleep(250 * 2 ** attempt);
           continue;
         }

@@ -44,5 +44,7 @@ export const failureOf = (ref: string | null, error: unknown, reason: string): R
     if (error.kind === "forbidden") return { ref, reason, kind: "forbidden" };
     if (error.kind === "network" || error.kind === "server") return { ref, reason, kind: "unreachable" };
   }
+  // The poll's own deadline, or a request that waited for an answer that never came.
+  if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return { ref, reason, kind: "unreachable" };
   return { ref, reason };
 };

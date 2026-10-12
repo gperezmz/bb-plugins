@@ -303,6 +303,13 @@ describe("HttpClient", () => {
       expect(answer.json).toEqual({ ok: 3 });
     });
 
+    it("treats a service that takes the request and never answers as no answer, after one request and no retry", async () => {
+      const { seen, credential } = await serve(() => undefined);
+      const session = new HttpClient({ sleep: async () => undefined, timeoutMs: 40 }).session(credential(), TOKEN);
+      await expect(session.request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "network" });
+      expect(seen).toHaveLength(1);
+    });
+
     it("gives up on a persistent 5xx as a server error", async () => {
       const { seen, credential } = await serve((_, response) => json(response, {}, 500));
       await expect(client().session(credential(), TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "server", status: 500 });

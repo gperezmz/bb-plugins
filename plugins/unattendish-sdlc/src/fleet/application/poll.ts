@@ -156,7 +156,7 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       if (kind !== null) unreadable ??= { prefix, why: kind };
     } catch (error) {
       if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
-      const kind = error instanceof HttpError ? unreadableOf(error) : null;
+      const kind = error instanceof HttpError ? unreadableOf(error) : error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") ? "unreachable" : null;
       if (kind !== null) unreadable ??= { prefix, why: kind };
       if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });

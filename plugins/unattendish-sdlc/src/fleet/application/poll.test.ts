@@ -739,6 +739,13 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 
+  it("counts a poll the deadline cut off as no answer", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) await pollWith(w, new DOMException("The operation was aborted due to timeout", "TimeoutError") as unknown as Error);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
+  });
+
   it("counts nothing for a read that gave back anything, or failed some other way", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
