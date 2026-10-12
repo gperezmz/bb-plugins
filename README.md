@@ -1,6 +1,6 @@
 # bb plugins
 
-Six plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Seven plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. The seventh, **Unattendish**, wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, so an answer written on an issue, a review or a spec marked ready reaches the manager without the operator telling it; it reads GitHub, GitLab, Linear and Jira Cloud on an interval and sends one message per poll. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
 
 ```mermaid
 flowchart LR
@@ -11,6 +11,7 @@ flowchart LR
     installed["Installed plugins"]
     ui["bb window: sidebar, thread header and panel, nav pages"]
     helper["AI tasks: thread titles, commit messages"]
+    managers["Manager threads of Unattendish fleets"]
   end
   tg["Thread Glance"]
   tu["Thread Usage"]
@@ -41,6 +42,12 @@ flowchart LR
   ck -->|composer chip and banner, Cache Keeper page| ui
   ut["UI Tweaks"]
   ut -->|text size and transcript width, settings rows| ui
+  us["Unattendish"]
+  services["GitHub, GitLab, Linear and Jira Cloud"]
+  fleetmanifest["Manager's fleet/manifest.md"]
+  services -->|changes since each cursor, reads only| us
+  fleetmanifest -->|watched set| us
+  us -->|one wake per poll| managers
 ```
 
 The documentation starts at [docs/README.md](docs/README.md): tutorials for a first run of each plugin, how-to guides, reference and explanation.
@@ -53,10 +60,11 @@ The documentation starts at [docs/README.md](docs/README.md): tutorials for a fi
 | [openai-inference](plugins/openai-inference) | Thread titles and commit messages from a LiteLLM gateway or a local OpenAI-compatible server, in place of bb's built-in Codex service. |
 | [cache-keeper](plugins/cache-keeper) | Compacts idle Claude Code threads just before their prompt cache goes cold, keeps threads waiting on background work warm, and checks on stalled tasks, each only where you switch it on. |
 | [ui-tweaks](plugins/ui-tweaks) | Text size, for the transcript and the composer, and transcript width, as two rows drawn like bb's Appearance settings; both reach the New-thread screen too. |
+| [unattendish-sdlc](plugins/unattendish-sdlc) | Wakes the manager thread of an Unattendish fleet when its GitHub, GitLab, Linear or Jira Cloud items change, as one message per poll, dropping the fleet's own actions and keeping a ledger. |
 
 ## Install
 
-Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding`, `openai-inference`, `cache-keeper` or `ui-tweaks`):
+Install one plugin by name (`thread-glance`, `thread-usage`, `team-onboarding`, `openai-inference`, `cache-keeper`, `ui-tweaks` or `unattendish-sdlc`):
 
 ```sh
 bb plugin install git:https://github.com/gperezmz/bb-plugins.git@main --plugin thread-glance
