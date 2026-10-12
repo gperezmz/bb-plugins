@@ -62,7 +62,7 @@ The API root each service is read from, unless `baseUrl` says otherwise:
 | `linear` | `https://api.linear.app/graphql` |
 | `jira` | `https://{site}` |
 
-A token is sent only to its credential's base URL, so `baseUrl` is only for a service whose API root differs, and the plugin permits it nowhere else. It is refused unless it is `https` on the prefix's own host (or `api.{host}`) for a repository prefix, on `api.linear.app` for Linear, or on the site for Jira, and it may not carry a user name or password. `127.0.0.1`, `localhost` and `[::1]` are also allowed, with `http` or `https`, so a fake service can stand in for a test. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested.
+A token is sent only to its credential's base URL, so `baseUrl` is only for a service whose API root differs, and the plugin permits it nowhere else. It is refused unless it is `https` on the prefix's own host for a repository prefix (`api.github.com` is also allowed for `github.com`, and no other `api.` host is), on `api.linear.app` for Linear, or on the site for Jira, and it may not carry a user name or password. `127.0.0.1`, `localhost` and `[::1]` are also allowed, with `http` or `https`, so a fake service can stand in for a test. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested.
 
 ### Tokens
 
@@ -79,6 +79,7 @@ Each fleet is polled every 2 minutes unless its own interval is set. The shortes
 | Where | What | For how long |
 |---|---|---|
 | `<data dir>/plugins/unattendish-sdlc/data.db` (SQLite) | Each fleet's registration, its cursors and the state of its last poll | Until [unregistered](unattendish-cli.md#bb-unattendish-fleet-unregister) |
+| The same file | The ledger: changes seen and what was done with them, wakes, polls and failed reads | 30 days, also after the fleet is unregistered |
 | The same file | The ledger: every change seen, each wake with its queued and dispatched times, each poll's requests, and each failed read | 30 days; the plugin deletes older rows hourly |
 | The plugin's settings and secrets | `credentials` and `tokens` | Until uninstalled |
 

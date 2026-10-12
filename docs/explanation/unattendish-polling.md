@@ -66,7 +66,7 @@ A [Credential](../reference/unattendish-settings.md#credentials) is chosen for a
 
 Credentials are entered in the plugin's settings, never through a command an agent might run, so no token reaches a transcript. A token appears in no wake, ledger entry, log line or error message.
 
-When a service refuses a credential, the fleet shows as not watched since that time, and the plugin sends the manager one wake saying so and naming the prefix. [Why a fleet shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) lists the reasons.
+When a service refuses a credential (it answers 401), the fleet shows as not watched since that time, and the plugin sends the manager one wake saying so and naming the prefix. A 403 that is no rate limit is not a refusal: the token is accepted but may not read that one thing, such as a pull request's checks, so that read fails or yields no checks and the rest of the item is still read. A rate limit makes the plugin leave that credential alone until the service says it may be used again. [Why a fleet shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) lists the reasons.
 
 ## Why a wake carries no text written on the service
 

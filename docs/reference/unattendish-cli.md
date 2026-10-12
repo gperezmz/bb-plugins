@@ -5,7 +5,7 @@ The CLI runs on the bb server. Every command takes `--json`, which prints one JS
 | Command | Does |
 |---|---|
 | [`fleet register`](#bb-unattendish-fleet-register) | Registers the calling thread as the manager of a fleet |
-| [`fleet unregister`](#bb-unattendish-fleet-unregister) | Removes a registration and its ledger |
+| [`fleet unregister`](#bb-unattendish-fleet-unregister) | Removes a registration and its cursors; the ledger ages out |
 | [`fleet status`](#bb-unattendish-fleet-status) | Lists each fleet, and why it is not watched |
 | [`fleet ledger`](#bb-unattendish-fleet-ledger) | Prints what the plugin saw and what it did with it |
 | [`fleet interval`](#bb-unattendish-fleet-interval) | Sets how often a fleet is polled |
@@ -53,7 +53,7 @@ Registering a repository the calling thread already holds replaces the registrat
 bb unattendish fleet unregister <repo> [--json]
 ```
 
-Removes the registration, its cursors and its ledger. It prints `Unregistered.`, or `No fleet is registered for that repository.` and still exits 0. With `--json`: `{"outcome": "unregistered"}` or `{"outcome": "not-registered"}`.
+Removes the registration and its cursors. The ledger stays and ages out after 30 days, so `fleet ledger` still shows what the plugin did. It prints `Unregistered.`, or `No fleet is registered for that repository.` and still exits 0. With `--json`: `{"outcome": "unregistered"}` or `{"outcome": "not-registered"}`.
 
 ## `bb unattendish fleet status`
 
