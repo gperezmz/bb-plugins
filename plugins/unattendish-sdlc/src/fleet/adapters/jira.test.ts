@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createFakeJira, jiraTime, type FakeJiraComment, type FakeJiraHistory, type FakeJiraIssue, type FakeJiraState } from "../../../test/fakes/jira";
+import { createFakeJira, DEFAULT_STATUSES, jiraTime, type FakeJiraComment, type FakeJiraHistory, type FakeJiraIssue, type FakeJiraState } from "../../../test/fakes/jira";
 import { listen, type Mounted } from "../../../test/fakes/listen";
 import type { ReadRequest } from "../application/ports";
 import { HttpError, type ResolvedCredential } from "../application/ports";
@@ -174,6 +174,20 @@ describe("the Jira adapter's transitions", () => {
     ]);
   });
 
+  it("reports one close, not two, for a move from one done status to another", async () => {
+    const statuses = [...DEFAULT_STATUSES, { id: "10003", name: "Won't Do", category: "done" as const }];
+    const { read, watch } = await world({
+      statuses,
+      issues: [
+        issue("PROJ-1", {
+          status: "10003",
+          changelog: [change("221", 10, statusChange(PROGRESS, "In Progress", DONE, "Done")), change("222", 20, statusChange(DONE, "Done", "10003", "Won't Do"))],
+        }),
+      ],
+    });
+    expect((await read(watch("PROJ-1"))).snapshots[0]!.transitions.map((t) => [t.kind, t.id])).toEqual([["closed", "jira:changelog:221:closed"]]);
+  });
+
   it("reports nothing for a status change inside one category, a change of another field, or a change before since", async () => {
     const { read, watch } = await world({
       issues: [
@@ -337,9 +351,18 @@ describe("the Jira adapter's partition scan", () => {
   });
 
   it("marks a scanned item as in the partition by the service's own match, even when the operator is a name the answer does not show", async () => {
-    const { read } = await world({ issues: [issue("PROJ-1", { labels: ["spec"], assignee: OPERATOR })] });
+    const hidden = [{ accountId: OPERATOR, emailAddress: null, hiddenEmail: "op@example.com", displayName: "Olivia Operator" }, ...USERS.slice(1)];
+    const { read } = await world({ users: hidden, issues: [issue("PROJ-1", { labels: ["spec"], assignee: OPERATOR })] });
     const out = await read({ scanPartition: true, operator: "op@example.com" });
     expect(out.snapshots.map((s) => [s.ref, s.inPartition])).toEqual([["PROJ-1", true]]);
+  });
+
+  it("reports a partition listing cut off after ten pages, with what it listed", async () => {
+    const issues = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { labels: ["spec"], assignee: OPERATOR, updated: at(-90 + i) }));
+    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, failures: [] } });
+    const out = await read({ scanPartition: true });
+    expect(out.snapshots).toHaveLength(20);
+    expect(out.failures).toContainEqual({ ref: null, reason: "the partition listing runs to more than 10 pages of 100" });
   });
 });
 
