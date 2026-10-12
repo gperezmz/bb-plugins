@@ -29,7 +29,7 @@ const REF = /^[#!]?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const UNSAFE_URL_CHARACTERS = /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const CONTROL_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
-/** The change as the wake words it: `commented`, `reviewed: approved`, `labelled ready`, `checks failed`. */
+/** The change as the wake words it: `commented`, `reviewed: approved`, `labelled ready`, `merged`. */
 export const changeText = (change: Change): string => (change.label === null ? change.kind : `${change.kind} ${oneLine(change.label)}`);
 
 /** The actor's login or account id; `unknown` for anything else, so no free text rides in a login. */

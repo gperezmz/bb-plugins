@@ -5,8 +5,7 @@
 // Each rule rests on GitLab's own documentation (docs.gitlab.com, REST API
 // v4); the adapter's header comment names the pages.
 import { z } from "zod";
-import { combineChecks } from "../domain/checks";
-import type { ChecksOutcome, FleetLabels, ItemSnapshot, Transition } from "../domain/model";
+import type { FleetLabels, ItemSnapshot, Transition } from "../domain/model";
 import { parseAnswer, ReadProblem } from "./service-support";
 
 const timestamp = z.string().refine((value) => !Number.isNaN(Date.parse(value)));
@@ -23,9 +22,7 @@ export const issueSchema = z.object({
   updated_at: timestamp,
 });
 
-const pipelineSchema = z.object({ id: z.number().int(), sha: z.string().min(1), status: z.string().min(1) });
-
-/** A merge request as `GET /projects/:id/merge_requests/:iid` gives it; `head_pipeline` is in the single answer only. */
+/** A merge request as `GET /projects/:id/merge_requests/:iid` gives it; `sha` is what tells it from an issue. */
 export const mergeRequestSchema = z.object({
   iid: z.number().int(),
   state: z.enum(["opened", "closed", "locked", "merged"]),
@@ -37,13 +34,10 @@ export const mergeRequestSchema = z.object({
   sha: z.string().min(1),
   merged_at: timestamp.nullish(),
   merged_by: username.nullish(),
-  head_pipeline: pipelineSchema.nullish(),
 });
 
 /** What the adapter needs of a list entry. */
 export const listedSchema = z.object({ iid: z.number().int(), web_url: z.string().min(1), updated_at: timestamp });
-
-export const pipelinesSchema = z.array(pipelineSchema);
 
 /** The entries of `GET .../merge_requests/:iid/reviewers`: each reviewer's `user` and review `state`. */
 export const reviewersSchema = z.array(z.object({ user: username, state: z.string().min(1) }));
@@ -85,45 +79,6 @@ export function inPartition(item: { readonly assignees: readonly { readonly user
   const who = operator.toLowerCase();
   if (item.assignees.length === 0) return item.author.username.toLowerCase() === who;
   return item.assignees.some((assignee) => assignee.username.toLowerCase() === who);
-}
-
-/**
- * How a pipeline status counts toward a merge request's checks. `canceling`
- * and `waiting_for_callback` are not final, so they are pending. A status
- * outside GitLab's documented list is null.
- */
-export function pipelineOutcome(status: string): ChecksOutcome | null {
-  switch (status) {
-    case "success":
-    case "skipped":
-    case "manual":
-      return "passed";
-    case "failed":
-    case "canceled":
-      return "failed";
-    case "created":
-    case "waiting_for_resource":
-    case "waiting_for_callback":
-    case "preparing":
-    case "pending":
-    case "running":
-    case "scheduled":
-    case "canceling":
-      return "pending";
-    default:
-      return null;
-  }
-}
-
-/** The set's outcome: pending while any is, else failed if any failed, else passed; null for an empty set. */
-export function checksOutcome(statuses: readonly string[]): ChecksOutcome | null {
-  if (statuses.length === 0) return null;
-  const outcomes = statuses.map((status) => {
-    const outcome = pipelineOutcome(status);
-    if (outcome === null) throw new ReadProblem("a pipeline has a status outside the documented list");
-    return outcome;
-  });
-  return combineChecks(outcomes);
 }
 
 /** A note's author and time as the Fleet reads a comment, or null for a system note (GitLab's record of its own actions). */

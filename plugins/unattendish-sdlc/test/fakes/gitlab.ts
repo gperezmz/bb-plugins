@@ -1,6 +1,6 @@
 // A fake GitLab (REST v4): an in-memory project of issues and merge requests
-// that answers exactly the endpoints the GitLab adapter reads, in the shapes
-// docs.gitlab.com documents. It paginates with `Link` and `X-Next-Page`
+// that answers the endpoints the GitLab adapter reads, and the pipelines it never
+// asks for, in the shapes docs.gitlab.com documents. It paginates with `Link` and `X-Next-Page`
 // headers, orders and filters lists, and answers a repeat GET with an ETag
 // as a 304 so a conditional request can be seen. Written in erasable
 // TypeScript only (no enums, namespaces or parameter properties), because the

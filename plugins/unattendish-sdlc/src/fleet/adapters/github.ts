@@ -8,7 +8,7 @@
 //    `YYYY-MM-DDTHH:MM:SSZ`), `labels` (comma separated), `assignee` (`none`, `*`
 //    or a login), `creator`, `sort`, `direction`, `per_page` (max 100). It lists
 //    pull requests too, told apart by their `pull_request` key; so does
-//    GET /issues/{n}. `merged` and `head.sha` come from GET /pulls/{n}.
+//    GET /issues/{n}. `merged` comes from GET /pulls/{n}.
 //  - Comments: /en/rest/issues/comments, /en/rest/pulls/comments take `since`
 //    (last updated after). /en/rest/pulls/reviews takes none, so reviews are
 //    filtered here by `submitted_at`; a pending review has no `submitted_at`.
@@ -16,9 +16,6 @@
 //    give `closed`, `reopened`, `merged`, `labeled`, `unlabeled`, each with `actor`
 //    and `created_at`, and `label.name` for the last two. The endpoint takes no
 //    `since`, so it is read whole (up to 10 pages of 100) and filtered here.
-//  - Checks: /en/rest/checks/runs (`status`, `conclusion`, `filter=latest`) and
-//    /en/rest/commits/statuses (the latest status of each context). Both wrap
-//    their list in an object, whose pages are followed by `Link`.
 //  - Pagination and conditional requests: /en/rest/using-the-rest-api/using-pagination-in-the-rest-api
 //    and .../best-practices-for-using-the-rest-api (a 304 does not use the rate
 //    limit, which the HTTP session accounts for). Enterprise Server's REST root
@@ -43,11 +40,8 @@
 // any other next link is `outside-fleet`. The docs do not say whether the id in
 // the link is the repository's own, so it is not compared with anything.
 //
-// A 403 that is not a rate limit is the HTTP layer's `forbidden`. On the check
-// runs or commit statuses of a pull request it leaves `checks` null and the
-// rest of the item is still read (a fine-grained token may lack those
-// permissions); anywhere else it fails that one item or listing, and the read
-// goes on. Only a 401 or a rate limit ends the read.
+// A 403 that is not a rate limit is the HTTP layer's `forbidden`: it fails that one item or
+// listing, and the read goes on. Only a 401 or a rate limit ends the read.
 //
 // What the docs leave unconfirmed, and the cheapest fallback taken:
 //  - The values of a review's `state`: only `APPROVED`, `CHANGES_REQUESTED` and
@@ -60,19 +54,13 @@
 //    and `since` as "last updated after" a time, naming neither `updated_at` nor
 //    the boundary. The updated listing is taken to run oldest `updated_at` first, and
 //    one cut off at its page limit reports its last `updated_at` less one second.
-//  - Whether a review, a label change or a check moves `updated_at`: watched
+//  - Whether a review or a label change moves `updated_at`: watched
 //    items are read themselves, and the updated listing is only a hint.
 //  - Whether submitting a review moves the `updated_at` of its inline comments,
 //    which is what `since` filters them on: they are read without `since`, up to
 //    10 pages of 100, and a review comment counts at its review's `submitted_at`.
-//  - What `filter=latest` keeps: /en/rest/checks/runs gives `latest` (the default) and
-//    `all`, and says "Filters check runs by their completed_at timestamp. latest
-//    returns the most recent check runs." It does not say a re-run replaces the run
-//    it re-ran. The filter is sent explicitly, and a re-run is taken to replace the
-//    earlier run of the same name; `all` is never used.
 //  - Whether the issue schema's `labels` are objects or names: both are read.
 import {
-  HttpError,
   type HttpResponse,
   type HttpSession,
   type ReadRequest,
@@ -81,7 +69,6 @@ import {
 import type {
   ActivityEvent,
   ActivityKind,
-  ChecksOutcome,
   ItemSnapshot,
   ReadFailure,
   ReadOutcome,
@@ -90,13 +77,10 @@ import type {
   UpdatedItem,
   WatchedItem,
 } from "../domain/model";
-import { combineChecks } from "../domain/checks";
 import { lastLine } from "../domain/text";
 import {
   assigneesOf,
-  checkRunShape,
   commentShape,
-  commitStatusShape,
   eventKindShape,
   eventShape,
   iso,
@@ -112,7 +96,6 @@ import {
 } from "./github-wire";
 import { forgeFailure } from "./forge-failure";
 import { isFatal, ReadProblem } from "./service-support";
-import { z } from "zod";
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
@@ -122,10 +105,6 @@ const REVIEW_KINDS: Readonly<Record<string, ActivityKind>> = {
   CHANGES_REQUESTED: "reviewed: changes requested",
   COMMENTED: "reviewed: commented",
 };
-
-const PASSED_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
-const FAILED_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required", "stale", "startup_failure"]);
-const COMMIT_STATUS_OUTCOMES: Readonly<Record<string, ChecksOutcome>> = { success: "passed", pending: "pending", failure: "failed", error: "failed" };
 
 type Query = Readonly<Record<string, string | number | undefined>>;
 
@@ -147,15 +126,6 @@ interface ItemRead {
   readonly snapshot: ItemSnapshot;
   readonly events: ActivityEvent[];
 }
-
-const nextLink = (link: string | null): string | null => {
-  if (link === null) return null;
-  for (const part of link.split(",")) {
-    const match = /<([^>]+)>\s*;\s*rel="?next"?/.exec(part);
-    if (match !== null) return match[1] ?? null;
-  }
-  return null;
-};
 
 const repoPath = (path: string): string | null => {
   const parts = path.split("/");
@@ -223,7 +193,7 @@ class GithubAdapter implements ServiceAdapter {
     return this.describe(reading, item.role, item.ref, issue, reading.request.watchedRefs.has(item.ref) && !reading.request.stateOnly);
   }
 
-  /** Turns an issue as GitHub gave it into a snapshot, reading the pull request, timeline and checks around it, and its comments and reviews where `withActivity`. */
+  /** Turns an issue as GitHub gave it into a snapshot, reading the pull request and timeline around it, and its comments and reviews where `withActivity`. */
   private async describe(reading: Reading, role: SourceRole, ref: string, issue: IssueWire, withActivity: boolean): Promise<ItemRead> {
     const number = issue.number;
     const pull =
@@ -239,7 +209,6 @@ class GithubAdapter implements ServiceAdapter {
 
     const url = pull === null ? issue.html_url : pull.html_url;
     const transitions = await this.transitions(reading, number);
-    const checks = pull === null ? null : { sha: pull.head.sha, outcome: await this.checks(reading, pull.head.sha) };
     const snapshot: ItemSnapshot = {
       role,
       ref,
@@ -247,7 +216,6 @@ class GithubAdapter implements ServiceAdapter {
       open: issue.state === "open" && !(pull?.merged ?? false),
       merged: pull?.merged ?? false,
       fleetLabels,
-      checks: checks === null || checks.outcome === null ? null : { sha: checks.sha, outcome: checks.outcome },
       inPartition,
       transitions,
     };
@@ -277,38 +245,6 @@ class GithubAdapter implements ServiceAdapter {
       }
     }
     return found.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id, "en", { numeric: true }));
-  }
-
-  // ---- checks ----
-
-  /** The outcome of a head commit's check runs and commit statuses together; null where it has neither, or where the token may not read them. */
-  private async checks(reading: Reading, sha: string): Promise<ChecksOutcome | null> {
-    let runs: unknown[];
-    let statuses: unknown[];
-    try {
-      runs = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/check-runs`, { filter: "latest" }, "check_runs", `the check runs of ${sha}`);
-      statuses = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/status`, {}, "statuses", `the commit statuses of ${sha}`);
-    } catch (error) {
-      // A token without the Checks or Commit statuses permission is refused here alone: the pull request is still read, with no checks.
-      if (error instanceof HttpError && error.kind === "forbidden") return null;
-      throw error;
-    }
-    if (runs.length === 0 && statuses.length === 0) return null;
-
-    const outcomes: ChecksOutcome[] = [];
-    for (const entry of runs) {
-      const run = parse("a check run", checkRunShape, entry);
-      if (run.status !== "completed") outcomes.push("pending");
-      else if (run.conclusion !== null && run.conclusion !== undefined && PASSED_CONCLUSIONS.has(run.conclusion)) outcomes.push("passed");
-      else if (run.conclusion !== null && run.conclusion !== undefined && FAILED_CONCLUSIONS.has(run.conclusion)) outcomes.push("failed");
-      else throw new ReadProblem("a completed check run lacked a known conclusion");
-    }
-    for (const entry of statuses) {
-      const outcome = COMMIT_STATUS_OUTCOMES[parse("a commit status", commitStatusShape, entry).state];
-      if (outcome === undefined) throw new ReadProblem("a commit status lacked a known state");
-      outcomes.push(outcome);
-    }
-    return combineChecks(outcomes);
   }
 
   // ---- comments and reviews ----
@@ -424,32 +360,14 @@ class GithubAdapter implements ServiceAdapter {
 
   // ---- requests ----
 
-  private get(reading: Reading, path: string, query?: Query, list = false): Promise<HttpResponse> {
-    return reading.http.request({ method: "GET", path, stayUnder: reading.stayUnder, ...(list ? { list } : {}), ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
+  private get(reading: Reading, path: string, query?: Query): Promise<HttpResponse> {
+    return reading.http.request({ method: "GET", path, stayUnder: reading.stayUnder, ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
   }
 
   /** Every entry of a list, page after page; a list longer than 10 pages is an error naming `what`. */
   private async list(reading: Reading, path: string, query: Query, what: string): Promise<unknown[]> {
     const { items, truncated } = await reading.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: reading.stayUnder }, { maxPages: MAX_PAGES, signal: reading.request.signal });
     if (truncated) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
-    return items;
-  }
-
-  /** Every entry of the list GitHub wraps in an object under `key` (check runs, commit statuses), page after page. */
-  private async listWrapped(reading: Reading, path: string, query: Query, key: string, what: string): Promise<unknown[]> {
-    const wrapper = z.object({ total_count: z.number() }).catchall(z.unknown());
-    const items: unknown[] = [];
-    let next: { path: string; query?: Query } | null = { path, query: { ...query, per_page: PAGE_SIZE } };
-    for (let page = 0; next !== null; page += 1) {
-      if (page >= MAX_PAGES) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
-      const response = await this.get(reading, next.path, next.query, true);
-      const body = parse(what, wrapper, response.json);
-      const list = body[key];
-      if (!Array.isArray(list)) throw new ReadProblem(`${what} lacked ${key}`);
-      items.push(...list);
-      const link = nextLink(response.header("link"));
-      next = link === null ? null : { path: link };
-    }
     return items;
   }
 }

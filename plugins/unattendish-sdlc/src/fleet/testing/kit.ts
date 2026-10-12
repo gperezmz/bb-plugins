@@ -85,7 +85,6 @@ export const snapshot = (n: number, over: Partial<ItemSnapshot> = {}): ItemSnaps
   open: true,
   merged: false,
   fleetLabels: [],
-  checks: null,
   inPartition: false,
   transitions: [],
   ...over,

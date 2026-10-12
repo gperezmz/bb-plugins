@@ -320,7 +320,7 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
     w.store.commit({
       repo: REPO_KEY,
       at: w.clock.now().toISOString(),
-      cursors: [{ role: "forge", cursor: { since: "2026-10-12T09:00:00.000Z", items: { "forge:#1": { open: true, merged: false, fleetLabels: ["spec"], checks: null, inPartition: true }, "forge:#50": { open: true, merged: false, fleetLabels: ["status:ready"], checks: null, inPartition: true } } } }],
+      cursors: [{ role: "forge", cursor: { since: "2026-10-12T09:00:00.000Z", items: { "forge:#1": { open: true, merged: false, fleetLabels: ["spec"], inPartition: true }, "forge:#50": { open: true, merged: false, fleetLabels: ["status:ready"], inPartition: true } } } }],
     });
     const answer = await view(w).fleetDetail({ repo: "github.com/org/repo" });
     if (!answer.ok) throw new Error(answer.reason);

@@ -223,7 +223,6 @@ class Reading {
       open: fields.status.statusCategory.key !== "done",
       merged: false,
       fleetLabels: registeredLabels(this.request.labels).filter((label, i, all) => carried.has(label.toLowerCase()) && all.findIndex((other) => sameText(other, label)) === i),
-      checks: null,
       inPartition: inPartitionByService || isUser(fields.assignee, operator) || (isUser(fields.creator, operator) && fields.assignee === null),
       transitions,
     };

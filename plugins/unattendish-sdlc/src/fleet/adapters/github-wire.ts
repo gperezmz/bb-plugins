@@ -13,19 +13,17 @@ type Read<Schema, Key extends keyof Schema> = { [Field in Key]: Exclude<Schema[F
 // What GitHub's own types (the types-only `@octokit/openapi-types`) say it
 // sends, for the fields read. They differ from the vendor's only where an
 // answer the adapter can use is narrower: an issue's `state`, a label's and a
-// label event's `name`, which must be present, and a pull request's `head`.
+// label event's `name`, which must be present.
 type IssueRead = Omit<Read<Schemas["issue"], "number" | "state" | "html_url" | "updated_at" | "labels" | "user" | "assignee" | "assignees" | "pull_request">, "state" | "labels"> & {
   readonly state: "open" | "closed";
   labels: (string | { name: string })[];
 };
-type PullRead = Omit<Read<Schemas["pull-request"], "merged" | "state" | "html_url" | "head">, "head"> & { readonly head: Pick<Schemas["pull-request"]["head"], "sha"> };
+type PullRead = Read<Schemas["pull-request"], "merged" | "state" | "html_url">;
 type ListedRead = Read<Schemas["issue"], "number" | "html_url" | "updated_at">;
 type EventRead = Omit<Read<Schemas["issue-event"], "id" | "event" | "created_at" | "actor" | "label">, "label"> & { label?: { name: string } };
 type CommentRead = Read<Schemas["issue-comment"], "id" | "user" | "body" | "created_at">;
 type ReviewCommentRead = Read<Schemas["pull-request-review-comment"], "id" | "user" | "body" | "created_at" | "pull_request_review_id">;
 type ReviewRead = Read<Schemas["pull-request-review"], "id" | "user" | "body" | "state" | "submitted_at">;
-type CheckRunRead = Read<Schemas["check-run"], "status" | "conclusion">;
-type CommitStatusRead = Read<Schemas["simple-commit-status"], "state">;
 
 /** `true` where every answer the vendor's type allows is one the shape accepts; the proof below fails to compile otherwise. */
 type Accepts<Shape extends z.ZodType, Wire> = [Wire] extends [z.input<Shape>] ? true : false;
@@ -59,7 +57,6 @@ export const pullShape = z.object({
   merged: z.boolean(),
   state: z.enum(["open", "closed"]),
   html_url: z.string().min(1),
-  head: z.object({ sha: z.string().min(1) }),
 });
 
 /** An entry of the repository's issue list, read for the updated listing. */
@@ -79,9 +76,6 @@ const body = z.string().nullish();
 export const commentShape = z.object({ id: z.number().int(), user: actor, body, created_at: time });
 export const reviewCommentShape = commentShape.extend({ pull_request_review_id: z.number().int().nullish() });
 export const reviewShape = z.object({ id: z.number().int(), user: actor, body, state: z.string(), submitted_at: time.nullish() });
-
-export const checkRunShape = z.object({ status: z.string(), conclusion: z.string().nullish() });
-export const commitStatusShape = z.object({ state: z.string() });
 
 /** The label's name whether GitHub spelled it as an object or a bare string. */
 export const labelName = (wire: IssueWire["labels"][number]): string => (typeof wire === "string" ? wire : wire.name);
@@ -111,7 +105,5 @@ type ShapesAcceptTheVendorsTypes = Proof<
     Accepts<typeof commentShape, CommentRead>,
     Accepts<typeof reviewCommentShape, ReviewCommentRead>,
     Accepts<typeof reviewShape, ReviewRead>,
-    Accepts<typeof checkRunShape, CheckRunRead>,
-    Accepts<typeof commitStatusShape, CommitStatusRead>,
   ]
 >;

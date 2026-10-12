@@ -63,7 +63,7 @@ describe("formatWake", () => {
   });
 
   it("words every kind of change", () => {
-    const kinds = ["commented", "reviewed: approved", "reviewed: changes requested", "reviewed: commented", "closed", "reopened", "merged", "checks passed", "checks failed"] as const;
+    const kinds = ["commented", "reviewed: approved", "reviewed: changes requested", "reviewed: commented", "closed", "reopened", "merged"] as const;
     for (const kind of kinds) expect(wake({ changes: [change({ kind })] })).toContain(`#163 ${kind} by alice `);
     expect(changeText(change({ kind: "labelled", label: "ready" }))).toBe("labelled ready");
     expect(changeText(change({ kind: "unlabelled", label: "needs input" }))).toBe("unlabelled needs input");

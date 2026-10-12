@@ -123,6 +123,18 @@ describe("SqliteStore on a database", () => {
     db.close();
   });
 
+  it("reads a cursor an earlier build stored with checks on its items, and ignores them", () => {
+    const db = migrated(new Database(":memory:"));
+    const store = new SqliteStore(db);
+    store.saveRegistration(registration, []);
+    const stored = { since: "2026-10-12T10:04:00.000Z", items: { "forge:#1": { open: true, merged: false, fleetLabels: ["spec"], checks: { sha: "abc", outcome: "failed", reported: true, round: 1 }, inPartition: true } } };
+    db.prepare("INSERT INTO cursors (repo_id, role, cursor) VALUES (?, ?, ?)").run("github.com/org/repo", "forge", JSON.stringify(stored));
+    const read = store.getCursor("github.com/org/repo", "forge");
+    expect(read?.since).toBe(stored.since);
+    expect(read?.items["forge:#1"]).toMatchObject({ open: true, merged: false, fleetLabels: ["spec"], inPartition: true });
+    db.close();
+  });
+
   it("keeps its data when the database file is opened again", () => {
     folder = mkdtempSync(join(tmpdir(), "fleet-store-"));
     const file = join(folder, "data.db");

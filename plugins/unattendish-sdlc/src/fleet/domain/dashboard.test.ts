@@ -117,7 +117,7 @@ describe("listWatched", () => {
     unreadable: [],
   };
   const fleet = { repo: { host: "github.com", path: "org/repo" }, tracker: { kind: "forge-issues" as const }, forge: "github" as const };
-  const state = (fleetLabels: string[], inPartition = true, open = true) => ({ open, merged: false, fleetLabels, checks: null, inPartition });
+  const state = (fleetLabels: string[], inPartition = true, open = true) => ({ open, merged: false, fleetLabels, inPartition });
   const cursor: SourceCursor = { since: "x", items: { "forge:#1": state(["spec", "status:ready"]), "forge:#9": state(["spec"]), "forge:#8": state(["spec"], false), "forge:#7": state(["status:ready"], true, false) } };
 
   it("gives each item every reason the manifest names it and the labels it carries, label-only items last", () => {

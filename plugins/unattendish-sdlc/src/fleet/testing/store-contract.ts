@@ -65,7 +65,7 @@ const wakeFields = (over: Record<string, unknown> = {}) => ({
 
 const cursor = (since: string): SourceCursor => ({
   since,
-  items: { "forge:#1": { open: true, merged: false, fleetLabels: ["spec"], checks: { sha: "abc", outcome: "pending", reported: false }, inPartition: true } },
+  items: { "forge:#1": { open: true, merged: false, fleetLabels: ["spec"], inPartition: true } },
 });
 
 const pollState = (over: Partial<Parameters<Store["savePollState"]>[1]> = {}): Parameters<Store["savePollState"]>[1] => ({

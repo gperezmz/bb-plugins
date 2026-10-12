@@ -23,7 +23,7 @@ The second command prints `No fleet is registered.` Unattendish polls nothing un
 
 ## 2. Give it a GitHub token
 
-Create a [personal access token (classic)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) that can read the repository: the `repo` scope for a private repository. Unattendish only reads. Then, under Settings → Installed plugins → Unattendish:
+Create a [fine-grained personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) that can read the repository, with Issues, Pull requests and Metadata set to read. Unattendish only reads. Then, under Settings → Installed plugins → Unattendish:
 
 1. In **Credentials**, enter
 

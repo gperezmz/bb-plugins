@@ -1,7 +1,7 @@
 // A fake GitHub REST API: an in-memory model of repositories (issues, pull
-// requests, comments, review comments, reviews, issue events, check runs and
-// commit statuses) answering exactly the endpoints the GitHub adapter reads,
-// in the shapes docs.github.com documents, with `Link` pagination, `updated_at`
+// requests, comments, review comments, reviews, issue events, and the check runs
+// and commit statuses the adapter never asks for) answering the endpoints the
+// GitHub adapter reads, in the shapes docs.github.com documents, with `Link` pagination, `updated_at`
 // filtering, and `ETag` with `304`. Its state is plain JSON, so the drive
 // harness loads and reads it over `/__admin/state`. Written in erasable
 // TypeScript only (no enums, namespaces or parameter properties), because the

@@ -85,7 +85,7 @@ describe("the Jira adapter's snapshot of an issue", () => {
     const out = await read(watch("PROJ-1"));
     expect(out.failures).toEqual([]);
     expect(out.snapshots).toEqual([
-      { role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, open: true, merged: false, fleetLabels: ["Spec", "Needs-Input"], checks: null, inPartition: false, transitions: [] },
+      { role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, open: true, merged: false, fleetLabels: ["Spec", "Needs-Input"], inPartition: false, transitions: [] },
     ]);
   });
 
@@ -510,13 +510,6 @@ describe("the Jira adapter's fleet boundary", () => {
       { ref: "OTHER-9", reason: "listed outside the fleet", kind: "outside-fleet" },
     ]);
     expect(issuePaths(live).some((path) => path.includes("OTHER-9"))).toBe(false);
-  });
-});
-
-describe("the Jira adapter's checks", () => {
-  it("reports no checks, as Jira has none", async () => {
-    const { read, watch } = await world({ issues: [issue("PROJ-1")] });
-    expect((await read(watch("PROJ-1"))).snapshots[0]!.checks).toBeNull();
   });
 });
 
