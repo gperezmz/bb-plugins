@@ -74,6 +74,37 @@ const expiryOf = (header: (name: string) => string | null): string | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
+const GRAPHQL_FIELD_LIMIT = 64;
+const GRAPHQL_ERRORS_LIMIT = 20;
+
+/**
+ * The `extensions.type` and `extensions.code` of each entry of a GraphQL error body's `errors`, and nothing else of
+ * it: a message is text written on the service. A string is cut to 64 characters and has the token removed; an entry
+ * with neither is left out. Undefined where the body is not JSON or names none.
+ */
+const graphqlErrorsOf = async (response: Response, token: string): Promise<{ type: string | null; code: string | null }[] | undefined> => {
+  let body: unknown;
+  try {
+    body = JSON.parse(await response.text());
+  } catch {
+    return undefined;
+  }
+  const errors = (body as { errors?: unknown } | null)?.errors;
+  if (!Array.isArray(errors)) return undefined;
+  const field = (extensions: unknown, name: string): string | null => {
+    const value = (extensions as Record<string, unknown> | null)?.[name];
+    return typeof value === "string" ? redact(value, [token]).slice(0, GRAPHQL_FIELD_LIMIT) : null;
+  };
+  const found = errors
+    .map((entry) => {
+      const extensions = typeof entry === "object" && entry !== null ? (entry as { extensions?: unknown }).extensions : null;
+      return { type: field(extensions, "type"), code: field(extensions, "code") };
+    })
+    .filter((entry) => entry.type !== null || entry.code !== null)
+    .slice(0, GRAPHQL_ERRORS_LIMIT);
+  return found.length === 0 ? undefined : found;
+};
+
 const nextLink = (link: string | null): string | null => {
   if (link === null) return null;
   for (const part of link.split(",")) {
@@ -219,6 +250,7 @@ class Session implements HttpSession {
         return { status: response.status, json, notModified: false, header };
       }
 
+      const graphql = request.graphql === undefined ? undefined : await graphqlErrorsOf(response, this.token);
       const wait = retryAfter(header, this.now());
       const limited = response.status === 429 || (response.status === 403 && (header("x-ratelimit-remaining") === "0" || header("retry-after") !== null));
       if (limited) {
@@ -226,14 +258,14 @@ class Session implements HttpSession {
           await this.sleep(wait);
           continue;
         }
-        throw new HttpError("rate-limit", `${describe(request.method, url, this.token)} was rate limited`, response.status, wait);
+        throw new HttpError("rate-limit", `${describe(request.method, url, this.token)} was rate limited`, response.status, wait, graphql);
       }
       if (response.status >= 500 && attempt < MAX_RETRIES) {
         await this.sleep(250 * 2 ** attempt);
         continue;
       }
       const kind = response.status === 401 ? "auth" : response.status === 403 ? "forbidden" : response.status === 404 ? "not-found" : response.status >= 500 ? "server" : "client";
-      throw new HttpError(kind, `${describe(request.method, url, this.token)} answered ${response.status}`, response.status);
+      throw new HttpError(kind, `${describe(request.method, url, this.token)} answered ${response.status}`, response.status, null, graphql);
     }
   }
 

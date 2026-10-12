@@ -41,6 +41,12 @@ export class HttpError extends Error {
     readonly status: number | null = null,
     /** Milliseconds the service asked to wait, from Retry-After or its rate-limit headers. */
     readonly retryAfterMs: number | null = null,
+    /**
+     * For a GraphQL query answered with a status outside 2xx whose body is JSON: the `extensions.type` and
+     * `extensions.code` of each entry of its `errors`, each a string cut to 64 characters or null. Never a message
+     * or any other field of the body.
+     */
+    readonly graphql?: readonly { readonly type: string | null; readonly code: string | null }[],
   ) {
     super(message);
     this.name = "HttpError";

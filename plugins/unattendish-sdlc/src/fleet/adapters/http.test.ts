@@ -363,6 +363,57 @@ describe("HttpClient", () => {
     });
   });
 
+  describe("a GraphQL query answered outside 2xx", () => {
+    const QUERY = { query: "query { viewer { id } }" };
+    const KEY = "lin_api_secretsecretsecret";
+    const post = async (status: number, body: unknown, headers: Record<string, string> = {}) => {
+      const { credential } = await serve((_, response) => (typeof body === "string" ? (response.writeHead(status, headers), response.end(body)) : json(response, body, status, headers)));
+      return client().session(credential("linear"), KEY).request({ method: "POST", path: "", graphql: QUERY }).catch((e: unknown) => e as HttpError);
+    };
+
+    it("carries each error's extensions type and code, and no message or other field", async () => {
+      const error = await post(400, {
+        errors: [
+          { message: `Bad key ${KEY} for Jane Doe`, path: ["viewer"], locations: [{ line: 1 }], extensions: { type: "authentication error", code: "AUTHENTICATION_ERROR", userPresentableMessage: "Your key is revoked" } },
+          { message: "Rate limited", extensions: { code: "RATELIMITED" } },
+          { message: "no extensions" },
+        ],
+      });
+      expect(error).toBeInstanceOf(HttpError);
+      expect(error).toMatchObject({ kind: "client", status: 400, graphql: [{ type: "authentication error", code: "AUTHENTICATION_ERROR" }, { type: null, code: "RATELIMITED" }] });
+      const shown = JSON.stringify([(error as HttpError).graphql, (error as HttpError).message]);
+      for (const text of [KEY, "Bad key", "Jane Doe", "revoked", "viewer", "Rate limited"]) expect(shown).not.toContain(text);
+    });
+
+    it("cuts a long value to 64 characters, takes only strings and keeps a token out", async () => {
+      const error = (await post(400, { errors: [{ extensions: { type: "x".repeat(200), code: 12 } }, { extensions: { type: `t-${KEY}`, code: { nested: true } } }] })) as HttpError;
+      expect(error.graphql).toEqual([{ type: "x".repeat(64), code: null }, { type: expect.not.stringContaining(KEY), code: null }]);
+    });
+
+    it("also rides on a rate limit", async () => {
+      const error = await post(429, { errors: [{ message: "slow down", extensions: { code: "RATELIMITED" } }] }, { "retry-after": "600" });
+      expect(error).toMatchObject({ kind: "rate-limit", graphql: [{ type: null, code: "RATELIMITED" }] });
+    });
+
+    it("is absent where the body is not JSON, names no errors, or names none with a type or code", async () => {
+      for (const body of ["<html>bad gateway</html>", {}, { errors: "no" }, { errors: [{ message: "m" }] }, { errors: [] }]) {
+        const error = await post(400, body);
+        expect(error).toMatchObject({ kind: "client" });
+        expect((error as HttpError).graphql).toBeUndefined();
+      }
+    });
+
+    it("is not read for a GET, nor attached to an answer that is 2xx", async () => {
+      const { credential } = await serve((_, response) => json(response, { errors: [{ extensions: { code: "X" } }] }, 400));
+      const error = await client().session(credential(), TOKEN).request({ method: "GET", path: "/x" }).catch((e: unknown) => e as HttpError);
+      expect(error).toMatchObject({ kind: "client" });
+      expect((error as HttpError).graphql).toBeUndefined();
+      server?.close();
+      const ok = await serve((_, response) => json(response, { errors: [{ extensions: { code: "X" } }], data: null }));
+      await expect(client().session(ok.credential("linear"), KEY).request({ method: "POST", path: "", graphql: QUERY })).resolves.toMatchObject({ status: 200 });
+    });
+  });
+
   describe("accounting", () => {
     it("records each request without its query and drains them", async () => {
       const { credential } = await serve((_, response) => json(response, []));
