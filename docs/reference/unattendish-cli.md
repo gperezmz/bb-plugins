@@ -72,7 +72,7 @@ github.com/org/repo  tracker forge-issues
   unreadable manifest row: Inbox, line 8: Waits for "soon" is not one of answer, grant, ready, other
 ```
 
-A fleet that a service refuses shows the cause and since when, here a token forbidden to read for 3 polls in a row. `not watched since` is the first of the three polls, two intervals before the poll that showed it. The other causes read the same way, with their [own text](../how-to/unattendish-set-credentials.md#what-credential-refused-says):
+A fleet that a service refuses shows the cause and since when, here a token forbidden to read for 3 polls in a row. A fleet whose listing of what changed keeps failing shows it the same way, as `not watched: credential-refused: The service keeps failing to list what changed with the credential for github.example/org`. `not watched since` is the first of the three polls, two intervals before the poll that showed it. The other causes read the same way, with their [own text](../how-to/unattendish-set-credentials.md#what-credential-refused-says):
 
 ```text
 github.example/org/repo  tracker forge-issues
@@ -96,7 +96,7 @@ github.example/org/repo  tracker forge-issues
 | `requestsThisHour` | Requests the plugin made for the fleet in the last hour |
 | `watched` | True while `notWatched` is empty |
 | `notWatched` | Why the fleet is not watched, each as `{code, text}`; the codes are the contract's, and [how to read them](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) says what each asks of you |
-| `notWatchedSince` | While a credential is refused, forbidden, unanswered, finds nothing or reads only outside the fleet, when the fleet stopped being watched: the time of the first unreadable poll of the streak, and for a 401 that poll; else `null` |
+| `notWatchedSince` | While a credential is refused, forbidden, unanswered, finds nothing, reads only outside the fleet or its listing keeps failing, when the fleet stopped being watched: the time of the first unreadable poll of the streak, and for a 401 that poll; with an outage in both sources, the earlier; else `null` |
 | `unreadableRows` | Manifest rows the contract cannot read, each `{section, line, reason}`. They are skipped and the rest of the manifest still counts |
 | `outside` | References and links the manifest names that lie outside the fleet's repository and tracker, each `{text, section, line}`. They are never fetched |
 | `heldSince` | While changes are held because no manager holds the fleet, since when; else `null` |
@@ -158,7 +158,15 @@ Catch-up: the plugin was away for 8h 12m.
     - `the service did not answer reads with the credential for {prefix}` (no answer, a 5xx, or a poll cut off at its deadline)
     - `the credential for {prefix} could not find what the fleet needs (404)` (the listing answers 404 and the rest fails too)
     - `everything the fleet reads with the credential for {prefix} has moved outside its repository, project or team`
+    - `the service keeps failing to list what changed with the credential for {prefix}` (the items read, and the listing fails with a 400, a 422 or an answer the plugin cannot read)
 
-    A 401 sends it at once; the others after 3 polls in a row in which every read failed, and `{time}` is that of the first of the 3. All five are `credential-refused` in the status, which shows the same cause, capitalised, as `not watched: credential-refused: {text}`. A rate-limited poll in the middle of the outage neither ends it nor sends the wake again.
+    A 401 sends it at once; the others after 3 polls in a row in which every read failed, or in which the listing failed, and `{time}` is that of the first of the 3. All six are `credential-refused` in the status, which shows the same cause, capitalised, as `not watched: credential-refused: {text}`. An outage is kept per source, the forge and a tracker of its own, and a wake names one source's: two sources refused at once take two wakes, the forge's first. A rate-limited poll in the middle of an outage neither ends it nor sends the wake again.
+
+    A wake that carries only this line reads, for the listing that keeps failing:
+
+    ```text
+    Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.
+    Not watched since 2026-10-12T10:00:00.000Z: the service keeps failing to list what changed with the credential for github.example/org.
+    ```
 
 The changes are `commented`, `reviewed: approved`, `reviewed: changes requested`, `reviewed: commented`, `labelled {label}`, `unlabelled {label}`, `closed`, `reopened`, `merged`, `checks passed` and `checks failed`. GitHub and GitLab give all of them. GitLab gives `reviewed: approved` for an approval, and `reviewed: changes requested` and `reviewed: commented` from the states of a merge request's reviewers. GitLab's request-changes review is behind a flag before 17.2, on an instance with the flag off no reviewer is ever in that state, and the wake never gives `reviewed: changes requested`. A wake never holds text written on the service.
