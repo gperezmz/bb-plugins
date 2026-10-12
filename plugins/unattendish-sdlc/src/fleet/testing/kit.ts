@@ -5,7 +5,7 @@ import type { PollDeps } from "../application/poll";
 import { repoId, parseRepo } from "../domain/identity";
 import type { ActivityEvent, ItemSnapshot, ReadOutcome, ServiceKind } from "../domain/model";
 import type { RegisterArgs } from "../domain/registration";
-import { FakeAdapter, FakeChannel, FakeClock, FakeCredentials, FakeHttp, FakeManifests, FakeThreads } from "./fakes";
+import { FakeAdapter, FakeChannel, FakeClock, FakeCost, FakeCredentialAdmin, FakeCredentials, FakeEvents, FakeHttp, FakeManifests, FakeRepositories, FakeThreads } from "./fakes";
 import { InMemoryStore } from "./memory-store";
 
 export const REPO = "github.com/org/repo";
@@ -42,9 +42,13 @@ export const world = () => {
   const store = new InMemoryStore();
   const adapters = { github: new FakeAdapter("github"), gitlab: new FakeAdapter("gitlab"), linear: new FakeAdapter("linear"), jira: new FakeAdapter("jira") } satisfies Record<ServiceKind, FakeAdapter>;
   const warnings: string[] = [];
-  const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
-  const register: RegisterDeps = { store, threads, credentials, manifests, clock };
-  return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register };
+  const events = new FakeEvents();
+  const cost = new FakeCost();
+  const repositories = new FakeRepositories();
+  const admin = new FakeCredentialAdmin();
+  const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
+  const register: RegisterDeps = { store, threads, credentials, manifests, clock, events };
+  return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register, events, cost, repositories, admin };
 };
 
 export type World = ReturnType<typeof world>;

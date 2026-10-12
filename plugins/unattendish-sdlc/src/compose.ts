@@ -8,6 +8,7 @@ import { pollDue, pruneLedger, refreshFleetsOf, setFleetInterval } from "./fleet
 import { SerialQueue } from "./fleet/application/serial";
 import { fleetStatus } from "./fleet/application/status";
 import type { Clock, ServiceAdapter } from "./fleet/application/ports";
+import { BbDashboardEvents } from "./fleet/adapters/bb-realtime";
 import { BbManagerChannel, BbThreadDirectory } from "./fleet/adapters/bb-threads";
 import type { FleetCliApp } from "./fleet/adapters/cli";
 import { execCli, SettingsCredentials, type RunCli } from "./fleet/adapters/credentials";
@@ -83,6 +84,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     adapters,
     manifests: new FileManifests(),
     clock,
+    events: new BbDashboardEvents(bb.realtime, log),
     log,
     rateLimits: new Map(),
   };

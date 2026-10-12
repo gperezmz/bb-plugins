@@ -20,7 +20,9 @@ import type {
   TrackerSpec,
   UnreadableRow,
   WatchedItem,
+  WrittenSection,
 } from "../domain/model";
+import type { CredentialDraft, InboxNewSignal } from "./views";
 
 // ---- HTTP ----
 
@@ -197,13 +199,27 @@ export interface Http {
 export interface ManifestFiles {
   /** Reads and parses the file; `missing` when it does not exist yet. */
   read(path: string): Promise<ManifestRead>;
+  /** The same read, with every section the plugin does not read by column as written, for the Fleet tab. */
+  readSections(path: string): Promise<{ readonly read: ManifestRead; readonly written: readonly WrittenSection[] }>;
 }
 
 // ---- threads ----
 
+/** What bb says of a thread: gone or archived, or live and at work or idle (since when, where bb says). */
+export type ThreadStanding =
+  | { readonly state: "gone" | "archived" }
+  | { readonly state: "live"; readonly busy: boolean; /** ISO 8601 UTC. */ readonly since: string | null };
+
 export interface ThreadDirectory {
   /** `gone` for a thread bb no longer lists or has deleted. */
   state(threadId: string): Promise<"live" | "archived" | "gone">;
+  standing(threadId: string): Promise<ThreadStanding>;
+}
+
+/** Where a thread's code lives, as far as bb knows it. */
+export interface ThreadRepositories {
+  /** The git remote URL of the thread's project; null where bb offers none, and for a thread bb does not know. */
+  remoteOf(threadId: string): Promise<string | null>;
 }
 
 export type DeliveryResult =
@@ -216,6 +232,37 @@ export interface ManagerChannel {
   send(threadId: string, text: string): Promise<DeliveryResult>;
   /** Replaces the text of a wake still waiting in bb's queue. `gone` when it already dispatched or was deleted. */
   amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }>;
+}
+
+// ---- what the dashboard reads and says ----
+
+/** What a manager thread's tree has cost: the total from Thread Usage, or null where it is not installed or its answer cannot be read. */
+export interface CostReader {
+  costOf(threadId: string): Promise<{ readonly amount: number; readonly currency: string } | null>;
+}
+
+/** Tells every open bb window that something the pages show changed, or that an Inbox row is new. */
+export interface DashboardEvents {
+  boardChanged(): void;
+  inboxNew(signal: InboxNewSignal): void;
+}
+
+export interface CredentialAdminEntry {
+  readonly prefix: string;
+  readonly auth: "token" | "gh" | "glab";
+  readonly service: string | null;
+  readonly baseUrl: string | null;
+  /** A pasted token is stored for the prefix. */
+  readonly hasToken: boolean;
+  /** Why the entry cannot be used; null when it can. */
+  readonly problem: string | null;
+}
+
+/** Edits the `credentials` and `tokens` settings by the rules their form validates with. Never returns a token. */
+export interface CredentialAdmin {
+  list(): Promise<{ readonly entries: readonly CredentialAdminEntry[]; readonly problems: readonly string[] }>;
+  save(draft: CredentialDraft): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
+  remove(prefix: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
 }
 
 // ---- clock ----

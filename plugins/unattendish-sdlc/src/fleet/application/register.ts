@@ -1,9 +1,10 @@
 // Registering a fleet: a manager thread says which repository it runs, and
 // what the plugin should treat as the fleet's own.
 import { repoId } from "../domain/identity";
-import type { NotWatched, Registration } from "../domain/model";
+import type { ManifestRead, NotWatched, Registration } from "../domain/model";
 import { decideHolder, validateRegistration, type RegisterArgs } from "../domain/registration";
-import type { Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
+import { uniqueRowIds } from "../domain/inbox";
+import type { Clock, Credentials, DashboardEvents, ManifestFiles, Store, ThreadDirectory } from "./ports";
 import { assessWatching, refusedNotWatched } from "./watching";
 
 export type RegisterOutcome =
@@ -19,6 +20,7 @@ export interface RegisterDeps {
   readonly credentials: Credentials;
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
+  readonly events: DashboardEvents;
 }
 
 /**
@@ -45,6 +47,10 @@ export async function registerFleet(deps: RegisterDeps, thread: string, args: Re
   const watching = await assessWatching(deps, registration);
   const notWatched = [...watching.notWatched, ...refusedNotWatched(existing?.outages ?? {})];
   deps.store.saveRegistration(registration, notWatched);
+  baselineInbox(deps, key, watching.manifest, deps.clock.now().toISOString());
+  // A manager that takes over never got the messages sent to the one before it.
+  if (decision.action === "take-over") deps.store.dropSentActions(key);
+  deps.events.boardChanged();
 
   const watched = notWatched.length === 0;
   if (decision.action === "take-over" && existing !== null) {
@@ -52,3 +58,13 @@ export async function registerFleet(deps: RegisterDeps, thread: string, args: Re
   }
   return { outcome: "registered", watched, notWatched };
 }
+
+/**
+ * The registration's first look at the Inbox: the rows of a manifest that is there are recorded without a signal, and
+ * a manifest that is not there yet baselines the empty Inbox, so the first rows the manager writes are new. A manifest
+ * that exists but cannot be read baselines nothing: the first read that can is the baseline.
+ */
+const baselineInbox = (deps: RegisterDeps, repo: string, manifest: ManifestRead, at: string): void => {
+  if (manifest.status === "ok") deps.store.touchInboxSeen(repo, uniqueRowIds(manifest.manifest.inbox), at);
+  if (manifest.status !== "unreadable") deps.store.setInboxBaselined(repo);
+};
