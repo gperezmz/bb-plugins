@@ -1,14 +1,21 @@
 // Views for screen and decision tests, each built from a complete default and the fields a test names.
 import type {
+  AccountOptionView,
+  AccountSettingView,
   ActionRecordView,
+  ConnectView,
+  CredentialSettingView,
   FleetCardView,
+  FleetCredentialView,
   FleetDetailView,
   FleetsView,
   InboxRowView,
   LandedRowView,
   LedgerChangeView,
   LedgerView,
+  HalfView,
   SettingsView,
+  TokenPageView,
   UnreadableInboxRowView,
 } from "@/src/fleet/application/views";
 
@@ -33,6 +40,7 @@ export function fleetCard(over: Partial<FleetCardView> = {}): FleetCardView {
     lastPolledAt: ago(40_000),
     intervalMs: 120_000,
     reasons: [],
+    halves: [],
     warnings: [],
     ...over,
   };
@@ -67,7 +75,7 @@ export function landedRow(over: Partial<LandedRowView> = {}): LandedRowView {
 }
 
 export function fleetsView(over: Partial<FleetsView> = {}): FleetsView {
-  return { generatedAt: NOW, waiting: 0, fleets: [], inbox: [], unreadableInbox: [], recentActions: [], landed: [], ...over };
+  return { generatedAt: NOW, waiting: 0, needsAccount: [], fleets: [], inbox: [], unreadableInbox: [], recentActions: [], landed: [], ...over };
 }
 
 export function fleetDetail(over: Partial<FleetDetailView> = {}): FleetDetailView {
@@ -92,5 +100,93 @@ export function ledgerView(over: Partial<LedgerView> = {}): LedgerView {
 }
 
 export function settingsView(over: Partial<SettingsView> = {}): SettingsView {
-  return { credentials: [], fleets: [], problems: [], ...over };
+  return { accounts: [], fleets: [], ...over };
+}
+
+export function half(over: Partial<HalfView> = {}): HalfView {
+  return { role: "forge", what: "acme/web", account: { id: "acc_yuser", label: "GitHub · yuser" }, credential: "GitHub · yuser for acme", canWrite: false, needs: null, ...over };
+}
+
+export function fleetCredential(over: Partial<FleetCredentialView> = {}): FleetCredentialView {
+  return {
+    role: "forge",
+    label: "GitHub · yuser for acme",
+    account: { id: "acc_yuser", label: "GitHub · yuser" },
+    kind: "fine-grained",
+    auth: "token",
+    expiresAt: null,
+    canWrite: false,
+    sharesAgentRateLimit: false,
+    ...over,
+  };
+}
+
+export function credentialSetting(over: Partial<CredentialSettingView> = {}): CredentialSettingView {
+  return {
+    id: "cred_acme",
+    reaches: "acme",
+    kindLabel: "fine-grained token",
+    kind: "fine-grained",
+    canWrite: false,
+    expiresAt: null,
+    expiresInDays: null,
+    refused: false,
+    fleets: [],
+    renew: { kind: "create", url: "https://github.com/settings/personal-access-tokens/new?target_name=acme", owner: "acme" },
+    ...over,
+  };
+}
+
+export function accountSetting(over: Partial<AccountSettingView> = {}): AccountSettingView {
+  return {
+    id: "acc_yuser",
+    label: "GitHub · yuser",
+    service: "github",
+    place: "github.com",
+    name: "yuser",
+    via: "token",
+    canWrite: false,
+    defaultFor: ["github.com"],
+    canMakeDefault: false,
+    loginProblem: null,
+    credentials: [],
+    assignments: [],
+    tokenPage: "https://github.com/settings/personal-access-tokens",
+    addsOwners: true,
+    ...over,
+  };
+}
+
+export function accountOption(over: Partial<AccountOptionView> = {}): AccountOptionView {
+  return { id: "acc_yuser", label: "GitHub · yuser", via: "token", isDefault: true, reaches: false, canWrite: false, loginProblem: null, ...over };
+}
+
+export function connectView(over: Partial<ConnectView> = {}): ConnectView {
+  return {
+    generatedAt: NOW,
+    fleet: "acme/web",
+    role: "forge",
+    service: "github",
+    place: "github.com",
+    scope: "acme",
+    owner: "acme",
+    what: "acme/web",
+    accounts: [accountOption()],
+    current: null,
+    problem: null,
+    ...over,
+  };
+}
+
+export function tokenPage(over: Partial<TokenPageView> = {}): TokenPageView {
+  return {
+    sentTo: "api.github.com",
+    url: "https://github.com/settings/personal-access-tokens/new?target_name=acme&expires_in=90",
+    grants: ["Issues: read", "Pull requests: read", "Metadata: read"],
+    repositories: ["acme/web"],
+    chooseExpiry: false,
+    note: null,
+    signInAs: "yuser",
+    ...over,
+  };
 }

@@ -40,12 +40,28 @@ const TYPICAL: Record<Method, ((api: DashboardApi) => Promise<unknown>)[]> = {
     (api) => api.sendAction({ fleet: "github.com/acme/web", rowId: "row_1", kind: "build" }),
   ],
   settings: [(api) => api.settings()],
-  saveCredential: [
-    (api) => api.saveCredential({ prefix: "github.com/acme", auth: "token", token: "fake-token" }),
-    (api) => api.saveCredential({ was: "github.com/acme", prefix: "github.com/acme", auth: "token", service: "github", baseUrl: "https://api.github.com" }),
-    (api) => api.saveCredential({ prefix: "github.com", auth: "gh" }),
+  connectView: [
+    (api) => api.connectView({ fleet: "github.com/acme/web", role: "forge" }),
+    (api) => api.connectView({ service: "github", place: "github.com", owner: "zorg" }),
+    (api) => api.connectView({ service: "jira", place: "acme.atlassian.net" }),
   ],
-  removeCredential: [(api) => api.removeCredential({ prefix: "github.com/acme" })],
+  tokenPage: [
+    (api) => api.tokenPage({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_1" } }),
+    (api) => api.tokenPage({ service: "github", place: "github.com", owner: "zorg", account: { service: "github", place: "github.com" } }),
+  ],
+  cliLogins: [(api) => api.cliLogins({ tool: "gh", host: "github.com" }), (api) => api.cliLogins({ tool: "glab", host: "gitlab.example.com" })],
+  connect: [
+    (api) => api.connect({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_1" }, secret: { kind: "token", token: "fake-token" } }),
+    (api) => api.connect({ fleet: "github.com/acme/web", role: "forge", account: { service: "github", place: "github.com" }, secret: { kind: "token", token: "fake-token" }, confirm: true }),
+    (api) => api.connect({ service: "jira", place: "acme.atlassian.net", account: { service: "jira", place: "acme.atlassian.net" }, secret: { kind: "jira", email: "ops@acme.com", token: "fake-token" } }),
+    (api) => api.connect({ service: "github", place: "github.com", owner: "acme", account: { id: "acc_1" }, secret: { kind: "login", tool: "gh", login: "yuser" }, replaces: "cred_1" }),
+    (api) => api.connect({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_1" }, secret: { kind: "stored" } }),
+  ],
+  checkAgain: [(api) => api.checkAgain({ fleet: "github.com/acme/web", role: "tracker" })],
+  makeDefault: [(api) => api.makeDefault({ accountId: "acc_1" })],
+  removeAssignment: [(api) => api.removeAssignment({ scope: "github.com/other-org" })],
+  removeCredential: [(api) => api.removeCredential({ credentialId: "cred_1" })],
+  removeAccount: [(api) => api.removeAccount({ accountId: "acc_1" })],
   setInterval: [(api) => api.setInterval({ repo: "github.com/acme/web", seconds: 45 }), (api) => api.setInterval({ repo: "github.com/acme/web", seconds: null })],
 };
 
