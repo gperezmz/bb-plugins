@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ResolvedCredential } from "../application/ports";
 import { parseRepo, parseTracker } from "../domain/identity";
 import type { RepoRef, TrackerSpec } from "../domain/model";
-import { CLI_TOKEN_TTL_MS, execCli, glabTokenIn, SettingsCredentials, type RunCli, type SettingValues } from "./credentials";
+import { CLI_FAILURE_TTL_MS, CLI_TOKEN_TTL_MS, execCli, glabTokenIn, SettingsCredentials, type RunCli, type SettingValues } from "./credentials";
 
 const repo = (text: string): RepoRef => parseRepo(text)!;
 const tracker = (text: string): TrackerSpec => parseTracker(text)!;
@@ -196,6 +196,31 @@ describe("token from gh and glab", () => {
     expect((error as Error).message).toBe("gh gave no token for github.com");
     const empty = setup(ghValues, async () => "  \n");
     await expect(empty.credentials.token(found(empty.credentials.forForge(repo("github.com/org/r"))))).rejects.toThrow("gave no token");
+  });
+
+  it("remembers a failed lookup for 30 seconds, so a missing login does not run the CLI on every refresh, then asks again", async () => {
+    let fail = true;
+    const { credentials, calls, clock } = setup(ghValues, async () => (fail ? Promise.reject(new Error("not logged in")) : "gho_1"));
+    const credential = found(credentials.forForge(repo("github.com/org/r")));
+    await expect(credentials.token(credential)).rejects.toThrow("gh gave no token for github.com");
+    clock.advance(CLI_FAILURE_TTL_MS - 1);
+    await expect(credentials.token(credential)).rejects.toThrow("gh gave no token for github.com");
+    expect(calls).toHaveLength(1);
+    fail = false;
+    clock.advance(1);
+    expect(await credentials.token(credential)).toBe("gho_1");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("asks again after the settings are reloaded, though a lookup failed a moment ago", async () => {
+    let fail = true;
+    const { credentials, calls } = setup(ghValues, async () => (fail ? Promise.reject(new Error("x")) : "gho_1"));
+    const credential = found(credentials.forForge(repo("github.com/org/r")));
+    await expect(credentials.token(credential)).rejects.toThrow();
+    fail = false;
+    credentials.reload(ghValues);
+    expect(await credentials.token(credential)).toBe("gho_1");
+    expect(calls).toHaveLength(2);
   });
 
   it("rejects glab output that has no token or a masked one", async () => {

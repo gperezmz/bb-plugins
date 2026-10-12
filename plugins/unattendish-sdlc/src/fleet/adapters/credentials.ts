@@ -19,6 +19,11 @@ export type RunCli = (command: "gh" | "glab", args: string[]) => Promise<string>
 
 /** How long a token obtained from `gh` or `glab` is kept before the CLI is asked again. */
 export const CLI_TOKEN_TTL_MS = 5 * 60_000;
+/**
+ * How long a failed lookup of a CLI token is remembered. The dashboard asks for a fleet's token on every refresh of a
+ * page, and a missing `gh` or `glab` login would run the CLI (up to its timeout) for each fleet each time.
+ */
+export const CLI_FAILURE_TTL_MS = 30_000;
 const CLI_TIMEOUT_MS = 10_000;
 
 /** Environment variables `gh` and `glab` answer from before their own login, which would stand in for the login the operator chose. */
@@ -80,6 +85,8 @@ export class SettingsCredentials implements Credentials {
   private tokens = new Map<string, string>();
   private settingProblems: string[] = [];
   private readonly cliTokens = new Map<string, { token: string; expiresAt: number }>();
+  /** By the same key, when a failed lookup stops being remembered (epoch milliseconds). */
+  private readonly cliFailures = new Map<string, number>();
   /** Every token a CLI has given, kept after its cache entry expires so text can still be scrubbed of it. */
   private readonly cliSeen = new Set<string>();
 
@@ -100,6 +107,7 @@ export class SettingsCredentials implements Credentials {
     this.tokens = tokens.tokens;
     this.settingProblems = [...credentials.problems, ...tokens.problems];
     this.cliTokens.clear();
+    this.cliFailures.clear();
   }
 
   /** What is wrong with the settings, for a person. Never carries a token. */
@@ -138,7 +146,16 @@ export class SettingsCredentials implements Credentials {
     const key = `${entry.auth}:${hostname}`;
     const cached = this.cliTokens.get(key);
     if (cached !== undefined && cached.expiresAt > this.clock.now().getTime()) return cached.token;
-    const token = await this.fromCli(entry.auth, hostname);
+    const failedUntil = this.cliFailures.get(key);
+    if (failedUntil !== undefined && failedUntil > this.clock.now().getTime()) throw new Error(`${entry.auth} gave no token for ${hostname}`);
+    let token: string;
+    try {
+      token = await this.fromCli(entry.auth, hostname);
+    } catch (error) {
+      this.cliFailures.set(key, this.clock.now().getTime() + CLI_FAILURE_TTL_MS);
+      throw error;
+    }
+    this.cliFailures.delete(key);
     this.cliTokens.set(key, { token, expiresAt: this.clock.now().getTime() + CLI_TOKEN_TTL_MS });
     this.cliSeen.add(token);
     return token;
