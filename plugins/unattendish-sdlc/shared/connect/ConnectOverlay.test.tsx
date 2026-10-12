@@ -302,6 +302,7 @@ describe("step 3: what was found", () => {
     await verify();
     expect((await screen.findByRole("alert")).textContent).toBe("the server is not running");
     expect(document.body.innerHTML).not.toContain("fake-secret-token");
+    expect(field("Token").value).toBe("");
   });
 });
 
