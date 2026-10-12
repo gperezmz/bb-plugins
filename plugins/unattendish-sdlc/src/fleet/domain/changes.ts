@@ -82,7 +82,7 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     const before = prev?.items[id];
     const watched = watchedRefs.has(snapshot.ref);
     if (!stateOnly) changes.push(...snapshotChanges({ snapshot, before, watched, labels, startedAt, base, id }));
-    items[id] = nextState(snapshot);
+    items[id] = nextState(snapshot, before);
   }
 
   if (!stateOnly) {
@@ -186,23 +186,34 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
 
   const checks = snapshot.checks;
   if (watched && before !== undefined && checks !== null && checks.outcome !== "pending") {
-    const reported = before.checks !== null && before.checks.sha === checks.sha && before.checks.reported;
-    if (!reported) {
+    const known = before.checks !== null && before.checks.sha === checks.sha ? before.checks : null;
+    if (known === null || !known.reported) {
       const kind: ChangeKind = checks.outcome === "passed" ? "checks passed" : "checks failed";
-      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${checks.sha}` });
+      const round = known?.round ?? 0;
+      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${checks.sha}${round === 0 ? "" : `|round ${round}`}` });
     }
   }
   return changes;
 };
 
-/** The item's state to keep. Final checks are kept as reported: they were reported just now, before, or are a baseline nobody is told of. */
-const nextState = (snapshot: ItemSnapshot): ItemState => ({
-  open: snapshot.open,
-  merged: snapshot.merged,
-  fleetLabels: [...snapshot.fleetLabels],
-  checks: snapshot.checks === null ? null : { sha: snapshot.checks.sha, outcome: snapshot.checks.outcome, reported: isFinal(snapshot.checks.outcome) },
-  inPartition: snapshot.inPartition,
-});
+/**
+ * The item's state to keep. Final checks are kept as reported: they were
+ * reported just now, before, or are a baseline nobody is told of. A pending
+ * seen after a reported final on the same commit is a re-run: it opens the
+ * next round, so the re-run's final outcome is reported under its own key.
+ * A re-run that no poll saw pending is not reported, since nothing tells it
+ * from the outcome already reported.
+ */
+const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemState => {
+  const checks = snapshot.checks;
+  let kept: ItemState["checks"] = null;
+  if (checks !== null) {
+    const known = before?.checks != null && before.checks.sha === checks.sha ? before.checks : null;
+    const round = (known?.round ?? 0) + (known?.reported === true && !isFinal(checks.outcome) ? 1 : 0);
+    kept = { sha: checks.sha, outcome: checks.outcome, reported: isFinal(checks.outcome), ...(round === 0 ? {} : { round }) };
+  }
+  return { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+};
 
 const isFinal = (outcome: ChecksOutcome): boolean => outcome !== "pending";
 

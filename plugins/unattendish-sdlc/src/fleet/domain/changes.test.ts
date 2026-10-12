@@ -158,6 +158,35 @@ describe("checks", () => {
     expect(derived.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true });
   });
 
+  it("reports checks that settle again after a re-run on the same commit, once per round", () => {
+    let cursorNow = derive({ prev: at(state({ checks: { sha: "aaa", outcome: "pending", reported: false } })), watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
+    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa"]);
+
+    const rerun = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    expect(rerun.changes).toEqual([]);
+    expect(rerun.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "pending", reported: false, round: 1 });
+    const stillRunning = derive({ prev: rerun.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    expect(stillRunning.nextCursor.items["forge:#7"]!.checks).toMatchObject({ round: 1 });
+
+    cursorNow = derive({ prev: stillRunning.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
+    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa|round 1"]);
+    expect(cursorNow.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true, round: 1 });
+    expect(derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) }).changes).toEqual([]);
+
+    const second = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    const settled = derive({ prev: second.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) });
+    expect(settled.changes.map((c) => c.key)).toEqual(["forge:#7|checks passed|aaa|round 2"]);
+  });
+
+  it("starts the rounds again for a new commit, and reports nothing for a re-run no poll saw pending", () => {
+    const reported = at(state({ checks: { sha: "aaa", outcome: "failed", reported: true, round: 2 } }));
+    const pushed = derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending", "bbb")] }) });
+    expect(pushed.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "bbb", outcome: "pending", reported: false });
+    expect(derive({ prev: pushed.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed", "bbb")] }) }).changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|bbb"]);
+    // A re-run that never showed pending between two polls looks like the outcome already reported.
+    expect(derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
+  });
+
   it("does not report checks of an unwatched item", () => {
     expect(derive({ prev: at(state()), outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
   });
