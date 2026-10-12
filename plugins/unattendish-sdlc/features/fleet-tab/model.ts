@@ -27,10 +27,12 @@ export function watchedHeading(count: number): string {
   return `Watched set (${plural(count, "item")})`;
 }
 
-/** A credential the fleet uses, as its parts: the prefix, its kind, the expiry date where the service reports one, and whether it shares the agents' rate limit. */
+/** A credential the fleet uses, as its parts: the account it belongs to, its kind, whether it can write, the expiry date where the service reports one, and whether it shares the agents' rate limit. */
 export function credentialParts(credential: FleetCredentialView): string[] {
   return [
-    credentialKind(credential.auth),
+    credential.account.label,
+    credentialKind(credential.kind),
+    ...(credential.canWrite ? ["can write"] : []),
     credential.expiresAt === null ? "no expiry reported" : `expires ${dateLabel(credential.expiresAt)}`,
     ...(credential.sharesAgentRateLimit ? ["shares the agents' rate limit"] : []),
   ];

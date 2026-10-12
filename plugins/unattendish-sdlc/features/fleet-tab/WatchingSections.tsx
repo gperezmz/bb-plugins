@@ -35,9 +35,9 @@ export function WatchingSections({ detail }: { detail: FleetDetailView }) {
         ) : (
           <ul className="flex flex-col gap-1 text-sm">
             {detail.credentials.map((credential) => (
-              <li key={`${credential.role}:${credential.prefix}`} className="flex flex-wrap items-baseline gap-x-3">
+              <li key={`${credential.role}:${credential.label}`} className="flex flex-wrap items-baseline gap-x-3">
                 <span>
-                  {credential.role} <span className="font-medium">{credential.prefix}</span>
+                  {credential.role} <span className="font-medium">{credential.label}</span>
                 </span>
                 {credentialParts(credential).map((part) => (
                   <span key={part} className={part.startsWith("shares") ? "text-warning" : "text-muted-foreground"}>
