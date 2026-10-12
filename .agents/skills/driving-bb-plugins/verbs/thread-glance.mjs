@@ -959,6 +959,12 @@ export const verbs = {
         const to = await reveal(page, flags.onto);
         const b = await to.boundingBox();
         await page.mouse.move(b.x + 40, b.y + b.height / 2, { steps: 12 });
+        // Each hover re-orders the rows and they slide into place: rest the
+        // pointer until they settle, then move it once more so the row under it
+        // is the target's slot, as a person holding the drag gets.
+        await sleep(400);
+        await page.mouse.move(b.x + 40, b.y + b.height / 2 + 1);
+        await sleep(400);
         await frames(page);
         await capture("dragging", "while dragging");
         await page.mouse.up();

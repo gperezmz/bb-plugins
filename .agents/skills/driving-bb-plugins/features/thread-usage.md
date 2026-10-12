@@ -11,8 +11,8 @@ estimate.
 ## Sub-features
 
 - `chip`: the header coin, `Usage: <figure>[ with N child thread(s)]`.
-- `tab`: the Usage tab, with the Scope toggle `This thread` / `With
-  children` and the `Child threads` tree.
+- `tab`: the Usage tab, with the Scope toggle `This thread` /
+  `With children` and the `Child threads` tree.
 - `page`: the Thread usage page, with `Project` and `Period` filters.
 - `cli`: `bb thread-usage show [<thread>] [--no-children] [--json]` and
   `top [--since 7d] [--json]`.
@@ -21,14 +21,17 @@ estimate.
 ## How to get to it (user POV)
 
 - A thread's header: `button` named `Usage: …`, drawn once the tree has a
-  finished turn. Clicking it opens the Usage tab.
+  turn or any usage. Hovering it 250 ms opens a card with the tokens and the
+  child count; clicking it opens the Usage tab.
 - The command palette in a thread: `Show usage for this thread`.
-- Sidebar navigation → `Thread usage`: the page, route `usage`.
+- `navigation "Primary navigation"` → `button "Thread usage"`: the page, at
+  `/plugins/thread-usage/usage`, with `combobox "Project"` and
+  `radiogroup "Period"` (`7 days`, `30 days`).
 - Settings → Installed plugins → Thread Usage, at
-  `/settings/plugins/thread-usage`: the plugin's settings and the `Gateway,
-  history and export` section.
-- CLI: `bb thread-usage show|top`; RPC `report {threadId}`, `refresh
-  {threadId}`, `top {projectId, sinceDays}`, `status`.
+  `/settings/plugins/thread-usage`: the plugin's settings and the
+  `Gateway, history and export` section.
+- CLI: `bb thread-usage show|top`; RPC `report {threadId}`,
+  `refresh {threadId}`, `top {projectId, sinceDays}`, `status`.
 
 ## Driving it with drive-bb-plugins
 
@@ -46,25 +49,36 @@ and
   has `descendants` 1 and `$C` among `.children[].threadId`; with
   `--no-children` it has `descendants` 0 and a lower `usd`.
 - **Chip and tab** (`thread-usage.chip/header`): a `ui` script opens the
-  parent thread (its row in the sidebar, or `url + "thread/" + P` where that
-  route answers), finds `button` named `/^Usage: .* with 1 child thread/`,
-  captures, clicks it, and finds `group "Scope"` with `With children`
-  selected and `heading "Child threads"` with a `treeitem` for `child`;
-  clicking `This thread` lowers the headline figure and shows `With
-  children: <previous figure>`.
-- **Page** (`thread-usage.page/nav`): a `ui` script clicks `button "Thread
-  usage"` in `navigation "Sidebar navigation"` (or the `More sidebar
-  navigation` menu), and finds `parent` ranked first;
+  parent thread at `url + "projects/<project>/threads/" + P`, finds `button`
+  named `/^Usage: .* with 1 child thread/`, captures, clicks it, and finds
+  `radiogroup "Scope"` with `radio "With children"` checked and
+  `heading "Child threads"` with a `treeitem` for `child`, which opens `$C`
+  when clicked;
+  clicking `This thread` lowers the headline figure and shows
+  `With children: <previous figure>`.
+- **Page** (`thread-usage.page/nav`): a `ui` script clicks
+  `button "Thread usage"` in `navigation "Primary navigation"` (or its
+  `More` menu), and finds `parent` ranked first, for `30 days` too;
   `thread-usage top --json` has `.trees[0].threadId` equal to `$P`.
+- **Palette** (`thread-usage.tab/palette`): on the parent's thread, Control+K
+  opens bb's command palette, and `option "Show usage for this thread"` opens
+  the Usage tab.
+- **Budget** (`thread-usage.budget/header`): `plugin config thread-usage set warnAbove 0.01`,
+  under the tree's billed dollars, tints the coin (`text-warning`) with no
+  toast; set just above them and `bb thread tell "$P" "hello again"`, then
+  `thread wait` and `thread stop`: one toast `“parent” crossed $<amount>`
+  shows while the page is open.
 
 ## Gotchas
 
 - Install the plugin before spawning threads: threads older than the
   install are backfilled in the background, not at once.
-- The chip is absent until a turn has finished; `spawn` returns only once
-  the first turn is idle.
+- `spawn` returns once the first turn is idle, so the chip is there when a
+  drive opens the thread.
 - Without `billingClaudeCode api-key` the fake API's key reads as billing
-  `unknown` and the headline leads with tokens, not dollars.
+  `unknown`: the headline still leads with dollars, and the detail line
+  reads `estimate · billing unknown` for `estimate · API key`. Only
+  subscription billing leads with tokens.
 - With `refreshPrices` on, the plugin fetches prices from the network at
   start; off, it uses its bundled list.
 - The hover card opens after 250 ms and stays shut after a click: open the

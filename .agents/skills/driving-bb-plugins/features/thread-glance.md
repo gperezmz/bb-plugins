@@ -84,8 +84,9 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   `"Wake thread now"` (Snoozed) or `"Un-settle thread"` (Settled). A full or
   folded card's status slot reads `Needs you`, `Send failed`, `Queued`, bb's
   indicator (`Failed`, `Unread`, `Working` and the rest), else the age (`now`,
-  `7m`); a slim row has no status slot, its label (`Waiting 0d`, the wake time)
-  is plain text. On a phone a full card has no Snooze, Settle or `…` button.
+  `7m`). A Settled slim row has the status slot too (`Failed`, `Unread` or
+  the age); a Parked or Snoozed slim row has plain text instead, `Waiting 0d`
+  or the time left until the wake (`5m`, `2h`, `3d`). On a phone a full card has no Snooze, Settle or `…` button.
 - Woke marker: a thread back from a snooze has a bold title, `Woke` in its
   status slot and `button "Dismiss Woke marker"` in place of Snooze and
   Settle; opening the thread clears it too.
@@ -154,16 +155,18 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   `Reset`, `Upload icon` and `Use automatic`; Project management has
   `combobox "Remove a project"`, `textbox "Project name"` and
   `button "Remove project"`.
-- Project colours (`Project colors` on): each card's project name takes the
-  project's colour and a stripe its fill, where `Show stripes in` allows; an
-  uploaded icon, else the project's favicon, else a monogram marks the
-  project.
+- Project mark: an uploaded icon, else the project's favicon, else a
+  monogram marks the project, whatever `Project colors` says. With
+  `Project colors` on, each card's project name takes the project's colour,
+  the monogram's tile its tint, and a stripe its fill, where
+  `Show stripes in` allows.
 - Jump hints: holding Control alone for 700 ms puts `Ctrl + 1` … `Ctrl + 9` in
-  the status slots of the upper list's first nine rows; any other key, Shift
+  the status slots of the list's first nine rows, from the upper list on and
+  into the lower one where the upper holds fewer; any other key, Shift
   included, hides them.
 - Thread header (an open thread): `button "Back to parent: <title>"` on a
-  child, and on a parent a button reading `N children` or `Needs you` that
-  opens `region "Child threads"`, one button per child.
+  child, and on a parent a button reading `1 child`, `N children` or
+  `Needs you` that opens `region "Child threads"`, one button per child.
 
 ## Driving it with drive-bb-plugins
 
@@ -240,9 +243,13 @@ the pointer, so those verbs run on the desktop viewport.
   run's machine (this one), and the fake API cannot run commands, so start one
   yourself, with a working directory inside the thread's workspace. Every
   `seed`ed or `spawn`ed thread of the `drives` project shares the project's
-  checkout, `<scratch>/work/demo` (`scratch` in `.drives/<run>/run.env`), so
+  checkout, `<scratch>/work/demo` (`scratch` in the evidence's `run.env`), so
   one server shows on all of them:
-  ```bash cd "$(. .drives/<run>/run.env; echo $scratch)/work/demo" && BB_THREAD_ID=<thread id> node -e 'require("http").createServer((q,r)=>r.end("ok")).listen(+process.argv[1],"127.0.0.1")' 18765 >/dev/null 2>&1 & echo $! ```
+
+  ```bash
+  cd "$(. "${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins/<run>/run.env"; echo $scratch)/work/demo" && BB_THREAD_ID=<thread id> node -e 'require("http").createServer((q,r)=>r.end("ok")).listen(+process.argv[1],"127.0.0.1")' 18765 >/dev/null 2>&1 & echo $!
+  ```
+
   With `BB_THREAD_ID` naming one thread of that workspace the port is that
   thread's **owned port**; without it, or naming another, it belongs to the
   workspace and shows with Stop but is never in the settle prompt or Clean.

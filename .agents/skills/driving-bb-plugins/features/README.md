@@ -73,18 +73,25 @@ handles, required state, commands, and observable evidence.
 ## Features
 
 - [UI Tweaks](./ui-tweaks.md): text size and transcript width, from the
-  settings section and from RPC, applied live to the New-thread screen.
+  settings section, its arrow keys and RPC, applied live to the New-thread
+  screen and thread views.
 - [Thread Glance](./thread-glance.md): the sidebar list's project scope,
   shelves, scenes and cards, child-thread chips, hover card, Snooze, Park and
   Settle with Undo, the Woke marker, rename and the menu's dialogs,
   reordering, workspace ports (indicator, Stop, port link machine, the settle
   prompt) and Clean, the thread header's buttons, jump hints, and the settings
   page with project appearance, each a verb.
-- [Thread Usage](./thread-usage.md): the header coin, the Usage tab, the
-  Thread usage page and the `thread-usage` CLI over a parent and child
-  thread.
+- [Thread Usage](./thread-usage.md): the header coin, the Usage tab and the
+  command palette's way to it, the Thread usage page, the budget warning and
+  the `thread-usage` CLI over a parent and child thread.
 - [Cache Keeper](./cache-keeper.md): the composer chip, compact when idle on
-  the drive clock, the banner and the Cache Keeper page.
+  the drive clock, the banner with Skip and Undo, keep warm while waiting,
+  the Cache Keeper page and its settings.
+- [Unattendish](./unattendish-sdlc.md): fleets registered by their managers
+  against fake GitHub, GitLab, Linear and Jira services, the wake, the Fleets
+  page and its Inbox actions, the Fleet chip and tab with the ledger, the
+  toasts, the Connect… popup, and the accounts and poll intervals in
+  settings, each a verb.
 
 Not yet mapped: Team Onboarding (`plugins/team-onboarding`) and
 OpenAI-compatible inference (`plugins/openai-inference`). Each has a
