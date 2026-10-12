@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultServiceOfHost, forgeSource, longestMatch, parsePrefix, parseRepo, parseTracker, prefixMatches, repoId, repoSubject, trackerSource, trackerSubject, urlUnder, type Prefix } from "./identity";
+import { defaultServiceOfHost, forgeSource, formatTracker, longestMatch, parsePrefix, parseRepo, parseTracker, prefixMatches, repoId, repoSubject, trackerSource, trackerSubject, urlUnder, type Prefix } from "./identity";
 
 const prefix = (text: string): Prefix => parsePrefix(text)!;
 
@@ -95,5 +95,11 @@ describe("urlUnder", () => {
     expect(urlUnder({ role: "tracker", service: "jira", site: "acme.atlassian.net", project: "PROJ" }, "https://acme.atlassian.net/browse/PROJ-12")).toBe(true);
     expect(urlUnder({ role: "tracker", service: "jira", site: "acme.atlassian.net", project: "PROJ" }, "https://acme.atlassian.net/browse/OTHER-12")).toBe(false);
     expect(urlUnder({ role: "tracker", service: "jira", site: "acme.atlassian.net", project: "PROJ" }, "https://evil.net/browse/PROJ-12")).toBe(false);
+  });
+});
+
+describe("formatTracker", () => {
+  it("spells a tracker as --tracker does, so parsing it again gives it back", () => {
+    for (const text of ["forge-issues", "linear:ENG", "jira:acme.atlassian.net/PROJ"]) expect(formatTracker(parseTracker(text)!)).toBe(text);
   });
 });

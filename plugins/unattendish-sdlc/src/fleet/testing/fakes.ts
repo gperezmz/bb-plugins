@@ -1,7 +1,7 @@
 // Fakes for the ports the use cases need, for tests that run on fakes alone.
 import { longestMatch, parsePrefix, repoSubject, trackerSubject, type Prefix } from "../domain/identity";
 import { parseManifest } from "../domain/manifest";
-import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, Source, TrackerSpec } from "../domain/model";
+import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, TrackerSpec } from "../domain/model";
 import type {
   Clock,
   Credentials,
@@ -150,5 +150,3 @@ export class FakeAdapter implements ServiceAdapter {
     return typeof next === "function" ? next(request) : next;
   }
 }
-
-export const sourceOf = (source: Source): Source => source;

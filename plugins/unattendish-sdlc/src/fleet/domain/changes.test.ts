@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -318,5 +318,13 @@ describe("partitionRevisit", () => {
     ]);
     expect(partitionRevisit(prev, "tracker", labels, new Set())).toEqual([{ role: "tracker", ref: "ENG-1", url: null }]);
     expect(partitionRevisit(null, "forge", labels, new Set())).toEqual([]);
+  });
+});
+
+describe("byTimeThenKey", () => {
+  it("orders by time, then by key", () => {
+    const rows = [{ at: "2026-10-12T10:00:02.000Z", key: "a" }, { at: "2026-10-12T10:00:01.000Z", key: "z" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }];
+    expect([...rows].sort(byTimeThenKey).map((row) => `${row.at.slice(17, 19)}${row.key}`)).toEqual(["01b", "01b", "01z", "02a"]);
+    expect(byTimeThenKey(rows[2]!, rows[3]!)).toBe(0);
   });
 });

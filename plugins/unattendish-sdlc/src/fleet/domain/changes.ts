@@ -109,9 +109,13 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
   const since = holdsSince ? (base < oldest ? oldest : base) : new Date(Date.parse(startedAt) - overlapMs).toISOString();
 
-  changes.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
 };
+
+/** Orders changes, and ledger rows, by the time they happened, then by key. */
+export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, b: { readonly at: string; readonly key: string }): number =>
+  a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 
 /**
  * The items a poll must read again though the watched set no longer names

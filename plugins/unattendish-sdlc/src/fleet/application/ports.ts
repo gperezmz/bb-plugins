@@ -5,10 +5,9 @@ import type {
   ChangeKind,
   Disposition,
   FleetLabels,
-  ItemId,
-  ItemSnapshot,
   ManifestRead,
   NotWatched,
+  OutsideLink,
   ReadOutcome,
   Registration,
   RepoRef,
@@ -211,7 +210,7 @@ export interface StoredFleet {
   /** Set while a credential is refused: when the outage began, and the prefix. */
   readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean } | null;
   readonly unreadableRows: readonly UnreadableRow[];
-  readonly outsideLinks: readonly { readonly text: string; readonly section: string; readonly line: number }[];
+  readonly outsideLinks: readonly OutsideLink[];
   /** The tokens' expiry dates reported by the services, by credential prefix. */
   readonly expiries: Readonly<Record<string, string | null>>;
   /** When no manager held the fleet, the time the first change was held; null otherwise. */
@@ -328,5 +327,3 @@ export interface Store {
   /** Deletes ledger rows older than the cutoff. */
   prune(before: string): void;
 }
-
-export type { ItemId, ItemSnapshot };

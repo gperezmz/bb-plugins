@@ -1,10 +1,9 @@
 // What `bb unattendish fleet status` reports for each fleet.
-import { formatRepo, repoId } from "../domain/identity";
-import type { NotWatched, UnreadableRow } from "../domain/model";
-import { effectiveInterval } from "../domain/registration";
-import type { Clock, Credentials, Store, ThreadDirectory } from "./ports";
+import { formatRepo, formatTracker, repoId } from "../domain/identity";
+import type { NotWatched, OutsideLink, UnreadableRow } from "../domain/model";
+import { credentialRefused, effectiveInterval } from "../domain/registration";
+import type { Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
 import { assessWatching } from "./watching";
-import type { ManifestFiles } from "./ports";
 
 export interface FleetStatus {
   readonly repo: string;
@@ -30,7 +29,7 @@ export interface FleetStatus {
   readonly notWatchedSince: string | null;
   readonly unreadableRows: readonly UnreadableRow[];
   /** References and links the manifest names that lie outside the fleet and are never fetched. */
-  readonly outside: readonly { readonly text: string; readonly section: string; readonly line: number }[];
+  readonly outside: readonly OutsideLink[];
   readonly heldSince: string | null;
 }
 
@@ -41,9 +40,6 @@ export interface StatusDeps {
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
 }
-
-const trackerText = (tracker: { kind: string; team?: string; site?: string; project?: string }): string =>
-  tracker.kind === "linear" ? `linear:${tracker.team}` : tracker.kind === "jira" ? `jira:${tracker.site}/${tracker.project}` : "forge-issues";
 
 export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
   const hourAgo = new Date(deps.clock.now().getTime() - 3_600_000).toISOString();
@@ -61,10 +57,10 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
         expiresAt: fleet.expiries[resolved.credential.prefix] ?? null,
         sharesAgentRateLimit: resolved.credential.auth !== "token",
       }));
-    const notWatched = fleet.refused === null ? watching.notWatched : [...watching.notWatched, { code: "credential-refused" as const, text: `The credential for ${fleet.refused.prefix} was refused by the service` }];
+    const notWatched = fleet.refused === null ? watching.notWatched : [...watching.notWatched, credentialRefused(fleet.refused.prefix)];
     out.push({
       repo: formatRepo(registration.repo),
-      tracker: trackerText(registration.tracker),
+      tracker: formatTracker(registration.tracker),
       manager: registration.managerThreadId,
       managerState: await deps.threads.state(registration.managerThreadId),
       manifest: registration.manifestPath,

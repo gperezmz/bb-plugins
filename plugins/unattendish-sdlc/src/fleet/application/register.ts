@@ -2,7 +2,7 @@
 // what the plugin should treat as the fleet's own.
 import { repoId } from "../domain/identity";
 import type { NotWatched, Registration } from "../domain/model";
-import { decideHolder, validateRegistration, type RegisterArgs } from "../domain/registration";
+import { credentialRefused, decideHolder, validateRegistration, type RegisterArgs } from "../domain/registration";
 import type { Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
 import { assessWatching } from "./watching";
 
@@ -43,7 +43,7 @@ export async function registerFleet(deps: RegisterDeps, thread: string, args: Re
     registeredAt: existing?.registration.registeredAt ?? deps.clock.now().toISOString(),
   };
   const watching = await assessWatching(deps, registration);
-  const notWatched = existing?.refused == null ? watching.notWatched : [...watching.notWatched, { code: "credential-refused" as const, text: `The credential for ${existing.refused.prefix} was refused by the service` }];
+  const notWatched = existing?.refused == null ? watching.notWatched : [...watching.notWatched, credentialRefused(existing.refused.prefix)];
   deps.store.saveRegistration(registration, notWatched);
 
   const watched = notWatched.length === 0;

@@ -1,6 +1,7 @@
 // The Fleet store as plain objects, for the use-case tests. It behaves as the
 // SQLite store does; `describeStore` runs the same suite over both.
 import type { LedgerEntry, LedgerQuery, LedgerRow, PollCommit, PollRecord, Store, StoredFleet, StoredWake } from "../application/ports";
+import { byTimeThenKey } from "../domain/changes";
 import { repoId } from "../domain/identity";
 import type { Change, ChangeKind, Disposition, NotWatched, Registration, SourceCursor, SourceRole } from "../domain/model";
 
@@ -25,7 +26,6 @@ interface RepoData {
 }
 
 const sameRef = (a: string | null, b: string): boolean => a !== null && a.toLowerCase() === b.toLowerCase();
-const byAtThenKey = (a: LedgerRow, b: LedgerRow): number => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 const toChange = (row: LedgerRow): Change => ({
   key: row.key,
@@ -163,7 +163,7 @@ export class InMemoryStore implements Store {
   }
 
   heldChanges(repo: string): Change[] {
-    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.disposition === "held").sort(byAtThenKey).map(toChange);
+    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.disposition === "held").sort(byTimeThenKey).map(toChange);
   }
 
   recordFailedRead(repo: string, entry: FailedRead): void {
@@ -211,7 +211,7 @@ export class InMemoryStore implements Store {
   }
 
   wakeChanges(repo: string, wakeId: number): Change[] {
-    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.wakeId === wakeId).sort(byAtThenKey).map(toChange);
+    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.wakeId === wakeId).sort(byTimeThenKey).map(toChange);
   }
 
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void {
