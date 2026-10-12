@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { type ReactNode, useEffect } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
-import { fleetCard } from "@/testing/fixtures";
+import { fleetCard, half } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
+import { ConnectOverlay } from "@/shared/connect/ConnectOverlay";
+import { closeConnect } from "@/shared/connect/requests";
 import { clearFleetTabWishes, requestFleetTab } from "@/shared/pending-open";
 import { FleetChip } from "./index";
 
@@ -18,6 +20,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   clearFleetTabWishes();
+  closeConnect();
 });
 
 async function show(card: ReturnType<typeof fleetCard> | null, compact = false) {
@@ -90,6 +93,31 @@ describe("the Fleet chip", () => {
     fireEvent.pointerEnter(screen.getByRole("button"));
     fireEvent.focus(screen.getByRole("button"));
     expect(await screen.findByRole("article", { name: "Fleet acme/web" }, { timeout: 2000 })).toBeTruthy();
+  });
+});
+
+describe("Connect… from the card", () => {
+  it("opens the popup over the view, outside the hover card, which does not swallow it", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: (await import("@/testing/fixtures")).connectView() });
+    fake.api.threadFleet.mockResolvedValue({
+      kind: "manager",
+      card: fleetCard({ halves: [half({ role: "tracker", what: "OPS", account: null, credential: null, needs: "needs a Jira account for acme.atlassian.net" })] }),
+    });
+    await act(async () => {
+      render(
+        <>
+          <FleetChip threadId="thr_acme" projectId="proj_a" isCompactViewport={false} />
+          <ConnectOverlay />
+        </>,
+      );
+    });
+    fireEvent.pointerEnter(screen.getByRole("button"));
+    fireEvent.focus(screen.getByRole("button"));
+    const card = await screen.findByRole("article", { name: "Fleet acme/web" }, { timeout: 2000 });
+    fireEvent.click(within(card).getByRole("button", { name: "Connect… tracker of acme/web" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(card.contains(dialog)).toBe(false);
+    expect(fake.api.connectView).toHaveBeenCalledWith({ fleet: "acme/web", role: "tracker" });
   });
 });
 
