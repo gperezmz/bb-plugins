@@ -56,7 +56,7 @@ const world = async (state: Partial<FakeJiraState>) => {
   const fake = createFakeJira({ users: USERS, ...state });
   mounted = await listen(fake);
   const live = mounted;
-  const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: live.url, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: live.url, host: "127.0.0.1" };
   const session = new HttpClient({ sleep: async () => undefined }).session(credential, "me@example.com:token");
   const read = (over: Partial<ReadRequest> = {}): Promise<ReadOutcome> =>
     createJiraAdapter().read({
@@ -643,7 +643,7 @@ describe("the Jira adapter's requests", () => {
     };
     const fake = createFakeJira({ users: USERS, issues: [issue("PROJ-1", { labels: ["spec"] })], settings: { pageSize: null, etag: true, alsoListed: [], failures: [] } });
     mounted = await listen(fake);
-    const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: mounted.url, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: mounted.url, host: "127.0.0.1" };
     const session = new HttpClient({ fetch: wrapped, sleep: async () => undefined }).session(credential, "me@example.com:token");
     const request = (): ReadRequest => ({
       source: { role: "tracker", service: "jira", site: SITE, project: "PROJ" },
@@ -674,7 +674,7 @@ describe("the fake Jira service, for the drive harness", () => {
     const back = (await (await fetch(`${mounted.url}/__admin/state`)).json()) as FakeJiraState;
     expect(back.issues).toEqual(state.issues);
     expect(back.statuses.map((status) => status.id)).toEqual([TODO, PROGRESS, DONE]);
-    const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: `${mounted.url}/jira-prefix`, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: `${SITE}/PROJ`, label: `${SITE}/PROJ`, accountId: "account", accountLabel: `${SITE}/PROJ`, kind: "fine-grained", service: "jira", auth: "token", baseUrl: `${mounted.url}/jira-prefix`, host: "127.0.0.1" };
     const session = new HttpClient({ sleep: async () => undefined }).session(credential, "me@example.com:token");
     const out = await createJiraAdapter().read({
       source: { role: "tracker", service: "jira", site: SITE, project: "PROJ" },

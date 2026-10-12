@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Registration } from "../domain/model";
+import { describeAccountStore } from "../testing/account-store-contract";
 import { describeStore } from "../testing/store-contract";
+import { SqliteAccounts } from "./account-store";
 import { MIGRATIONS, SqliteStore } from "./store";
 
 /** What the host does: each statement runs once, by its index, which the database remembers. */
@@ -17,6 +19,11 @@ const migrated = (db: Database.Database, upTo = MIGRATIONS.length): Database.Dat
   }
   return db;
 };
+
+describeAccountStore("SqliteAccounts", () => {
+  const db = migrated(new Database(":memory:"));
+  return { store: new SqliteAccounts(db), close: () => db.close() };
+});
 
 describeStore("SqliteStore", () => {
   const db = migrated(new Database(":memory:"));
@@ -62,8 +69,8 @@ describe("SqliteStore on a database", () => {
     ).run();
     migrated(db);
     const store = new SqliteStore(db);
-    expect(store.getFleet("r")!.outages).toEqual({ forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } } });
-    expect(store.openWake("r")!.notWatched).toEqual({ since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "refused" });
+    expect(store.getFleet("r")!.outages).toEqual({ forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", credential: "github.com/org", announced: false, why: "refused" } } });
+    expect(store.openWake("r")!.notWatched).toEqual({ since: "2026-10-12T09:00:00.000Z", credential: "github.com/org", why: "refused" });
     db.close();
   });
 
@@ -84,10 +91,10 @@ describe("SqliteStore on a database", () => {
     db.prepare("INSERT INTO fleets (repo_id, registration) VALUES ('clean', ?)").run(JSON.stringify(linear));
     migrated(db);
     const store = new SqliteStore(db);
-    const outage = { unreadablePolls: 4, unreadableSince: "2026-10-12T09:00:00.000Z", refused: { since: "2026-10-12T09:00:00.000Z", prefix: "linear", announced: true, why: "forbidden" as const } };
+    const outage = { unreadablePolls: 4, unreadableSince: "2026-10-12T09:00:00.000Z", refused: { since: "2026-10-12T09:00:00.000Z", credential: "linear", announced: true, why: "forbidden" as const } };
     expect(store.getFleet("r")!.outages).toEqual({ forge: outage, tracker: outage });
     expect(store.getFleet("clean")!.outages).toEqual({});
-    store.savePollState("r", { lastPolledAt: "2026-10-12T10:00:00.000Z", notWatched: [], unreadableRows: [], outsideLinks: [], expiries: {}, heldSince: null, pendingCatchUpMs: null, outages: { tracker: { ...outage, unreadablePolls: 5, refused: { ...outage.refused, announced: false } } } });
+    store.savePollState("r", { lastPolledAt: "2026-10-12T10:00:00.000Z", notWatched: [], unreadableRows: [], outsideLinks: [], heldSince: null, pendingCatchUpMs: null, outages: { tracker: { ...outage, unreadablePolls: 5, refused: { ...outage.refused, announced: false } } } });
     expect(store.getFleet("r")!.outages).toEqual({ tracker: { ...outage, unreadablePolls: 5 } });
     db.close();
   });
@@ -171,10 +178,10 @@ describe("SqliteStore on a database", () => {
     second.close();
   });
 
-  it("holds only the columns of its types, so no column can carry a token or a service's text", () => {
+  it("holds only the columns of its types: one column holds a token, the credentials', and one an account's name; no other can carry a token or a service's text", () => {
     const db = migrated(new Database(":memory:"));
     const columns = (db.prepare("SELECT m.name AS tbl, p.name AS col FROM sqlite_master m, pragma_table_info(m.name) p WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'").all() as { tbl: string; col: string }[]).map((c) => `${c.tbl}.${c.col}`);
-    expect(columns.filter((column) => /token|secret|body|title|text|name/i.test(column.split(".")[1]!))).toEqual([]);
+    expect(columns.filter((column) => /token|secret|body|title|text|name/i.test(column.split(".")[1]!)).sort()).toEqual(["account_credentials.token", "accounts.name"]);
     db.close();
   });
 });

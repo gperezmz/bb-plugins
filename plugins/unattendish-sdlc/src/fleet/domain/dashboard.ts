@@ -2,7 +2,7 @@
 // fleet is not fully watched, what to warn of, why an item is watched, how
 // dropped changes group, and which repository a thread's remote names.
 import { parseRepo, repoId } from "./identity";
-import type { FleetLabels, InboxRow, LandedRow, NotWatched, NotWatchedCode, RepoRef, SourceCursor, UnreadableRow } from "./model";
+import type { FleetLabels, InboxRow, LandedRow, NotWatched, NotWatchedCode, RepoRef, SourceCursor, SourceRole, UnreadableRow } from "./model";
 import type { WatchedWithReasons } from "./watched";
 
 export const DAY_MS = 86_400_000;
@@ -46,7 +46,8 @@ export const oldestFirst = <Row extends Pick<InboxRow, "since" | "ref">>(rows: r
 
 // ---- why a fleet is not fully watched ----
 
-export type Fix = "settings" | "fleet-tab" | "none";
+/** Where a reason is fixed: Connect… for the half a credential reason is about, or the Fleet tab for the manifest. */
+export type Fix = { readonly kind: "connect"; readonly role: SourceRole } | { readonly kind: "fleet-tab" } | { readonly kind: "none" };
 
 export interface Reason {
   readonly code: NotWatchedCode | "unreadable-rows";
@@ -54,8 +55,11 @@ export interface Reason {
   readonly fix: Fix;
 }
 
-/** Where each reason is fixed: a credential in the settings section, the manifest on the Fleet tab, which shows its state and why it cannot be read. */
-const FIXES: Readonly<Record<NotWatchedCode, Fix>> = { "manifest-missing": "fleet-tab", "manifest-unreadable": "fleet-tab", "no-credential": "settings", "credential-refused": "settings" };
+/** Where each reason is fixed: a credential through Connect… for its half, the manifest on the Fleet tab, which shows its state and why it cannot be read. */
+const fixOf = (line: NotWatched): Fix => {
+  if (line.code === "manifest-missing" || line.code === "manifest-unreadable") return { kind: "fleet-tab" };
+  return line.role === undefined ? { kind: "none" } : { kind: "connect", role: line.role };
+};
 
 /** `3 manifest rows cannot be read: In flight, Inbox`: how many and in which sections, sections sorted; null when every row reads. */
 export const unreadableRowsText = (unreadable: readonly UnreadableRow[]): string | null => {
@@ -68,9 +72,9 @@ export const unreadableRowsText = (unreadable: readonly UnreadableRow[]): string
 /** Every reason the fleet is not fully watched, each text once: what `notWatched` says, then the unreadable rows. */
 export const reasonsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[]): Reason[] => {
   const reasons: Reason[] = [];
-  for (const line of notWatched) if (!reasons.some((known) => known.text === line.text)) reasons.push({ code: line.code, text: line.text, fix: FIXES[line.code] });
+  for (const line of notWatched) if (!reasons.some((known) => known.text === line.text)) reasons.push({ code: line.code, text: line.text, fix: fixOf(line) });
   const text = unreadableRowsText(unreadable);
-  if (text !== null) reasons.push({ code: "unreadable-rows", text, fix: "fleet-tab" });
+  if (text !== null) reasons.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
   return reasons;
 };
 
@@ -79,21 +83,29 @@ export const reasonsOf = (notWatched: readonly NotWatched[], unreadable: readonl
 export const EXPIRY_WARNING_DAYS = 7;
 
 export type Warning =
-  | { readonly kind: "expires"; readonly prefix: string; readonly expiresAt: string; readonly daysLeft: number }
-  | { readonly kind: "shares-rate-limit"; readonly prefix: string };
+  | { readonly kind: "expires"; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly role: SourceRole; readonly expiresAt: string; readonly daysLeft: number }
+  | { readonly kind: "shares-rate-limit"; readonly label: string };
+
+/** Days left before an expiry, where it falls within the window cards warn in (one already passed counts as 0); null otherwise. */
+export const daysLeftToWarn = (expiresAt: string | null, now: Date): number | null => {
+  if (expiresAt === null) return null;
+  const left = Date.parse(expiresAt) - now.getTime();
+  return Number.isNaN(left) || left > EXPIRY_WARNING_DAYS * DAY_MS ? null : Math.max(0, Math.ceil(left / DAY_MS));
+};
 
 /**
  * What a card warns of for each credential the fleet uses: `expires` when the service-reported expiry is within seven
  * days of `now` (one already passed too, with 0 days left), and `shares-rate-limit` for a gh or glab login.
  */
-export const credentialWarnings = (credentials: readonly { readonly prefix: string; readonly auth: "token" | "gh" | "glab"; readonly expiresAt: string | null }[], now: Date): Warning[] => {
+export const credentialWarnings = (
+  credentials: readonly { readonly role: SourceRole; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly auth: "token" | "gh" | "glab"; readonly expiresAt: string | null }[],
+  now: Date,
+): Warning[] => {
   const warnings: Warning[] = [];
   for (const credential of credentials) {
-    if (credential.expiresAt !== null) {
-      const left = Date.parse(credential.expiresAt) - now.getTime();
-      if (!Number.isNaN(left) && left <= EXPIRY_WARNING_DAYS * DAY_MS) warnings.push({ kind: "expires", prefix: credential.prefix, expiresAt: credential.expiresAt, daysLeft: Math.max(0, Math.ceil(left / DAY_MS)) });
-    }
-    if (credential.auth !== "token") warnings.push({ kind: "shares-rate-limit", prefix: credential.prefix });
+    const daysLeft = daysLeftToWarn(credential.expiresAt, now);
+    if (daysLeft !== null) warnings.push({ kind: "expires", label: credential.label, credentialId: credential.credentialId, accountId: credential.accountId, role: credential.role, expiresAt: credential.expiresAt!, daysLeft });
+    if (credential.auth !== "token") warnings.push({ kind: "shares-rate-limit", label: credential.label });
   }
   return warnings;
 };

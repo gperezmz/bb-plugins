@@ -111,6 +111,11 @@ export interface FakeGithubState {
   renames: Record<string, string>;
   /** A full path (API root included) every `Link: rel="next"` points at instead of the request's own, to script a link that leaves the repository. */
   nextLinkPath?: string;
+  /**
+   * Whose each token is, by the token as sent: `GET /user` answers its login, and 401 for a token not listed. Unset,
+   * every token is `operator`'s.
+   */
+  logins?: Record<string, string>;
 }
 
 const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] });
@@ -118,7 +123,13 @@ const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [
 const normalise = (state: Partial<FakeGithubState> | undefined): FakeGithubState => {
   const repos: Record<string, FakeRepo> = {};
   for (const [name, repo] of Object.entries(state?.repos ?? {})) repos[name] = { ...emptyRepo(), ...repo };
-  return { repos, faults: state?.faults ?? [], renames: state?.renames ?? {}, ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }) };
+  return {
+    repos,
+    faults: state?.faults ?? [],
+    renames: state?.renames ?? {},
+    ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }),
+    ...(state?.logins === undefined ? {} : { logins: state.logins }),
+  };
 };
 
 const send = (response: ServerResponse, body: unknown, status = 200, headers: Record<string, string> = {}): void => {
@@ -209,6 +220,18 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
   const route = (request: IncomingMessage, response: ServerResponse): boolean => {
     const host = request.headers.host ?? "127.0.0.1";
     const url = new URL(request.url ?? "/", `http://${host}`);
+    if (url.pathname.endsWith("/user") && request.method === "GET") {
+      const fault = state.faults.find((candidate) => url.pathname.includes(candidate.pathIncludes));
+      if (fault !== undefined) {
+        send(response, { message: "scripted failure" }, fault.status, fault.headers ?? {});
+        return true;
+      }
+      const token = (request.headers.authorization ?? "").replace(/^Bearer /, "");
+      const login = state.logins === undefined ? "operator" : state.logins[token];
+      if (login === undefined) send(response, { message: "Bad credentials" }, 401);
+      else send(response, userOf(login));
+      return true;
+    }
     const byId = url.pathname.indexOf("/repositories/");
     const split = byId >= 0 ? byId : url.pathname.indexOf("/repos/");
     if (split < 0) return false;
@@ -240,6 +263,10 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
       return true;
     }
     if (repo === undefined) return false;
+    if (tail.length === 0 || (tail.length === 1 && tail[0] === "")) {
+      send(response, { id: repo.id ?? 1, full_name: path, private: true });
+      return true;
+    }
 
     const respondConditional = (body: unknown): void => {
       const headers = withEtag(body, {});

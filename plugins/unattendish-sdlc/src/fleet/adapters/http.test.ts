@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { HttpError, type ResolvedCredential } from "../application/ports";
-import { graphqlWrites, HttpClient } from "./http";
+import { expiryOf, graphqlWrites, HttpClient } from "./http";
 
 const TOKEN = "ghp_secretsecretsecret";
 
@@ -30,7 +30,11 @@ const serve = async (handler: (request: Seen, response: ServerResponse) => void)
   await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as AddressInfo).port;
   const credential = (service: ResolvedCredential["service"] = "github"): ResolvedCredential => ({
-    prefix: "github.com/org",
+    key: "github.com/org",
+    label: "github.com/org",
+    accountId: "account",
+    accountLabel: "github.com/org",
+    kind: "fine-grained",
     service,
     auth: "token",
     baseUrl: `http://127.0.0.1:${port}/api`,
@@ -81,7 +85,7 @@ describe("HttpClient", () => {
   });
 
   describe("plain http off loopback", () => {
-    const remote: ResolvedCredential = { prefix: "gitlab.example.com", service: "gitlab", auth: "token", baseUrl: "https://gitlab.example.com/api/v4", host: "gitlab.example.com" };
+    const remote: ResolvedCredential = { key: "gitlab.example.com", label: "gitlab.example.com", accountId: "account", accountLabel: "gitlab.example.com", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: "https://gitlab.example.com/api/v4", host: "gitlab.example.com" };
     const reply = (status: number, headers: Record<string, string>) => async () => new Response("[]", { status, headers });
 
     it("refuses an absolute http URL on the credential's host before any request leaves", async () => {
@@ -111,7 +115,7 @@ describe("HttpClient", () => {
   });
 
   describe("a host that only looks like the credential's", () => {
-    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://api.github.com", host: "api.github.com" };
+    const github: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: "https://api.github.com", host: "api.github.com" };
     const fetching = (answer: (url: string) => Response) => {
       const fetched: string[] = [];
       return { fetched, fetch: (async (url: URL | string) => (fetched.push(String(url)), answer(String(url)))) as typeof fetch };
@@ -154,7 +158,7 @@ describe("HttpClient", () => {
   });
 
   describe("stayUnder", () => {
-    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://ghe.example.com/api/v3", host: "ghe.example.com" };
+    const github: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: "https://ghe.example.com/api/v3", host: "ghe.example.com" };
     const under = "/repos/Org/Repo/";
     const moved = (location: string, status = 301) => async (url: URL | string) =>
       String(url).includes("/repos/Org/Repo/") && String(url).includes("/old") ? new Response(null, { status, headers: { location } }) : new Response("{}");
@@ -203,7 +207,7 @@ describe("HttpClient", () => {
     });
 
     describe("a next link", () => {
-      const gitlab: ResolvedCredential = { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: "https://ghe.example.com/api/v4", host: "ghe.example.com" };
+      const gitlab: ResolvedCredential = { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: "https://ghe.example.com/api/v4", host: "ghe.example.com" };
       const page = (link: string) => async (url: URL | string) => new Response("[1]", { headers: String(url).includes("page=2") ? {} : { link: `<${link}>; rel="next"` } });
       const pagesOf = (credential: ResolvedCredential, link: string, stay = under, path = "/repos/Org/Repo/issues") => {
         const run = recording(page(link));
@@ -328,7 +332,7 @@ describe("HttpClient", () => {
           response.end();
         } else json(response, { n: 1 }, 200, { etag: '"v1"' });
       });
-      const session = client().session({ ...credential("gitlab"), prefix: "gitlab.com/g" }, TOKEN);
+      const session = client().session({ ...credential("gitlab"), key: "gitlab.com/g", label: "gitlab.com/g" }, TOKEN);
       await session.request({ method: "GET", path: "/x" });
       await session.request({ method: "GET", path: "/x" });
       expect(session.drainRequests().map((r) => r.counted)).toEqual([true, true]);
@@ -338,7 +342,7 @@ describe("HttpClient", () => {
       const { seen, credential } = await serve((_, response) => json(response, { n: 1 }, 200, { etag: '"v1"' }));
       const http = client();
       await http.session(credential(), "a").request({ method: "GET", path: "/x" });
-      await http.session({ ...credential(), prefix: "github.com/other" }, "b").request({ method: "GET", path: "/x" });
+      await http.session({ ...credential(), key: "github.com/other", label: "github.com/other" }, "b").request({ method: "GET", path: "/x" });
       expect(seen[1]!.headers["if-none-match"]).toBeUndefined();
     });
   });
@@ -500,6 +504,14 @@ describe("HttpClient", () => {
       expect(session.expiresAt()).toBeNull();
       await session.request({ method: "GET", path: "/x" });
       expect(session.expiresAt()).toBe("2026-11-12T00:00:00.000Z");
+    });
+
+    it("reads the expiry header with an offset as well as in UTC, and nothing from a value it cannot read", () => {
+      const header = (value: string) => (name: string) => (name === "github-authentication-token-expiration" ? value : null);
+      expect(expiryOf(header("2025-09-05 17:55:53 +0500"))).toBe("2025-09-05T12:55:53.000Z");
+      expect(expiryOf(header("2026-11-12 00:00:00 UTC"))).toBe("2026-11-12T00:00:00.000Z");
+      expect(expiryOf(header("next Tuesday"))).toBeNull();
+      expect(expiryOf(() => null)).toBeNull();
     });
   });
 

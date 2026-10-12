@@ -5,9 +5,8 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { compose } from "./src/compose";
 import { createFleetCli } from "./src/fleet/adapters/cli";
 import { rpcContract, rpcHandlers } from "./src/fleet/adapters/rpc";
-import { SETTINGS } from "./src/fleet/adapters/settings";
 
-export { rpcContract, SETTINGS };
+export { rpcContract };
 
 /** How often the service looks for fleets whose interval has run out. */
 const TICK_MS = 5_000;
@@ -15,7 +14,6 @@ const PRUNE_EVERY_MS = 3_600_000;
 
 export default async function plugin(bb: BbPluginApi) {
   const fleets = await compose(bb);
-  for (const problem of fleets.settingsProblems()) bb.log.warn(`settings: ${problem}`);
 
   bb.cli.register(createFleetCli(fleets.app));
   bb.rpc.register(rpcContract, rpcHandlers(fleets.dashboard));

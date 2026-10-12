@@ -25,7 +25,7 @@ const world = async (projects: Record<string, { issues?: FakeItem[]; mergeReques
   });
   const mounted = await listen(fake);
   mounts.push(mounted);
-  const credential: ResolvedCredential = { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${mounted.url}/api/v4`, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: `${mounted.url}/api/v4`, host: "127.0.0.1" };
   const http = new HttpClient({ sleep: async () => undefined }).session(credential, TOKEN);
   const read = (over: Partial<ReadRequest> = {}): Promise<ReadOutcome> =>
     createGitlabAdapter().read({
@@ -484,7 +484,7 @@ describe("the GitLab adapter: failures", () => {
     expect(outcome.failures.every((failure) => failure.kind === "unreachable")).toBe(true);
 
     const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(
-      { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
+      { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
       TOKEN,
     );
     const none = await broken.read({ http: silent, items: [watch("#1")], stateOnly: true });

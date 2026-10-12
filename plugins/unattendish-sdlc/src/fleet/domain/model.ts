@@ -57,6 +57,8 @@ export type NotWatchedCode = "manifest-missing" | "manifest-unreadable" | "no-cr
 export interface NotWatched {
   readonly code: NotWatchedCode;
   readonly text: string;
+  /** The half a credential reason is about; absent for a manifest reason. */
+  readonly role?: SourceRole;
 }
 
 /**

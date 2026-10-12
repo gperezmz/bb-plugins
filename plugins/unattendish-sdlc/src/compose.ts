@@ -6,7 +6,7 @@ import { CachedCost } from "./fleet/application/cost-cache";
 import { createDashboard } from "./fleet/application/dashboard";
 import type { PollDeps } from "./fleet/application/poll";
 import { registerFleet } from "./fleet/application/register";
-import { pollDue, pruneLedger, refreshFleetsOf, setFleetInterval } from "./fleet/application/schedule";
+import { pollDue, pruneLedger, readFleetNow, refreshFleetsOf, setFleetInterval } from "./fleet/application/schedule";
 import { SerialQueue } from "./fleet/application/serial";
 import { fleetStatus } from "./fleet/application/status";
 import type { Clock, ServiceAdapter } from "./fleet/application/ports";
@@ -14,15 +14,17 @@ import type { DashboardApi } from "./fleet/application/views";
 import { BbDashboardEvents } from "./fleet/adapters/bb-realtime";
 import { BbManagerChannel, BbThreadDirectory, BbThreadRepositories } from "./fleet/adapters/bb-threads";
 import type { FleetCliApp } from "./fleet/adapters/cli";
-import { SettingsCredentialAdmin } from "./fleet/adapters/credential-admin";
-import { execCli, SettingsCredentials, type RunCli } from "./fleet/adapters/credentials";
+import { randomUUID } from "node:crypto";
+import { SqliteAccounts } from "./fleet/adapters/account-store";
+import { ExecCliLogins, execCli, type RunCli } from "./fleet/adapters/credentials";
+import { AccountCredentials } from "./fleet/application/credentials";
 import { createGithubAdapter } from "./fleet/adapters/github";
 import { createGitlabAdapter } from "./fleet/adapters/gitlab";
 import { HttpClient } from "./fleet/adapters/http";
 import { createJiraAdapter } from "./fleet/adapters/jira";
 import { createLinearAdapter } from "./fleet/adapters/linear";
 import { FileManifests } from "./fleet/adapters/manifest-file";
-import { SETTINGS } from "./fleet/adapters/settings";
+import { HttpServiceProbe } from "./fleet/adapters/probe";
 import { ThreadUsageCost } from "./fleet/adapters/thread-usage-cost";
 import { MIGRATIONS, SqliteStore } from "./fleet/adapters/store";
 import { parseRepo, repoId } from "./fleet/domain/identity";
@@ -46,10 +48,8 @@ export interface Fleets {
   /** bb dispatched a queued message; if it was a wake, records when. */
   dispatched(queuedMessageId: string): void;
   prune(): void;
-  /** Logs that `what` failed with `error`, scrubbed of every configured token. */
+  /** Logs that `what` failed with `error`, scrubbed of every token the plugin holds. */
   failed(what: string, error: unknown): void;
-  /** What is wrong with the settings, for a person. */
-  settingsProblems(): string[];
 }
 
 const repoOf = (text: string) => {
@@ -64,13 +64,11 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
   bb.storage.migrate(db, MIGRATIONS);
   const store = new SqliteStore(db);
 
-  const settings = bb.settings.define(SETTINGS);
-  let values = await settings.get();
-  const credentials = new SettingsCredentials(() => values, options.runCli ?? execCli, clock);
-  settings.onChange((next) => {
-    values = next;
-    credentials.reload(next);
-  });
+  const accounts = new SqliteAccounts(db);
+  const http = new HttpClient(options.fetch === undefined ? {} : { fetch: options.fetch });
+  const probe = new HttpServiceProbe(http);
+  const logins = new ExecCliLogins(options.runCli ?? execCli);
+  const credentials = new AccountCredentials(accounts, logins, probe, clock);
 
   // bb.sdk can be read only once the server listens, so the adapters read it when they are called.
   const sdk = {
@@ -92,7 +90,8 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     threads,
     channel: new BbManagerChannel(sdk, bb.pluginId, () => credentials.secrets()),
     credentials,
-    http: new HttpClient(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    accounts,
+    http,
     adapters,
     manifests: new FileManifests(),
     clock,
@@ -139,7 +138,12 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     channel: poll.channel,
     events,
     repositories: new BbThreadRepositories(sdk),
-    admin: new SettingsCredentialAdmin(settings, () => credentials.secrets()),
+    accounts,
+    probe,
+    logins,
+    loginStatus: credentials,
+    readNow: (repo) => readFleetNow(poll, queue, repo),
+    newId: () => randomUUID(),
     queue,
     log,
     secrets: () => credentials.secrets(),
@@ -153,6 +157,5 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     dispatched: (queuedMessageId) => store.markDispatched(queuedMessageId, clock.now().toISOString()),
     prune: () => pruneLedger(poll),
     failed,
-    settingsProblems: () => credentials.problems(),
   };
 }

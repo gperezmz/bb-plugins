@@ -173,7 +173,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     await start(w, manifest({ inbox: [BAD_ROW("answer"), BAD_ROW("later")], inFlight: ["| nope | x | building | 2026-10-12T09:00:00Z | — | https://github.com/org/repo/pull/6 |"] }));
     const { reasons } = await cardOf(w);
     expect(reasons.map((reason) => [reason.code, reason.fix.kind])).toEqual([
-      ["no-credential", "settings"],
+      ["no-credential", "connect"],
       ["unreadable-rows", "fleet-tab"],
     ]);
     expect(reasons[1]!.text).toBe("3 manifest rows cannot be read: In flight, Inbox");
@@ -189,12 +189,11 @@ describe("the card (AC3, AC4, AC14)", () => {
       notWatched: [],
       unreadableRows: [],
       outsideLinks: [],
-      expiries: {},
       heldSince: null,
       pendingCatchUpMs: null,
-      outages: { forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: true, why: "refused" } } },
+      outages: { forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", credential: "github.com/org", announced: true, why: "refused" } } },
     });
-    expect((await cardOf(w)).reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org"), fix: { kind: "settings" } }]);
+    expect((await cardOf(w)).reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org"), fix: { kind: "connect", role: "forge" } }]);
   });
 
   it("sends an unreadable manifest to the Fleet tab, which shows why it cannot be read", async () => {
@@ -214,17 +213,19 @@ describe("the card (AC3, AC4, AC14)", () => {
     w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "gh" }]);
     await start(w, manifest());
     const expiry = new Date(w.clock.now().getTime() + 3 * 86_400_000).toISOString();
-    const save = (expiries: Record<string, string | null>) =>
-      w.store.savePollState(REPO_KEY, { lastPolledAt: null, notWatched: [], unreadableRows: [], outsideLinks: [], expiries, heldSince: null, pendingCatchUpMs: null, outages: {} });
-    save({ "github.com/org": expiry });
+    // The fake's credential for github.com/org is kept under that key; its expiry is the one the service last reported.
+    w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "gh", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "gh", owner: null, expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, null);
+    const save = (expiresAt: string) => w.accounts.noteExpiry("github.com/org", expiresAt);
+    save(expiry);
     expect((await cardOf(w)).warnings).toEqual([
-      { kind: "expires", prefix: "github.com/org", expiresAt: expiry, daysLeft: 3 },
-      { kind: "shares-rate-limit", prefix: "github.com/org" },
+      { kind: "expires", label: "github.com/org", credentialId: "github.com/org", accountId: "account:github.com/org", role: "forge", expiresAt: expiry, daysLeft: 3 },
+      { kind: "shares-rate-limit", label: "github.com/org" },
     ]);
-    save({ "github.com/org": hoursAgo(w, 5) });
+    save(hoursAgo(w, 5));
     expect((await cardOf(w)).warnings[0]).toMatchObject({ kind: "expires", daysLeft: 0 });
-    save({ "github.com/org": new Date(w.clock.now().getTime() + 30 * 86_400_000).toISOString() });
-    expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", prefix: "github.com/org" }]);
+    save(new Date(w.clock.now().getTime() + 30 * 86_400_000).toISOString());
+    expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
   });
 
   it("does not warn of a token credential with no expiry", async () => {
@@ -331,16 +332,20 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
     expect(watched["#50"]).toEqual(["carries the status:ready label"]);
   });
 
-  it("gives the credentials with prefix, expiry and whether they share the rate limit, the requests this hour, and the poll state (AC11)", async () => {
+  it("gives the credentials with their account, expiry and whether they share the rate limit, the requests this hour, and the poll state (AC11, #253 AC14)", async () => {
     const w = world();
     w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "glab" }]);
+    w.accounts.addAccount({ id: "account:github.com/org", service: "gitlab", place: "gitlab.com", login: "olivia", name: "olivia", via: "glab", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "glab", owner: null, expiresAt: "2027-01-01T00:00:00.000Z", addedAt: "2026-10-12T09:00:00.000Z" }, null);
     await start(w, manifest());
     w.store.recordPoll(REPO_KEY, { at: hoursAgo(w, 0.5), role: "forge", requests: [], counted: 7, ok: true });
     w.store.recordPoll(REPO_KEY, { at: hoursAgo(w, 3), role: "forge", requests: [], counted: 50, ok: true });
-    w.store.savePollState(REPO_KEY, { lastPolledAt: "2026-10-12T09:58:00.000Z", notWatched: [], unreadableRows: [], outsideLinks: [], expiries: { "github.com/org": "2027-01-01T00:00:00.000Z" }, heldSince: null, pendingCatchUpMs: null, outages: {} });
+    w.store.savePollState(REPO_KEY, { lastPolledAt: "2026-10-12T09:58:00.000Z", notWatched: [], unreadableRows: [], outsideLinks: [], heldSince: null, pendingCatchUpMs: null, outages: {} });
     const answer = await view(w).fleetDetail({ repo: "github.com/org/repo" });
     if (!answer.ok) throw new Error(answer.reason);
-    expect(answer.detail.credentials).toEqual([{ role: "forge", prefix: "github.com/org", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", sharesAgentRateLimit: true }]);
+    expect(answer.detail.credentials).toEqual([
+      { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", canWrite: true, sharesAgentRateLimit: true },
+    ]);
     expect(answer.detail.requestsThisHour).toBe(7);
     expect(answer.detail.card).toMatchObject({ lastPolledAt: "2026-10-12T09:58:00.000Z", intervalMs: 120_000 });
     expect(answer.detail.generatedAt).toBe(w.clock.now().toISOString());

@@ -56,7 +56,7 @@ const services: Service[] = [
       const issue = { number: 1, state: "open" as const, labels: [], assignees: [], creator: "someone", createdAt: SINCE, updatedAt: AFTER };
       const comment = { id: 1, issue: 1, user: "pat", body, createdAt: AFTER, updatedAt: AFTER };
       const fake = createFakeGithub({ repos: { "org/repo": { issues: [issue], comments: [comment], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] } } });
-      const http = await session(fake, { prefix: "github.com/org", service: "github", auth: "token" }, "/api/v3", "ghp_secret");
+      const http = await session(fake, { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token" }, "/api/v3", "ghp_secret");
       return request(createGithubAdapter(), { source: { role: "forge", service: "github", host: "127.0.0.1", path: "org/repo" }, http, operator: "olivia", ref: "#1", role: "forge" });
     },
   },
@@ -65,7 +65,7 @@ const services: Service[] = [
     read: async (body) => {
       const item = { iid: 1, state: "opened" as const, author: "olga", updated_at: AFTER, notes: [{ id: 1, author: "pat", body, created_at: AFTER }] };
       const fake = createFakeGitlab({ projects: { "org/repo": { issues: [item], mergeRequests: [] } } });
-      const http = await session(fake, { prefix: "gitlab.com/org", service: "gitlab", auth: "token" }, "/api/v4", "glpat-secretsecretsecret");
+      const http = await session(fake, { key: "gitlab.com/org", label: "gitlab.com/org", accountId: "account", accountLabel: "gitlab.com/org", kind: "fine-grained", service: "gitlab", auth: "token" }, "/api/v4", "glpat-secretsecretsecret");
       return request(createGitlabAdapter(), { source: { role: "forge", service: "gitlab", host: "gitlab.com", path: "org/repo" }, http, operator: "olga", ref: "#1", role: "forge" });
     },
   },
@@ -84,7 +84,7 @@ const services: Service[] = [
         history: [],
         comments: [{ id: "c1", createdAt: AFTER, user: "u-dana", body }],
       };
-      const http = await session(createFakeLinear({ users, issues: [issue] }), { prefix: "linear:ENG", service: "linear", auth: "token" }, "/graphql", "lin_api_secretsecret");
+      const http = await session(createFakeLinear({ users, issues: [issue] }), { key: "linear:ENG", label: "linear:ENG", accountId: "account", accountLabel: "linear:ENG", kind: "fine-grained", service: "linear", auth: "token" }, "/graphql", "lin_api_secretsecret");
       return request(createLinearAdapter(), { source: { role: "tracker", service: "linear", team: "ENG" }, http, operator: "dana@acme.test", ref: "ENG-1", role: "tracker" });
     },
   },
@@ -97,7 +97,7 @@ const services: Service[] = [
       const adf = { version: 1, type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: body }] }] };
       const issue = { id: "100", key: "PROJ-1", status: "10000", labels: [], assignee: null, creator: "acc-other", updated: created, summary: "A title", comments: [{ id: "1", author: "acc-other", created, body: adf }] };
       const fake = createFakeJira({ users, issues: [issue] });
-      const http = await session(fake, { prefix: "example.atlassian.net/PROJ", service: "jira", auth: "token" }, "", "me@example.com:token");
+      const http = await session(fake, { key: "example.atlassian.net/PROJ", label: "example.atlassian.net/PROJ", accountId: "account", accountLabel: "example.atlassian.net/PROJ", kind: "fine-grained", service: "jira", auth: "token" }, "", "me@example.com:token");
       return request(createJiraAdapter(), { source: { role: "tracker", service: "jira", site: "example.atlassian.net", project: "PROJ" }, http, operator: "acc-operator", ref: "PROJ-1", role: "tracker" });
     },
   },

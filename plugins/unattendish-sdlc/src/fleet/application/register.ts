@@ -4,8 +4,9 @@ import { repoId } from "../domain/identity";
 import type { ManifestRead, NotWatched, Registration } from "../domain/model";
 import { decideHolder, validateRegistration, type RegisterArgs } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
-import type { Clock, Credentials, DashboardEvents, ManifestFiles, Store, ThreadDirectory } from "./ports";
-import { assessWatching, refusedNotWatched } from "./watching";
+import type { AccountStore, Clock, Credentials, DashboardEvents, ManifestFiles, Store, ThreadDirectory } from "./ports";
+import { announceNeeds } from "./needs";
+import { accessRolesOf, assessWatching, refusedNotWatched } from "./watching";
 
 export type RegisterOutcome =
   | { readonly outcome: "registered"; readonly watched: boolean; readonly notWatched: readonly NotWatched[] }
@@ -18,6 +19,7 @@ export interface RegisterDeps {
   readonly store: Store;
   readonly threads: ThreadDirectory;
   readonly credentials: Credentials;
+  readonly accounts: AccountStore;
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
   readonly events: DashboardEvents;
@@ -44,9 +46,11 @@ export async function registerFleet(deps: RegisterDeps, thread: string, args: Re
     intervalMs: existing?.registration.intervalMs ?? null,
     registeredAt: existing?.registration.registeredAt ?? deps.clock.now().toISOString(),
   };
-  const watching = await assessWatching(deps, registration);
-  const notWatched = [...watching.notWatched, ...refusedNotWatched(existing?.outages ?? {})];
+  const watching = await assessWatching(deps, registration, key);
+  const notWatched = [...watching.notWatched, ...refusedNotWatched(existing?.outages ?? {}, accessRolesOf(watching))];
   deps.store.saveRegistration(registration, notWatched);
+  // A half the fleet needs an account for is said once, as the fleet comes to need it.
+  announceNeeds(deps.events, registration, existing?.notWatched ?? [], notWatched);
   baselineInbox(deps, key, watching.manifest, deps.clock.now().toISOString());
   // A manager that takes over never got the messages sent to the one before it.
   if (decision.action === "take-over") deps.store.dropSentActions(key);

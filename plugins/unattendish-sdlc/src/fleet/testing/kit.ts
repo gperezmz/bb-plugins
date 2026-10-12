@@ -7,8 +7,11 @@ import { SerialQueue } from "../application/serial";
 import { repoId, parseRepo } from "../domain/identity";
 import type { ActivityEvent, ItemSnapshot, ReadOutcome, ServiceKind } from "../domain/model";
 import type { RegisterArgs } from "../domain/registration";
-import { FakeAdapter, FakeChannel, FakeClock, FakeCost, FakeCredentialAdmin, FakeCredentials, FakeEvents, FakeHttp, FakeManifests, FakeRepositories, FakeThreads } from "./fakes";
+import { FakeAdapter, FakeChannel, FakeClock, FakeCost, FakeCredentials, FakeEvents, FakeHttp, FakeLogins, FakeLoginStatus, FakeManifests, FakeProbe, FakeRepositories, FakeThreads } from "./fakes";
+import { InMemoryAccounts } from "./memory-accounts";
 import { InMemoryStore } from "./memory-store";
+import { pollFleet } from "../application/poll";
+import { AccountCredentials } from "../application/credentials";
 
 export const REPO = "github.com/org/repo";
 export const REPO_KEY = repoId(parseRepo(REPO)!);
@@ -33,13 +36,16 @@ export const args = (over: Partial<RegisterArgs> = {}): RegisterArgs => ({
   ...over,
 });
 
-export const world = () => {
+/**
+ * `accounts`: the fleet's credentials come from the plugin's accounts and assignments, as in the plugin, rather than
+ * from the prefix-chosen `FakeCredentials` the poll tests use.
+ */
+export const world = (options: { readonly accounts?: boolean } = {}) => {
   const clock = new FakeClock();
   const threads = new FakeThreads();
   threads.states.set(MANAGER, "live");
   const channel = new FakeChannel();
   const manifests = new FakeManifests();
-  const credentials = new FakeCredentials([{ prefix: "github.com/org", service: "github", token: TOKEN }]);
   const http = new FakeHttp();
   const store = new InMemoryStore();
   const adapters = { github: new FakeAdapter("github"), gitlab: new FakeAdapter("gitlab"), linear: new FakeAdapter("linear"), jira: new FakeAdapter("jira") } satisfies Record<ServiceKind, FakeAdapter>;
@@ -47,12 +53,43 @@ export const world = () => {
   const events = new FakeEvents();
   const cost = new FakeCost();
   const repositories = new FakeRepositories();
-  const admin = new FakeCredentialAdmin();
-  const poll: PollDeps = { store, threads, channel, credentials, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
-  const register: RegisterDeps = { store, threads, credentials, manifests, clock, events };
+  const accounts = new InMemoryAccounts();
+  const probe = new FakeProbe();
+  const logins = new FakeLogins();
+  const fromAccounts = options.accounts === true ? new AccountCredentials(accounts, logins, probe, clock) : null;
+  const fake = new FakeCredentials([{ prefix: "github.com/org", service: "github", token: TOKEN }]);
+  const credentials = fromAccounts ?? fake;
+  const loginStatus = fromAccounts ?? new FakeLoginStatus();
+  const poll: PollDeps = { store, threads, channel, credentials, accounts, http, adapters, manifests, clock, events, log: { warn: (m) => warnings.push(m) }, rateLimits: new Map() };
+  const register: RegisterDeps = { store, threads, credentials, accounts, manifests, clock, events };
   const queue = new SerialQueue();
-  const dash: DashboardDeps = { store, threads, credentials, manifests, cost, clock, channel, events, repositories, admin, queue, log: { warn: (m) => warnings.push(m) }, secrets: () => credentials.secrets() };
-  return { clock, threads, channel, manifests, credentials, http, store, adapters, warnings, poll, register, events, cost, repositories, admin, queue, dash };
+  const readNow: string[] = [];
+  let ids = 0;
+  const dash: DashboardDeps = {
+    store,
+    threads,
+    credentials,
+    accounts,
+    manifests,
+    cost,
+    clock,
+    channel,
+    events,
+    repositories,
+    probe,
+    logins,
+    loginStatus,
+    readNow: async (repo) => {
+      readNow.push(repo);
+      await queue.run(repo, () => pollFleet(poll, repo));
+    },
+    newId: () => `id${(ids += 1)}`,
+    queue,
+    log: { warn: (m) => warnings.push(m) },
+    secrets: () => credentials.secrets(),
+  };
+  // `credentials` is the prefix-chosen fake the poll tests set; an accounts world reads through `fromAccounts` instead.
+  return { clock, threads, channel, manifests, credentials: fake, fromAccounts, http, store, adapters, warnings, poll, register, events, cost, repositories, accounts, probe, logins, loginStatus, readNow, queue, dash };
 };
 
 export type World = ReturnType<typeof world>;

@@ -8,8 +8,15 @@ import { LEDGER_LIMIT } from "../application/dashboard";
 import { ACTION_TEXT_MAX_CHARS } from "../domain/actions";
 import type {
   ActionRecordView,
-  CredentialDraft,
+  ConnectInput,
+  ConnectResult,
+  ConnectTarget,
+  ConnectView,
   DashboardApi,
+  HalfView,
+  NotReadableView,
+  RevokeNotice,
+  TokenPageView,
   FleetDetailView,
   FleetsView,
   LedgerFilter,
@@ -22,7 +29,20 @@ import type {
 const isObject = (value: unknown): boolean => typeof value === "object" && value !== null;
 const text = (max: number) => z.string().check(z.maxLength(max));
 const repo = text(300);
-const auth = z.enum(["token", "gh", "glab"]);
+const service = z.enum(["github", "gitlab", "linear", "jira"]);
+const role = z.enum(["forge", "tracker"]);
+const host = text(253);
+const id = text(100);
+/** A pasted token or key: bounded, and never echoed back by any method. */
+const secretText = text(10_000);
+const target = {
+  fleet: z.optional(repo),
+  role: z.optional(role),
+  service: z.optional(service),
+  place: z.optional(host),
+  owner: z.optional(text(100)),
+};
+const accountChoice = z.union([z.strictObject({ id }), z.strictObject({ service, place: host })]);
 const done = z.enum(["woke", "echo", "out-of-scope", "held", "failed read"]);
 
 export const rpcContract = defineRpcContract({
@@ -59,13 +79,52 @@ export const rpcContract = defineRpcContract({
     input: z.null(),
     output: z.custom<SettingsView>(isObject),
   },
-  saveCredential: {
-    input: z.strictObject({ was: z.optional(text(300)), prefix: text(300), auth, service: z.optional(text(40)), baseUrl: z.optional(text(2000)), token: z.optional(text(10_000)) }),
+  connectView: {
+    input: z.strictObject(target),
+    output: z.custom<Result<{ connect: ConnectView }>>(isObject),
+  },
+  tokenPage: {
+    input: z.strictObject({ ...target, account: accountChoice }),
+    output: z.custom<Result<{ page: TokenPageView }>>(isObject),
+  },
+  cliLogins: {
+    input: z.strictObject({ tool: z.enum(["gh", "glab"]), host }),
+    output: z.custom<{ logins: readonly string[] }>(isObject),
+  },
+  connect: {
+    input: z.strictObject({
+      ...target,
+      account: z.union([z.strictObject({ id }), z.strictObject({ service, place: host, apiUrl: z.optional(text(2000)) })]),
+      secret: z.union([
+        z.strictObject({ kind: z.literal("token"), token: secretText }),
+        z.strictObject({ kind: z.literal("jira"), email: text(320), token: secretText }),
+        z.strictObject({ kind: z.literal("login"), tool: z.enum(["gh", "glab"]), login: text(100) }),
+        z.strictObject({ kind: z.literal("stored") }),
+      ]),
+      confirm: z.optional(z.boolean()),
+      replaces: z.optional(id),
+    }),
+    output: z.custom<ConnectResult>(isObject),
+  },
+  checkAgain: {
+    input: z.strictObject({ fleet: repo, role }),
+    output: z.custom<Result<{ half: HalfView; notReadable: readonly NotReadableView[] }>>(isObject),
+  },
+  makeDefault: {
+    input: z.strictObject({ accountId: id }),
+    output: z.custom<Result<{ settings: SettingsView }>>(isObject),
+  },
+  removeAssignment: {
+    input: z.strictObject({ scope: text(300) }),
     output: z.custom<Result<{ settings: SettingsView }>>(isObject),
   },
   removeCredential: {
-    input: z.strictObject({ prefix: text(300) }),
-    output: z.custom<Result<{ settings: SettingsView }>>(isObject),
+    input: z.strictObject({ credentialId: id }),
+    output: z.custom<Result<{ settings: SettingsView; revoke: RevokeNotice }>>(isObject),
+  },
+  removeAccount: {
+    input: z.strictObject({ accountId: id }),
+    output: z.custom<Result<{ settings: SettingsView; revoke: RevokeNotice | null }>>(isObject),
   },
   setInterval: {
     input: z.strictObject({ repo, seconds: z.nullable(z.number()) }),
@@ -97,7 +156,14 @@ export const rpcHandlers = (api: DashboardApi) => ({
   ledger: (input: { repo: string; filter?: LedgerFilter | undefined }) => bounded(api.ledger(input.filter === undefined ? { repo: input.repo } : { repo: input.repo, filter: input.filter })),
   sendAction: (input: Parameters<DashboardApi["sendAction"]>[0]) => bounded(api.sendAction(input)),
   settings: () => bounded(api.settings()),
-  saveCredential: (input: CredentialDraft) => bounded(api.saveCredential(input)),
-  removeCredential: (input: { prefix: string }) => bounded(api.removeCredential(input)),
+  connectView: (input: ConnectTarget) => bounded(api.connectView(input)),
+  tokenPage: (input: Parameters<DashboardApi["tokenPage"]>[0]) => bounded(api.tokenPage(input)),
+  cliLogins: (input: { tool: "gh" | "glab"; host: string }) => bounded(api.cliLogins(input)),
+  connect: (input: ConnectInput) => bounded(api.connect(input)),
+  checkAgain: (input: Parameters<DashboardApi["checkAgain"]>[0]) => bounded(api.checkAgain(input)),
+  makeDefault: (input: { accountId: string }) => bounded(api.makeDefault(input)),
+  removeAssignment: (input: { scope: string }) => bounded(api.removeAssignment(input)),
+  removeCredential: (input: { credentialId: string }) => bounded(api.removeCredential(input)),
+  removeAccount: (input: { accountId: string }) => bounded(api.removeAccount(input)),
   setInterval: (input: { repo: string; seconds: number | null }) => bounded(api.setInterval(input)),
 });

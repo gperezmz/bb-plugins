@@ -79,7 +79,7 @@ const harness = async (state: Partial<FakeGithubState>, prefix = "/api/v3") => {
   const fake = createFakeGithub(state);
   const server = await listen(fake);
   mounted.push(server);
-  const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}${prefix}`, host: "127.0.0.1" };
+  const credential: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: `${server.url}${prefix}`, host: "127.0.0.1" };
   const http = new HttpClient({ sleep: async () => undefined }).session(credential, "ghp_secret");
   const adapter = createGithubAdapter();
   const read = (extra: Partial<Omit<ReadRequest, "items">> & { watched?: number[]; items?: number[] } = {}): Promise<ReadOutcome> => {
@@ -646,7 +646,7 @@ describe("GitHub adapter: failures", () => {
     expect((await read()).failures).toEqual([{ ref: null, reason: expect.any(String), kind: "unreachable" }]);
 
     const { server, adapter } = await harness(repo({ issues: [issue(1)] }));
-    const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
+    const credential: ResolvedCredential = { key: "github.com/org", label: "github.com/org", accountId: "account", accountLabel: "github.com/org", kind: "fine-grained", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
     const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(credential, "ghp_secret");
     const outcome = await adapter.read({
       source: { role: "forge", service: "github", host: "127.0.0.1", path: REPO },

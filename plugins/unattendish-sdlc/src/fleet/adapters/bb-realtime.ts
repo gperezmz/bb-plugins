@@ -2,7 +2,7 @@
 // pages show changed. A signal carries no state: the pages refetch.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { Clock, DashboardEvents } from "../application/ports";
-import { BOARD_CHANGED, INBOX_NEW, type InboxNewSignal } from "../application/views";
+import { BOARD_CHANGED, FLEET_NEEDS, INBOX_NEW, type FleetNeedsSignal, type InboxNewSignal } from "../application/views";
 
 /** Every open window rebuilds every fleet on `board-changed`, so it is published at most this often. */
 export const BOARD_CHANGED_EVERY_MS = 1_000;
@@ -47,6 +47,10 @@ export class BbDashboardEvents implements DashboardEvents {
 
   inboxNew(signal: InboxNewSignal): void {
     this.publish(INBOX_NEW, signal);
+  }
+
+  fleetNeeds(signal: FleetNeedsSignal): void {
+    this.publish(FLEET_NEEDS, signal);
   }
 
   /** A signal that cannot be sent costs the pages a refresh, never the poll that raised it. */

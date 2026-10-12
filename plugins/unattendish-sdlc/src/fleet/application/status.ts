@@ -2,8 +2,9 @@
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import type { NotWatched, OutsideLink, UnreadableRow } from "../domain/model";
 import { effectiveInterval } from "../domain/registration";
-import type { Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
-import { assessWatching, refusedNotWatched, refusedSince } from "./watching";
+import { canWrite, type CredentialKind } from "../domain/accounts";
+import type { AccountStore, Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
+import { accessRolesOf, assessWatching, refusedNotWatched, refusedSince } from "./watching";
 
 export interface FleetStatus {
   readonly repo: string;
@@ -13,12 +14,25 @@ export interface FleetStatus {
   readonly manifest: string;
   readonly lastPolledAt: string | null;
   readonly intervalMs: number;
+  /** The account each half reads as, or what it needs. */
+  readonly accounts: readonly {
+    readonly role: "forge" | "tracker";
+    /** `GitHub · yuser`; null where no account reads the half. */
+    readonly account: string | null;
+    /** What the half needs; null while it reads. */
+    readonly needs: string | null;
+  }[];
   readonly credentials: readonly {
     readonly role: "forge" | "tracker";
-    readonly prefix: string;
+    /** `GitHub · yuser for acme`. */
+    readonly credential: string;
+    readonly account: string;
     readonly service: string;
+    readonly kind: CredentialKind;
     readonly auth: "token" | "gh" | "glab";
     readonly expiresAt: string | null;
+    /** True for a classic token, or a gh or glab login. */
+    readonly canWrite: boolean;
     /** True for a gh or glab login, which the fleet's agents act through too. */
     readonly sharesAgentRateLimit: boolean;
   }[];
@@ -37,6 +51,7 @@ export interface StatusDeps {
   readonly store: Store;
   readonly threads: ThreadDirectory;
   readonly credentials: Credentials;
+  readonly accounts: AccountStore;
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
 }
@@ -46,18 +61,32 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
   const out: FleetStatus[] = [];
   for (const fleet of deps.store.listFleets()) {
     const registration = fleet.registration;
-    const watching = await assessWatching(deps, registration);
-    const credentials = [watching.forge, watching.tracker]
-      .filter((resolved) => resolved !== null)
-      .map((resolved) => ({
-        role: resolved.source.role,
-        prefix: resolved.credential.prefix,
-        service: resolved.credential.service,
-        auth: resolved.credential.auth,
-        expiresAt: fleet.expiries[resolved.credential.prefix] ?? null,
-        sharesAgentRateLimit: resolved.credential.auth !== "token",
-      }));
-    const notWatched = [...watching.notWatched, ...refusedNotWatched(fleet.outages)];
+    const repo = repoId(registration.repo);
+    const watching = await assessWatching(deps, registration, repo);
+    const expiries = new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
+    const accounts = watching.halves.map((half) => ({
+      role: half.role,
+      account: half.lookup.found ? half.lookup.credential.accountLabel : (half.lookup.account?.label ?? null),
+      needs: half.lookup.found ? half.unavailable : half.lookup.need,
+    }));
+    const credentials = watching.halves.flatMap((half) => {
+      if (!half.lookup.found) return [];
+      const credential = half.lookup.credential;
+      return [
+        {
+          role: half.role,
+          credential: credential.label,
+          account: credential.accountLabel,
+          service: credential.service,
+          kind: credential.kind,
+          auth: credential.auth,
+          expiresAt: expiries.get(credential.key) ?? null,
+          canWrite: canWrite(credential.kind),
+          sharesAgentRateLimit: credential.auth !== "token",
+        },
+      ];
+    });
+    const notWatched = [...watching.notWatched, ...refusedNotWatched(fleet.outages, accessRolesOf(watching))];
     out.push({
       repo: formatRepo(registration.repo),
       tracker: formatTracker(registration.tracker),
@@ -66,8 +95,9 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
       manifest: registration.manifestPath,
       lastPolledAt: fleet.lastPolledAt,
       intervalMs: effectiveInterval(registration),
+      accounts,
       credentials,
-      requestsThisHour: deps.store.requestsSince(repoId(registration.repo), hourAgo),
+      requestsThisHour: deps.store.requestsSince(repo, hourAgo),
       watched: notWatched.length === 0,
       notWatched,
       notWatchedSince: refusedSince(fleet.outages),

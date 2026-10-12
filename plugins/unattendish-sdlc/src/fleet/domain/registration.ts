@@ -145,27 +145,27 @@ export const catchUp = (lastPolledAt: string | null, now: string, intervalMs: nu
  */
 export const UNREADABLE_POLLS = 3;
 
-/** What became of the reads with the credential for `prefix`, in lower case, as the wake's closing line and the status both word it. */
-export const refusedText = (prefix: string, why: RefusedWhy): string => {
+/** What became of the reads with the credential labelled `credential`, in lower case, as the wake's closing line and the status both word it. */
+export const refusedText = (credential: string, why: RefusedWhy): string => {
   switch (why) {
     case "refused":
-      return `the credential for ${prefix} was refused by the service`;
+      return `the credential for ${credential} was refused by the service`;
     case "forbidden":
-      return `the credential for ${prefix} was forbidden to read what the fleet needs (403)`;
+      return `the credential for ${credential} was forbidden to read what the fleet needs (403)`;
     case "unreachable":
-      return `the service did not answer reads with the credential for ${prefix}`;
+      return `the service did not answer reads with the credential for ${credential}`;
     case "listing-failed":
-      return `the service keeps failing to list what changed with the credential for ${prefix}`;
+      return `the service keeps failing to list what changed with the credential for ${credential}`;
     case "not-found":
-      return `the credential for ${prefix} could not find what the fleet needs (404)`;
+      return `the credential for ${credential} could not find what the fleet needs (404)`;
     case "outside-fleet":
-      return `everything the fleet reads with the credential for ${prefix} has moved outside its repository, project or team`;
+      return `everything the fleet reads with the credential for ${credential} has moved outside its repository, project or team`;
   }
 };
 
 /** Why a fleet whose credential the service refused, or whose every read failed for `UNREADABLE_POLLS` polls, is not watched. */
-export const credentialRefused = (prefix: string, why: RefusedWhy): NotWatched => {
-  const text = refusedText(prefix, why);
+export const credentialRefused = (credential: string, why: RefusedWhy): NotWatched => {
+  const text = refusedText(credential, why);
   return { code: "credential-refused", text: `${text.charAt(0).toUpperCase()}${text.slice(1)}` };
 };
 

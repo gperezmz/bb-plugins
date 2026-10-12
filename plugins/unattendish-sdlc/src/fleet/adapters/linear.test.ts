@@ -52,7 +52,7 @@ const setup = async (state: Partial<LinearState>, options: { fetch?: typeof fetc
     return (options.fetch ?? fetch)(input, init);
   };
   const http = new HttpClient({ fetch: recording, sleep: async () => undefined }).session(
-    { prefix: "linear:ENG", service: "linear", auth: "token", baseUrl: `${mounted.url}/graphql`, host: "127.0.0.1" },
+    { key: "linear:ENG", label: "linear:ENG", accountId: "account", accountLabel: "linear:ENG", kind: "fine-grained", service: "linear", auth: "token", baseUrl: `${mounted.url}/graphql`, host: "127.0.0.1" },
     TOKEN,
   );
   const adapter = createLinearAdapter();

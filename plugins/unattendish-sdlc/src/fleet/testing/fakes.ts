@@ -2,12 +2,19 @@
 import { longestMatch, parsePrefix, repoSubject, trackerSubject, type Prefix } from "../domain/identity";
 import { parseManifest, writtenSections } from "../domain/manifest";
 import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, TrackerSpec, WrittenSection } from "../domain/model";
-import type { InboxNewSignal } from "../application/views";
+import type { FleetNeedsSignal, InboxNewSignal } from "../application/views";
+import type { LoginStatus } from "../application/accounts";
+import type { Half } from "../domain/accounts";
+import {
+  CredentialUnavailable,
+  type CliLogins,
+  type Identified,
+  type ProbeTarget,
+  type ServiceProbe,
+} from "../application/ports";
 import type {
   Clock,
   CostReader,
-  CredentialAdmin,
-  CredentialAdminEntry,
   Credentials,
   CredentialLookup,
   DeliveryResult,
@@ -70,36 +77,15 @@ export class FakeCost implements CostReader {
 export class FakeEvents implements DashboardEvents {
   boardChanges = 0;
   readonly inboxNews: InboxNewSignal[] = [];
+  readonly needs: FleetNeedsSignal[] = [];
   boardChanged(): void {
     this.boardChanges += 1;
   }
   inboxNew(signal: InboxNewSignal): void {
     this.inboxNews.push(signal);
   }
-}
-
-/** The credential settings as a list; it validates only that a prefix is given and not twice, which is as far as the use cases ask. */
-export class FakeCredentialAdmin implements CredentialAdmin {
-  readonly entries: CredentialAdminEntry[] = [];
-  problems: string[] = [];
-  async list() {
-    return { entries: this.entries.map((entry) => ({ ...entry })), problems: [...this.problems] };
-  }
-  async save(draft: Parameters<CredentialAdmin["save"]>[0]) {
-    if (draft.prefix.trim() === "") return { ok: false as const, reason: "the prefix is empty" };
-    const was = draft.was ?? draft.prefix;
-    const at = this.entries.findIndex((entry) => entry.prefix === was);
-    if (draft.was === undefined && at !== -1) return { ok: false as const, reason: "that prefix is already given" };
-    const entry: CredentialAdminEntry = { prefix: draft.prefix, auth: draft.auth, service: draft.service ?? null, baseUrl: draft.baseUrl ?? null, hasToken: draft.token !== undefined || (at !== -1 && this.entries[at]!.hasToken), problem: null };
-    if (at === -1) this.entries.push(entry);
-    else this.entries[at] = entry;
-    return { ok: true as const };
-  }
-  async remove(prefix: string) {
-    const at = this.entries.findIndex((entry) => entry.prefix === prefix);
-    if (at === -1) return { ok: false as const, reason: "no such credential" };
-    this.entries.splice(at, 1);
-    return { ok: true as const };
+  fleetNeeds(signal: FleetNeedsSignal): void {
+    this.needs.push(signal);
   }
 }
 
@@ -157,8 +143,14 @@ export interface FakeCredentialEntry {
   readonly auth?: "token" | "gh" | "glab";
 }
 
+/**
+ * Credentials chosen by prefix, the longest that matches, as a stand-in for accounts and assignments: each entry is a
+ * credential whose key, label and account are its prefix. A miss needs `No credential is chosen for <what>`.
+ */
 export class FakeCredentials implements Credentials {
   private entries: { prefix: Prefix; text: string; service: ServiceKind; token: string; auth: "token" | "gh" | "glab" }[] = [];
+  /** By prefix: why no token can be had, for a credential found that cannot give one. */
+  readonly unavailable = new Map<string, string>();
   constructor(entries: readonly FakeCredentialEntry[] = []) {
     this.set(entries);
   }
@@ -166,26 +158,85 @@ export class FakeCredentials implements Credentials {
     this.entries = entries.map((e) => ({ prefix: parsePrefix(e.prefix)!, text: e.prefix, service: e.service, token: e.token ?? `token-for-${e.prefix}`, auth: e.auth ?? "token" }));
   }
   private resolve(entry: (typeof this.entries)[number]): ResolvedCredential {
-    return { prefix: entry.text, service: entry.service, auth: entry.auth, baseUrl: "http://127.0.0.1:1", host: "127.0.0.1" };
+    return {
+      key: entry.text,
+      label: entry.text,
+      accountId: `account:${entry.text}`,
+      accountLabel: entry.text,
+      service: entry.service,
+      auth: entry.auth,
+      kind: entry.auth === "token" ? "fine-grained" : entry.auth,
+      baseUrl: "http://127.0.0.1:1",
+      host: "127.0.0.1",
+    };
   }
-  private lookup(subject: Parameters<typeof longestMatch>[1], fallback: string): CredentialLookup {
+  private lookup(subject: Parameters<typeof longestMatch>[1], what: string): CredentialLookup {
     const found = longestMatch(this.entries, subject);
-    return found === null ? { found: false, prefix: fallback } : { found: true, credential: this.resolve(found) };
+    return found === null ? { found: false, account: null, need: `No credential is chosen for ${what}` } : { found: true, credential: this.resolve(found) };
   }
   forForge(repo: RepoRef): CredentialLookup {
     const found = this.lookup(repoSubject(repo), `${repo.host}/${repo.path}`);
-    return found.found && found.credential.service !== "github" && found.credential.service !== "gitlab" ? { found: false, prefix: found.credential.prefix } : found;
+    return found.found && found.credential.service !== "github" && found.credential.service !== "gitlab" ? { found: false, account: null, need: `No credential is chosen for ${repo.host}/${repo.path}` } : found;
   }
   forTracker(tracker: TrackerSpec, repo: RepoRef): CredentialLookup {
-    return tracker.kind === "forge-issues" ? this.forForge(repo) : this.lookup(trackerSubject(tracker, repo), tracker.kind);
+    return tracker.kind === "forge-issues" ? this.forForge(repo) : this.lookup(trackerSubject(tracker, repo), `the tracker ${tracker.kind === "linear" ? `linear:${tracker.team}` : `jira:${tracker.site}/${tracker.project}`}`);
   }
   async token(credential: ResolvedCredential): Promise<string> {
-    const entry = this.entries.find((e) => e.text === credential.prefix);
-    if (entry === undefined) throw new Error(`no token for ${credential.prefix}`);
+    const why = this.unavailable.get(credential.key);
+    if (why !== undefined) throw new CredentialUnavailable(why);
+    const entry = this.entries.find((e) => e.text === credential.key);
+    if (entry === undefined) throw new Error(`no token for ${credential.label}`);
     return entry.token;
   }
   secrets(): string[] {
     return this.entries.map((e) => e.token);
+  }
+}
+
+/** A service that knows whose each token is, and what each token can read by the half's `what`. */
+export class FakeProbe implements ServiceProbe {
+  /** By token: whose it is, or how the service answers. */
+  readonly owners = new Map<string, Identified>();
+  /** By token, then by the half's `what`: how a read fails; a pair not listed reads. */
+  readonly unreadable = new Map<string, Map<string, "not-found" | "forbidden" | "unreachable">>();
+  readonly identified: { target: ProbeTarget; token: string }[] = [];
+  readonly reads: { target: ProbeTarget; token: string; what: string }[] = [];
+  async identify(target: ProbeTarget, token: string): Promise<Identified> {
+    this.identified.push({ target, token });
+    return this.owners.get(token) ?? { ok: false, why: "refused", reason: "the service rejected the token" };
+  }
+  async canRead(target: ProbeTarget, token: string, half: Half): Promise<"readable" | "not-found" | "forbidden" | "unreachable"> {
+    this.reads.push({ target, token, what: half.what });
+    return this.unreadable.get(token)?.get(half.what) ?? "readable";
+  }
+}
+
+/** The operator's `gh` and `glab` logins: by tool and host, each login's token. */
+export class FakeLogins implements CliLogins {
+  readonly tokens = new Map<string, string>();
+  readonly asked: string[] = [];
+  set(tool: "gh" | "glab", host: string, login: string, token: string): void {
+    this.tokens.set(`${tool} ${host} ${login}`, token);
+  }
+  async logins(tool: "gh" | "glab", host: string): Promise<string[]> {
+    return [...this.tokens.keys()].filter((key) => key.startsWith(`${tool} ${host} `)).map((key) => key.split(" ")[2]!);
+  }
+  async token(tool: "gh" | "glab", host: string, login: string): Promise<string> {
+    this.asked.push(`${tool} ${host} ${login}`);
+    const token = this.tokens.get(`${tool} ${host} ${login}`);
+    if (token === undefined) throw new CredentialUnavailable(`${tool} gave no token for ${login} on ${host}`);
+    return token;
+  }
+}
+
+export class FakeLoginStatus implements LoginStatus {
+  readonly problems = new Map<string, string>();
+  readonly forgotten: string[] = [];
+  loginProblem(accountId: string): string | null {
+    return this.problems.get(accountId) ?? null;
+  }
+  forget(accountId: string): void {
+    this.forgotten.push(accountId);
   }
 }
 

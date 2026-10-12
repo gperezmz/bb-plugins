@@ -22,7 +22,8 @@ import type {
   WatchedItem,
   WrittenSection,
 } from "../domain/model";
-import type { CredentialDraft, InboxNewSignal } from "./views";
+import type { Account, AccountCredential, AccountVia, Assignment, CredentialKind, Half } from "../domain/accounts";
+import type { FleetNeedsSignal, InboxNewSignal } from "./views";
 
 // ---- HTTP ----
 
@@ -160,10 +161,16 @@ export interface ServiceAdapter {
 // ---- credentials ----
 
 export interface ResolvedCredential {
-  /** The prefix the credential was chosen for, as written. */
-  readonly prefix: string;
+  /** The credential's id: what rate limits and cached answers are kept by. */
+  readonly key: string;
+  /** The credential as a person reads it: `GitHub · yuser`, `GitHub · yuser for acme`. */
+  readonly label: string;
+  readonly accountId: string;
+  /** The account as a person reads it: `GitHub · yuser`. */
+  readonly accountLabel: string;
   readonly service: ServiceKind;
-  readonly auth: "token" | "gh" | "glab";
+  readonly auth: AccountVia;
+  readonly kind: CredentialKind;
   readonly baseUrl: string;
   /** The one host the token may be sent to. */
   readonly host: string;
@@ -175,19 +182,96 @@ export interface ResolvedSource {
   readonly source: Source;
 }
 
+/** Who reads one half of a fleet, or what it needs. */
 export type CredentialLookup =
   | { readonly found: true; readonly credential: ResolvedCredential }
-  | { readonly found: false; readonly prefix: string };
+  | {
+      readonly found: false;
+      /** The account the winning assignment names, where one does; null where none covers the half. */
+      readonly account: { readonly id: string; readonly label: string } | null;
+      /** What the half needs, as AC1 words it: `other-org/x needs a GitHub account that can read other-org`. */
+      readonly need: string;
+    };
+
+/** No token can be had for a credential; `message` says why for a person and never carries a token. */
+export class CredentialUnavailable extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CredentialUnavailable";
+  }
+}
 
 export interface Credentials {
-  /** The credential for a fleet's forge: the longest chosen prefix matching its repository. Its service is `github` or `gitlab`, else the lookup finds none. */
+  /** Who reads a fleet's forge: the account the most specific assignment covering its repository names, and that account's credential reaching its owner. */
   forForge(repo: RepoRef): CredentialLookup;
-  /** The credential for a fleet's tracker, chosen separately: the forge's own for `forge-issues`, else the longest prefix matching the Linear team or Jira project. */
+  /** Who reads a fleet's tracker where it is a service of its own: the account assigned its Linear team or Jira project, or the default. The forge reads `forge-issues`. */
   forTracker(tracker: TrackerSpec, repo: RepoRef): CredentialLookup;
-  /** The token for a credential: the pasted one, or what `gh` or `glab` prints. Never logged. Rejects when none can be had. */
+  /** The token for a credential: the stored one, or what `gh` or `glab` gives for the account's login. Never logged. Rejects, with a `CredentialUnavailable` where it can say why, when none can be had. */
   token(credential: ResolvedCredential): Promise<string>;
-  /** Every token configured, so text can be scrubbed of them. */
+  /** Every token the plugin holds or has been given, so text can be scrubbed of them. */
   secrets(): string[];
+}
+
+// ---- accounts ----
+
+/** Why a fleet's half cannot read its repository, team or project with a credential the service accepts, kept until a read succeeds. */
+export interface AccessProblem {
+  readonly role: SourceRole;
+  readonly credentialId: string;
+  readonly why: "not-found" | "forbidden";
+  readonly at: string;
+}
+
+/** The plugin's accounts, their credentials and tokens, the assignments, and what a credential was found unable to read. */
+export interface AccountStore {
+  accounts(): Account[];
+  credentials(): AccountCredential[];
+  assignments(): Assignment[];
+  addAccount(account: Account): void;
+  /** Deletes the account, every credential and token of it, and every assignment naming it. */
+  removeAccount(accountId: string): void;
+  /** Stores a credential and its token, replacing any credential of the same account reaching the same owner (or, off GitHub, any of the account). */
+  saveCredential(credential: AccountCredential, token: string | null): void;
+  /** Deletes a credential and its token. */
+  removeCredential(credentialId: string): void;
+  /** The stored token of a credential; null for a `gh` or `glab` login and for one not held. */
+  tokenOf(credentialId: string): string | null;
+  /** Every stored token, to scrub text of. */
+  tokens(): string[];
+  noteExpiry(credentialId: string, expiresAt: string | null): void;
+  /** Assigns a scope to an account, replacing whatever the scope was assigned to. */
+  assign(scope: string, accountId: string): void;
+  unassign(scope: string): void;
+  accessProblems(repo: string): AccessProblem[];
+  /** Records, or with null clears, why a fleet's half cannot read with a credential. */
+  setAccessProblem(repo: string, role: SourceRole, problem: Omit<AccessProblem, "role"> | null): void;
+}
+
+/** Where a probe sends a token: the account's API root and host. */
+export interface ProbeTarget {
+  readonly service: ServiceKind;
+  readonly baseUrl: string;
+  readonly host: string;
+}
+
+/** Whose a token is, as the service said. `classic` marks a classic GitHub token. */
+export type Identified =
+  | { readonly ok: true; readonly login: string; readonly name: string; readonly expiresAt: string | null; readonly classic: boolean }
+  | { readonly ok: false; readonly why: "refused" | "unreachable"; readonly reason: string };
+
+/** Asks a service whose a token is and whether it can read a fleet's half. Every request goes to the target's host alone. */
+export interface ServiceProbe {
+  identify(target: ProbeTarget, token: string): Promise<Identified>;
+  /** `readable`, or how a read of the half's repository, team or project failed with a token the service accepts. */
+  canRead(target: ProbeTarget, token: string, half: Half): Promise<"readable" | "not-found" | "forbidden" | "unreachable">;
+}
+
+/** The operator's `gh` and `glab` logins. */
+export interface CliLogins {
+  /** The logins the tool holds for a host; empty where it holds none or cannot be run. */
+  logins(tool: "gh" | "glab", host: string): Promise<string[]>;
+  /** The token the tool gives for a login on a host. Rejects when it gives none. */
+  token(tool: "gh" | "glab", host: string, login: string): Promise<string>;
 }
 
 export interface Http {
@@ -249,24 +333,8 @@ export interface CostReader {
 export interface DashboardEvents {
   boardChanged(): void;
   inboxNew(signal: InboxNewSignal): void;
-}
-
-export interface CredentialAdminEntry {
-  readonly prefix: string;
-  readonly auth: "token" | "gh" | "glab";
-  readonly service: string | null;
-  readonly baseUrl: string | null;
-  /** A pasted token is stored for the prefix. */
-  readonly hasToken: boolean;
-  /** Why the entry cannot be used; null when it can. */
-  readonly problem: string | null;
-}
-
-/** Edits the `credentials` and `tokens` settings by the rules their form validates with. Never returns a token. */
-export interface CredentialAdmin {
-  list(): Promise<{ readonly entries: readonly CredentialAdminEntry[]; readonly problems: readonly string[] }>;
-  save(draft: CredentialDraft): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
-  remove(prefix: string): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
+  /** A fleet newly needs an account or credential for one of its halves. */
+  fleetNeeds(signal: FleetNeedsSignal): void;
 }
 
 // ---- clock ----
@@ -286,13 +354,13 @@ export interface SourceOutage {
   readonly unreadablePolls: number;
   /** When the first of those polls ran (ISO 8601 UTC), which the fleet is not watched since; null while none did. */
   readonly unreadableSince: string | null;
-  /** Set while the source's credential counts as refused: when the fleet stopped being watched, the prefix, why, and whether a wake has said so. */
-  readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
+  /** Set while the source's credential counts as refused: when the fleet stopped being watched, the credential's label, why, and whether a wake has said so. */
+  readonly refused: { readonly since: string; readonly credential: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
 }
 
 /**
  * The outages a store keeps when a poll saves `next` over `stored`: `next`, with each source's `announced` taken from
- * `stored` while its refusal's `since` and `prefix` stay the same, and false for any other refusal.
+ * `stored` while its refusal's `since` and `credential` stay the same, and false for any other refusal.
  */
 export const keptAnnounced = (
   stored: StoredFleet["outages"],
@@ -304,8 +372,8 @@ export const keptAnnounced = (
     if (outage === undefined) continue;
     const before = stored[role]?.refused ?? null;
     const refused = outage.refused;
-    const announced = refused !== null && before !== null && before.since === refused.since && before.prefix === refused.prefix ? before.announced : (refused?.announced ?? false);
-    kept[role] = { unreadablePolls: outage.unreadablePolls, unreadableSince: outage.unreadableSince, refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why } };
+    const announced = refused !== null && before !== null && before.since === refused.since && before.credential === refused.credential ? before.announced : (refused?.announced ?? false);
+    kept[role] = { unreadablePolls: outage.unreadablePolls, unreadableSince: outage.unreadableSince, refused: refused === null ? null : { since: refused.since, credential: refused.credential, announced, why: refused.why } };
   }
   return kept;
 };
@@ -322,8 +390,6 @@ export interface StoredFleet {
   readonly pendingCatchUpMs: number | null;
   readonly unreadableRows: readonly UnreadableRow[];
   readonly outsideLinks: readonly OutsideLink[];
-  /** The tokens' expiry dates reported by the services, by credential prefix. */
-  readonly expiries: Readonly<Record<string, string | null>>;
   /** When no manager held the fleet, the time the first change was held; null otherwise. */
   readonly heldSince: string | null;
 }
@@ -344,7 +410,7 @@ export interface StoredWake {
   readonly catchUpMs: number | null;
   readonly heldSince: string | null;
   /** The "not watched since" line the wake carries, kept so it is worded again whenever the queued wake is amended. */
-  readonly notWatched: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
+  readonly notWatched: { readonly since: string; readonly credential: string; readonly why: RefusedWhy } | null;
 }
 
 export interface LedgerRow {
@@ -404,11 +470,11 @@ export interface Store {
   /**
    * Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give, and
    * each source's outage, which replaces those stored. A source's refusal keeps the `announced` stored for it while
-   * its `since` and `prefix` stay the same.
+   * its `since` and `credential` stay the same.
    */
   savePollState(
     repo: string,
-    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "outages" | "pendingCatchUpMs">,
+    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "heldSince" | "outages" | "pendingCatchUpMs">,
   ): void;
   /** Marks the refusal of the source in `role` as said by a wake; nothing while that source's credential is not refused. */
   markRefusedAnnounced(repo: string, role: SourceRole): void;
