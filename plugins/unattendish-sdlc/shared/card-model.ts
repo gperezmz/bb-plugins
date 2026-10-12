@@ -84,3 +84,11 @@ export function cardReasons(card: Pick<FleetCardView, "reasons" | "halves">): Fl
   const saying = new Set(card.halves.filter((half) => half.needs !== null).map((half) => half.role));
   return card.reasons.filter((reason) => reason.fix.kind !== "connect" || !saying.has(reason.fix.role));
 }
+
+/** The tracker where it is a service of its own, with the key the board names it by: Linear's team key or Jira's project key. */
+export function trackerOf(tracker: string): { readonly service: "linear" | "jira"; readonly key: string } | null {
+  const linear = /^linear:(.+)$/.exec(tracker);
+  if (linear !== null) return { service: "linear", key: linear[1]! };
+  const jira = /^jira:.+\/([^/]+)$/.exec(tracker);
+  return jira === null ? null : { service: "jira", key: jira[1]! };
+}

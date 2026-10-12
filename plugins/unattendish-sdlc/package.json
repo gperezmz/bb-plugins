@@ -12,7 +12,15 @@
     "branding": {
       "icon": "./icons/fleet.svg",
       "experimental_icons": {
-        "fleet": "./icons/fleet.svg"
+        "circle-dashed": "./icons/circle-dashed.svg",
+        "fleet": "./icons/fleet.svg",
+        "hammer": "./icons/hammer.svg",
+        "hourglass": "./icons/hourglass.svg",
+        "key": "./icons/key.svg",
+        "lightbulb": "./icons/lightbulb.svg",
+        "rocket": "./icons/rocket.svg",
+        "scale": "./icons/scale.svg",
+        "user-x": "./icons/user-x.svg"
       }
     },
     "server": "./server.ts",
@@ -57,6 +65,7 @@
     "@octokit/openapi-types": "^29.0.1",
     "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-hover-card": "^1.1.19",
+    "@radix-ui/react-tooltip": "^1.2.12",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/better-sqlite3": "^7.6.13",

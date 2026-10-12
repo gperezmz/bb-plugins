@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardReasons, costText, countParts, countsText, halfAction, halfLine, managerText, warningLine } from "./card-model";
+import { cardReasons, costText, countParts, countsText, halfAction, halfLine, managerText, trackerOf, warningLine } from "./card-model";
 
 const NOW = "2026-10-12T12:00:00Z";
 
@@ -97,5 +97,16 @@ describe("the reasons below the halves", () => {
 
   it("keeps a Connect… reason whose half says it needs nothing", () => {
     expect(cardReasons({ reasons, halves: [{ ...needing, needs: null }] })).toHaveLength(3);
+  });
+});
+
+describe("a fleet's tracker", () => {
+  it("is its service and key where it is a service of its own", () => {
+    expect(trackerOf("linear:PLAT")).toEqual({ service: "linear", key: "PLAT" });
+    expect(trackerOf("jira:acme.atlassian.net/OPS")).toEqual({ service: "jira", key: "OPS" });
+  });
+
+  it("is nothing where the tracker is the forge's issues", () => {
+    expect(trackerOf("forge-issues")).toBeNull();
   });
 });
