@@ -212,22 +212,38 @@ describe("failures", () => {
     expect(derived.nextCursor.since).toBe(firstSince);
   });
 
-  it("does not hold since for an item the service says does not exist, but does for any other failure of one item", () => {
+  it("does not hold since for an item the service says does not exist or that lies outside the fleet, but does for any other failure of one item", () => {
     const prev = cursor({});
     const gone = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }] }) });
     expect(gone.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    const moved = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "moved to another repository", kind: "outside-fleet" }] }) });
+    expect(moved.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    for (const kind of ["forbidden", "unreachable"] as const) {
+      expect(derive({ prev, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#9", reason: "x", kind }] }) }).nextCursor.since).toBe(prev.since);
+    }
     const other = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }, { ref: "#8", reason: "server error" }] }) });
     expect(other.nextCursor.since).toBe(prev.since);
     const listing = derive({ prev, outcome: outcome({ failures: [{ ref: null, reason: "listing failed", kind: "not-found" }] }) });
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start", () => {
+  it("holds since no further back than seven days before the poll's start while the rest of the source reads", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
-    const held = derive({ prev: old, outcome: outcome({ failures: [{ ref: "#8", reason: "server error" }] }) });
+    const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    const listed = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: null, reason: "x" }] }) });
+    expect(listed.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("holds since with no limit while nothing of the source reads", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    for (const kind of ["forbidden", "unreachable", undefined] as const) {
+      const failures = [{ ref: null, reason: "the listing failed", ...(kind === undefined ? {} : { kind }) }, { ref: "#8", reason: "x", ...(kind === undefined ? {} : { kind }) }];
+      expect(derive({ prev: old, outcome: outcome({ failures }) }).nextCursor.since).toBe(old.since);
+    }
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe(old.since);
   });
 
   it("moves since to the poll's start less the overlap otherwise", () => {

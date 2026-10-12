@@ -18,7 +18,10 @@ import {
 } from "./model";
 
 const DEFAULT_OVERLAP_MS = 60_000;
-/** The furthest a failed read may hold a cursor's `since` back from the poll's start, so one item that never reads cannot make every later poll read ever more. */
+/**
+ * The furthest a failed read may hold a cursor's `since` back from the poll's start while the rest of the source
+ * reads, so one item that never reads cannot make every later poll read ever more.
+ */
 export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
 export interface DeriveInput {
@@ -62,10 +65,13 @@ export interface Derived {
  * not depend on when it is derived: deriving again from the same, uncommitted
  * cursor gives the same keys. An item whose read failed leaves its previous
  * state in the cursor and gives no change. Such a failure, and a failed
- * listing, hold `since` where it was, but never more than `MAX_HOLD_MS` before
- * the poll's start: changes held while no manager exists are in the ledger
- * and are not lost by the cap. A failure of kind `not-found` holds nothing,
- * since no later read of that item will succeed.
+ * listing, hold `since` where it was, so a failed read never lets the cursor
+ * skip a change. While some snapshot, event or updated item came back, the
+ * hold reaches no more than `MAX_HOLD_MS` before the poll's start: one item
+ * that never reads cannot hold the source back for good. While nothing came
+ * back, the hold has no limit. A failure of one item of kind `not-found` or
+ * `outside-fleet` holds nothing, since no later read of that item will
+ * succeed.
  */
 export const deriveChanges = (input: DeriveInput): Derived => {
   const { role, prev, outcome, watchedRefs, labels, startedAt, firstSince, stateOnly } = input;
@@ -105,9 +111,10 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     for (const [id, state] of Object.entries(prev?.items ?? {})) if (!(id in items)) items[id] = state;
   }
 
-  const holdsSince = outcome.failures.some((failure) => failure.ref === null || failure.kind !== "not-found") || stateOnly;
+  const holdsSince = outcome.failures.some((failure) => failure.ref === null || !isTerminal(failure)) || stateOnly;
+  const readable = outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0;
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
-  const since = holdsSince ? (base < oldest ? oldest : base) : new Date(Date.parse(startedAt) - overlapMs).toISOString();
+  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : readable && base < oldest ? oldest : base;
 
   changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
@@ -234,6 +241,9 @@ const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemS
 /** The other names the service knows an actor by, as the field of a `Change`; nothing when there are none. */
 const aliasesOf = (source: { readonly actorAliases?: readonly string[] | undefined }): { readonly actorAliases?: readonly string[] } =>
   source.actorAliases === undefined || source.actorAliases.length === 0 ? {} : { actorAliases: [...source.actorAliases] };
+
+/** A failure no later read can undo: the item is gone, or lies outside the fleet. */
+const isTerminal = (failure: ReadFailure): boolean => failure.kind === "not-found" || failure.kind === "outside-fleet";
 
 const isFinal = (outcome: ChecksOutcome): boolean => outcome !== "pending";
 
