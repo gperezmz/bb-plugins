@@ -5,7 +5,7 @@ import { useDashboardApi } from "@/shared/client";
 import { messageOf } from "@/shared/errors";
 
 /** What is being asked to be removed: a credential or an account, by id. */
-export interface Asked {
+export interface PendingRemoval {
   readonly kind: "credential" | "account";
   readonly id: string;
 }
@@ -15,8 +15,8 @@ export interface AccountActions {
   readonly refusal: string | null;
   /** After a Remove or a Renew: the old token still works at the service. */
   readonly notice: RevokeNotice | null;
-  readonly asked: Asked | null;
-  ask(asked: Asked | null): void;
+  readonly asked: PendingRemoval | null;
+  ask(asked: PendingRemoval | null): void;
   showNotice(notice: RevokeNotice | null): void;
   makeDefault(accountId: string): Promise<void>;
   removeAssignment(scope: string): Promise<void>;
@@ -28,7 +28,7 @@ export function useAccountActions(refetch: () => Promise<void>): AccountActions 
   const api = useDashboardApi();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<RevokeNotice | null>(null);
-  const [asked, setAsked] = useState<Asked | null>(null);
+  const [asked, setAsked] = useState<PendingRemoval | null>(null);
 
   async function change<T extends { revoke?: RevokeNotice | null }>(call: () => Promise<Result<T>>): Promise<void> {
     setRefusal(null);
