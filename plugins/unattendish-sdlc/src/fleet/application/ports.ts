@@ -70,6 +70,12 @@ export interface HttpRequest {
    * `HttpError` of kind `outside-host`, whose message names no query and no token.
    */
   readonly stayUnder?: string;
+  /**
+   * The request reads one page of a list. A page whose last answer carried no `Link` to a next page is requested
+   * without a conditional header: a list that grew by a page since then can answer 304 for that unchanged last page,
+   * and the new page after it would never be found.
+   */
+  readonly list?: boolean;
 }
 
 export interface HttpResponse {

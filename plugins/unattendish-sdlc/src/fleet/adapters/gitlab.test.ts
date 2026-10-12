@@ -302,13 +302,13 @@ describe("the GitLab adapter: reviewers", () => {
     expect(outcome.events.some((event) => event.kind === "reviewed: changes requested" || event.kind === "reviewed: commented")).toBe(false);
   });
 
-  it("reads the same reviewers twice alike, the second time as a conditional request", async () => {
+  it("reads the same reviewers twice alike, the list fresh the second time", async () => {
     const { read, http } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "requested_changes" }])] } });
     const first = await read({ items: [watch("!4")] });
     http.drainRequests();
     const second = await read({ items: [watch("!4")] });
     expect(second.snapshots).toEqual(first.snapshots);
-    expect(http.drainRequests().filter((record) => record.path.endsWith("/reviewers")).map((record) => record.status)).toEqual([304]);
+    expect(http.drainRequests().filter((record) => record.path.endsWith("/reviewers")).map((record) => record.status)).toEqual([200]);
   });
 
   it("reads reviewers in a state-only read too, and gives an issue none", async () => {
@@ -644,7 +644,7 @@ describe("the GitLab adapter: requests", () => {
     expect(mounted.requests.every((r) => r.method === "GET" && r.body === "" && r.hasAuthorization)).toBe(true);
   });
 
-  it("answers a repeat read with conditional requests", async () => {
+  it("answers a repeat read of an item with conditional requests, and reads each list page that had no next link fresh", async () => {
     const { read, http } = await world({ [PATH]: { issues: [issue(1, { notes: [note(1, "x")] })], mergeRequests: [mr(2)] } });
     const request = { items: [watch("#1"), watch("!2")], watchedRefs: new Set(["#1", "!2"]), scanPartition: true };
     const first = await read(request);
@@ -653,7 +653,12 @@ describe("the GitLab adapter: requests", () => {
     expect(second).toEqual(first);
     const records = http.drainRequests();
     expect(records.length).toBeGreaterThan(5);
-    expect(records.filter((r) => r.status === 304).length).toBe(records.filter((r) => !r.path.endsWith("/personal_access_tokens/self")).length);
+    const objects = records.filter((r) => /\/(issues|merge_requests)\/\d+$|\/approvals$/.test(r.path));
+    expect(objects).toHaveLength(3);
+    expect(objects.every((r) => r.status === 304)).toBe(true);
+    const lists = records.filter((r) => !objects.includes(r) && !r.path.endsWith("/personal_access_tokens/self"));
+    expect(lists.length).toBeGreaterThan(5);
+    expect(lists.every((r) => r.status === 200)).toBe(true);
   });
 
   it("reports the token's expiry once per read, and a failure of that call is no failure of the read", async () => {

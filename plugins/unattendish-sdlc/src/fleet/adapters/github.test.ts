@@ -724,6 +724,16 @@ describe("GitHub adapter: lists over one page, linked as /repositories/{id}/", (
     expect(followed(server, "/issues/1/timeline").length + followed(server, "/issues/1/events").length).toBeGreaterThan(0);
   });
 
+  it("finds a page added after a full last page that the service would answer 304 for", async () => {
+    const events = Array.from({ length: 100 }, (_, index) => event(index + 1, 1, "labeled", { label: "bug" }));
+    const { read, fake } = await harness(repo({ issues: [issue(1)], events }));
+    expect((await read({ items: [1] })).snapshots[0]!.transitions).toEqual([]);
+    (fake.getState() as FakeGithubState).repos[REPO]!.events.push(event(101, 1, "closed"));
+    const outcome = await read({ items: [1] });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots[0]!.transitions).toEqual([{ kind: "closed", actor: "olivia", at: "2026-10-10T10:00:00.000Z", id: "github:event:101" }]);
+  });
+
   it("reads a pull request's review comments over 100 to the last page", async () => {
     const reviewComments = Array.from({ length: 150 }, (_, index) => reviewComment(index + 1, 2, { reviewId: 7 }));
     const { read, server } = await harness(repo({ issues: [pull(2)], reviews: [review(7, 2, "COMMENTED")], reviewComments }));
@@ -829,7 +839,7 @@ describe("GitHub adapter: only reads", () => {
 });
 
 describe("GitHub adapter: conditional requests", () => {
-  it("answers a repeat read from 304s that the service does not count", async () => {
+  it("answers a repeat read of an item from 304s that the service does not count, and reads each list page that had no next link fresh", async () => {
     const { read, http } = await harness(
       repo({
         issues: [pull(1, { labels: ["spec"], assignees: ["olivia"] })],
@@ -848,7 +858,12 @@ describe("GitHub adapter: conditional requests", () => {
     const secondRequests = http.drainRequests();
     expect(second).toEqual(first);
     expect(secondRequests).toHaveLength(firstRequests.length);
-    expect(secondRequests.every((request) => request.status === 304 && !request.counted)).toBe(true);
+    const itemReads = secondRequests.filter((request) => /\/(issues|pulls)\/1$/.test(request.path));
+    expect(itemReads).toHaveLength(2);
+    expect(itemReads.every((request) => request.status === 304 && !request.counted)).toBe(true);
+    const listReads = secondRequests.filter((request) => !itemReads.includes(request));
+    expect(listReads.length).toBeGreaterThan(0);
+    expect(listReads.every((request) => request.status === 200 && request.counted)).toBe(true);
   });
 
   it("sees a change made between two reads", async () => {

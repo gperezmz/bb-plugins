@@ -401,8 +401,8 @@ class GithubAdapter implements ServiceAdapter {
 
   // ---- requests ----
 
-  private get(reading: Reading, path: string, query?: Query): Promise<HttpResponse> {
-    return reading.http.request({ method: "GET", path, stayUnder: reading.stayUnder, ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
+  private get(reading: Reading, path: string, query?: Query, list = false): Promise<HttpResponse> {
+    return reading.http.request({ method: "GET", path, stayUnder: reading.stayUnder, ...(list ? { list } : {}), ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
   }
 
   /** Every entry of a list, page after page; a list longer than 10 pages is an error naming `what`. */
@@ -419,7 +419,7 @@ class GithubAdapter implements ServiceAdapter {
     let next: { path: string; query?: Query } | null = { path, query: { ...query, per_page: PAGE_SIZE } };
     for (let page = 0; next !== null; page += 1) {
       if (page >= MAX_PAGES) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
-      const response = await this.get(reading, next.path, next.query);
+      const response = await this.get(reading, next.path, next.query, true);
       const body = parse(what, wrapper, response.json);
       const list = body[key];
       if (!Array.isArray(list)) throw new ReadProblem(`${what} lacked ${key}`);
