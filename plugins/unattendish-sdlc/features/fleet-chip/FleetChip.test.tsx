@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { type ReactNode, useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
@@ -100,6 +101,31 @@ describe("a card link that navigated to this thread", () => {
     cleanup();
     await show(fleetCard());
     expect(sdk.navigate.openThreadPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens it after the thread view's own mount, which hides a compact drawer", async () => {
+    // bb's thread view hides its compact panel drawer in a mount effect, which React runs after its header's.
+    let drawerShown = false;
+    sdk.navigate.openThreadPanel.mockImplementationOnce(() => {
+      drawerShown = true;
+      return true;
+    });
+    function ThreadView({ children }: { children: ReactNode }) {
+      useEffect(() => {
+        drawerShown = false;
+      }, []);
+      return children;
+    }
+    requestFleetTab("thr_acme");
+    fake.api.threadFleet.mockResolvedValue({ kind: "manager", card: fleetCard() });
+    await act(async () => {
+      render(
+        <ThreadView>
+          <FleetChip threadId="thr_acme" projectId="proj_a" isCompactViewport />
+        </ThreadView>,
+      );
+    });
+    await waitFor(() => expect(drawerShown).toBe(true));
   });
 
   it("opens nothing when no link asked", async () => {

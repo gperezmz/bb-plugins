@@ -14,7 +14,7 @@ import { chipFace } from "./model";
 /**
  * The Fleet chip in a manager thread's header: the fleet's counts, its card on hover, the Fleet tab on a click.
  * It draws nothing for a thread that is no manager, and nothing while loading. A Fleets page link that
- * navigated here leaves a wish for the Fleet tab, which this takes once the header has mounted.
+ * navigated here leaves a wish for the Fleet tab, which this takes once the thread's view has mounted.
  */
 export function FleetChip({ threadId, isCompactViewport }: { threadId: string; projectId: string; isCompactViewport: boolean }) {
   const api = useDashboardApi();
@@ -22,7 +22,12 @@ export function FleetChip({ threadId, isCompactViewport }: { threadId: string; p
   const { data } = useLive(() => api.threadFleet({ threadId }), [api, threadId]);
 
   useEffect(() => {
-    if (takeFleetTab(threadId)) navigate.openThreadPanel({ actionId: FLEET_TAB_ACTION_ID, params: { threadId } });
+    // On a later task: bb's thread view hides its compact panel drawer in its own mount
+    // effect, which runs after this one, so an open made here would be hidden at once.
+    const later = setTimeout(() => {
+      if (takeFleetTab(threadId)) navigate.openThreadPanel({ actionId: FLEET_TAB_ACTION_ID, params: { threadId } });
+    });
+    return () => clearTimeout(later);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a wish is taken once per thread the header shows.
   }, [threadId]);
 
