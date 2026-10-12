@@ -88,7 +88,8 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     const before = prev?.items[id];
     const watched = watchedRefs.has(snapshot.ref);
     if (!stateOnly) changes.push(...snapshotChanges({ snapshot, before, watched, labels, startedAt, base, id }));
-    items[id] = nextState(snapshot, before);
+    // A closed item nobody watches is not read again: the partition listings name open items only.
+    if (watched || snapshot.open) items[id] = nextState(snapshot, before);
   }
 
   if (!stateOnly) {
@@ -137,9 +138,10 @@ export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, 
 
 /**
  * The items a poll must read again though the watched set no longer names
- * them: those the previous cursor held in the operator's partition with the
- * spec or ready label, so a label lost since is seen even when a listing no
- * longer shows the item.
+ * them: those the previous cursor held open, in the operator's partition,
+ * with the spec or ready label, so a label lost since is seen even when a
+ * listing no longer shows the item. A closed one is left alone, so every
+ * finished spec that keeps its label is not read on every poll.
  */
 export const partitionRevisit = (prev: SourceCursor | null, role: SourceRole, labels: FleetLabels, watchedRefs: ReadonlySet<string>): WatchedItem[] => {
   const head = `${role}:`;
@@ -147,7 +149,7 @@ export const partitionRevisit = (prev: SourceCursor | null, role: SourceRole, la
   for (const [id, state] of Object.entries(prev?.items ?? {})) {
     if (!id.startsWith(head)) continue;
     const ref = id.slice(head.length);
-    if (watchedRefs.has(ref) || !state.inPartition) continue;
+    if (watchedRefs.has(ref) || !state.inPartition || !state.open) continue;
     if (state.fleetLabels.includes(labels.spec) || state.fleetLabels.includes(labels.ready)) revisit.push({ role, ref, url: null });
   }
   return revisit;

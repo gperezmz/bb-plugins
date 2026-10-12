@@ -335,6 +335,19 @@ describe("partitionRevisit", () => {
     expect(partitionRevisit(prev, "tracker", labels, new Set())).toEqual([{ role: "tracker", ref: "ENG-1", url: null }]);
     expect(partitionRevisit(null, "forge", labels, new Set())).toEqual([]);
   });
+
+  it("leaves out a closed item", () => {
+    const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true, open: false }), "forge:#2": state({ fleetLabels: ["ready"], inPartition: true, open: false, merged: true }) });
+    expect(partitionRevisit(prev, "forge", labels, new Set())).toEqual([]);
+  });
+
+  it("is given no closed item by the cursor a read of it leaves, unless the item is watched", () => {
+    const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#2": state({ fleetLabels: ["spec"], inPartition: true }) });
+    const read = outcome({ snapshots: [snapshot({ ref: "#1", fleetLabels: ["spec"], inPartition: true, open: false }), snapshot({ ref: "#2", fleetLabels: ["spec"], inPartition: true, open: false })] });
+    const { nextCursor } = derive({ prev, outcome: read, watchedRefs: new Set(["#2"]) });
+    expect(Object.keys(nextCursor.items)).toEqual(["forge:#2"]);
+    expect(partitionRevisit(nextCursor, "forge", labels, new Set())).toEqual([]);
+  });
 });
 
 describe("unreadableKind", () => {

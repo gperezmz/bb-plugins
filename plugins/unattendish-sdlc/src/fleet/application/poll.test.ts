@@ -105,6 +105,21 @@ describe("what a poll wakes the manager for", () => {
     await poll(w);
     expect(w.adapters.github.reads[1]).toMatchObject({ scanPartition: true, items: [{ role: "forge", ref: "#12", url: null }] });
   });
+
+  it("stops reading a labelled partition item again once a read finds it closed", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"], inPartition: true })] }));
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"], inPartition: true, open: false })] }));
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    expect(w.adapters.github.reads[2]!.items).toEqual([]);
+    expect(w.store.getCursor(REPO_KEY, "forge")!.items).toEqual({});
+  });
 });
 
 describe("what is dropped as the fleet's own (AC5)", () => {
