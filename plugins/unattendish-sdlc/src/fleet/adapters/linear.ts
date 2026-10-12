@@ -65,7 +65,7 @@ import {
   type HistoryEntry,
   type Person,
 } from "./linear-graphql";
-import { isFatal, ReadProblem } from "./service-support";
+import { failureOf, isFatal, ReadProblem } from "./service-support";
 
 const CLOSED_TYPES = ["completed", "canceled", "duplicate"];
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
@@ -148,7 +148,7 @@ class LinearAdapter implements ServiceAdapter {
         events.push(...result.events);
       } catch (error) {
         if (isFatal(error) || request.signal.aborted) throw error;
-        failures.push(error instanceof NotFoundProblem ? { ref, reason: failureReason(error), kind: "not-found" } : { ref, reason: failureReason(error) });
+        failures.push(error instanceof NotFoundProblem ? { ref, reason: failureReason(error), kind: "not-found" } : failureOf(ref, error, failureReason(error)));
       }
     };
 
@@ -260,7 +260,7 @@ class LinearAdapter implements ServiceAdapter {
       }
     } catch (error) {
       if (isFatal(error) || request.signal.aborted) throw error;
-      failures.push({ ref: null, reason: failureReason(error) });
+      failures.push(failureOf(null, error, failureReason(error)));
       return listed;
     }
   }

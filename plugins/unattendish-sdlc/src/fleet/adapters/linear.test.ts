@@ -433,7 +433,25 @@ describe("a read that fails", () => {
     const { read } = await setup({ issues: [] });
     const outcome = await read(["ENG-1"], { http: forbidden });
     expect(outcome.snapshots).toEqual([]);
-    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String) });
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String), kind: "forbidden" });
+  });
+
+  it.each([["server", 502], ["network", undefined]] as const)("gives the kind unreachable to an item and a listing whose read ends in a %s error", async (errorKind, status) => {
+    const down: HttpSession = {
+      service: "linear",
+      baseUrl: "http://127.0.0.1:1/graphql",
+      request: async (): Promise<HttpResponse> => {
+        throw new HttpError(errorKind, "POST / failed", status);
+      },
+      paginate: async () => ({ items: [], truncated: false }),
+      drainRequests: () => [],
+      expiresAt: () => null,
+      noteExpiresAt: () => undefined,
+    };
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: down });
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String), kind: "unreachable" });
+    expect(outcome.failures).toContainEqual({ ref: null, reason: expect.any(String), kind: "unreachable" });
   });
 
   it("rethrows a rate-limit error found in a GraphQL response", async () => {

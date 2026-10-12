@@ -33,7 +33,7 @@ import { HttpError, type ServiceAdapter, type ReadRequest } from "../application
 import type { ActivityEvent, FleetLabels, ItemSnapshot, ReadFailure, ReadOutcome, Transition, UpdatedItem, WatchedItem } from "../domain/model";
 import { lastLine } from "../domain/text";
 import { documentText, isDocument } from "./jira-adf";
-import { isFatal, ReadProblem } from "./service-support";
+import { failureOf, isFatal, ReadProblem } from "./service-support";
 
 const SEARCH = "/rest/api/3/search/jql";
 const PAGE_SIZE = 100;
@@ -152,7 +152,7 @@ class Reading {
   private settle(error: unknown, ref: string | null): void {
     if (isFatal(error)) throw error;
     if (this.request.signal.aborted) throw error;
-    this.failures.push(ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) });
+    this.failures.push(failureOf(ref, error, reasonOf(error)));
   }
 
   private async get(path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown> {

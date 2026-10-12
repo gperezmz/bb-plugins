@@ -431,7 +431,7 @@ describe("the Jira adapter's updated listing", () => {
     const { read, watch } = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 500 }] } });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots).toHaveLength(1);
-    expect(out.failures).toEqual([{ ref: null, reason: "GET /rest/api/3/search/jql answered 500" }]);
+    expect(out.failures).toEqual([{ ref: null, reason: "GET /rest/api/3/search/jql answered 500", kind: "unreachable" }]);
   });
 });
 
@@ -493,7 +493,25 @@ describe("the Jira adapter's failures", () => {
   it("reports a listing the token may not read (403) as a listing failure, not as a refused credential", async () => {
     const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
     const outcome = await read();
-    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String), kind: "forbidden" }]);
+  });
+
+  it("gives the kind forbidden to an item the token may not read (403), and unreachable to one met with a 5xx", async () => {
+    const { read, watch } = await world({
+      issues: [issue("PROJ-1"), issue("PROJ-2"), issue("PROJ-3")],
+      settings: { pageSize: null, etag: false, failures: [{ pathContains: "/issue/PROJ-1", status: 403 }, { pathContains: "/issue/PROJ-2", status: 503 }] },
+    });
+    const out = await read(watch("PROJ-1", "PROJ-2", "PROJ-3"));
+    expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-3"]);
+    expect(out.failures).toEqual([
+      { ref: "PROJ-1", reason: expect.any(String), kind: "forbidden" },
+      { ref: "PROJ-2", reason: expect.any(String), kind: "unreachable" },
+    ]);
+  });
+
+  it("gives the kind unreachable to a listing met with a 5xx", async () => {
+    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 500 }] } });
+    expect((await read()).failures).toContainEqual({ ref: null, reason: expect.any(String), kind: "unreachable" });
   });
 
   it("ends the read when it is aborted, rather than reporting every item failed", async () => {
