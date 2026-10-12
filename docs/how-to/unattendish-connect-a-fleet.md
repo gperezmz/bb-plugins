@@ -120,7 +120,7 @@ Under the reasons, `unreadable manifest row` names a row the contract cannot rea
 
 ### What `credential-refused` says
 
-The text names the credential, such as `GitHub · yuser for acme`, and one of eight causes; [how the plugin tells them apart](../explanation/unattendish-polling.md#credentials) is in the explanation. The fleet is watched again on the first poll in which a read succeeds, so fix the cause and wait for the next poll.
+The text names the credential, such as `GitHub · yuser for acme`, and one of eight causes; [how the plugin tells them apart](../explanation/unattendish-polling.md#accounts-and-credentials) is in the explanation. The fleet is watched again on the first poll in which a read succeeds, so fix the cause and wait for the next poll.
 
 | Text | Do |
 |---|---|
