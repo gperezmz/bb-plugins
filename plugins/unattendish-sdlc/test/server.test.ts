@@ -1,11 +1,12 @@
 // The plugin's entry, loaded against the SDK's fake host and a fake GitHub on
 // a loopback port: register through the command line, poll through the
 // service, and read what reached the manager's thread.
+import { getEventListeners } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
 import { SqliteStore } from "../src/fleet/adapters/store";
 import { createFakeGithub, type FakeGithubState } from "./fakes/github";
@@ -91,6 +92,20 @@ describe("the plugin's entry", () => {
     expect(harness.registrations.services.map((s) => s.name)).toEqual(["poll-fleets"]);
     expect(Object.keys(harness.registrations.settingsDescriptors).sort()).toEqual(["credentials", "tokens"]);
     expect(harness.registrations.settingsDescriptors.tokens).toMatchObject({ secret: true });
+  });
+
+  it("leaves no abort listener behind on the service's signal from the ticks that have passed", async () => {
+    const { harness } = await load({});
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const service = harness.runService("poll-fleets");
+      for (let tick = 0; tick < 6; tick += 1) await vi.advanceTimersByTimeAsync(5_000);
+      expect(getEventListeners(service.controller.signal, "abort")).toHaveLength(1);
+      service.controller.abort();
+      await service.done;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("registers a manager, polls the forge, wakes the manager once, and sends nothing but reads", async () => {

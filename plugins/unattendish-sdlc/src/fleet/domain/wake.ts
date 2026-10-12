@@ -3,7 +3,8 @@
 // operator writes. Nothing written on a service reaches it: it is built from a
 // closed list of change kinds, a reference, a login that passed a strict test,
 // and a URL that passed another.
-import type { Change } from "./model";
+import type { Change, RefusedWhy } from "./model";
+import { refusedText } from "./registration";
 
 /** The first words of a wake that carries changes. */
 export const WAKE_MOVED = "Moved on the tracker or the forge since";
@@ -19,8 +20,8 @@ export interface WakeInput {
   readonly catchUpMs: number | null;
   /** When the first change was gathered while no manager held the fleet. */
   readonly heldSince: string | null;
-  /** Since when the fleet has not been watched, and the credential prefix that failed. */
-  readonly notWatched: { readonly since: string; readonly prefix: string } | null;
+  /** Since when the fleet has not been watched, the credential prefix whose reads failed, and how they failed. */
+  readonly notWatched: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
 }
 
 const ACTOR = /^[A-Za-z0-9][A-Za-z0-9._@:+-]{0,99}$/;
@@ -62,7 +63,7 @@ export const formatWake = (input: WakeInput): string => {
   }
   if (input.heldSince !== null) lines.push(`Gathered while no manager held the fleet, since ${input.heldSince}.`);
   if (input.catchUpMs !== null) lines.push(`Catch-up: the plugin was away for ${formatDuration(input.catchUpMs)}.`);
-  if (input.notWatched !== null) lines.push(`Not watched since ${input.notWatched.since}: the credential for ${oneLine(input.notWatched.prefix)} was refused by the service.`);
+  if (input.notWatched !== null) lines.push(`Not watched since ${input.notWatched.since}: ${refusedText(oneLine(input.notWatched.prefix), input.notWatched.why)}.`);
   return lines.join("\n");
 };
 

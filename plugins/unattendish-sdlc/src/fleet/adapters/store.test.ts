@@ -53,6 +53,20 @@ describe("SqliteStore on a database", () => {
     db.close();
   });
 
+  it("reads a refusal and a not-watched line stored before their why was kept as a refused credential", () => {
+    const before = MIGRATIONS.indexOf("ALTER TABLE fleets ADD COLUMN refused_why TEXT");
+    const db = migrated(new Database(":memory:"), before);
+    db.prepare("INSERT INTO fleets (repo_id, registration, refused_since, refused_prefix) VALUES ('r', ?, '2026-10-12T09:00:00.000Z', 'github.com/org')").run(JSON.stringify(registration));
+    db.prepare(
+      "INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, since, not_watched_since, not_watched_prefix) VALUES ('r', 'not-watched', 'thr_manager', 'msg_1', '2026-10-12T10:00:00.000Z', '2026-10-12T09:00:00.000Z', '2026-10-12T09:00:00.000Z', 'github.com/org')",
+    ).run();
+    migrated(db);
+    const store = new SqliteStore(db);
+    expect(store.getFleet("r")).toMatchObject({ refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" }, unreadablePolls: 0 });
+    expect(store.openWake("r")!.notWatched).toEqual({ since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "refused" });
+    db.close();
+  });
+
   it("runs every migration as one statement", () => {
     const db = new Database(":memory:");
     for (const statement of MIGRATIONS) expect(() => db.prepare(statement).run()).not.toThrow();

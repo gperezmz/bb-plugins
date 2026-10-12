@@ -57,7 +57,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
         expiresAt: fleet.expiries[resolved.credential.prefix] ?? null,
         sharesAgentRateLimit: resolved.credential.auth !== "token",
       }));
-    const notWatched = fleet.refused === null ? watching.notWatched : [...watching.notWatched, credentialRefused(fleet.refused.prefix)];
+    const notWatched = fleet.refused === null ? watching.notWatched : [...watching.notWatched, credentialRefused(fleet.refused.prefix, fleet.refused.why)];
     out.push({
       repo: formatRepo(registration.repo),
       tracker: formatTracker(registration.tracker),

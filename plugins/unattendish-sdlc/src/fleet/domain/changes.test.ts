@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byTimeThenKey, deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -192,6 +192,36 @@ describe("checks", () => {
   });
 });
 
+describe("reviewers' states kept on the item", () => {
+  const reviewed = (reviewers: ItemSnapshot["reviewers"]) => snapshot({ ref: "!4", url: "https://gitlab.com/org/repo/-/merge_requests/4", reviewers });
+
+  it("reports a reviewer whose state is new or changed on a watched item, keyed by item, state, reviewer and since", () => {
+    const prev = cursor({ "forge:!4": state({ reviewers: { carol: "commented", dave: "approved" } }) });
+    const read = outcome({ snapshots: [reviewed([{ actor: "carol", state: "changes requested" }, { actor: "dave", state: "approved" }, { actor: "erin", state: "commented" }])] });
+    const { changes, nextCursor } = derive({ prev, outcome: read, watchedRefs: new Set(["!4"]) });
+    expect(changes.map((change) => [change.kind, change.actor, change.key])).toEqual([
+      ["reviewed: changes requested", "carol", "forge:!4|reviewed: changes requested|carol|since:2026-10-12T09:00:00.000Z"],
+      ["reviewed: commented", "erin", "forge:!4|reviewed: commented|erin|since:2026-10-12T09:00:00.000Z"],
+    ]);
+    expect(changes[0]).toMatchObject({ ref: "!4", url: "https://gitlab.com/org/repo/-/merge_requests/4", label: null, at: startedAt, lastLine: null });
+    expect(nextCursor.items["forge:!4"]!.reviewers).toEqual({ carol: "changes requested", dave: "approved", erin: "commented" });
+  });
+
+  it("takes first sight of the item, or of reviewers under a cursor that kept none, as a silent baseline", () => {
+    const read = outcome({ snapshots: [reviewed([{ actor: "carol", state: "approved" }])] });
+    const first = derive({ outcome: read, watchedRefs: new Set(["!4"]) });
+    expect(first.changes).toEqual([]);
+    expect(first.nextCursor.items["forge:!4"]!.reviewers).toEqual({ carol: "approved" });
+    expect(derive({ prev: cursor({ "forge:!4": state() }), outcome: read, watchedRefs: new Set(["!4"]) }).changes).toEqual([]);
+  });
+
+  it("reports nothing for an unwatched item, and keeps no reviewers for a service that gives none", () => {
+    const prev = cursor({ "forge:!4": state({ reviewers: {} }) });
+    expect(derive({ prev, outcome: outcome({ snapshots: [reviewed([{ actor: "carol", state: "approved" }])] }) }).changes).toEqual([]);
+    expect("reviewers" in derive({ outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.items["forge:#1"]!).toBe(false);
+  });
+});
+
 describe("failures", () => {
   it("leaves a failed item as it was, gives no change for it, and holds since", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#2": state() });
@@ -212,22 +242,38 @@ describe("failures", () => {
     expect(derived.nextCursor.since).toBe(firstSince);
   });
 
-  it("does not hold since for an item the service says does not exist, but does for any other failure of one item", () => {
+  it("does not hold since for an item the service says does not exist or that lies outside the fleet, but does for any other failure of one item", () => {
     const prev = cursor({});
     const gone = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }] }) });
     expect(gone.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    const moved = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "moved to another repository", kind: "outside-fleet" }] }) });
+    expect(moved.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    for (const kind of ["forbidden", "unreachable"] as const) {
+      expect(derive({ prev, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#9", reason: "x", kind }] }) }).nextCursor.since).toBe(prev.since);
+    }
     const other = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }, { ref: "#8", reason: "server error" }] }) });
     expect(other.nextCursor.since).toBe(prev.since);
     const listing = derive({ prev, outcome: outcome({ failures: [{ ref: null, reason: "listing failed", kind: "not-found" }] }) });
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start", () => {
+  it("holds since no further back than seven days before the poll's start while the rest of the source reads", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
-    const held = derive({ prev: old, outcome: outcome({ failures: [{ ref: "#8", reason: "server error" }] }) });
+    const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    const listed = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: null, reason: "x" }] }) });
+    expect(listed.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("holds since with no limit while nothing of the source reads", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    for (const kind of ["forbidden", "unreachable", undefined] as const) {
+      const failures = [{ ref: null, reason: "the listing failed", ...(kind === undefined ? {} : { kind }) }, { ref: "#8", reason: "x", ...(kind === undefined ? {} : { kind }) }];
+      expect(derive({ prev: old, outcome: outcome({ failures }) }).nextCursor.since).toBe(old.since);
+    }
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe(old.since);
   });
 
   it("moves since to the poll's start less the overlap otherwise", () => {
@@ -237,6 +283,42 @@ describe("failures", () => {
 });
 
 describe("stateOnly", () => {
+  it("takes as the baseline of an item the cursor does not know its state before the transitions listed, undone latest first", () => {
+    const read = outcome({
+      snapshots: [
+        snapshot({
+          ref: "#9",
+          open: false,
+          merged: true,
+          fleetLabels: ["ready", "spec"],
+          transitions: [
+            transition({ kind: "unlabelled", label: "spec", id: "u1", at: "2026-10-12T09:10:00.000Z" }),
+            transition({ kind: "labelled", label: "spec", id: "l0", at: "2026-10-12T09:20:00.000Z" }),
+            transition({ kind: "labelled", label: "ready", id: "l1", at: "2026-10-12T09:30:00.000Z" }),
+            transition({ kind: "merged", id: "m1", at: "2026-10-12T09:40:00.000Z" }),
+          ],
+        }),
+        snapshot({ ref: "#4", open: true, fleetLabels: [], transitions: [transition({ kind: "closed", id: "c1" }), transition({ kind: "reopened", id: "r1", at: "2026-10-12T09:50:00.000Z" })] }),
+        snapshot({ ref: "#5", open: true, fleetLabels: [], transitions: [transition({ kind: "reopened", id: "r2" })] }),
+      ],
+    });
+    const prev = cursor({ "forge:#7": state({ fleetLabels: ["ready"] }) });
+    const { nextCursor, changes } = derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#9", "#4", "#5", "#7"]) });
+    expect(changes).toEqual([]);
+    expect(nextCursor.items["forge:#9"]).toEqual(state({ open: true, merged: false, fleetLabels: ["spec"] }));
+    expect(nextCursor.items["forge:#4"]).toEqual(state({ open: true }));
+    expect(nextCursor.items["forge:#5"]).toEqual(state({ open: false }));
+
+    const later = derive({ prev: nextCursor, outcome: outcome({ snapshots: [read.snapshots[0]!] }), watchedRefs: new Set(["#9"]) });
+    expect(later.changes.map((change) => change.key)).toEqual(["forge:#9|labelled:ready|l1", "forge:#9|merged|m1"]);
+  });
+
+  it("keeps the state an item the cursor knows reads as, whatever its transitions", () => {
+    const prev = cursor({ "forge:#9": state() });
+    const read = outcome({ snapshots: [snapshot({ ref: "#9", fleetLabels: ["ready"], transitions: [transition({ label: "ready" })] })] });
+    expect(derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#9"]) }).nextCursor.items["forge:#9"]).toEqual(state({ fleetLabels: ["ready"] }));
+  });
+
   it("records state and reports nothing, keeping what it did not read and holding since", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#9": state() });
     const read = outcome({
@@ -318,6 +400,38 @@ describe("partitionRevisit", () => {
     ]);
     expect(partitionRevisit(prev, "tracker", labels, new Set())).toEqual([{ role: "tracker", ref: "ENG-1", url: null }]);
     expect(partitionRevisit(null, "forge", labels, new Set())).toEqual([]);
+  });
+
+  it("leaves out a closed item", () => {
+    const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true, open: false }), "forge:#2": state({ fleetLabels: ["ready"], inPartition: true, open: false, merged: true }) });
+    expect(partitionRevisit(prev, "forge", labels, new Set())).toEqual([]);
+  });
+
+  it("is given no closed item by the cursor a read of it leaves, unless the item is watched", () => {
+    const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#2": state({ fleetLabels: ["spec"], inPartition: true }) });
+    const read = outcome({ snapshots: [snapshot({ ref: "#1", fleetLabels: ["spec"], inPartition: true, open: false }), snapshot({ ref: "#2", fleetLabels: ["spec"], inPartition: true, open: false })] });
+    const { nextCursor } = derive({ prev, outcome: read, watchedRefs: new Set(["#2"]) });
+    expect(Object.keys(nextCursor.items)).toEqual(["forge:#2"]);
+    expect(partitionRevisit(nextCursor, "forge", labels, new Set())).toEqual([]);
+  });
+});
+
+describe("unreadableKind", () => {
+  const forbidden = { ref: null, reason: "403", kind: "forbidden" as const };
+  const unreachable = { ref: "#1", reason: "no answer", kind: "unreachable" as const };
+
+  it("says forbidden when any failure is, else unreachable, when nothing but those failures came back", () => {
+    expect(unreadableKind(outcome({ failures: [unreachable, forbidden] }))).toBe("forbidden");
+    expect(unreadableKind(outcome({ failures: [unreachable] }))).toBe("unreachable");
+  });
+
+  it("is null when anything came back, when there is no failure, or when a failure is of another kind", () => {
+    expect(unreadableKind(outcome())).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], snapshots: [snapshot()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], events: [event()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden, { ref: "#3", reason: "gone", kind: "not-found" }] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [unreachable, { ref: null, reason: "field missing" }] }))).toBeNull();
   });
 });
 

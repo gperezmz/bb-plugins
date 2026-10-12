@@ -30,8 +30,10 @@ export async function pollDue(deps: PollDeps, queue: SerialQueue): Promise<void>
 
 /**
  * The manager's turn ended: reads the state of the items its manifest now
- * names, for every fleet it holds, so a change between now and the next poll
- * is a change. Each read runs behind other work on its fleet.
+ * names and the cursor does not know, for every fleet it holds and no other,
+ * so a change between now and the next poll is a change. The baseline is the
+ * state before the transitions the read lists, so what the turn itself did to
+ * an item is reported too. Each read runs behind other work on its fleet.
  */
 export async function refreshFleetsOf(deps: PollDeps, queue: SerialQueue, threadId: string): Promise<void> {
   const held = deps.store.listFleets().filter((fleet) => fleet.registration.managerThreadId === threadId);

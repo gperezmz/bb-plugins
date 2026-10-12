@@ -82,6 +82,35 @@ describe("what a poll wakes the manager for", () => {
     expect(sentText(w)).toContain("#9 merged by carol");
   });
 
+  it("wakes once each for an item the manager names, labels ready and merges in one turn (AC5)", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inFlight: [inFlightRow(8, 9)] }));
+    w.clock.advance(30_000);
+    const turn = snapshot(9, {
+      url: pullUrl(9),
+      open: false,
+      merged: true,
+      fleetLabels: ["status:ready"],
+      transitions: [
+        { kind: "labelled", label: "status:ready", actor: "olivia", at: "2026-10-12T10:00:10.000Z", id: "l1" },
+        { kind: "merged", actor: "carol", at: "2026-10-12T10:00:20.000Z", id: "m1" },
+      ],
+    });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(8), turn] }));
+    await poll(w, { stateOnly: true });
+    expect(w.channel.sent).toEqual([]);
+    for (let i = 0; i < 2; i += 1) {
+      w.clock.advance(120_000);
+      w.adapters.github.queue(outcome({ snapshots: [snapshot(8), turn] }));
+      await poll(w);
+    }
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w).split("\n").slice(1)).toEqual([`#9 labelled status:ready by olivia ${pullUrl(9)}`, `#9 merged by carol ${pullUrl(9)}`]);
+  });
+
   it("wakes when an item in the operator's partition gains the ready label, once (AC4, AC5)", async () => {
     const w = world();
     await start(w, manifest());
@@ -104,6 +133,21 @@ describe("what a poll wakes the manager for", () => {
     w.adapters.github.queue(outcome());
     await poll(w);
     expect(w.adapters.github.reads[1]).toMatchObject({ scanPartition: true, items: [{ role: "forge", ref: "#12", url: null }] });
+  });
+
+  it("stops reading a labelled partition item again once a read finds it closed", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"], inPartition: true })] }));
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"], inPartition: true, open: false })] }));
+    await poll(w);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    expect(w.adapters.github.reads[2]!.items).toEqual([]);
+    expect(w.store.getCursor(REPO_KEY, "forge")!.items).toEqual({});
   });
 });
 
@@ -264,6 +308,42 @@ describe("a queued wake keeps what it says (AC7, AC12)", () => {
     expect(text).toContain("Not watched since");
     expect(w.store.openWake(REPO_KEY)).toMatchObject({ kind: "changes" });
   });
+
+  it("keeps its catch-up, held and not-watched lines when a later poll's changes are added to it", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await linearStart(w);
+    await poll(w);
+    w.threads.states.set(MANAGER, "archived");
+    w.clock.advance(120_000);
+    w.adapters.linear.queue(trackerChange("l1", "alice"));
+    expect(await poll(w)).toMatchObject({ held: 1 });
+    w.clock.advance(20 * 60_000);
+    w.threads.states.set("thr_next", "live");
+    await registerFleet(w.register, "thr_next", args({ tracker: "linear:ENG" }));
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l1", "alice"));
+    expect(await poll(w)).toMatchObject({ delivery: "queued" });
+    const closing = w.channel.queue.get("q1")!.text.split("\n").slice(2);
+    expect(closing).toEqual([
+      "Gathered while no manager held the fleet, since 2026-10-12T10:02:00.000Z.",
+      "Catch-up: the plugin was away for 20m.",
+      "Not watched since 2026-10-12T10:22:00.000Z: the credential for github.com/org was refused by the service.",
+    ]);
+
+    w.clock.advance(120_000);
+    w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+    w.adapters.linear.queue(trackerChange("l2", "bob"));
+    expect(await poll(w)).toMatchObject({ delivery: "amended" });
+    const text = w.channel.queue.get("q1")!.text.split("\n");
+    expect(text[2]).toMatch(/^ENG-1 commented by bob /);
+    expect(text.slice(3)).toEqual(closing);
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({
+      catchUpMs: 20 * 60_000,
+      heldSince: "2026-10-12T10:02:00.000Z",
+      notWatched: { since: "2026-10-12T10:22:00.000Z", prefix: "github.com/org", why: "refused" },
+    });
+  });
 });
 
 describe("an amendment that cannot be made (AC7, AC8)", () => {
@@ -342,6 +422,41 @@ describe("no change is lost (AC8)", () => {
     expect(await poll(w)).toMatchObject({ delivery: "sent", woke: 1 });
     expect(w.adapters.github.reads[1]!.since).toBe(w.adapters.github.reads[0]!.since);
     expect(w.store.getCursor(REPO_KEY, "forge")).not.toBeNull();
+  });
+
+  it("keeps the catch-up line of a wake bb refused for the wake it next accepts, and only that one", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+    await poll(w);
+    w.clock.advance(20 * 60_000);
+    w.channel.mode = "refuse";
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    expect(await poll(w)).toMatchObject({ delivery: "refused" });
+    w.channel.mode = "idle";
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    expect(await poll(w)).toMatchObject({ delivery: "sent", woke: 1 });
+    expect(sentText(w)).toContain("Catch-up: the plugin was away for 20m.");
+    expect(w.store.getFleet(REPO_KEY)!.pendingCatchUpMs).toBeNull();
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7)] }));
+    await poll(w);
+    expect(sentText(w, 1)).not.toContain("Catch-up");
+  });
+
+  it("reads an event at exactly the cursor's time again, and does not wake for it twice", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const atCursor = event("c1", 7, { at: "2026-10-12T09:59:00.000Z" });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [atCursor] }));
+    expect(await poll(w)).toMatchObject({ woke: 1 });
+    expect(w.store.getCursor(REPO_KEY, "forge")!.since).toBe(atCursor.at);
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [atCursor] }));
+    expect(await poll(w)).toMatchObject({ woke: 0, delivery: "none" });
+    expect(w.adapters.github.reads[1]!.since).toBe(atCursor.at);
+    expect(w.channel.sent).toHaveLength(1);
   });
 
   it("does not send a change twice once it was woken", async () => {
@@ -498,8 +613,11 @@ describe("a fleet with no manager (AC2)", () => {
     w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
     expect(await poll(w)).toMatchObject({ woke: 1, delivery: "sent" });
     expect(w.channel.sent[0]).toMatchObject({ threadId: "thr_next" });
-    expect(sentText(w)).toContain("Gathered while no manager held the fleet, since");
-    expect(sentText(w).split("\n").filter((line) => line.startsWith("#7 "))).toHaveLength(1);
+    expect(sentText(w).split("\n")).toEqual([
+      "Moved on the tracker or the forge since 2026-10-12 10:00 UTC:",
+      `#7 commented by alice ${issueUrl(7)}#issuecomment-c1`,
+      "Gathered while no manager held the fleet, since 2026-10-12T10:00:00.000Z.",
+    ]);
     expect(w.store.getFleet(REPO_KEY)!.heldSince).toBeNull();
   });
 
@@ -570,6 +688,66 @@ describe("credentials (AC12)", () => {
     w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
     await poll(w);
     expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]).toMatchObject({ watched: true, notWatchedSince: null });
+  });
+});
+
+describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
+  const forbidden = outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "#7 answered 403", kind: "forbidden" }] });
+  const unreachable = outcome({ failures: [{ ref: null, reason: "the listing got no answer", kind: "unreachable" }] });
+  const statusOf = async (w: World) => (await fleetStatus({ ...w.register, clock: w.clock }))[0]!;
+  const pollWith = async (w: World, next: Parameters<World["adapters"]["github"]["queue"]>[0]) => {
+    w.adapters.github.queue(next);
+    await poll(w);
+    w.clock.advance(120_000);
+  };
+
+  it("is not watched after three polls in a row forbidden, tells the manager once, and is watched again after a poll that reads", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatchedSince: null });
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w)).toBe(
+      "Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.\n" +
+        "Not watched since 2026-10-12T10:04:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
+    );
+    expect(await statusOf(w)).toMatchObject({
+      watched: false,
+      notWatchedSince: "2026-10-12T10:04:00.000Z",
+      notWatched: [{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }],
+    });
+    await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0 });
+  });
+
+  it("says the service did not answer when no read got an answer, and counts the polls in a row only", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, unreachable);
+    await pollWith(w, unreachable);
+    await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
+    await pollWith(w, unreachable);
+    await pollWith(w, new HttpError("network", "GET /x got no answer"));
+    expect(w.channel.sent).toEqual([]);
+    await pollWith(w, unreachable);
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:10:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
+  });
+
+  it("counts nothing for a read that gave back anything, or failed some other way", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 4; i += 1) {
+      await pollWith(w, outcome({ snapshots: [snapshot(7)], failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }] }));
+      await pollWith(w, outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "a field is missing" }] }));
+    }
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
   });
 });
 

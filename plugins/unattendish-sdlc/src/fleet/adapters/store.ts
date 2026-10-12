@@ -13,7 +13,7 @@ import type {
   StoredWake,
   WakeKind,
 } from "../application/ports";
-import type { Change, ChangeKind, Disposition, NotWatched, Registration, SourceCursor, SourceRole } from "../domain/model";
+import type { Change, ChangeKind, Disposition, NotWatched, RefusedWhy, Registration, SourceCursor, SourceRole } from "../domain/model";
 import { repoId } from "../domain/identity";
 
 /** Entries a ledger query returns when it names no limit. */
@@ -109,6 +109,10 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS wakes_pruning ON wakes (queued_at)`,
   `ALTER TABLE wakes ADD COLUMN not_watched_since TEXT`,
   `ALTER TABLE wakes ADD COLUMN not_watched_prefix TEXT`,
+  `ALTER TABLE fleets ADD COLUMN refused_why TEXT`,
+  `ALTER TABLE fleets ADD COLUMN unreadable_polls INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE wakes ADD COLUMN not_watched_why TEXT`,
+  `ALTER TABLE fleets ADD COLUMN pending_catch_up_ms INTEGER`,
 ];
 
 interface FleetRow {
@@ -119,6 +123,10 @@ interface FleetRow {
   refused_since: string | null;
   refused_prefix: string | null;
   refused_announced: number;
+  /** Null on a row written before the column existed, when only a 401 counted as refused. */
+  refused_why: RefusedWhy | null;
+  unreadable_polls: number;
+  pending_catch_up_ms: number | null;
   unreadable_rows: string;
   outside_links: string;
   expiries: string;
@@ -168,6 +176,8 @@ interface WakeRow {
   held_since: string | null;
   not_watched_since: string | null;
   not_watched_prefix: string | null;
+  /** Null on a row written before the column existed, when only a 401 counted as refused. */
+  not_watched_why: RefusedWhy | null;
 }
 
 const DONE_DISPOSITION = { woke: "wake", echo: "echo", "out-of-scope": "out-of-scope", held: "held" } as const;
@@ -176,7 +186,12 @@ const toFleet = (row: FleetRow): StoredFleet => ({
   registration: { ...(JSON.parse(row.registration) as Registration), intervalMs: row.interval_ms },
   lastPolledAt: row.last_polled_at,
   notWatched: JSON.parse(row.not_watched) as NotWatched[],
-  refused: row.refused_since === null || row.refused_prefix === null ? null : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1 },
+  refused:
+    row.refused_since === null || row.refused_prefix === null
+      ? null
+      : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" },
+  unreadablePolls: row.unreadable_polls,
+  pendingCatchUpMs: row.pending_catch_up_ms,
   unreadableRows: JSON.parse(row.unreadable_rows) as StoredFleet["unreadableRows"],
   outsideLinks: JSON.parse(row.outside_links) as StoredFleet["outsideLinks"],
   expiries: JSON.parse(row.expiries) as StoredFleet["expiries"],
@@ -222,7 +237,10 @@ const toWake = (row: WakeRow): StoredWake => ({
   since: row.since,
   catchUpMs: row.catch_up_ms,
   heldSince: row.held_since,
-  notWatched: row.not_watched_since === null || row.not_watched_prefix === null ? null : { since: row.not_watched_since, prefix: row.not_watched_prefix },
+  notWatched:
+    row.not_watched_since === null || row.not_watched_prefix === null
+      ? null
+      : { since: row.not_watched_since, prefix: row.not_watched_prefix, why: row.not_watched_why ?? "refused" },
 });
 
 const toPoll = (row: PollRow): PollRecord => ({
@@ -289,7 +307,7 @@ export class SqliteStore implements Store {
       this.db
         .prepare(
           `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?,
-             refused_since = ?, refused_prefix = ?, refused_announced = ?
+             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?, pending_catch_up_ms = ?
            WHERE repo_id = ?`,
         )
         .run(
@@ -302,6 +320,9 @@ export class SqliteStore implements Store {
           refused?.since ?? null,
           refused?.prefix ?? null,
           announced ? 1 : 0,
+          refused?.why ?? null,
+          state.unreadablePolls,
+          state.pendingCatchUpMs,
           repo,
         );
     })();
@@ -374,10 +395,23 @@ export class SqliteStore implements Store {
     const dispatchedAt = wake.dispatchedAt ?? null;
     const result = this.db
       .prepare(
-        `INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, dispatched_at, since, catch_up_ms, held_since, not_watched_since, not_watched_prefix)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, dispatched_at, since, catch_up_ms, held_since, not_watched_since, not_watched_prefix, not_watched_why)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(repo, wake.kind, wake.threadId, wake.queuedMessageId, wake.queuedAt, dispatchedAt, wake.since, wake.catchUpMs, wake.heldSince, wake.notWatched?.since ?? null, wake.notWatched?.prefix ?? null);
+      .run(
+        repo,
+        wake.kind,
+        wake.threadId,
+        wake.queuedMessageId,
+        wake.queuedAt,
+        dispatchedAt,
+        wake.since,
+        wake.catchUpMs,
+        wake.heldSince,
+        wake.notWatched?.since ?? null,
+        wake.notWatched?.prefix ?? null,
+        wake.notWatched?.why ?? null,
+      );
     return {
       id: Number(result.lastInsertRowid),
       repo,
@@ -420,10 +454,10 @@ export class SqliteStore implements Store {
     this.db.prepare("UPDATE wakes SET queued_message_id = ? WHERE repo_id = ? AND id = ?").run(queuedMessageId, repo, wakeId);
   }
 
-  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "catchUpMs" | "heldSince" | "notWatched">): void {
     this.db
-      .prepare("UPDATE wakes SET kind = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ? WHERE repo_id = ? AND id = ?")
-      .run(update.kind, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, repo, wakeId);
+      .prepare("UPDATE wakes SET kind = ?, catch_up_ms = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ?, not_watched_why = ? WHERE repo_id = ? AND id = ?")
+      .run(update.kind, update.catchUpMs, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, update.notWatched?.why ?? null, repo, wakeId);
   }
 
   markDispatched(queuedMessageId: string, at: string): void {
