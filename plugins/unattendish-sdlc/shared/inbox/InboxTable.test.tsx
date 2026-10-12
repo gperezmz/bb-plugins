@@ -210,6 +210,24 @@ describe("Answer…", () => {
     expect(fake.api.sendAction).not.toHaveBeenCalled();
   });
 
+  it("discards the draft on Esc: reopening the row starts from an empty composer", () => {
+    show();
+    const field = open();
+    fireEvent.change(field, { target: { value: "en-GB" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Answer… ENG-212" }));
+    expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("discards the draft on Cancel too", () => {
+    show();
+    const field = open();
+    fireEvent.change(field, { target: { value: "en-GB" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Answer… ENG-212" }));
+    expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("shows not sent with bb's reason, never sent, keeps the action, and keeps the composer's text", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
     show();

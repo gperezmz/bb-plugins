@@ -58,7 +58,8 @@ export function useRowActions(refetch: () => Promise<void>): (row: InboxRowView)
       ...local,
       setText: (text) => patch(id, { text }),
       compose: (kind) => patch(id, { composing: kind, refusal: null, unconfirmed: false }),
-      cancel: () => patch(id, { composing: null }),
+      // Cancelling discards the draft; only a refusal keeps it, in the composer left open.
+      cancel: () => patch(id, { composing: null, text: "" }),
       send,
     };
   };
