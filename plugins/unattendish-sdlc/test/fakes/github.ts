@@ -84,7 +84,7 @@ export interface FakeCommitStatus {
 }
 
 export interface FakeRepo {
-  /** The repository's numeric id, which a redirect names it by (`/repositories/{id}/...`) where given. */
+  /** The repository's numeric id, which a redirect and a `Link: rel="next"` name it by (`/repositories/{id}/...`) where given. */
   id?: number;
   issues: FakeIssue[];
   comments: FakeComment[];
@@ -176,8 +176,12 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
     assignees: issue.assignees.map(userOf),
   });
 
-  /** Sends `items` as the page asked for, with a `Link: rel="next"` where more remain; `wrap` puts them inside an object, as GitHub does for check runs and statuses. */
+  /**
+   * Sends `items` as the page asked for, with a `Link: rel="next"` where more remain; `wrap` puts them inside an object, as GitHub does for check runs and statuses.
+   * Where the repository has an `id`, the link names it `/repositories/{id}/...`, the form GitHub writes.
+   */
   const sendPage = <T>(
+    repo: FakeRepo,
     request: IncomingMessage,
     response: ServerResponse,
     url: URL,
@@ -187,7 +191,8 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
     const { page, next } = pageOf(items, url.searchParams);
     const headers: Record<string, string> = {};
     if (next !== null) {
-      const link = new URL(`http://${request.headers.host ?? "127.0.0.1"}${state.nextLinkPath ?? url.pathname}`);
+      const byId = repo.id === undefined ? url.pathname : url.pathname.replace(/\/repos\/[^/]+\/[^/]+/, `/repositories/${repo.id}`);
+      const link = new URL(`http://${request.headers.host ?? "127.0.0.1"}${state.nextLinkPath ?? byId}`);
       for (const [name, value] of url.searchParams) link.searchParams.set(name, value);
       link.searchParams.set("page", String(next));
       headers.link = `<${link.toString()}>; rel="next"`;
@@ -260,7 +265,7 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
         response.end();
         return;
       }
-      sendPage(request, response, url, items, wrap);
+      sendPage(repo, request, response, url, items, wrap);
     };
 
     if (tail[0] === "issues" && tail.length === 1) {
