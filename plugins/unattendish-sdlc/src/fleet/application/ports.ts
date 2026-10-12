@@ -23,7 +23,12 @@ import type {
 
 // ---- HTTP ----
 
-export type HttpErrorKind = "auth" | "rate-limit" | "not-found" | "client" | "server" | "network" | "forbidden-write" | "outside-host";
+/**
+ * `auth` is a 401: the service does not accept the credential. `forbidden` is a
+ * 403 that is not a rate limit: the credential is accepted but may not read
+ * this one thing.
+ */
+export type HttpErrorKind = "auth" | "forbidden" | "rate-limit" | "not-found" | "client" | "server" | "network" | "forbidden-write" | "outside-host";
 
 /**
  * A request that did not return a usable answer. `message` never carries a

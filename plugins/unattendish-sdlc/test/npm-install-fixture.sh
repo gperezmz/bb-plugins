@@ -5,7 +5,7 @@
 # either: bb lists its two settings, with the tokens setting secret; `bb
 # unattendish` lists the fleet commands; `fleet status` and `fleet ledger`
 # answer with nothing registered; `fleet register` refuses a call from outside
-# a thread with no_thread; and `fleet interval` refuses an interval under 30
+# a thread with no_thread (the call runs without the caller's BB_THREAD_ID); and `fleet interval` refuses an interval under 30
 # seconds and a repository no fleet holds. No command takes a token.
 set -euo pipefail
 
@@ -46,7 +46,7 @@ if ! bb unattendish fleet ledger github.com/org/repo --json | jq -e '.entries ==
 fi
 echo "fleet status and fleet ledger answer with nothing registered"
 
-out=$(bb unattendish fleet register --contract 1 --repo github.com/org/repo --tracker forge-issues \
+out=$(env -u BB_THREAD_ID bb unattendish fleet register --contract 1 --repo github.com/org/repo --tracker forge-issues \
   --manifest /tmp/manifest.md --operator olivia --label-spec spec --label-ready ready \
   --label-in-progress in-progress --label-needs-input needs-input --marker marker --json || true)
 if [[ $(jq -r '.error.code // empty' <<< "$out") != no_thread ]]; then

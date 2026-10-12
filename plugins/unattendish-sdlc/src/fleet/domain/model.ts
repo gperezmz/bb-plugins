@@ -167,6 +167,8 @@ export interface Transition {
   readonly at: string;
   /** The service's id for the event, which keeps the change's key stable. */
   readonly id: string;
+  /** Other names the service knows the actor by (an email, a handle), compared to the registered echo actors and never sent. */
+  readonly actorAliases?: readonly string[];
 }
 
 export type ChecksOutcome = "pending" | "passed" | "failed";
@@ -202,6 +204,8 @@ export interface ActivityEvent {
   readonly at: string;
   /** The last non-blank line of the body, cut to 500 characters, for the marker test. Null where the body is empty. */
   readonly lastLine: string | null;
+  /** Other names the service knows the actor by, as for `Transition`. */
+  readonly actorAliases?: readonly string[];
 }
 
 /** An item the service listed as updated since the cursor and that the source did not read further. */
@@ -216,6 +220,8 @@ export interface UpdatedItem {
 export interface ReadFailure {
   readonly ref: string | null;
   readonly reason: string;
+  /** `not-found` for an item the service says does not exist: no read will succeed, so it does not hold the source's cursor back. */
+  readonly kind?: "not-found";
 }
 
 export interface ReadOutcome {
@@ -230,7 +236,7 @@ export interface ItemState {
   readonly open: boolean;
   readonly merged: boolean;
   readonly fleetLabels: readonly string[];
-  readonly checks: { readonly sha: string; readonly outcome: ChecksOutcome; readonly reported: boolean } | null;
+  readonly checks: { readonly sha: string; readonly outcome: ChecksOutcome; readonly reported: boolean; readonly round?: number } | null;
   readonly inPartition: boolean;
 }
 
@@ -265,6 +271,8 @@ export interface Change {
   readonly actor: string | null;
   readonly at: string;
   readonly lastLine: string | null;
+  /** Other names the service knows the actor by; compared to the registered echo actors and never sent or stored. */
+  readonly actorAliases?: readonly string[];
 }
 
 /** What became of a change. */
