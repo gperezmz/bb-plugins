@@ -1,9 +1,10 @@
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { ConnectResult, NotReadableView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
+import { expiryText } from "../format";
 import { LINK_CLASS } from "../ItemLink";
-import { CAN_WRITE } from "./Field";
-import { actionLabel, expiryText, halfText, remedyText, resultActions, type Checked, type ResultAction } from "./model";
+import { CanWrite } from "./Field";
+import { actionLabel, halfText, remedyText, resultActions, type Checked, type ResultAction } from "./model";
 
 /** Step 3: what Verify and save found, and what the operator may do next. */
 export function ResultStep({
@@ -61,7 +62,7 @@ function Body({ result, checked }: { result: ConnectResult; checked: Checked | n
         <div className="flex flex-col gap-2">
           <p role="status">
             Saved: {result.account.label}, {result.login}, {expiryText(result.expiresAt)}.
-            {result.canWrite ? <span className="ml-2 rounded bg-warning/15 px-1 text-xs text-warning">{CAN_WRITE}</span> : null}
+            {result.canWrite ? <CanWrite className="ml-2" /> : null}
           </p>
           <Reread checked={{ half, notReadable }} />
           {result.revoke !== null ? (

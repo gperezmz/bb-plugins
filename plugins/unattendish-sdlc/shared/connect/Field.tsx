@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 /** A labelled form control. */
 export function Field({ id, label, hint, children }: { id: string; label: string; hint?: string; children: ReactNode }) {
@@ -26,9 +27,9 @@ export function Choice({ name, value, checked, onChange, label, children, disabl
   );
 }
 
-export const CAN_WRITE = "can write";
+const CAN_WRITE = "can write";
 
 /** The mark an account or credential that can write carries wherever it is shown. */
-export function CanWrite() {
-  return <span className="rounded bg-warning/15 px-1 text-xs text-warning">{CAN_WRITE}</span>;
+export function CanWrite({ className }: { className?: string }) {
+  return <span className={cn("rounded bg-warning/15 px-1 text-xs text-warning", className)}>{CAN_WRITE}</span>;
 }

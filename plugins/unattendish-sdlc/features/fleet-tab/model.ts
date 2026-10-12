@@ -1,7 +1,7 @@
 // What the Fleet tab says, decided from its views alone.
 import type { FleetCredentialView, InFlightRowView, LedgerChangeView, LedgerFilter, LedgerView, UnreadableRowView, WatchedItemView } from "@/src/fleet/application/views";
 import { credentialKind } from "@/shared/credentials";
-import { ageLabel, dateLabel, dateTimeLabel, plural } from "@/shared/format";
+import { ageLabel, dateTimeLabel, expiryText, plural } from "@/shared/format";
 
 /** `at the bar for 25m`: the stage a row is at and how long it has been there. */
 export function stageText(row: Pick<InFlightRowView, "stage" | "since">, now: string): string {
@@ -33,7 +33,7 @@ export function credentialParts(credential: FleetCredentialView): string[] {
     credential.account.label,
     credentialKind(credential.kind),
     ...(credential.canWrite ? ["can write"] : []),
-    credential.expiresAt === null ? "no expiry reported" : `expires ${dateLabel(credential.expiresAt)}`,
+    expiryText(credential.expiresAt),
     ...(credential.sharesAgentRateLimit ? ["shares the agents' rate limit"] : []),
   ];
 }

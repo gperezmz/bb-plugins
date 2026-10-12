@@ -1,6 +1,5 @@
 // What the Connect popup asks, says and sends, decided from the request and the views alone.
 import type { ConnectInput, ConnectResult, ConnectSecret, ConnectTarget, ConnectView, HalfView, NotReadableView, TokenPageView } from "@/src/fleet/application/views";
-import { dateLabel } from "../format";
 import type { ConnectRequest } from "./requests";
 
 export type Service = NonNullable<ConnectTarget["service"]>;
@@ -156,6 +155,11 @@ export function loginTool(service: Service): "gh" | "glab" | null {
 
 export const secretNoun = (service: Service): string => (service === "linear" ? "key" : "token");
 
+/** The label of the secret's field: Jira and Linear name their own. */
+export function secretLabel(service: Service): string {
+  return service === "jira" ? "API token" : service === "linear" ? "API key" : "Token";
+}
+
 /** Which of the logins `gh` or `glab` holds to preselect: the account's own, where the label names it. */
 export function defaultLogin(logins: readonly string[], accountLabel: string | null): string {
   const named = accountLabel === null ? undefined : logins.find((login) => accountLabel.endsWith(` ${login}`) || accountLabel.endsWith(`· ${login}`));
@@ -240,10 +244,6 @@ export function actionLabel(action: ResultAction, result: ConnectResult): string
     case "choose-another-account":
       return "Choose another account";
   }
-}
-
-export function expiryText(expiresAt: string | null): string {
-  return expiresAt === null ? "no expiry reported" : `expires ${dateLabel(expiresAt)}`;
 }
 
 /** What to do about a repository a saved credential could not read. */

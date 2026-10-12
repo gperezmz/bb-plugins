@@ -4,7 +4,7 @@ import type { ConnectSecret, TokenPageView } from "@/src/fleet/application/views
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Choice, Field } from "./Field";
-import { defaultLogin, loginTool, secretFor, secretNoun, secretProblem, sentToText, SERVICE_NAMES, signInText, type AccountChoice, type Method, type Service } from "./model";
+import { defaultLogin, loginTool, secretFor, secretLabel, secretNoun, secretProblem, sentToText, SERVICE_NAMES, signInText, type AccountChoice, type Method, type Service } from "./model";
 
 /**
  * Step 2: a token, key or login for the account. The secret's field is uncontrolled, so what is typed never
@@ -60,7 +60,7 @@ export function TokenStep({
             <Button type="button" size="sm" variant="outline" onClick={() => navigate.openUrl(page.url as string)}>
               Create token
             </Button>
-            <span className="text-xs text-muted-foreground">Opens {service === "gitlab" ? "GitLab" : "GitHub"} in your browser, filled in.</span>
+            <span className="text-xs text-muted-foreground">Opens {SERVICE_NAMES[service]} in your browser, filled in.</span>
           </div>
           <p className="text-xs">{signInText(page)}</p>
           {page.grants.length > 0 ? (
@@ -105,7 +105,7 @@ export function TokenStep({
               <Input id={ids.email} type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
             </Field>
           ) : null}
-          <Field id={ids.token} label={service === "jira" ? "API token" : service === "linear" ? "API key" : "Token"}>
+          <Field id={ids.token} label={secretLabel(service)}>
             <Input id={ids.token} ref={field} type="password" autoComplete="new-password" onChange={(event) => setTyped(event.target.value.trim() !== "")} />
           </Field>
         </div>
