@@ -5,7 +5,7 @@ import { HttpError, type ReadRequest, type ResolvedCredential } from "../applica
 import type { FleetLabels, ReadOutcome, WatchedItem } from "../domain/model";
 import { HttpClient } from "./http";
 import { createGitlabAdapter } from "./gitlab";
-import { checksOutcome, lastLine, pipelineOutcome } from "./gitlab-normalise";
+import { checksOutcome, pipelineOutcome } from "./gitlab-normalise";
 
 const TOKEN = "glpat-secretsecretsecret";
 const PATH = "org/sub/repo";
@@ -551,15 +551,6 @@ describe("the fake GitLab, driven over HTTP", () => {
 });
 
 describe("the rules the adapter rests on", () => {
-  it("takes the last non-blank line, trimmed, cut to 500 characters", () => {
-    expect(lastLine("a\nb\n\n \n")).toBe("b");
-    expect(lastLine("only")).toBe("only");
-    expect(lastLine("  \n\n")).toBeNull();
-    expect(lastLine("")).toBeNull();
-    expect(lastLine("x\r\ny\r\n")).toBe("y");
-    expect(lastLine("z".repeat(600))).toHaveLength(500);
-  });
-
   it("maps every documented pipeline status", () => {
     const expected = {
       success: "passed",

@@ -61,6 +61,7 @@
 //   lists state no order, so every list is read in full (10 pages of 100).
 import { HttpError, type HttpSession, type ReadRequest, type ServiceAdapter } from "../application/ports";
 import type { ActivityEvent, ItemSnapshot, ReadFailure, ReadOutcome, SourceRole, Transition, UpdatedItem, WatchedItem } from "../domain/model";
+import { lastLine } from "../domain/text";
 import {
   approvalsSchema,
   atOrAfter,
@@ -72,7 +73,6 @@ import {
   inPartition,
   issueSchema,
   labelTransitions,
-  lastLine,
   listedSchema,
   mergedFromFields,
   mergeRequestSchema,

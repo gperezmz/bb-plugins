@@ -5,6 +5,7 @@
 // Each rule rests on GitLab's own documentation (docs.gitlab.com, REST API
 // v4); the adapter's header comment names the pages.
 import { z } from "zod";
+import { combineChecks } from "../domain/checks";
 import type { ChecksOutcome, FleetLabels, Transition } from "../domain/model";
 
 /** A read that cannot be trusted. `message` names a field or a count and never carries text written on the service. */
@@ -94,16 +95,6 @@ export function inPartition(item: { readonly assignees: readonly { readonly user
   return item.assignees.some((assignee) => assignee.username.toLowerCase() === who);
 }
 
-/** The last non-blank line of a body, trimmed and cut to 500 characters; null where there is none. */
-export function lastLine(body: string): string | null {
-  const lines = body.split(/\r\n|\r|\n/);
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const line = lines[i]!.trim();
-    if (line !== "") return line.slice(0, 500);
-  }
-  return null;
-}
-
 /**
  * How a pipeline status counts toward a merge request's checks. `canceling`
  * and `waiting_for_callback` are not final, so they are pending. A status
@@ -140,8 +131,7 @@ export function checksOutcome(statuses: readonly string[]): ChecksOutcome | null
     if (outcome === null) throw new ReadProblem("a pipeline has a status outside the documented list");
     return outcome;
   });
-  if (outcomes.includes("pending")) return "pending";
-  return outcomes.includes("failed") ? "failed" : "passed";
+  return combineChecks(outcomes);
 }
 
 /** A note's author and time as the Fleet reads a comment, or null for a system note (GitLab's record of its own actions). */

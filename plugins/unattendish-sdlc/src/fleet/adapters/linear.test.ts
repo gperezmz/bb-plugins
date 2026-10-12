@@ -4,7 +4,7 @@ import { listen, type Mounted } from "../../../test/fakes/listen";
 import { HttpError, type HttpResponse, type HttpSession, type ReadRequest } from "../application/ports";
 import type { ReadOutcome } from "../domain/model";
 import { HttpClient } from "./http";
-import { createLinearAdapter, isOperator, lastLineOf } from "./linear";
+import { createLinearAdapter, isOperator } from "./linear";
 
 const TOKEN = "lin_api_secretsecret";
 const SINCE = "2026-10-10T00:00:00Z";
@@ -74,26 +74,6 @@ const setup = async (state: Partial<LinearState>, options: { fetch?: typeof fetc
 };
 
 const queries = (m: Mounted): string[] => m.requests.map((r) => (JSON.parse(r.body) as { query: string }).query);
-
-describe("lastLineOf", () => {
-  it("takes the last non-blank line, ignoring trailing blank lines", () => {
-    expect(lastLineOf("first\nsecond  \n\n  \n")).toBe("second");
-  });
-  it("takes the answer below a quote-reply, not the marker above it", () => {
-    expect(lastLineOf("> Parked on a question\n> <kbd>🤖 unattendish agent</kbd>\n\nGo with option B")).toBe("Go with option B");
-  });
-  it("keeps the marker when it is the last line", () => {
-    expect(lastLineOf("Verdict: ship\n\n<kbd>🤖 unattendish agent</kbd>")).toBe("<kbd>🤖 unattendish agent</kbd>");
-  });
-  it("is null for an empty or blank body and cuts a long line to 500 characters", () => {
-    expect(lastLineOf("")).toBeNull();
-    expect(lastLineOf("\n \r\n")).toBeNull();
-    expect(lastLineOf("x".repeat(900))).toHaveLength(500);
-  });
-  it("handles CRLF line ends", () => {
-    expect(lastLineOf("a\r\nb\r\n")).toBe("b");
-  });
-});
 
 describe("isOperator", () => {
   const person = { id: "u-dana", email: "Dana@Acme.test", displayName: "Dana" };

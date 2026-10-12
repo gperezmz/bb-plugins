@@ -104,19 +104,6 @@ export const assigneesOf = (issue: IssueWire): string[] => {
   return issue.assignee === null ? [] : [issue.assignee.login];
 };
 
-const MAX_LAST_LINE = 500;
-
-/** The last non-blank line of a body, trimmed and cut to 500 characters; null where there is none. */
-export const lastLineOf = (text: string | null | undefined): string | null => {
-  if (text === null || text === undefined) return null;
-  const lines = text.split(/\r\n|\r|\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = (lines[index] ?? "").trim();
-    if (line !== "") return Array.from(line).slice(0, MAX_LAST_LINE).join("");
-  }
-  return null;
-};
-
 /** The issue number of a `#<n>` reference, or null for anything else. */
 export const numberOf = (ref: string): number | null => {
   const match = /^#(\d+)$/.exec(ref);

@@ -31,7 +31,8 @@
 import { z } from "zod";
 import { HttpError, type ServiceAdapter, type ReadRequest } from "../application/ports";
 import type { ActivityEvent, FleetLabels, ItemSnapshot, ReadFailure, ReadOutcome, Transition, UpdatedItem, WatchedItem } from "../domain/model";
-import { isDocument, lastLineOf } from "./jira-adf";
+import { lastLine } from "../domain/text";
+import { documentText, isDocument } from "./jira-adf";
 
 const SEARCH = "/rest/api/3/search/jql";
 const PAGE_SIZE = 100;
@@ -277,7 +278,7 @@ class Reading {
           continue;
         }
         const parsed = comment.parse(raw);
-        events.push({ id: `jira:comment:${parsed.id}`, role: "tracker", ref, url: this.url(issueKey), kind: "commented", actor: parsed.author?.accountId ?? null, ...aliasesOf(parsed.author), at, lastLine: lastLineOf(parsed.body) });
+        events.push({ id: `jira:comment:${parsed.id}`, role: "tracker", ref, url: this.url(issueKey), kind: "commented", actor: parsed.author?.accountId ?? null, ...aliasesOf(parsed.author), at, lastLine: lastLine(documentText(parsed.body)) });
       }
       startAt += answer.comments.length;
       if (reachedOlder || answer.comments.length === 0 || startAt >= answer.total) break;

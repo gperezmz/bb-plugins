@@ -61,6 +61,8 @@ import type {
   UpdatedItem,
   WatchedItem,
 } from "../domain/model";
+import { combineChecks } from "../domain/checks";
+import { lastLine } from "../domain/text";
 import {
   assigneesOf,
   checkRunShape,
@@ -71,7 +73,6 @@ import {
   iso,
   issueShape,
   labelName,
-  lastLineOf,
   listedShape,
   Malformed,
   numberOf,
@@ -288,8 +289,7 @@ class GithubAdapter implements ServiceAdapter {
       if (outcome === undefined) throw new Malformed("a commit status lacked a known state");
       outcomes.push(outcome);
     }
-    if (outcomes.includes("pending")) return "pending";
-    return outcomes.includes("failed") ? "failed" : "passed";
+    return combineChecks(outcomes);
   }
 
   // ---- comments and reviews ----
@@ -298,7 +298,7 @@ class GithubAdapter implements ServiceAdapter {
     const query = { since: sinceParam(reading.sinceMs) };
     const found: ActivityEvent[] = [];
     const push = (id: string, kind: ActivityKind, actor: string | null | undefined, at: string, body: string | null | undefined): void => {
-      found.push({ id, role, ref, url, kind, actor: actor ?? null, at: iso(at), lastLine: lastLineOf(body) });
+      found.push({ id, role, ref, url, kind, actor: actor ?? null, at: iso(at), lastLine: lastLine(body) });
     };
 
     for (const entry of await this.list(reading, `${reading.repo}/issues/${number}/comments`, query, `the comments of ${ref}`)) {
