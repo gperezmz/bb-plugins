@@ -76,7 +76,7 @@ Create an API token at [id.atlassian.com](https://id.atlassian.com/manage-profil
 [{"prefix": "jira:example.atlassian.net/PROJ", "auth": "token"}]
 ```
 
-and `{"jira:example.atlassian.net/PROJ": "me@example.com:api-token"}` under **Tokens**. Register the fleet with `--tracker jira:example.atlassian.net/PROJ`.
+and `{"jira:example.atlassian.net/PROJ": "me@example.com:api-token"}` under **Tokens**. Register the fleet with `--tracker jira:example.atlassian.net/PROJ`. Jira answers a token whose account cannot browse the project as it answers an issue that does not exist, so such a fleet is watched, and its items show as failed reads in `bb unattendish fleet ledger` and not as `credential-refused`.
 
 ## Use a self-managed GitLab or a GitHub Enterprise Server
 
@@ -97,15 +97,25 @@ A fleet uses the entry with the longest prefix that matches its repository, so o
 
 ## Read why a fleet is not watched
 
-`bb unattendish fleet status` prints `not watched:` and one `{code}: {text}` per reason. Registering prints the same reasons, and the fleet's manager is told once by a wake when a service refuses its credential.
+`bb unattendish fleet status` prints `not watched:` and one `{code}: {text}` per reason. Registering prints the same reasons, and the fleet's manager is told once by a wake when `credential-refused` first shows.
 
 | Code | Means | What to do |
 |---|---|---|
 | `manifest-missing` | The file at `--manifest` does not exist yet | Nothing: the manager writes it. Until then the fleet watches its labelled items |
 | `manifest-unreadable` | The file exists, and cannot be read: it is over 1 MiB, not valid UTF-8, not `# Fleet: <host>/<path>` on its first line, or not a regular file | Fix the file; the text says which |
 | `no-credential` | No entry matches the repository or the tracker, the entry was refused, or no token can be had | Add the entry the text names. If an entry exists, check **Tokens** has its prefix, and that `gh` or `glab` is logged in. A refused entry blocks shorter prefixes, so fix it rather than add another |
-| `credential-refused` | The service refused the credential on the last poll; the fleet shows `not watched since {time}` | Create a new token, paste it in **Tokens**, and wait for the next poll |
+| `credential-refused` | No read of a source succeeds, so the fleet shows `not watched since {time}` and a text saying why | See [what `credential-refused` says](#what-credential-refused-says) |
 
 Under the reasons, `unreadable manifest row` names a row the contract cannot read, with its section, line and why; the row is skipped and the rest of the manifest still counts. `outside the fleet, never fetched` names a reference or link in the manifest that lies outside the fleet's repository and tracker. `changes held since …` means the fleet's manager is archived, so nothing is sent until a thread registers the repository.
+
+### What `credential-refused` says
+
+The text names the prefix and one of three causes; [how the plugin tells them apart](../explanation/unattendish-polling.md#credentials) is in the explanation. The fleet is watched again on the first poll in which a read succeeds, so fix the cause and wait for the next poll.
+
+| Text | Do |
+|---|---|
+| `refused by the service` | Create a new token and paste it in **Tokens**. A revoked Linear key reads the same |
+| `forbidden to read what the fleet needs (403)` | Give the token permission to read the repository or tracker: GitHub's `repo` scope for a private repository, or GitLab's `read_api` |
+| `the service did not answer` | Check that the service is up and, for a self-managed host, that the entry's `baseUrl` is right |
 
 A setting the plugin cannot use is refused when you save it. One that came in another way is logged: `bb plugin logs unattendish-sdlc` shows each as a `settings:` warning.

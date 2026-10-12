@@ -135,4 +135,4 @@ bb unattendish fleet ledger github.com/acme/widgets
 bb unattendish fleet unregister github.com/acme/widgets
 ```
 
-This removes the registration, its cursors and its ledger. You registered a fleet, saw it watched, received a wake for a comment, and saw the fleet's own comment dropped. To see how a poll decides, read [how Unattendish wakes a manager](../explanation/unattendish-polling.md); for every command and field, [the CLI reference](../reference/unattendish-cli.md).
+This removes the registration and its cursors; the ledger stays for 30 days. You registered a fleet, saw it watched, received a wake for a comment, and saw the fleet's own comment dropped. To see how a poll decides, read [how Unattendish wakes a manager](../explanation/unattendish-polling.md); for every command and field, [the CLI reference](../reference/unattendish-cli.md).
