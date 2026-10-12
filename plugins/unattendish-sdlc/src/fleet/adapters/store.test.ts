@@ -178,6 +178,26 @@ describe("SqliteStore on a database", () => {
     second.close();
   });
 
+  it("reads a refusal stored under its old name, prefix, as the credential's", () => {
+    const db = migrated(new Database(":memory:"));
+    const outages = { forge: { unreadablePolls: 3, unreadableSince: "2026-10-12T09:00:00.000Z", refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: true, why: "forbidden" } } };
+    db.prepare("INSERT INTO fleets (repo_id, registration, outages) VALUES ('r', ?, ?)").run(JSON.stringify(registration), JSON.stringify(outages));
+    expect(new SqliteStore(db).getFleet("r")?.outages.forge?.refused).toEqual({ since: "2026-10-12T09:00:00.000Z", credential: "github.com/org", announced: true, why: "forbidden" });
+    db.close();
+  });
+
+  it("forgets what a credential could not read of a fleet once the fleet is removed, and overwrites a removed token on disk", () => {
+    const db = migrated(new Database(":memory:"));
+    const store = new SqliteStore(db);
+    const accounts = new SqliteAccounts(db);
+    store.saveRegistration(registration, []);
+    accounts.setAccessProblem("github.com/org/repo", "forge", { credentialId: "c", why: "not-found", at: "2026-10-12T10:00:00.000Z" });
+    store.removeFleet("github.com/org/repo");
+    expect(accounts.accessProblems("github.com/org/repo")).toEqual([]);
+    expect(db.pragma("secure_delete", { simple: true })).toBe(1);
+    db.close();
+  });
+
   it("holds only the columns of its types: one column holds a token, the credentials', and one an account's name; no other can carry a token or a service's text", () => {
     const db = migrated(new Database(":memory:"));
     const columns = (db.prepare("SELECT m.name AS tbl, p.name AS col FROM sqlite_master m, pragma_table_info(m.name) p WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'").all() as { tbl: string; col: string }[]).map((c) => `${c.tbl}.${c.col}`);

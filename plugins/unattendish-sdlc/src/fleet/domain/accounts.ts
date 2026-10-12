@@ -134,9 +134,6 @@ export const placeProblem = (service: ServiceKind, place: string): string | null
   return null;
 };
 
-/** The service a host names without an account on it: github.com is GitHub and gitlab.com GitLab. */
-export const serviceOfHost = (host: string): "github" | "gitlab" | null => (host === "github.com" ? "github" : host === "gitlab.com" ? "gitlab" : null);
-
 // ---- what an assignment may name ----
 
 /** Whether an account is on the host, site or service a prefix covers. */
@@ -165,6 +162,9 @@ export const assignmentProblem = (scope: string, account: Pick<Account, "service
 
 /** The default's scope for an account's place: the bare host or site, or `linear:`. */
 export const defaultScope = (account: Pick<Account, "service" | "place">): string => (account.service === "linear" ? "linear:" : account.service === "jira" ? `jira:${account.place}` : account.place);
+
+/** What a fleet's half reads, as a person reads it: the repository path for the forge, `team ENG` or `OPS` for a tracker. */
+export const halfWhat = (repo: RepoRef, tracker: TrackerSpec, role: SourceRole): string => (role === "forge" ? repo.path : (trackerHalf(tracker)?.what ?? ""));
 
 // ---- who reads a fleet ----
 
@@ -280,14 +280,19 @@ export const readerOf = (fleet: RepoRef, half: Half, accounts: readonly Account[
 };
 
 /**
- * What a fleet's card and the popup say of a credential the service accepts that cannot read the fleet's repository,
- * team or project (AC6): for a fine-grained GitHub token, both likely causes and both remedies; for any other, that
- * the account's login cannot see it.
+ * Why a credential the service accepts cannot read a fleet's repository, team or project, and what to do (AC6): for a
+ * fine-grained GitHub token, both likely causes and both remedies; for any other, that its login has no access.
  */
-export const accessProblemText = (credential: { readonly label: string; readonly kind: CredentialKind }, what: string): string =>
-  credential.kind === "fine-grained"
-    ? `${credential.label} cannot read ${what}: the repository is not ticked on the token, or an organisation owner has not yet approved the token. Add the repository to the token on GitHub, or create a new token.`
-    : `${credential.label} cannot see ${what}: its login has no access to it. Choose another account.`;
+const cannotReadWhy = (kind: CredentialKind): string =>
+  kind === "fine-grained"
+    ? "the repository is not ticked on the token, or an organisation owner has not yet approved the token. Add the repository to the token on GitHub, or create a new token."
+    : "its login has no access to it. Choose another account.";
+
+/** What a fleet's card says of a credential that cannot read the half: `GitHub · yuser for acme cannot read acme/api: …`. */
+export const accessProblemText = (credential: { readonly label: string; readonly kind: CredentialKind }, what: string): string => `${credential.label} cannot read ${what}: ${cannotReadWhy(credential.kind)}`;
+
+/** What the popup says of a repository the credential it saved cannot read: `acme/api is not readable as GitHub · yuser: …`. */
+export const notReadableText = (credential: { readonly label: string; readonly kind: CredentialKind }, what: string): string => `${what} is not readable as ${credential.label}: ${cannotReadWhy(credential.kind)}`;
 
 // ---- the pages a token is created on ----
 
@@ -305,9 +310,10 @@ export const GITHUB_EXPIRY_DAYS = 90;
 
 /** GitHub's page for a new fine-grained token, filled in for the plugin reading `owner`: read-only Issues, Pull requests and Metadata, for 90 days. */
 export const githubTokenUrl = (host: string, owner: string, at: Date): string => {
+  // GitHub takes at most 40 characters of name; a long owner is cut, so the day and time that keep names apart stay.
+  const when = stamp(at);
   const query = new URLSearchParams({
-    // GitHub takes at most 40 characters of name.
-    name: `Unattendish ${owner} ${stamp(at)}`.slice(0, 40),
+    name: `Unattendish ${owner.slice(0, 40 - "Unattendish  ".length - when.length)} ${when}`,
     description: `Read-only token for Unattendish to read ${owner}'s issues and pull requests.`,
     target_name: owner,
     expires_in: String(GITHUB_EXPIRY_DAYS),

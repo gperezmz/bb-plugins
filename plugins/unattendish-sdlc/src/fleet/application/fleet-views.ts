@@ -9,10 +9,10 @@ import type { InboxRow, WrittenSection } from "../domain/model";
 import { effectiveInterval } from "../domain/registration";
 import { CELL_MAX_CHARS, clip } from "../domain/text";
 import { watchedWithReasons } from "../domain/watched";
-import { accessProblemText, canWrite, trackerHalf } from "../domain/accounts";
+import { accessProblemText, canWrite, halfWhat } from "../domain/accounts";
 import { credentialRefused } from "../domain/registration";
 import type { AccountStore, Clock, Credentials, CostReader, ManifestFiles, Store, ThreadDirectory, ThreadStanding } from "./ports";
-import { accessRolesOf, assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
+import { accessRolesOf, assessWatching, fixedByConnect, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
 import type { ActionRecordView, BlockedRowView, FleetCardView, FleetCredentialView, HalfView, InboxRowView, InFlightRowView, LandedRowView, ManifestView, ManagerView, NeedsAccountView, UnreadableInboxRowView, WatchedItemView } from "./views";
 import { identityOf } from "./observe";
 
@@ -103,7 +103,7 @@ export const recentActionsOf = (g: Gathered, ids: ReadonlySet<string>, now: Date
 // ---- the card ----
 
 /** The expiry the service last reported for each credential, by its id. */
-const expiriesOf = (deps: Pick<ViewDeps, "accounts">): Map<string, string | null> => new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
+export const expiriesOf = (deps: Pick<ViewDeps, "accounts">): Map<string, string | null> => new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
 
 export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered): FleetCredentialView[] => {
   const expiries = expiriesOf(deps);
@@ -135,18 +135,21 @@ const warnedOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered) => {
   });
 };
 
-/** Each half: the account it reads as, and what it needs, first of: no account or credential, no token, a credential that cannot read it, a credential the service refuses. */
+/**
+ * Each half: the account it reads as, and what it needs, first of: no account or credential, no token, a credential
+ * that cannot read it, a credential the service refuses. A service that does not answer needs nothing of the operator.
+ */
 export const halvesOf = (g: Gathered): HalfView[] =>
   g.watching.halves.map((half): HalfView => {
     const registration = g.fleet.registration;
-    const what = half.role === "forge" ? registration.repo.path : (trackerHalf(registration.tracker)?.what ?? "");
+    const what = halfWhat(registration.repo, registration.tracker, half.role);
     if (!half.lookup.found) return { role: half.role, what, account: half.lookup.account, credential: null, canWrite: false, needs: half.lookup.need };
     const credential = half.lookup.credential;
     const refused = g.fleet.outages[half.role]?.refused ?? null;
     const needs =
       half.unavailable ??
       (half.access !== null ? accessProblemText(credential, what) : null) ??
-      (refused !== null && refused.credential === credential.label ? credentialRefused(refused.credential, refused.why).text : null);
+      (refused !== null && refused.credential === credential.label && fixedByConnect(refused.why) ? credentialRefused(refused.credential, refused.why).text : null);
     return { role: half.role, what, account: { id: credential.accountId, label: credential.accountLabel }, credential: credential.label, canWrite: canWrite(credential.kind), needs };
   });
 

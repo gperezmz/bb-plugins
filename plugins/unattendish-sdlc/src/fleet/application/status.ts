@@ -4,6 +4,7 @@ import type { NotWatched, OutsideLink, UnreadableRow } from "../domain/model";
 import { effectiveInterval } from "../domain/registration";
 import { canWrite, type CredentialKind } from "../domain/accounts";
 import type { AccountStore, Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
+import { expiriesOf } from "./fleet-views";
 import { accessRolesOf, assessWatching, refusedNotWatched, refusedSince } from "./watching";
 
 export interface FleetStatus {
@@ -63,7 +64,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
     const registration = fleet.registration;
     const repo = repoId(registration.repo);
     const watching = await assessWatching(deps, registration, repo);
-    const expiries = new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
+    const expiries = expiriesOf(deps);
     const accounts = watching.halves.map((half) => ({
       role: half.role,
       account: half.lookup.found ? half.lookup.credential.accountLabel : (half.lookup.account?.label ?? null),

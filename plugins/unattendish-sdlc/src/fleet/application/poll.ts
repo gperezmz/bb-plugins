@@ -27,7 +27,7 @@ import {
   type ThreadDirectory,
 } from "./ports";
 import { observeManifest } from "./observe";
-import { accessProblemText, trackerHalf } from "../domain/accounts";
+import { accessProblemText, halfWhat } from "../domain/accounts";
 import { announceNeeds } from "./needs";
 import { assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
 
@@ -264,8 +264,7 @@ const accessNotWatched = (
     if (refused !== null && refused.credential === credential.label && (refused.why === "not-found" || refused.why === "forbidden")) why = refused.why;
     if (why !== (half.access?.why ?? null)) deps.accounts.setAccessProblem(repo, half.role, why === null ? null : { credentialId: credential.key, why, at: now });
     if (why === null) continue;
-    const what = half.role === "forge" ? registration.repo.path : (trackerHalf(registration.tracker)?.what ?? "");
-    lines.push({ code: "credential-refused", text: accessProblemText(credential, what), role: half.role });
+    lines.push({ code: "credential-refused", text: accessProblemText(credential, halfWhat(registration.repo, registration.tracker, half.role)), role: half.role });
   }
   return lines;
 };

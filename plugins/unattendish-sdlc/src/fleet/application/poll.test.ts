@@ -764,14 +764,14 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(w.channel.sent).toEqual([]);
     await pollWith(w, unreachable);
     expect(sentText(w)).toContain("Not watched since 2026-10-12T10:06:00.000Z: the service did not answer reads with the credential for github.com/org.");
-    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org", role: "forge" }]);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 
   it("counts a poll the deadline cut off as no answer", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     for (let i = 0; i < 3; i += 1) await pollWith(w, new DOMException("The operation was aborted due to timeout", "TimeoutError") as unknown as Error);
-    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org", role: "forge" }]);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 
   it("is not watched after three polls in a row where every read answered 404, as for a private repository the token cannot see", async () => {
@@ -798,7 +798,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     await pollWith(w, moved);
     expect(sentText(w)).toContain("everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team.");
     expect((await statusOf(w)).notWatched).toEqual([
-      { code: "credential-refused", text: "Everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team", role: "forge" },
+      { code: "credential-refused", text: "Everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team" },
     ]);
   });
 
@@ -889,6 +889,16 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
 });
 
 describe("what status and the ledger report (AC11, AC13)", () => {
+  it("keeps the expiry the service reports on the credential it read with (#253 AC10)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "fine-grained", owner: "org", expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, TOKEN);
+    w.http.expiresAt = "2026-11-01T00:00:00.000Z";
+    await poll(w);
+    expect(w.accounts.credentials()[0]!.expiresAt).toBe("2026-11-01T00:00:00.000Z");
+  });
+
   it("says a fleet is not watched when its credential gives no token, naming the prefix (AC13)", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));

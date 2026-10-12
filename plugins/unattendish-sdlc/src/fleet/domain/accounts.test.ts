@@ -129,6 +129,13 @@ describe("the pre-filled token pages", () => {
     expect(name.length).toBeLessThanOrEqual(40);
   });
 
+  it("cuts a long owner, never the day and time, to keep GitHub's 40 characters", () => {
+    const name = new URL(githubTokenUrl("github.com", "a-very-long-organisation-name", at)).searchParams.get("name")!;
+    expect(name.length).toBeLessThanOrEqual(40);
+    expect(name.endsWith("2026-10-12 18:30")).toBe(true);
+    expect(name.startsWith("Unattendish a-very-long")).toBe(true);
+  });
+
   it("fills GitLab's token page with a name, a read-only description and read_api alone (AC5)", () => {
     const url = new URL(gitlabTokenUrl("gitlab.example.com", at));
     expect(`${url.origin}${url.pathname}`).toBe("https://gitlab.example.com/-/user_settings/personal_access_tokens");

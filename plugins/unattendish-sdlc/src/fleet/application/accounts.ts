@@ -13,6 +13,7 @@ import {
   credentialFor,
   credentialLabel,
   defaultAccountOf,
+  notReadableText,
   defaultApiUrl,
   defaultScope,
   forgeHalf,
@@ -26,7 +27,6 @@ import {
   placeProblem,
   scopeKey,
   SERVICE_NAMES,
-  serviceOfHost,
   tokenPageOf,
   trackerHalf,
   type Account,
@@ -35,9 +35,10 @@ import {
   type Half,
 } from "../domain/accounts";
 import { daysLeftToWarn } from "../domain/dashboard";
-import { formatRepo, parsePrefix, parseRepo, repoId } from "../domain/identity";
+import { defaultServiceOfHost, formatRepo, parsePrefix, parseRepo, repoId } from "../domain/identity";
 import type { Registration, ServiceKind, SourceRole } from "../domain/model";
 import { gather, halvesOf, type ViewDeps } from "./fleet-views";
+import { lookupOf } from "./watching";
 import type { AccountStore, CliLogins, DashboardEvents, ServiceProbe, StoredFleet } from "./ports";
 import { resolvedOf } from "./resolved";
 import type {
@@ -87,7 +88,7 @@ const shown = (text: string): string => {
 
 /** The service of a forge on a host: the one its name gives, else the one every account on it is on. */
 const forgeServiceOn = (host: string, accounts: readonly Account[]): ServiceKind | null => {
-  const named = serviceOfHost(host);
+  const named = defaultServiceOfHost(host);
   if (named !== null) return named;
   const services = [...new Set(accounts.filter((account) => account.place === host && (account.service === "github" || account.service === "gitlab")).map((account) => account.service))];
   return services.length === 1 ? services[0]! : null;
@@ -98,7 +99,7 @@ const halfOf = (registration: Registration, role: SourceRole, accounts: readonly
 
 /** The account a fleet's half reads as, or would once it has a credential: the winning assignment's. */
 const readerIdOf = (deps: Pick<AccountsDeps, "credentials">, registration: Registration, role: SourceRole): string | null => {
-  const lookup = role === "forge" ? deps.credentials.forForge(registration.repo) : deps.credentials.forTracker(registration.tracker, registration.repo);
+  const lookup = lookupOf(deps.credentials, registration, role);
   return lookup.found ? lookup.credential.accountId : (lookup.account?.id ?? null);
 };
 
@@ -169,7 +170,7 @@ export async function accountsView(deps: AccountsDeps): Promise<AccountSettingVi
   const refusedLabels = new Set<string>();
   for (const fleet of fleets) {
     for (const role of rolesOf(fleet.registration)) {
-      const lookup = role === "forge" ? deps.credentials.forForge(fleet.registration.repo) : deps.credentials.forTracker(fleet.registration.tracker, fleet.registration.repo);
+      const lookup = lookupOf(deps.credentials, fleet.registration, role);
       if (!lookup.found) continue;
       usedBy.set(lookup.credential.key, [...new Set([...(usedBy.get(lookup.credential.key) ?? []), formatRepo(fleet.registration.repo)])]);
       const refused = fleet.outages[role]?.refused ?? null;
@@ -309,7 +310,10 @@ const choose = (deps: AccountsDeps, account: ConnectInput["account"]): { readonl
 const serviceOf = (chosen: Chosen): ServiceKind => (chosen.kind === "held" ? chosen.account.service : chosen.service);
 const placeOf = (chosen: Chosen): string => (chosen.kind === "held" ? chosen.account.place : chosen.place);
 
-/** The registered fleets under a GitHub owner on a host that read as an account, or will once this Connect completes. */
+/**
+ * The registered fleets under a GitHub owner on a host that read as an account, or will once this Connect completes:
+ * opened for a fleet, Connect assigns the account the fleet's whole owner, so every fleet under it.
+ */
 const repositoriesToTick = (deps: AccountsDeps, chosen: Chosen, owner: string, opened: StoredFleet | null): string[] => {
   const accounts = deps.accounts.accounts();
   const place = placeOf(chosen);
@@ -319,7 +323,7 @@ const repositoriesToTick = (deps: AccountsDeps, chosen: Chosen, owner: string, o
     .filter((fleet) => {
       const repo = fleet.registration.repo;
       if (repo.host !== place || repo.path.split("/")[0]!.toLowerCase() !== owner.toLowerCase()) return false;
-      if (opened !== null && repoId(repo) === repoId(opened.registration.repo)) return true;
+      if (opened !== null) return true;
       const reader = readerIdOf(deps, fleet.registration, "forge");
       return chosen.kind === "held" ? reader === chosen.account.id : reader === null && noDefault;
     })
@@ -355,10 +359,11 @@ export async function tokenPage(deps: AccountsDeps, input: Parameters<DashboardA
 
 // ---- Verify and save ----
 
-const notReadableText = (fleet: string, what: string, account: Account, kind: CredentialKind): NotReadableView =>
-  kind === "fine-grained"
-    ? { fleet, fineGrained: true, text: `${what} is not readable: the repository is not ticked on the token, or an organisation owner has not yet approved the token. Add the repository to the token on GitHub, or create a new token.` }
-    : { fleet, fineGrained: false, text: `${what} is not readable: ${account.name} cannot see it. Choose another account.` };
+const notReadableOf = (fleet: Registration, what: string, credential: { readonly label: string; readonly kind: CredentialKind }): NotReadableView => ({
+  fleet: formatRepo(fleet.repo),
+  fineGrained: credential.kind === "fine-grained",
+  text: notReadableText(credential, what),
+});
 
 /** The fleet's half as it reads now, for the popup and the card. */
 const halfView = async (deps: AccountsDeps, repo: string, role: SourceRole): Promise<HalfView | null> => {
@@ -459,6 +464,10 @@ export async function connect(deps: AccountsDeps, input: ConnectInput): Promise<
       return { outcome: "wrong-login", text: `${via} gave a token of ${shown(identified.name)}, not ${shown(input.secret.login)}.`, command: `${via} auth login --hostname ${place}` };
     }
     const same = accounts.find((account) => account.service === service && account.place === place && account.login.toLowerCase() === identified.login.toLowerCase() && account.via === via);
+    // An API address given here answered whose the token is; it may speak for a held account only where it is that account's own.
+    if (same !== undefined && chosen.apiUrl !== null && same.apiUrl !== chosen.apiUrl) {
+      return { outcome: "invalid", text: `${accountLabel(same)} is already held, with its own API address: choose it rather than a new login` };
+    }
     if (same !== undefined) chosen = { kind: "held", account: same };
     // A token's or key's login is shown for the operator to confirm; a gh or glab login was picked from the tool's own and checked above.
     else if (input.confirm !== true && input.secret.kind !== "login") {
@@ -499,31 +508,38 @@ export async function connect(deps: AccountsDeps, input: ConnectInput): Promise<
     else deps.accounts.assign(half.scope, account.id);
   }
 
-  // Which fleets this credential now reads, and whether it can.
-  const notReadable: NotReadableView[] = [];
-  const touched = new Set<string>();
+  // Which fleets this credential now reads, and whether it can, asked of every one at once.
+  const reads: { readonly fleet: StoredFleet; readonly role: SourceRole; readonly half: Half }[] = [];
   if (credential !== null) {
     const accountsNow = deps.accounts.accounts();
     for (const fleet of deps.store.listFleets()) {
       for (const fleetRole of rolesOf(fleet.registration)) {
-        const lookup = fleetRole === "forge" ? deps.credentials.forForge(fleet.registration.repo) : deps.credentials.forTracker(fleet.registration.tracker, fleet.registration.repo);
-        if (!lookup.found || lookup.credential.key !== credential.id) continue;
+        const lookup = lookupOf(deps.credentials, fleet.registration, fleetRole);
         const fleetHalf = halfOf(fleet.registration, fleetRole, accountsNow);
-        if (fleetHalf === null) continue;
-        const repo = repoId(fleet.registration.repo);
-        touched.add(repo);
-        const readable = await deps.probe.canRead({ service, ...api }, token, fleetHalf);
-        if (readable === "readable") deps.accounts.setAccessProblem(repo, fleetRole, null);
-        else if (readable === "not-found" || readable === "forbidden") {
-          deps.accounts.setAccessProblem(repo, fleetRole, { credentialId: credential.id, why: readable, at: now });
-          notReadable.push(notReadableText(formatRepo(fleet.registration.repo), fleetHalf.what, account, kind));
-        }
+        if (lookup.found && lookup.credential.key === credential.id && fleetHalf !== null) reads.push({ fleet, role: fleetRole, half: fleetHalf });
       }
     }
   }
-  if (opened !== null) touched.add(repoId(opened.registration.repo));
-  // Read at once, so the card shows the result without waiting for the next poll.
-  await Promise.all([...touched].map((repo) => deps.readNow(repo).catch(() => undefined)));
+  const label = credential === null ? accountLabel(account) : credentialLabel(account, credential);
+  const answers = await Promise.all(reads.map((read) => deps.probe.canRead({ service, ...api }, token, read.half)));
+  const notReadable: NotReadableView[] = [];
+  reads.forEach((read, at) => {
+    const readable = answers[at]!;
+    const repo = repoId(read.fleet.registration.repo);
+    if (readable === "readable") deps.accounts.setAccessProblem(repo, read.role, null);
+    else if (readable === "not-found" || readable === "forbidden") {
+      deps.accounts.setAccessProblem(repo, read.role, { credentialId: credential!.id, why: readable, at: now });
+      notReadable.push(notReadableOf(read.fleet.registration, read.half.what, { label, kind }));
+    }
+  });
+  // The fleet Connect was opened for is read at once, so the popup and its card show the result without waiting for the
+  // next poll; the others it reaches are read behind it, and their cards follow when they are.
+  const others = new Set(reads.map((read) => repoId(read.fleet.registration.repo)));
+  if (opened !== null) {
+    others.delete(repoId(opened.registration.repo));
+    await deps.readNow(repoId(opened.registration.repo)).catch(() => undefined);
+  }
+  for (const repo of others) void deps.readNow(repo).catch(() => undefined);
   deps.events.boardChanged();
 
   const replacedNotice = input.replaces !== undefined && input.secret.kind !== "stored" ? revokeNotice(account) : null;
@@ -546,7 +562,7 @@ export async function checkAgain(deps: AccountsDeps, input: { fleet: string; rol
   const accounts = deps.accounts.accounts();
   const half = halfOf(fleet.registration, input.role, accounts);
   if (half === null) return refuse(`${formatRepo(fleet.registration.repo)} reads its tracker through its forge`);
-  const lookup = input.role === "forge" ? deps.credentials.forForge(fleet.registration.repo) : deps.credentials.forTracker(fleet.registration.tracker, fleet.registration.repo);
+  const lookup = lookupOf(deps.credentials, fleet.registration, input.role);
   const notReadable: NotReadableView[] = [];
   if (lookup.found) {
     const account = accounts.find((candidate) => candidate.id === lookup.credential.accountId);
@@ -558,7 +574,7 @@ export async function checkAgain(deps: AccountsDeps, input: { fleet: string; rol
       if (readable === "readable") deps.accounts.setAccessProblem(repo, input.role, null);
       else if (readable === "not-found" || readable === "forbidden") {
         deps.accounts.setAccessProblem(repo, input.role, { credentialId: lookup.credential.key, why: readable, at: now });
-        notReadable.push(notReadableText(formatRepo(fleet.registration.repo), half.what, account, lookup.credential.kind));
+        notReadable.push(notReadableOf(fleet.registration, half.what, lookup.credential));
       }
     }
   }

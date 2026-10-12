@@ -99,6 +99,14 @@ describe("a gh or glab account", () => {
     expect(credentials.loginProblem("buser")).toBe("gh is signed in as yuser, not buser");
   });
 
+  it("uses the login's token while the service cannot say whose it is", async () => {
+    const { logins, probe, credentials } = ghAccount();
+    logins.set("gh", "github.com", "buser", "gho_b");
+    probe.owners.set("gho_b", { ok: false, why: "unreachable", reason: "GET /user failed: no answer" });
+    expect(await credentials.token(found(credentials.forForge(repo("github.com/acme/api"))))).toBe("gho_b");
+    expect(credentials.loginProblem("buser")).toBeNull();
+  });
+
   it("remembers a failed lookup for 30 seconds, then asks again; forgetting asks at once", async () => {
     const { logins, probe, clock, credentials } = ghAccount();
     const resolved = found(credentials.forForge(repo("github.com/acme/api")));

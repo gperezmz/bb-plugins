@@ -411,6 +411,8 @@ export class SqliteStore implements Store {
       // The ledger stays: retention ages it out, and a registration that follows still sees what it holds.
       this.db.prepare("DELETE FROM cursors WHERE repo_id = ?").run(repo);
       this.db.prepare("DELETE FROM actions WHERE repo_id = ?").run(repo);
+      // What a credential was found unable to read belongs to the registration: one made again reads afresh.
+      this.db.prepare("DELETE FROM access_problems WHERE repo_id = ?").run(repo);
       return this.db.prepare("DELETE FROM fleets WHERE repo_id = ?").run(repo).changes > 0;
     })();
   }

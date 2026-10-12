@@ -60,6 +60,22 @@ describe("a fleet that cannot be read (AC1)", () => {
     expect(w.events.needs.map((need) => need.role)).toEqual(["tracker"]);
   });
 
+  it("raises no toast and no Connect… for a service that does not answer", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-yuser", "yuser");
+    await addLogin(w, github("tok-yuser", "acme"));
+    await register(w, "github.com/acme/api");
+    for (let poll = 0; poll < 3; poll += 1) {
+      w.adapters.github.queue(new HttpError("network", "GET /repos/acme/api/issues failed: no answer"));
+      await api(w).checkAgain({ fleet: "github.com/acme/api", role: "forge" });
+    }
+    const fleet = await card(w, "github.com/acme/api");
+    expect(fleet.reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("did not answer"), fix: { kind: "none" } }]);
+    expect(fleet.halves[0]!.needs).toBeNull();
+    expect(w.events.needs).toEqual([]);
+    expect((await api(w).fleets()).needsAccount).toEqual([]);
+  });
+
   it("toasts a fleet only as it comes to need an account, not again on every poll", async () => {
     const w = accountsWorld();
     await register(w, "github.com/acme/api");
@@ -116,6 +132,21 @@ describe("Connect (AC2)", () => {
     expect(w.accounts.assignments().map((a) => a.scope)).toContain("github.com/other-org");
     saved(await api(w).connect({ fleet: "github.com/other-org/x", role: "forge", account: { id: yuser }, secret: { kind: "token", token: "tok-yuser-other" } }));
     expect(w.accounts.assignments()).toEqual([{ scope: "github.com", accountId: yuser }]);
+  });
+
+  it("lists every fleet under the owner to tick when Connect will assign the owner to another account (AC4)", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-yuser", "yuser");
+    owns(w, "tok-buser", "buser");
+    await addLogin(w, github("tok-yuser", "zorg"));
+    const buser = await addLogin(w, github("tok-buser", "elsewhere"));
+    await register(w, "github.com/zorg/z");
+    await register(w, "github.com/zorg/y", "forge-issues", "thr_second");
+    await register(w, "github.com/acme/api", "forge-issues", "thr_third");
+    const page = await api(w).tokenPage({ fleet: "github.com/zorg/z", role: "forge", account: { id: buser } });
+    expect(page).toMatchObject({ ok: true, page: { repositories: ["zorg/y", "zorg/z"], signInAs: "buser", url: expect.stringContaining("target_name=zorg") } });
+    const withoutFleet = await api(w).tokenPage({ owner: "zorg", account: { id: buser } });
+    expect(withoutFleet).toMatchObject({ ok: true, page: { repositories: [] } });
   });
 
   it("goes straight to verifying with an account whose credential reaches the fleet", async () => {
@@ -198,7 +229,7 @@ describe("Verify and save (AC6)", () => {
     w.probe.unreadable.set("tok-gl", new Map([["platform/infra", "forbidden"]]));
     await register(w, "gitlab.example.com/platform/infra");
     const result = saved(await api(w).connect({ fleet: "gitlab.example.com/platform/infra", role: "forge", account: { service: "gitlab", place: "gitlab.example.com" }, secret: { kind: "token", token: "tok-gl" }, confirm: true }));
-    expect(result.notReadable).toEqual([{ fleet: "gitlab.example.com/platform/infra", fineGrained: false, text: "platform/infra is not readable: yuser cannot see it. Choose another account." }]);
+    expect(result.notReadable).toEqual([{ fleet: "gitlab.example.com/platform/infra", fineGrained: false, text: "platform/infra is not readable as GitLab · yuser: its login has no access to it. Choose another account." }]);
   });
 
   it("stores a token the service accepts when no fleet reads as the account", async () => {
@@ -230,6 +261,35 @@ describe("whose a token is (AC7)", () => {
     owns(w, "tok-b", "buser");
     const yuser = await addLogin(w, { account: { service: "gitlab", place: "gitlab.example.com" }, secret: { kind: "token", token: "tok-y" } });
     expect(await api(w).connect({ account: { id: yuser }, secret: { kind: "token", token: "tok-b" } })).toMatchObject({ outcome: "wrong-login", text: expect.stringContaining("This token belongs to buser, not yuser") });
+  });
+
+  it("refuses, storing nothing, a gh login that gives another user's token, new or held", async () => {
+    const w = accountsWorld();
+    w.logins.set("gh", "github.com", "buser", "tok-gh");
+    owns(w, "tok-gh", "yuser");
+    expect(await api(w).connect({ account: { service: "github", place: "github.com" }, secret: { kind: "login", tool: "gh", login: "buser" } })).toEqual({
+      outcome: "wrong-login",
+      text: "gh gave a token of yuser, not buser.",
+      command: "gh auth login --hostname github.com",
+    });
+    expect(w.accounts.accounts()).toEqual([]);
+    w.accounts.addAccount({ id: "b", service: "github", place: "github.com", login: "buser", name: "buser", via: "gh", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    expect(await api(w).connect({ account: { id: "b" }, secret: { kind: "login", tool: "gh", login: "buser" } })).toEqual({
+      outcome: "wrong-login",
+      text: "gh is signed in as yuser, not buser.",
+      command: "gh auth login --hostname github.com",
+    });
+    expect(w.accounts.credentials()).toEqual([]);
+  });
+
+  it("refuses a new login whose own API address claims a held account's login", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-yuser", "yuser");
+    owns(w, "tok-fake", "yuser");
+    await addLogin(w, github("tok-yuser", "acme"));
+    const claimed = await api(w).connect({ account: { service: "github", place: "github.com", apiUrl: "http://127.0.0.1:9999" }, owner: "acme", secret: { kind: "token", token: "tok-fake" }, confirm: true });
+    expect(claimed).toMatchObject({ outcome: "invalid", text: expect.stringContaining("GitHub · yuser is already held") });
+    expect(w.accounts.tokens()).toEqual(["tok-yuser"]);
   });
 
   it("shows a gh account whose gh gives yuser's token as signed in as yuser, and its fleet as not watched", async () => {

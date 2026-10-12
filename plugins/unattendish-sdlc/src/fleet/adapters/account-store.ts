@@ -1,7 +1,7 @@
 // The accounts, their credentials and the assignments, on the plugin's SQLite
 // database beside the fleets. `account_credentials.token` is the only column
-// that holds a token: it is read back by `tokenOf` and `tokens` alone, and no
-// row this class returns carries it.
+// that holds a token: it is read back by `tokenOf` and `tokens` alone, no row
+// this class returns carries it, and a deleted one is overwritten on disk.
 import type Database from "better-sqlite3";
 import type { AccessProblem, AccountStore } from "../application/ports";
 import { scopeKey, type Account, type AccountCredential, type Assignment } from "../domain/accounts";
@@ -31,7 +31,10 @@ const toAccount = (row: AccountRow): Account => ({ id: row.id, service: row.serv
 const toCredential = (row: CredentialRow): AccountCredential => ({ id: row.id, accountId: row.account_id, kind: row.kind, owner: row.owner, expiresAt: row.expires_at, addedAt: row.added_at });
 
 export class SqliteAccounts implements AccountStore {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: Database.Database) {
+    // A removed token is overwritten on disk, not left in the database's free pages.
+    db.pragma("secure_delete = ON");
+  }
 
   accounts(): Account[] {
     return (this.db.prepare("SELECT * FROM accounts ORDER BY added_at, id").all() as AccountRow[]).map(toAccount);
