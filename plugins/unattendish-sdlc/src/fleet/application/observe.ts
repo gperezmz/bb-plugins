@@ -5,6 +5,7 @@ import { finishedActions } from "../domain/actions";
 import { inboxNews } from "../domain/dashboard";
 import { formatRepo, repoId } from "../domain/identity";
 import { uniqueRowIds } from "../domain/inbox";
+import { CELL_MAX_CHARS, clip } from "../domain/text";
 import { itemId, type ItemState, type ManifestRead, type Registration } from "../domain/model";
 import { itemOfReference } from "../domain/watched";
 import type { DashboardEvents, Store } from "./ports";
@@ -49,7 +50,7 @@ export function observeManifest(
   deps.store.touchInboxSeen(repo, ids, at);
   if (!baselined) deps.store.setInboxBaselined(repo);
   const announced = new Set(news.announce);
-  manifest.manifest.inbox.forEach((row, at) => {
-    if (announced.has(ids[at]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: row.what, rowId: ids[at]! });
+  manifest.manifest.inbox.forEach((row, index) => {
+    if (announced.has(ids[index]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: clip(row.what, CELL_MAX_CHARS), rowId: ids[index]! });
   });
 }

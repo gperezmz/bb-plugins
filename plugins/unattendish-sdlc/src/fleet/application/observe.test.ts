@@ -38,6 +38,16 @@ describe("Inbox rows new to the repository (AC6)", () => {
     expect(rowIds(w)).toEqual([ROW_7]);
   });
 
+  it("announces a long What cut to 500 characters, and a short one whole", async () => {
+    const w = world();
+    await start(w, manifest());
+    await poll(w);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(7).replace("A parked question", "q".repeat(2000)), inboxRow(8)] }));
+    await poll(w);
+    expect(w.events.inboxNews.map((signal) => signal.what.length)).toEqual([500, "A parked question".length]);
+    expect(w.events.inboxNews[0]!.what.endsWith("…")).toBe(true);
+  });
+
   it("announces a row at the manager's turn ending as well as at a poll", async () => {
     const w = world();
     await start(w, manifest());
