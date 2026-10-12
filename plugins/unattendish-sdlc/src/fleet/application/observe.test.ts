@@ -238,6 +238,32 @@ describe("an action is done once a poll sees its result (AC13)", () => {
   });
 });
 
+describe("an action on a GitLab fleet", () => {
+  const GITLAB = "gitlab.com/group/proj";
+  const GITLAB_MANIFEST = "/work/gitlab/manifest.md";
+  const mr = "https://gitlab.com/group/proj/-/merge_requests/45";
+  const gitlabManifest = `# Fleet: ${GITLAB}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n| !45 | Ready the merge request | ready | 2026-10-12T09:00:00Z | ${mr} |\n`;
+
+  it("marks Build it done from a GitLab snapshot of a merge request, which only a GitLab fleet resolves", async () => {
+    const w = world();
+    w.credentials.set([{ prefix: "gitlab.com/group", service: "gitlab" }]);
+    w.manifests.files.set(GITLAB_MANIFEST, gitlabManifest);
+    await registerFleet(w.register, MANAGER, args({ repo: GITLAB, manifest: GITLAB_MANIFEST }));
+    const row = "!45|ready|2026-10-12T09:00:00Z";
+    w.store.saveAction({ id: "b", repo: GITLAB, rowId: row, kind: "build", ref: "!45", what: "Ready the merge request", managerThreadId: MANAGER, state: "sent", sentAt: "2026-10-12T09:59:00.000Z", doneAt: null });
+    const merge = (labels: string[]) => outcome({ snapshots: [snapshot(45, { ref: "!45", url: mr, fleetLabels: labels })] });
+
+    w.adapters.gitlab.queue(merge(["spec"]));
+    await pollFleet(w.poll, GITLAB);
+    expect(w.store.actions(GITLAB)[0]).toMatchObject({ state: "sent" });
+
+    w.clock.advance(120_000);
+    w.adapters.gitlab.queue(merge(["spec", "status:ready"]));
+    await pollFleet(w.poll, GITLAB);
+    expect(w.store.actions(GITLAB)[0]).toMatchObject({ state: "done", doneAt: w.clock.now().toISOString() });
+  });
+});
+
 describe("a new manager (AC13)", () => {
   it("drops the actions still sent to the manager before it, and keeps the done ones", async () => {
     const w = world();
