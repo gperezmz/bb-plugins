@@ -22,7 +22,8 @@ check "the reason names the manifest's path" contains "$(jq -r '.notWatched[0].t
 manifest "$manifest_file" "$repo"
 s=$(status "$repo")
 check "status: watched, held by the first manager, every 120 s" eq "$(jq -c '[.watched, .manager, .intervalMs]' <<< "$s")" "[true,\"$t1\",120000]"
-check "status names the credential it uses" eq "$(jq -c '[.credentials[0].prefix, .credentials[0].service, .credentials[0].auth]' <<< "$s")" '["github.example/org","github","token"]'
+check "status names the account each half reads as" eq "$(jq -c '[.accounts[] | [.role, .account, .needs]]' <<< "$s")" '[["forge","GitHub · operator",null]]'
+check "and the credential it uses" eq "$(jq -c '[.credentials[0].credential, .credentials[0].service, .credentials[0].auth]' <<< "$s")" '["GitHub · operator for org","github","token"]'
 
 out=$(register "$t1" "$repo" forge-issues "$manifest_file" --label-ready ship-it)
 check "the same manager registering again with other labels is registered" eq "$(jq -c '[.outcome, .watched]' <<< "$out")" '["registered",true]'
