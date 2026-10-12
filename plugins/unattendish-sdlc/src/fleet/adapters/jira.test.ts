@@ -447,8 +447,14 @@ describe("the Jira adapter's failures", () => {
   });
 
   it("rethrows a refused credential met while listing", async () => {
-    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
+    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 401 }] } });
     await expect(read()).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("reports a listing the token may not read (403) as a listing failure, not as a refused credential", async () => {
+    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
+    const outcome = await read();
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
   });
 
   it("ends the read when it is aborted, rather than reporting every item failed", async () => {

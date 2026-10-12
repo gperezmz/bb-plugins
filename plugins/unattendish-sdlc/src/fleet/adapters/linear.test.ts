@@ -418,6 +418,24 @@ describe("a read that fails", () => {
     expect((failure as HttpError).message).not.toContain(TOKEN);
   });
 
+  it("fails the item, not the read, where the HTTP layer reports it forbidden (403)", async () => {
+    const forbidden: HttpSession = {
+      service: "linear",
+      baseUrl: "http://127.0.0.1:1/graphql",
+      request: async (): Promise<HttpResponse> => {
+        throw new HttpError("forbidden", "POST / answered 403", 403);
+      },
+      paginate: async () => ({ items: [], truncated: false }),
+      drainRequests: () => [],
+      expiresAt: () => null,
+      noteExpiresAt: () => undefined,
+    };
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: forbidden });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String) });
+  });
+
   it("rethrows a rate-limit error found in a GraphQL response", async () => {
     const limited: HttpSession = {
       service: "linear",

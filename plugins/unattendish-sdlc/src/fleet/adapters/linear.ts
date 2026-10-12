@@ -31,7 +31,8 @@
 //    filtered by `updatedAt: {gte: since}`, not cut at a cursor.
 //  - The maximum page size: pages are 50, the documented default.
 //  - The error code of a refused key: matched by its stem (see
-//    `rethrowFatal`); an HTTP 401 or 403 is the layer's `auth` already.
+//    `rethrowFatal`); an HTTP 401 is the layer's `auth` already, and a 403 that
+//    is no rate limit is its `forbidden`, which fails the one read.
 //  - Whether `Issue.comments` lists replies: every comment of the issue is
 //    read with its replies nested, and replies are de-duplicated by id.
 //  - Whether every label change reaches `addedLabels`/`removedLabels`: it is

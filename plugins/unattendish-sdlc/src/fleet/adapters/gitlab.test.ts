@@ -387,6 +387,23 @@ describe("the GitLab adapter: failures", () => {
     await expect(limited.read({ items: [watch("#1")] })).rejects.toMatchObject({ kind: "rate-limit" });
   });
 
+  it("fails an item the token may not read (403) and goes on, rather than refusing the credential", async () => {
+    const { read } = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1", status: 403 }] });
+    const outcome = await read({ items: [watch("#1"), watch("#2")] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+  });
+
+  it("leaves checks null, and reads the rest of the merge request, where its pipelines are forbidden (CI off)", async () => {
+    const { read } = await world(
+      { [PATH]: { mergeRequests: [mr(3, { labels: ["spec"] })] } },
+      { faults: [{ match: "/merge_requests/3/pipelines", status: 403 }] },
+    );
+    const outcome = await read({ items: [watch("!3")], watchedRefs: new Set(["!3"]) });
+    expect(outcome.failures).toEqual([]);
+    expect(only(outcome.snapshots)).toMatchObject({ ref: "!3", checks: null, fleetLabels: ["spec"], open: true });
+  });
+
   it("fails an item whose read errs otherwise, and goes on", async () => {
     const { read } = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1/resource_label_events", status: 400 }] });
     const outcome = await read({ items: [watch("#1"), watch("#2")] });

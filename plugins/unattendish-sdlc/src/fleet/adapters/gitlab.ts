@@ -28,6 +28,11 @@
 // - Token expiry: `GET /personal_access_tokens/self`, `expires_at` as
 //   `YYYY-MM-DD` or null (/api/personal_access_tokens/).
 //
+// A 403 that is not a rate limit is the HTTP layer's `forbidden`: on the
+// pipelines of a merge request it leaves `checks` null and the rest of the item
+// is still read; anywhere else it fails that one item or listing. Only a 401 or
+// a rate limit ends the read.
+//
 // Not confirmed by those pages, and what is done instead:
 // - The text of the system notes for an approval and for a request for changes
 //   is not documented, so no system note is read. An approval is read from the
@@ -147,11 +152,16 @@ async function readItem(context: Context, item: WatchedItem, withEvents: boolean
       const merged = mergedFromFields(found, request.since);
       if (merged !== null) transitions.push(merged);
     }
-    const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${item.ref}`);
-    const pipelines = new Map(listed.filter((p) => p.sha === found.sha).map((p) => [p.id, p.status]));
-    if (found.head_pipeline !== null && found.head_pipeline !== undefined && found.head_pipeline.sha === found.sha) pipelines.set(found.head_pipeline.id, found.head_pipeline.status);
-    const outcome = checksOutcome([...pipelines.values()]);
-    if (outcome !== null) checks = { sha: found.sha, outcome };
+    try {
+      const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${item.ref}`);
+      const pipelines = new Map(listed.filter((p) => p.sha === found.sha).map((p) => [p.id, p.status]));
+      if (found.head_pipeline !== null && found.head_pipeline !== undefined && found.head_pipeline.sha === found.sha) pipelines.set(found.head_pipeline.id, found.head_pipeline.status);
+      const outcome = checksOutcome([...pipelines.values()]);
+      if (outcome !== null) checks = { sha: found.sha, outcome };
+    } catch (error) {
+      // A project with CI off, or a token that may not read pipelines, leaves the merge request without checks and still read.
+      if (!(error instanceof HttpError && error.kind === "forbidden")) throw error;
+    }
   }
 
   const snapshot: ItemSnapshot = {

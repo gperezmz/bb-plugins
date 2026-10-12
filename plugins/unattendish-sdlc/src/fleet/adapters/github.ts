@@ -24,6 +24,12 @@
 //    limit, which the HTTP session accounts for). Enterprise Server's REST root
 //    is `http(s)://HOSTNAME/api/v3` (/en/enterprise-server@latest/rest/using-the-rest-api/getting-started-with-the-rest-api).
 //
+// A 403 that is not a rate limit is the HTTP layer's `forbidden`. On the check
+// runs or commit statuses of a pull request it leaves `checks` null and the
+// rest of the item is still read (a fine-grained token may lack those
+// permissions); anywhere else it fails that one item or listing, and the read
+// goes on. Only a 401 or a rate limit ends the read.
+//
 // What the docs leave unconfirmed, and the cheapest fallback taken:
 //  - The values of a review's `state`: only `APPROVED`, `CHANGES_REQUESTED` and
 //    `COMMENTED` are events; any other state (`PENDING`, `DISMISSED`) is not.
@@ -250,10 +256,18 @@ class GithubAdapter implements ServiceAdapter {
 
   // ---- checks ----
 
-  /** The outcome of a head commit's check runs and commit statuses together; null where it has neither. */
+  /** The outcome of a head commit's check runs and commit statuses together; null where it has neither, or where the token may not read them. */
   private async checks(reading: Reading, sha: string): Promise<ChecksOutcome | null> {
-    const runs = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/check-runs`, { filter: "latest" }, "check_runs", `the check runs of ${sha}`);
-    const statuses = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/status`, {}, "statuses", `the commit statuses of ${sha}`);
+    let runs: unknown[];
+    let statuses: unknown[];
+    try {
+      runs = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/check-runs`, { filter: "latest" }, "check_runs", `the check runs of ${sha}`);
+      statuses = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/status`, {}, "statuses", `the commit statuses of ${sha}`);
+    } catch (error) {
+      // A token without the Checks or Commit statuses permission is refused here alone: the pull request is still read, with no checks.
+      if (error instanceof HttpError && error.kind === "forbidden") return null;
+      throw error;
+    }
     if (runs.length === 0 && statuses.length === 0) return null;
 
     const outcomes: ChecksOutcome[] = [];

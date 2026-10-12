@@ -225,7 +225,7 @@ class Session implements HttpSession {
         await this.sleep(250 * 2 ** attempt);
         continue;
       }
-      const kind = response.status === 401 || response.status === 403 ? "auth" : response.status === 404 ? "not-found" : response.status >= 500 ? "server" : "client";
+      const kind = response.status === 401 ? "auth" : response.status === 403 ? "forbidden" : response.status === 404 ? "not-found" : response.status >= 500 ? "server" : "client";
       throw new HttpError(kind, `${describe(request.method, url)} answered ${response.status}`, response.status);
     }
   }

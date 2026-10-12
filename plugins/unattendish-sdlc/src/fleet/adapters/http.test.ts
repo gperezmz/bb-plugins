@@ -207,13 +207,25 @@ describe("HttpClient", () => {
       expect(seen).toHaveLength(3);
     });
 
-    it("sorts a 401, a 403, a 404 and a 422", async () => {
-      const kinds: Record<number, string> = { 401: "auth", 403: "auth", 404: "not-found", 422: "client" };
+    it("sorts a 401, a 403 that is no rate limit, a 404 and a 422", async () => {
+      const kinds: Record<number, string> = { 401: "auth", 403: "forbidden", 404: "not-found", 422: "client" };
       for (const [status, kind] of Object.entries(kinds)) {
         const { credential } = await serve((_, response) => json(response, {}, Number(status)));
         await expect(client().session(credential(), TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind, status: Number(status) });
         server?.close();
       }
+    });
+
+    it("calls a 403 without a rate-limit header forbidden, and with x-ratelimit-remaining 0 or a retry-after a rate limit", async () => {
+      const one = async (headers: Record<string, string>) => {
+        const { credential } = await serve((_, response) => json(response, {}, 403, headers));
+        const error = await client().session(credential(), TOKEN).request({ method: "GET", path: "/x" }).catch((e: unknown) => e);
+        server?.close();
+        return error;
+      };
+      expect(await one({})).toMatchObject({ kind: "forbidden", status: 403 });
+      expect(await one({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": "9999999999" })).toMatchObject({ kind: "rate-limit" });
+      expect(await one({ "retry-after": "600" })).toMatchObject({ kind: "rate-limit" });
     });
 
     it("waits out a short Retry-After and surfaces a long one as a rate limit", async () => {
