@@ -1,16 +1,16 @@
 ## Agents
 
-Name the kind of work a subagent gets as Cynefin sorts it, and take its
-model, and its effort where your harness takes one, from that kind's column
-for your harness, whatever model you are running on; this section is the
-explicit request an effort waits for.
+Name the kind of work a subagent gets as Cynefin sorts it, by when its
+cause and effect can be known, and take its model, and its effort where your
+harness takes one, from that kind's column for your harness, whatever model
+you are running on; this section is the explicit request an effort waits for.
 
-- `clear` work has one right answer the agent can recognise when it finds
-  it.
-- `complicated` work has a settled goal, and the agent works out how to
-  reach it.
-- `complex` work leaves the goal to the agent's judgement, or leaves
-  unclear what is wrong or wanted.
+- `clear` work has a cause and effect that is plain before the work
+  starts, without analysis.
+- `complicated` work has a cause and effect that analysis can know
+  before the work starts.
+- `complex` work has a cause and effect that only probing shows, in
+  retrospect.
 
 A skill that names the kind of a subagent's work decides it; otherwise
 judging work someone else wrote is `complex` work, since the judge has to
@@ -31,9 +31,9 @@ job as its own to do.
 ## Glossary
 
 The words this repository has settled are in `GLOSSARY.md` at the root, or,
-where a `GLOSSARY-MAP.md` sits at the root, in the glossaries the map lists.
-Call the Skill tool with `naming-concepts` before naming anything the work is
-about.
+where a `GLOSSARY-MAP.md` sits at the root, in the `GLOSSARY.md` beside each
+context's code that the map lists. Call the Skill tool with `naming-concepts`
+before naming anything the work is about.
 
 ## Claims
 
@@ -83,3 +83,5 @@ Pull requests go to GitHub, `gperezmz/bb-plugins`, through `gh`.
 | --- | --- |
 | spec | `spec` |
 | ready | `status:ready` |
+| in progress | `status:in progress` |
+| needs input | `status:needs input` |
