@@ -1,6 +1,6 @@
 import { createFakeSdk, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BbManagerChannel, BbThreadDirectory, BbThreadRepositories, httpStatusOf, SDK_TIMEOUT_MS } from "./bb-threads";
+import { BbManagerChannel, BbThreadDirectory, BbThreadRepositories, httpStatusOf, REASON_MESSAGE_MAX, SDK_TIMEOUT_MS } from "./bb-threads";
 
 type Overrides = NonNullable<Parameters<typeof createFakeSdk>[0]["overrides"]>;
 
@@ -110,16 +110,46 @@ describe("BbManagerChannel.send", () => {
     expect(await new BbManagerChannel(sdk, "p").send("thr_1", "t")).toEqual({ delivered: "queued", queuedMessageId: "q42" });
   });
 
-  it("reports a refusal as the HTTP status alone, never bb's message", async () => {
-    const { sdk } = fake({
-      threads: {
-        send: async () => {
-          throw httpError(409, "text of the wake");
-        },
-      },
-    });
-    const result = await new BbManagerChannel(sdk, "p").send("thr_1", "t");
-    expect(result).toEqual({ delivered: "refused", reason: "HTTP 409" });
+  const refusedBy = async (error: unknown, text = "t", secrets: string[] = []) => {
+    const { sdk } = fake({ threads: { send: async () => { throw error; } } });
+    return new BbManagerChannel(sdk, "p", () => secrets).send("thr_1", text);
+  };
+
+  it("reports a refusal as the HTTP status and bb's own message, whole when it is short", async () => {
+    expect(await refusedBy(httpError(409, "Thread is archived"))).toEqual({ delivered: "refused", reason: "HTTP 409: Thread is archived" });
+    expect(await refusedBy(Object.assign(new Error("Thread not found"), { status: 404 }))).toEqual({ delivered: "refused", reason: "HTTP 404: Thread not found" });
+  });
+
+  it("reports the status alone where the error has no message", async () => {
+    expect(await refusedBy(Object.assign(new Error(""), { status: 500 }))).toEqual({ delivered: "refused", reason: "HTTP 500" });
+    expect(await refusedBy(new Error("HTTP 502"))).toEqual({ delivered: "refused", reason: "HTTP 502" });
+  });
+
+  it("replaces the text sent, whole and by line, wherever bb quotes it", async () => {
+    const text = "Answer to #7: Use B.\n\nIt is simpler\nok\n";
+    const quoted = `Rejected message "${text}" because of line "It is simpler" and "Answer to #7: Use B."; the line ok stays`;
+    const result = await refusedBy(httpError(422, quoted), text);
+    expect(result).toEqual({ delivered: "refused", reason: expect.stringMatching(/^HTTP 422: Rejected message "…" because of line "…" and "…"; the line ok stays$/) });
+    expect(JSON.stringify(result)).not.toContain("simpler");
+    expect(JSON.stringify(result)).not.toContain("Use B");
+  });
+
+  it("replaces the text sent when bb quotes it on one line", async () => {
+    const result = await refusedBy(httpError(400, "bad text: Answer to #7: Use B. It is simpler"), "Answer to #7: Use B.\nIt is simpler");
+    expect(result).toEqual({ delivered: "refused", reason: "HTTP 400: bad text: …" });
+  });
+
+  it("scrubs every token the plugin holds, a pasted one or a CLI's", async () => {
+    const result = await refusedBy(httpError(401, "token ghp_stored_token_123456 and gho_cli_token_654321 refused; Authorization: Bearer abc.def"), "t", ["ghp_stored_token_123456", "gho_cli_token_654321"]);
+    expect(JSON.stringify(result)).not.toMatch(/ghp_stored|gho_cli|abc\.def/);
+    expect(result).toMatchObject({ reason: expect.stringContaining("[redacted]") });
+  });
+
+  it("puts bb's message on one line and cuts it to 160 characters", async () => {
+    const result = await refusedBy(httpError(500, `first\n\n  second\t${"x".repeat(400)}`));
+    expect(result.delivered === "refused" && result.reason.startsWith("HTTP 500: first second xxx")).toBe(true);
+    expect(result.delivered === "refused" && result.reason.length).toBe("HTTP 500: ".length + REASON_MESSAGE_MAX);
+    expect(JSON.stringify(result)).not.toContain("\\n");
   });
 
   it("reports a failure with no status without its message", async () => {
@@ -201,20 +231,20 @@ describe("BbManagerChannel.amend", () => {
     expect(await vanished.channel.amend("thr_1", "q1", "t")).toBe("gone");
   });
 
-  it("refuses with the HTTP status alone on any other failure", async () => {
+  it("refuses with the status and bb's bounded message, the wake text replaced, on any other failure", async () => {
     const failing = channel({
       list: async () => [row()],
       update: async () => {
-        throw httpError(500, "wake text");
+        throw httpError(500, "queue refused: the wake text");
       },
     });
-    expect(await failing.channel.amend("thr_1", "q1", "t")).toEqual({ refused: "HTTP 500" });
+    expect(await failing.channel.amend("thr_1", "q1", "the wake text")).toEqual({ refused: "HTTP 500: queue refused: …" });
     const listing = channel({
       list: async () => {
         throw httpError(503);
       },
     });
-    expect(await listing.channel.amend("thr_1", "q1", "t")).toEqual({ refused: "HTTP 503" });
+    expect(await listing.channel.amend("thr_1", "q1", "t")).toEqual({ refused: "HTTP 503: secret wake text" });
   });
 
   it("is gone when listing the thread's queue answers 404", async () => {

@@ -151,14 +151,14 @@ describe("the dashboard's RPC", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("answers bb's reason when bb refuses the message, records nothing, and leaves the row its action (AC13)", async () => {
+  it("answers bb's own reason, without the text sent, when bb refuses the message, records nothing, and leaves the row its action (AC13)", async () => {
     const manifest = join(dir, "manifest.md");
     writeFileSync(manifest, manifestText(row(7)));
-    const { harness, call } = await load({ send: () => Promise.reject(Object.assign(new Error("HTTP 409 conflict: Go with B"), { status: 409 })) });
+    const { harness, call } = await load({ send: () => Promise.reject(Object.assign(new Error("Thread is archived (you sent: Answer to #7: Go with B)"), { status: 409 })) });
     await register(harness, manifest);
     const rowId = (await call<FleetsView>("fleets")).inbox[0]!.id;
     const result = await call<Result<unknown>>("sendAction", { fleet: REPO, rowId, kind: "answer", text: "Go with B" });
-    expect(result).toEqual({ ok: false, reason: "HTTP 409" });
+    expect(result).toEqual({ ok: false, reason: "HTTP 409: Thread is archived (you sent: …)" });
     expect((await call<FleetsView>("fleets")).inbox[0]).toMatchObject({ offer: { kind: "answer" }, action: null });
   });
 

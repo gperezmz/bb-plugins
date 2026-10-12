@@ -106,11 +106,13 @@ export class FakeCredentialAdmin implements CredentialAdmin {
 /** bb's queue as the manager sees it: idle sends at once, busy queues, refusing refuses. */
 export class FakeChannel implements ManagerChannel {
   mode: "idle" | "busy" | "refuse" = "idle";
+  /** What a refused send or amendment says. */
+  refusal = "HTTP 500";
   readonly sent: { threadId: string; text: string; id: string | null }[] = [];
   readonly queue = new Map<string, { threadId: string; text: string }>();
   private next = 1;
   async send(threadId: string, text: string): Promise<DeliveryResult> {
-    if (this.mode === "refuse") return { delivered: "refused", reason: "HTTP 500" };
+    if (this.mode === "refuse") return { delivered: "refused", reason: this.refusal };
     if (this.mode === "idle") {
       this.sent.push({ threadId, text, id: null });
       return { delivered: "sent" };
@@ -121,7 +123,7 @@ export class FakeChannel implements ManagerChannel {
     return { delivered: "queued", queuedMessageId: id };
   }
   async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }> {
-    if (this.mode === "refuse") return { refused: "HTTP 500" };
+    if (this.mode === "refuse") return { refused: this.refusal };
     const row = this.queue.get(queuedMessageId);
     if (row === undefined || row.threadId !== threadId) return "gone";
     this.queue.set(queuedMessageId, { threadId, text });
