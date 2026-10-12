@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -176,6 +176,29 @@ describe("SqliteStore on a database", () => {
     expect(after.openWake("github.com/org/repo")).toEqual(wake);
     expect(after.createWake("github.com/org/repo", { kind: "changes", threadId: "thr_manager", queuedMessageId: null, queuedAt: "2026-10-12T10:07:00.000Z", since: "2026-10-12T10:00:00.000Z", catchUpMs: null, heldSince: null, notWatched: null }).id).toBeGreaterThan(wake.id);
     second.close();
+  });
+
+  it("leaves a removed or replaced token neither in the database file nor in its write-ahead log", () => {
+    const dir = mkdtempSync(join(tmpdir(), "unattendish-tokens-"));
+    try {
+      const file = join(dir, "data.db");
+      const db = migrated(new Database(file));
+      db.pragma("journal_mode = WAL");
+      const accounts = new SqliteAccounts(db);
+      accounts.addAccount({ id: "a", service: "github", place: "github.com", login: "y", name: "y", via: "token", apiUrl: null, addedAt: "2026-10-12T10:00:00.000Z" });
+      accounts.saveCredential({ id: "c1", accountId: "a", kind: "fine-grained", owner: "acme", expiresAt: null, addedAt: "2026-10-12T10:00:00.000Z" }, "ghp_REMOVED_TOKEN_VALUE");
+      accounts.saveCredential({ id: "c2", accountId: "a", kind: "fine-grained", owner: "zorg", expiresAt: null, addedAt: "2026-10-12T10:00:00.000Z" }, "ghp_RENEWED_OLD_VALUE");
+      accounts.saveCredential({ id: "c3", accountId: "a", kind: "fine-grained", owner: "zorg", expiresAt: null, addedAt: "2026-10-12T10:00:00.000Z" }, "ghp_RENEWED_NEW_VALUE");
+      accounts.removeCredential("c1");
+      const onDisk = () => ["data.db", "data.db-wal"].map((name) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name)).toString("latin1") : "")).join("");
+      expect(onDisk()).not.toContain("ghp_REMOVED_TOKEN_VALUE");
+      expect(onDisk()).not.toContain("ghp_RENEWED_OLD_VALUE");
+      accounts.removeAccount("a");
+      expect(onDisk()).not.toContain("ghp_RENEWED_NEW_VALUE");
+      db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("reads a refusal stored under its old name, prefix, as the credential's", () => {

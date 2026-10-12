@@ -55,16 +55,17 @@ export class SqliteAccounts implements AccountStore {
   }
 
   removeAccount(accountId: string): void {
-    this.db.transaction(() => {
+    this.forgetting(() => {
       this.db.prepare("DELETE FROM access_problems WHERE credential_id IN (SELECT id FROM account_credentials WHERE account_id = ?)").run(accountId);
       this.db.prepare("DELETE FROM account_credentials WHERE account_id = ?").run(accountId);
       this.db.prepare("DELETE FROM assignments WHERE account_id = ?").run(accountId);
       this.db.prepare("DELETE FROM accounts WHERE id = ?").run(accountId);
-    })();
+    });
   }
 
   saveCredential(credential: AccountCredential, token: string | null): void {
-    this.db.transaction(() => {
+    // A credential it replaces, a Renew's old token among them, is deleted as Remove deletes one.
+    this.forgetting(() => {
       const service = (this.db.prepare("SELECT service FROM accounts WHERE id = ?").get(credential.accountId) as { service: string } | undefined)?.service;
       const replaced =
         service === "github"
@@ -74,11 +75,21 @@ export class SqliteAccounts implements AccountStore {
       this.db
         .prepare("INSERT INTO account_credentials (id, account_id, kind, owner, token, expires_at, added_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .run(credential.id, credential.accountId, credential.kind, credential.owner, token, credential.expiresAt, credential.addedAt);
-    })();
+    });
   }
 
   removeCredential(credentialId: string): void {
-    this.db.transaction(() => this.drop(credentialId))();
+    this.forgetting(() => this.drop(credentialId));
+  }
+
+  /**
+   * Runs a deletion of tokens, then checkpoints the write-ahead log into the database and truncates it, so a deleted
+   * token is left neither in the log nor, with `secure_delete`, in the database's free pages. A checkpoint a reader
+   * holds back leaves the log to the next.
+   */
+  private forgetting(work: () => void): void {
+    this.db.transaction(work)();
+    this.db.pragma("wal_checkpoint(TRUNCATE)");
   }
 
   private drop(credentialId: string): void {
