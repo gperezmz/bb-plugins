@@ -80,6 +80,36 @@ describe("HttpClient", () => {
     expect(seen).toHaveLength(1);
   });
 
+  describe("plain http off loopback", () => {
+    const remote: ResolvedCredential = { prefix: "gitlab.example.com", service: "gitlab", auth: "token", baseUrl: "https://gitlab.example.com/api/v4", host: "gitlab.example.com" };
+    const reply = (status: number, headers: Record<string, string>) => async () => new Response("[]", { status, headers });
+
+    it("refuses an absolute http URL on the credential's host before any request leaves", async () => {
+      const fetched: string[] = [];
+      const http = client({ fetch: async (url) => (fetched.push(String(url)), new Response("{}")) });
+      await expect(http.session(remote, TOKEN).request({ method: "GET", path: "http://gitlab.example.com/api/v4/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual([]);
+    });
+
+    it("does not follow a redirect to plain http on the credential's host, and does not resend the token", async () => {
+      const fetched: string[] = [];
+      const http = client({ fetch: async (url) => (fetched.push(String(url)), new Response(null, { status: 302, headers: { location: "http://gitlab.example.com/api/v4/y" } })) });
+      await expect(http.session(remote, TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual(["https://gitlab.example.com/api/v4/x"]);
+    });
+
+    it("refuses a next link to plain http on the credential's host", async () => {
+      const http = client({ fetch: reply(200, { link: '<http://gitlab.example.com/api/v4/x?page=2>; rel="next"' }) });
+      await expect(http.session(remote, TOKEN).paginate({ path: "/x" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+    });
+
+    it("follows a redirect to https on the credential's host", async () => {
+      let calls = 0;
+      const http = client({ fetch: async () => (calls += 1) === 1 ? new Response(null, { status: 301, headers: { location: "/api/v4/y" } }) : new Response("{}") });
+      await expect(http.session(remote, TOKEN).request({ method: "GET", path: "/x" })).resolves.toMatchObject({ status: 200 });
+    });
+  });
+
   it("follows a redirect on the same host", async () => {
     const { seen, credential } = await serve((request, response) => {
       if (request.url === "/api/old") {

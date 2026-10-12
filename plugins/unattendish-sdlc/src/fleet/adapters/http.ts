@@ -4,6 +4,7 @@
 // a header or a query string.
 import { HttpError, type Http, type HttpRequest, type HttpResponse, type HttpSession, type RequestRecord, type ResolvedCredential } from "../application/ports";
 import type { ServiceKind } from "../domain/model";
+import { isLoopbackHost } from "./settings";
 
 const USER_AGENT = "bb-plugin-unattendish-sdlc";
 const TIMEOUT_MS = 30_000;
@@ -141,10 +142,15 @@ class Session implements HttpSession {
       const joined = `${base.pathname.replace(/\/+$/, "")}/${request.path.replace(/^\/+/, "")}`;
       url.pathname = request.path === "" ? base.pathname : joined;
     }
-    if (url.hostname !== this.credential.host) throw new HttpError("outside-host", `${request.method} ${url.pathname} is not on the credential's host`);
-    if (url.protocol !== "https:" && !isLoopback(url.hostname)) throw new HttpError("outside-host", `${request.method} ${url.pathname} is not https`);
+    this.checkTarget(request.method, url);
     for (const [name, value] of Object.entries(request.query ?? {})) if (value !== undefined) url.searchParams.set(name, String(value));
     return url;
+  }
+
+  /** Refuses a URL off the credential's host, or plain http anywhere but loopback; the token goes to no other. */
+  private checkTarget(method: string, url: URL): void {
+    if (url.hostname !== this.credential.host) throw new HttpError("outside-host", `${method} ${url.pathname} is not on the credential's host`);
+    if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) throw new HttpError("outside-host", `${method} ${url.pathname} is not https`);
   }
 
   async request(request: HttpRequest, options: { readonly signal?: AbortSignal } = {}): Promise<HttpResponse> {
@@ -188,7 +194,7 @@ class Session implements HttpSession {
         const location = header("location");
         if (location === null || request.method !== "GET" || redirects >= MAX_REDIRECTS) throw new HttpError("client", `${describe(request.method, url)} redirected`, response.status);
         const target = new URL(location, url);
-        if (target.hostname !== this.credential.host) throw new HttpError("outside-host", `${describe(request.method, url)} redirected off the credential's host`, response.status);
+        this.checkTarget(request.method, target);
         url = target;
         redirects += 1;
         continue;
@@ -254,5 +260,3 @@ class Session implements HttpSession {
     }
   }
 }
-
-const isLoopback = (hostname: string): boolean => hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]" || hostname === "::1";
