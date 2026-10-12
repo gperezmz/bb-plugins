@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTION_TEXT_MAX_CHARS, actionId, actionMessage, finishedActions, latestOn, planAction, recentActions, type ActionRecord, type ActionRequest } from "./actions";
+import { ACTION_TEXT_MAX_CHARS, actionId, actionMessage, finishedActions, heldBy, latestOn, planAction, recentActions, type ActionRecord, type ActionRequest } from "./actions";
 import type { InboxRow } from "./model";
 
 const row = (over: Partial<InboxRow> = {}): InboxRow => ({ ref: "#163", what: "Which cache?", waitsFor: "answer", since: "2026-10-12T09:30:00Z", link: "https://github.com/org/repo/issues/163", ...over });
@@ -120,5 +120,12 @@ describe("latestOn", () => {
     expect(latestOn(records, "r1")!.id).toBe("new");
     expect(latestOn(records, "none")).toBeNull();
     expect(actionId("r1", "t")).toBe("t|r1");
+  });
+});
+
+describe("heldBy", () => {
+  it("keeps what is done and what was sent to the manager, and drops what was sent to another", () => {
+    const records = [record({ id: "mine" }), record({ id: "theirs", managerThreadId: "thr_old" }), record({ id: "done", managerThreadId: "thr_old", state: "done", doneAt: "2026-10-12T10:05:00.000Z" })];
+    expect(heldBy(records, "thr_m").map((r) => r.id)).toEqual(["mine", "done"]);
   });
 });

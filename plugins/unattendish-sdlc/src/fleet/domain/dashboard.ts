@@ -54,7 +54,8 @@ export interface Reason {
   readonly fix: Fix;
 }
 
-const FIXES: Readonly<Record<NotWatchedCode, Fix>> = { "manifest-missing": "none", "manifest-unreadable": "none", "no-credential": "settings", "credential-refused": "settings" };
+/** Where each reason is fixed: a credential in the settings section, the manifest on the Fleet tab, which shows its state and why it cannot be read. */
+const FIXES: Readonly<Record<NotWatchedCode, Fix>> = { "manifest-missing": "fleet-tab", "manifest-unreadable": "fleet-tab", "no-credential": "settings", "credential-refused": "settings" };
 
 /** `3 manifest rows cannot be read: In flight, Inbox`: how many and in which sections, sections sorted; null when every row reads. */
 export const unreadableRowsText = (unreadable: readonly UnreadableRow[]): string | null => {

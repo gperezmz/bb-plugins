@@ -2,6 +2,7 @@
 // done. The message is the operator's own plain prompt; it names no plugin.
 import { labelOf, offerFor, type ActionKind } from "./inbox";
 import { parseMessageLink } from "./manifest";
+import { newestFirst } from "./order";
 import type { InboxRow } from "./model";
 
 export const ACTION_TEXT_MAX_CHARS = 20_000;
@@ -81,9 +82,17 @@ export const planAction = (request: ActionRequest): ActionPlan => {
   return { ok: true, message: actionMessage(kind, row, request.text ?? "", regrant) };
 };
 
+/**
+ * The actions that count for the manager holding the fleet now: those done, and those sent to it. One still sent to a
+ * manager since replaced never reached the one that follows it, so it offers nothing, blocks nothing and is never
+ * marked done.
+ */
+export const heldBy = (records: readonly ActionRecord[], managerThreadId: string): ActionRecord[] =>
+  records.filter((record) => record.state === "done" || record.managerThreadId === managerThreadId);
+
 /** The latest action sent on a row. */
 export const latestOn = (records: readonly ActionRecord[], rowId: string): ActionRecord | null =>
-  records.filter((record) => record.rowId === rowId).sort((a, b) => (a.sentAt < b.sentAt ? 1 : a.sentAt > b.sentAt ? -1 : 0))[0] ?? null;
+  records.filter((record) => record.rowId === rowId).sort(newestFirst((record) => record.sentAt))[0] ?? null;
 
 /**
  * The ids of the sent actions a manifest read shows done: Answer… and Grant… when the row is gone from the Inbox
@@ -97,5 +106,5 @@ export const recentActions = (records: readonly ActionRecord[], inboxIds: Readon
   const from = now.getTime() - RECENT_MS;
   return records
     .filter((record) => record.state === "done" && !inboxIds.has(record.rowId) && record.doneAt !== null && Date.parse(record.doneAt) >= from)
-    .sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : a.doneAt! > b.doneAt! ? -1 : 0));
+    .sort(newestFirst((record) => record.doneAt!));
 };

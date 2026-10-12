@@ -86,7 +86,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     jira: createJiraAdapter(),
   };
   const log = { warn: (message: string) => bb.log.warn(redact(message, credentials.secrets())) };
-  const events = new BbDashboardEvents(bb.realtime, log);
+  const events = new BbDashboardEvents(bb.realtime, log, clock);
   const poll: PollDeps = {
     store,
     threads,

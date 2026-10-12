@@ -26,7 +26,7 @@ import {
   type ThreadDirectory,
 } from "./ports";
 import { observeManifest } from "./observe";
-import { assessWatching, refusedNotWatched, type Watching } from "./watching";
+import { assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
 
 export interface PollDeps {
   readonly store: Store;
@@ -256,8 +256,7 @@ async function runPoll(deps: PollDeps, repo: string, options: PollOptions): Prom
   const watching = await assessWatching(deps, registration);
   const reading = await readSources(deps, fleet, watching, now, options);
   const notWatched = [...reading.notWatched];
-  const forge = reading.reads.find((read) => read.role === "forge")?.resolved.source ?? watching.forge?.source;
-  observeManifest(deps, registration, forge?.role === "forge" ? forge.service : "github", watching.manifest, Object.assign({}, ...reading.reads.map((read) => read.derived.nextCursor.items)), now);
+  observeManifest(deps, registration, forgeServiceOf(watching), watching.manifest, Object.assign({}, ...reading.reads.map((read) => read.derived.nextCursor.items)), now);
 
   const outages: Partial<Record<SourceRole, SourceOutage>> = {};
   for (const role of rolesOf(registration)) {

@@ -1,14 +1,15 @@
 // What the Fleets dashboard asks of the plugin: the Fleets page, the Fleet chip
 // and tab, the ledger, the actions sent to a manager, and the settings section.
 // Every method answers from the store, the manifests and bb as they are now.
-import { actionId, latestOn, planAction } from "../domain/actions";
+import { actionId, heldBy, latestOn, planAction } from "../domain/actions";
 import { doneWith, droppedReason, groupDropped, oldestFirst, repoFromRemote, sameRepo } from "../domain/dashboard";
 import { formatRepo, parseRepo, repoId } from "../domain/identity";
+import { newestFirst } from "../domain/order";
 import { messageOf } from "../domain/redact";
 import { clip } from "../domain/text";
 import { effectiveInterval, validateInterval } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
-import { cardOf, credentialViews, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, recentActionsOf, watchedOf, type ViewDeps } from "./fleet-views";
+import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, recentActionsOf, watchedOf, type ViewDeps } from "./fleet-views";
 import type { CredentialAdmin, DashboardEvents, ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
 import { setFleetInterval } from "./schedule";
 import type { SerialQueue } from "./serial";
@@ -34,15 +35,19 @@ export interface DashboardDeps extends ViewDeps {
   readonly secrets: () => string[];
 }
 
-/** Most changes a ledger answer lists, as `fleet ledger` caps its entries. */
+/**
+ * Most entries `fleet ledger` prints, and most changes a ledger answer lists. bb refuses a command that prints more
+ * than 1 MiB, so the widest row, once every field is bounded to `FIELD_MAX`, times this must stay under it;
+ * `cli.test.ts` checks it with the widest rows there can be, in the text and in the JSON.
+ */
 export const LEDGER_LIMIT = 250;
 /** Most wakes a ledger answer lists. */
 const WAKES_SHOWN = 50;
 /** How many changes the ledger counts for its dropped groups, and how many of each group it lists. */
 const DROPPED_COUNTED = 1000;
 const DROPPED_LISTED = 25;
-/** A string in a ledger answer is cut to this many characters. */
-const FIELD_MAX = 200;
+/** A string in a ledger answer, or printed by `fleet ledger`, is cut to this many characters. */
+export const FIELD_MAX = 200;
 
 const refused = (reason: string) => ({ ok: false as const, reason });
 const unknownFleet = (repo: string) => refused(`no fleet is registered for ${clip(repo, 80)}`);
@@ -66,7 +71,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       fleets: cards,
       inbox: oldestFirst(parts.flatMap(({ inbox }) => inbox.rows)).slice(0, MAX_ROWS * 2),
       unreadableInbox: parts.flatMap(({ inbox }) => inbox.unreadable).slice(0, MAX_ROWS * 2),
-      recentActions: parts.flatMap(({ g, inbox }) => recentActionsOf(g, inbox.ids, now)).sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : a.doneAt! > b.doneAt! ? -1 : 0))
+      recentActions: parts.flatMap(({ g, inbox }) => recentActionsOf(g, inbox.ids, now)).sort(newestFirst((action) => action.doneAt!))
         .slice(0, MAX_ROWS),
       landed: parts
         .flatMap(({ g }) => landedViews(g, now))
@@ -100,7 +105,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         card: await cardOf(deps, g, now),
         manifest: manifestViewOf(g, inbox, now),
         watched: watchedOf(deps, g),
-        credentials: credentialViews(g),
+        credentials: credentialsOf(g),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
         recentActions: recentActionsOf(g, inbox.ids, now),
       },
@@ -132,7 +137,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const changes = dones
       .flatMap((done) => deps.store.ledger(key, { ...withItem, done, limit }))
       .flatMap((entry) => changeView(entry) ?? [])
-      .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+      .sort(newestFirst((change) => change.at))
       .slice(0, limit);
 
     const dropsAsked = wanted.done === undefined || wanted.done === "echo" || wanted.done === "out-of-scope" ? (["echo", "out-of-scope"] as const) : [];
@@ -144,7 +149,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         const view = changeView(entry);
         return reason === null || view === null ? [] : [{ reason, view }];
       })
-      .sort((a, b) => (a.view.at < b.view.at ? 1 : a.view.at > b.view.at ? -1 : 0));
+      .sort(newestFirst((drop) => drop.view.at));
     const groups: DroppedGroupView[] = groupDropped(dropped).map((group) => ({ reason: group.reason, count: group.count, changes: group.changes.slice(0, DROPPED_LISTED).map((change) => change.view) }));
 
     const view: LedgerView = {
@@ -171,12 +176,14 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       const manifest = await deps.manifests.read(registration.manifestPath);
       const read = manifest.status === "ok" ? manifest.manifest.inbox : [];
       const at = uniqueRowIds(read).indexOf(input.rowId);
-      const taken = latestOn(deps.store.actions(key), input.rowId) !== null;
+      const taken = latestOn(heldBy(deps.store.actions(key), registration.managerThreadId), input.rowId) !== null;
       const plan = planAction({ row: at === -1 ? undefined : read[at], kind: input.kind, text: input.text, regrant: input.regrant, managerThreadId: registration.managerThreadId, taken });
       if (!plan.ok) return refused(plan.reason);
 
       const delivery = await deps.channel.send(registration.managerThreadId, plan.message);
       if (delivery.delivered === "refused") return refused(messageOf(delivery.reason, [...deps.secrets(), input.text ?? ""].filter((secret) => secret.length >= 6)));
+      // The send took time: a take-over meanwhile means the message went to a manager that no longer holds the fleet.
+      if (deps.store.getFleet(key)?.registration.managerThreadId !== registration.managerThreadId) return refused("the fleet changed manager while the message was sent, so the new manager did not get it; send it again");
       const row = read[at]!;
       const sentAt = deps.clock.now().toISOString();
       const record = { id: actionId(input.rowId, sentAt), repo: key, rowId: input.rowId, kind: input.kind, ref: row.ref, what: row.what, managerThreadId: registration.managerThreadId, state: "sent" as const, sentAt, doneAt: null };

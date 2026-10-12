@@ -65,7 +65,7 @@ describe("reasonsOf", () => {
     expect(reasons.map((reason) => [reason.code, reason.fix])).toEqual([
       ["no-credential", "settings"],
       ["credential-refused", "settings"],
-      ["manifest-missing", "none"],
+      ["manifest-missing", "fleet-tab"],
       ["unreadable-rows", "fleet-tab"],
     ]);
   });

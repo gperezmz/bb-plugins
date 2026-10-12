@@ -1,10 +1,11 @@
 // What a read of a fleet's manifest shows beyond what to watch: which sent
 // actions are done, and which Inbox rows are new to the repository. Runs after
 // each poll's and each turn-end read's reading, whatever the poll does next.
-import { finishedActions } from "../domain/actions";
+import { finishedActions, heldBy } from "../domain/actions";
 import { inboxNews } from "../domain/dashboard";
 import { formatRepo, repoId } from "../domain/identity";
 import { uniqueRowIds } from "../domain/inbox";
+import { CELL_MAX_CHARS, clip } from "../domain/text";
 import { itemId, type ItemState, type ManifestRead, type Registration } from "../domain/model";
 import { itemOfReference } from "../domain/watched";
 import type { DashboardEvents, Store } from "./ports";
@@ -40,7 +41,8 @@ export function observeManifest(
     const item = itemOfReference(ref, identity);
     return item !== null && (items[itemId(item.role, item.ref)]?.fleetLabels.includes(registration.labels.ready) ?? false);
   };
-  const sent = deps.store.actions(repo).filter((action) => action.state === "sent" && action.sentAt <= at);
+  // An action sent to a manager since replaced never reached the one that holds the fleet now.
+  const sent = heldBy(deps.store.actions(repo), registration.managerThreadId).filter((action) => action.state === "sent" && action.sentAt <= at);
   const finished = finishedActions(sent, new Set(ids), ready);
   if (finished.length > 0) deps.store.markActionsDone(repo, finished, at);
 
@@ -49,7 +51,7 @@ export function observeManifest(
   deps.store.touchInboxSeen(repo, ids, at);
   if (!baselined) deps.store.setInboxBaselined(repo);
   const announced = new Set(news.announce);
-  manifest.manifest.inbox.forEach((row, at) => {
-    if (announced.has(ids[at]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: row.what, rowId: ids[at]! });
+  manifest.manifest.inbox.forEach((row, index) => {
+    if (announced.has(ids[index]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: clip(row.what, CELL_MAX_CHARS), rowId: ids[index]! });
   });
 }

@@ -123,15 +123,14 @@ describe("save: refusing", () => {
     expect(JSON.stringify(result)).not.toContain(NEW_TOKEN);
   });
 
-  it("answers with the settings' own refusal, scrubbed of the token, when the host refuses the write", async () => {
-    const { admin, handle } = await setup();
-    const refusing = new SettingsCredentialAdmin(
-      { get: () => handle.get(), experimental_set: () => Promise.reject(new Error(`rejected value ${NEW_TOKEN}`)) },
-      () => [],
-    );
-    const result = await refusing.save({ prefix: "github.com/org", auth: "token", token: NEW_TOKEN });
-    expect(result).toEqual({ ok: false, reason: "the settings were not saved: rejected value [redacted]" });
-    expect(admin).toBeDefined();
+  it("answers with the settings' own refusal, scrubbed of the pasted token and of every token stored, when the host refuses a write", async () => {
+    const { handle } = await setup({ credentials: TWO, tokens: JSON.stringify({ "github.com/org": TOKEN_A, "gitlab.com": TOKEN_B }) });
+    const refusing = (quoted: string) => new SettingsCredentialAdmin({ get: () => handle.get(), experimental_set: () => Promise.reject(new Error(`rejected ${quoted}`)) }, () => [TOKEN_A, TOKEN_B]);
+    expect(await refusing(`${NEW_TOKEN} ${TOKEN_A} ${TOKEN_B}`).save({ was: "github.com/org", prefix: "github.com/org", auth: "token", token: NEW_TOKEN })).toEqual({
+      ok: false,
+      reason: "the settings were not saved: rejected [redacted] [redacted] [redacted]",
+    });
+    expect(await refusing(`${TOKEN_A} ${TOKEN_B}`).remove("gitlab.com")).toEqual({ ok: false, reason: "the settings were not saved: rejected [redacted] [redacted]" });
   });
 });
 
