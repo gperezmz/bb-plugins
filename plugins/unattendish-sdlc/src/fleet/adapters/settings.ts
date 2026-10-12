@@ -41,7 +41,11 @@ export interface ParsedTokens {
 /** The key two spellings of one prefix share: a host and path segments match without regard to case. */
 export const prefixKey = (prefix: Prefix): string => prefixText(prefix).toLowerCase();
 
-const SERVICES = ["github", "gitlab", "linear", "jira"] as const;
+/** Every service, in one list the settings validator reads. */
+const SERVICES = ["github", "gitlab", "linear", "jira"] as const satisfies readonly ServiceKind[];
+/** Fails to compile when `ServiceKind` gains a service `SERVICES` lacks. */
+const _everyService: Exclude<ServiceKind, (typeof SERVICES)[number]> extends never ? true : never = true;
+void _everyService;
 
 const ENTRY = z.strictObject({
   prefix: z.string().min(1),
@@ -53,11 +57,15 @@ const ENTRY = z.strictObject({
 /** A hostname the plugin lets a base URL use for testing without https. */
 export const isLoopbackHost = (hostname: string): boolean => hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]";
 
-/** The only hostnames a credential for this prefix may send its token to, besides loopback. */
+/**
+ * The only hostnames a credential for this prefix may send its token to,
+ * besides loopback. `api.<host>` is allowed for github.com alone, which is
+ * where GitHub's REST API lives; any other host serves its API itself.
+ */
 const allowedHosts = (prefix: Prefix): string[] => {
   switch (prefix.kind) {
     case "repo":
-      return [prefix.host, `api.${prefix.host}`];
+      return prefix.host === "github.com" ? [prefix.host, "api.github.com"] : [prefix.host];
     case "linear":
       return ["api.linear.app"];
     case "jira":
@@ -201,7 +209,7 @@ export const SETTINGS = {
     type: "string",
     label: "Credentials",
     description:
-      'JSON list saying how the plugin signs in to each service, e.g. [{"prefix": "github.com/org", "auth": "token"}, {"prefix": "gitlab.com", "auth": "glab"}, {"prefix": "linear:", "auth": "token"}]. "auth" is "token" (a token pasted under Tokens), "gh" (use my gh login) or "glab" (use my glab login); it is chosen for each prefix and never falls back to another. A prefix is a host (github.com), an owner or group path (github.com/org), a full repository path (github.com/org/repo), linear: (every Linear team) or linear:<team key>, jira:<site> (every project of a Jira Cloud site) or jira:<site>/<project key>. It matches whole host and whole path segments only, and a fleet uses the longest prefix that matches its repository, and separately its tracker. Optional "service" ("github", "gitlab", "linear" or "jira") is needed for a host other than github.com and gitlab.com. Optional "baseUrl" is the API root, on the prefix\'s own host (or api.<host>), https only; loopback may use http.',
+      'JSON list saying how the plugin signs in to each service, e.g. [{"prefix": "github.com/org", "auth": "token"}, {"prefix": "gitlab.com", "auth": "glab"}, {"prefix": "linear:", "auth": "token"}]. "auth" is "token" (a token pasted under Tokens), "gh" (use my gh login) or "glab" (use my glab login); it is chosen for each prefix and never falls back to another. A prefix is a host (github.com), an owner or group path (github.com/org), a full repository path (github.com/org/repo), linear: (every Linear team) or linear:<team key>, jira:<site> (every project of a Jira Cloud site) or jira:<site>/<project key>. It matches whole host and whole path segments only, and a fleet uses the longest prefix that matches its repository, and separately its tracker. Optional "service" ("github", "gitlab", "linear" or "jira") is needed for a host other than github.com and gitlab.com. Optional "baseUrl" is the API root, on the prefix\'s own host (for github.com also api.github.com), https only; loopback may use http.',
     experimental_multiline: true,
     experimental_schema: credentialsText,
     default: "[]",

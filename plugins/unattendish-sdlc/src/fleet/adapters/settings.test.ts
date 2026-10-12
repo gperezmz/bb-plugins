@@ -1,12 +1,19 @@
 import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
-import { credentialsText, parseCredentialEntries, parseTokens, SETTINGS, tokensText } from "./settings";
+import { credentialsText, isLoopbackHost, parseCredentialEntries, parseTokens, SETTINGS, tokensText } from "./settings";
 
 const list = (...entries: object[]) => JSON.stringify(entries);
 
 /** Runs a setting's StandardSchema validator, as bb does on save. */
 const check = (schema: { "~standard": { validate(value: unknown): unknown } }, text: string) => schema["~standard"].validate(text) as { issues?: { message: string }[]; value?: string };
 const messages = (schema: Parameters<typeof check>[0], text: string) => (check(schema, text).issues ?? []).map((issue) => issue.message);
+
+describe("isLoopbackHost", () => {
+  it("is true for the loopback names a test server uses and false for anything else", () => {
+    for (const host of ["127.0.0.1", "localhost", "[::1]"]) expect(isLoopbackHost(host)).toBe(true);
+    for (const host of ["127.0.0.2", "example.com", "localhost.evil.net", ""]) expect(isLoopbackHost(host)).toBe(false);
+  });
+});
 
 describe("SETTINGS", () => {
   it("declares credentials as a multiline, non-secret list and tokens as a secret", () => {
@@ -20,6 +27,10 @@ describe("SETTINGS", () => {
   it("explains the prefix forms and whole-segment matching in the credentials description", () => {
     const text = SETTINGS.credentials.description;
     for (const form of ["github.com/org/repo", "linear:", "linear:<team key>", "jira:<site>", "jira:<site>/<project key>", "whole host and whole path segments"]) expect(text).toContain(form);
+  });
+
+  it("says in the credentials description that api.<host> is for github.com alone", () => {
+    expect(SETTINGS.credentials.description).toContain("for github.com also api.github.com");
   });
 
   it("has validators that accept the defaults and return the proposed value unchanged", () => {
@@ -111,6 +122,25 @@ describe("parseCredentialEntries", () => {
       { prefix: "jira:a.atlassian.net", auth: "token", baseUrl: "https://a.atlassian.net" },
     ];
     expect(parseCredentialEntries(list(...ok))).toMatchObject({ problems: [] });
+  });
+
+  it("allows api.<host> for github.com alone", () => {
+    const refused = [
+      { prefix: "ghe.example.com", auth: "token", service: "github", baseUrl: "https://api.ghe.example.com" },
+      { prefix: "git.example.com", auth: "token", service: "gitlab", baseUrl: "https://api.git.example.com/v4" },
+      { prefix: "gitlab.com", auth: "token", baseUrl: "https://api.gitlab.com" },
+    ];
+    const { entries, problems } = parseCredentialEntries(list(...refused));
+    expect(entries).toEqual([]);
+    expect(problems).toHaveLength(refused.length);
+    expect(problems[0]).toContain("must be on ghe.example.com,");
+    const accepted = [
+      { prefix: "github.com", auth: "token", baseUrl: "https://api.github.com" },
+      { prefix: "ghe.example.com", auth: "token", service: "github", baseUrl: "https://ghe.example.com/api/v3" },
+      { prefix: "gitlab.com", auth: "token", baseUrl: "https://gitlab.com/api/v4" },
+      { prefix: "git.example.com", auth: "token", service: "gitlab", baseUrl: "http://127.0.0.1:4010" },
+    ];
+    expect(parseCredentialEntries(list(...accepted))).toMatchObject({ problems: [] });
   });
 
   it("refuses a service that does not fit the prefix's kind", () => {

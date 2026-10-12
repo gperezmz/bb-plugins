@@ -73,6 +73,12 @@ describe("forForge", () => {
     expect(credentials.forForge(repo("git.example.com/g/p")).found).toBe(false);
   });
 
+  it("finds no credential for a prefix whose baseUrl is on api.<host> of a host other than github.com", () => {
+    const { credentials } = setup({ credentials: list({ prefix: "ghe.example.com", auth: "token", service: "github", baseUrl: "https://api.ghe.example.com" }), tokens: undefined });
+    expect(credentials.forForge(repo("ghe.example.com/o/r"))).toEqual({ found: false, prefix: "ghe.example.com/o/r" });
+    expect(credentials.problems()).toHaveLength(1);
+  });
+
   it("does not fall back to a shorter prefix when the longest one was refused", () => {
     const { credentials } = setup({ credentials: list({ prefix: "github.com", auth: "token" }, { prefix: "github.com/org", auth: "token", baseUrl: "https://evil.example" }), tokens: undefined });
     expect(credentials.forForge(repo("github.com/org/r"))).toEqual({ found: false, prefix: "github.com/org/r" });
