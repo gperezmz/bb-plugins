@@ -532,14 +532,14 @@ export async function connect(deps: AccountsDeps, input: ConnectInput): Promise<
       notReadable.push(notReadableOf(read.fleet.registration, read.half.what, { label, kind }));
     }
   });
-  // The fleet Connect was opened for is read at once, so the popup and its card show the result without waiting for the
-  // next poll; the others it reaches are read behind it, and their cards follow when they are.
+  // Read at once, so what the popup answers into shows the result without waiting for the next poll. Opened for a fleet,
+  // that is the fleet: the others it reaches are read behind it, and their cards follow when they are. Opened from
+  // Settings, which shows each credential's standing, it is every fleet the credential reads.
   const others = new Set(reads.map((read) => repoId(read.fleet.registration.repo)));
-  if (opened !== null) {
-    others.delete(repoId(opened.registration.repo));
-    await deps.readNow(repoId(opened.registration.repo)).catch(() => undefined);
-  }
+  const awaited = opened === null ? [...others] : [repoId(opened.registration.repo)];
+  for (const repo of awaited) others.delete(repo);
   for (const repo of others) void deps.readNow(repo).catch(() => undefined);
+  await Promise.all(awaited.map((repo) => deps.readNow(repo).catch(() => undefined)));
   deps.events.boardChanged();
 
   const replacedNotice = input.replaces !== undefined && input.secret.kind !== "stored" ? revokeNotice(account) : null;

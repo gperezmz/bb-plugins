@@ -342,6 +342,19 @@ describe("Settings (AC8, AC10, AC11)", () => {
     expect(w.accounts.tokens()).toEqual(["tok-new"]);
   });
 
+  it("reads every fleet a credential renewed from Settings reaches before it answers, so Settings shows them as read", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-old", "yuser");
+    owns(w, "tok-new", "yuser");
+    const yuser = await addLogin(w, github("tok-old", "acme"));
+    await register(w, "github.com/acme/api");
+    const credential = (await api(w).settings()).accounts[0]!.credentials[0]!;
+    w.readNow.length = 0;
+    saved(await api(w).connect({ owner: "acme", account: { id: yuser }, secret: { kind: "token", token: "tok-new" }, replaces: credential.id }));
+    expect(w.readNow).toEqual(["github.com/acme/api"]);
+    expect(w.store.getFleet("github.com/acme/api")!.lastPolledAt).not.toBeNull();
+  });
+
   it("offers a gh login no Renew but the command to sign in again", async () => {
     const w = accountsWorld();
     w.logins.set("gh", "github.com", "yuser", "tok-gh");
