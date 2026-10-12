@@ -52,7 +52,7 @@ describe("reasonsOf", () => {
     expect(unreadableRowsText([])).toBeNull();
   });
 
-  it("gathers every reason with where it is fixed", () => {
+  it("gathers every reason with where it is put right", () => {
     const reasons = reasonsOf(
       [
         { code: "no-credential", text: "No credential is chosen for github.com/org/repo" },

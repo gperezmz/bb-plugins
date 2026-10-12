@@ -167,7 +167,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).cost).toEqual({ amount: 12.5, currency: "USD", period: "since this manager started" });
   });
 
-  it("gathers every reason the fleet is not fully watched, with where each is fixed", async () => {
+  it("gathers every reason the fleet is not fully watched, with where each is put right", async () => {
     const w = world();
     w.credentials.set([]);
     await start(w, manifest({ inbox: [BAD_ROW("answer"), BAD_ROW("later")], inFlight: ["| nope | x | building | 2026-10-12T09:00:00Z | — | https://github.com/org/repo/pull/6 |"] }));

@@ -11,9 +11,9 @@ describe("the dashboard client", () => {
     expect(call).toHaveBeenLastCalledWith("setInterval", { repo: "acme/web", seconds: null });
   });
 
-  it("calls a method with no input with an empty object", async () => {
+  it("calls a method that takes no input with null, as the server's schema asks", async () => {
     const call = vi.fn(async () => ({}));
     await createDashboardApi({ call }).fleets();
-    expect(call).toHaveBeenCalledWith("fleets", {});
+    expect(call).toHaveBeenCalledWith("fleets", null);
   });
 });
