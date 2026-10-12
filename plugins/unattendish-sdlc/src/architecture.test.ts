@@ -83,4 +83,15 @@ describe("the Fleet context's dependency rule", () => {
       }
     }
   });
+
+  it("keeps the pages' contract, views.ts, to types: it imports the domain's types and nothing that runs", () => {
+    const file = join(src, "fleet", "application", "views.ts");
+    const text = readFileSync(file, "utf8");
+    const imports = [...text.matchAll(/(?:^|\n)\s*import\b([^;]*?)from\s*["']([^"']+)["']/g)];
+    expect(imports.length).toBeGreaterThan(0);
+    for (const match of imports) {
+      expect({ specifier: match[2], typeOnly: /^\s*type\b/.test(match[1]!) }).toMatchObject({ typeOnly: true });
+      expect(regionOfTarget(file, match[2]!)).toBe("domain");
+    }
+  });
 });
