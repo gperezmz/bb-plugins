@@ -28,6 +28,28 @@ describe("refreshing the fleets of a manager whose turn ended", () => {
     expect(w.channel.sent).toEqual([]);
   });
 
+  it("reads only the fleets of the thread whose turn ended, though another fleet's manifest names new items too", async () => {
+    const w = world();
+    await startBoth(w);
+    const row = (repo: string) => `| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://${repo}/issues/7 |`;
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row("github.com/org/repo")] }));
+    w.manifests.files.set(OTHER_MANIFEST, manifest({ inbox: [row(OTHER_REPO)] }));
+    await refreshFleetsOf(w.poll, new SerialQueue(), MANAGER);
+    expect(w.adapters.github.reads.map((read) => read.source)).toEqual([{ role: "forge", service: "github", host: "github.com", path: "org/repo" }]);
+  });
+
+  it("asks the adapter only for the items the cursor does not know yet", async () => {
+    const w = world();
+    await startBoth(w);
+    const row = (n: number) => `| #${n} | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/repo/issues/${n} |`;
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [{ role: "forge", ref: "#7", url: "https://github.com/org/repo/issues/7", open: true, merged: false, fleetLabels: [], checks: null, inPartition: false, transitions: [] }] }));
+    await pollFleet(w.poll, REPO_KEY);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row(7), row(8)] }));
+    await refreshFleetsOf(w.poll, new SerialQueue(), MANAGER);
+    expect(w.adapters.github.reads.at(-1)).toMatchObject({ stateOnly: true, items: [{ role: "forge", ref: "#8" }] });
+  });
+
   it("runs behind a poll of the same fleet", async () => {
     const w = world();
     await startBoth(w);

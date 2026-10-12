@@ -117,7 +117,10 @@ export interface ReadRequest {
   readonly since: string;
   /** Also list the operator's partition: items carrying the spec or ready label, assigned to the operator or filed by them and assigned to nobody. */
   readonly scanPartition: boolean;
-  /** Read the state of `items` and nothing else: no events, no listing of updates. */
+  /**
+   * Read the state of `items`, with the transitions since `since` that gave it, and nothing else: no events, no
+   * listing of updates. The transitions let the baseline be the state before them, so they are still reported.
+   */
   readonly stateOnly: boolean;
   readonly signal: AbortSignal;
 }

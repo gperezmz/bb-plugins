@@ -82,6 +82,35 @@ describe("what a poll wakes the manager for", () => {
     expect(sentText(w)).toContain("#9 merged by carol");
   });
 
+  it("wakes once each for an item the manager names, labels ready and merges in one turn (AC5)", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inFlight: [inFlightRow(8, 9)] }));
+    w.clock.advance(30_000);
+    const turn = snapshot(9, {
+      url: pullUrl(9),
+      open: false,
+      merged: true,
+      fleetLabels: ["status:ready"],
+      transitions: [
+        { kind: "labelled", label: "status:ready", actor: "olivia", at: "2026-10-12T10:00:10.000Z", id: "l1" },
+        { kind: "merged", actor: "carol", at: "2026-10-12T10:00:20.000Z", id: "m1" },
+      ],
+    });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(8), turn] }));
+    await poll(w, { stateOnly: true });
+    expect(w.channel.sent).toEqual([]);
+    for (let i = 0; i < 2; i += 1) {
+      w.clock.advance(120_000);
+      w.adapters.github.queue(outcome({ snapshots: [snapshot(8), turn] }));
+      await poll(w);
+    }
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w).split("\n").slice(1)).toEqual([`#9 labelled status:ready by olivia ${pullUrl(9)}`, `#9 merged by carol ${pullUrl(9)}`]);
+  });
+
   it("wakes when an item in the operator's partition gains the ready label, once (AC4, AC5)", async () => {
     const w = world();
     await start(w, manifest());

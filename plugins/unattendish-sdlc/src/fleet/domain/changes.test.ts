@@ -253,6 +253,42 @@ describe("failures", () => {
 });
 
 describe("stateOnly", () => {
+  it("takes as the baseline of an item the cursor does not know its state before the transitions listed, undone latest first", () => {
+    const read = outcome({
+      snapshots: [
+        snapshot({
+          ref: "#9",
+          open: false,
+          merged: true,
+          fleetLabels: ["ready", "spec"],
+          transitions: [
+            transition({ kind: "unlabelled", label: "spec", id: "u1", at: "2026-10-12T09:10:00.000Z" }),
+            transition({ kind: "labelled", label: "spec", id: "l0", at: "2026-10-12T09:20:00.000Z" }),
+            transition({ kind: "labelled", label: "ready", id: "l1", at: "2026-10-12T09:30:00.000Z" }),
+            transition({ kind: "merged", id: "m1", at: "2026-10-12T09:40:00.000Z" }),
+          ],
+        }),
+        snapshot({ ref: "#4", open: true, fleetLabels: [], transitions: [transition({ kind: "closed", id: "c1" }), transition({ kind: "reopened", id: "r1", at: "2026-10-12T09:50:00.000Z" })] }),
+        snapshot({ ref: "#5", open: true, fleetLabels: [], transitions: [transition({ kind: "reopened", id: "r2" })] }),
+      ],
+    });
+    const prev = cursor({ "forge:#7": state({ fleetLabels: ["ready"] }) });
+    const { nextCursor, changes } = derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#9", "#4", "#5", "#7"]) });
+    expect(changes).toEqual([]);
+    expect(nextCursor.items["forge:#9"]).toEqual(state({ open: true, merged: false, fleetLabels: ["spec"] }));
+    expect(nextCursor.items["forge:#4"]).toEqual(state({ open: true }));
+    expect(nextCursor.items["forge:#5"]).toEqual(state({ open: false }));
+
+    const later = derive({ prev: nextCursor, outcome: outcome({ snapshots: [read.snapshots[0]!] }), watchedRefs: new Set(["#9"]) });
+    expect(later.changes.map((change) => change.key)).toEqual(["forge:#9|labelled:ready|l1", "forge:#9|merged|m1"]);
+  });
+
+  it("keeps the state an item the cursor knows reads as, whatever its transitions", () => {
+    const prev = cursor({ "forge:#9": state() });
+    const read = outcome({ snapshots: [snapshot({ ref: "#9", fleetLabels: ["ready"], transitions: [transition({ label: "ready" })] })] });
+    expect(derive({ prev, outcome: read, stateOnly: true, watchedRefs: new Set(["#9"]) }).nextCursor.items["forge:#9"]).toEqual(state({ fleetLabels: ["ready"] }));
+  });
+
   it("records state and reports nothing, keeping what it did not read and holding since", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#9": state() });
     const read = outcome({

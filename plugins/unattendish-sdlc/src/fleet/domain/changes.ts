@@ -36,7 +36,10 @@ export interface DeriveInput {
   readonly startedAt: string;
   /** The cursor's `since` when `prev` is null: the registration time. */
   readonly firstSince: string;
-  /** The read only took the state of the items: it records a baseline and reports nothing. */
+  /**
+   * The read only took the state of the items: it records a baseline and reports nothing. The baseline of an item
+   * the cursor does not know is its state before the transitions its snapshot lists, so the next poll reports them.
+   */
   readonly stateOnly: boolean;
   /** How far before `startedAt` the next cursor reaches, so an event the service lists late is still read. Defaults to 60 seconds. */
   readonly overlapMs?: number;
@@ -89,7 +92,7 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     const watched = watchedRefs.has(snapshot.ref);
     if (!stateOnly) changes.push(...snapshotChanges({ snapshot, before, watched, labels, startedAt, base, id }));
     // A closed item nobody watches is not read again: the partition listings name open items only.
-    if (watched || snapshot.open) items[id] = nextState(snapshot, before);
+    if (watched || snapshot.open) items[id] = stateOnly && before === undefined ? rewound(nextState(snapshot, before), snapshot.transitions) : nextState(snapshot, before);
   }
 
   if (!stateOnly) {
@@ -238,6 +241,33 @@ const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemS
     kept = { sha: checks.sha, outcome: checks.outcome, reported: isFinal(checks.outcome), ...(round === 0 ? {} : { round }) };
   }
   return { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+};
+
+/**
+ * The state before the transitions, undone from the latest back: a label
+ * gained is taken off, one lost put back, a close or merge opens the item
+ * again and a reopen closes it. The poll after a turn-end read then reports
+ * what the manager's turn did, each change under its transition's id.
+ */
+const rewound = (state: ItemState, transitions: readonly Transition[]): ItemState => {
+  let { open, merged } = state;
+  const fleetLabels = [...state.fleetLabels];
+  const latestFirst = transitions.map((transition, at) => ({ transition, at })).sort((a, b) => (a.transition.at < b.transition.at ? 1 : a.transition.at > b.transition.at ? -1 : b.at - a.at));
+  for (const { transition } of latestFirst) {
+    const label = transition.label;
+    if (transition.kind === "labelled" && label !== undefined) {
+      const at = fleetLabels.indexOf(label);
+      if (at >= 0) fleetLabels.splice(at, 1);
+    } else if (transition.kind === "unlabelled" && label !== undefined) {
+      if (!fleetLabels.includes(label)) fleetLabels.push(label);
+    } else if (transition.kind === "closed" || transition.kind === "merged") {
+      open = true;
+      merged = false;
+    } else if (transition.kind === "reopened") {
+      open = false;
+    }
+  }
+  return { ...state, open, merged, fleetLabels };
 };
 
 /** The other names the service knows an actor by, as the field of a `Change`; nothing when there are none. */
