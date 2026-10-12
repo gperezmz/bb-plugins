@@ -585,7 +585,7 @@ describe("GitHub adapter: failures", () => {
     const { read } = await harness(state);
     const outcome = await read({ items: [1, 2] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
-    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("500") }]);
+    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("500"), kind: "unreachable" }]);
   });
 
   it("fails an item whose events lack a field a change depends on", async () => {
@@ -626,7 +626,7 @@ describe("GitHub adapter: failures", () => {
     const outcome = await read({ items: [1, 2, 99] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
     expect(outcome.failures).toEqual([
-      { ref: "#2", reason: expect.any(String) },
+      { ref: "#2", reason: expect.any(String), kind: "unreachable" },
       { ref: "#99", reason: expect.any(String), kind: "not-found" },
     ]);
   });
@@ -651,7 +651,7 @@ describe("GitHub adapter: failures", () => {
     const { read } = await harness(state);
     const outcome = await read({ items: [1, 2] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
-    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String), kind: "forbidden" }]);
   });
 
   it("fails a listing the token may not read as a listing failure, not as a refused credential", async () => {
@@ -659,7 +659,31 @@ describe("GitHub adapter: failures", () => {
     state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 403 }];
     const { read } = await harness(state);
     const outcome = await read();
-    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String), kind: "forbidden" }]);
+  });
+
+  it("calls a listing that gets a 5xx unreachable, and one that gets no answer too", async () => {
+    const state = repo({ issues: [issue(1)] });
+    state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 502 }];
+    const { read } = await harness(state);
+    expect((await read()).failures).toEqual([{ ref: null, reason: expect.any(String), kind: "unreachable" }]);
+
+    const { server, adapter } = await harness(repo({ issues: [issue(1)] }));
+    const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
+    const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(credential, "ghp_secret");
+    const outcome = await adapter.read({
+      source: { role: "forge", service: "github", host: "127.0.0.1", path: REPO },
+      http: silent,
+      items: [item(1)],
+      watchedRefs: new Set(),
+      labels: LABELS,
+      operator: "olivia",
+      since: SINCE,
+      scanPartition: false,
+      stateOnly: true,
+      signal: new AbortController().signal,
+    });
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.not.stringContaining("fetch failed"), kind: "unreachable" }]);
   });
 
   it("rethrows a rate limit unchanged", async () => {

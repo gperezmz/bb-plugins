@@ -2,7 +2,7 @@
 // application acts on, and a reason that holds no text from the service.
 import { HttpError } from "../application/ports";
 import type { ReadFailure } from "../domain/model";
-import { ReadProblem } from "./service-support";
+import { failureOf, ReadProblem } from "./service-support";
 
 /** The reason a failed read may carry: the HTTP layer's own text, or the names of the fields an answer lacked. */
 const reasonOf = (error: unknown): string => (error instanceof HttpError || error instanceof ReadProblem ? error.message : "the answer could not be read");
@@ -12,8 +12,4 @@ const reasonOf = (error: unknown): string => (error instanceof HttpError || erro
  * repository (the HTTP layer's `outside-host`) is `outside-fleet`; any other error is kinded by `failureOf`.
  */
 export const forgeFailure = (ref: string | null, error: unknown): ReadFailure =>
-  error instanceof HttpError && error.kind === "outside-host"
-    ? { ref, reason: "moved outside the fleet", kind: "outside-fleet" }
-    : ref !== null && error instanceof HttpError && error.kind === "not-found"
-      ? { ref, reason: reasonOf(error), kind: "not-found" }
-      : { ref, reason: reasonOf(error) };
+  error instanceof HttpError && error.kind === "outside-host" ? { ref, reason: "moved outside the fleet", kind: "outside-fleet" } : failureOf(ref, error, reasonOf(error));

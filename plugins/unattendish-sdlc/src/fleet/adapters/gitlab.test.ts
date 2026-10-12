@@ -421,7 +421,24 @@ describe("the GitLab adapter: failures", () => {
     const { read } = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1", status: 403 }] });
     const outcome = await read({ items: [watch("#1"), watch("#2")] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
-    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String), kind: "forbidden" }]);
+  });
+
+  it("calls a listing the token may not read forbidden, and an item or listing that gets a 5xx or no answer unreachable", async () => {
+    const forbidden = await world({ [PATH]: { issues: [issue(1)] } }, { faults: [{ match: "/projects/org/sub/repo/issues?", status: 403 }] });
+    expect((await forbidden.read()).failures).toEqual(expect.arrayContaining([{ ref: null, reason: expect.any(String), kind: "forbidden" }]));
+    const broken = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1", status: 503 }, { match: "/projects/org/sub/repo/issues?", status: 502 }] });
+    const outcome = await broken.read({ items: [watch("#1"), watch("#2")] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual(expect.arrayContaining([{ ref: "#1", reason: expect.any(String), kind: "unreachable" }, { ref: null, reason: expect.any(String), kind: "unreachable" }]));
+    expect(outcome.failures.every((failure) => failure.kind === "unreachable")).toBe(true);
+
+    const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(
+      { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
+      TOKEN,
+    );
+    const none = await broken.read({ http: silent, items: [watch("#1")], stateOnly: true });
+    expect(none.failures).toEqual([{ ref: "#1", reason: expect.not.stringContaining("fetch failed"), kind: "unreachable" }]);
   });
 
   it("leaves checks null, and reads the rest of the merge request, where its pipelines are forbidden (CI off)", async () => {
