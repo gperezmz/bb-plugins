@@ -1,6 +1,6 @@
 import { createFakeSdk, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
-import { describe, expect, it } from "vitest";
-import { BbManagerChannel, BbThreadDirectory, httpStatusOf } from "./bb-threads";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BbManagerChannel, BbThreadDirectory, httpStatusOf, SDK_TIMEOUT_MS } from "./bb-threads";
 
 type Overrides = NonNullable<Parameters<typeof createFakeSdk>[0]["overrides"]>;
 
@@ -180,5 +180,64 @@ describe("BbManagerChannel.amend", () => {
       },
     });
     expect(await c.amend("thr_1", "q1", "t")).toBe("gone");
+  });
+});
+
+describe("the SDK timeout", () => {
+  const never = () => new Promise<never>(() => {});
+  afterEach(() => vi.useRealTimers());
+
+  /** Runs a call against a hung SDK and lets the timeout pass. */
+  const hung = async <T>(start: () => Promise<T>, passed = SDK_TIMEOUT_MS): Promise<PromiseSettledResult<T>> => {
+    vi.useFakeTimers();
+    const outcome = start().then(
+      (value) => ({ status: "fulfilled", value }) as const,
+      (reason: unknown) => ({ status: "rejected", reason }) as const,
+    );
+    await vi.advanceTimersByTimeAsync(passed);
+    return outcome;
+  };
+
+  it("is 30 seconds", () => {
+    expect(SDK_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it("fails a state read that bb never answers, as an error and not as a gone manager", async () => {
+    const directory = new BbThreadDirectory(fake({ threads: { get: never } }).sdk);
+    const outcome = await hung(() => directory.state("thr_1"));
+    expect(outcome).toMatchObject({ status: "rejected" });
+    expect((outcome as PromiseRejectedResult).reason.message).toContain("30 seconds");
+  });
+
+  it("does not fail a state read before the 30 seconds have run", async () => {
+    const directory = new BbThreadDirectory(fake({ threads: { get: never } }).sdk);
+    let settled = false;
+    vi.useFakeTimers();
+    directory.state("thr_1").then(() => (settled = true), () => (settled = true));
+    await vi.advanceTimersByTimeAsync(SDK_TIMEOUT_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+  });
+
+  it("refuses a send that bb never answers, saying nothing of bb's message", async () => {
+    const channel = new BbManagerChannel(fake({ threads: { send: never } }).sdk, "p");
+    expect(await hung(() => channel.send("thr_1", "t"))).toEqual({ status: "fulfilled", value: { delivered: "refused", reason: "no answer from bb" } });
+  });
+
+  it("refuses an amend whose list never answers, and one whose update never answers", async () => {
+    const listing = new BbManagerChannel(fake({ threads: { queuedMessages: { list: never } } }).sdk, "p");
+    expect(await hung(() => listing.amend("thr_1", "q1", "t"))).toEqual({ status: "fulfilled", value: { refused: "no answer from bb" } });
+    const updating = new BbManagerChannel(fake({ threads: { queuedMessages: { list: async () => [row()], update: never } } }).sdk, "p");
+    expect(await hung(() => updating.amend("thr_1", "q1", "t"))).toEqual({ status: "fulfilled", value: { refused: "no answer from bb" } });
+  });
+
+  it("leaves no timer running after a call answers or fails", async () => {
+    vi.useFakeTimers();
+    const ok = new BbThreadDirectory(fake({ threads: { get: async () => makeThreadResponse() } }).sdk);
+    await ok.state("thr_1");
+    const failing = new BbManagerChannel(fake({ threads: { send: async () => { throw httpError(500); } } }).sdk, "p");
+    await failing.send("thr_1", "t");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
