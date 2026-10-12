@@ -6,6 +6,7 @@ import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, landedRow, MI
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { BOARD_CHANGED } from "@/shared/client";
+import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { FleetsHeaderCount, FleetsPage } from "./index";
 
 vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
@@ -16,7 +17,10 @@ beforeEach(() => {
   resetFakeApi();
   setCompactViewport(false);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  closeConnect();
+});
 
 describe("the header count", () => {
   it("counts every Inbox row across fleets", async () => {
@@ -82,6 +86,38 @@ describe("the Fleets page", () => {
     render(<FleetsPage />);
     const item = await screen.findByRole("listitem");
     expect(item.className).toContain("flex-col");
+  });
+
+  it("lists the fleets that need an account at the top of Waits on you, each with Connect…, counted in the heading", async () => {
+    fake.api.fleets.mockResolvedValue(
+      fleetsView({
+        waiting: 3,
+        needsAccount: [
+          { fleet: "other-org/x", managerThreadId: "thr_x", role: "forge", text: "other-org/x needs a GitHub account that can read other-org" },
+          { fleet: "platform/infra", managerThreadId: "thr_i", role: "tracker", text: "platform/infra needs a Jira account for acme.atlassian.net" },
+        ],
+        inbox: [inboxRow()],
+      }),
+    );
+    render(<FleetsPage />);
+    const heading = await screen.findByRole("heading", { name: /Waits on you/ });
+    expect(heading.textContent).toBe("Waits on you 3");
+    const section = heading.parentElement!;
+    const needs = within(section).getByRole("list", { name: "Needs an account" });
+    expect(within(needs).getAllByRole("listitem").map((item) => item.firstChild?.textContent)).toEqual([
+      "other-org/x needs a GitHub account that can read other-org",
+      "platform/infra needs a Jira account for acme.atlassian.net",
+    ]);
+    expect(needs.compareDocumentPosition(within(section).getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(needs).getByRole("button", { name: "Connect… tracker of platform/infra" }));
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "platform/infra", role: "tracker" } });
+  });
+
+  it("does not say nothing waits while a fleet needs an account", async () => {
+    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, needsAccount: [{ fleet: "a/b", managerThreadId: "t", role: "forge", text: "a/b needs an account" }] }));
+    render(<FleetsPage />);
+    await screen.findByText("a/b needs an account");
+    expect(screen.queryByText("Nothing waits on you")).toBeNull();
   });
 
   it("draws a card per registered fleet", async () => {
