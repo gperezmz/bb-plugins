@@ -14,7 +14,7 @@ interface FailedRead {
   readonly reason: string;
 }
 
-/** Everything one repository owns, so removing the fleet is dropping the record. Ledger data may exist before a registration does, as in the SQLite store. */
+/** Everything one repository owns. Ledger data may exist before a registration does and outlives it, as in the SQLite store. */
 interface RepoData {
   fleet: StoredFleet | null;
   cursors: Map<SourceRole, SourceCursor>;
@@ -95,9 +95,12 @@ export class InMemoryStore implements Store {
   }
 
   removeFleet(repo: string): boolean {
-    this.wakes = this.wakes.filter((wake) => wake.repo !== repo);
-    const existed = this.records.get(repo)?.fleet != null;
-    this.records.delete(repo);
+    const data = this.records.get(repo);
+    const existed = data?.fleet != null;
+    if (data !== undefined) {
+      data.fleet = null;
+      data.cursors.clear();
+    }
     return existed;
   }
 

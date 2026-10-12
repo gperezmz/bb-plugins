@@ -240,8 +240,9 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
     return { polled: true, woke: 0, echoes, outOfScope, held, delivery: "none" };
   }
 
-  // The changes held while no manager held the fleet go out in the first wake a manager gets.
-  const heldNow = fleet.heldSince === null ? [] : deps.store.heldChanges(repo);
+  // The changes held while no manager held the fleet go out in the first wake a manager gets; the ledger holds them though the fleet's `heldSince` does not (a repository registered again).
+  const heldNow = deps.store.heldChanges(repo);
+  const heldFrom = fleet.heldSince ?? heldNow[0]?.at ?? null;
   for (const change of heldNow) if (!toWake.has(change.key)) toWake.set(change.key, change);
   const changes = [...toWake.values()].sort(byTimeThenKey);
 
@@ -256,10 +257,10 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const gap = fleet.lastPolledAt === null ? 0 : Date.parse(now) - Date.parse(fleet.lastPolledAt);
   const catchUpMs = gap > Math.max(AWAY_INTERVALS * interval, AWAY_MIN_MS) ? gap : null;
   const earliest = reading.reads.map((read) => read.since).sort()[0] ?? registration.registeredAt;
-  const since = heldNow.length > 0 && fleet.heldSince !== null && fleet.heldSince < earliest ? fleet.heldSince : earliest;
+  const since = heldFrom !== null && heldNow.length > 0 && heldFrom < earliest ? heldFrom : earliest;
   const notWatchedLine = announce && refused !== null ? { since: refused.since, prefix: refused.prefix } : null;
 
-  const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? fleet.heldSince : null, notWatched: notWatchedLine, now });
+  const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? heldFrom : null, notWatched: notWatchedLine, now });
   if (delivery.result === "refused") {
     // The same changes are offered again at the next poll: no cursor moves.
     deps.store.savePollState(repo, pollState(fleet.heldSince));

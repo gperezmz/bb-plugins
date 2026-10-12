@@ -336,6 +336,26 @@ describe("a fleet with no manager (AC2)", () => {
     expect(w.store.getFleet(REPO_KEY)!.heldSince).toBeNull();
   });
 
+  it("gives a repository registered again the changes held before it was unregistered, with the time the oldest was gathered from", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.threads.states.set(MANAGER, "archived");
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7, { at: "2026-10-12T10:00:30.000Z" })] }));
+    await poll(w);
+    expect(w.store.removeFleet(REPO_KEY)).toBe(true);
+    expect(rows(w, { done: "held" })).toHaveLength(1);
+
+    w.clock.advance(3_600_000);
+    w.threads.states.set("thr_next", "live");
+    await registerFleet(w.register, "thr_next", args());
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+    expect(await poll(w)).toMatchObject({ woke: 1, delivery: "sent" });
+    expect(w.channel.sent[0]).toMatchObject({ threadId: "thr_next" });
+    expect(sentText(w)).toMatch(/^From Unattendish Fleet: changes since 2026-10-12T10:00:30.000Z\n#7 commented by alice /);
+    expect(sentText(w)).toContain("Gathered while no manager held the fleet, since 2026-10-12T10:00:30.000Z.");
+    expect(rows(w, { done: "held" })).toHaveLength(0);
+  });
+
   it("stops polling a fleet once it is unregistered", async () => {
     const w = world();
     await start(w, manifest());

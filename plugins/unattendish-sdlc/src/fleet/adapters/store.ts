@@ -271,7 +271,8 @@ export class SqliteStore implements Store {
 
   removeFleet(repo: string): boolean {
     return this.db.transaction(() => {
-      for (const table of ["cursors", "changes", "failed_reads", "polls", "wakes"]) this.db.prepare(`DELETE FROM ${table} WHERE repo_id = ?`).run(repo);
+      // The ledger stays: retention ages it out, and a registration that follows still sees what it holds.
+      this.db.prepare("DELETE FROM cursors WHERE repo_id = ?").run(repo);
       return this.db.prepare("DELETE FROM fleets WHERE repo_id = ?").run(repo).changes > 0;
     })();
   }

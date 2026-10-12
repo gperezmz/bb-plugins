@@ -288,6 +288,7 @@ export interface Store {
   listFleets(): StoredFleet[];
   /** Registers or re-registers; keeps the cursors, the ledger and the poll state of a repository already held. */
   saveRegistration(registration: Registration, notWatched: readonly NotWatched[]): void;
+  /** Deletes the registration and the cursors; the ledger (changes, failed reads, polls, wakes) stays until retention ages it out. Says whether a fleet was registered. */
   removeFleet(repo: string): boolean;
   setIntervalMs(repo: string, intervalMs: number | null): void;
   /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
