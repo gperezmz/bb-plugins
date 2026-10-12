@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRealtime, useRealtimeConnectionState } from "@get-bb/plugin-sdk/app";
 import { BOARD_CHANGED } from "./client";
+import { messageOf } from "./errors";
 
 export const FALLBACK_POLL_MS = 60_000;
 
@@ -21,8 +22,6 @@ interface Held<T> {
   readonly data: T | null;
   readonly error: string | null;
 }
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** `load` is called again whenever `deps` change; with `enabled` false nothing is fetched. */
 export function useLive<T>(load: () => Promise<T>, deps: readonly unknown[], enabled = true): Live<T> {

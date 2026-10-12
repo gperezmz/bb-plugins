@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CredentialSettingView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { useDashboardApi } from "@/shared/client";
+import { messageOf } from "@/shared/errors";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
 import { CredentialForm } from "./CredentialForm";
@@ -33,7 +34,7 @@ export function CredentialsSettings() {
         setRefusal(result.reason);
       }
     } catch (error) {
-      setRefusal(error instanceof Error ? error.message : String(error));
+      setRefusal(messageOf(error));
     } finally {
       setSaving(false);
     }
@@ -46,7 +47,7 @@ export function CredentialsSettings() {
       if (result.ok) await live.refetch();
       else setRemoveRefusal(result.reason);
     } catch (error) {
-      setRemoveRefusal(error instanceof Error ? error.message : String(error));
+      setRemoveRefusal(messageOf(error));
     }
     setRemoving(null);
   }
@@ -58,7 +59,7 @@ export function CredentialsSettings() {
       await live.refetch();
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return messageOf(error);
     }
   }
 

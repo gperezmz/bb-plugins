@@ -1,5 +1,6 @@
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { FleetDetailView } from "@/src/fleet/application/views";
+import { LINK_CLASS } from "@/shared/ItemLink";
 import { intervalLabel, plural, polledLabel } from "@/shared/format";
 import { Empty, Section } from "./Section";
 import { credentialParts, watchedHeading, whyText } from "./model";
@@ -16,7 +17,7 @@ export function WatchingSections({ detail }: { detail: FleetDetailView }) {
             {detail.watched.map((item) => (
               <li key={item.ref} className="flex flex-wrap items-baseline gap-x-3">
                 {item.url !== null ? (
-                  <UrlLink href={item.url} className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground">
+                  <UrlLink href={item.url} className={LINK_CLASS}>
                     {item.ref}
                   </UrlLink>
                 ) : (

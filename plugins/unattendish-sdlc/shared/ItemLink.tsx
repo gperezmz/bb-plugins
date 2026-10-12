@@ -3,7 +3,8 @@ import type { LinkView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { linkTarget } from "./links";
 
-const LINK_CLASS = "text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm";
+/** How a link in the dashboard is drawn, for a link or a button that acts as one. */
+export const LINK_CLASS = "text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm";
 
 /** A row's Link: the item or pull request on its service, or the bb thread whose message the row points at. */
 export function ItemLink({ link, managerThreadId, className }: { link: LinkView; managerThreadId: string; className?: string }) {

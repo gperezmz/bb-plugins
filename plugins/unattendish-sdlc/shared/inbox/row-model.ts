@@ -1,6 +1,7 @@
 // What an Inbox row shows and offers, decided from the row the server sent and what this window has in flight.
 import type { ActionKind, ActionOffer, ActionRecordView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { ageLabel } from "../format";
+import { hasRef } from "../item-title";
 
 /** What a row waits for, as the table says it. */
 export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
@@ -14,11 +15,6 @@ export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
     case "other":
       return "something else";
   }
-}
-
-/** The item and what it is: `ENG-212 which locale wins?`; a Ref of `—` is left out. */
-export function rowTitle(row: Pick<InboxRowView, "ref" | "what">): string {
-  return row.ref === "—" || row.ref === "" ? row.what : `${row.ref} ${row.what}`;
 }
 
 /** How long a row has waited, as of the view's clock. */
@@ -72,7 +68,7 @@ export function takesText(kind: ActionKind, regrant = false): boolean {
 
 /** The label of a row's button with the item it acts on, for the control's accessible name. */
 export function actionName(label: string, row: Pick<InboxRowView, "ref">): string {
-  return row.ref === "—" || row.ref === "" ? label : `${label} ${row.ref}`;
+  return hasRef(row.ref) ? `${label} ${row.ref}` : label;
 }
 
 export interface SendInput {

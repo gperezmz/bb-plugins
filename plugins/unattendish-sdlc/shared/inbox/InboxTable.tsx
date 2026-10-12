@@ -2,11 +2,12 @@ import type { ReactNode } from "react";
 import type { InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { itemTitle } from "../item-title";
 import { ItemLink } from "../ItemLink";
 import { useOpenFleetTab } from "../open-fleet-tab";
 import { useIsCompactViewport } from "../use-compact-viewport";
 import { ActionComposer } from "./ActionComposer";
-import { actionName, rowAction, rowTitle, unreadableText, waitedText, waitsForText, type RowAction } from "./row-model";
+import { actionName, rowAction, unreadableText, waitedText, waitsForText, type RowAction } from "./row-model";
 import { useRowActions, type RowActionState } from "./use-row-action";
 
 interface TableProps {
@@ -72,7 +73,7 @@ function TableRow({ row, now, showFleet, state }: { row: InboxRowView; now: stri
     <>
       <tr>
         {showFleet ? <td className={CELL}>{row.fleet}</td> : null}
-        <td className={CELL}>{rowTitle(row)}</td>
+        <td className={CELL}>{itemTitle(row.ref, row.what)}</td>
         <td className={cn(CELL, "text-muted-foreground")}>{waitsForText(row.waitsFor)}</td>
         <td className={cn(CELL, "tabular-nums text-muted-foreground")}>{waitedText(row, now)}</td>
         <td className={CELL}>
@@ -98,7 +99,7 @@ function StackedRow({ row, now, state }: { row: InboxRowView; now: string; state
   return (
     <li className="flex flex-col gap-1 py-3 text-sm">
       <span className="text-xs text-muted-foreground">{row.fleet}</span>
-      <span>{rowTitle(row)}</span>
+      <span>{itemTitle(row.ref, row.what)}</span>
       <span className="text-xs text-muted-foreground">
         waits for {waitsForText(row.waitsFor)} · {waitedText(row, now)}
       </span>

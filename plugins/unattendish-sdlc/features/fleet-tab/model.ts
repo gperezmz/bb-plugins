@@ -3,11 +3,6 @@ import type { FleetCredentialView, InFlightRowView, LedgerChangeView, LedgerFilt
 import { credentialKind } from "@/shared/credentials";
 import { ageLabel, dateLabel, dateTimeLabel, plural } from "@/shared/format";
 
-/** The item and its title, a Ref of `—` left out. */
-export function itemTitle(ref: string, title: string): string {
-  return ref === "—" || ref === "" ? title : `${ref} ${title}`;
-}
-
 /** `at the bar for 25m`: the stage a row is at and how long it has been there. */
 export function stageText(row: Pick<InFlightRowView, "stage" | "since">, now: string): string {
   return `${row.stage} for ${ageLabel(row.since, now)}`;

@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { type LocalAction, actionName, recentActionText, rowAction, rowTitle, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
+import { type LocalAction, actionName, recentActionText, rowAction, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
 
 const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
 describe("what a row says", () => {
-  it("joins the item and what it is, leaving out a Ref of —", () => {
-    expect(rowTitle({ ref: "ENG-212", what: "which locale wins?" })).toBe("ENG-212 which locale wins?");
-    expect(rowTitle({ ref: "—", what: "a note" })).toBe("a note");
-  });
-
   it("says what each row waits for", () => {
     expect(["answer", "grant", "ready", "other"].map((w) => waitsForText(w as "answer"))).toEqual(["your answer", "a grant to merge", "your ready label", "something else"]);
   });

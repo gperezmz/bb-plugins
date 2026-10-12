@@ -2,9 +2,10 @@ import { Markdown } from "@get-bb/plugin-sdk/app";
 import type { FleetDetailView } from "@/src/fleet/application/views";
 import { dateTimeLabel } from "@/shared/format";
 import { InboxTable } from "@/shared/inbox/InboxTable";
+import { itemTitle } from "@/shared/item-title";
 import { ItemLink, ThreadLink } from "@/shared/ItemLink";
 import { Empty, Section } from "./Section";
-import { blockedText, itemTitle, stageText, unreadableRowText } from "./model";
+import { blockedText, stageText, unreadableRowText } from "./model";
 
 type Manifest = FleetDetailView["manifest"];
 
