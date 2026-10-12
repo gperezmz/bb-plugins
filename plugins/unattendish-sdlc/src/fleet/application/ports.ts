@@ -298,7 +298,8 @@ export interface Store {
   recordPoll(repo: string, poll: PollRecord): void;
   requestsSince(repo: string, since: string): number;
 
-  createWake(repo: string, wake: Omit<StoredWake, "id" | "repo" | "dispatchedAt">): StoredWake;
+  /** `dispatchedAt` is set for a wake bb sent at once, and left out for one waiting in bb's queue. */
+  createWake(repo: string, wake: Omit<StoredWake, "id" | "repo" | "dispatchedAt"> & { readonly dispatchedAt?: string | null }): StoredWake;
   /** The wake still waiting in bb's queue, if any. */
   openWake(repo: string): StoredWake | null;
   markWoke(repo: string, wakeId: number, keys: readonly string[]): void;
