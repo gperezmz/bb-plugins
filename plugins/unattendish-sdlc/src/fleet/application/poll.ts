@@ -3,7 +3,7 @@
 import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type Derived } from "../domain/changes";
 import { classify } from "../domain/echo";
 import { formatRepo, repoId, urlUnder } from "../domain/identity";
-import type { Change, Disposition, NotWatched, RefusedWhy, ServiceKind, SourceRole, WatchedItem } from "../domain/model";
+import type { Change, Disposition, NotWatched, RefusedWhy, ServiceKind, SourceRole, UnreadableWhy, WatchedItem } from "../domain/model";
 import { messageOf, redact } from "../domain/redact";
 import { catchUp, credentialRefused, effectiveInterval, UNREADABLE_POLLS } from "../domain/registration";
 import { formatWake } from "../domain/wake";
@@ -85,8 +85,8 @@ interface Reading {
   readonly reads: SourceRead[];
   readonly notWatched: NotWatched[];
   readonly refusedPrefix: string | null;
-  /** The first source whose read, every part of it, was forbidden or got no answer. */
-  readonly unreadable: { readonly prefix: string; readonly why: "forbidden" | "unreachable" } | null;
+  /** The first source whose read, every part of it, failed as `UnreadableWhy` says. */
+  readonly unreadable: { readonly prefix: string; readonly why: UnreadableWhy } | null;
   /** Whether any source's adapter was asked to read: a poll that asked none says nothing of whether a source is readable. */
   readonly attempted: boolean;
   readonly expiries: Record<string, string | null>;
@@ -177,9 +177,25 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
 /** The larger of two lengths of time, either of which may be absent. */
 const larger = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
 
-/** How an error an adapter let through says its source is unreadable: a 403 forbids, no answer or a 5xx is unreachable. */
-const unreadableOf = (error: HttpError): "forbidden" | "unreachable" | null =>
-  error.kind === "forbidden" ? "forbidden" : error.kind === "network" || error.kind === "server" ? "unreachable" : null;
+/**
+ * How an error an adapter let through says its source is unreadable: a 403 forbids, no answer or a 5xx is
+ * unreachable, a 404 finds nothing, and a redirect off the source lies outside the fleet.
+ */
+const unreadableOf = (error: HttpError): UnreadableWhy | null => {
+  switch (error.kind) {
+    case "forbidden":
+      return "forbidden";
+    case "network":
+    case "server":
+      return "unreachable";
+    case "not-found":
+      return "not-found";
+    case "outside-host":
+      return "outside-fleet";
+    default:
+      return null;
+  }
+};
 
 /**
  * Whether the fleet's credential counts as refused after this poll, and why: a

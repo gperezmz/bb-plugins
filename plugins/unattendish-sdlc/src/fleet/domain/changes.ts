@@ -14,6 +14,7 @@ import {
   type SourceCursor,
   type SourceRole,
   type Transition,
+  type UnreadableWhy,
   type WatchedItem,
 } from "./model";
 
@@ -128,15 +129,23 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
 };
 
+/** The kinds a source's read can fail with as a whole, in the order the first one present is reported. */
+const UNREADABLE: readonly UnreadableWhy[] = ["forbidden", "unreachable", "not-found", "outside-fleet"];
+
 /**
  * How a source's read failed as a whole, or null when it did not: it gave no
  * snapshot, no event and no updated item, and gave failures, every one of
- * them `forbidden` or `unreachable`. Forbidden when any of them is.
+ * them `forbidden`, `unreachable`, `not-found` or `outside-fleet`; the first
+ * of those present, in that order. With a `not-found` or `outside-fleet`
+ * failure among them, a listing must have failed too: an item that does not
+ * exist, while the listing reads, is a single failed read.
  */
-export const unreadableKind = (outcome: ReadOutcome): "forbidden" | "unreachable" | null => {
+export const unreadableKind = (outcome: ReadOutcome): UnreadableWhy | null => {
   if (outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0 || outcome.failures.length === 0) return null;
-  if (!outcome.failures.every((failure) => failure.kind === "forbidden" || failure.kind === "unreachable")) return null;
-  return outcome.failures.some((failure) => failure.kind === "forbidden") ? "forbidden" : "unreachable";
+  const kinds = new Set(outcome.failures.map((failure) => failure.kind));
+  if (![...kinds].every((kind) => kind !== undefined && UNREADABLE.includes(kind))) return null;
+  if ((kinds.has("not-found") || kinds.has("outside-fleet")) && !outcome.failures.some((failure) => failure.ref === null)) return null;
+  return UNREADABLE.find((kind) => kinds.has(kind)) ?? null;
 };
 
 /** Orders changes, and ledger rows, by the time they happened, then by key. */

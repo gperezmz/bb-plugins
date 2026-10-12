@@ -343,7 +343,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       it("records why the credential counts as refused, and the count of unreadable polls", () => {
-        for (const why of ["refused", "forbidden", "unreachable"] as const) {
+        for (const why of ["refused", "forbidden", "unreachable", "not-found", "outside-fleet"] as const) {
           store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why }, unreadablePolls: 3 }));
           expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why });
           expect(store.getFleet(REPO)!.unreadablePolls).toBe(3);

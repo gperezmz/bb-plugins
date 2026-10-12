@@ -431,9 +431,32 @@ describe("unreadableKind", () => {
   const forbidden = { ref: null, reason: "403", kind: "forbidden" as const };
   const unreachable = { ref: "#1", reason: "no answer", kind: "unreachable" as const };
 
+  const listingGone = { ref: null, reason: "404", kind: "not-found" as const };
+  const itemGone = { ref: "#3", reason: "gone", kind: "not-found" as const };
+  const listingMoved = { ref: null, reason: "moved", kind: "outside-fleet" as const };
+  const itemMoved = { ref: "#4", reason: "moved", kind: "outside-fleet" as const };
+
   it("says forbidden when any failure is, else unreachable, when nothing but those failures came back", () => {
     expect(unreadableKind(outcome({ failures: [unreachable, forbidden] }))).toBe("forbidden");
     expect(unreadableKind(outcome({ failures: [unreachable] }))).toBe("unreachable");
+  });
+
+  it("says not-found or outside-fleet when every read, the listing's among them, failed so", () => {
+    expect(unreadableKind(outcome({ failures: [listingGone, itemGone] }))).toBe("not-found");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemMoved] }))).toBe("outside-fleet");
+  });
+
+  it("reports mixed kinds in the order forbidden, unreachable, not-found, outside-fleet", () => {
+    expect(unreadableKind(outcome({ failures: [itemGone, forbidden, unreachable, listingMoved] }))).toBe("forbidden");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemGone, unreachable] }))).toBe("unreachable");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemGone] }))).toBe("not-found");
+  });
+
+  it("is null for an item that does not exist or moved while the listing read", () => {
+    expect(unreadableKind(outcome({ failures: [itemGone] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [itemMoved, itemGone] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [itemGone], snapshots: [snapshot()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [listingGone], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
   });
 
   it("is null when anything came back, when there is no failure, or when a failure is of another kind", () => {
@@ -441,7 +464,6 @@ describe("unreadableKind", () => {
     expect(unreadableKind(outcome({ failures: [forbidden], snapshots: [snapshot()] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [forbidden], events: [event()] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [forbidden], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
-    expect(unreadableKind(outcome({ failures: [forbidden, { ref: "#3", reason: "gone", kind: "not-found" }] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [unreachable, { ref: null, reason: "field missing" }] }))).toBeNull();
   });
 });

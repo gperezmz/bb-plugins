@@ -158,4 +158,12 @@ describe("credentialRefused", () => {
     expect(credentialRefused("github.com/org", "forbidden")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" });
     expect(credentialRefused("github.com/org", "unreachable")).toEqual({ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" });
   });
+
+  it("says when every read found nothing (404) or found what it read outside the fleet", () => {
+    expect(credentialRefused("github.com/org", "not-found")).toEqual({ code: "credential-refused", text: "The credential for github.com/org could not find what the fleet needs (404)" });
+    expect(credentialRefused("github.com/org", "outside-fleet")).toEqual({
+      code: "credential-refused",
+      text: "Everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team",
+    });
+  });
 });

@@ -224,7 +224,7 @@ export interface StoredFleet {
   readonly lastPolledAt: string | null;
   /** Why the fleet is not (fully) watched, as of the last poll or registration. Empty while watched. */
   readonly notWatched: readonly NotWatched[];
-  /** Set while a credential is refused, forbidden or unanswered: when the fleet stopped being watched, the prefix, and which of the three. */
+  /** Set while a credential counts as refused: when the fleet stopped being watched, the prefix, and why. */
   readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
   /** How many polls in a row found a source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
   readonly unreadablePolls: number;

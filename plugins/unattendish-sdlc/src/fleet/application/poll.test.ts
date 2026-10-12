@@ -746,6 +746,46 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 
+  it("is not watched after three polls in a row where every read answered 404, as for a private repository the token cannot see", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const gone = outcome({ failures: [{ ref: null, reason: "the listing answered 404", kind: "not-found" }, { ref: "#7", reason: "#7 answered 404", kind: "not-found" }] });
+    await pollWith(w, gone);
+    await pollWith(w, new HttpError("not-found", "GET /x answered 404", 404));
+    expect(w.channel.sent).toEqual([]);
+    await pollWith(w, gone);
+    await pollWith(w, gone);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w)).toMatch(/\nNot watched since [^:]+:\d\d:\d\d\.000Z: the credential for github\.com\/org could not find what the fleet needs \(404\)\.$/);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org could not find what the fleet needs (404)" }]);
+    expect(w.store.getFleet(REPO_KEY)!.refused).toMatchObject({ why: "not-found" });
+  });
+
+  it("is not watched after three polls in a row where everything read lay outside the fleet", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const moved = outcome({ failures: [{ ref: null, reason: "moved outside the fleet", kind: "outside-fleet" }, { ref: "#7", reason: "moved outside the fleet", kind: "outside-fleet" }] });
+    await pollWith(w, moved);
+    await pollWith(w, new HttpError("outside-host", "GET /x was sent outside the source"));
+    await pollWith(w, moved);
+    expect(sentText(w)).toContain("everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team.");
+    expect((await statusOf(w)).notWatched).toEqual([
+      { code: "credential-refused", text: "Everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team" },
+    ]);
+  });
+
+  it("counts nothing for a 404 on one item while the rest of the source reads", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7), inboxRow(8)] }));
+    for (let i = 0; i < 4; i += 1) {
+      await pollWith(w, outcome({ failures: [{ ref: "#7", reason: "#7 answered 404", kind: "not-found" }] }));
+      await pollWith(w, outcome({ snapshots: [snapshot(8)], failures: [{ ref: "#7", reason: "#7 answered 404", kind: "not-found" }] }));
+    }
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
+    expect(w.store.getFleet(REPO_KEY)!.unreadablePolls).toBe(0);
+  });
+
   it("counts nothing for a read that gave back anything, or failed some other way", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
