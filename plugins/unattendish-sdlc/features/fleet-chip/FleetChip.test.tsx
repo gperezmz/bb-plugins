@@ -47,10 +47,20 @@ describe("the Fleet chip", () => {
     await show(fleetCard({ waiting: 1, inFlight: 3, landedToday: 2 }));
     const button = screen.getByRole("button");
     expect(button.className).toContain("whitespace-nowrap");
-    expect(button.querySelector("span")!.className).toContain("truncate");
+    // Never cut, never shrunk, one line of text where it fits.
+    expect(button.className).toContain("shrink-0");
+    expect(button.querySelectorAll("span.tabular-nums > span")).toHaveLength(1);
     cleanup();
     await show(fleetCard());
     expect(screen.getByRole("button", { name: "Fleet idle" })).toBeTruthy();
+  });
+
+  it("shows counts of three digits whole, on two lines of the chip, and is named by all of them", async () => {
+    await show(fleetCard({ waiting: 987, inFlight: 654, landedToday: 321 }));
+    const button = screen.getByRole("button", { name: "Fleet: 987 waits on you · 654 in flight · 321 landed today" });
+    const lines = [...button.querySelectorAll("span.tabular-nums > span")].map((line) => line.textContent);
+    expect(lines).toEqual(["987 waits on you · 654 in flight", "321 landed today"]);
+    expect(button.className).toContain("shrink-0");
   });
 
   it("draws nothing for a thread that is no manager", async () => {

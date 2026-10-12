@@ -60,15 +60,21 @@ function ChipButton({ threadId, card, compact }: { threadId: string; card: Fleet
         if (leftSinceClick.current) suppressed.current = false;
       }}
       className={cn(
-        // The header's 28 px box, as the editor picker beside it draws it.
-        "inline-flex h-7 min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded-md border border-border/70 bg-transparent px-1.5 shadow-none max-md:pointer-coarse:h-9",
+        // The header's 28 px box, as the editor picker beside it draws it, its text on one line where it fits the 256 px bb gives it, on two where it does not; it is never wider than that box, since a neighbouring control sits beside it.
+        "inline-flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-border/70 bg-transparent px-1 shadow-none max-md:pointer-coarse:h-9",
         CONTROL_HOVER_TRANSITION,
         "text-muted-foreground hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         card.waiting > 0 && "text-foreground",
       )}
     >
       <Icon name="unattendish-sdlc/fleet" className="size-4" aria-hidden />
-      {face.text !== null ? <span className="truncate text-xs font-medium tabular-nums">{face.text}</span> : null}
+      {face.text !== null ? (
+        <span className={cn("flex flex-col font-medium tabular-nums", face.lines.length > 1 ? "text-[10px] leading-[12px]" : "text-[11px]")}>
+          {face.lines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </span>
+      ) : null}
       {face.dot ? <span aria-hidden className="size-1.5 rounded-full bg-muted-foreground" /> : null}
     </button>
   );
