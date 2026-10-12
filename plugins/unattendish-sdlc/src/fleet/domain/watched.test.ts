@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseManifest } from "./manifest";
 import type { BlockedRow, InboxRow, InFlightRow, LandedRow, Manifest, WatchedItem } from "./model";
-import { watchedSet, type FleetIdentity } from "./watched";
+import { itemOfReference, watchedSet, watchedWithReasons, type FleetIdentity } from "./watched";
 
 const SINCE = "2026-10-12T09:30:00Z";
 
@@ -246,5 +246,31 @@ describe("watchedSet: from a parsed manifest", () => {
     const set = watchedSet(read.manifest, github);
     expect(refs(set.items)).toEqual(["forge:#1", "forge:#2", "forge:#3"]);
     expect(set.outside).toEqual([{ text: "https://github.com/other/repo/pull/4", section: "In flight", line: 8 }]);
+  });
+});
+
+describe("watchedWithReasons", () => {
+  it("gives each item every way the manifest names it, and the same items watchedSet holds", () => {
+    const m = manifest({
+      inbox: [inbox("#1", "https://github.com/org/repo/issues/1")],
+      inFlight: [flight("#2", "https://github.com/org/repo/issues/1")],
+      blocked: [blocked("#3", ["#2", "#1"], "https://github.com/org/repo/issues/3")],
+    });
+    const items = watchedWithReasons(m, github);
+    expect(items.map((item) => [item.ref, item.why])).toEqual([
+      ["#1", ["named in Inbox", "named in In flight", "named in Blocked"]],
+      ["#2", ["named in In flight", "named in Blocked"]],
+      ["#3", ["blocked on #2, #1"]],
+    ]);
+    expect(items.map(({ role, ref, url }) => ({ role, ref, url }))).toEqual(watchedSet(m, github).items);
+  });
+});
+
+describe("itemOfReference", () => {
+  it("names the item a reference is, and nothing for — or a reference the fleet does not hold", () => {
+    expect(itemOfReference("#007", github)).toEqual({ role: "forge", ref: "#7" });
+    expect(itemOfReference("eng-5", linear)).toEqual({ role: "tracker", ref: "ENG-5" });
+    expect(itemOfReference("—", github)).toBeNull();
+    expect(itemOfReference("ENG-5", github)).toBeNull();
   });
 });

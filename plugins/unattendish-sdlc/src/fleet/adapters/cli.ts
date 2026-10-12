@@ -2,6 +2,7 @@
 // reaches the plugin through. No command takes a token: credentials are
 // entered in the plugin's settings.
 import { cliCommand, defineCli, PluginCliError, type PluginCliRegistration } from "@get-bb/plugin-sdk";
+import { FIELD_MAX, LEDGER_LIMIT } from "../application/dashboard";
 import type { FleetStatus } from "../application/status";
 import type { RegisterOutcome } from "../application/register";
 import type { LedgerEntry, LedgerQuery } from "../application/ports";
@@ -63,14 +64,6 @@ const statusLines = (fleets: readonly FleetStatus[]): string => {
     .join("\n\n");
 };
 
-/**
- * Most entries `fleet ledger` prints. bb refuses a command that prints more than 1 MiB, so the widest row, once
- * `boundEntry` has bounded every field, times this must stay under it; `cli.test.ts` checks it with the widest rows
- * there can be, in the text and in the JSON.
- */
-export const MAX_LEDGER_LIMIT = 250;
-/** A printed string is cut to this many characters: the ledger holds them whole, the command line prints them bounded. */
-const FIELD_MAX = 200;
 /** A poll prints this many of its requests; the rest are counted in `requestsOmitted`. */
 const REQUESTS_SHOWN = 5;
 
@@ -185,7 +178,7 @@ export function createFleetCli(app: FleetCliApp): PluginCliRegistration {
         options: {
           item: { type: "string", description: "Only this item: its reference (#163, ENG-212) or URL." },
           done: { type: "enum", values: DONE, description: "Only what was done: woke, echo, out-of-scope, held or failed-read." },
-          limit: { type: "integer", min: 1, max: MAX_LEDGER_LIMIT, default: 200, description: `At most this many entries, newest first; no more than ${MAX_LEDGER_LIMIT}, which fit bb's output limit. A string is cut to ${FIELD_MAX} characters and a poll lists its first ${REQUESTS_SHOWN} requests (its count is whole).` },
+          limit: { type: "integer", min: 1, max: LEDGER_LIMIT, default: 200, description: `At most this many entries, newest first; no more than ${LEDGER_LIMIT}, which fit bb's output limit. A string is cut to ${FIELD_MAX} characters and a poll lists its first ${REQUESTS_SHOWN} requests (its count is whole).` },
           ...printJson,
         },
         run({ options, positionals }) {

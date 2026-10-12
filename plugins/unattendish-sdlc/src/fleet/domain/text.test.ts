@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lastLine, LAST_LINE_MAX } from "./text";
+import { clip, lastLine, LAST_LINE_MAX } from "./text";
 
 describe("lastLine", () => {
   it("is the last non-blank line, trimmed", () => {
@@ -36,5 +36,16 @@ describe("lastLine", () => {
 
   it("trims before cutting, so leading space does not use up the allowance", () => {
     expect(lastLine(`   ${"y".repeat(LAST_LINE_MAX)}`)).toBe("y".repeat(LAST_LINE_MAX));
+  });
+});
+
+describe("clip", () => {
+  it("leaves text within the limit and cuts longer text to it, ending in an ellipsis", () => {
+    expect(clip("abc", 3)).toBe("abc");
+    expect(clip("abcd", 3)).toBe("ab…");
+  });
+
+  it("does not cut through a surrogate pair", () => {
+    expect(clip("😀😀😀", 2)).toBe("😀…");
   });
 });

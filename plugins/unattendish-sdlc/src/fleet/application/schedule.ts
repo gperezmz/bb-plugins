@@ -1,5 +1,6 @@
 // Which fleets are due, the workflows that run behind a fleet's queue, and
 // the retention the ledger keeps.
+import { DONE_KEPT_MS } from "../domain/actions";
 import { repoId } from "../domain/identity";
 import { messageOf } from "../domain/redact";
 import { effectiveInterval, isDue } from "../domain/registration";
@@ -52,6 +53,9 @@ export function setFleetInterval(deps: { readonly store: Store }, repo: string, 
   return true;
 }
 
+/** Ages out the ledger and the Inbox rows no longer seen with the retention, and the actions done more than a day ago, and any whose fleet is not registered. */
 export function pruneLedger(deps: Pick<PollDeps, "store" | "clock">): void {
-  deps.store.prune(new Date(deps.clock.now().getTime() - RETENTION_MS).toISOString());
+  const now = deps.clock.now().getTime();
+  deps.store.prune(new Date(now - RETENTION_MS).toISOString());
+  deps.store.pruneActions(new Date(now - DONE_KEPT_MS).toISOString());
 }

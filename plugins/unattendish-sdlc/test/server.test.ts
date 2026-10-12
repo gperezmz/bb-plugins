@@ -225,6 +225,25 @@ describe("what the entry wires between bb and the fleets", () => {
     expect(Date.parse(dispatchedAt!)).toBeGreaterThanOrEqual(before);
   });
 
+  it("logs only the status of a wake bb refuses, though bb's message quotes a piece of the wake", async () => {
+    const comment = new Date(Date.now() + 5_000).toISOString();
+    let tried = 0;
+    const { harness } = await registered(
+      { repos: { "org/repo": { issues: [issue(7)], comments: [{ id: 1, issue: 7, user: "alice", body: "x", createdAt: comment, updatedAt: comment }] } as never } },
+      [],
+      { send: async () => { tried += 1; throw Object.assign(new Error("Thread is archived: cannot post 'Moved on the tracker or the forge since' #7 commented by alice"), { status: 409 }); } },
+    );
+    const service = harness.runService("poll-fleets");
+    await until(() => tried > 0);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    service.controller.abort();
+    await service.done;
+    const logged = harness.logEntries.map((entry) => JSON.stringify(entry)).join("\n");
+    expect(logged).toContain("bb refused a wake for");
+    expect(logged).toContain("HTTP 409");
+    expect(logged).not.toMatch(/archived|Moved on the tracker|commented by alice/);
+  });
+
   it("prunes the ledger at the service's first tick, cutting what is older than 30 days", async () => {
     const { harness, bb } = await registered({ repos: { "org/repo": { issues: [issue(7)] } as never } });
     const store = new SqliteStore(bb.storage.database());

@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { ago, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
+import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerContent, ledgerIsEmpty, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
+
+describe("the manifest's rows", () => {
+  it("says how long an In flight row has been at its stage", () => {
+    expect(stageText({ stage: "at the bar", since: ago(25 * MINUTE) }, NOW)).toBe("at the bar for 25m");
+  });
+
+  it("says what a row is blocked on", () => {
+    expect(blockedText(["#170", "#171"])).toBe("blocked on #170, #171");
+  });
+
+  it("names the section, line and column of a row it cannot read", () => {
+    expect(unreadableRowText({ section: "In flight", line: 14, reason: 'the table has no "Stage" column' })).toBe('unreadable in In flight, line 14: the table has no "Stage" column');
+  });
+});
+
+describe("the watched set", () => {
+  it("gives every reason an item is in it", () => {
+    expect(whyText({ why: ["named in Inbox", "blocked on #170"] })).toBe("named in Inbox · blocked on #170");
+    expect(watchedHeading(1)).toBe("Watched set (1 item)");
+  });
+});
+
+describe("a credential", () => {
+  it("gives its kind, its expiry date where the service reports one, and whether it shares the rate limit", () => {
+    expect(credentialParts({ role: "forge", prefix: "org", auth: "token", expiresAt: "2026-10-18T12:00:00Z", sharesAgentRateLimit: false })).toEqual(["pasted token", "expires 18 Oct"]);
+    expect(credentialParts({ role: "forge", prefix: "github.com", auth: "gh", expiresAt: null, sharesAgentRateLimit: true })).toEqual(["gh login", "no expiry reported", "shares the agents' rate limit"]);
+  });
+});
+
+describe("the ledger's filters", () => {
+  it("asks the server for an outcome it can filter by, and for an item", () => {
+    expect(ledgerFilter("woke", " #163 ")).toEqual({ item: "#163", done: "woke" });
+    expect(ledgerFilter("held", "")).toEqual({ done: "held" });
+    expect(ledgerFilter("failed read", "")).toEqual({ done: "failed read" });
+  });
+
+  it("asks for everything where the view picks its own part", () => {
+    expect(ledgerFilter("all", "")).toEqual({});
+    expect(ledgerFilter("dropped", "")).toEqual({});
+    expect(ledgerFilter("wakes", "#1")).toEqual({ item: "#1" });
+  });
+
+  const dropped = ledgerChange({ ref: "#150", done: "echo", rule: "marker" });
+  const outOfScope = ledgerChange({ ref: "#151", done: "out-of-scope" });
+  const woke = ledgerChange({ ref: "#163", done: "woke" });
+  const held = ledgerChange({ ref: "#164", done: "held" });
+  const wake = { queuedAt: ago(10 * MINUTE), dispatchedAt: null, kind: "round close" };
+  const ledger = ledgerView({
+    changes: [woke, dropped, held, outOfScope],
+    dropped: [
+      { reason: "echo: marker", count: 1, changes: [dropped] },
+      { reason: "out of scope", count: 1, changes: [outOfScope] },
+    ],
+    wakes: [wake],
+  });
+
+  it("shows a change once under All: the main list holds what was not dropped, the groups what was", () => {
+    const content = ledgerContent(ledger, "all", "");
+    expect(content.changes).toEqual([woke, held]);
+    expect(content.dropped.flatMap((group) => group.changes)).toEqual([dropped, outOfScope]);
+    expect(content.wakes).toEqual([wake]);
+    const shown = [...content.changes, ...content.dropped.flatMap((group) => group.changes)];
+    expect(new Set(shown).size).toBe(shown.length);
+  });
+
+  it("shows only the groups under Dropped, only the wakes under Wakes, and the server's list under an outcome", () => {
+    expect(ledgerContent(ledger, "dropped", "")).toEqual({ changes: [], dropped: ledger.dropped, wakes: [] });
+    expect(ledgerContent(ledger, "wakes", "")).toEqual({ changes: [], dropped: [], wakes: [wake] });
+    expect(ledgerContent(ledger, "woke", "")).toEqual({ changes: ledger.changes, dropped: [], wakes: [] });
+  });
+
+  it("shows no wake while an item filter is set, since a wake carries no item", () => {
+    expect(ledgerContent(ledger, "all", "#163").wakes).toEqual([]);
+    expect(ledgerContent(ledger, "wakes", " #163 ").wakes).toEqual([]);
+    expect(ledgerContent(ledger, "all", "  ").wakes).toEqual([wake]);
+  });
+
+  it("is empty where the filter shows nothing the ledger holds", () => {
+    expect(ledgerIsEmpty(ledgerContent(ledgerView(), "all", ""))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledgerView({ changes: [woke] }), "dropped", ""))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledger, "wakes", "#1"))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledger, "all", ""))).toBe(false);
+  });
+
+  it("heads a dropped group with its reason and count, and says what was done with a change", () => {
+    expect(droppedHeading({ reason: "echo: marker", count: 31 })).toBe("echo: marker · 31");
+    expect(doneText({ done: "echo", rule: "marker" })).toBe("echo (marker)");
+    expect(doneText({ done: "woke", rule: null })).toBe("woke");
+  });
+});

@@ -15,6 +15,7 @@ import {
   type StoredWake,
   type WakeKind,
 } from "../application/ports";
+import type { ActionRecord } from "../domain/actions";
 import type { Change, ChangeKind, Disposition, NotWatched, RefusedWhy, Registration, SourceCursor, SourceRole } from "../domain/model";
 import { repoId, trackerSource } from "../domain/identity";
 
@@ -117,6 +118,27 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE fleets ADD COLUMN pending_catch_up_ms INTEGER`,
   `ALTER TABLE fleets ADD COLUMN unreadable_since TEXT`,
   `ALTER TABLE fleets ADD COLUMN outages TEXT`,
+  `CREATE TABLE IF NOT EXISTS actions (
+     repo_id TEXT NOT NULL,
+     id TEXT NOT NULL,
+     row_id TEXT NOT NULL,
+     kind TEXT NOT NULL,
+     ref TEXT NOT NULL,
+     what TEXT NOT NULL,
+     manager_thread_id TEXT NOT NULL,
+     state TEXT NOT NULL,
+     sent_at TEXT NOT NULL,
+     done_at TEXT,
+     PRIMARY KEY (repo_id, id)
+   )`,
+  `CREATE TABLE IF NOT EXISTS inbox_seen (
+     repo_id TEXT NOT NULL,
+     row_id TEXT NOT NULL,
+     seen_at TEXT NOT NULL,
+     PRIMARY KEY (repo_id, row_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS inbox_seen_pruning ON inbox_seen (seen_at)`,
+  `ALTER TABLE fleets ADD COLUMN inbox_baselined INTEGER NOT NULL DEFAULT 0`,
 ];
 
 interface FleetRow {
@@ -173,6 +195,19 @@ interface PollRow {
   requests: string;
   counted: number;
   ok: number;
+}
+
+interface ActionRow {
+  id: string;
+  repo_id: string;
+  row_id: string;
+  kind: ActionRecord["kind"];
+  ref: string;
+  what: string;
+  manager_thread_id: string;
+  state: ActionRecord["state"];
+  sent_at: string;
+  done_at: string | null;
 }
 
 interface WakeRow {
@@ -267,6 +302,19 @@ const toWake = (row: WakeRow): StoredWake => ({
       : { since: row.not_watched_since, prefix: row.not_watched_prefix, why: row.not_watched_why ?? "refused" },
 });
 
+const toAction = (row: ActionRow): ActionRecord => ({
+  id: row.id,
+  repo: row.repo_id,
+  rowId: row.row_id,
+  kind: row.kind,
+  ref: row.ref,
+  what: row.what,
+  managerThreadId: row.manager_thread_id,
+  state: row.state,
+  sentAt: row.sent_at,
+  doneAt: row.done_at,
+});
+
 const toPoll = (row: PollRow): PollRecord => ({
   at: row.at,
   role: row.role,
@@ -315,6 +363,7 @@ export class SqliteStore implements Store {
     return this.db.transaction(() => {
       // The ledger stays: retention ages it out, and a registration that follows still sees what it holds.
       this.db.prepare("DELETE FROM cursors WHERE repo_id = ?").run(repo);
+      this.db.prepare("DELETE FROM actions WHERE repo_id = ?").run(repo);
       return this.db.prepare("DELETE FROM fleets WHERE repo_id = ?").run(repo).changes > 0;
     })();
   }
@@ -528,8 +577,61 @@ export class SqliteStore implements Store {
     return entries.sort((a, b) => (entryTime(a) < entryTime(b) ? 1 : entryTime(a) > entryTime(b) ? -1 : 0)).slice(0, limit);
   }
 
+  recentWakes(repo: string, limit: number): StoredWake[] {
+    return (this.db.prepare("SELECT * FROM wakes WHERE repo_id = ? ORDER BY queued_at DESC, id DESC LIMIT ?").all(repo, Math.max(0, limit)) as WakeRow[]).map(toWake);
+  }
+
+  saveAction(action: ActionRecord): void {
+    this.db
+      .prepare("INSERT OR REPLACE INTO actions (repo_id, id, row_id, kind, ref, what, manager_thread_id, state, sent_at, done_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(action.repo, action.id, action.rowId, action.kind, action.ref, action.what, action.managerThreadId, action.state, action.sentAt, action.doneAt);
+  }
+
+  actions(repo: string): ActionRecord[] {
+    return (this.db.prepare("SELECT * FROM actions WHERE repo_id = ? ORDER BY sent_at, id").all(repo) as ActionRow[]).map(toAction);
+  }
+
+  markActionsDone(repo: string, ids: readonly string[], at: string): void {
+    this.db.transaction(() => {
+      const mark = this.db.prepare("UPDATE actions SET state = 'done', done_at = ? WHERE repo_id = ? AND id = ? AND state = 'sent'");
+      for (const id of ids) mark.run(at, repo, id);
+    })();
+  }
+
+  dropSentActions(repo: string): void {
+    this.db.prepare("DELETE FROM actions WHERE repo_id = ? AND state = 'sent'").run(repo);
+  }
+
+  pruneActions(doneBefore: string): void {
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM actions WHERE state = 'done' AND done_at < ?").run(doneBefore);
+      this.db.prepare("DELETE FROM actions WHERE repo_id NOT IN (SELECT repo_id FROM fleets)").run();
+    })();
+  }
+
+  inboxSeen(repo: string): Set<string> {
+    return new Set((this.db.prepare("SELECT row_id FROM inbox_seen WHERE repo_id = ?").all(repo) as { row_id: string }[]).map((row) => row.row_id));
+  }
+
+  touchInboxSeen(repo: string, ids: readonly string[], at: string): void {
+    this.db.transaction(() => {
+      const touch = this.db.prepare("INSERT INTO inbox_seen (repo_id, row_id, seen_at) VALUES (?, ?, ?) ON CONFLICT (repo_id, row_id) DO UPDATE SET seen_at = excluded.seen_at");
+      for (const id of ids) touch.run(repo, id, at);
+    })();
+  }
+
+  inboxBaselined(repo: string): boolean {
+    const row = this.db.prepare("SELECT inbox_baselined FROM fleets WHERE repo_id = ?").get(repo) as { inbox_baselined: number } | undefined;
+    return row?.inbox_baselined === 1;
+  }
+
+  setInboxBaselined(repo: string): void {
+    this.db.prepare("UPDATE fleets SET inbox_baselined = 1 WHERE repo_id = ?").run(repo);
+  }
+
   prune(before: string): void {
     this.db.transaction(() => {
+      this.db.prepare("DELETE FROM inbox_seen WHERE seen_at < ?").run(before);
       this.db.prepare("DELETE FROM changes WHERE seen_at < ?").run(before);
       this.db.prepare("DELETE FROM failed_reads WHERE at < ?").run(before);
       this.db.prepare("DELETE FROM polls WHERE at < ?").run(before);

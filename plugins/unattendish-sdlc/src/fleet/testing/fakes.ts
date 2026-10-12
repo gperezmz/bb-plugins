@@ -1,9 +1,13 @@
 // Fakes for the ports the use cases need, for tests that run on fakes alone.
 import { longestMatch, parsePrefix, repoSubject, trackerSubject, type Prefix } from "../domain/identity";
-import { parseManifest } from "../domain/manifest";
-import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, TrackerSpec } from "../domain/model";
+import { parseManifest, writtenSections } from "../domain/manifest";
+import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, TrackerSpec, WrittenSection } from "../domain/model";
+import type { InboxNewSignal } from "../application/views";
 import type {
   Clock,
+  CostReader,
+  CredentialAdmin,
+  CredentialAdminEntry,
   Credentials,
   CredentialLookup,
   DeliveryResult,
@@ -11,11 +15,14 @@ import type {
   HttpSession,
   ManagerChannel,
   ManifestFiles,
+  DashboardEvents,
   ReadRequest,
   RequestRecord,
   ResolvedCredential,
   ServiceAdapter,
   ThreadDirectory,
+  ThreadRepositories,
+  ThreadStanding,
 } from "../application/ports";
 
 export class FakeClock implements Clock {
@@ -30,19 +37,84 @@ export class FakeClock implements Clock {
 
 export class FakeThreads implements ThreadDirectory {
   readonly states = new Map<string, "live" | "archived" | "gone">();
+  /** Of a live thread: at work or idle, and since when. A live thread not listed is idle since an unknown time. */
+  readonly activity = new Map<string, { busy: boolean; since: string | null }>();
   async state(threadId: string): Promise<"live" | "archived" | "gone"> {
     return this.states.get(threadId) ?? "gone";
+  }
+  async standing(threadId: string): Promise<ThreadStanding> {
+    const state = await this.state(threadId);
+    return state === "live" ? { state, ...(this.activity.get(threadId) ?? { busy: false, since: null }) } : { state };
+  }
+}
+
+/** The git remote of the project each thread belongs to. */
+export class FakeRepositories implements ThreadRepositories {
+  readonly remotes = new Map<string, string>();
+  async remoteOf(threadId: string): Promise<string | null> {
+    return this.remotes.get(threadId) ?? null;
+  }
+}
+
+/** What Thread Usage would say of each thread's tree; a thread not listed has no cost. */
+export class FakeCost implements CostReader {
+  readonly costs = new Map<string, { amount: number; currency: string }>();
+  readonly asked: string[] = [];
+  async costOf(threadId: string): Promise<{ amount: number; currency: string } | null> {
+    this.asked.push(threadId);
+    return this.costs.get(threadId) ?? null;
+  }
+}
+
+/** What reached the open bb windows. */
+export class FakeEvents implements DashboardEvents {
+  boardChanges = 0;
+  readonly inboxNews: InboxNewSignal[] = [];
+  boardChanged(): void {
+    this.boardChanges += 1;
+  }
+  inboxNew(signal: InboxNewSignal): void {
+    this.inboxNews.push(signal);
+  }
+}
+
+/** The credential settings as a list; it validates only that a prefix is given and not twice, which is as far as the use cases ask. */
+export class FakeCredentialAdmin implements CredentialAdmin {
+  readonly entries: CredentialAdminEntry[] = [];
+  problems: string[] = [];
+  async list() {
+    return { entries: this.entries.map((entry) => ({ ...entry })), problems: [...this.problems] };
+  }
+  async save(draft: Parameters<CredentialAdmin["save"]>[0]) {
+    if (draft.prefix.trim() === "") return { ok: false as const, reason: "the prefix is empty" };
+    const was = draft.was ?? draft.prefix;
+    const at = this.entries.findIndex((entry) => entry.prefix === was);
+    if (draft.was === undefined && at !== -1) return { ok: false as const, reason: "that prefix is already given" };
+    const entry: CredentialAdminEntry = { prefix: draft.prefix, auth: draft.auth, service: draft.service ?? null, baseUrl: draft.baseUrl ?? null, hasToken: draft.token !== undefined || (at !== -1 && this.entries[at]!.hasToken), problem: null };
+    if (at === -1) this.entries.push(entry);
+    else this.entries[at] = entry;
+    return { ok: true as const };
+  }
+  async remove(prefix: string) {
+    const at = this.entries.findIndex((entry) => entry.prefix === prefix);
+    if (at === -1) return { ok: false as const, reason: "no such credential" };
+    this.entries.splice(at, 1);
+    return { ok: true as const };
   }
 }
 
 /** bb's queue as the manager sees it: idle sends at once, busy queues, refusing refuses. */
 export class FakeChannel implements ManagerChannel {
   mode: "idle" | "busy" | "refuse" = "idle";
+  /** What a refused send or amendment says. */
+  refusal = "HTTP 500";
+  /** The status alone of a refusal, which is all a log may carry. */
+  refusalStatus = "HTTP 500";
   readonly sent: { threadId: string; text: string; id: string | null }[] = [];
   readonly queue = new Map<string, { threadId: string; text: string }>();
   private next = 1;
   async send(threadId: string, text: string): Promise<DeliveryResult> {
-    if (this.mode === "refuse") return { delivered: "refused", reason: "HTTP 500" };
+    if (this.mode === "refuse") return { delivered: "refused", status: this.refusalStatus, reason: this.refusal };
     if (this.mode === "idle") {
       this.sent.push({ threadId, text, id: null });
       return { delivered: "sent" };
@@ -52,8 +124,8 @@ export class FakeChannel implements ManagerChannel {
     this.sent.push({ threadId, text, id });
     return { delivered: "queued", queuedMessageId: id };
   }
-  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }> {
-    if (this.mode === "refuse") return { refused: "HTTP 500" };
+  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string; readonly status: string }> {
+    if (this.mode === "refuse") return { refused: this.refusal, status: this.refusalStatus };
     const row = this.queue.get(queuedMessageId);
     if (row === undefined || row.threadId !== threadId) return "gone";
     this.queue.set(queuedMessageId, { threadId, text });
@@ -70,6 +142,11 @@ export class FakeManifests implements ManifestFiles {
   async read(path: string): Promise<ManifestRead> {
     const text = this.files.get(path);
     return text === undefined ? { status: "missing" } : parseManifest(text);
+  }
+  async readSections(path: string): Promise<{ read: ManifestRead; written: readonly WrittenSection[] }> {
+    const text = this.files.get(path);
+    const read = await this.read(path);
+    return { read, written: text !== undefined && read.status === "ok" ? writtenSections(text) : [] };
   }
 }
 

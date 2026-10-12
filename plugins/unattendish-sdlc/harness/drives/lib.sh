@@ -164,6 +164,11 @@ register() {
 # status <repo>: the fleet's entry of `fleet status --json`.
 status() { bb unattendish fleet status --json | jq -c --arg repo "$1" '.fleets[] | select(.repo == $repo)'; }
 
+# rpc <method> [input as JSON]: calls one of the plugin's dashboard RPC methods through the running bb, as its pages do, and prints the result as JSON.
+rpc() {
+  curl -fsS -X POST -H 'Content-Type: application/json' -d "${2:-null}" "$BB_SERVER_URL/api/v1/plugins/unattendish-sdlc/rpc/$1" | jq -c '.result'
+}
+
 # polled <repo>: the fleet has been polled at least once.
 polled() { [[ $(status "$1" | jq -r '.lastPolledAt // empty') != "" ]]; }
 

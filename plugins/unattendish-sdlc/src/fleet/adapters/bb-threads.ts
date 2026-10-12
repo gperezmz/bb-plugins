@@ -2,7 +2,9 @@
 // there, and a way to send it a wake that waits behind its turn. Every call to bb is bounded
 // by `SDK_TIMEOUT_MS`.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { DeliveryResult, ManagerChannel, ThreadDirectory } from "../application/ports";
+import { redact } from "../domain/redact";
+import { clip } from "../domain/text";
+import type { DeliveryResult, ManagerChannel, ThreadDirectory, ThreadRepositories, ThreadStanding } from "../application/ports";
 
 type BbSdk = BbPluginApi["sdk"];
 
@@ -14,10 +16,37 @@ export const httpStatusOf = (error: unknown): number | null => {
   return match === null ? null : Number(match[1]);
 };
 
-/** All a failed call may say: its status, never bb's message, which can quote the text sent. */
-const reasonOf = (error: unknown): string => {
+const NO_ANSWER = "no answer from bb";
+
+/** All of a failed call that may be logged or stored: its status, `HTTP <n>`, or `no answer from bb`; never bb's message, which can quote the text sent. */
+export const statusOf = (error: unknown): string => {
   const status = httpStatusOf(error);
-  return status === null ? "no answer from bb" : `HTTP ${status}`;
+  return status === null ? NO_ANSWER : `HTTP ${status}`;
+};
+
+/** The most characters of bb's own message a reason carries. */
+export const REASON_MESSAGE_MAX = 160;
+/** The text sent, or one of its lines, is replaced where bb quotes it only when it is at least this long, so a short one does not garble the message. */
+const QUOTED_LINE_MIN = 4;
+
+/** `text` with every occurrence of each of `quoted` replaced by `…`, the longest first. */
+const withoutQuotes = (text: string, quoted: readonly string[]): string =>
+  [...quoted].sort((a, b) => b.length - a.length).reduce((rest, quote) => (quote === "" ? rest : rest.split(quote).join("…")), text);
+
+/**
+ * Why a call to bb failed, for the ledger's log, the dashboard and the operator: `HTTP <status>: <bb's message>`, or
+ * the status alone where bb gave no message, or `no answer from bb` where it gave no status. bb's message is cut to
+ * `REASON_MESSAGE_MAX` characters on one line, with the text that was sent (the whole message and each of its
+ * lines of four or more characters, as bb may quote them) replaced by `…` and every token the plugin holds scrubbed.
+ */
+export const reasonOf = (error: unknown, sent: string, secrets: readonly string[]): string => {
+  const status = httpStatusOf(error);
+  if (status === null) return NO_ANSWER;
+  const raw = error instanceof Error ? error.message : "";
+  const own = raw.replace(/^\s*HTTP \d{3}\b[\s:,-]*/i, "");
+  const quoted = [sent, sent.trim(), sent.replace(/\s+/g, " ").trim(), ...sent.split(/\r\n|\r|\n/).map((line) => line.trim())].filter((quote) => quote.length >= QUOTED_LINE_MIN);
+  const message = clip(redact(withoutQuotes(own, quoted), secrets).replace(/\s+/g, " ").trim(), REASON_MESSAGE_MAX);
+  return message === "" ? `HTTP ${status}` : `HTTP ${status}: ${message}`;
 };
 
 /** How long any one call to bb's SDK may take before it is given up on. */
@@ -33,20 +62,43 @@ const bounded = <T>(call: () => Promise<T>): Promise<T> =>
     );
   });
 
-/** Reads a thread's standing from bb: live, archived, or gone (deleted, or no such thread). */
+/** Reads a thread's standing from bb: live (at work or idle), archived, or gone (deleted, or no such thread). */
 export class BbThreadDirectory implements ThreadDirectory {
   constructor(private readonly sdk: BbSdk) {}
 
   async state(threadId: string): Promise<"live" | "archived" | "gone"> {
-    let thread: { archivedAt: number | null; deletedAt: number | null };
+    return (await this.standing(threadId)).state;
+  }
+
+  async standing(threadId: string): Promise<ThreadStanding> {
+    let thread: { archivedAt: number | null; deletedAt: number | null; status?: string; updatedAt?: number };
     try {
       thread = await bounded(() => this.sdk.threads.get({ threadId }));
     } catch (error) {
-      if (httpStatusOf(error) === 404) return "gone";
+      if (httpStatusOf(error) === 404) return { state: "gone" };
       throw error;
     }
-    if (thread.deletedAt !== null) return "gone";
-    return thread.archivedAt !== null ? "archived" : "live";
+    if (thread.deletedAt !== null) return { state: "gone" };
+    if (thread.archivedAt !== null) return { state: "archived" };
+    // bb gives the thread's status and when the thread last changed; it keeps no time of the status itself, so that stands for it.
+    const busy = typeof thread.status === "string" && thread.status !== "idle" && thread.status !== "error";
+    return { state: "live", busy, since: typeof thread.updatedAt === "number" ? new Date(thread.updatedAt).toISOString() : null };
+  }
+}
+
+/** Reads the git remote of a thread's project from bb. */
+export class BbThreadRepositories implements ThreadRepositories {
+  constructor(private readonly sdk: BbSdk) {}
+
+  async remoteOf(threadId: string): Promise<string | null> {
+    try {
+      const thread = await bounded(() => this.sdk.threads.get({ threadId }));
+      if (typeof thread.projectId !== "string") return null;
+      const project = await bounded(() => this.sdk.projects.get({ projectId: thread.projectId }));
+      return typeof project.gitRemoteUrl === "string" && project.gitRemoteUrl !== "" ? project.gitRemoteUrl : null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -55,6 +107,8 @@ export class BbManagerChannel implements ManagerChannel {
   constructor(
     private readonly sdk: BbSdk,
     private readonly pluginId: string,
+    /** Every token the plugin holds, scrubbed from the reasons it reports. */
+    private readonly secrets: () => string[] = () => [],
   ) {}
 
   async send(threadId: string, text: string): Promise<DeliveryResult> {
@@ -69,7 +123,7 @@ export class BbManagerChannel implements ManagerChannel {
       );
       return answer.delivery === "sent" ? { delivered: "sent" } : { delivered: "queued", queuedMessageId: answer.queuedMessage.id };
     } catch (error) {
-      return { delivered: "refused", reason: reasonOf(error) };
+      return { delivered: "refused", status: statusOf(error), reason: reasonOf(error, text, this.secrets()) };
     }
   }
 
@@ -81,13 +135,13 @@ export class BbManagerChannel implements ManagerChannel {
    * is for a person typing in the queue, and `expectedUpdatedAt` already
    * guards the one write.
    */
-  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }> {
+  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string; readonly status: string }> {
     for (let attempt = 0; attempt < 2; attempt++) {
       let row: { id: string; updatedAt: number; editable: boolean } | undefined;
       try {
         row = (await bounded(() => this.sdk.threads.queuedMessages.list({ threadId }))).find((queued) => queued.id === queuedMessageId);
       } catch (error) {
-        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error) };
+        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error, text, this.secrets()), status: statusOf(error) };
       }
       if (row === undefined || !row.editable) return "gone";
       try {
@@ -103,7 +157,7 @@ export class BbManagerChannel implements ManagerChannel {
       } catch (error) {
         const status = httpStatusOf(error);
         if (status === 404) return "gone";
-        if (status !== 409) return { refused: reasonOf(error) };
+        if (status !== 409) return { refused: reasonOf(error, text, this.secrets()), status: statusOf(error) };
       }
     }
     return "gone";

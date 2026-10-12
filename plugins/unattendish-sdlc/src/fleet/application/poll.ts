@@ -11,6 +11,7 @@ import {
   HttpError,
   type Clock,
   type Credentials,
+  type DashboardEvents,
   type Http,
   type LedgerRow,
   type ManagerChannel,
@@ -24,7 +25,8 @@ import {
   type StoredWake,
   type ThreadDirectory,
 } from "./ports";
-import { assessWatching, refusedNotWatched, type Watching } from "./watching";
+import { observeManifest } from "./observe";
+import { assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
 
 export interface PollDeps {
   readonly store: Store;
@@ -35,6 +37,8 @@ export interface PollDeps {
   readonly adapters: Readonly<Record<ServiceKind, ServiceAdapter>>;
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
+  /** Tells the open bb windows what a poll changed. */
+  readonly events: DashboardEvents;
   readonly log: { warn(message: string): void };
   /** Per credential prefix, the time (epoch milliseconds) before which the service asked to be left alone. Lives in memory: a restart forgets it and the first refusal sets it again. */
   readonly rateLimits: Map<string, number>;
@@ -236,6 +240,12 @@ const rolesOf = (registration: Registration): SourceRole[] => (trackerSource(reg
  * where it was; only a failure of the store propagates.
  */
 export async function pollFleet(deps: PollDeps, repo: string, options: PollOptions = {}): Promise<PollResult> {
+  const result = await runPoll(deps, repo, options);
+  if (result.polled) deps.events.boardChanged();
+  return result;
+}
+
+async function runPoll(deps: PollDeps, repo: string, options: PollOptions): Promise<PollResult> {
   const fleet = deps.store.getFleet(repo);
   if (fleet === null) return NOTHING;
   const registration = fleet.registration;
@@ -246,6 +256,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const watching = await assessWatching(deps, registration);
   const reading = await readSources(deps, fleet, watching, now, options);
   const notWatched = [...reading.notWatched];
+  observeManifest(deps, registration, forgeServiceOf(watching), watching.manifest, Object.assign({}, ...reading.reads.map((read) => read.derived.nextCursor.items)), now);
 
   const outages: Partial<Record<SourceRole, SourceOutage>> = {};
   for (const role of rolesOf(registration)) {
@@ -399,7 +410,8 @@ async function deliver(
   const text = formatWake({ since: wake.since, changes: wake.changes, catchUpMs: wake.catchUpMs, heldSince: wake.heldSince, notWatched: wake.notWatched });
   const sent = await deps.channel.send(thread, text);
   if (sent.delivered === "refused") {
-    deps.log.warn(`bb refused a wake for ${formatRepo(registration.repo)}: ${sent.reason}`);
+    // Only the status: bb's message can quote part of the wake, and a log carries none of what a wake says.
+    deps.log.warn(`bb refused a wake for ${formatRepo(registration.repo)}: ${sent.status}`);
     return { result: "refused" };
   }
   const stored = deps.store.createWake(repo, {

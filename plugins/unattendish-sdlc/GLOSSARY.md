@@ -1,6 +1,6 @@
 # Unattendish
 
-The plugin that wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, and the words it shares with the run-fleet skill.
+The plugin that wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, shows the operator what waits on them across fleets, and the words it shares with the run-fleet skill.
 
 ## Language
 
@@ -49,6 +49,30 @@ _Avoid_: Self-change, loopback
 **Wake**:
 The plugin's one message to a manager carrying what changed, as one line per change and never text written on the service.
 _Avoid_: Notification, ping
+
+### What the operator sees
+
+**Inbox row**:
+A row of the manifest's Inbox: one thing that waits on the operator, with what it waits for and since when. A row the plugin cannot read still counts as waiting.
+_Avoid_: Task, to-do
+
+**Fleets page**:
+The plugin's page in bb's navigation, listing every Inbox row of every fleet with its action, a card for each fleet, and what landed in the last 7 days.
+_Avoid_: Dashboard page, Fleet dashboard
+
+**Fleet tab**:
+The tab in a manager thread's right panel that shows that fleet in full: its manifest, watched set, credentials, spend and ledger.
+_Avoid_: Fleet panel, Fleet detail
+
+**Fleet chip**:
+The control in a manager thread's header that spells out the fleet's counts and opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
+_Avoid_: Header chip, Fleet badge
+
+**Action**:
+A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.
+_Avoid_: Command, reply
+
+An action is **sent** from the moment bb accepts the message and is **done** once a poll sees its result, which is the row gone from the Inbox or, for Build it, the spec carrying the ready label. A sent action is never marked failed by waiting; bb refusing the message is *not sent*, and the row keeps its action.
 
 ### The agreement with run-fleet
 

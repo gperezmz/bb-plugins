@@ -132,6 +132,12 @@ export interface Manifest {
   readonly unreadable: readonly UnreadableRow[];
 }
 
+/** A section the plugin does not read by column: its heading as written and its Markdown as written. */
+export interface WrittenSection {
+  readonly heading: string;
+  readonly markdown: string;
+}
+
 /** What reading the manifest file gave. */
 export type ManifestRead =
   | { readonly status: "missing" }

@@ -13,7 +13,7 @@ flowchart TB
   tc -->|yes| ok
 ```
 
-You need a bb server with the plugin installed, and the fleet's `<host>/<path>`, as its manifest's first line spells it.
+You need a bb server with the plugin installed, and the fleet's `<host>/<path>`, as its manifest's first line spells it. The steps below write the two settings as JSON; the plugin's [settings section](../reference/unattendish-settings.md#the-settings-section) lists, adds, edits and removes the same credentials with a form, and a card on the Fleets page links to it from each credential reason.
 
 ## Choose the Credential for a prefix
 

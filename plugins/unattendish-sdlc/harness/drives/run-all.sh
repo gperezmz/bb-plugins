@@ -7,7 +7,7 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 results=()
 failed=0
-for d in register wake echo turn-end no-manager credentials trackers restart; do
+for d in register wake echo turn-end no-manager credentials trackers restart dashboard; do
   echo "== $d"
   out=$("$here/$d.sh" 2>&1)
   status=$?
