@@ -167,7 +167,17 @@ describe("what is watched, and how", () => {
   });
 
   it("shows the card with its cost and reasons, and no link back to this tab", async () => {
-    await showDetail({ card: fleetCard({ cost: { amount: 14.2, currency: "USD", period: "since this manager started" }, reasons: [{ code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } }] }) });
+    await showDetail({
+      card: fleetCard({
+        cost: { amount: 14.2, currency: "USD", period: "since this manager started" },
+        reasons: [
+          { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } },
+          { code: "unreadable-rows", text: "1 manifest row cannot be read, in Blocked", fix: { kind: "fleet-tab" } },
+        ],
+      }),
+    });
+    expect(screen.queryByRole("button", { name: "Open the Fleet tab" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Fleet tab/ })).toBeNull();
     expect(screen.getByText(/\$14\.20 since this manager started/)).toBeTruthy();
     expect(screen.getByText("Linear is not watched: token refused")).toBeTruthy();
     expect(within(screen.getByRole("article", { name: "Fleet acme/web" })).queryByRole("button", { name: /Open the Fleet tab of/ })).toBeNull();

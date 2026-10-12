@@ -49,7 +49,7 @@ function Detail({ repo, managerThreadId }: { repo: string; managerThreadId: stri
     <LiveScreen live={live} what="the fleet">
       {(detail) => (
         <>
-          <FleetCard card={detail.card} now={detail.generatedAt} showManagerLink={false} />
+          <FleetCard card={detail.card} now={detail.generatedAt} inFleetTab />
           {detail.recentActions.length > 0 ? (
             <ul aria-label="Recently sent" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
               {detail.recentActions.map((action) => (

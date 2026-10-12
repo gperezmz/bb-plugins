@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function show(rows = [inboxRow()], unreadable = [] as ReturnType<typeof unreadableInboxRow>[], showFleet = true) {
-  return render(<InboxTable rows={rows} unreadable={unreadable} now={NOW} showFleet={showFleet} refetch={refetch} />);
+  return render(<InboxTable rows={rows} unreadable={unreadable} now={NOW} inFleetTab={!showFleet} refetch={refetch} />);
 }
 
 /** The row as the server's view shows it after it recorded the action: sent 7 minutes ago, the offer gone. */
@@ -36,7 +36,7 @@ const sentOnServer = (row = inboxRow()): InboxRowView => ({ ...row, offer: null,
 /** The next refetch brings back the row as the server shows it. */
 function serverRecordsTheAction(view: ReturnType<typeof show>, row = inboxRow()) {
   refetch.mockImplementationOnce(async () => {
-    view.rerender(<InboxTable rows={[sentOnServer(row)]} unreadable={[]} now={NOW} showFleet refetch={refetch} />);
+    view.rerender(<InboxTable rows={[sentOnServer(row)]} unreadable={[]} now={NOW} inFleetTab={false} refetch={refetch} />);
   });
 }
 
@@ -82,6 +82,13 @@ describe("the Inbox table", () => {
     show([inboxRow()], [], false);
     expect(screen.queryByRole("columnheader", { name: "Fleet" })).toBeNull();
   });
+
+  it("leaves out the link to the Fleet tab on an unreadable row inside the tab, and keeps the row", () => {
+    show([], [unreadableInboxRow({ fleet: "org/tickets" })], false);
+    expect(screen.getByText(/unreadable:/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Fleet tab/ })).toBeNull();
+    expect(screen.queryByText("org/tickets")).toBeNull();
+  });
 });
 
 describe("on a compact viewport", () => {
@@ -94,6 +101,23 @@ describe("on a compact viewport", () => {
     const text = item.textContent ?? "";
     expect(text.indexOf("acme/web")).toBeLessThan(text.indexOf("ENG-212 which locale wins?"));
     expect(text.indexOf("waits for your answer · 5m")).toBeLessThan(text.indexOf("Answer…"));
+  });
+});
+
+describe("inside the Fleet tab on a compact viewport", () => {
+  it("does not repeat the fleet's name on every row, nor link an unreadable row to the tab", () => {
+    setCompactViewport(true);
+    show([inboxRow({ id: "a" }), inboxRow({ id: "b", ref: "ENG-9" })], [unreadableInboxRow({ fleet: "acme/web" })], false);
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.queryByText("acme/web")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Fleet tab/ })).toBeNull();
+  });
+
+  it("still names the fleet on each row on the Fleets page", () => {
+    setCompactViewport(true);
+    show([inboxRow({ id: "a" }), inboxRow({ id: "b", ref: "ENG-9" })], [unreadableInboxRow({ fleet: "acme/web" })], true);
+    expect(screen.getAllByText("acme/web")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Open the Fleet tab of acme/web" })).toBeTruthy();
   });
 });
 

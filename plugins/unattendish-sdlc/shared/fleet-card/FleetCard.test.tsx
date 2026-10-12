@@ -81,6 +81,26 @@ describe("why a fleet is not fully watched", () => {
   });
 });
 
+describe("a card inside its own Fleet tab", () => {
+  const reasons = [
+    { code: "credential-refused" as const, text: "Linear is not watched: token refused", fix: { kind: "settings" as const } },
+    { code: "unreadable-rows" as const, text: "2 manifest rows cannot be read, in In flight", fix: { kind: "fleet-tab" as const } },
+  ];
+
+  it("offers no link to the tab it is in, but still says the reason and links the settings", () => {
+    render(<FleetCard card={fleetCard({ reasons })} now={NOW} inFleetTab />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("2 manifest rows cannot be read, in In flight")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open settings" })).toBeTruthy();
+  });
+
+  it("offers both on the Fleets page", () => {
+    render(<FleetCard card={fleetCard({ reasons })} now={NOW} />);
+    expect(screen.getByRole("button", { name: "Open the Fleet tab of acme/web" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open the Fleet tab" })).toBeTruthy();
+  });
+});
+
 describe("a card's warnings", () => {
   it("warns of a credential expiring within days, in the warning tone", () => {
     show({ warnings: [{ kind: "expires", prefix: "org", expiresAt: "2026-10-18", daysLeft: 6 }] });

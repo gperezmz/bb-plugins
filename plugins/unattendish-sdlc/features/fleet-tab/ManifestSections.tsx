@@ -16,7 +16,7 @@ export function ManifestSections({ manifest, managerThreadId, fleet, now, refetc
   return (
     <>
       <Section id="tab-inbox" title="Waits on you">
-        <InboxTable rows={manifest.inbox} unreadable={manifest.unreadableInbox} now={now} showFleet={false} refetch={refetch} />
+        <InboxTable rows={manifest.inbox} unreadable={manifest.unreadableInbox} now={now} inFleetTab refetch={refetch} />
       </Section>
       <Section id="tab-in-flight" title="In flight">
         {manifest.inFlight.length === 0 ? (

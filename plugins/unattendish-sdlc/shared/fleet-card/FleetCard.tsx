@@ -6,14 +6,14 @@ import { useOpenFleetTab } from "../open-fleet-tab";
 import { SettingsLink } from "../SettingsLink";
 
 /** One fleet at a glance: its manager, counts, cost, last poll, every reason it is not fully watched, and what to warn of. */
-export function FleetCard({ card, now, className, showManagerLink = true }: { card: FleetCardView; now: string; className?: string; showManagerLink?: boolean }) {
+export function FleetCard({ card, now, className, inFleetTab = false }: { card: FleetCardView; now: string; className?: string; inFleetTab?: boolean }) {
   const openFleetTab = useOpenFleetTab();
   const cost = costText(card);
   return (
     <article aria-label={`Fleet ${card.repo}`} className={cn("flex flex-col gap-1 rounded-lg border p-3 text-sm", card.reasons.length > 0 ? "border-destructive/50" : "border-border", className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-medium">{card.repo}</span>
-        {showManagerLink ? (
+        {!inFleetTab ? (
           <button type="button" className={cn(LINK_CLASS, "text-xs")} aria-label={`Open the Fleet tab of ${card.repo}`} onClick={() => openFleetTab(card.managerThreadId)}>
             manager ↗
           </button>
@@ -28,7 +28,7 @@ export function FleetCard({ card, now, className, showManagerLink = true }: { ca
         {pollText(card, now)}
       </div>
       {card.reasons.map((reason) => (
-        <Reason key={`${reason.code}:${reason.text}`} reason={reason} managerThreadId={card.managerThreadId} onOpenFleetTab={openFleetTab} />
+        <Reason key={`${reason.code}:${reason.text}`} reason={reason} managerThreadId={card.managerThreadId} onOpenFleetTab={inFleetTab ? null : openFleetTab} />
       ))}
       {card.warnings.map((warning) => {
         const line = warningLine(warning);
@@ -42,12 +42,12 @@ export function FleetCard({ card, now, className, showManagerLink = true }: { ca
   );
 }
 
-function Reason({ reason, managerThreadId, onOpenFleetTab }: { reason: ReasonView; managerThreadId: string; onOpenFleetTab(threadId: string): void }) {
+function Reason({ reason, managerThreadId, onOpenFleetTab }: { reason: ReasonView; managerThreadId: string; onOpenFleetTab: ((threadId: string) => void) | null }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-destructive">
       <span>{reason.text}</span>
       {reason.fix.kind === "settings" ? <SettingsLink>Open settings</SettingsLink> : null}
-      {reason.fix.kind === "fleet-tab" ? (
+      {reason.fix.kind === "fleet-tab" && onOpenFleetTab !== null ? (
         <button type="button" className={LINK_CLASS} onClick={() => onOpenFleetTab(managerThreadId)}>
           Open the Fleet tab
         </button>
