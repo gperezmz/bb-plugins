@@ -1,7 +1,7 @@
 // The rules of registering a fleet and of polling it on time: which
 // arguments are valid, who may hold a repository, and how often it is read.
 import { parseRepo, parseTracker } from "./identity";
-import { CONTRACT_VERSION, type FleetLabels, type NotWatched, type Registration } from "./model";
+import { CONTRACT_VERSION, type FleetLabels, type NotWatched, type RefusedWhy, type Registration } from "./model";
 
 export const DEFAULT_INTERVAL_MS = 120_000;
 /** The shortest interval a fleet may be polled at. */
@@ -139,7 +139,25 @@ export const catchUp = (lastPolledAt: string | null, now: string, intervalMs: nu
   return gap > Math.max(AWAY_INTERVALS * intervalMs, AWAY_MIN_MS) ? gap : null;
 };
 
-/** Why a fleet whose credential the service refused is not watched. */
-export const credentialRefused = (prefix: string): NotWatched => ({ code: "credential-refused", text: `The credential for ${prefix} was refused by the service` });
+/** Polls in a row whose read of a source is unreadable, every read forbidden or unanswered, before its fleet is not watched. */
+export const UNREADABLE_POLLS = 3;
+
+/** What became of the reads with the credential for `prefix`, in lower case, as the wake's closing line and the status both word it. */
+export const refusedText = (prefix: string, why: RefusedWhy): string => {
+  switch (why) {
+    case "refused":
+      return `the credential for ${prefix} was refused by the service`;
+    case "forbidden":
+      return `the credential for ${prefix} was forbidden to read what the fleet needs (403)`;
+    case "unreachable":
+      return `the service did not answer reads with the credential for ${prefix}`;
+  }
+};
+
+/** Why a fleet whose credential the service refused, forbade or did not answer is not watched. */
+export const credentialRefused = (prefix: string, why: RefusedWhy): NotWatched => {
+  const text = refusedText(prefix, why);
+  return { code: "credential-refused", text: `${text.charAt(0).toUpperCase()}${text.slice(1)}` };
+};
 
 const shown = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text).replace(CONTROL, " ");

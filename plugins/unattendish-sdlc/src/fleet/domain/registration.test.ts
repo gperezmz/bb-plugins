@@ -153,7 +153,9 @@ describe("catchUp", () => {
 });
 
 describe("credentialRefused", () => {
-  it("names the prefix whose credential the service refused", () => {
-    expect(credentialRefused("github.com/org")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was refused by the service" });
+  it("names the prefix and says whether the service refused the credential, forbade its reads, or did not answer", () => {
+    expect(credentialRefused("github.com/org", "refused")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was refused by the service" });
+    expect(credentialRefused("github.com/org", "forbidden")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" });
+    expect(credentialRefused("github.com/org", "unreachable")).toEqual({ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" });
   });
 });

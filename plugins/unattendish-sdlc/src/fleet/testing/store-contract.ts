@@ -1,7 +1,7 @@
 // The Store port's behaviour as one suite, run over every implementation so
 // the in-memory fake cannot drift from the SQLite store.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LedgerRow, PollRecord, Store, StoredFleet } from "../application/ports";
+import type { LedgerRow, PollRecord, Store, StoredFleet, StoredWake } from "../application/ports";
 import { repoId } from "../domain/identity";
 import type { Registration, SourceCursor } from "../domain/model";
 
@@ -58,7 +58,7 @@ const wakeFields = (over: Record<string, unknown> = {}) => ({
   since: "2026-10-12T09:58:00.000Z",
   catchUpMs: null,
   heldSince: null,
-  notWatched: null as { since: string; prefix: string } | null,
+  notWatched: null as StoredWake["notWatched"],
   ...over,
 });
 
@@ -74,6 +74,7 @@ const pollState = (over: Partial<Parameters<Store["savePollState"]>[1]> = {}): P
   outsideLinks: [],
   expiries: {},
   heldSince: null,
+  unreadablePolls: 0,
   ...over,
 });
 
@@ -113,6 +114,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           lastPolledAt: null,
           notWatched,
           refused: null,
+          unreadablePolls: 0,
           unreadableRows: [],
           outsideLinks: [],
           expiries: {},
@@ -161,7 +163,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
             outsideLinks: [{ text: "https://example.net/x", section: "Blocked", line: 9 }],
             expiries: { "github.com/org": "2027-01-01T00:00:00.000Z" },
             heldSince: "2026-10-12T09:00:00.000Z",
-            refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true },
+            refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true, why: "forbidden" },
           }),
         );
         store.saveRegistration(registration(REPO, { operator: "carol" }), []);
@@ -172,7 +174,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(fleet.outsideLinks).toHaveLength(1);
         expect(fleet.expiries).toEqual({ "github.com/org": "2027-01-01T00:00:00.000Z" });
         expect(fleet.heldSince).toBe("2026-10-12T09:00:00.000Z");
-        expect(fleet.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true });
+        expect(fleet.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true, why: "forbidden" });
       });
 
       it("sets and clears a fleet's own interval", () => {
@@ -306,23 +308,23 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       it("records a refusal, and an omitted refusal clears it", () => {
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false });
+        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
+        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
 
         store.savePollState(REPO, pollState());
         expect(store.getFleet(REPO)!.refused).toBeNull();
 
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false } }));
+        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
         store.savePollState(REPO, pollState({ refused: undefined }));
         expect(store.getFleet(REPO)!.refused).toBeNull();
 
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false } }));
+        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
         store.savePollState(REPO, pollState({ refused: null }));
         expect(store.getFleet(REPO)!.refused).toBeNull();
       });
 
       it("keeps announced while the refusal is the same one and resets it for another", () => {
-        const refused = { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false };
+        const refused = { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" as const };
         store.savePollState(REPO, pollState({ refused }));
         store.markRefusedAnnounced(REPO);
         expect(store.getFleet(REPO)!.refused?.announced).toBe(true);
@@ -331,17 +333,27 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(store.getFleet(REPO)!.refused?.announced).toBe(true);
 
         store.savePollState(REPO, pollState({ refused: { ...refused, since: "2026-10-12T11:00:00.000Z" } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com/org", announced: false });
+        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
 
         store.markRefusedAnnounced(REPO);
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false });
+        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" } }));
+        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" });
+      });
+
+      it("records why the credential counts as refused, and the count of unreadable polls", () => {
+        for (const why of ["refused", "forbidden", "unreachable"] as const) {
+          store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why }, unreadablePolls: 3 }));
+          expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why });
+          expect(store.getFleet(REPO)!.unreadablePolls).toBe(3);
+        }
+        store.savePollState(REPO, pollState());
+        expect(store.getFleet(REPO)!.unreadablePolls).toBe(0);
       });
 
       it("marks nothing announced while no credential is refused", () => {
         store.markRefusedAnnounced(REPO);
         expect(store.getFleet(REPO)!.refused).toBeNull();
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false } }));
+        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
         store.savePollState(REPO, pollState());
         store.markRefusedAnnounced(REPO);
         expect(store.getFleet(REPO)!.refused).toBeNull();
@@ -669,7 +681,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         });
 
         it("returns a queued not-watched wake, with the line it carries", () => {
-          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org" };
+          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "unreachable" as const };
           const wake = store.createWake(REPO, wakeFields({ kind: "not-watched", queuedMessageId: "msg_nw", notWatched: line }));
           expect(wake.notWatched).toEqual(line);
           expect(store.openWake(REPO)).toEqual(wake);
@@ -687,7 +699,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
 
         it("records what an amendment made of the wake", () => {
           const wake = store.createWake(REPO, wakeFields({ kind: "not-watched" }));
-          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org" };
+          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "unreachable" as const };
           store.updateWake(REPO, wake.id, { kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
           expect(store.openWake(REPO)).toEqual({ ...wake, kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
           store.updateWake(OTHER, wake.id, { kind: "not-watched", heldSince: null, notWatched: null });

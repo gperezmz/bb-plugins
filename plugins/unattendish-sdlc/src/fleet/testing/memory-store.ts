@@ -84,6 +84,7 @@ export class InMemoryStore implements Store {
     data.fleet = {
       lastPolledAt: null,
       refused: null,
+      unreadablePolls: 0,
       unreadableRows: [],
       outsideLinks: [],
       expiries: {},
@@ -123,7 +124,8 @@ export class InMemoryStore implements Store {
       outsideLinks: structuredClone([...state.outsideLinks]),
       expiries: structuredClone(state.expiries),
       heldSince: state.heldSince,
-      refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced },
+      unreadablePolls: state.unreadablePolls,
+      refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why },
     };
   }
 

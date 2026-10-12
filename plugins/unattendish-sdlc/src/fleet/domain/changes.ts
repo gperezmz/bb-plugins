@@ -113,6 +113,17 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
 };
 
+/**
+ * How a source's read failed as a whole, or null when it did not: it gave no
+ * snapshot, no event and no updated item, and gave failures, every one of
+ * them `forbidden` or `unreachable`. Forbidden when any of them is.
+ */
+export const unreadableKind = (outcome: ReadOutcome): "forbidden" | "unreachable" | null => {
+  if (outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0 || outcome.failures.length === 0) return null;
+  if (!outcome.failures.every((failure) => failure.kind === "forbidden" || failure.kind === "unreachable")) return null;
+  return outcome.failures.some((failure) => failure.kind === "forbidden") ? "forbidden" : "unreachable";
+};
+
 /** Orders changes, and ledger rows, by the time they happened, then by key. */
 export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, b: { readonly at: string; readonly key: string }): number =>
   a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;

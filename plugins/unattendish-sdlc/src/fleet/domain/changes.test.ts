@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byTimeThenKey, deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -318,6 +318,25 @@ describe("partitionRevisit", () => {
     ]);
     expect(partitionRevisit(prev, "tracker", labels, new Set())).toEqual([{ role: "tracker", ref: "ENG-1", url: null }]);
     expect(partitionRevisit(null, "forge", labels, new Set())).toEqual([]);
+  });
+});
+
+describe("unreadableKind", () => {
+  const forbidden = { ref: null, reason: "403", kind: "forbidden" as const };
+  const unreachable = { ref: "#1", reason: "no answer", kind: "unreachable" as const };
+
+  it("says forbidden when any failure is, else unreachable, when nothing but those failures came back", () => {
+    expect(unreadableKind(outcome({ failures: [unreachable, forbidden] }))).toBe("forbidden");
+    expect(unreadableKind(outcome({ failures: [unreachable] }))).toBe("unreachable");
+  });
+
+  it("is null when anything came back, when there is no failure, or when a failure is of another kind", () => {
+    expect(unreadableKind(outcome())).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], snapshots: [snapshot()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], events: [event()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [forbidden, { ref: "#3", reason: "gone", kind: "not-found" }] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [unreachable, { ref: null, reason: "field missing" }] }))).toBeNull();
   });
 });
 

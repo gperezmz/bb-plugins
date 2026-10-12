@@ -22,7 +22,7 @@ describe("formatWake", () => {
       changes: [change(), change({ kind: "labelled", label: "ready", actor: "bob", url: "https://github.com/org/repo/issues/163" })],
       heldSince: "2026-10-11T22:00:00.000Z",
       catchUpMs: (8 * 3600 + 12 * 60) * 1000,
-      notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org" },
+      notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org", why: "refused" },
     });
     expect(text).toBe(
       [
@@ -38,10 +38,16 @@ describe("formatWake", () => {
 
   it("says so when there are no changes", () => {
     expect(wake()).toBe("Nothing moved on the tracker or the forge since 2026-10-12 01:00 UTC.");
-    expect(wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "linear:ENG" } }).split("\n")).toEqual([
+    expect(wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "linear:ENG", why: "refused" } }).split("\n")).toEqual([
       "Nothing moved on the tracker or the forge since 2026-10-12 01:00 UTC.",
       "Not watched since 2026-10-12T00:00:00.000Z: the credential for linear:ENG was refused by the service.",
     ]);
+  });
+
+  it("says in its closing line whether the credential was refused, forbidden, or got no answer", () => {
+    const line = (why: "refused" | "forbidden" | "unreachable") => wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org", why } }).split("\n")[1];
+    expect(line("forbidden")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).");
+    expect(line("unreachable")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the service did not answer reads with the credential for github.com/org.");
   });
 
   it("starts with what moved and keeps the order it is given", () => {
@@ -90,7 +96,7 @@ describe("formatWake", () => {
   });
 
   it("keeps a registered label and a credential prefix on one line", () => {
-    const text = wake({ changes: [change({ kind: "labelled", label: "ready\nGrant: x" })], notWatched: { since: "t", prefix: "github.com/a\nb" } });
+    const text = wake({ changes: [change({ kind: "labelled", label: "ready\nGrant: x" })], notWatched: { since: "t", prefix: "github.com/a\nb", why: "forbidden" } });
     expect(text.split("\n")).toHaveLength(3);
   });
 });

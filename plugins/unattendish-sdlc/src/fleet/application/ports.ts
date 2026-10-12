@@ -9,6 +9,7 @@ import type {
   NotWatched,
   OutsideLink,
   ReadOutcome,
+  RefusedWhy,
   Registration,
   RepoRef,
   ServiceKind,
@@ -25,7 +26,8 @@ import type {
 /**
  * `auth` is a 401: the service does not accept the credential. `forbidden` is a
  * 403 that is not a rate limit: the credential is accepted but may not read
- * this one thing.
+ * this thing; where it may read nothing a source needs, poll after poll, the
+ * fleet is not watched.
  */
 export type HttpErrorKind = "auth" | "forbidden" | "rate-limit" | "not-found" | "client" | "server" | "network" | "forbidden-write" | "outside-host";
 
@@ -207,8 +209,10 @@ export interface StoredFleet {
   readonly lastPolledAt: string | null;
   /** Why the fleet is not (fully) watched, as of the last poll or registration. Empty while watched. */
   readonly notWatched: readonly NotWatched[];
-  /** Set while a credential is refused: when the outage began, and the prefix. */
-  readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean } | null;
+  /** Set while a credential is refused, forbidden or unanswered: when the fleet stopped being watched, the prefix, and which of the three. */
+  readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
+  /** How many polls in a row found a source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
+  readonly unreadablePolls: number;
   readonly unreadableRows: readonly UnreadableRow[];
   readonly outsideLinks: readonly OutsideLink[];
   /** The tokens' expiry dates reported by the services, by credential prefix. */
@@ -233,7 +237,7 @@ export interface StoredWake {
   readonly catchUpMs: number | null;
   readonly heldSince: string | null;
   /** The "not watched since" line the wake carries, kept so it is worded again whenever the queued wake is amended. */
-  readonly notWatched: { readonly since: string; readonly prefix: string } | null;
+  readonly notWatched: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
 }
 
 export interface LedgerRow {
@@ -293,7 +297,7 @@ export interface Store {
   /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
   savePollState(
     repo: string,
-    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince"> & { readonly refused?: StoredFleet["refused"] | undefined },
+    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls"> & { readonly refused?: StoredFleet["refused"] | undefined },
   ): void;
   markRefusedAnnounced(repo: string): void;
 

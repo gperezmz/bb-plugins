@@ -59,6 +59,12 @@ export interface NotWatched {
   readonly text: string;
 }
 
+/**
+ * Why a source's credential counts as refused: the service answered 401 (`refused`), forbade every read the fleet
+ * needs with a 403 (`forbidden`), or did not answer (`unreachable`).
+ */
+export type RefusedWhy = "refused" | "forbidden" | "unreachable";
+
 // ---- the manifest, as the plugin reads it ----
 
 export type WaitsFor = "answer" | "grant" | "ready" | "other";

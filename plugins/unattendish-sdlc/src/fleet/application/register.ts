@@ -43,7 +43,7 @@ export async function registerFleet(deps: RegisterDeps, thread: string, args: Re
     registeredAt: existing?.registration.registeredAt ?? deps.clock.now().toISOString(),
   };
   const watching = await assessWatching(deps, registration);
-  const notWatched = existing?.refused == null ? watching.notWatched : [...watching.notWatched, credentialRefused(existing.refused.prefix)];
+  const notWatched = existing?.refused == null ? watching.notWatched : [...watching.notWatched, credentialRefused(existing.refused.prefix, existing.refused.why)];
   deps.store.saveRegistration(registration, notWatched);
 
   const watched = notWatched.length === 0;

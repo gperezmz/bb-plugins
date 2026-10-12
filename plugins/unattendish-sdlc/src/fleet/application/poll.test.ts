@@ -573,6 +573,66 @@ describe("credentials (AC12)", () => {
   });
 });
 
+describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
+  const forbidden = outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "#7 answered 403", kind: "forbidden" }] });
+  const unreachable = outcome({ failures: [{ ref: null, reason: "the listing got no answer", kind: "unreachable" }] });
+  const statusOf = async (w: World) => (await fleetStatus({ ...w.register, clock: w.clock }))[0]!;
+  const pollWith = async (w: World, next: Parameters<World["adapters"]["github"]["queue"]>[0]) => {
+    w.adapters.github.queue(next);
+    await poll(w);
+    w.clock.advance(120_000);
+  };
+
+  it("is not watched after three polls in a row forbidden, tells the manager once, and is watched again after a poll that reads", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatchedSince: null });
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w)).toBe(
+      "Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.\n" +
+        "Not watched since 2026-10-12T10:04:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
+    );
+    expect(await statusOf(w)).toMatchObject({
+      watched: false,
+      notWatchedSince: "2026-10-12T10:04:00.000Z",
+      notWatched: [{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }],
+    });
+    await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0 });
+  });
+
+  it("says the service did not answer when no read got an answer, and counts the polls in a row only", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, unreachable);
+    await pollWith(w, unreachable);
+    await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
+    await pollWith(w, unreachable);
+    await pollWith(w, new HttpError("network", "GET /x got no answer"));
+    expect(w.channel.sent).toEqual([]);
+    await pollWith(w, unreachable);
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:10:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
+  });
+
+  it("counts nothing for a read that gave back anything, or failed some other way", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 4; i += 1) {
+      await pollWith(w, outcome({ snapshots: [snapshot(7)], failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }] }));
+      await pollWith(w, outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "a field is missing" }] }));
+    }
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
+  });
+});
+
 describe("what status and the ledger report (AC11, AC13)", () => {
   it("says a fleet is not watched when its credential gives no token, naming the prefix (AC13)", async () => {
     const w = world();
