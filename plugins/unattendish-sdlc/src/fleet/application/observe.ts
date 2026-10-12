@@ -1,7 +1,7 @@
 // What a read of a fleet's manifest shows beyond what to watch: which sent
 // actions are done, and which Inbox rows are new to the repository. Runs after
 // each poll's and each turn-end read's reading, whatever the poll does next.
-import { finishedActions } from "../domain/actions";
+import { finishedActions, heldBy } from "../domain/actions";
 import { inboxNews } from "../domain/dashboard";
 import { formatRepo, repoId } from "../domain/identity";
 import { uniqueRowIds } from "../domain/inbox";
@@ -41,7 +41,8 @@ export function observeManifest(
     const item = itemOfReference(ref, identity);
     return item !== null && (items[itemId(item.role, item.ref)]?.fleetLabels.includes(registration.labels.ready) ?? false);
   };
-  const sent = deps.store.actions(repo).filter((action) => action.state === "sent" && action.sentAt <= at);
+  // An action sent to a manager since replaced never reached the one that holds the fleet now.
+  const sent = heldBy(deps.store.actions(repo), registration.managerThreadId).filter((action) => action.state === "sent" && action.sentAt <= at);
   const finished = finishedActions(sent, new Set(ids), ready);
   if (finished.length > 0) deps.store.markActionsDone(repo, finished, at);
 

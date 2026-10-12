@@ -82,6 +82,14 @@ export const planAction = (request: ActionRequest): ActionPlan => {
   return { ok: true, message: actionMessage(kind, row, request.text ?? "", regrant) };
 };
 
+/**
+ * The actions that count for the manager holding the fleet now: those done, and those sent to it. One still sent to a
+ * manager since replaced never reached the one that follows it, so it offers nothing, blocks nothing and is never
+ * marked done.
+ */
+export const heldBy = (records: readonly ActionRecord[], managerThreadId: string): ActionRecord[] =>
+  records.filter((record) => record.state === "done" || record.managerThreadId === managerThreadId);
+
 /** The latest action sent on a row. */
 export const latestOn = (records: readonly ActionRecord[], rowId: string): ActionRecord | null =>
   records.filter((record) => record.rowId === rowId).sort(newestFirst((record) => record.sentAt))[0] ?? null;

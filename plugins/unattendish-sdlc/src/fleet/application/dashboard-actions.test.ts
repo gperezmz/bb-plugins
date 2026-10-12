@@ -158,6 +158,48 @@ describe("sending an action", () => {
   });
 });
 
+describe("an action and a take-over", () => {
+  const takeOver = async (w: World) => {
+    w.threads.states.set(MANAGER, "archived");
+    w.threads.states.set("thr_second", "live");
+    await registerFleet(w.register, "thr_second", args());
+  };
+
+  it("records nothing, and says so, when the fleet changes manager while the message is being sent", async () => {
+    const w = world();
+    await start(w, [inboxRow(7)]);
+    const id = await rowId(w, "#7");
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const send = w.channel.send.bind(w.channel);
+    w.channel.send = async (threadId, text) => {
+      await held;
+      return send(threadId, text);
+    };
+    const sending = dashboard(w).sendAction({ fleet: REPO, rowId: id, kind: "answer", text: "A" });
+    await takeOver(w);
+    release();
+    expect(await sending).toMatchObject({ ok: false, reason: expect.stringContaining("changed manager") });
+    expect(w.store.actions(REPO_KEY)).toEqual([]);
+    w.channel.send = send;
+    expect(await dashboard(w).sendAction({ fleet: REPO, rowId: id, kind: "answer", text: "A again" })).toMatchObject({ ok: true });
+    expect(w.channel.sent.at(-1)).toMatchObject({ threadId: "thr_second", text: "Answer to #7: A again" });
+  });
+
+  it("offers the row again when the action on it was sent to a manager since replaced, and never marks it done", async () => {
+    const w = world();
+    await start(w, [inboxRow(7)]);
+    const id = await rowId(w, "#7");
+    w.store.saveAction({ id: "stale", repo: REPO_KEY, rowId: id, kind: "answer", ref: "#7", what: "w", managerThreadId: MANAGER, state: "sent", sentAt: "2026-10-12T09:59:00.000Z", doneAt: null });
+    await takeOver(w);
+    w.store.saveAction({ id: "stale", repo: REPO_KEY, rowId: id, kind: "answer", ref: "#7", what: "w", managerThreadId: MANAGER, state: "sent", sentAt: "2026-10-12T09:59:00.000Z", doneAt: null });
+    expect((await dashboard(w).fleets()).inbox[0]).toMatchObject({ offer: { kind: "answer" }, action: null });
+    w.manifests.files.set(MANIFEST_PATH, manifest());
+    await pollFleet(w.poll, REPO_KEY);
+    expect(w.store.actions(REPO_KEY)[0]).toMatchObject({ id: "stale", state: "sent" });
+  });
+});
+
 describe("a Link in the Inbox", () => {
   it("is a URL for a row with a Ref", async () => {
     const w = world();

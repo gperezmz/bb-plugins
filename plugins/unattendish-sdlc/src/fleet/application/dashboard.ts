@@ -1,7 +1,7 @@
 // What the Fleets dashboard asks of the plugin: the Fleets page, the Fleet chip
 // and tab, the ledger, the actions sent to a manager, and the settings section.
 // Every method answers from the store, the manifests and bb as they are now.
-import { actionId, latestOn, planAction } from "../domain/actions";
+import { actionId, heldBy, latestOn, planAction } from "../domain/actions";
 import { doneWith, droppedReason, groupDropped, oldestFirst, repoFromRemote, sameRepo } from "../domain/dashboard";
 import { formatRepo, parseRepo, repoId } from "../domain/identity";
 import { newestFirst } from "../domain/order";
@@ -176,12 +176,14 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       const manifest = await deps.manifests.read(registration.manifestPath);
       const read = manifest.status === "ok" ? manifest.manifest.inbox : [];
       const at = uniqueRowIds(read).indexOf(input.rowId);
-      const taken = latestOn(deps.store.actions(key), input.rowId) !== null;
+      const taken = latestOn(heldBy(deps.store.actions(key), registration.managerThreadId), input.rowId) !== null;
       const plan = planAction({ row: at === -1 ? undefined : read[at], kind: input.kind, text: input.text, regrant: input.regrant, managerThreadId: registration.managerThreadId, taken });
       if (!plan.ok) return refused(plan.reason);
 
       const delivery = await deps.channel.send(registration.managerThreadId, plan.message);
       if (delivery.delivered === "refused") return refused(messageOf(delivery.reason, [...deps.secrets(), input.text ?? ""].filter((secret) => secret.length >= 6)));
+      // The send took time: a take-over meanwhile means the message went to a manager that no longer holds the fleet.
+      if (deps.store.getFleet(key)?.registration.managerThreadId !== registration.managerThreadId) return refused("the fleet changed manager while the message was sent, so the new manager did not get it; send it again");
       const row = read[at]!;
       const sentAt = deps.clock.now().toISOString();
       const record = { id: actionId(input.rowId, sentAt), repo: key, rowId: input.rowId, kind: input.kind, ref: row.ref, what: row.what, managerThreadId: registration.managerThreadId, state: "sent" as const, sentAt, doneAt: null };

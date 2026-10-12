@@ -1,7 +1,7 @@
 // A fleet as the dashboard shows it: what is gathered of it once, and the card,
 // the Inbox rows, the manifest and the watched set built from that.
 import type { ActionRecord } from "../domain/actions";
-import { latestOn, recentActions as recentOf } from "../domain/actions";
+import { heldBy, latestOn, recentActions as recentOf } from "../domain/actions";
 import { credentialWarnings, landedToday, landedWithin, listWatched, oldestFirst, reasonsOf, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import { offerFor, parseLink, uniqueRowIds } from "../domain/inbox";
@@ -55,7 +55,7 @@ export async function gather(deps: ViewDeps, fleet: StoredFleetOf, withSections:
     assessWatching({ credentials: deps.credentials, manifests }, registration),
     deps.threads.standing(registration.managerThreadId).catch((): ThreadStanding => ({ state: "gone" })),
   ]);
-  return { fleet, repo, name: formatRepo(registration.repo), watching, written, records: deps.store.actions(repo), standing };
+  return { fleet, repo, name: formatRepo(registration.repo), watching, written, records: heldBy(deps.store.actions(repo), registration.managerThreadId), standing };
 }
 
 // ---- the Inbox ----
