@@ -81,6 +81,8 @@ export interface FakeMergeRequest extends FakeItem {
   /** The `head_pipeline` of the single answer: a pipeline of any commit (a merged-results one is), or null for none. Left out, it is the newest of `pipelines` on `sha`. */
   headPipeline?: FakePipeline | null;
   approvals?: FakeApproval[];
+  /** The reviewers and their `state` (`unreviewed`, `review_started`, `reviewed`, `requested_changes`, `approved`, `unapproved`), as `GET .../reviewers` lists them. */
+  reviewers?: { user: string; state: string; created_at?: string }[];
 }
 
 export interface FakeProject {
@@ -367,6 +369,11 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
         }
         if (sub === "pipelines") {
           paged(request, response, url, pipelinesOf(mr).sort((a, b) => b.id - a.id));
+          return true;
+        }
+        if (sub === "reviewers") {
+          const requested = mr.created_at ?? mr.updated_at;
+          paged(request, response, url, (mr.reviewers ?? []).map((r) => ({ user: userJson(r.user), state: r.state, created_at: r.created_at ?? requested })));
           return true;
         }
         if (sub === "approvals") {
