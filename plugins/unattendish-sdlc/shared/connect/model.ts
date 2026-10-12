@@ -246,8 +246,12 @@ export function actionLabel(action: ResultAction, result: ConnectResult): string
   }
 }
 
-/** How a half stands after a read: what it needs, or the account it reads as. */
-export function halfText(half: HalfView): string {
+/**
+ * How a half stands after a read: what it needs, or the account it reads as. Where the repositories the credential
+ * cannot read are listed beneath, each with why and what to do, the half only says it still needs an account.
+ */
+export function halfText(half: HalfView, notReadableListed = false): string {
+  if (half.needs !== null && notReadableListed) return `${half.what} still needs an account that can read it.`;
   if (half.needs !== null) return `${half.what} still needs an account: ${half.needs}`;
   return half.account !== null ? `${half.what} is read as ${half.account.label}.` : `${half.what} is read.`;
 }

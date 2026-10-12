@@ -84,7 +84,7 @@ function Reread({ checked }: { checked: { half: Checked["half"] | null; notReada
   const { half, notReadable } = checked;
   return (
     <>
-      {half !== null ? <p className={half.needs !== null ? "text-destructive" : undefined}>{halfText(half)}</p> : null}
+      {half !== null ? <p className={half.needs !== null ? "text-destructive" : undefined}>{halfText(half, notReadable.length > 0)}</p> : null}
       {notReadable.length > 0 ? (
         <ul aria-label="Not readable" className="flex flex-col gap-2">
           {notReadable.map((entry) => (

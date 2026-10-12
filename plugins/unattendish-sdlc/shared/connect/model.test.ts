@@ -214,6 +214,8 @@ describe("step 3", () => {
     const half = { role: "forge", what: "acme/web", account: { id: "a", label: "GitHub · yuser" }, credential: null, canWrite: false, needs: null } as const;
     expect(halfText(half)).toBe("acme/web is read as GitHub · yuser.");
     expect(halfText({ ...half, needs: "needs a token for acme" })).toBe("acme/web still needs an account: needs a token for acme");
+    // The repositories listed beneath carry why and what to do; the half does not say it again.
+    expect(halfText({ ...half, needs: "GitHub · yuser for acme cannot read acme/web: …" }, true)).toBe("acme/web still needs an account that can read it.");
   });
 });
 

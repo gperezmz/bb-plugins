@@ -268,7 +268,7 @@ describe("step 3: what was found", () => {
   it("names each repository a saved fine-grained token cannot read, with both remedies, and checks again", async () => {
     fake.api.connect.mockResolvedValue(
       savedResult({
-        half: half({ needs: "acme/web is not readable" }),
+        half: half({ needs: "GitHub · yuser for acme cannot read acme/web: the repository is not ticked on the token, or an organisation owner has not yet approved the token. Add the repository to the token on GitHub, or create a new token." }),
         notReadable: [
           {
             fleet: "github.com/acme/web",
@@ -284,7 +284,7 @@ describe("step 3: what was found", () => {
     expect(within(list).getByText("github.com/acme/web")).toBeTruthy();
     // The server's text says the causes and the remedies, once.
     expect(within(list).getAllByText(/not ticked on the token, or an organisation owner/)).toHaveLength(1);
-    expect(list.textContent!.match(/Add the repository to the token on GitHub/g)).toHaveLength(1);
+    expect(screen.getByRole("dialog").textContent!.match(/Add the repository to the token on GitHub/g)).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Choose another account" })).toBeNull();
     click("Check again");
     await waitFor(() => expect(screen.queryByRole("list", { name: "Not readable" })).toBeNull());
