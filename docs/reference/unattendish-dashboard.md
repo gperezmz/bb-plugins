@@ -51,7 +51,7 @@ With no fleet registered the page says none is, and that a fleet appears once `/
 
 ## The Fleet chip
 
-A button in a manager thread's header, shown only on a thread that holds a registration. It spells out the card's counts, leaving out any that is zero: `1 waits on you · 3 in flight · 2 landed today`, or `Fleet idle` when all are. Hovering shows the card; clicking opens the Fleet tab. On a compact viewport it shows only the Waits on you count, or a dot with none, and tapping it opens the tab.
+A button in a manager thread's header, shown only on a thread that holds a registration. It spells out the card's counts, leaving out any that is zero: `1 waits on you · 3 in flight · 2 landed today`, or `Fleet idle` when all are. Counts of up to 45 characters share one line; longer ones are set on two short lines inside the same header row. Its accessible name always carries every count. Hovering shows the card; clicking opens the Fleet tab. On a compact viewport it shows only the Waits on you count, or a dot with none, and tapping it opens the tab.
 
 ## The Fleet tab
 
@@ -68,7 +68,7 @@ Opened from the chip, from a card's link, or from **Fleet** in a thread panel's 
 | Unreadable rows | Each row the plugin cannot read, with its section, line and the column |
 | Watched set | Each item and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
 | Credentials | Each credential the fleet uses: its prefix, its expiry date where the service reports one, and whether it shares the agents' rate limit; with the poll interval, when the fleet was last polled and the requests spent this hour |
-| Ledger | The fleet's [ledger](unattendish-cli.md#bb-unattendish-fleet-ledger), filterable by item and by what was done, with dropped changes grouped by reason and a count for each, so a noisy echo source stands out |
+| Ledger | The fleet's [ledger](unattendish-cli.md#bb-unattendish-fleet-ledger), filterable by item and by what was done, with dropped changes grouped by reason and a count for each, so a noisy echo source stands out. A change shows once: under All the list holds the changes that were not dropped, and the groups hold the dropped ones; an item filter hides the wakes, which name no item |
 
 A table shows at most 200 rows, and the Fleets page at most 400 in all; the counts are of every row. The ledger shows at most 250 changes, as the command does.
 
@@ -91,7 +91,9 @@ An action sends the manager one message, a plain prompt in the operator's voice 
 
 Answer… and Grant… open a composer showing the row's What and a link to the park. The text takes several lines, follows the prefix and runs to the end of the message; ⌘/Ctrl+Enter sends, Esc cancels, and nothing sends while it is empty. The message is queued behind a running turn.
 
-An action is *sent* once bb accepts the message, and *done* once a poll or a manager's turn ending sees its result. The plugin keeps it, so every window shows the row as *sent* with its age and no action, after a reload too. A sent action is never marked failed for waiting. A done action is shown for an hour, then dropped from the page, and the plugin deletes it after a day. If bb refuses the message, the row shows *not sent* with bb's reason and keeps its action. If the call fails with no answer, the row says the result is unknown and shows what the plugin recorded.
+An action is *sent* once bb accepts the message, and *done* once a poll or a manager's turn ending sees its result. The plugin keeps it, so every window shows the row as *sent* with its age and no action, after a reload too. A sent action is never marked failed for waiting. A done action is shown for an hour, then dropped from the page, and the plugin deletes it after a day. If bb refuses the message, the row shows *not sent* with bb's reason, such as `HTTP 409: Thread is archived`, and keeps its action. The reason is bb's message cut to 160 characters, with the text you sent and any configured token replaced; it reaches only the page, never the ledger or the log, where a refused wake is recorded as its status alone. If the call fails with no answer, the row says the result is unknown and shows what the plugin recorded.
+
+Esc or Cancel discards what was typed; a refusal keeps it in the open composer.
 
 A takeover drops the actions still *sent* on the fleet, since the new manager never received them, and the rows offer their actions again. A message sent while a takeover happens is refused with a reason, because it went to the manager the fleet no longer has.
 
