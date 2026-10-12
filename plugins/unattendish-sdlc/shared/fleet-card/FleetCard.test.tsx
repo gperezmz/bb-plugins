@@ -74,7 +74,7 @@ describe("why a fleet is not fully watched", () => {
     expect(screen.getByText("Linear is not watched: token refused")).toBeTruthy();
     expect(screen.getByText("2 manifest rows cannot be read, in In flight")).toBeTruthy();
     expect(screen.getByText("no manifest at the registered path")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe("/extensions/plugins/unattendish-sdlc");
+    expect(screen.getByRole("link", { name: "Open settings" }).getAttribute("href")).toBe("/settings/plugins/unattendish-sdlc");
     fireEvent.click(screen.getByRole("button", { name: "Open the Fleet tab" }));
     expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_acme");
     expect(screen.getAllByRole("link")).toHaveLength(1);
