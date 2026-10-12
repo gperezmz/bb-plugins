@@ -1,11 +1,11 @@
 // One poll of one fleet: read what changed in its sources, sort every change
 // into woken, echo, out of scope or held, and send the manager one wake.
-import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type Derived } from "../domain/changes";
+import { byTimeThenKey, deriveChanges, outageKind, partitionRevisit, type Derived } from "../domain/changes";
 import { classify } from "../domain/echo";
-import { formatRepo, repoId, urlUnder } from "../domain/identity";
-import type { Change, Disposition, NotWatched, RefusedWhy, ServiceKind, SourceRole, UnreadableWhy, WatchedItem } from "../domain/model";
+import { formatRepo, repoId, trackerSource, urlUnder } from "../domain/identity";
+import type { Change, Disposition, NotWatched, RefusedWhy, Registration, ServiceKind, SourceRole, UnreadableWhy, WatchedItem } from "../domain/model";
 import { messageOf, redact } from "../domain/redact";
-import { catchUp, credentialRefused, effectiveInterval, UNREADABLE_POLLS } from "../domain/registration";
+import { catchUp, effectiveInterval, UNREADABLE_POLLS } from "../domain/registration";
 import { formatWake } from "../domain/wake";
 import {
   HttpError,
@@ -18,12 +18,13 @@ import {
   type PollRecord,
   type ResolvedSource,
   type ServiceAdapter,
+  type SourceOutage,
   type Store,
   type StoredFleet,
   type StoredWake,
   type ThreadDirectory,
 } from "./ports";
-import { assessWatching, type Watching } from "./watching";
+import { assessWatching, refusedNotWatched, type Watching } from "./watching";
 
 export interface PollDeps {
   readonly store: Store;
@@ -81,17 +82,23 @@ interface SourceRead {
   readonly since: string;
 }
 
+/** What a poll found of a source whose adapter it asked to read and that gave an answer other than a rate limit. */
+interface Finding {
+  readonly prefix: string;
+  /** The service answered 401. */
+  readonly refused: boolean;
+  /** How the source's read counts toward its not being watched, as `outageKind` says, or null when it does not. */
+  readonly unreadable: Exclude<RefusedWhy, "refused"> | null;
+}
+
 interface Reading {
   readonly reads: SourceRead[];
   readonly notWatched: NotWatched[];
-  readonly refusedPrefix: string | null;
-  /** The first source whose read, every part of it, failed as `UnreadableWhy` says. */
-  readonly unreadable: { readonly prefix: string; readonly why: UnreadableWhy } | null;
   /**
-   * Whether any source's adapter was asked to read and gave an answer other than a rate limit: a poll that asked
-   * none, or was only told to wait, says nothing of whether a source is readable.
+   * By role, what the poll found of each source it asked to read and that gave an answer other than a rate limit. A
+   * source absent here, not asked or only told to wait, says nothing of whether it is readable.
    */
-  readonly attempted: boolean;
+  readonly findings: Partial<Record<SourceRole, Finding>>;
   readonly expiries: Record<string, string | null>;
 }
 
@@ -104,10 +111,8 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
   const secrets = () => deps.credentials.secrets();
   const nowMs = Date.parse(now);
   const limited = new Set<string>();
-  const reading: Reading = { reads: [], notWatched: [...watching.notWatched], refusedPrefix: null, unreadable: null, attempted: false, expiries: { ...fleet.expiries } };
-  let refusedPrefix: string | null = null;
-  let unreadable: Reading["unreadable"] = null;
-  let attempted = false;
+  const findings: Partial<Record<SourceRole, Finding>> = {};
+  const reading: Reading = { reads: [], notWatched: [...watching.notWatched], findings, expiries: { ...fleet.expiries } };
 
   for (const resolved of [watching.forge, watching.tracker]) {
     if (resolved === null) continue;
@@ -154,14 +159,12 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
         signal,
       });
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
-      attempted = true;
-      const kind = unreadableKind(outcome);
-      if (kind !== null) unreadable ??= { prefix, why: kind };
+      findings[role] = { prefix, refused: false, unreadable: outageKind(outcome) };
     } catch (error) {
-      if (!(error instanceof HttpError && error.kind === "rate-limit")) attempted = true;
-      if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
       const kind = error instanceof HttpError ? unreadableOf(error) : error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") ? "unreachable" : null;
-      if (kind !== null) unreadable ??= { prefix, why: kind };
+      const refused = error instanceof HttpError && error.kind === "auth";
+      // Any other error read nothing, the listing included, so it counts as a failed listing.
+      if (!(error instanceof HttpError && error.kind === "rate-limit")) findings[role] = { prefix, refused, unreadable: kind ?? (refused ? null : "listing-failed") };
       if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
     }
@@ -175,7 +178,7 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       reading.reads.push({ role, resolved, derived, since });
     }
   }
-  return { ...reading, refusedPrefix, unreadable, attempted };
+  return reading;
 }
 
 /** The larger of two lengths of time, either of which may be absent. */
@@ -201,31 +204,29 @@ const unreadableOf = (error: HttpError): UnreadableWhy | null => {
   }
 };
 
-interface Refusal {
-  /** Why the credential counts as refused, and since when; null when it does not. */
-  readonly cause: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
-  readonly unreadablePolls: number;
-  readonly unreadableSince: string | null;
-}
-
 /**
- * Whether the fleet's credential counts as refused after this poll, why, and
- * since when: a 401 at once, from this poll; a source unreadable for
- * `UNREADABLE_POLLS` polls in a row, from the first of them. A poll that asked
- * no adapter to read, or was only told to wait, leaves the refusal, its time
- * and the count of unreadable polls as they were.
+ * A source's outage after this poll: a 401 refuses its credential at once,
+ * from this poll; `UNREADABLE_POLLS` polls in a row that found it unreadable
+ * refuse it from the first of them. A source the poll found nothing of (not
+ * asked to read, or only told to wait) keeps its outage as it was, whatever
+ * the other source did. Undefined once the source reads.
  */
-const refusalOf = (fleet: StoredFleet, reading: Reading, now: string): Refusal => {
-  if (!reading.attempted) {
-    const kept = fleet.refused;
-    return { cause: kept === null ? null : { since: kept.since, prefix: kept.prefix, why: kept.why }, unreadablePolls: fleet.unreadablePolls, unreadableSince: fleet.unreadableSince };
-  }
-  const unreadablePolls = reading.unreadable !== null ? fleet.unreadablePolls + 1 : 0;
-  const unreadableSince = reading.unreadable !== null ? (fleet.unreadablePolls > 0 ? (fleet.unreadableSince ?? now) : now) : null;
-  if (reading.refusedPrefix !== null) return { cause: { since: now, prefix: reading.refusedPrefix, why: "refused" }, unreadablePolls, unreadableSince };
-  if (reading.unreadable !== null && unreadablePolls >= UNREADABLE_POLLS) return { cause: { ...reading.unreadable, since: unreadableSince ?? now }, unreadablePolls, unreadableSince };
-  return { cause: null, unreadablePolls, unreadableSince };
+const outageOf = (before: SourceOutage | undefined, finding: Finding | undefined, now: string): SourceOutage | undefined => {
+  if (finding === undefined) return before;
+  const streak = before?.unreadablePolls ?? 0;
+  const unreadablePolls = finding.unreadable !== null ? streak + 1 : 0;
+  const unreadableSince = finding.unreadable !== null ? (streak > 0 ? (before?.unreadableSince ?? now) : now) : null;
+  const cause: { readonly since: string; readonly why: RefusedWhy } | null = finding.refused
+    ? { since: now, why: "refused" }
+    : finding.unreadable !== null && unreadablePolls >= UNREADABLE_POLLS
+      ? { since: unreadableSince ?? now, why: finding.unreadable }
+      : null;
+  const refused = cause === null ? null : { since: before?.refused?.since ?? cause.since, prefix: finding.prefix, why: cause.why, announced: before?.refused?.announced ?? false };
+  return unreadablePolls === 0 && refused === null ? undefined : { unreadablePolls, unreadableSince, refused };
 };
+
+/** The roles of the fleet's sources: its forge, and its tracker where that is a service of its own. */
+const rolesOf = (registration: Registration): SourceRole[] => (trackerSource(registration.tracker) === null ? ["forge"] : ["forge", "tracker"]);
 
 /**
  * Polls one fleet. A failure of a service is recorded and leaves its cursor
@@ -243,9 +244,12 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const reading = await readSources(deps, fleet, watching, now, options);
   const notWatched = [...reading.notWatched];
 
-  const { cause, unreadablePolls, unreadableSince } = refusalOf(fleet, reading, now);
-  const refused = cause === null ? null : { since: fleet.refused?.since ?? cause.since, prefix: cause.prefix, why: cause.why };
-  if (refused !== null) notWatched.push(credentialRefused(refused.prefix, refused.why));
+  const outages: Partial<Record<SourceRole, SourceOutage>> = {};
+  for (const role of rolesOf(registration)) {
+    const outage = outageOf(fleet.outages[role], reading.findings[role], now);
+    if (outage !== undefined) outages[role] = outage;
+  }
+  notWatched.push(...refusedNotWatched(outages));
 
   const cursors = reading.reads.map((read) => ({ role: read.role, cursor: read.derived.nextCursor }));
   const pollState = (heldSince: string | null, pendingCatchUpMs = fleet.pendingCatchUpMs) => ({
@@ -255,10 +259,8 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
     outsideLinks: watching.watched.outside,
     expiries: reading.expiries,
     heldSince,
-    unreadablePolls,
-    unreadableSince,
+    outages,
     pendingCatchUpMs,
-    refused: refused === null ? undefined : { ...refused, announced: fleet.refused?.announced ?? false },
   });
 
   if (stateOnly) {
@@ -324,8 +326,9 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   for (const change of heldNow) if (!toWake.has(change.key)) toWake.set(change.key, change);
   const changes = [...toWake.values()].sort(byTimeThenKey);
 
-  const announce = refused !== null && !(fleet.refused?.announced ?? false);
-  if (changes.length === 0 && !announce) {
+  // One wake says one source's refusal; another not yet said goes in the next poll's wake.
+  const announce = rolesOf(registration).find((role) => outages[role]?.refused != null && !outages[role]!.refused!.announced) ?? null;
+  if (changes.length === 0 && announce === null) {
     if (cursors.length > 0) deps.store.commit({ repo, at: now, cursors });
     deps.store.savePollState(repo, pollState(null));
     return { polled: true, woke: 0, echoes, outOfScope, held, delivery: "none" };
@@ -336,7 +339,8 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const catchUpMs = larger(fleet.pendingCatchUpMs, catchUp(fleet.lastPolledAt, now, interval));
   const earliest = reading.reads.map((read) => read.since).sort()[0] ?? registration.registeredAt;
   const since = heldFrom !== null && heldNow.length > 0 && heldFrom < earliest ? heldFrom : earliest;
-  const notWatchedLine = announce && refused !== null ? { since: refused.since, prefix: refused.prefix, why: refused.why } : null;
+  const announced = announce === null ? null : outages[announce]!.refused!;
+  const notWatchedLine = announced === null ? null : { since: announced.since, prefix: announced.prefix, why: announced.why };
 
   const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? heldFrom : null, notWatched: notWatchedLine, now });
   if (delivery.result === "refused") {
@@ -349,7 +353,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   if (keys.length > 0) deps.store.markWoke(repo, delivery.wakeId, keys);
   if (cursors.length > 0) deps.store.commit({ repo, at: now, cursors });
   deps.store.savePollState(repo, pollState(null, null));
-  if (notWatchedLine !== null) deps.store.markRefusedAnnounced(repo);
+  if (announce !== null) deps.store.markRefusedAnnounced(repo, announce);
   return { polled: true, woke: changes.length, echoes, outOfScope, held, delivery: delivery.result };
 }
 

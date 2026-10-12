@@ -11,6 +11,7 @@ import {
   type ItemState,
   type ReadFailure,
   type ReadOutcome,
+  type RefusedWhy,
   type SourceCursor,
   type SourceRole,
   type Transition,
@@ -20,8 +21,9 @@ import {
 
 const DEFAULT_OVERLAP_MS = 60_000;
 /**
- * The furthest a failed read may hold a cursor's `since` back from the poll's start while the listing and every
- * other item of the source read, so one item that never reads cannot make every later poll read ever more.
+ * The furthest a failed item read may hold a cursor's `since` back from the poll's start, on a poll that is no
+ * turn-end read, where no listing failed and some snapshot, event or updated item came back, however many items
+ * failed: items that never read cannot make every later poll read ever more.
  */
 export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
@@ -70,10 +72,14 @@ export interface Derived {
  * cursor gives the same keys. An item whose read failed leaves its previous
  * state in the cursor and gives no change. Such a failure, and a failed
  * listing, hold `since` where it was, so a failed read never lets the cursor
- * skip a change. Where the listing and some snapshot, event or updated item
- * read, and the read was no `stateOnly` one, the hold reaches no more than
- * `MAX_HOLD_MS` before the poll's start: one item that never reads cannot
- * hold the source back for good. A `stateOnly` read, a failed listing, or a
+ * skip a change. Where no listing failed, some snapshot, event or updated
+ * item came back, and the read was no `stateOnly` one, the hold reaches no
+ * more than `MAX_HOLD_MS` before the poll's start, however many items
+ * failed: items that never read cannot hold the source back for good.
+ * A listing cut off at its page limit (`listingCutAt`) is no failure: where
+ * nothing else holds `since`, it moves to the cut, or stays where it was if
+ * that is later, since everything older was listed and every watched item
+ * was read from the old `since`. A `stateOnly` read, a failed listing, or a
  * read where nothing came back holds `since` with no limit, since none of
  * them read the changes the hold keeps. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will
@@ -123,7 +129,10 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   const readable = outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0;
   const capped = !stateOnly && listed && readable;
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
-  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : capped && base < oldest ? oldest : base;
+  const held = capped && base < oldest ? oldest : base;
+  const cutAt = outcome.listingCutAt;
+  const read = cutAt === undefined ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : cutAt > base ? cutAt : base;
+  const since = holdsSince ? held : read;
 
   changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
@@ -147,6 +156,15 @@ export const unreadableKind = (outcome: ReadOutcome): UnreadableWhy | null => {
   if ((kinds.has("not-found") || kinds.has("outside-fleet")) && !outcome.failures.some((failure) => failure.ref === null)) return null;
   return UNREADABLE.find((kind) => kinds.has(kind)) ?? null;
 };
+
+/**
+ * How a source's read counts toward its not being watched, or null when it
+ * does not: as `unreadableKind` says, else `listing-failed` where a listing
+ * failed (`ref` null), though items read. A listing cut off at its page
+ * limit is no failure and counts toward nothing.
+ */
+export const outageKind = (outcome: ReadOutcome): Exclude<RefusedWhy, "refused"> | null =>
+  unreadableKind(outcome) ?? (outcome.failures.some((failure) => failure.ref === null) ? "listing-failed" : null);
 
 /** Orders changes, and ledger rows, by the time they happened, then by key. */
 export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, b: { readonly at: string; readonly key: string }): number =>

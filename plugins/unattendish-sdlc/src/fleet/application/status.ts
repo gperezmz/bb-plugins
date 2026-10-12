@@ -1,9 +1,9 @@
 // What `bb unattendish fleet status` reports for each fleet.
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import type { NotWatched, OutsideLink, UnreadableRow } from "../domain/model";
-import { credentialRefused, effectiveInterval } from "../domain/registration";
+import { effectiveInterval } from "../domain/registration";
 import type { Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
-import { assessWatching } from "./watching";
+import { assessWatching, refusedNotWatched, refusedSince } from "./watching";
 
 export interface FleetStatus {
   readonly repo: string;
@@ -25,7 +25,7 @@ export interface FleetStatus {
   readonly requestsThisHour: number;
   readonly watched: boolean;
   readonly notWatched: readonly NotWatched[];
-  /** Set while a credential is refused: when the fleet stopped being watched. */
+  /** Set while a source's credential is refused: the earliest time the fleet stopped being watched. */
   readonly notWatchedSince: string | null;
   readonly unreadableRows: readonly UnreadableRow[];
   /** References and links the manifest names that lie outside the fleet and are never fetched. */
@@ -57,7 +57,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
         expiresAt: fleet.expiries[resolved.credential.prefix] ?? null,
         sharesAgentRateLimit: resolved.credential.auth !== "token",
       }));
-    const notWatched = fleet.refused === null ? watching.notWatched : [...watching.notWatched, credentialRefused(fleet.refused.prefix, fleet.refused.why)];
+    const notWatched = [...watching.notWatched, ...refusedNotWatched(fleet.outages)];
     out.push({
       repo: formatRepo(registration.repo),
       tracker: formatTracker(registration.tracker),
@@ -70,7 +70,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
       requestsThisHour: deps.store.requestsSince(repoId(registration.repo), hourAgo),
       watched: notWatched.length === 0,
       notWatched,
-      notWatchedSince: fleet.refused?.since ?? null,
+      notWatchedSince: refusedSince(fleet.outages),
       unreadableRows: watching.unreadableRows,
       outside: watching.watched.outside,
       heldSince: fleet.heldSince,

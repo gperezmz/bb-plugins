@@ -44,10 +44,11 @@ describe("formatWake", () => {
     ]);
   });
 
-  it("says in its closing line whether the credential was refused, forbidden, got no answer, found nothing, or read outside the fleet", () => {
+  it("says in its closing line whether the credential was refused, forbidden, got no answer, found nothing, read outside the fleet, or could not list", () => {
     const line = (why: RefusedWhy) => wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org", why } }).split("\n")[1];
     expect(line("forbidden")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).");
     expect(line("unreachable")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect(line("listing-failed")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the service keeps failing to list what changed with the credential for github.com/org.");
     expect(line("not-found")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the credential for github.com/org could not find what the fleet needs (404).");
     expect(line("outside-fleet")).toBe(
       "Not watched since 2026-10-12T00:00:00.000Z: everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team.",

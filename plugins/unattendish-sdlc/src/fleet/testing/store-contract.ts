@@ -1,7 +1,7 @@
 // The Store port's behaviour as one suite, run over every implementation so
 // the in-memory fake cannot drift from the SQLite store.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LedgerRow, PollRecord, Store, StoredFleet, StoredWake } from "../application/ports";
+import type { LedgerRow, PollRecord, SourceOutage, Store, StoredFleet, StoredWake } from "../application/ports";
 import { repoId } from "../domain/identity";
 import type { Registration, SourceCursor } from "../domain/model";
 
@@ -74,11 +74,13 @@ const pollState = (over: Partial<Parameters<Store["savePollState"]>[1]> = {}): P
   outsideLinks: [],
   expiries: {},
   heldSince: null,
-  unreadablePolls: 0,
-  unreadableSince: null,
+  outages: {},
   pendingCatchUpMs: null,
   ...over,
 });
+
+/** A source's outage with its credential refused. */
+const refusedOutage = (refused: NonNullable<SourceOutage["refused"]>, unreadablePolls = 0): SourceOutage => ({ unreadablePolls, unreadableSince: unreadablePolls === 0 ? null : refused.since, refused });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -115,9 +117,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           registration: reg,
           lastPolledAt: null,
           notWatched,
-          refused: null,
-          unreadablePolls: 0,
-          unreadableSince: null,
+          outages: {},
           pendingCatchUpMs: null,
           unreadableRows: [],
           outsideLinks: [],
@@ -167,7 +167,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
             outsideLinks: [{ text: "https://example.net/x", section: "Blocked", line: 9 }],
             expiries: { "github.com/org": "2027-01-01T00:00:00.000Z" },
             heldSince: "2026-10-12T09:00:00.000Z",
-            refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true, why: "forbidden" },
+            outages: { tracker: refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "linear", announced: true, why: "forbidden" }, 3) },
           }),
         );
         store.saveRegistration(registration(REPO, { operator: "carol" }), []);
@@ -178,7 +178,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(fleet.outsideLinks).toHaveLength(1);
         expect(fleet.expiries).toEqual({ "github.com/org": "2027-01-01T00:00:00.000Z" });
         expect(fleet.heldSince).toBe("2026-10-12T09:00:00.000Z");
-        expect(fleet.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: true, why: "forbidden" });
+        expect(fleet.outages).toEqual({ tracker: refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "linear", announced: true, why: "forbidden" }, 3) });
       });
 
       it("sets and clears a fleet's own interval", () => {
@@ -311,54 +311,50 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(store.getCursor(REPO, "forge")).toEqual(cursor("2026-10-12T10:00:00.000Z"));
       });
 
-      it("records a refusal, and an omitted refusal clears it", () => {
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
+      it("records each source's outage, and an omitted one clears it", () => {
+        const forge = refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
+        const tracker: SourceOutage = { unreadablePolls: 2, unreadableSince: "2026-10-12T09:40:00.000Z", refused: null };
+        store.savePollState(REPO, pollState({ outages: { forge, tracker } }));
+        expect(store.getFleet(REPO)!.outages).toEqual({ forge, tracker });
+
+        store.savePollState(REPO, pollState({ outages: { tracker } }));
+        expect(store.getFleet(REPO)!.outages).toEqual({ tracker });
 
         store.savePollState(REPO, pollState());
-        expect(store.getFleet(REPO)!.refused).toBeNull();
-
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
-        store.savePollState(REPO, pollState({ refused: undefined }));
-        expect(store.getFleet(REPO)!.refused).toBeNull();
-
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
-        store.savePollState(REPO, pollState({ refused: null }));
-        expect(store.getFleet(REPO)!.refused).toBeNull();
+        expect(store.getFleet(REPO)!.outages).toEqual({});
       });
 
-      it("keeps announced while the refusal is the same one and resets it for another", () => {
+      it("keeps a source's announced while its refusal is the same one and resets it for another", () => {
         const refused = { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" as const };
-        store.savePollState(REPO, pollState({ refused }));
-        store.markRefusedAnnounced(REPO);
-        expect(store.getFleet(REPO)!.refused?.announced).toBe(true);
+        store.savePollState(REPO, pollState({ outages: { forge: refusedOutage(refused) } }));
+        store.markRefusedAnnounced(REPO, "forge");
+        expect(store.getFleet(REPO)!.outages.forge?.refused?.announced).toBe(true);
 
-        store.savePollState(REPO, pollState({ refused }));
-        expect(store.getFleet(REPO)!.refused?.announced).toBe(true);
+        store.savePollState(REPO, pollState({ outages: { forge: refusedOutage(refused) } }));
+        expect(store.getFleet(REPO)!.outages.forge?.refused?.announced).toBe(true);
 
-        store.savePollState(REPO, pollState({ refused: { ...refused, since: "2026-10-12T11:00:00.000Z" } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
+        store.savePollState(REPO, pollState({ outages: { forge: refusedOutage({ ...refused, since: "2026-10-12T11:00:00.000Z" }) } }));
+        expect(store.getFleet(REPO)!.outages.forge?.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com/org", announced: false, why: "refused" });
 
-        store.markRefusedAnnounced(REPO);
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" } }));
-        expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" });
+        store.markRefusedAnnounced(REPO, "forge");
+        store.savePollState(REPO, pollState({ outages: { forge: refusedOutage({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" }) } }));
+        expect(store.getFleet(REPO)!.outages.forge?.refused).toEqual({ since: "2026-10-12T11:00:00.000Z", prefix: "github.com", announced: false, why: "refused" });
       });
 
-      it("records why the credential counts as refused, and the count of unreadable polls", () => {
-        for (const why of ["refused", "forbidden", "unreachable", "not-found", "outside-fleet"] as const) {
-          store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why }, unreadablePolls: 3 }));
-          expect(store.getFleet(REPO)!.refused).toEqual({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why });
-          expect(store.getFleet(REPO)!.unreadablePolls).toBe(3);
+      it("marks only the source named announced", () => {
+        const forge = refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "forbidden" });
+        const tracker = refusedOutage({ since: "2026-10-12T09:40:00.000Z", prefix: "linear", announced: false, why: "unreachable" });
+        store.savePollState(REPO, pollState({ outages: { forge, tracker } }));
+        store.markRefusedAnnounced(REPO, "tracker");
+        expect(store.getFleet(REPO)!.outages).toEqual({ forge, tracker: { ...tracker, refused: { ...tracker.refused!, announced: true } } });
+      });
+
+      it("records why each credential counts as refused, and the count of unreadable polls and when they began", () => {
+        for (const why of ["refused", "forbidden", "unreachable", "not-found", "outside-fleet", "listing-failed"] as const) {
+          const outage = refusedOutage({ since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why }, 3);
+          store.savePollState(REPO, pollState({ outages: { forge: outage } }));
+          expect(store.getFleet(REPO)!.outages.forge).toEqual(outage);
         }
-        store.savePollState(REPO, pollState());
-        expect(store.getFleet(REPO)!.unreadablePolls).toBe(0);
-      });
-
-      it("records when the polls in a row that found a source unreadable began, and clears it", () => {
-        store.savePollState(REPO, pollState({ unreadablePolls: 2, unreadableSince: "2026-10-12T09:30:00.000Z" }));
-        expect(store.getFleet(REPO)).toMatchObject({ unreadablePolls: 2, unreadableSince: "2026-10-12T09:30:00.000Z" });
-        store.savePollState(REPO, pollState());
-        expect(store.getFleet(REPO)!.unreadableSince).toBeNull();
       });
 
       it("records the catch-up owed to the next wake, and clears it", () => {
@@ -369,12 +365,11 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       it("marks nothing announced while no credential is refused", () => {
-        store.markRefusedAnnounced(REPO);
-        expect(store.getFleet(REPO)!.refused).toBeNull();
-        store.savePollState(REPO, pollState({ refused: { since: "2026-10-12T09:30:00.000Z", prefix: "github.com/org", announced: false, why: "refused" } }));
-        store.savePollState(REPO, pollState());
-        store.markRefusedAnnounced(REPO);
-        expect(store.getFleet(REPO)!.refused).toBeNull();
+        store.markRefusedAnnounced(REPO, "forge");
+        expect(store.getFleet(REPO)!.outages).toEqual({});
+        store.savePollState(REPO, pollState({ outages: { forge: { unreadablePolls: 1, unreadableSince: "2026-10-12T09:30:00.000Z", refused: null } } }));
+        store.markRefusedAnnounced(REPO, "forge");
+        expect(store.getFleet(REPO)!.outages).toEqual({ forge: { unreadablePolls: 1, unreadableSince: "2026-10-12T09:30:00.000Z", refused: null } });
       });
     });
 

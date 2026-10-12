@@ -66,8 +66,12 @@ export interface NotWatched {
  */
 export type UnreadableWhy = "forbidden" | "unreachable" | "not-found" | "outside-fleet";
 
-/** Why a source's credential counts as refused: the service answered 401 (`refused`), or every read failed as `UnreadableWhy` says. */
-export type RefusedWhy = "refused" | UnreadableWhy;
+/**
+ * Why a source's credential counts as refused: the service answered 401 (`refused`), every read failed as
+ * `UnreadableWhy` says, or a listing of what changed failed for any reason but being cut off at its page limit,
+ * whatever else read (`listing-failed`).
+ */
+export type RefusedWhy = "refused" | "listing-failed" | UnreadableWhy;
 
 // ---- the manifest, as the plugin reads it ----
 
@@ -239,9 +243,9 @@ export interface ReadFailure {
    * Why the read failed, where that matters. `not-found` (a 404: the item does not exist, or the token cannot see it)
    * and `outside-fleet` (it moved out of the fleet's repository, project or team) are terminal: no read of that item
    * will succeed, so one item failing so does not hold the source's cursor back. `forbidden` is a 403 that is no rate
-   * limit; `unreachable` is no answer, or a 5xx. A read that fails with no kind counts toward none. The fleet is not
-   * watched only when every read of a source, a listing among them for `not-found` and `outside-fleet`, fails with
-   * one of the four kinds, in `UNREADABLE_POLLS` polls in a row.
+   * limit; `unreachable` is no answer, or a 5xx. An item read that fails with no kind counts toward none. The fleet
+   * is not watched when, in `UNREADABLE_POLLS` polls in a row, every read of a source, a listing among them for
+   * `not-found` and `outside-fleet`, fails with one of the four kinds, or a listing fails, of any kind or none.
    */
   readonly kind?: "not-found" | "outside-fleet" | "forbidden" | "unreachable";
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, outageKind, partitionRevisit, unreadableKind, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -257,13 +257,19 @@ describe("failures", () => {
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start while one item fails and the listing and every other item read", () => {
+  it("holds since no further back than seven days before the poll's start while items fail, no listing failed and something read", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
     const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     const updated = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: "#8", reason: "x", kind: "unreachable" }] }) });
     expect(updated.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
     expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("caps the hold though two items fail while one other reads", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const failures = [{ ref: "#8", reason: "server error" }, { ref: "#9", reason: "x", kind: "forbidden" as const }];
+    expect(derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
   });
 
   it("holds since with no limit on a turn-end read, however long the outage before it", () => {
@@ -285,6 +291,28 @@ describe("failures", () => {
       expect(derive({ prev: old, outcome: outcome({ failures }) }).nextCursor.since).toBe(old.since);
     }
     expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe(old.since);
+  });
+
+  it("moves since to the last update a cut-off listing read, never back past the previous since", () => {
+    const prev = cursor({});
+    const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
+    const cut = derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:30:00.000Z" }) });
+    expect(cut.nextCursor.since).toBe("2026-10-12T09:30:00.000Z");
+    expect(cut.failures).toEqual([]);
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T08:00:00.000Z" }) }).nextCursor.since).toBe(prev.since);
+    expect(derive({ outcome: outcome({ updated, listingCutAt: "2026-10-11T00:00:00.000Z" }) }).nextCursor.since).toBe(firstSince);
+    const gone = derive({ prev, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:30:00.000Z", failures: [{ ref: "#9", reason: "gone", kind: "not-found" }] }) });
+    expect(gone.nextCursor.since).toBe("2026-10-12T09:30:00.000Z");
+  });
+
+  it("does not move since to a cut-off listing's last update while an item failure holds it, or on a turn-end read", () => {
+    const prev = cursor({});
+    const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
+    const listingCutAt = "2026-10-12T09:30:00.000Z";
+    expect(derive({ prev, outcome: outcome({ updated, listingCutAt, failures: [{ ref: "#8", reason: "server error" }] }) }).nextCursor.since).toBe(prev.since);
+    expect(derive({ prev, stateOnly: true, outcome: outcome({ updated, listingCutAt }) }).nextCursor.since).toBe(prev.since);
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    expect(derive({ prev: old, outcome: outcome({ updated, listingCutAt, failures: [{ ref: "#8", reason: "server error" }] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
   });
 
   it("moves since to the poll's start less the overlap otherwise", () => {
@@ -488,5 +516,25 @@ describe("byTimeThenKey", () => {
     const rows = [{ at: "2026-10-12T10:00:02.000Z", key: "a" }, { at: "2026-10-12T10:00:01.000Z", key: "z" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }];
     expect([...rows].sort(byTimeThenKey).map((row) => `${row.at.slice(17, 19)}${row.key}`)).toEqual(["01b", "01b", "01z", "02a"]);
     expect(byTimeThenKey(rows[2]!, rows[3]!)).toBe(0);
+  });
+});
+
+describe("outageKind", () => {
+  const listing = { ref: null, reason: "the listing answered 422" };
+
+  it("says how every read failed where unreadableKind does", () => {
+    expect(outageKind(outcome({ failures: [{ ref: null, reason: "403", kind: "forbidden" }] }))).toBe("forbidden");
+  });
+
+  it("says listing-failed for a failed listing, of any kind or none, though items read", () => {
+    expect(outageKind(outcome({ snapshots: [snapshot()], failures: [listing] }))).toBe("listing-failed");
+    expect(outageKind(outcome({ events: [event()], failures: [{ ...listing, kind: "forbidden" }] }))).toBe("listing-failed");
+    expect(outageKind(outcome({ failures: [listing, { ref: "#1", reason: "no answer", kind: "unreachable" }] }))).toBe("listing-failed");
+  });
+
+  it("is null where only items failed, or the listing was cut off at its page limit", () => {
+    expect(outageKind(outcome({ snapshots: [snapshot()], failures: [{ ref: "#2", reason: "403", kind: "forbidden" }] }))).toBeNull();
+    expect(outageKind(outcome({ snapshots: [snapshot()], listingCutAt: startedAt }))).toBeNull();
+    expect(outageKind(outcome())).toBeNull();
   });
 });
