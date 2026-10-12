@@ -34,7 +34,7 @@ The picker at the top of the list. **All projects** shows every shelf as it is; 
 | Settled | `Meditation` | No | Slim row | Newest settle first: 10 shown, then **Load N more** in pages of 25 |
 
 - **Upper group** is Pinned, then Active. **Lower group** is Working (only with the **Working shelf** setting on), Inactive, Snoozed, Parked and Settled. With **Dock shelves to the bottom** on, the lower group sits at the bottom of the sidebar's viewport.
-- A shelf header shows its icon and name, and "Name (count)" while the shelf is collapsed. A shelf with no threads is not drawn.
+- A shelf header shows its icon and name, "Name (count)" while the shelf is collapsed, then a chevron and a faint rule running to its controls (Active's sort, Settled's Clean) or to its right edge. A click anywhere from the icon to the end of the rule opens or closes the shelf, and the rule shrinks away before the name truncates. A shelf with no threads is not drawn.
 - Collapsing is per shelf and saved on the device. A collapsed shelf still shows the open thread and, with **Show children that need attention** on, any thread whose tree needs you or failed.
 - The scroller has no scrollbar, and its edges fade by up to 12 px.
 

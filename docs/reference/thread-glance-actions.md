@@ -115,7 +115,7 @@ If the ports cannot be looked up after the settle, the toast reads "Thread settl
 
 ### Clean settled resources
 
-**Clean**, on the Settled shelf's header even while it is collapsed, is labelled "Close terminals and ports of settled threads", with the tooltip "Close terminals and ports of settled threads (threads stay in Settled)". It opens **Clean settled resources?**, a preview of the settled threads in the list's project scope:
+**Clean**, a broom icon on the Settled shelf's header even while it is collapsed, is labelled "Close terminals and ports of settled threads", with the tooltip "Close terminals and ports of settled threads (threads stay in Settled)". It opens **Clean settled resources?**, a preview of the settled threads in the list's project scope:
 
 - A thread is included when it is still settled, not hidden, unpinned, not busy and has had no attention since it settled. A thread sharing a workspace with any thread that fails that test, or whose workspace cannot be resolved, is left out without a word.
 - Each included thread lists its running or starting terminals, typed into or not, and its owned ports, with **Open**, which opens the thread and closes the dialog.
