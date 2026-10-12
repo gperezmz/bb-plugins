@@ -79,8 +79,7 @@ Each fleet is polled every 2 minutes unless its own interval is set. The shortes
 | Where | What | For how long |
 |---|---|---|
 | `<data dir>/plugins/unattendish-sdlc/data.db` (SQLite) | Each fleet's registration, its cursors and the state of its last poll | Until [unregistered](unattendish-cli.md#bb-unattendish-fleet-unregister) |
-| The same file | The ledger: changes seen and what was done with them, wakes, polls and failed reads | 30 days, also after the fleet is unregistered |
-| The same file | The ledger: every change seen, each wake with its queued and dispatched times, each poll's requests, and each failed read | 30 days; the plugin deletes older rows hourly |
+| The same file | The ledger: every change seen, each wake with its queued and dispatched times, each poll's requests, and each failed read | 30 days, also after the fleet is unregistered; the plugin deletes older rows hourly |
 | The plugin's settings and secrets | `credentials` and `tokens` | Until uninstalled |
 
 A token is stored only in `tokens`. It is in no wake, no ledger entry, no log line and no error message, and the registration holds the marker, the labels and the echo actors but no token. A change holds no text written on the service.

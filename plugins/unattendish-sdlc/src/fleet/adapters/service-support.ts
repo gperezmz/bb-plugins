@@ -3,6 +3,7 @@
 // answer against a shape, and the rule for which errors end the whole read.
 import type { z } from "zod";
 import { HttpError } from "../application/ports";
+import type { ReadFailure } from "../domain/model";
 
 /** A read that cannot be trusted. `message` names a field or a count and never carries text written on the service. */
 export class ReadProblem extends Error {
@@ -32,3 +33,16 @@ export const parseAnswer = <T>(schema: z.ZodType<T>, value: unknown, report: Par
 
 /** Whether an error ends the whole read, a refused credential or a rate limit; any other error fails only the item it came from. */
 export const isFatal = (error: unknown): error is HttpError => error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit");
+
+/**
+ * The failure of one read: a 404 is `not-found`, a 403 that is no rate limit `forbidden`, no answer or a 5xx
+ * `unreachable`; anything else carries no kind. `reason` is worded by the caller and never holds service text.
+ */
+export const failureOf = (ref: string | null, error: unknown, reason: string): ReadFailure => {
+  if (error instanceof HttpError) {
+    if (error.kind === "not-found") return { ref, reason, kind: "not-found" };
+    if (error.kind === "forbidden") return { ref, reason, kind: "forbidden" };
+    if (error.kind === "network" || error.kind === "server") return { ref, reason, kind: "unreachable" };
+  }
+  return { ref, reason };
+};

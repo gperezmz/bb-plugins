@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { HttpError } from "../application/ports";
-import { isFatal, parseAnswer, ReadProblem } from "./service-support";
+import { HttpError, type HttpErrorKind } from "../application/ports";
+import { failureOf, isFatal, parseAnswer, ReadProblem } from "./service-support";
 
 const shape = z.object({ id: z.number(), name: z.string(), nested: z.object({ at: z.string() }) });
 const report = { root: "(root)", message: (fields: string) => `answer lacked ${fields}` };
@@ -53,5 +53,17 @@ describe("ReadProblem", () => {
   it("is an Error named for itself", () => {
     expect(new ReadProblem("x")).toBeInstanceOf(Error);
     expect(new ReadProblem("x").name).toBe("ReadProblem");
+  });
+});
+
+describe("failureOf", () => {
+  const error = (kind: HttpErrorKind) => new HttpError(kind, "x");
+  it("kinds the failures that decide whether a fleet is watched", () => {
+    expect(failureOf("#1", error("not-found"), "r")).toEqual({ ref: "#1", reason: "r", kind: "not-found" });
+    expect(failureOf("#1", error("forbidden"), "r")).toEqual({ ref: "#1", reason: "r", kind: "forbidden" });
+    expect(failureOf(null, error("network"), "r")).toEqual({ ref: null, reason: "r", kind: "unreachable" });
+    expect(failureOf("#1", error("server"), "r")).toMatchObject({ kind: "unreachable" });
+    expect(failureOf("#1", error("client"), "r")).toEqual({ ref: "#1", reason: "r" });
+    expect(failureOf("#1", new Error("x"), "r")).toEqual({ ref: "#1", reason: "r" });
   });
 });

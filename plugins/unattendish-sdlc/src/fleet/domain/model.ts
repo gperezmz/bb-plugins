@@ -188,6 +188,11 @@ export interface ItemSnapshot {
   /** Assigned to the operator, or filed by them and assigned to nobody. */
   readonly inPartition: boolean;
   readonly transitions: readonly Transition[];
+  /**
+   * Where the service keeps the reviewers' states on the item rather than as events of their own (GitLab): the state
+   * each reviewer's review is in now. A change of one is a review, keyed as a change with no transition id is.
+   */
+  readonly reviewers?: readonly { readonly actor: string; readonly state: "approved" | "changes requested" | "commented" }[];
 }
 
 export type ActivityKind = "commented" | "reviewed: approved" | "reviewed: changes requested" | "reviewed: commented";
@@ -220,8 +225,13 @@ export interface UpdatedItem {
 export interface ReadFailure {
   readonly ref: string | null;
   readonly reason: string;
-  /** `not-found` for an item the service says does not exist: no read will succeed, so it does not hold the source's cursor back. */
-  readonly kind?: "not-found";
+  /**
+   * Why the read failed, where that matters. `not-found` (the item does not exist) and `outside-fleet` (it moved out
+   * of the fleet's repository, project or team) are terminal: no read will succeed, so they do not hold the source's
+   * cursor back. `forbidden` is a 403 that is no rate limit; `unreachable` is no answer, or a 5xx. When every read of
+   * a source fails with one of these, the fleet is not watched.
+   */
+  readonly kind?: "not-found" | "outside-fleet" | "forbidden" | "unreachable";
 }
 
 export interface ReadOutcome {
@@ -238,6 +248,8 @@ export interface ItemState {
   readonly fleetLabels: readonly string[];
   readonly checks: { readonly sha: string; readonly outcome: ChecksOutcome; readonly reported: boolean; readonly round?: number } | null;
   readonly inPartition: boolean;
+  /** The reviewers' states as last read, by actor, for a service that keeps them on the item. */
+  readonly reviewers?: Readonly<Record<string, "approved" | "changes requested" | "commented">>;
 }
 
 /** A source's cursor: where its event reads resume, and what it knew of each item. Persisted only once a wake carrying its changes is accepted. */

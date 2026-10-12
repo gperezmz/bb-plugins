@@ -38,8 +38,13 @@ export default async function plugin(bb: BbPluginApi) {
           fleets.failed("polling", error);
         }
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, TICK_MS);
-          signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+          const done = () => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", done);
+            resolve();
+          };
+          const timer = setTimeout(done, TICK_MS);
+          signal.addEventListener("abort", done, { once: true });
         });
       }
       await Promise.all(running);

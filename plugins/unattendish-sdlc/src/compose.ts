@@ -38,8 +38,6 @@ export interface Fleets {
   /** bb dispatched a queued message; if it was a wake, records when. */
   dispatched(queuedMessageId: string): void;
   prune(): void;
-  /** Logs a warning with every configured token scrubbed from it. */
-  warn(message: string): void;
   /** Logs that `what` failed with `error`, scrubbed of every configured token. */
   failed(what: string, error: unknown): void;
   /** What is wrong with the settings, for a person. */
@@ -123,7 +121,6 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     refreshWatched: (threadId) => refreshFleetsOf(poll, queue, threadId),
     dispatched: (queuedMessageId) => store.markDispatched(queuedMessageId, clock.now().toISOString()),
     prune: () => pruneLedger(poll),
-    warn: log.warn,
     failed,
     settingsProblems: () => credentials.problems(),
   };
