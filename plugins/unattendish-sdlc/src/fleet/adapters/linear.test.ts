@@ -350,6 +350,55 @@ describe("the updated listing", () => {
   });
 });
 
+describe("the fleet boundary", () => {
+  const issueRequests = (m: Mounted): string[] => m.requests.map((r) => JSON.parse(r.body) as { query: string; variables: { id?: string } }).filter((b) => b.variables.id !== undefined).map((b) => `${b.query.match(/query (\w+)/)![1]!} ${b.variables.id!}`);
+
+  it("refuses an old identifier that now answers an issue of another team, reading nothing more of it", async () => {
+    const moved = issue("OPS-3", { team: "OPS", formerIdentifiers: ["ENG-12"], labels: ["spec"], comments: [comment("c1")], history: [entry("h1", { addedLabels: ["spec"] })] });
+    const { read, mounted } = await setup({ issues: [moved, issue("ENG-2")] });
+    const outcome = await read(["ENG-12", "ENG-2"]);
+    expect(outcome.snapshots.map((s) => s.ref)).toEqual(["ENG-2"]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "ENG-12", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(issueRequests(mounted).filter((request) => request.endsWith("ENG-12"))).toEqual(["IssueRead ENG-12"]);
+  });
+
+  it("refuses an identifier of another team given in the items", async () => {
+    const { read } = await setup({ issues: [issue("OPS-1", { team: "OPS" })] });
+    const outcome = await read(["OPS-1"]);
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "OPS-1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+  });
+
+  it("reads an old identifier of another team that now answers an issue of the fleet's team, under the ref it was named by", async () => {
+    const { read } = await setup({ issues: [issue("ENG-5", { formerIdentifiers: ["OPS-1"], url: "https://linear.app/acme/issue/ENG-5" })] });
+    const outcome = await read(["OPS-1"]);
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots).toMatchObject([{ ref: "OPS-1", url: "https://linear.app/acme/issue/ENG-5" }]);
+  });
+
+  it("matches the team key ignoring case", async () => {
+    const { read } = await setup({ issues: [issue("eng-5")] });
+    expect((await read(["ENG-5"])).snapshots).toHaveLength(1);
+  });
+
+  it("refuses a scan hit and an updated hit that belong to another team, without reading them", async () => {
+    const issues = [
+      issue("ENG-1", { labels: ["spec"], updatedAt: "2026-10-11T00:00:00Z" }),
+      issue("OPS-9", { team: "OPS", labels: ["spec"], updatedAt: "2026-10-11T00:00:00Z" }),
+    ];
+    const { read, mounted } = await setup({ issues, alsoListed: ["OPS-9"] });
+    const outcome = await read([], { scanPartition: true });
+    expect(outcome.snapshots.map((s) => s.ref)).toEqual(["ENG-1"]);
+    expect(outcome.updated.map((u) => u.ref)).toEqual(["ENG-1"]);
+    expect(outcome.failures).toEqual([
+      { ref: "OPS-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+      { ref: "OPS-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+    ]);
+    expect(issueRequests(mounted).some((request) => request.endsWith("OPS-9"))).toBe(false);
+  });
+});
+
 describe("a read that fails", () => {
   it("gives a failure and no snapshot or events for an issue answered without its state, and still reads the others", async () => {
     const { read } = await setup({ issues: [issue("ENG-1", { omit: ["state"], comments: [comment("c1")] }), issue("ENG-2")] });

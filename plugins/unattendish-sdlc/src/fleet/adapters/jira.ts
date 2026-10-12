@@ -7,6 +7,15 @@
 //                                 (`nextPageToken`, absent on the last page; `isLast`), `fields` defaults to `id` only,
 //                                 and the query must be bounded (every query here names the project).
 //   GET /rest/api/3/issue/{key}   `fields=` restricts; `expand=changelog` returns the newest 100 histories and a `total`.
+//                                 "if the identifier doesn't match an issue, a case-insensitive search and check for
+//                                 moved issues is performed. If a matching issue is found its details are returned, a
+//                                 302 or other redirect is not returned. The issue key returned in the response is the
+//                                 key of the issue found": a moved issue answers to its old key under its new one, so
+//                                 the answer's `key` is checked against the fleet's project. Answers 401 for
+//                                 "authentication credentials ... incorrect or missing" and 404 for "not found or the
+//                                 user does not have permission to view it"; no 403 is documented for it, nor for
+//                                 the changelog, comment, status or search reads (the HTTP layer keeps any 403 as
+//                                 `forbidden`, a per-read failure).
 //   GET /rest/api/3/issue/{key}/changelog   `startAt`/`maxResults` (default 100), oldest first, `isLast`.
 //   GET /rest/api/3/issue/{key}/comment     `startAt`/`maxResults`/`total`, `orderBy` of `created`, `-created` or `+created`,
 //                                           `body` in Atlassian Document Format (see jira-adf.ts).
@@ -99,6 +108,12 @@ const words = (text: string | null | undefined): string[] => (text ?? "").split(
 
 const registeredLabels = (labels: FleetLabels): string[] => [labels.spec, labels.ready, labels.inProgress, labels.needsInput];
 
+/** An issue whose key belongs to a project other than the fleet's. */
+class OutsideFleet extends ReadProblem {}
+
+/** The project part of an issue key (`PROJ` of `PROJ-12`). */
+const projectOf = (key: string): string => key.slice(0, key.lastIndexOf("-"));
+
 /** The reason a failed read gives: its own words, or an `HttpError`'s, which never carry a token or a query string. */
 const reasonOf = (error: unknown): string => {
   if (error instanceof HttpError || error instanceof ReadProblem) return error.message;
@@ -152,7 +167,7 @@ class Reading {
   private settle(error: unknown, ref: string | null): void {
     if (isFatal(error)) throw error;
     if (this.request.signal.aborted) throw error;
-    this.failures.push(failureOf(ref, error, reasonOf(error)));
+    this.failures.push(error instanceof OutsideFleet ? { ref, reason: error.message, kind: "outside-fleet" } : failureOf(ref, error, reasonOf(error)));
   }
 
   private async get(path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown> {
@@ -187,6 +202,7 @@ class Reading {
   private async readItem(ref: string, watched: boolean, inPartitionByService: boolean): Promise<{ snapshot: ItemSnapshot; events: ActivityEvent[] }> {
     const key = encodeURIComponent(ref);
     const answer = issueAnswer.parse(await this.get(`/rest/api/3/issue/${key}`, { fields: "status,labels,assignee,creator", expand: "changelog" }));
+    if (!sameText(projectOf(answer.key), this.project)) throw new OutsideFleet("moved outside the fleet");
     const { fields } = answer;
     const operator = this.request.operator;
     const carried = new Set(fields.labels.map((label) => label.toLowerCase()));
@@ -302,6 +318,13 @@ class Reading {
     }
   }
 
+  /** Whether a listing's hit belongs to another project, which is recorded as a failure and never read. */
+  private refuseListed(key: string): boolean {
+    if (sameText(projectOf(key), this.project)) return false;
+    this.failures.push({ ref: key, reason: "listed outside the fleet", kind: "outside-fleet" });
+    return true;
+  }
+
   /** Open issues labelled spec or ready that the operator holds, read as snapshots. */
   private async scan(seen: Set<string>): Promise<void> {
     const who = quote(this.request.operator);
@@ -323,6 +346,7 @@ class Reading {
         continue;
       }
       const ref = hit.data.key;
+      if (this.refuseListed(ref)) continue;
       if (seen.has(ref.toUpperCase())) continue;
       seen.add(ref.toUpperCase());
       try {
@@ -351,6 +375,7 @@ class Reading {
         this.failures.push({ ref: hit.success ? hit.data.key : null, reason: "the updated listing holds an issue without a valid key and update time" });
         continue;
       }
+      if (this.refuseListed(hit.data.key)) continue;
       if (Date.parse(at) >= this.sinceMs) this.updated.push({ role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at });
     }
   }

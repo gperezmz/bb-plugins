@@ -245,7 +245,7 @@ describe("the Jira adapter's transitions", () => {
 
   it("fails the item when its changelog runs to more than ten pages", async () => {
     const histories = Array.from({ length: 25 }, (_, i) => change(String(900 + i), 5, labelChange("", "Ready")));
-    const { read, watch } = await world({ issues: [issue("PROJ-1", { changelog: histories })], settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read, watch } = await world({ issues: [issue("PROJ-1", { changelog: histories })], settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots).toEqual([]);
     expect(out.failures).toHaveLength(1);
@@ -375,7 +375,7 @@ describe("the Jira adapter's partition scan", () => {
 
   it("reports a partition listing cut off after ten pages, with what it listed", async () => {
     const issues = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { labels: ["spec"], assignee: OPERATOR, updated: at(-90 + i) }));
-    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read({ scanPartition: true });
     expect(out.snapshots).toHaveLength(20);
     expect(out.failures).toContainEqual({ ref: null, reason: "the partition listing runs to more than 10 pages of 100" });
@@ -412,7 +412,7 @@ describe("the Jira adapter's updated listing", () => {
 
   it("pages through the listing by token", async () => {
     const issues = Array.from({ length: 7 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(i + 1) }));
-    const { read, live } = await world({ issues, settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read, live } = await world({ issues, settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read();
     expect(out.updated.map((u) => u.ref)).toEqual(issues.map((i) => i.key));
     expect(searches(live)).toHaveLength(4);
@@ -421,17 +421,61 @@ describe("the Jira adapter's updated listing", () => {
 
   it("reports a listing cut off after ten pages, with what it listed", async () => {
     const issues = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(i + 1) }));
-    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read();
     expect(out.updated).toHaveLength(20);
     expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
   });
 
   it("reports a listing that fails with no ref, and still returns the items it read", async () => {
-    const { read, watch } = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 500 }] } });
+    const { read, watch } = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/search/jql", status: 500 }] } });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots).toHaveLength(1);
     expect(out.failures).toEqual([{ ref: null, reason: "GET /rest/api/3/search/jql answered 500", kind: "unreachable" }]);
+  });
+});
+
+describe("the Jira adapter's fleet boundary", () => {
+  const issuePaths = (live: Mounted): string[] => live.requests.map((request) => new URL(request.url, "http://x").pathname).filter((path) => path.includes("/issue/"));
+
+  it("refuses an old key that now answers an issue of another project, reading nothing more of it", async () => {
+    const { read, watch, live } = await world({
+      issues: [issue("OTHER-3", { formerKeys: ["PROJ-12"], labels: ["spec"], assignee: OPERATOR, comments: [note("1", "text")] }), issue("PROJ-2")],
+    });
+    const out = await read(watch("PROJ-12", "PROJ-2"));
+    expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-2"]);
+    expect(out.events).toEqual([]);
+    expect(out.failures).toEqual([{ ref: "PROJ-12", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(issuePaths(live).filter((path) => path.includes("PROJ-12"))).toEqual(["/rest/api/3/issue/PROJ-12"]);
+  });
+
+  it("refuses a key of another project given in the items", async () => {
+    const { read, watch } = await world({ issues: [issue("OTHER-3")] });
+    const out = await read(watch("OTHER-3"));
+    expect(out.snapshots).toEqual([]);
+    expect(out.failures).toEqual([{ ref: "OTHER-3", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+  });
+
+  it("reads an old key of another project that now answers an issue of the fleet's, under the ref it was named by", async () => {
+    const { read, watch } = await world({ issues: [issue("proj-5", { formerKeys: ["OTHER-1"] })] });
+    const out = await read(watch("OTHER-1"));
+    expect(out.failures).toEqual([]);
+    expect(out.snapshots).toMatchObject([{ ref: "OTHER-1", url: `https://${SITE}/browse/proj-5` }]);
+  });
+
+  it("refuses a scan hit and an updated hit that belong to another project, without reading them", async () => {
+    const { read, live } = await world({
+      issues: [issue("PROJ-1", { labels: ["spec"], assignee: OPERATOR, updated: at(5) }), issue("OTHER-9", { labels: ["spec"], assignee: OPERATOR, updated: at(5) })],
+      settings: { pageSize: null, etag: false, alsoListed: ["OTHER-9"], failures: [] },
+    });
+    const out = await read({ scanPartition: true });
+    expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-1"]);
+    expect(out.updated.map((u) => u.ref)).toEqual(["PROJ-1"]);
+    expect(out.failures).toEqual([
+      { ref: "OTHER-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+      { ref: "OTHER-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+    ]);
+    expect(issuePaths(live).some((path) => path.includes("OTHER-9"))).toBe(false);
   });
 });
 
@@ -476,22 +520,22 @@ describe("the Jira adapter's failures", () => {
   });
 
   it("rethrows a refused credential and a rate limit unchanged, ending the whole read", async () => {
-    const refused = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, failures: [{ pathContains: "/issue/PROJ-1", status: 401 }] } });
+    const refused = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/issue/PROJ-1", status: 401 }] } });
     await expect(refused.read(refused.watch("PROJ-1"))).rejects.toMatchObject({ name: "HttpError", kind: "auth" });
     await mounted?.close();
-    const limited = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, failures: [{ pathContains: "/issue/PROJ-1", status: 429, headers: { "retry-after": "120" } }] } });
+    const limited = await world({ issues: [issue("PROJ-1")], settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/issue/PROJ-1", status: 429, headers: { "retry-after": "120" } }] } });
     const error = await limited.read(limited.watch("PROJ-1")).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(HttpError);
     expect(error).toMatchObject({ kind: "rate-limit", retryAfterMs: 120_000 });
   });
 
   it("rethrows a refused credential met while listing", async () => {
-    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 401 }] } });
+    const { read } = await world({ settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/search/jql", status: 401 }] } });
     await expect(read()).rejects.toMatchObject({ kind: "auth" });
   });
 
   it("reports a listing the token may not read (403) as a listing failure, not as a refused credential", async () => {
-    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
+    const { read } = await world({ settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/search/jql", status: 403 }] } });
     const outcome = await read();
     expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String), kind: "forbidden" }]);
   });
@@ -499,7 +543,7 @@ describe("the Jira adapter's failures", () => {
   it("gives the kind forbidden to an item the token may not read (403), and unreachable to one met with a 5xx", async () => {
     const { read, watch } = await world({
       issues: [issue("PROJ-1"), issue("PROJ-2"), issue("PROJ-3")],
-      settings: { pageSize: null, etag: false, failures: [{ pathContains: "/issue/PROJ-1", status: 403 }, { pathContains: "/issue/PROJ-2", status: 503 }] },
+      settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/issue/PROJ-1", status: 403 }, { pathContains: "/issue/PROJ-2", status: 503 }] },
     });
     const out = await read(watch("PROJ-1", "PROJ-2", "PROJ-3"));
     expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-3"]);
@@ -510,7 +554,7 @@ describe("the Jira adapter's failures", () => {
   });
 
   it("gives the kind unreachable to a listing met with a 5xx", async () => {
-    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 500 }] } });
+    const { read } = await world({ settings: { pageSize: null, etag: false, alsoListed: [], failures: [{ pathContains: "/search/jql", status: 500 }] } });
     expect((await read()).failures).toContainEqual({ ref: null, reason: expect.any(String), kind: "unreachable" });
   });
 
@@ -531,7 +575,7 @@ describe("the Jira adapter's failures", () => {
 describe("the Jira adapter's pagination", () => {
   it("pages through a long comment list and reads every comment since", async () => {
     const comments = Array.from({ length: 5 }, (_, i) => note(String(i + 1), `comment ${i + 1}`, i + 1));
-    const { read, watch, live } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read, watch, live } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read(watch("PROJ-1"));
     expect(out.events.map((e) => e.lastLine)).toEqual(["comment 1", "comment 2", "comment 3", "comment 4", "comment 5"]);
     expect(live.requests.filter((request) => request.url.includes("/comment"))).toHaveLength(3);
@@ -539,7 +583,7 @@ describe("the Jira adapter's pagination", () => {
 
   it("stops reading comments at the first page that reaches one older than since", async () => {
     const comments = [note("1", "old", -30), note("2", "old", -20), note("3", "old", -10), note("4", "new", 5), note("5", "new", 6)];
-    const { read, watch, live } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read, watch, live } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read(watch("PROJ-1"));
     expect(out.events.map((e) => e.lastLine)).toEqual(["new", "new"]);
     expect(live.requests.filter((request) => request.url.includes("/comment"))).toHaveLength(2);
@@ -547,7 +591,7 @@ describe("the Jira adapter's pagination", () => {
 
   it("fails the item when its comments run to more than ten pages", async () => {
     const comments = Array.from({ length: 25 }, (_, i) => note(String(i + 1), "c", 1 + i / 100));
-    const { read, watch } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, failures: [] } });
+    const { read, watch } = await world({ issues: [issue("PROJ-1", { comments })], settings: { pageSize: 2, etag: false, alsoListed: [], failures: [] } });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots).toEqual([]);
     expect(out.events).toEqual([]);
@@ -570,7 +614,7 @@ describe("the Jira adapter's requests", () => {
       statuses.push(response.status);
       return response;
     };
-    const fake = createFakeJira({ users: USERS, issues: [issue("PROJ-1", { labels: ["spec"] })], settings: { pageSize: null, etag: true, failures: [] } });
+    const fake = createFakeJira({ users: USERS, issues: [issue("PROJ-1", { labels: ["spec"] })], settings: { pageSize: null, etag: true, alsoListed: [], failures: [] } });
     mounted = await listen(fake);
     const credential: ResolvedCredential = { prefix: `${SITE}/PROJ`, service: "jira", auth: "token", baseUrl: mounted.url, host: "127.0.0.1" };
     const session = new HttpClient({ fetch: wrapped, sleep: async () => undefined }).session(credential, "me@example.com:token");

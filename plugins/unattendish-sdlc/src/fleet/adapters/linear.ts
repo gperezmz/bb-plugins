@@ -33,6 +33,11 @@
 //  - The error code of a refused key: matched by its stem (see
 //    `rethrowFatal`); an HTTP 401 is the layer's `auth` already, and a 403 that
 //    is no rate limit is its `forbidden`, which fails the one read.
+//  - What `issue(id:)` answers for an identifier the issue had before a move to another team: Linear's help center
+//    (linear.app/docs/move-to-new-team, excerpt only; the page itself answered 404) says a moved issue gets a new
+//    identifier and a search for the old one returns the current issue, and its API pages say nothing. The answer's
+//    `identifier` is checked against the fleet's team whichever way it answers, so a moved issue is refused if it
+//    comes back under another team's key and a 404 is a plain not-found.
 //  - The answer for an issue that does not exist: no page gives its code or
 //    wording, so an answer whose every error says "Entity not found" and has
 //    no data is taken as not-found, and any other as an ordinary failure.
@@ -121,6 +126,12 @@ const transitionsOf = (history: readonly HistoryEntry[], labels: FleetLabels, si
   return found;
 };
 
+/** An issue whose identifier belongs to a team other than the fleet's. */
+class OutsideFleet extends ReadProblem {}
+
+/** The team key of an identifier (`ENG` of `ENG-12`). */
+const teamOf = (identifier: string): string => identifier.slice(0, identifier.lastIndexOf("-"));
+
 const failureReason = (error: unknown): string => {
   if (error instanceof ReadProblem) return error.message;
   if (error instanceof HttpError) return error.message;
@@ -148,8 +159,21 @@ class LinearAdapter implements ServiceAdapter {
         events.push(...result.events);
       } catch (error) {
         if (isFatal(error) || request.signal.aborted) throw error;
-        failures.push(error instanceof NotFoundProblem ? { ref, reason: failureReason(error), kind: "not-found" } : failureOf(ref, error, failureReason(error)));
+        failures.push(
+          error instanceof OutsideFleet
+            ? { ref, reason: error.message, kind: "outside-fleet" }
+            : error instanceof NotFoundProblem
+              ? { ref, reason: failureReason(error), kind: "not-found" }
+              : failureOf(ref, error, failureReason(error)),
+        );
       }
+    };
+
+    /** Whether a listing's hit belongs to another team, which is recorded as a failure and never read. */
+    const refuseListed = (ref: string): boolean => {
+      if (teamOf(ref).toLowerCase() === team.toLowerCase()) return false;
+      failures.push({ ref, reason: "listed outside the fleet", kind: "outside-fleet" });
+      return true;
     };
 
     for (const watched of request.items) {
@@ -161,6 +185,7 @@ class LinearAdapter implements ServiceAdapter {
       const listed = await this.list(request, scanFilter(team, request.labels, request.operator), failures);
       for (const found of listed) {
         request.signal.throwIfAborted();
+        if (refuseListed(found.ref)) continue;
         if (!read.has(found.ref.toUpperCase())) await item(found.ref, false);
       }
     }
@@ -168,6 +193,7 @@ class LinearAdapter implements ServiceAdapter {
     if (!request.stateOnly) {
       const since = { team: { key: { eq: team } }, updatedAt: { gte: request.since } };
       for (const found of await this.list(request, since, failures)) {
+        if (refuseListed(found.ref)) continue;
         updated.push({ role: "tracker", ref: found.ref, url: found.url, at: found.at });
       }
     }
@@ -180,6 +206,7 @@ class LinearAdapter implements ServiceAdapter {
     const { http, signal } = request;
     let page = await send(http, signal, ISSUE_READ, { id: ref }, issueRead);
     const issue = page.issue;
+    if (request.source.service !== "linear" || teamOf(issue.identifier).toLowerCase() !== request.source.team.toLowerCase()) throw new OutsideFleet("moved outside the fleet");
     if (issue.labels.pageInfo.hasNextPage) throw new ReadProblem(`${ref} carries more labels than one page holds`);
     const history = [...issue.history.nodes];
     for (let pages = 1; page.issue.history.pageInfo.hasNextPage; pages += 1) {
