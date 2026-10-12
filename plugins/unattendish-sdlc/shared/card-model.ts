@@ -41,11 +41,16 @@ export interface WarningLine {
   readonly tone: "warning" | "destructive";
 }
 
+/** What days left on a token warn: expired, expiring today, or expiring in so many days. */
+export function daysWarning(daysLeft: number): Pick<WarningLine, "text" | "tone"> {
+  if (daysLeft < 0) return { text: `token expired ${plural(-daysLeft, "day")} ago`, tone: "destructive" };
+  if (daysLeft === 0) return { text: "token expires today", tone: "warning" };
+  return { text: `token expires in ${plural(daysLeft, "day")}`, tone: "warning" };
+}
+
 export function warningLine(warning: CredentialWarningView): WarningLine {
   if (warning.kind === "shares-rate-limit") return { text: "shares the agents' rate limit", label: warning.label, tone: "warning" };
-  if (warning.daysLeft < 0) return { text: `token expired ${plural(-warning.daysLeft, "day")} ago`, label: warning.label, tone: "destructive" };
-  if (warning.daysLeft === 0) return { text: "token expires today", label: warning.label, tone: "warning" };
-  return { text: `token expires in ${plural(warning.daysLeft, "day")}`, label: warning.label, tone: "warning" };
+  return { ...daysWarning(warning.daysLeft), label: warning.label };
 }
 
 /** The half's name on a card: `forge` or `tracker`. */

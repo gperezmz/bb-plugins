@@ -104,7 +104,7 @@ export function useConnectFlow(request: ConnectRequest): ConnectFlow {
       const result: ConnectResult = await api.connect(input);
       pending.current = result.outcome === "confirm" ? input : null;
       send({ type: "resulted", result });
-      if (result.outcome === "saved") announceConnectSaved();
+      if (result.outcome === "saved") announceConnectSaved(result.revoke);
     } catch (error) {
       pending.current = null;
       send({ type: "failed", reason: messageOf(error) });

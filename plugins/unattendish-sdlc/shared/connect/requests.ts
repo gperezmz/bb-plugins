@@ -2,7 +2,7 @@
 // over the current view whichever it was asked from. A request is recorded here, and the overlay mounted once
 // per bb window by the app root draws the popup for it, as `pending-open.ts` hands the Fleet tab a wish.
 import { useSyncExternalStore } from "react";
-import type { ConnectTarget } from "@/src/fleet/application/views";
+import type { ConnectTarget, RevokeNotice } from "@/src/fleet/application/views";
 
 /** What the popup is opened for. */
 export interface ConnectRequest {
@@ -23,7 +23,7 @@ export interface Asked {
 let current: Asked | null = null;
 let serial = 0;
 const changed = new Set<() => void>();
-const saved = new Set<() => void>();
+const saved = new Set<(revoke: RevokeNotice | null) => void>();
 
 function subscribe(listener: () => void): () => void {
   changed.add(listener);
@@ -51,12 +51,15 @@ export function useConnectRequest(): Asked | null {
   return useSyncExternalStore(subscribe, currentConnect);
 }
 
-/** Tells whoever lists accounts that the popup stored something, so a list need not wait for the server's signal. */
-export function announceConnectSaved(): void {
-  for (const listener of [...saved]) listener();
+/**
+ * Tells whoever lists accounts that the popup stored something, so a list need not wait for the server's signal,
+ * with the notice that the credential it replaced still works at the service.
+ */
+export function announceConnectSaved(revoke: RevokeNotice | null): void {
+  for (const listener of [...saved]) listener(revoke);
 }
 
-export function onConnectSaved(listener: () => void): () => void {
+export function onConnectSaved(listener: (revoke: RevokeNotice | null) => void): () => void {
   saved.add(listener);
   return () => {
     saved.delete(listener);

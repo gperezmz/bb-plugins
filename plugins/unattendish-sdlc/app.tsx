@@ -2,9 +2,9 @@
 //   the Fleets page, with its count in the page header;
 //   the Fleet chip in a manager thread's header, and the Fleet tab it opens;
 //   the overlays: the toast for a new Inbox row, the toast for a fleet that needs an account, and the Connect popup;
-//   the settings section for credentials and poll intervals.
+//   the settings section for accounts and poll intervals.
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
-import { CredentialsSettings } from "@/features/credentials-settings";
+import { AccountsSettings } from "@/features/accounts-settings";
 import { FleetChip } from "@/features/fleet-chip";
 import { FleetTab } from "@/features/fleet-tab";
 import { FleetsHeaderCount, FleetsPage } from "@/features/fleets-page";
@@ -38,9 +38,9 @@ export default definePluginApp((app) => {
 
   app.slots.settingsSection({
     id: "fleets",
-    title: "Fleets: credentials and polling",
-    description: "The tokens and logins fleets read their tracker and forge with, and how often each fleet is polled.",
-    component: CredentialsSettings,
+    title: "Fleets: accounts and polling",
+    description: "The accounts fleets read their tracker and forge as, the tokens and logins they hold, and how often each fleet is polled.",
+    component: AccountsSettings,
   });
 
   // A bb without the overlay slot has no window-wide place to listen for a new Inbox row or to draw the Connect popup over the current view.

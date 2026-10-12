@@ -293,6 +293,7 @@ describe("step 3: what was found", () => {
     await verify();
     await screen.findByText(/Saved/);
     expect(heard).toHaveBeenCalledTimes(1);
+    expect(heard).toHaveBeenCalledWith(null);
     stop();
   });
 
