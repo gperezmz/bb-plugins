@@ -55,6 +55,12 @@ export interface HttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   /** A GraphQL document and variables. Only a POST carries one, and only a query (never a mutation) is sent. */
   readonly graphql?: { readonly query: string; readonly variables?: Readonly<Record<string, unknown>> };
+  /**
+   * A path prefix, such as `/repos/{owner}/{repo}/`, that the request, a redirect it meets and a pagination link must
+   * stay under. It is read after the credential's base path and compared without regard to case. A target outside it
+   * throws an `HttpError` of kind `outside-host`, whose message names no query and no token.
+   */
+  readonly stayUnder?: string;
 }
 
 export interface HttpResponse {

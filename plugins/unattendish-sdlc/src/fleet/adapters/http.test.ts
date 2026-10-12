@@ -153,6 +153,65 @@ describe("HttpClient", () => {
     });
   });
 
+  describe("stayUnder", () => {
+    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://ghe.example.com/api/v3", host: "ghe.example.com" };
+    const under = "/repos/Org/Repo/";
+    const moved = (location: string, status = 301) => async (url: URL | string) =>
+      String(url).includes("/repos/Org/Repo/") && String(url).includes("/old") ? new Response(null, { status, headers: { location } }) : new Response("{}");
+    const recording = (answer: (url: URL | string) => Promise<Response>) => {
+      const fetched: string[] = [];
+      return { fetched, fetch: (async (url: URL | string) => (fetched.push(String(url)), answer(url))) as typeof fetch };
+    };
+
+    it("refuses a redirect to another repository's path, and does not follow it", async () => {
+      for (const location of ["/api/v3/repositories/42/issues/9", "https://ghe.example.com/api/v3/repos/org/other/issues/9", "/api/v3/repos/Org/Repo2/issues/9", "/api/v3/repos/Org/Repo"]) {
+        const { fetched, fetch } = recording(moved(location));
+        const error = await client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", query: { access_token: TOKEN }, stayUnder: under }).catch((e: unknown) => e as Error);
+        expect(error).toMatchObject({ kind: "outside-host" });
+        expect((error as Error).message).not.toMatch(/access_token|secret/);
+        expect(fetched).toHaveLength(1);
+      }
+    });
+
+    it("follows a redirect that stays under it, without regard to case", async () => {
+      const { fetched, fetch } = recording(moved("/api/v3/repos/org/repo/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).resolves.toMatchObject({ status: 200 });
+      expect(fetched).toEqual(["https://ghe.example.com/api/v3/repos/Org/Repo/issues/old", "https://ghe.example.com/api/v3/repos/org/repo/issues/9"]);
+    });
+
+    it("reads the prefix after the credential's base path", async () => {
+      const { fetched, fetch } = recording(moved("/repos/Org/Repo/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toHaveLength(1);
+    });
+
+    it("refuses a dot-dot path that climbs out of it", async () => {
+      const { fetched, fetch } = recording(moved("/api/v3/repos/Org/Repo/../Other/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toHaveLength(1);
+    });
+
+    it("refuses a request whose own path is outside it", async () => {
+      const { fetched, fetch } = recording(async () => new Response("{}"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Other/issues/1", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual([]);
+    });
+
+    it("sends the same request unrestricted where no prefix is given", async () => {
+      const { fetch } = recording(moved("/api/v3/repositories/42/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old" })).resolves.toMatchObject({ status: 200 });
+    });
+
+    it("refuses a next link outside it and follows one under it", async () => {
+      const page = (link: string) => async (url: URL | string) => new Response("[1]", { headers: String(url).includes("page=2") ? {} : { link: `<${link}>; rel="next"` } });
+      const off = recording(page("https://ghe.example.com/api/v3/repositories/42/issues?page=2"));
+      await expect(client({ fetch: off.fetch }).session(github, TOKEN).paginate({ path: "/repos/Org/Repo/issues", stayUnder: under }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(off.fetched).toHaveLength(1);
+      const on = recording(page("https://ghe.example.com/api/v3/repos/Org/Repo/issues?page=2"));
+      expect(await client({ fetch: on.fetch }).session(github, TOKEN).paginate({ path: "/repos/Org/Repo/issues", stayUnder: under }, { maxPages: 5 })).toEqual({ items: [1, 1], truncated: false });
+    });
+  });
+
   it("follows a redirect on the same host", async () => {
     const { seen, credential } = await serve((request, response) => {
       if (request.url === "/api/old") {

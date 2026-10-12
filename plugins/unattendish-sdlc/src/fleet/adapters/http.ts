@@ -143,15 +143,21 @@ class Session implements HttpSession {
       const joined = `${base.pathname.replace(/\/+$/, "")}/${request.path.replace(/^\/+/, "")}`;
       url.pathname = request.path === "" ? base.pathname : joined;
     }
-    this.checkTarget(request.method, url);
+    this.checkTarget(request.method, url, request.stayUnder);
     for (const [name, value] of Object.entries(request.query ?? {})) if (value !== undefined) url.searchParams.set(name, String(value));
     return url;
   }
 
-  /** Refuses a URL off the credential's host and port, or plain http anywhere but loopback; the token goes to no other. */
-  private checkTarget(method: string, url: URL): void {
+  /**
+   * Refuses a URL off the credential's host and port, or plain http anywhere but loopback; the token goes to no other.
+   * Where `stayUnder` is given, also refuses a path outside that prefix (after the credential's base path).
+   */
+  private checkTarget(method: string, url: URL, stayUnder?: string): void {
     if (url.hostname !== this.credential.host || url.port !== new URL(this.baseUrl).port) throw new HttpError("outside-host", `${method} ${url.pathname} is not on the credential's host`);
     if (url.protocol !== "https:" && !isLoopbackHost(url.hostname)) throw new HttpError("outside-host", `${method} ${url.pathname} is not https`);
+    if (stayUnder === undefined) return;
+    const prefix = `${new URL(this.baseUrl).pathname.replace(/\/+$/, "")}/${stayUnder.replace(/^\/+/, "").replace(/\/*$/, "/")}`.toLowerCase();
+    if (!url.pathname.toLowerCase().startsWith(prefix)) throw new HttpError("outside-host", `${describe(method, url, this.token)} is outside the repository the request is for`);
   }
 
   async request(request: HttpRequest, options: { readonly signal?: AbortSignal } = {}): Promise<HttpResponse> {
@@ -195,7 +201,7 @@ class Session implements HttpSession {
         const location = header("location");
         if (location === null || request.method !== "GET" || redirects >= MAX_REDIRECTS) throw new HttpError("client", `${describe(request.method, url, this.token)} redirected`, response.status);
         const target = new URL(location, url);
-        this.checkTarget(request.method, target);
+        this.checkTarget(request.method, target, request.stayUnder);
         url = target;
         redirects += 1;
         continue;
@@ -243,7 +249,7 @@ class Session implements HttpSession {
       if (!Array.isArray(response.json)) throw new HttpError("server", `GET ${next.path} answered a body that is not a list`, response.status);
       items.push(...response.json);
       const link = nextLink(response.header("link"));
-      next = link === null ? null : { method: "GET", path: link };
+      next = link === null ? null : { method: "GET", path: link, ...(request.stayUnder === undefined ? {} : { stayUnder: request.stayUnder }) };
     }
     return { items, truncated: false };
   }
