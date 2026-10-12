@@ -1,17 +1,15 @@
-// What one Inbox row holds in this window while an action is being composed or sent. A sent
-// action itself is the server's: the row's view carries it, so every window shows it.
+// What the Inbox rows hold in this window while an action is composed or sent, kept for every row in one place
+// above the table's layout, so a viewport change that redraws the rows keeps a composer's text. A sent action
+// itself is the server's: the row's view carries it, so every window shows it.
 import { useState } from "react";
 import type { ActionKind, InboxRowView } from "@/src/fleet/application/views";
 import { useDashboardApi } from "../client";
-import { sendInput, takesText } from "./row-model";
+import { sendInput, takesText, type LocalAction } from "./row-model";
 
-export interface RowActionState {
+export interface RowActionState extends LocalAction {
   /** The kind whose composer is open on the row. */
   readonly composing: ActionKind | null;
   readonly text: string;
-  readonly sending: boolean;
-  /** Why bb refused the last message; the row keeps its action and the composer keeps its text. */
-  readonly refusal: string | null;
   setText(text: string): void;
   compose(kind: ActionKind): void;
   cancel(): void;
@@ -19,46 +17,49 @@ export interface RowActionState {
   send(kind: ActionKind, options?: { regrant?: boolean }): Promise<void>;
 }
 
-export function useRowAction(row: InboxRowView, refetch: () => Promise<void>): RowActionState {
+interface Local extends LocalAction {
+  readonly composing: ActionKind | null;
+  readonly text: string;
+}
+
+const IDLE: Local = { composing: null, text: "", phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
+
+/** The state of any row, by the row; `refetch` brings the server's view back after a send. */
+export function useRowActions(refetch: () => Promise<void>): (row: InboxRowView) => RowActionState {
   const api = useDashboardApi();
-  const [composing, setComposing] = useState<ActionKind | null>(null);
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [locals, setLocals] = useState<Record<string, Local>>({});
+  const patch = (id: string, change: Partial<Local>) => setLocals((previous) => ({ ...previous, [id]: { ...(previous[id] ?? IDLE), ...change } }));
 
-  async function send(kind: ActionKind, options: { regrant?: boolean } = {}): Promise<void> {
-    const wantsText = takesText(kind, options.regrant);
-    setSending(true);
-    setRefusal(null);
-    setComposing(null);
-    try {
-      const result = await api.sendAction(sendInput(row, kind, { text, regrant: options.regrant }));
-      if (result.ok) {
-        setText("");
+  return (row) => {
+    const local = locals[row.id] ?? IDLE;
+    const id = row.id;
+
+    async function send(kind: ActionKind, options: { regrant?: boolean } = {}): Promise<void> {
+      const wantsText = takesText(kind, options.regrant);
+      patch(id, { phase: "sending", refusal: null, unconfirmed: false, composing: null });
+      try {
+        const result = await api.sendAction(sendInput(row, kind, { text: local.text, regrant: options.regrant }));
+        if (result.ok) {
+          patch(id, { phase: "accepted", acceptedAt: result.action.sentAt, text: "" });
+          await refetch();
+          patch(id, { phase: "idle", acceptedAt: null });
+        } else {
+          patch(id, { phase: "idle", refusal: result.reason, composing: wantsText ? kind : null });
+        }
+      } catch {
+        // The call failed after bb may have taken the message: the server's view says whether it did.
+        patch(id, { phase: "unknown" });
         await refetch();
-      } else {
-        setRefusal(result.reason);
-        if (wantsText) setComposing(kind);
+        patch(id, { phase: "idle", unconfirmed: true, composing: wantsText ? kind : null });
       }
-    } catch (error) {
-      setRefusal(error instanceof Error ? error.message : String(error));
-      if (wantsText) setComposing(kind);
-    } finally {
-      setSending(false);
     }
-  }
 
-  return {
-    composing,
-    text,
-    sending,
-    refusal,
-    setText,
-    compose: (kind) => {
-      setRefusal(null);
-      setComposing(kind);
-    },
-    cancel: () => setComposing(null),
-    send,
+    return {
+      ...local,
+      setText: (text) => patch(id, { text }),
+      compose: (kind) => patch(id, { composing: kind, refusal: null, unconfirmed: false }),
+      cancel: () => patch(id, { composing: null }),
+      send,
+    };
   };
 }
