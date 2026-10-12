@@ -38,6 +38,14 @@ _Avoid_: Identity, profile
 
 An account's service, host or site, and API address are fixed once it is added, and its login is read from its first token rather than typed.
 
+**Half**:
+One of the two things a fleet reads: its forge, or its tracker where that is a service of its own. Each half reads as one account, and Connect fixes one half at a time.
+_Avoid_: Side
+
+**Place**:
+Where an account lives: a forge's host, a Jira site, or Linear. An assignment and a default name an account on their own place only.
+_Avoid_: Realm
+
 **Credential**:
 A token, or a chosen `gh` or `glab` login, belonging to one account, and the owner or host it reaches.
 _Avoid_: Auth entry
