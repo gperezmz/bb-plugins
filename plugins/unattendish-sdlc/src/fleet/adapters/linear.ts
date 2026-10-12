@@ -88,6 +88,13 @@ export const isOperator = (person: Person | null, operator: string): boolean => 
   return [person.email, person.displayName, person.id].some((value) => typeof value === "string" && value.toLowerCase() === wanted);
 };
 
+/** The other names Linear knows a person by, which an echo actor may have been registered under; the account id is the actor itself, and none is sent on. */
+const aliasesOf = (person: Person | null): { actorAliases?: string[] } => {
+  if (person === null) return {};
+  const names = [person.email, person.displayName].filter((value): value is string => typeof value === "string" && value.trim() !== "");
+  return names.length === 0 ? {} : { actorAliases: [...new Set(names)] };
+};
+
 const atOrAfter = (at: string, since: string): boolean => Date.parse(at) >= Date.parse(since);
 
 /** The registered spelling of each of the four labels that `names` includes, compared ignoring case. */
@@ -104,17 +111,18 @@ const transitionsOf = (history: readonly HistoryEntry[], labels: FleetLabels, si
   const ordered = history.filter((entry) => atOrAfter(entry.createdAt, since)).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id));
   for (const entry of ordered) {
     const actor = entry.actor?.id ?? null;
+    const aliases = aliasesOf(entry.actor);
     const id = `linear:history:${entry.id}`;
     if (entry.toState !== null) {
       const toClosed = isClosedType(entry.toState.type);
       const fromClosed = entry.fromState !== null && isClosedType(entry.fromState.type);
-      if (toClosed && !fromClosed) found.push({ kind: "closed", actor, at: entry.createdAt, id });
-      else if (!toClosed && fromClosed) found.push({ kind: "reopened", actor, at: entry.createdAt, id });
+      if (toClosed && !fromClosed) found.push({ kind: "closed", actor, ...aliases, at: entry.createdAt, id });
+      else if (!toClosed && fromClosed) found.push({ kind: "reopened", actor, ...aliases, at: entry.createdAt, id });
     }
     for (const [kind, names] of [["labelled", entry.addedLabels], ["unlabelled", entry.removedLabels]] as const) {
       for (const name of names ?? []) {
         const label = registered.get(name.name.toLowerCase());
-        if (label !== undefined) found.push({ kind, label, actor, at: entry.createdAt, id: `${id}:${kind}:${label}` });
+        if (label !== undefined) found.push({ kind, label, actor, ...aliases, at: entry.createdAt, id: `${id}:${kind}:${label}` });
       }
     }
   }
@@ -241,6 +249,7 @@ class LinearAdapter implements ServiceAdapter {
         url,
         kind: "commented" as const,
         actor: comment.user?.id ?? null,
+        ...aliasesOf(comment.user),
         at: comment.createdAt,
         lastLine: lastLineOf(comment.body),
       }));

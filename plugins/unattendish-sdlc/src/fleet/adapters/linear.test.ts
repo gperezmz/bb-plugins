@@ -156,15 +156,15 @@ describe("the snapshot of an issue", () => {
 });
 
 describe("transitions", () => {
-  it("reports a close and a reopening with the actor's account id, time and the history entry's id", async () => {
+  it("reports a close and a reopening with the actor's account id and other names, time and the history entry's id", async () => {
     const history = [
       entry("h1", { createdAt: "2026-10-11T08:00:00Z", fromState: "started", toState: "completed" }),
       entry("h2", { createdAt: "2026-10-12T08:00:00Z", actor: "u-dana", fromState: "completed", toState: "started" }),
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "closed", actor: "u-eli", at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
-      { kind: "reopened", actor: "u-dana", at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
+      { kind: "closed", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
+      { kind: "reopened", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
     ]);
   });
 
@@ -184,8 +184,8 @@ describe("transitions", () => {
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "labelled", label: "Ready", actor: "u-eli", at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
-      { kind: "unlabelled", label: "in progress", actor: "u-eli", at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
+      { kind: "labelled", label: "Ready", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
+      { kind: "unlabelled", label: "in progress", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
       { kind: "unlabelled", label: "spec", actor: null, at: "2026-10-11T00:00:00Z", id: "linear:history:h2:unlabelled:spec" },
     ]);
   });
@@ -224,11 +224,18 @@ describe("events", () => {
     const { read } = await setup({ issues: [issue("ENG-1", { url: "https://linear.app/acme/issue/ENG-1", comments })] });
     const outcome = await read(["ENG-1"]);
     expect(outcome.events).toEqual([
-      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
-      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
+      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
+      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
       { id: "linear:comment:c3", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: null, at: "2026-10-11T02:00:00Z", lastLine: null },
     ]);
     expect(JSON.stringify(outcome)).not.toContain("Secret rationale");
+  });
+
+  it("gives no alias for an actor whose email and display name are blank, and none for the account id", async () => {
+    const blank = [{ id: "u-ghost", email: "", displayName: "" }];
+    const history = [entry("h1", { actor: "u-ghost", fromState: "started", toState: "completed" })];
+    const { read } = await setup({ users: blank, issues: [issue("ENG-1", { history, assignee: null, creator: null })] });
+    expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([{ kind: "closed", actor: "u-ghost", at: "2026-10-11T00:00:00Z", id: "linear:history:h1" }]);
   });
 
   it("sees a reply made after since to a comment made before it", async () => {

@@ -29,7 +29,7 @@ export const ISSUE_READ = `query IssueRead($id: String!, $after: String) {
       nodes {
         id
         createdAt
-        actor { id }
+        actor { id email displayName }
         fromState { type }
         toState { type }
         addedLabels { name }
@@ -49,9 +49,9 @@ export const ISSUE_COMMENTS = `query IssueComments($id: String!, $after: String)
         id
         createdAt
         body
-        user { id }
+        user { id email displayName }
         children(first: ${INLINE_REPLIES}) {
-          nodes { id createdAt body user { id } }
+          nodes { id createdAt body user { id email displayName } }
           pageInfo { hasNextPage endCursor }
         }
       }
@@ -64,7 +64,7 @@ export const ISSUE_COMMENTS = `query IssueComments($id: String!, $after: String)
 export const COMMENT_REPLIES = `query CommentReplies($id: String!, $after: String) {
   comment(id: $id) {
     children(first: ${PAGE_SIZE}, after: $after) {
-      nodes { id createdAt body user { id } }
+      nodes { id createdAt body user { id email displayName } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -92,7 +92,7 @@ export type Person = z.infer<typeof person>;
 const historyEntry = z.object({
   id: text,
   createdAt: instant,
-  actor: z.object({ id: text }).nullable(),
+  actor: person.nullable(),
   fromState: typed.nullable(),
   toState: typed.nullable(),
   addedLabels: z.array(named).nullable(),
@@ -113,7 +113,7 @@ export const issueRead = z.object({
   }),
 });
 
-const reply = z.object({ id: text, createdAt: instant, body: z.string(), user: z.object({ id: text }).nullable() });
+const reply = z.object({ id: text, createdAt: instant, body: z.string(), user: person.nullable() });
 export type Comment = z.infer<typeof reply>;
 const replies = z.object({ nodes: z.array(reply), pageInfo });
 
