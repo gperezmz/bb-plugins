@@ -66,6 +66,22 @@ describe("what a poll wakes the manager for", () => {
     expect(sentText(w)).toContain("#9 reviewed: approved by carol");
   });
 
+  it("keeps the state the manager's turn-end read took, so a merge or close before the next poll is reported (AC4)", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.adapters.github.queue(outcome());
+    await poll(w);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inFlight: [inFlightRow(8, 9)] }));
+    w.clock.advance(30_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(8), snapshot(9, { url: pullUrl(9) })] }));
+    await poll(w, { stateOnly: true });
+    expect(w.store.getCursor(REPO_KEY, "forge")!.items).toHaveProperty(["forge:#9"]);
+    w.clock.advance(90_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(8), snapshot(9, { url: pullUrl(9), open: false, merged: true, transitions: [{ kind: "merged", actor: "carol", at: "2026-10-12T10:01:30.000Z", id: "m1" }] })] }));
+    await poll(w);
+    expect(sentText(w)).toContain("#9 merged by carol");
+  });
+
   it("wakes when an item in the operator's partition gains the ready label, once (AC4, AC5)", async () => {
     const w = world();
     await start(w, manifest());
@@ -250,6 +266,67 @@ describe("a queued wake keeps what it says (AC7, AC12)", () => {
   });
 });
 
+describe("an amendment that cannot be made (AC7, AC8)", () => {
+  const queuedWake = async (w: World) => {
+    w.channel.mode = "busy";
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    await poll(w);
+  };
+
+  it("moves no cursor and marks nothing woke when bb refuses to amend, and offers the changes again", async () => {
+    const w = world();
+    await queuedWake(w);
+    const cursor = w.store.getCursor(REPO_KEY, "forge");
+    w.channel.mode = "refuse";
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:02:30.000Z" })] }));
+    expect(await poll(w)).toMatchObject({ delivery: "refused", woke: 0 });
+    expect(w.store.getCursor(REPO_KEY, "forge")).toEqual(cursor);
+    expect(rows(w).map((r) => r.key)).not.toContain("c2");
+    expect(w.store.wakeChanges(REPO_KEY, 1).map((c) => c.key)).toEqual(["c1"]);
+
+    w.channel.mode = "busy";
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:02:30.000Z" })] }));
+    expect(await poll(w)).toMatchObject({ delivery: "amended", woke: 1 });
+    expect(w.channel.queue.get("q1")!.text).toContain("commented by bob");
+  });
+
+  it("does not amend a wake queued for another thread, and sends the manager's changes in its own", async () => {
+    const w = world();
+    await queuedWake(w);
+    w.threads.states.set(MANAGER, "archived");
+    w.threads.states.set("thr_next", "live");
+    await registerFleet(w.register, "thr_next", args());
+    const amended: string[] = [];
+    const amend = w.channel.amend.bind(w.channel);
+    w.channel.amend = async (threadId, id, text) => {
+      amended.push(id);
+      return amend(threadId, id, text);
+    };
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:02:30.000Z" })] }));
+    expect(await poll(w)).toMatchObject({ delivery: "queued", woke: 1 });
+    expect(amended).toEqual([]);
+    expect(w.channel.sent[1]).toMatchObject({ threadId: "thr_next" });
+    expect(w.channel.queue.get("q1")!.text).not.toContain("bob");
+  });
+
+  it("records the wake as dispatched when the amendment finds its message gone", async () => {
+    const w = world();
+    await queuedWake(w);
+    w.channel.dispatch("q1");
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:02:30.000Z" })] }));
+    await poll(w);
+    const wakes = ledger(w).flatMap((e) => (e.type === "wake" ? [e.wake] : []));
+    expect(wakes.find((wake) => wake.id === 1)).toMatchObject({ dispatchedAt: w.clock.now().toISOString() });
+    expect(wakes.find((wake) => wake.id === 2)).toMatchObject({ dispatchedAt: null, queuedMessageId: "q2" });
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ id: 2 });
+  });
+});
+
 describe("no change is lost (AC8)", () => {
   it("offers the same changes again when bb refuses the send, and moves no cursor", async () => {
     const w = world();
@@ -276,6 +353,17 @@ describe("no change is lost (AC8)", () => {
       w.clock.advance(120_000);
     }
     expect(w.channel.sent).toHaveLength(1);
+  });
+
+  it("says nothing of a catch-up in an ordinary wake", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+    await poll(w);
+    w.clock.advance(150_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    await poll(w);
+    expect(sentText(w)).not.toContain("Catch-up");
   });
 
   it("says in the wake that it is a catch-up, and how long the plugin was away", async () => {
@@ -308,6 +396,24 @@ describe("a read that fails (AC9)", () => {
     const failed = ledger(w, { done: "failed read" })[0] as { reason: string };
     expect(failed.reason).not.toContain(TOKEN);
     expect(JSON.stringify(ledger(w))).not.toContain(TOKEN);
+  });
+
+  it("keeps a token out of the ledger and the log wherever it is reported", async () => {
+    const reasons: [string, (w: World) => void][] = [
+      ["a failure reason an adapter reports", (w) => w.adapters.github.queue(outcome({ failures: [{ ref: "#7", reason: `read failed: Bearer ${TOKEN} and ${TOKEN}` }] }))],
+      ["a credential that cannot give its token", (w) => (w.credentials.token = async () => { throw new Error(`cannot run gh for ${TOKEN}`); })],
+      ["a session that cannot be opened", (w) => (w.http.session = () => { throw new Error(`bad session for ${TOKEN}`); })],
+    ];
+    for (const [, arrange] of reasons) {
+      const w = world();
+      await start(w, manifest({ inbox: [inboxRow(7)] }));
+      arrange(w);
+      await poll(w);
+      expect(ledger(w, { done: "failed read" }).length).toBeGreaterThan(0);
+      expect(JSON.stringify(ledger(w))).not.toContain(TOKEN);
+      expect(JSON.stringify(w.warnings)).not.toContain(TOKEN);
+      expect(JSON.stringify(await fleetStatus({ ...w.register, clock: w.clock }))).not.toContain(TOKEN);
+    }
   });
 
   it("drops a change whose URL lies outside the fleet", async () => {
@@ -434,6 +540,19 @@ describe("credentials (AC12)", () => {
     expect(w.adapters.github.reads).toEqual([]);
     const [status] = await fleetStatus({ ...w.register, clock: w.clock });
     expect(status).toMatchObject({ watched: false, notWatched: [{ code: "no-credential", text: expect.stringContaining("github.com/org/repo") }] });
+  });
+
+  it("keeps the fleet watched, and sends nothing, for a server error, a rate limit or a 403 that is not a refusal", async () => {
+    for (const error of [new HttpError("server", "GET /x answered 500", 500), new HttpError("rate-limit", "GET /x answered 429", 429, 60_000), new HttpError("forbidden", "GET /x answered 403", 403)]) {
+      const w = world();
+      await start(w, manifest({ inbox: [inboxRow(7)] }));
+      w.adapters.github.queue(error);
+      await poll(w);
+      expect(w.channel.sent).toEqual([]);
+      const [status] = await fleetStatus({ ...w.register, clock: w.clock });
+      expect(status).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
+      expect(w.store.getFleet(REPO_KEY)!.refused).toBeNull();
+    }
   });
 
   it("shows a refused token as not watched since, and sends the manager one wake naming the prefix", async () => {
