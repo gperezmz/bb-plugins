@@ -125,8 +125,8 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
     try {
       session = deps.http.session(resolved.credential, await deps.credentials.token(resolved.credential));
     } catch (error) {
+      // Why the fleet is not watched is already in `notWatched`, from `assessWatching`.
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
-      reading.notWatched.push({ code: "no-credential", text: `No token can be had for ${resolved.credential.prefix}` });
       continue;
     }
     let derived: Derived | null = null;
@@ -149,7 +149,7 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
     }
-    const requests = session.drainRequests();
+    const requests = session.drainRequests().map((request) => ({ ...request, path: redact(request.path, secrets()) }));
     const record: PollRecord = { at: now, role, requests, counted: requests.filter((r) => r.counted).length, ok: derived !== null };
     deps.store.recordPoll(repo, record);
     const expiry = session.expiresAt();

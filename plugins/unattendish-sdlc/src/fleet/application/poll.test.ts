@@ -574,6 +574,29 @@ describe("credentials (AC12)", () => {
 });
 
 describe("what status and the ledger report (AC11, AC13)", () => {
+  it("says a fleet is not watched when its credential gives no token, naming the prefix (AC13)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.credentials.token = async () => {
+      throw new Error("No token is set for github.com/org");
+    };
+    const [status] = await fleetStatus({ ...w.register, clock: w.clock });
+    expect(status).toMatchObject({ watched: false, notWatched: [{ code: "no-credential", text: expect.stringContaining("github.com/org") }] });
+    await poll(w);
+    expect(ledger(w, { done: "failed read" })).toHaveLength(1);
+    expect(w.adapters.github.reads).toEqual([]);
+  });
+
+  it("keeps a token out of the requests the ledger records for a poll (AC14)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.http.requestsPerRead.push({ method: "GET", path: `/${TOKEN}/repos/org/repo/issues`, status: 200, counted: true, at: "x" });
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+    await poll(w);
+    expect(JSON.stringify(ledger(w))).not.toContain(TOKEN);
+    expect(JSON.stringify(ledger(w))).toContain("[redacted]");
+  });
+
   it("lists the manager, interval, credential, requests this hour and unreadable rows", async () => {
     const w = world();
     await start(w, `${manifest({ inbox: [inboxRow(7)] })}\n## Blocked\n\n| Ref | Blocked on | Link |\n| --- | --- | --- |\n| nope | #2 | https://x |\n`);

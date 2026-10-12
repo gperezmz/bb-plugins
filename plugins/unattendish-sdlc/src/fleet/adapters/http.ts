@@ -4,6 +4,7 @@
 // a header or a query string.
 import { HttpError, type Http, type HttpRequest, type HttpResponse, type HttpSession, type RequestRecord, type ResolvedCredential } from "../application/ports";
 import type { ServiceKind } from "../domain/model";
+import { redact } from "../domain/redact";
 import { isLoopbackHost } from "./settings";
 
 const USER_AGENT = "bb-plugin-unattendish-sdlc";
@@ -55,7 +56,7 @@ const defaultHeaders = (service: ServiceKind): Record<string, string> => {
 };
 
 /** The method and path of a request, which is all an error may say about it. */
-const describe = (method: string, url: URL): string => `${method} ${url.pathname}`;
+const describe = (method: string, url: URL, token: string): string => `${method} ${redact(url.pathname, [token])}`;
 
 const retryAfter = (header: (name: string) => string | null, now: Date): number | null => {
   const seconds = header("retry-after");
@@ -183,7 +184,7 @@ class Session implements HttpSession {
           await this.sleep(250 * 2 ** attempt);
           continue;
         }
-        throw new HttpError("network", `${describe(request.method, url)} failed: no answer`);
+        throw new HttpError("network", `${describe(request.method, url, this.token)} failed: no answer`);
       }
       const header = (name: string) => response.headers.get(name);
       this.record(request.method, url, response.status, !(this.service === "github" && response.status === 304));
@@ -192,7 +193,7 @@ class Session implements HttpSession {
 
       if (response.status >= 300 && response.status < 400 && response.status !== 304) {
         const location = header("location");
-        if (location === null || request.method !== "GET" || redirects >= MAX_REDIRECTS) throw new HttpError("client", `${describe(request.method, url)} redirected`, response.status);
+        if (location === null || request.method !== "GET" || redirects >= MAX_REDIRECTS) throw new HttpError("client", `${describe(request.method, url, this.token)} redirected`, response.status);
         const target = new URL(location, url);
         this.checkTarget(request.method, target);
         url = target;
@@ -205,7 +206,7 @@ class Session implements HttpSession {
         try {
           json = await response.json();
         } catch {
-          throw new HttpError("server", `${describe(request.method, url)} answered a body that is not JSON`, response.status);
+          throw new HttpError("server", `${describe(request.method, url, this.token)} answered a body that is not JSON`, response.status);
         }
         const etag = header("etag");
         if (request.method === "GET" && etag !== null) this.remember(cacheKey, { etag, json });
@@ -219,14 +220,14 @@ class Session implements HttpSession {
           await this.sleep(wait);
           continue;
         }
-        throw new HttpError("rate-limit", `${describe(request.method, url)} was rate limited`, response.status, wait);
+        throw new HttpError("rate-limit", `${describe(request.method, url, this.token)} was rate limited`, response.status, wait);
       }
       if (response.status >= 500 && attempt < MAX_RETRIES) {
         await this.sleep(250 * 2 ** attempt);
         continue;
       }
       const kind = response.status === 401 ? "auth" : response.status === 403 ? "forbidden" : response.status === 404 ? "not-found" : response.status >= 500 ? "server" : "client";
-      throw new HttpError(kind, `${describe(request.method, url)} answered ${response.status}`, response.status);
+      throw new HttpError(kind, `${describe(request.method, url, this.token)} answered ${response.status}`, response.status);
     }
   }
 
@@ -248,7 +249,7 @@ class Session implements HttpSession {
   }
 
   private record(method: string, url: URL, status: number | null, counted: boolean): void {
-    this.requests.push({ method, path: url.pathname, status, counted, at: this.now().toISOString() });
+    this.requests.push({ method, path: redact(url.pathname, [this.token]), status, counted, at: this.now().toISOString() });
   }
 
   private remember(key: string, entry: CacheEntry): void {

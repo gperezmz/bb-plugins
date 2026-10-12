@@ -273,6 +273,14 @@ describe("HttpClient", () => {
       expect(session.drainRequests()).toEqual([]);
     });
 
+    it("keeps a token that is part of the path out of the records and the errors", async () => {
+      const { credential } = await serve((_, response) => json(response, {}, 500));
+      const session = client().session({ ...credential(), baseUrl: `${credential().baseUrl}/${TOKEN}` }, TOKEN);
+      const error = await session.request({ method: "GET", path: "/x" }).catch((e: unknown) => e as Error);
+      expect((error as Error).message).not.toContain(TOKEN);
+      expect(JSON.stringify(session.drainRequests())).not.toContain(TOKEN);
+    });
+
     it("reads a GitHub token's expiry from its header", async () => {
       const { credential } = await serve((_, response) => json(response, {}, 200, { "github-authentication-token-expiration": "2026-11-12 00:00:00 UTC" }));
       const session = client().session(credential(), TOKEN);

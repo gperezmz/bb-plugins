@@ -38,6 +38,16 @@ export const assessWatching = async (deps: { credentials: Credentials; manifests
     else notWatched.push({ code: "no-credential", text: `No credential is chosen for the tracker ${formatTracker(registration.tracker)}` });
   }
 
+  // A credential chosen for the fleet is no use without a token: a pasted one that was never pasted, or a login that is gone.
+  for (const resolved of [forge, tracker]) {
+    if (resolved === null) continue;
+    try {
+      await deps.credentials.token(resolved.credential);
+    } catch {
+      notWatched.push({ code: "no-credential", text: `No token can be had for ${resolved.credential.prefix}` });
+    }
+  }
+
   const service = forge?.source.role === "forge" ? forge.source.service : (defaultServiceOfHost(registration.repo.host) ?? "github");
   const watched = manifest.status === "ok" ? watchedSet(manifest.manifest, { repo: registration.repo, tracker: registration.tracker, forge: service }) : { items: [], outside: [] };
   return { manifest, watched, unreadableRows: manifest.status === "ok" ? manifest.manifest.unreadable : [], forge, tracker, notWatched };
