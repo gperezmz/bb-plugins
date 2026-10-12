@@ -268,7 +268,7 @@ fakes_read_only() {
 # none_in <text>: none of the harness's fake tokens is in the text.
 none_in() {
   local token
-  for token in ghp_harness_fake_token glpat-harness-fake-token lin_api_harness_fake_token harness-fake-token; do
+  for token in ghp_harness_fake_token ghp_harness_dashboard_token ghp_harness_rejected_token ghp_harness_other_login_token glpat-harness-fake-token lin_api_harness_fake_token harness-fake-token; do
     lacks "$1" "$token" || return 1
   done
 }
