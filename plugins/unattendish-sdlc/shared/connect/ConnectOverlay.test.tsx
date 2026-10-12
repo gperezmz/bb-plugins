@@ -207,7 +207,7 @@ describe("step 3: what was found", () => {
     });
   });
 
-  it("stops holding the token once the operator walks away from the confirmation", async () => {
+  it("sends nothing more once the operator closes the confirmation", async () => {
     fake.api.connect.mockResolvedValueOnce({ outcome: "confirm", login: "yuser", label: "GitHub · yuser", text: "Add?" });
     await verify();
     await screen.findByText("Add?");
