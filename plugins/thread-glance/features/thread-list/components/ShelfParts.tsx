@@ -61,7 +61,13 @@ function CleanButton() {
   );
 }
 
-/** A shelf's header: its icon and name, "Name (count)" while collapsed, Active's sort and Settled's Clean. */
+/**
+ * A shelf's header: its icon and name, "Name (count)" while collapsed, a faint
+ * rule from the chevron to Active's sort, Settled's Clean or the right edge,
+ * and those controls. The rule is part of the toggle, so a click on it opens
+ * or closes the shelf, and it takes only the space the name leaves, so it is
+ * gone before the name truncates.
+ */
 export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item: ShelfItem; gap: number; size: number }) {
   const commands = useCommands();
   const name = SHELF_NAMES[item.shelf];
@@ -78,6 +84,8 @@ export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item
         <Icon name={SHELF_ICONS[item.shelf]} aria-hidden className={cn("size-3.5 shrink-0", item.spinning && "animate-spin")} />
         <span className="min-w-0 truncate">{label}</span>
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
+        {/* The margin takes back the button's gap and the gradient draws it, so the name gets every pixel it gets today. */}
+        <span data-shelf-rule="" aria-hidden className="-ml-1.5 h-px min-w-0 flex-1 bg-[linear-gradient(to_right,transparent_6px,var(--tg-shelf-rule)_6px)]" />
       </button>
       {item.shelf === "active" && !item.collapsed ? <ActiveSortSelect /> : null}
       {item.shelf === "settled" ? <CleanButton /> : null}

@@ -16,6 +16,7 @@
   --tg-row-elsewhere: color-mix(in oklab, var(--foreground, #111) 4%, transparent);
   --tg-scene-stroke: #6b7280;
   --tg-sweep: color-mix(in oklab, var(--foreground, #111) 12%, transparent);
+  --tg-shelf-rule: color-mix(in oklab, var(--foreground, #111) 12%, transparent);
 }
 
 .dark {
@@ -29,6 +30,7 @@
   --tg-row-elsewhere: color-mix(in oklab, var(--foreground, #eee) 7%, transparent);
   --tg-scene-stroke: #9ca3af;
   --tg-sweep: color-mix(in oklab, var(--foreground, #eee) 18%, transparent);
+  --tg-shelf-rule: color-mix(in oklab, var(--foreground, #eee) 15%, transparent);
 }
 
 /* The list's scroller: no scrollbar, and the edges fade by up to 12px. */
