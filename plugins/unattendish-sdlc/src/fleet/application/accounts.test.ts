@@ -91,6 +91,43 @@ describe("a fleet that cannot be read (AC1)", () => {
     expect((await card(w, "github.com/acme/ghost")).halves[0]!.needs).toBeNull();
   });
 
+  it("writes nothing for a fleet unregistered, or a half given another credential, while its check waited on the service", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-yuser", "yuser");
+    owns(w, "tok-new", "yuser");
+    const yuser = await addLogin(w, github("tok-yuser", "acme"));
+    w.probe.unreadable.set("tok-yuser", new Map([["acme/ghost", "not-found"]]));
+    let answer!: () => void;
+    const held = new Promise<void>((resolve) => (answer = resolve));
+    const canRead = w.probe.canRead.bind(w.probe);
+    w.probe.canRead = async (...args) => {
+      await held;
+      return canRead(...args);
+    };
+    await register(w, "github.com/acme/ghost");
+    const unregistered = checkFleetAccess(w.register, "github.com/acme/ghost");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    w.store.removeFleet("github.com/acme/ghost");
+    answer();
+    await unregistered;
+    expect(w.accounts.accessProblems("github.com/acme/ghost")).toEqual([]);
+
+    await register(w, "github.com/acme/ghost");
+    let answerAgain!: () => void;
+    const heldAgain = new Promise<void>((resolve) => (answerAgain = resolve));
+    w.probe.canRead = async (...args) => {
+      await heldAgain;
+      return canRead(...args);
+    };
+    const replaced = checkFleetAccess(w.register, "github.com/acme/ghost");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    w.probe.canRead = canRead;
+    saved(await api(w).connect({ fleet: "github.com/acme/ghost", role: "forge", account: { id: yuser }, secret: { kind: "token", token: "tok-new" } }));
+    answerAgain();
+    await replaced;
+    expect(w.accounts.accessProblems("github.com/acme/ghost")).toEqual([]);
+  });
+
   it("toasts a fleet only as it comes to need an account, not again on every poll", async () => {
     const w = accountsWorld();
     await register(w, "github.com/acme/api");
@@ -189,6 +226,18 @@ describe("Connect (AC2)", () => {
       outcome: "wrong-login",
       text: "gh is signed in as yuser, not buser.",
       command: "gh auth login --hostname github.com",
+    });
+  });
+
+  it("says a gh that gives no token as it is, with the command for when it is not signed in", async () => {
+    const w = accountsWorld();
+    w.accounts.addAccount({ id: "b", service: "github", place: "github.com", login: "buser", name: "buser", via: "gh", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "bc", accountId: "b", kind: "gh", owner: null, expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, null);
+    w.accounts.assign("github.com", "b");
+    await register(w, "github.com/acme/api");
+    expect(await api(w).connect({ fleet: "github.com/acme/api", role: "forge", account: { id: "b" }, secret: { kind: "stored" } })).toEqual({
+      outcome: "unreachable",
+      text: "gh gave no token for buser on github.com. If gh is not signed in as buser, run gh auth login --hostname github.com.",
     });
   });
 

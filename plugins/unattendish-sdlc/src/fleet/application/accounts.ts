@@ -418,8 +418,11 @@ const tokenOf = async (deps: AccountsDeps, chosen: Chosen, input: ConnectInput, 
         return { token: await deps.credentials.token(resolvedOf(chosen.account, credential)) };
       } catch (error) {
         const text = error instanceof Error ? shown(error.message) : "no token could be had";
-        // A gh or glab login that gives no token of its own, or another user's, is put right by signing in again.
-        return { result: chosen.account.via === "token" ? { outcome: "unreachable", text } : { outcome: "wrong-login", text: `${text}.`, command: loginCommand(chosen.account) } };
+        // A gh or glab login signed in as another user is put right by signing in again; any other failure of the tool
+        // (not signed in, not installed, too slow) is said as it is, with the same command for the case it fits.
+        if (chosen.account.via === "token") return { result: { outcome: "unreachable", text } };
+        if (text.startsWith(`${chosen.account.via} is signed in as `)) return { result: { outcome: "wrong-login", text: `${text}.`, command: loginCommand(chosen.account) } };
+        return { result: { outcome: "unreachable", text: `${text}. If ${chosen.account.via} is not signed in as ${chosen.account.name}, run ${loginCommand(chosen.account)}.` } };
       }
     }
   }

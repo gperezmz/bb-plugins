@@ -7,7 +7,7 @@ import { uniqueRowIds } from "../domain/inbox";
 import type { AccountStore, Clock, Credentials, DashboardEvents, ManifestFiles, ServiceProbe, Store, ThreadDirectory } from "./ports";
 import { forgeHalf, trackerHalf } from "../domain/accounts";
 import { announceNeeds } from "./needs";
-import { accessRolesOf, assessWatching, refusedNotWatched, type Watching } from "./watching";
+import { accessRolesOf, assessWatching, lookupOf, refusedNotWatched, type Watching } from "./watching";
 
 export type RegisterOutcome =
   | { readonly outcome: "registered"; readonly watched: boolean; readonly notWatched: readonly NotWatched[] }
@@ -93,6 +93,12 @@ const checkAccess = async (deps: RegisterDeps, repo: string, registration: Regis
     if (target === null || token === null) continue;
     const readable = await deps.probe.canRead({ service: credential.service, baseUrl: credential.baseUrl, host: credential.host }, token, target);
     if (readable === "unreachable") continue;
+    // The answer is written only for the registration and the credential it was asked for: while the service answered,
+    // the fleet may have been unregistered or registered again, or Connect may have given the half another credential.
+    const held = deps.store.getFleet(repo);
+    if (held === null || held.registration.registeredAt !== registration.registeredAt || held.registration.managerThreadId !== registration.managerThreadId) return changed;
+    const current = lookupOf(deps.credentials, held.registration, half.role);
+    if (!current.found || current.credential.key !== credential.key) continue;
     const why = readable === "readable" ? null : readable;
     if (why === (half.access?.why ?? null)) continue;
     deps.accounts.setAccessProblem(repo, half.role, why === null ? null : { credentialId: credential.key, why, at: now });
