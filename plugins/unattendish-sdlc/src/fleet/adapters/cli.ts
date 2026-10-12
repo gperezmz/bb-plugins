@@ -63,7 +63,42 @@ const statusLines = (fleets: readonly FleetStatus[]): string => {
     .join("\n\n");
 };
 
-const ledgerLines = (entries: readonly LedgerEntry[]): string => {
+/**
+ * Most entries `fleet ledger` prints. bb refuses a command that prints more than 1 MiB, so the widest row, once
+ * `boundEntry` has bounded every field, times this must stay under it; `cli.test.ts` checks it with the widest rows
+ * there can be, in the text and in the JSON.
+ */
+export const MAX_LEDGER_LIMIT = 250;
+/** A printed string is cut to this many characters: the ledger holds them whole, the command line prints them bounded. */
+const FIELD_MAX = 200;
+/** A poll prints this many of its requests; the rest are counted in `requestsOmitted`. */
+const REQUESTS_SHOWN = 5;
+
+const clip = (text: string): string => (text.length <= FIELD_MAX ? text : `${text.slice(0, FIELD_MAX - 1)}…`);
+const clipOrNull = (text: string | null): string | null => (text === null ? null : clip(text));
+
+/** A ledger entry as the command line prints it: every string bounded, and a poll's requests cut to the first few. */
+export const boundEntry = (entry: LedgerEntry): LedgerEntry & { readonly requestsOmitted?: number } => {
+  switch (entry.type) {
+    case "change": {
+      const { row } = entry;
+      return { type: "change", row: { ...row, ref: clip(row.ref), url: clip(row.url), label: clipOrNull(row.label), actor: clipOrNull(row.actor), rule: clipOrNull(row.rule), key: clip(row.key) } };
+    }
+    case "wake":
+      return { type: "wake", wake: { ...entry.wake, threadId: clip(entry.wake.threadId), queuedMessageId: clipOrNull(entry.wake.queuedMessageId) } };
+    case "poll": {
+      const shown = entry.poll.requests.slice(0, REQUESTS_SHOWN).map((request) => ({ ...request, method: clip(request.method), path: clip(request.path) }));
+      const omitted = entry.poll.requests.length - shown.length;
+      return { type: "poll", poll: { ...entry.poll, requests: shown }, ...(omitted > 0 ? { requestsOmitted: omitted } : {}) };
+    }
+    case "failed read":
+      return { ...entry, ref: clipOrNull(entry.ref), reason: clip(entry.reason) };
+  }
+};
+
+type PrintedEntry = ReturnType<typeof boundEntry>;
+
+const ledgerLines = (entries: readonly PrintedEntry[]): string => {
   if (entries.length === 0) return "The ledger holds nothing for this.";
   return entries
     .map((entry) => {
@@ -77,7 +112,7 @@ const ledgerLines = (entries: readonly LedgerEntry[]): string => {
         case "wake":
           return `${entry.wake.queuedAt}  wake ${entry.wake.id} to ${entry.wake.threadId}, ${entry.wake.dispatchedAt === null ? "waiting in bb's queue" : `dispatched ${entry.wake.dispatchedAt}`}`;
         case "poll":
-          return `${entry.poll.at}  poll of the ${entry.poll.role}: ${entry.poll.requests.length} requests, ${entry.poll.counted} counted against the rate limit${entry.poll.ok ? "" : ", failed"}`;
+          return `${entry.poll.at}  poll of the ${entry.poll.role}: ${entry.poll.requests.length + (entry.requestsOmitted ?? 0)} requests, ${entry.poll.counted} counted against the rate limit${entry.poll.ok ? "" : ", failed"}`;
         case "failed read":
           return `${entry.at}  failed read of the ${entry.role}${entry.ref === null ? "" : ` ${entry.ref}`}: ${entry.reason}`;
       }
@@ -150,7 +185,7 @@ export function createFleetCli(app: FleetCliApp): PluginCliRegistration {
         options: {
           item: { type: "string", description: "Only this item: its reference (#163, ENG-212) or URL." },
           done: { type: "enum", values: DONE, description: "Only what was done: woke, echo, out-of-scope, held or failed-read." },
-          limit: { type: "integer", min: 1, max: 5000, default: 200, description: "At most this many entries, newest first." },
+          limit: { type: "integer", min: 1, max: MAX_LEDGER_LIMIT, default: 200, description: `At most this many entries, newest first; no more than ${MAX_LEDGER_LIMIT}, which fit bb's output limit. A string is cut to ${FIELD_MAX} characters and a poll lists its first ${REQUESTS_SHOWN} requests (its count is whole).` },
           ...printJson,
         },
         run({ options, positionals }) {
@@ -159,7 +194,8 @@ export function createFleetCli(app: FleetCliApp): PluginCliRegistration {
             ...(options.done === undefined ? {} : { done: options.done === "failed-read" ? "failed read" : options.done }),
             limit: options.limit,
           });
-          return { exitCode: 0, stdout: options.json ? json({ entries }) : ledgerLines(entries) };
+          const printed = entries.map(boundEntry);
+          return { exitCode: 0, stdout: options.json ? json({ entries: printed }) : ledgerLines(printed) };
         },
       }),
       "fleet interval": cliCommand({
