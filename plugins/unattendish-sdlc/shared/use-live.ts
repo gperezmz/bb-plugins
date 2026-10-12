@@ -13,7 +13,8 @@ export interface Live<T> {
   readonly data: T | null;
   /** Why the latest fetch failed; `data` keeps the last view that arrived. */
   readonly error: string | null;
-  refetch(): void;
+  /** Fetches now; settles once the view (or the failure) is held. */
+  refetch(): Promise<void>;
 }
 
 interface Held<T> {
@@ -33,7 +34,7 @@ export function useLive<T>(load: () => Promise<T>, deps: readonly unknown[], ena
 
   const refetch = useCallback(() => {
     const mine = ++latest.current;
-    loadRef.current().then(
+    return loadRef.current().then(
       (data) => {
         if (mine === latest.current) setHeld({ data, error: null });
       },
@@ -46,8 +47,8 @@ export function useLive<T>(load: () => Promise<T>, deps: readonly unknown[], ena
   useEffect(() => {
     if (!enabled) return;
     setHeld({ data: null, error: null });
-    refetch();
-    const timer = setInterval(refetch, FALLBACK_POLL_MS);
+    void refetch();
+    const timer = setInterval(() => void refetch(), FALLBACK_POLL_MS);
     return () => {
       clearInterval(timer);
       latest.current++;
@@ -56,13 +57,13 @@ export function useLive<T>(load: () => Promise<T>, deps: readonly unknown[], ena
   }, [enabled, refetch, ...deps]);
 
   useRealtime(BOARD_CHANGED, () => {
-    if (enabled) refetch();
+    if (enabled) void refetch();
   });
 
   const connection = useRealtimeConnectionState();
   const previous = useRef(connection);
   useEffect(() => {
-    if (previous.current === "reconnecting" && connection === "connected" && enabled) refetch();
+    if (previous.current === "reconnecting" && connection === "connected" && enabled) void refetch();
     previous.current = connection;
   }, [connection, enabled, refetch]);
 

@@ -59,7 +59,7 @@ export function inboxRow(over: Partial<InboxRowView> = {}): InboxRowView {
 }
 
 export function unreadableInboxRow(over: Partial<UnreadableInboxRowView> = {}): UnreadableInboxRowView {
-  return { fleet: "acme/web", managerThreadId: "thr_acme", line: 9, reason: "unreadable: Waits for", ...over };
+  return { fleet: "acme/web", managerThreadId: "thr_acme", line: 9, reason: "the table has no \"Waits for\" column", ...over };
 }
 
 export function landedRow(over: Partial<LandedRowView> = {}): LandedRowView {
