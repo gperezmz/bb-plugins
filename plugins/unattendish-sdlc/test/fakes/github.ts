@@ -116,6 +116,11 @@ export interface FakeGithubState {
    * every token is `operator`'s.
    */
   logins?: Record<string, string>;
+  /**
+   * What `GET /user` says of a token as sent besides its login: `classic` adds the `X-OAuth-Scopes` header only a classic
+   * token's answers carry, and `expiration` is sent as `GitHub-Authentication-Token-Expiration`, as `2026-11-12 00:00:00 UTC`.
+   */
+  tokens?: Record<string, { classic?: boolean; expiration?: string }>;
 }
 
 const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] });
@@ -129,6 +134,7 @@ const normalise = (state: Partial<FakeGithubState> | undefined): FakeGithubState
     renames: state?.renames ?? {},
     ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }),
     ...(state?.logins === undefined ? {} : { logins: state.logins }),
+    ...(state?.tokens === undefined ? {} : { tokens: state.tokens }),
   };
 };
 
@@ -229,7 +235,13 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
       const token = (request.headers.authorization ?? "").replace(/^Bearer /, "");
       const login = state.logins === undefined ? "operator" : state.logins[token];
       if (login === undefined) send(response, { message: "Bad credentials" }, 401);
-      else send(response, userOf(login));
+      else {
+        const info = state.tokens?.[token];
+        const headers: Record<string, string> = {};
+        if (info?.classic === true) headers["x-oauth-scopes"] = "repo";
+        if (info?.expiration !== undefined) headers["github-authentication-token-expiration"] = info.expiration;
+        send(response, userOf(login), 200, headers);
+      }
       return true;
     }
     const byId = url.pathname.indexOf("/repositories/");

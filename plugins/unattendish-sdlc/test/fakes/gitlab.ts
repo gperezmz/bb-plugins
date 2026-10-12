@@ -95,6 +95,11 @@ export interface FakeGitlabState {
   projects: Record<string, FakeProject>;
   /** The answer of `GET /personal_access_tokens/self`; null answers 404, as a token of another type does. */
   token?: { expires_at: string | null } | null;
+  /**
+   * Whose each token is, by the token as sent: `GET /user` answers its username, and 401 for a token not listed.
+   * Unset, every token is `operator`'s.
+   */
+  logins?: Record<string, string>;
   /** The most items per page the service gives whatever `per_page` asks, up to GitLab's 100. */
   maxPerPage?: number;
   /** Requests whose path and query string contain `match` answer `status`. */
@@ -120,6 +125,7 @@ const stripped = (value: Record<string, unknown>, omit: string[] | undefined): R
 const normalise = (state: Partial<FakeGitlabState> | undefined): FakeGitlabState => ({
   projects: state?.projects ?? {},
   token: state?.token ?? null,
+  ...(state?.logins === undefined ? {} : { logins: state.logins }),
   maxPerPage: state?.maxPerPage ?? 100,
   faults: state?.faults ?? [],
   renames: state?.renames ?? {},
@@ -312,6 +318,13 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
         return true;
       };
 
+      if (segments[0] === "user" && segments.length === 1) {
+        const token = (request.headers.authorization ?? "").replace(/^Bearer /, "");
+        const username = state.logins === undefined ? "operator" : state.logins[token];
+        if (username === undefined) json(response, { message: "401 Unauthorized" }, 401);
+        else ok(request, response, userJson(username));
+        return true;
+      }
       if (segments[0] === "personal_access_tokens" && segments[1] === "self") {
         if (state.token === null || state.token === undefined) return notFound();
         ok(request, response, { id: 1, name: "fleet", revoked: false, scopes: ["read_api"], active: true, expires_at: state.token.expires_at });
@@ -328,6 +341,10 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
       const project = state.projects[path];
       if (project === undefined) return notFound();
       const kind = segments[2];
+      if (kind === undefined) {
+        ok(request, response, { id: 7, path_with_namespace: path, name: path.split("/").pop() });
+        return true;
+      }
       const isMergeRequest = kind === "merge_requests";
       if (kind !== "issues" && !isMergeRequest) return false;
       const collection: FakeItem[] = isMergeRequest ? project.mergeRequests : project.issues;
