@@ -8,7 +8,7 @@ flowchart TB
   due -->|no| tick
   due -->|yes| watch["Read the manifest and the credentials,<br/>and work out the watched set"]
   watch --> read["Read each source since its cursor, with GET only:<br/>the forge, then the tracker if it is a service of its own"]
-  read -->|"no read succeeds, 3 polls in a row (a 401 at once)"| refused["Not watched: one wake, once"]
+  read -->|"every read of a source fails, 3 polls in a row (a 401 at once)"| refused["Not watched: one wake, once"]
   read --> sort{"Sort each change"}
   sort -->|"marker, in progress or needs input label,<br/>or echo actor"| echo["Echo: kept in the ledger, not sent"]
   sort -->|"an updated item outside the watched set"| scope["Out of scope: kept in the ledger, not sent"]
@@ -38,7 +38,9 @@ A poll reads only the [watched set](../reference/unattendish-fleet-contract.md):
 - **Checks wake the manager once**, when a pull request's whole set reaches a final state, all passed or at least one failed, and never on a pending or running transition. A push to the branch wakes nothing by itself.
 - **A GitLab review is read two ways.** An approval is an event with a time. A reviewer's `changes requested` or `commented` state has none, so the plugin keeps each reviewer's state and wakes the manager when one differs from the last it saw. A merge request first seen wakes nothing for the states it already has.
 
-A failed read, or one that lacks a field a change depends on, produces no change and holds its cursor's read window: the next poll reads again from where the failed one began, so a failed read never lets a cursor skip a change, and the ledger records the failed read. This is why a half-failed read cannot report a spec taken back. The window is held for at most 7 days while the rest of the source reads, so one item that never reads cannot make every later poll read more. It is held with no limit while nothing in the source reads, and while no manager holds the fleet. An item that can never be read again, one that no longer exists or has moved out of the fleet, holds nothing.
+A failed read, or one that lacks a field a change depends on, produces no change and holds its cursor's read window: the next poll reads again from where the failed one began, so a failed read never lets a cursor skip a change, and the ledger records the failed read. This is why a half-failed read cannot report a spec taken back. The window is held for at most 7 days only where one item keeps failing while the listing and every other item read, so that one item that never reads cannot make every later poll read more. In every other case it is held with no limit: when the listing itself failed, when nothing in the source read, when the read was the one at the end of the manager's turn, and while no manager holds the fleet. An item that can never be read again, one that no longer exists or has moved out of the fleet, holds nothing.
+
+- **Lists longer than one page are read to the end.** GitHub names the next page in a `Link` header, and the plugin follows it where it stays on the credential's host and under the repository, whether GitHub writes it as `/repos/{owner}/{repo}/…` or as `/repositories/{id}/…`. Any other next link is outside the fleet and is not followed.
 
 ## Echoes are declared, not guessed
 
@@ -70,15 +72,19 @@ A [Credential](../reference/unattendish-settings.md#credentials) is chosen for a
 
 Credentials are entered in the plugin's settings, never through a command an agent might run, so no token reaches a transcript. A token appears in no wake, ledger entry, log line or error message.
 
-A fleet whose source no read succeeds on shows as not watched, under `credential-refused`, and the plugin sends the manager one wake saying so and naming the prefix, however many polls follow. There are three causes, each worded as such in the status and in the wake:
+A fleet whose source no read succeeds on shows as not watched, under `credential-refused`, and the plugin sends the manager one wake saying so and naming the prefix, however many polls follow. There are five causes, each worded as such in the status and in the wake, and all `credential-refused` in the contract's codes, since the contract has no code for an unreachable service:
 
 | The service | The fleet shows not watched | Text |
 |---|---|---|
 | Answers 401, or on Linear says the key is revoked | At once | `refused by the service` |
 | Answers 403 to every read | After 3 polls in a row | `forbidden to read what the fleet needs (403)` |
-| Gives no answer, or a 5xx, to every read | After 3 polls in a row | `the service did not answer` |
+| Gives no answer, answers 5xx, or is cut off at the poll's deadline, on every read | After 3 polls in a row | `the service did not answer` |
+| Answers 404 to the listing, and every other read fails too | After 3 polls in a row | `could not find what the fleet needs (404)` |
+| Answers every read from outside the fleet's repository, project or team | After 3 polls in a row | `everything the fleet reads … has moved outside its repository, project or team` |
 
-A 403 to a single read is not a refusal: the token is accepted but may not read that one thing, such as a pull request's checks, so that read fails or yields no checks and the rest is still read. The 3 polls keep a service's bad minute from reading as a refused credential. The fleet is watched again on the first poll in which a read succeeds, and the manager is sent nothing for it. A rate limit makes the plugin leave that credential alone until the service says it may be used again. Linear answers a revoked key and a rate limit with HTTP 400 and a GraphQL error, so the plugin reads the error codes of an answer and not its status alone. [Why a fleet shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) lists the reasons.
+A 404 is how GitHub answers a private repository the token cannot see, and how Jira answers a token without permission, so a source that finds nothing reads the same as one that is forbidden. A repository that was renamed or transferred is the fifth cause: every read leaves the repository, and none is followed. A single failed read is not a refusal. A 403 to one read means the token is accepted but may not read that one thing, such as a pull request's checks, so that read fails or yields no checks and the rest is still read. A 404 on one item while the listing and the rest read means that item is gone, and stays one failed read in the ledger.
+
+The 3 polls keep a service's bad minute from reading as a refused credential. The fleet shows not watched since its **first** unreadable poll of the streak, not the third, and the cursor is held the whole time. It is watched again on the first poll in which a read succeeds, and the manager is sent nothing for it. A rate limit makes the plugin leave that credential alone until the service says it may be used again. A poll that was only told to wait neither ends an outage, nor counts as one of the 3, nor sends the manager the wake again. Linear answers a revoked key and a rate limit with HTTP 400 and a GraphQL error, so the plugin reads the error codes of an answer and not its status alone. [Why a fleet shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) lists the reasons.
 
 ## Why a wake carries no text written on the service
 
