@@ -100,6 +100,10 @@ _Avoid_: Accent bar, colour bar
 The uppercase first letter of a project's name, on a tile, drawn where the project has no icon or its icon fails to load.
 _Avoid_: Initial, avatar
 
+**Shelf rule**:
+The faint line across a shelf's header from its chevron to its controls or right edge. It is part of the header's toggle and takes only the width the shelf's name leaves.
+_Avoid_: Divider, hairline
+
 **Full card**:
 A row of three lines: the project's icon and name with the status slot, the title, and the branch with the children chip, pull request badge and harness logo. Used on Pinned, Active and Inactive, and for a working thread unless it is folded.
 _Avoid_: Big row, expanded row

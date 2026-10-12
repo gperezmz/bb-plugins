@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The shelf icons: bb's by name, and the four bb lacks registered with it.
+// The shelf icons by name, and the icons bb lacks, registered with it.
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
@@ -17,6 +17,12 @@ describe("the shelf icons", () => {
       "thread-glance-car",
       "thread-glance-meditation",
     ]);
+  });
+
+  it("include every icon the list names that bb lacks, Clean's broom among them", () => {
+    const shelves = SHELVES.map((shelf) => SHELF_ICONS[shelf]).filter((name) => name.startsWith("thread-glance-"));
+    const named = [...shelves, "thread-glance-ports", "thread-glance-clean"];
+    for (const name of named) expect(Object.keys(EXTRA_ICONS), name).toContain(name);
   });
 
   it("draw as sized outlines in the current colour", () => {

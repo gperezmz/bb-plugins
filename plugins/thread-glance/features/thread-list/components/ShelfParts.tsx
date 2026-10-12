@@ -43,7 +43,7 @@ function ActiveSortSelect() {
   );
 }
 
-/** Settled's Clean button, which opens the dialog that closes the terminals and ports of settled threads. Shown while the shelf is collapsed too. */
+/** Settled's Clean button, a broom, which opens the dialog that closes the terminals and ports of settled threads. Shown while the shelf is collapsed too. */
 function CleanButton() {
   const commands = useCommands();
   return (
@@ -53,15 +53,21 @@ function CleanButton() {
         data-no-drag=""
         aria-label={CLEAN_BUTTON_LABEL}
         onClick={() => commands.openClean()}
-        className="h-6 shrink-0 rounded-md px-2 text-xs text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
-        Clean
+        <Icon name="thread-glance-clean" aria-hidden className="size-3.5" />
       </button>
     </Tip>
   );
 }
 
-/** A shelf's header: its icon and name, "Name (count)" while collapsed, Active's sort and Settled's Clean. */
+/**
+ * A shelf's header: its icon and name, "Name (count)" while collapsed, a faint
+ * rule from the chevron to Active's sort, Settled's Clean or the right edge,
+ * and those controls. The rule is part of the toggle, so a click on it opens
+ * or closes the shelf, and it takes only the space the name leaves, so it is
+ * gone before the name truncates.
+ */
 export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item: ShelfItem; gap: number; size: number }) {
   const commands = useCommands();
   const name = SHELF_NAMES[item.shelf];
@@ -78,6 +84,8 @@ export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item
         <Icon name={SHELF_ICONS[item.shelf]} aria-hidden className={cn("size-3.5 shrink-0", item.spinning && "animate-spin")} />
         <span className="min-w-0 truncate">{label}</span>
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
+        {/* The negative margin cancels the toggle's gap and the gradient's transparent 6 px redraws it, so the rule takes only the width the name leaves. */}
+        <span data-shelf-rule="" aria-hidden className="-ml-1.5 h-px min-w-0 flex-1 bg-[linear-gradient(to_right,transparent_6px,var(--tg-shelf-rule)_6px)]" />
       </button>
       {item.shelf === "active" && !item.collapsed ? <ActiveSortSelect /> : null}
       {item.shelf === "settled" ? <CleanButton /> : null}

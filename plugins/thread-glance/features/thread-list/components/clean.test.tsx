@@ -49,11 +49,12 @@ const press = async (name: string | RegExp) => {
 };
 
 describe("AC8: the Clean button", () => {
-  it("is on the Settled header while the shelf is collapsed, with its label and tooltip", async () => {
+  it("is a broom on the Settled header while the shelf is collapsed, with its label and tooltip", async () => {
     await mount({ threads, server: { rows } });
     expect(screen.getByRole("button", { name: "Settled (2)" }).getAttribute("aria-expanded")).toBe("false");
     const button = cleanButton();
-    expect(button.textContent).toBe("Clean");
+    expect(button.textContent).toBe("");
+    expect(button.querySelector("[data-icon=thread-glance-clean]")).not.toBeNull();
     await act(async () => void fireEvent.focus(button));
     expect((await screen.findAllByText("Close terminals and ports of settled threads (threads stay in Settled)")).length).toBeGreaterThan(0);
   });

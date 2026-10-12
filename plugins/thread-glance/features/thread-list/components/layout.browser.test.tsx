@@ -1,13 +1,14 @@
 /// <reference types="vite/client" />
 // The list in Chromium, where layout is real: Dock shelves to the bottom, the
-// windowed rows with their spacers, and the edges' fade.
+// windowed rows with their spacers, the edges' fade, and the shelf headers'
+// rule and Clean button.
 import "../testing/browser.css";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { parkedRow, snoozedRow } from "@/shared/lifecycle";
+import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
 import { makeThread, PROJECTS } from "@/testing/fixtures";
@@ -236,5 +237,141 @@ describe("a card takes the pointer", () => {
       const button = [...card("full").querySelectorAll<HTMLElement>(`button[aria-label^="${label}"]`)].find((el) => el.getBoundingClientRect().width > 0)!;
       expect(button.contains(document.elementFromPoint(...centre(button))), label).toBe(true);
     }
+  });
+});
+
+describe("the shelf headers", () => {
+  const threads = [
+    makeThread({ id: "p", title: "Pinned one", ...at(4), isPinned: true, pinnedAt: NOW }),
+    makeThread({ id: "a", title: "Active one", ...at(5) }),
+    makeThread({ id: "w", title: "Working one", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
+    makeThread({ id: "i", title: "Inactive one", ...old }),
+    makeThread({ id: "s1", title: "Snoozed one", ...old }),
+    makeThread({ id: "k1", title: "Parked one", ...old }),
+    makeThread({ id: "d1", title: "Settled one", ...old }),
+  ];
+  const rows = { s1: snoozedRow(NOW + 3_600_000, NOW - 1000), k1: parkedRow(NOW - 1000), d1: settledRow(NOW - 1000, "manual") };
+  const headers = () => [...document.querySelectorAll<HTMLElement>("[data-shelf]")];
+  const box = (el: Element) => el.getBoundingClientRect();
+  const parts = (header: HTMLElement) => {
+    const toggle = header.querySelector<HTMLElement>("button[aria-expanded]")!;
+    return {
+      toggle,
+      name: toggle.querySelector<HTMLElement>("span.truncate")!,
+      chevron: toggle.querySelector<HTMLElement>("[data-icon=ChevronRight]")!,
+      rule: toggle.querySelector<HTMLElement>("[data-shelf-rule]")!,
+      control: header.querySelector<HTMLElement>("select, button[aria-label^='Close terminals']"),
+    };
+  };
+
+  /** Each header shows its rule from just after the chevron to its control, or the header's right edge. */
+  function expectRules() {
+    expect(headers().map((header) => header.dataset.shelf)).toEqual(["pinned", "active", "working", "inactive", "snoozed", "parked", "settled"]);
+    for (const header of headers()) {
+      const { chevron, rule, control } = parts(header);
+      const shelf = header.dataset.shelf;
+      expect(getComputedStyle(rule).backgroundImage, shelf).toContain("linear-gradient");
+      expect(box(rule).width, shelf).toBeGreaterThan(40);
+      expect(box(rule).left, shelf).toBeGreaterThanOrEqual(box(chevron).right - 0.5);
+      expect(box(rule).left, shelf).toBeLessThanOrEqual(box(chevron).right + 0.5);
+      if (control === null) {
+        expect(box(header).right - box(rule).right, shelf).toBeLessThanOrEqual(8.5);
+      } else {
+        expect(box(rule).right, shelf).toBeLessThan(box(control).left);
+        expect(box(control).left - box(rule).right, shelf).toBeLessThanOrEqual(8.5);
+      }
+      const ruleMiddle = box(rule).top + box(rule).height / 2;
+      expect(Math.abs(ruleMiddle - (box(chevron).top + box(chevron).height / 2)), shelf).toBeLessThanOrEqual(1);
+    }
+  }
+
+  it("each draw a rule from the chevron to the controls or the right edge, open or collapsed", async () => {
+    await render(threads, { rows, settings: { workingShelf: true } });
+    expectRules();
+    for (const name of ["Inactive (1)", "Snoozed (1)", "Parked (1)", "Settled (1)"]) screen.getByRole("button", { name }).click();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Settled" }).getAttribute("aria-expanded")).toBe("true"));
+    await frames();
+    expectRules();
+  });
+
+  it("each draw their rule with the bottom shelves docked", async () => {
+    await render(threads, { rows, settings: { workingShelf: true, dockShelves: true } });
+    expect(document.querySelector('[data-scroller="lower"]')).not.toBeNull();
+    expectRules();
+  });
+
+  it("end Active's rule before its sort control, whichever sort it shows", async () => {
+    await render(threads, { rows, settings: { workingShelf: true } });
+    const select = document.querySelector<HTMLSelectElement>('select[aria-label="Sort Active"]')!;
+    for (const option of [...select.options].map((candidate) => candidate.value)) {
+      await userEvent.selectOptions(select, option);
+      await frames();
+      const { rule, control } = parts(document.querySelector<HTMLElement>('[data-shelf="active"]')!);
+      expect(control, option).toBe(select);
+      expect(box(rule).width, option).toBeGreaterThan(40);
+      expect(box(rule).right, option).toBeLessThan(box(select).left);
+    }
+  });
+
+  it("are as tall as the heights model says, at both densities, and nothing overlaps", async () => {
+    for (const compact of [false, true]) {
+      const heights = heightsFor(compact);
+      await render(threads, { rows, settings: { workingShelf: true } }, { isCompactViewport: compact });
+      const list = headers();
+      for (const header of list) {
+        // The first header of the top and of the bottom group has no gap above it.
+        const gap = parseFloat(header.style.paddingTop);
+        expect([0, heights.shelfGap], header.dataset.shelf).toContain(gap);
+        expect(box(header).height, `${header.dataset.shelf} ${compact}`).toBe(heights.shelfHeader + gap);
+      }
+      const items = [...document.querySelectorAll<HTMLElement>('[data-scroller="list"] [data-shelf], [data-scroller="list"] [data-row-id]')];
+      for (let index = 1; index < items.length; index++) expect(box(items[index]!).top).toBeGreaterThanOrEqual(box(items[index - 1]!).bottom - 0.5);
+      cleanup();
+    }
+  });
+
+  it("shrink the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
+    await render(threads, { rows, settings: { workingShelf: true } });
+    for (let width = 200; width >= 70; width -= 5) {
+      await page.viewport(width, 600);
+      await frames();
+      for (const header of headers()) {
+        const { name, rule } = parts(header);
+        const where = `${header.dataset.shelf} at ${width}px`;
+        const truncated = name.scrollWidth > name.clientWidth;
+        if (truncated) expect(box(rule).width, where).toBe(0);
+        const withRule = box(name).width;
+        rule.style.display = "none";
+        const without = box(name).width;
+        rule.style.display = "";
+        expect(withRule, where).toBe(without);
+      }
+    }
+  });
+
+  it("open or close their shelf on a click along the rule", async () => {
+    await render(threads, { rows, settings: { workingShelf: true } });
+    for (const shelf of ["active", "parked"]) {
+      const header = () => document.querySelector<HTMLElement>(`[data-shelf="${shelf}"]`)!;
+      const before = parts(header()).toggle.getAttribute("aria-expanded");
+      const { rule } = parts(header());
+      const hit = document.elementFromPoint(box(rule).left + box(rule).width * 0.75, box(rule).top);
+      expect(hit?.closest("button[aria-expanded]"), shelf).toBe(parts(header()).toggle);
+      await userEvent.click(rule, { force: true });
+      await waitFor(() => expect(parts(header()).toggle.getAttribute("aria-expanded"), shelf).not.toBe(before));
+    }
+  });
+
+  it("show Clean as a broom at least as large as the header's other controls and 24 px square", async () => {
+    await render(threads, { rows, settings: { workingShelf: true } });
+    const clean = parts(document.querySelector<HTMLElement>('[data-shelf="settled"]')!).control!;
+    const select = document.querySelector<HTMLElement>('select[aria-label="Sort Active"]')!;
+    expect(clean.textContent).toBe("");
+    expect(clean.querySelector("[data-icon=thread-glance-clean]")).not.toBeNull();
+    expect(box(clean).width).toBeGreaterThanOrEqual(24);
+    expect(box(clean).height).toBeGreaterThanOrEqual(24);
+    expect(box(clean).height).toBeGreaterThanOrEqual(box(select).height);
+    await userEvent.click(clean);
+    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
   });
 });

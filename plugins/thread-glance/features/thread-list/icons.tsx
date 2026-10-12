@@ -1,9 +1,10 @@
-// The icons the list draws, by name. bb draws most of them; the five it lacks
-// (Pulse, PauseCircle, Car, Meditation and the port indicator's plug) come
-// from Hugeicons' free set, the set bb is built on, and are registered with bb
-// under namespaced names so `experimental_Icon` draws every icon the same way.
+// The icons the list draws, by name. bb draws most of them; the six it lacks
+// (Pulse, PauseCircle, Car, Meditation, the port indicator's plug and Clean's
+// broom) come from Hugeicons' free set, the set bb is built on, and are
+// registered with bb under namespaced names so `experimental_Icon` draws every
+// icon the same way.
 import { createElement, type ComponentType } from "react";
-import { Car01Icon, PauseCircleIcon, PlugSocketIcon, Pulse01Icon, Yoga01Icon } from "@hugeicons/core-free-icons";
+import { Car01Icon, CleanIcon, PauseCircleIcon, PlugSocketIcon, Pulse01Icon, Yoga01Icon } from "@hugeicons/core-free-icons";
 import type { Shelf } from "@/shared/lifecycle";
 
 /** Hugeicons' icon data: tags with their attributes. */
@@ -27,6 +28,7 @@ export const EXTRA_ICONS: Readonly<Record<string, ComponentType<{ className?: st
   // Hugeicons' free set has no Meditation; its seated-pose Yoga icon stands for it.
   "thread-glance-meditation": drawing(Yoga01Icon as IconData),
   "thread-glance-ports": drawing(PlugSocketIcon as IconData),
+  "thread-glance-clean": drawing(CleanIcon as IconData),
 };
 
 /** The icon of each shelf's header. */
