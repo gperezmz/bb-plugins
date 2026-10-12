@@ -1,6 +1,6 @@
 import { createFakeSdk, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BbManagerChannel, BbThreadDirectory, httpStatusOf, SDK_TIMEOUT_MS } from "./bb-threads";
+import { BbManagerChannel, BbThreadDirectory, BbThreadRepositories, httpStatusOf, SDK_TIMEOUT_MS } from "./bb-threads";
 
 type Overrides = NonNullable<Parameters<typeof createFakeSdk>[0]["overrides"]>;
 
@@ -49,6 +49,50 @@ describe("BbThreadDirectory", () => {
     const { sdk, harness } = fake({ threads: { get: async () => makeThreadResponse() } });
     await new BbThreadDirectory(sdk).state("thr_9");
     expect(harness.callsTo("threads.get")).toEqual([[{ threadId: "thr_9" }]]);
+  });
+});
+
+describe("BbThreadDirectory.standing", () => {
+  const standing = async (get: () => unknown) => new BbThreadDirectory(fake({ threads: { get } }).sdk).standing("thr_1");
+  const live = (status: "active" | "idle" | "error" | "pending" | "starting" | "stopping") => makeThreadResponse({ archivedAt: null, deletedAt: null, status, updatedAt: Date.UTC(2026, 9, 12, 9, 30) });
+
+  it("is working while bb says the thread is active, starting, pending or stopping, since the time bb last changed it", async () => {
+    for (const status of ["active", "starting", "pending", "stopping"] as const) {
+      expect(await standing(async () => live(status))).toEqual({ state: "live", busy: true, since: "2026-10-12T09:30:00.000Z" });
+    }
+  });
+
+  it("is idle while bb says so, and after an error", async () => {
+    expect(await standing(async () => live("idle"))).toEqual({ state: "live", busy: false, since: "2026-10-12T09:30:00.000Z" });
+    expect(await standing(async () => live("error"))).toMatchObject({ busy: false });
+  });
+
+  it("is archived or gone as state says, with nothing else", async () => {
+    expect(await standing(async () => makeThreadResponse({ archivedAt: 1, deletedAt: null }))).toEqual({ state: "archived" });
+    expect(await standing(async () => makeThreadResponse({ archivedAt: null, deletedAt: 2 }))).toEqual({ state: "gone" });
+    expect(await standing(async () => { throw httpError(404); })).toEqual({ state: "gone" });
+  });
+
+  it("passes any other failure on", async () => {
+    await expect(standing(async () => { throw httpError(502); })).rejects.toThrow("HTTP 502");
+  });
+});
+
+describe("BbThreadRepositories", () => {
+  it("gives the git remote of the thread's project", async () => {
+    const { sdk, harness } = fake({
+      threads: { get: async () => makeThreadResponse({ projectId: "proj_7" }) },
+      projects: { get: async () => ({ gitRemoteUrl: "git@github.com:org/repo.git" }) },
+    });
+    expect(await new BbThreadRepositories(sdk).remoteOf("thr_1")).toBe("git@github.com:org/repo.git");
+    expect(harness.callsTo("projects.get")).toEqual([[{ projectId: "proj_7" }]]);
+  });
+
+  it("gives none for a project without a remote, and for any failure", async () => {
+    const none = fake({ threads: { get: async () => makeThreadResponse() }, projects: { get: async () => ({ gitRemoteUrl: null }) } });
+    expect(await new BbThreadRepositories(none.sdk).remoteOf("thr_1")).toBeNull();
+    const failing = fake({ threads: { get: async () => { throw httpError(404); } } });
+    expect(await new BbThreadRepositories(failing.sdk).remoteOf("thr_1")).toBeNull();
   });
 });
 
