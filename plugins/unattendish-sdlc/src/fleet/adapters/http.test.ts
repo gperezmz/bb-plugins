@@ -1,0 +1,260 @@
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { afterEach, describe, expect, it } from "vitest";
+import { HttpError, type ResolvedCredential } from "../application/ports";
+import { graphqlWrites, HttpClient } from "./http";
+
+const TOKEN = "ghp_secretsecretsecret";
+
+interface Seen {
+  method: string;
+  url: string;
+  headers: IncomingMessage["headers"];
+  body: string;
+}
+
+let server: Server | undefined;
+afterEach(() => server?.close());
+
+const serve = async (handler: (request: Seen, response: ServerResponse) => void) => {
+  const seen: Seen[] = [];
+  server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const entry = { method: request.method ?? "", url: request.url ?? "", headers: request.headers, body: Buffer.concat(chunks).toString() };
+      seen.push(entry);
+      handler(entry, response);
+    });
+  });
+  await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  const credential = (service: ResolvedCredential["service"] = "github"): ResolvedCredential => ({
+    prefix: "github.com/org",
+    service,
+    auth: "token",
+    baseUrl: `http://127.0.0.1:${port}/api`,
+    host: "127.0.0.1",
+  });
+  return { seen, port, credential };
+};
+
+const client = (extra: { fetch?: typeof fetch } = {}) => new HttpClient({ sleep: async () => undefined, ...extra });
+const json = (response: ServerResponse, body: unknown, status = 200, headers: Record<string, string> = {}) => {
+  response.writeHead(status, { "content-type": "application/json", ...headers });
+  response.end(JSON.stringify(body));
+};
+
+describe("HttpClient", () => {
+  it("sends the token to the credential's host as a bearer, with the service's accept header", async () => {
+    const { seen, credential } = await serve((_, response) => json(response, { ok: true }));
+    const session = client().session(credential(), TOKEN);
+    await session.request({ method: "GET", path: "/issues/1", query: { state: "all" } });
+    expect(seen[0]!.url).toBe("/api/issues/1?state=all");
+    expect(seen[0]!.headers.authorization).toBe(`Bearer ${TOKEN}`);
+    expect(seen[0]!.headers.accept).toBe("application/vnd.github+json");
+  });
+
+  it("sends a Linear key as is and a Jira email:token as Basic", async () => {
+    const { seen, credential } = await serve((_, response) => json(response, {}));
+    await client().session(credential("linear"), "lin_api_x").request({ method: "GET", path: "/" });
+    await client().session(credential("jira"), "me@example.com:tok").request({ method: "GET", path: "/" });
+    expect(seen[0]!.headers.authorization).toBe("lin_api_x");
+    expect(seen[1]!.headers.authorization).toBe(`Basic ${Buffer.from("me@example.com:tok").toString("base64")}`);
+  });
+
+  it("refuses an absolute URL on another host before any request leaves", async () => {
+    const { seen, credential } = await serve((_, response) => json(response, {}));
+    const session = client().session(credential(), TOKEN);
+    await expect(session.request({ method: "GET", path: "https://example.net/x" })).rejects.toMatchObject({ kind: "outside-host" });
+    expect(seen).toHaveLength(0);
+  });
+
+  it("does not follow a redirect to another host, and does not send the token there", async () => {
+    const { seen, credential } = await serve((_, response) => {
+      response.writeHead(302, { location: "http://localhost:1/x" });
+      response.end();
+    });
+    const session = client().session(credential(), TOKEN);
+    await expect(session.request({ method: "GET", path: "/a" })).rejects.toMatchObject({ kind: "outside-host" });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("follows a redirect on the same host", async () => {
+    const { seen, credential } = await serve((request, response) => {
+      if (request.url === "/api/old") {
+        response.writeHead(301, { location: "/api/new" });
+        response.end();
+      } else json(response, { moved: true });
+    });
+    const answer = await client().session(credential(), TOKEN).request({ method: "GET", path: "/old" });
+    expect(answer.json).toEqual({ moved: true });
+    expect(seen.map((s) => s.url)).toEqual(["/api/old", "/api/new"]);
+  });
+
+  describe("only reads", () => {
+    it("refuses a POST that is not a GraphQL query, and any other method", async () => {
+      const { seen, credential } = await serve((_, response) => json(response, {}));
+      const session = client().session(credential("linear"), "k");
+      await expect(session.request({ method: "POST", path: "/" })).rejects.toMatchObject({ kind: "forbidden-write" });
+      await expect(session.request({ method: "DELETE" as "GET", path: "/" })).rejects.toMatchObject({ kind: "forbidden-write" });
+      expect(seen).toHaveLength(0);
+    });
+
+    it("sends a GraphQL query and refuses a mutation", async () => {
+      const { seen, credential } = await serve((_, response) => json(response, { data: {} }));
+      const session = client().session(credential("linear"), "k");
+      await session.request({ method: "POST", path: "/", graphql: { query: "query Q($id: String!) { issue(id: $id) { id } }", variables: { id: "x" } } });
+      expect(JSON.parse(seen[0]!.body)).toEqual({ query: "query Q($id: String!) { issue(id: $id) { id } }", variables: { id: "x" } });
+      await expect(session.request({ method: "POST", path: "/", graphql: { query: "mutation { issueDelete(id: \"x\") { success } }" } })).rejects.toMatchObject({ kind: "forbidden-write" });
+      expect(seen).toHaveLength(1);
+    });
+
+    it("tells a mutation from a string or comment that says the word", () => {
+      expect(graphqlWrites("mutation M { a }")).toBe(true);
+      expect(graphqlWrites("query { a } mutation { b }")).toBe(true);
+      expect(graphqlWrites("subscription { a }")).toBe(true);
+      expect(graphqlWrites('query { issues(filter: {title: {contains: "mutation"}}) { id } }')).toBe(false);
+      expect(graphqlWrites("# mutation\nquery { a }")).toBe(false);
+    });
+  });
+
+  describe("conditional requests", () => {
+    it("sends If-None-Match for a repeat GET and answers a 304 with the cached body, not counted for GitHub", async () => {
+      const { seen, credential } = await serve((request, response) => {
+        if (request.headers["if-none-match"] === '"v1"') {
+          response.writeHead(304);
+          response.end();
+        } else json(response, { n: 1 }, 200, { etag: '"v1"' });
+      });
+      const session = client().session(credential(), TOKEN);
+      const first = await session.request({ method: "GET", path: "/x" });
+      const second = await session.request({ method: "GET", path: "/x" });
+      expect(first.notModified).toBe(false);
+      expect(second).toMatchObject({ notModified: true, status: 304, json: { n: 1 } });
+      expect(seen).toHaveLength(2);
+      expect(session.drainRequests().map((r) => r.counted)).toEqual([true, false]);
+    });
+
+    it("counts a 304 for a service other than GitHub", async () => {
+      const { credential } = await serve((request, response) => {
+        if (request.headers["if-none-match"] === '"v1"') {
+          response.writeHead(304);
+          response.end();
+        } else json(response, { n: 1 }, 200, { etag: '"v1"' });
+      });
+      const session = client().session({ ...credential("gitlab"), prefix: "gitlab.com/g" }, TOKEN);
+      await session.request({ method: "GET", path: "/x" });
+      await session.request({ method: "GET", path: "/x" });
+      expect(session.drainRequests().map((r) => r.counted)).toEqual([true, true]);
+    });
+
+    it("keeps one credential's cache from answering another's", async () => {
+      const { seen, credential } = await serve((_, response) => json(response, { n: 1 }, 200, { etag: '"v1"' }));
+      const http = client();
+      await http.session(credential(), "a").request({ method: "GET", path: "/x" });
+      await http.session({ ...credential(), prefix: "github.com/other" }, "b").request({ method: "GET", path: "/x" });
+      expect(seen[1]!.headers["if-none-match"]).toBeUndefined();
+    });
+  });
+
+  describe("errors and retries", () => {
+    it("retries a 5xx and a dropped connection, then answers", async () => {
+      let calls = 0;
+      const { credential } = await serve((_, response) => {
+        calls += 1;
+        if (calls === 1) response.destroy();
+        else if (calls === 2) json(response, {}, 503);
+        else json(response, { ok: calls });
+      });
+      const answer = await client().session(credential(), TOKEN).request({ method: "GET", path: "/x" });
+      expect(answer.json).toEqual({ ok: 3 });
+    });
+
+    it("gives up on a persistent 5xx as a server error", async () => {
+      const { seen, credential } = await serve((_, response) => json(response, {}, 500));
+      await expect(client().session(credential(), TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "server", status: 500 });
+      expect(seen).toHaveLength(3);
+    });
+
+    it("sorts a 401, a 403, a 404 and a 422", async () => {
+      const kinds: Record<number, string> = { 401: "auth", 403: "auth", 404: "not-found", 422: "client" };
+      for (const [status, kind] of Object.entries(kinds)) {
+        const { credential } = await serve((_, response) => json(response, {}, Number(status)));
+        await expect(client().session(credential(), TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind, status: Number(status) });
+        server?.close();
+      }
+    });
+
+    it("waits out a short Retry-After and surfaces a long one as a rate limit", async () => {
+      let calls = 0;
+      const { credential } = await serve((_, response) => {
+        calls += 1;
+        if (calls === 1) json(response, {}, 429, { "retry-after": "1" });
+        else json(response, { ok: true });
+      });
+      expect((await client().session(credential(), TOKEN).request({ method: "GET", path: "/x" })).json).toEqual({ ok: true });
+      server?.close();
+      const second = await serve((_, response) => json(response, {}, 403, { "x-ratelimit-remaining": "0", "retry-after": "600" }));
+      const error = await client().session(second.credential(), TOKEN).request({ method: "GET", path: "/x" }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(HttpError);
+      expect(error).toMatchObject({ kind: "rate-limit", retryAfterMs: 600_000 });
+    });
+
+    it("never puts the token, a header or the query string in an error", async () => {
+      const { credential } = await serve((_, response) => json(response, { message: `bad ${TOKEN}` }, 500));
+      const error = await client().session(credential(), TOKEN).request({ method: "GET", path: "/x", query: { access_token: TOKEN } }).catch((e: unknown) => e as Error);
+      expect(String((error as Error).message)).not.toContain(TOKEN);
+      expect(String((error as Error).message)).not.toContain("access_token");
+      const refused = await client({
+        fetch: async () => {
+          throw new TypeError(`fetch failed: https://x/?access_token=${TOKEN}`, { cause: new Error(`Bearer ${TOKEN}`) });
+        },
+      })
+        .session(credential(), TOKEN)
+        .request({ method: "GET", path: "/x", query: { access_token: TOKEN } })
+        .catch((e: unknown) => e as Error);
+      expect((refused as Error).message).not.toContain(TOKEN);
+      expect((refused as Error).message).toBe("GET /api/x failed: no answer");
+    });
+  });
+
+  describe("accounting", () => {
+    it("records each request without its query and drains them", async () => {
+      const { credential } = await serve((_, response) => json(response, []));
+      const session = client().session(credential(), TOKEN);
+      await session.request({ method: "GET", path: "/a", query: { q: "secret" } });
+      const records = session.drainRequests();
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({ method: "GET", path: "/api/a", status: 200, counted: true });
+      expect(JSON.stringify(records)).not.toContain("secret");
+      expect(session.drainRequests()).toEqual([]);
+    });
+
+    it("reads a GitHub token's expiry from its header", async () => {
+      const { credential } = await serve((_, response) => json(response, {}, 200, { "github-authentication-token-expiration": "2026-11-12 00:00:00 UTC" }));
+      const session = client().session(credential(), TOKEN);
+      expect(session.expiresAt()).toBeNull();
+      await session.request({ method: "GET", path: "/x" });
+      expect(session.expiresAt()).toBe("2026-11-12T00:00:00.000Z");
+    });
+  });
+
+  describe("paginate", () => {
+    it("follows Link rel=next on the same host and reports a truncated list", async () => {
+      const { port, credential } = await serve((request, response) => {
+        const page = Number(new URL(request.url!, "http://x").searchParams.get("page") ?? "1");
+        const next = `<http://127.0.0.1:${port}/api/list?page=${page + 1}>; rel="next"`;
+        json(response, [page], 200, page < 5 ? { link: next } : {});
+      });
+      const session = client().session(credential(), TOKEN);
+      expect(await session.paginate({ path: "/list" }, { maxPages: 10 })).toEqual({ items: [1, 2, 3, 4, 5], truncated: false });
+      expect(await session.paginate({ path: "/list" }, { maxPages: 2 })).toEqual({ items: [1, 2], truncated: true });
+    });
+
+    it("refuses a next link on another host", async () => {
+      const { credential } = await serve((_, response) => json(response, [1], 200, { link: '<https://example.net/x?page=2>; rel="next"' }));
+      await expect(client().session(credential(), TOKEN).paginate({ path: "/list" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+    });
+  });
+});
