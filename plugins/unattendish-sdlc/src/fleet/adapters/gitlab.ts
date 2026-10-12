@@ -22,18 +22,34 @@
 //   `user.username`, `created_at`, `id`) and resource state events (`state`,
 //   `user`, `created_at`, `id`): /api/resource_label_events/ and
 //   /api/resource_state_events/. Neither page states an order or a time filter.
-// - Checks: `GET .../merge_requests/:iid/pipelines` (`id`, `sha`, `status`)
-//   and the merge request's `head_pipeline`, with the status values listed
-//   under "List project pipelines" in /api/pipelines/.
+// - Checks: the merge request's `head_pipeline` ("Pipeline that runs on the HEAD
+//   commit of the merge request's source branch"; `id`, `sha`, `status`), alone:
+//   an older or since-rerun pipeline is not part of the set. Its `sha` is not
+//   compared with the merge request's, as the docs do not say a merged-results
+//   pipeline has the head commit's. Where the answer has none (it is exposed only
+//   to a user who can view pipelines), the newest pipeline, by `id`, of
+//   `GET .../merge_requests/:iid/pipelines` on the head commit stands in; that
+//   page gives no order. Status values: "List project pipelines" in /api/pipelines/.
 // - Token expiry: `GET /personal_access_tokens/self`, `expires_at` as
 //   `YYYY-MM-DD` or null (/api/personal_access_tokens/).
+//
+// A 403 that is not a rate limit is the HTTP layer's `forbidden`: on the
+// pipelines of a merge request it leaves `checks` null and the rest of the item
+// is still read; anywhere else it fails that one item or listing. Only a 401 or
+// a rate limit ends the read.
 //
 // Not confirmed by those pages, and what is done instead:
 // - The text of the system notes for an approval and for a request for changes
 //   is not documented, so no system note is read. An approval is read from the
 //   approvals list. `reviewed: changes requested` and `reviewed: commented`
-//   are never produced: no page says how a submitted review or a request for
-//   changes appears in the notes, discussions or approvals lists.
+//   are never produced. The merge request page's "Retrieve merge request
+//   reviewers" (`GET .../merge_requests/:iid/reviewers`) lists each reviewer's
+//   `user`, `state` and `created_at`, but shows only `unreviewed` and `reviewed`
+//   as states and gives no time or id for a change of state (its `created_at`
+//   dates the request, so a review could not be placed after `since` or keyed
+//   stably); `requested_changes` is documented as a reviewer state only in the
+//   webhook payloads (/user/project/integrations/webhook_events/), and the
+//   `reviewers[].state` of the merge request answer is the account's state.
 // - A state event's `merged` value is not documented. It is used when sent;
 //   otherwise a merged request's `merged_at` gives the `merged` transition.
 // - ETag and 304 are not documented for the REST API. The session sends a
@@ -96,7 +112,7 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
   } catch (error) {
     if (error instanceof HttpError) {
       if (error.kind === "auth" || error.kind === "rate-limit") throw error;
-      context.failures.push({ ref, reason: error.message });
+      context.failures.push(ref !== null && error.kind === "not-found" ? { ref, reason: error.message, kind: "not-found" } : { ref, reason: error.message });
       return undefined;
     }
     if (error instanceof ReadProblem) {
@@ -128,6 +144,12 @@ async function noteExpiry(context: Context): Promise<void> {
   }
 }
 
+/** The newest pipeline of the merge request on its head commit, for an answer that carries no `head_pipeline`; undefined where there is none. */
+async function latestPipelineOf(context: Context, base: string, ref: string, sha: string): Promise<{ readonly id: number; readonly status: string } | undefined> {
+  const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${ref}`).filter((pipeline) => pipeline.sha === sha);
+  return listed.reduce<(typeof listed)[number] | undefined>((newest, pipeline) => (newest === undefined || pipeline.id > newest.id ? pipeline : newest), undefined);
+}
+
 async function readItem(context: Context, item: WatchedItem, withEvents: boolean): Promise<{ snapshot: ItemSnapshot; events: ActivityEvent[] }> {
   const { request } = context;
   const target = parseRef(item.ref);
@@ -147,11 +169,15 @@ async function readItem(context: Context, item: WatchedItem, withEvents: boolean
       const merged = mergedFromFields(found, request.since);
       if (merged !== null) transitions.push(merged);
     }
-    const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${item.ref}`);
-    const pipelines = new Map(listed.filter((p) => p.sha === found.sha).map((p) => [p.id, p.status]));
-    if (found.head_pipeline !== null && found.head_pipeline !== undefined && found.head_pipeline.sha === found.sha) pipelines.set(found.head_pipeline.id, found.head_pipeline.status);
-    const outcome = checksOutcome([...pipelines.values()]);
-    if (outcome !== null) checks = { sha: found.sha, outcome };
+    try {
+      // The head pipeline is the merge request's own: a pipeline of an older commit, or a failed one a rerun has since passed, says nothing of it now.
+      const head = found.head_pipeline ?? (await latestPipelineOf(context, base, item.ref, found.sha));
+      const outcome = head === undefined ? null : checksOutcome([head.status]);
+      if (outcome !== null) checks = { sha: found.sha, outcome };
+    } catch (error) {
+      // A project with CI off, or a token that may not read pipelines, leaves the merge request without checks and still read.
+      if (!(error instanceof HttpError && error.kind === "forbidden")) throw error;
+    }
   }
 
   const snapshot: ItemSnapshot = {

@@ -24,6 +24,12 @@
 //    limit, which the HTTP session accounts for). Enterprise Server's REST root
 //    is `http(s)://HOSTNAME/api/v3` (/en/enterprise-server@latest/rest/using-the-rest-api/getting-started-with-the-rest-api).
 //
+// A 403 that is not a rate limit is the HTTP layer's `forbidden`. On the check
+// runs or commit statuses of a pull request it leaves `checks` null and the
+// rest of the item is still read (a fine-grained token may lack those
+// permissions); anywhere else it fails that one item or listing, and the read
+// goes on. Only a 401 or a rate limit ends the read.
+//
 // What the docs leave unconfirmed, and the cheapest fallback taken:
 //  - The values of a review's `state`: only `APPROVED`, `CHANGES_REQUESTED` and
 //    `COMMENTED` are events; any other state (`PENDING`, `DISMISSED`) is not.
@@ -32,8 +38,9 @@
 //    timeline is passed on as GitHub gives it.
 //  - Whether a review, a label change or a check moves `updated_at`: watched
 //    items are read themselves, and the updated listing is only a hint.
-//  - Whether `since` on review comments reaches a comment drafted before `since`
-//    and submitted after: a review comment counts at its review's `submitted_at`.
+//  - Whether submitting a review moves the `updated_at` of its inline comments,
+//    which is what `since` filters them on: they are read without `since`, up to
+//    10 pages of 100, and a review comment counts at its review's `submitted_at`.
 //  - Whether the issue schema's `labels` are objects or names: both are read.
 import {
   HttpError,
@@ -123,6 +130,10 @@ const reasonOf = (error: unknown): string => {
   return "the answer could not be read";
 };
 
+/** A failed read of the item `ref`; one the service answers not-found is marked so, as no later read will do better. */
+const failureOf = (ref: string | null, error: unknown): ReadFailure =>
+  ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) };
+
 /** Rethrows what fails the whole read: a refused credential or a rate limit. */
 const rethrowFatal = (error: unknown): void => {
   if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
@@ -171,7 +182,7 @@ class GithubAdapter implements ServiceAdapter {
         events.push(...read.events);
       } catch (error) {
         rethrowFatal(error);
-        failures.push({ ref: item.ref, reason: reasonOf(error) });
+        failures.push(failureOf(item.ref, error));
       }
     }
 
@@ -250,10 +261,18 @@ class GithubAdapter implements ServiceAdapter {
 
   // ---- checks ----
 
-  /** The outcome of a head commit's check runs and commit statuses together; null where it has neither. */
+  /** The outcome of a head commit's check runs and commit statuses together; null where it has neither, or where the token may not read them. */
   private async checks(reading: Reading, sha: string): Promise<ChecksOutcome | null> {
-    const runs = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/check-runs`, { filter: "latest" }, "check_runs", `the check runs of ${sha}`);
-    const statuses = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/status`, {}, "statuses", `the commit statuses of ${sha}`);
+    let runs: unknown[];
+    let statuses: unknown[];
+    try {
+      runs = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/check-runs`, { filter: "latest" }, "check_runs", `the check runs of ${sha}`);
+      statuses = await this.listWrapped(reading, `${reading.repo}/commits/${encodeURIComponent(sha)}/status`, {}, "statuses", `the commit statuses of ${sha}`);
+    } catch (error) {
+      // A token without the Checks or Commit statuses permission is refused here alone: the pull request is still read, with no checks.
+      if (error instanceof HttpError && error.kind === "forbidden") return null;
+      throw error;
+    }
     if (runs.length === 0 && statuses.length === 0) return null;
 
     const outcomes: ChecksOutcome[] = [];
@@ -302,7 +321,7 @@ class GithubAdapter implements ServiceAdapter {
         if (review.submitted_at === null || review.submitted_at === undefined) throw new Malformed("a submitted review lacked submitted_at");
         if (Date.parse(review.submitted_at) >= reading.sinceMs) push(`github:review:${review.id}`, kind, review.user?.login, review.submitted_at, review.body);
       }
-      for (const entry of await this.list(reading, `${reading.repo}/pulls/${number}/comments`, query, `the review comments of ${ref}`)) {
+      for (const entry of await this.list(reading, `${reading.repo}/pulls/${number}/comments`, {}, `the review comments of ${ref}`)) {
         const comment = parse("a review comment", reviewCommentShape, entry);
         const reviewId = comment.pull_request_review_id ?? null;
         if (reviewId !== null && pending.has(reviewId)) continue;
@@ -342,7 +361,7 @@ class GithubAdapter implements ServiceAdapter {
           snapshots.push(read.snapshot);
         } catch (error) {
           rethrowFatal(error);
-          failures.push({ ref, reason: reasonOf(error) });
+          failures.push(failureOf(ref, error));
         }
       }
     }

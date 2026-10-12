@@ -29,7 +29,7 @@ export const ISSUE_READ = `query IssueRead($id: String!, $after: String) {
       nodes {
         id
         createdAt
-        actor { id }
+        actor { id email displayName }
         fromState { type }
         toState { type }
         addedLabels { name }
@@ -49,9 +49,9 @@ export const ISSUE_COMMENTS = `query IssueComments($id: String!, $after: String)
         id
         createdAt
         body
-        user { id }
+        user { id email displayName }
         children(first: ${INLINE_REPLIES}) {
-          nodes { id createdAt body user { id } }
+          nodes { id createdAt body user { id email displayName } }
           pageInfo { hasNextPage endCursor }
         }
       }
@@ -64,7 +64,7 @@ export const ISSUE_COMMENTS = `query IssueComments($id: String!, $after: String)
 export const COMMENT_REPLIES = `query CommentReplies($id: String!, $after: String) {
   comment(id: $id) {
     children(first: ${PAGE_SIZE}, after: $after) {
-      nodes { id createdAt body user { id } }
+      nodes { id createdAt body user { id email displayName } }
       pageInfo { hasNextPage endCursor }
     }
   }
@@ -92,7 +92,7 @@ export type Person = z.infer<typeof person>;
 const historyEntry = z.object({
   id: text,
   createdAt: instant,
-  actor: z.object({ id: text }).nullable(),
+  actor: person.nullable(),
   fromState: typed.nullable(),
   toState: typed.nullable(),
   addedLabels: z.array(named).nullable(),
@@ -113,7 +113,7 @@ export const issueRead = z.object({
   }),
 });
 
-const reply = z.object({ id: text, createdAt: instant, body: z.string(), user: z.object({ id: text }).nullable() });
+const reply = z.object({ id: text, createdAt: instant, body: z.string(), user: person.nullable() });
 export type Comment = z.infer<typeof reply>;
 const replies = z.object({ nodes: z.array(reply), pageInfo });
 
@@ -137,6 +137,18 @@ export const issuesListed = z.object({
 
 /** A read that failed in a way specific to one item or listing. `reason` never carries text from the service. */
 export class ReadProblem extends Error {}
+
+/** A read of an issue that Linear says does not exist (or that the key may not see). */
+export class NotFoundProblem extends ReadProblem {}
+
+/**
+ * Whether every error of an answer says an entity was not found. Linear's docs
+ * (linear.app/developers/graphql) give no code or wording for it, so this
+ * matches the message "Entity not found" alone; an answer worded otherwise is
+ * an ordinary failure of the read.
+ */
+const isNotFound = (errors: readonly unknown[]): boolean =>
+  errors.length > 0 && errors.every((error) => typeof (error as { message?: unknown } | null)?.message === "string" && /entity not found/i.test((error as { message: string }).message));
 
 const codesOf = (error: unknown): string[] => {
   if (typeof error !== "object" || error === null) return [];
@@ -179,6 +191,7 @@ export async function send<T>(
   const { data, errors } = body as { data?: unknown; errors?: unknown };
   if (Array.isArray(errors)) rethrowFatal(errors);
   if (data === null || data === undefined || typeof data !== "object") {
+    if (Array.isArray(errors) && isNotFound(errors)) throw new NotFoundProblem("Linear answered that the entity was not found");
     throw new ReadProblem(Array.isArray(errors) && errors.length > 0 ? "Linear answered errors and no data" : "Linear answered no data");
   }
   const parsed = schema.safeParse(data);

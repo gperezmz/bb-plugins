@@ -226,6 +226,18 @@ describe("GitHub adapter: checks", () => {
     expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "failed" });
   });
 
+  it("leaves checks null, and reads the rest of the pull request, where the token may not read checks (403)", async () => {
+    for (const path of ["/check-runs", "/status"]) {
+      const state = repo({ issues: [pull(1, { labels: ["spec"] })], checkRuns: [run(1, "sha1", "completed", "failure")], comments: [comment(5, 1)] });
+      state.faults = [{ pathIncludes: path, status: 403 }];
+      const { read } = await harness(state);
+      const outcome = await read({ items: [1] });
+      expect(outcome.failures).toEqual([]);
+      expect(outcome.snapshots[0]).toMatchObject({ ref: "#1", checks: null, fleetLabels: ["spec"], open: true });
+      expect(outcome.events.map((entry) => entry.id)).toEqual(["github:issuecomment:5"]);
+    }
+  });
+
   it("fails the pull request's read, with no snapshot, when a finished run lacks a known conclusion", async () => {
     const { checks, failures } = await outcomeOf({ checkRuns: [run(1, "sha1", "completed", null)] });
     expect(checks).toBeNull();
@@ -355,6 +367,27 @@ describe("GitHub adapter: events", () => {
     const reviews = [review(7, 2, "COMMENTED"), review(8, 2, "PENDING", { submittedAt: null })];
     const { read } = await harness(repo({ issues: [pull(2)], reviews, reviewComments }));
     expect((await read({ watched: [2] })).events.map((entry) => entry.id)).toEqual(["github:review:7", "github:reviewcomment:1"]);
+  });
+
+  it("reads a review comment last updated before `since` when its review was submitted after it", async () => {
+    const reviewComments = [
+      reviewComment(1, 2, { reviewId: 7, createdAt: BEFORE, updatedAt: BEFORE }),
+      reviewComment(2, 2, { reviewId: 6, createdAt: BEFORE, updatedAt: BEFORE }),
+    ];
+    const reviews = [review(7, 2, "COMMENTED"), review(6, 2, "COMMENTED", { submittedAt: BEFORE })];
+    const { read, server } = await harness(repo({ issues: [pull(2)], reviews, reviewComments }));
+    expect((await read({ watched: [2] })).events.map((entry) => entry.id)).toEqual(["github:review:7", "github:reviewcomment:1"]);
+    const asked = server.requests.filter((request) => request.url.includes("/pulls/2/comments"));
+    expect(asked).not.toHaveLength(0);
+    expect(asked.some((request) => request.url.includes("since="))).toBe(false);
+  });
+
+  it("fails the pull request's read when its review comments run past 10 pages", async () => {
+    const reviewComments = Array.from({ length: 1001 }, (_, index) => reviewComment(index + 1, 2, { reviewId: 7 }));
+    const { read } = await harness(repo({ issues: [pull(2)], reviews: [review(7, 2, "COMMENTED")], reviewComments }));
+    const outcome = await read({ watched: [2] });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("10 pages") }]);
   });
 
   it("reads a pull request's conversation comments as well as its review comments", async () => {
@@ -567,6 +600,18 @@ describe("GitHub adapter: failures", () => {
     expect((await read({ watched: [1] })).events).toHaveLength(250);
   });
 
+  it("marks an item GitHub does not know as not-found, and one it fails to read otherwise as a plain failure", async () => {
+    const state = repo({ issues: [issue(1), issue(2)] });
+    state.faults = [{ pathIncludes: "/issues/2", status: 500 }];
+    const { read } = await harness(state);
+    const outcome = await read({ items: [1, 2, 99] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
+    expect(outcome.failures).toEqual([
+      { ref: "#2", reason: expect.any(String) },
+      { ref: "#99", reason: expect.any(String), kind: "not-found" },
+    ]);
+  });
+
   it("rethrows a refused credential unchanged", async () => {
     const state = repo({ issues: [issue(1)] });
     state.faults = [{ pathIncludes: "/issues/1", status: 401 }];
@@ -576,9 +621,26 @@ describe("GitHub adapter: failures", () => {
 
   it("rethrows a refused credential met in a listing", async () => {
     const state = repo({ issues: [issue(1)] });
-    state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 403 }];
+    state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 401 }];
     const { read } = await harness(state);
     await expect(read()).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("fails one item, and goes on, where the token may not read it (403 without a rate-limit header)", async () => {
+    const state = repo({ issues: [issue(1), issue(2)] });
+    state.faults = [{ pathIncludes: "/issues/1", status: 403 }];
+    const { read } = await harness(state);
+    const outcome = await read({ items: [1, 2] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+  });
+
+  it("fails a listing the token may not read as a listing failure, not as a refused credential", async () => {
+    const state = repo({ issues: [issue(1)] });
+    state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 403 }];
+    const { read } = await harness(state);
+    const outcome = await read();
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
   });
 
   it("rethrows a rate limit unchanged", async () => {

@@ -76,6 +76,8 @@ export interface FakeMergeRequest extends FakeItem {
   merged_at?: string | null;
   merged_by?: string | null;
   pipelines?: FakePipeline[];
+  /** The `head_pipeline` of the single answer: a pipeline of any commit (a merged-results one is), or null for none. Left out, it is the newest of `pipelines` on `sha`. */
+  headPipeline?: FakePipeline | null;
   approvals?: FakeApproval[];
 }
 
@@ -204,9 +206,14 @@ export function createFakeGitlab(initial?: Partial<FakeGitlabState>): FakeServic
   const pipelinesOf = (mr: FakeMergeRequest) => (mr.pipelines ?? []).map((p) => ({ id: p.id, sha: p.sha, ref: p.ref ?? "feature", status: p.status }));
 
   const mrJson = (request: IncomingMessage, path: string, mr: FakeMergeRequest, single: boolean): Record<string, unknown> => {
-    const head = pipelinesOf(mr)
-      .filter((p) => p.sha === mr.sha)
-      .sort((a, b) => b.id - a.id)[0];
+    const head =
+      mr.headPipeline === undefined
+        ? pipelinesOf(mr)
+            .filter((p) => p.sha === mr.sha)
+            .sort((a, b) => b.id - a.id)[0]
+        : mr.headPipeline === null
+          ? undefined
+          : { id: mr.headPipeline.id, sha: mr.headPipeline.sha, ref: mr.headPipeline.ref ?? "feature", status: mr.headPipeline.status };
     const body: Record<string, unknown> = {
       ...itemJson(request, path, mr),
       web_url: webUrl(request, path, "merge_requests", mr),

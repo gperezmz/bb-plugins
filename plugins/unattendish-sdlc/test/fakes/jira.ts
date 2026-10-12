@@ -26,6 +26,8 @@ export interface FakeJiraUser {
   /** Null when the user's privacy settings hide it. */
   emailAddress: string | null;
   displayName: string;
+  /** An email the service matches in JQL (`assignee = "..."`) but does not show in its answers, as with a user whose privacy settings hide it. */
+  hiddenEmail?: string | null;
 }
 
 export interface FakeJiraStatus {
@@ -167,7 +169,7 @@ const matchesUser = (state: FakeJiraState, accountId: string | null, value: stri
   const wanted = value.toLowerCase();
   if (accountId.toLowerCase() === wanted) return true;
   const user = state.users.find((candidate) => candidate.accountId === accountId);
-  return user?.emailAddress?.toLowerCase() === wanted;
+  return user?.emailAddress?.toLowerCase() === wanted || user?.hiddenEmail?.toLowerCase() === wanted;
 };
 
 const parseJql = (jql: string): { test: Test; orderBy: string | null } => {

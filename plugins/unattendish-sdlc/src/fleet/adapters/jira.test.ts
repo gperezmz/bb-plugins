@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createFakeJira, jiraTime, type FakeJiraComment, type FakeJiraHistory, type FakeJiraIssue, type FakeJiraState } from "../../../test/fakes/jira";
+import { createFakeJira, DEFAULT_STATUSES, jiraTime, type FakeJiraComment, type FakeJiraHistory, type FakeJiraIssue, type FakeJiraState } from "../../../test/fakes/jira";
 import { listen, type Mounted } from "../../../test/fakes/listen";
 import type { ReadRequest } from "../application/ports";
 import { HttpError, type ResolvedCredential } from "../application/ports";
@@ -124,7 +124,7 @@ describe("the Jira adapter's snapshot of an issue", () => {
 });
 
 describe("the Jira adapter's transitions", () => {
-  it("reports a close and a reopen from status changes, by the category of the status, with actor, UTC time and id", async () => {
+  it("reports a close and a reopen from status changes, by the category of the status, with actor, the actor's other names, UTC time and id", async () => {
     const { read, watch } = await world({
       issues: [
         issue("PROJ-1", {
@@ -139,8 +139,8 @@ describe("the Jira adapter's transitions", () => {
     });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots[0]!.transitions).toEqual([
-      { kind: "closed", actor: OPERATOR, at: iso(20), id: "jira:changelog:202:closed" },
-      { kind: "reopened", actor: "acc-bot", at: iso(30), id: "jira:changelog:203:reopened" },
+      { kind: "closed", actor: OPERATOR, actorAliases: ["op@example.com", "Olivia Operator"], at: iso(20), id: "jira:changelog:202:closed" },
+      { kind: "reopened", actor: "acc-bot", actorAliases: ["Fleet Bot"], at: iso(30), id: "jira:changelog:203:reopened" },
     ]);
   });
 
@@ -172,6 +172,20 @@ describe("the Jira adapter's transitions", () => {
       ["unlabelled", "Spec", iso(6), "jira:changelog:302:unlabelled:spec"],
       ["labelled", "In-Progress", iso(6), "jira:changelog:302:labelled:in-progress"],
     ]);
+  });
+
+  it("reports one close, not two, for a move from one done status to another", async () => {
+    const statuses = [...DEFAULT_STATUSES, { id: "10003", name: "Won't Do", category: "done" as const }];
+    const { read, watch } = await world({
+      statuses,
+      issues: [
+        issue("PROJ-1", {
+          status: "10003",
+          changelog: [change("221", 10, statusChange(PROGRESS, "In Progress", DONE, "Done")), change("222", 20, statusChange(DONE, "Done", "10003", "Won't Do"))],
+        }),
+      ],
+    });
+    expect((await read(watch("PROJ-1"))).snapshots[0]!.transitions.map((t) => [t.kind, t.id])).toEqual([["closed", "jira:changelog:221:closed"]]);
   });
 
   it("reports nothing for a status change inside one category, a change of another field, or a change before since", async () => {
@@ -241,8 +255,8 @@ describe("the Jira adapter's events", () => {
     const out = await read(watch("PROJ-1"));
     expect(out.failures).toEqual([]);
     expect(out.events).toEqual([
-      { id: "jira:comment:1002", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: "acc-other", at: iso(0), lastLine: "the answer" },
-      { id: "jira:comment:1003", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: OPERATOR, at: iso(7), lastLine: "later" },
+      { id: "jira:comment:1002", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: "acc-other", actorAliases: ["Otto Other"], at: iso(0), lastLine: "the answer" },
+      { id: "jira:comment:1003", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: OPERATOR, actorAliases: ["op@example.com", "Olivia Operator"], at: iso(7), lastLine: "later" },
       { id: "jira:comment:1004", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: null, at: iso(8), lastLine: "no author" },
     ]);
   });
@@ -288,7 +302,8 @@ describe("the Jira adapter's events", () => {
 
   it("carries nothing written on the service: no title, no comment body beyond its last line, no display name", async () => {
     const { read, watch } = await world({ issues: [issue("PROJ-1", { assignee: OPERATOR, comments: [note("1", "FIRST LINE OF THE BODY\nlast words")] })] });
-    const serialised = JSON.stringify(await read(watch("PROJ-1")));
+    // `actorAliases` hold an email and a display name, for matching registered echo actors; the application never sends them.
+    const serialised = JSON.stringify(await read(watch("PROJ-1")), (key, value: unknown) => (key === "actorAliases" ? undefined : value));
     expect(serialised).toContain("last words");
     for (const secret of ["A title written on the service", "FIRST LINE OF THE BODY", "Olivia Operator", "Otto Other", "op@example.com"]) expect(serialised).not.toContain(secret);
   });
@@ -337,9 +352,18 @@ describe("the Jira adapter's partition scan", () => {
   });
 
   it("marks a scanned item as in the partition by the service's own match, even when the operator is a name the answer does not show", async () => {
-    const { read } = await world({ issues: [issue("PROJ-1", { labels: ["spec"], assignee: OPERATOR })] });
+    const hidden = [{ accountId: OPERATOR, emailAddress: null, hiddenEmail: "op@example.com", displayName: "Olivia Operator" }, ...USERS.slice(1)];
+    const { read } = await world({ users: hidden, issues: [issue("PROJ-1", { labels: ["spec"], assignee: OPERATOR })] });
     const out = await read({ scanPartition: true, operator: "op@example.com" });
     expect(out.snapshots.map((s) => [s.ref, s.inPartition])).toEqual([["PROJ-1", true]]);
+  });
+
+  it("reports a partition listing cut off after ten pages, with what it listed", async () => {
+    const issues = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { labels: ["spec"], assignee: OPERATOR, updated: at(-90 + i) }));
+    const { read } = await world({ issues, settings: { pageSize: 2, etag: false, failures: [] } });
+    const out = await read({ scanPartition: true });
+    expect(out.snapshots).toHaveLength(20);
+    expect(out.failures).toContainEqual({ ref: null, reason: "the partition listing runs to more than 10 pages of 100" });
   });
 });
 
@@ -433,7 +457,7 @@ describe("the Jira adapter's failures", () => {
     const { read, watch } = await world({ issues: [issue("PROJ-2")] });
     const out = await read(watch("PROJ-1", "PROJ-2"));
     expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-2"]);
-    expect(out.failures).toEqual([{ ref: "PROJ-1", reason: "GET /rest/api/3/issue/PROJ-1 answered 404" }]);
+    expect(out.failures).toEqual([{ ref: "PROJ-1", reason: "GET /rest/api/3/issue/PROJ-1 answered 404", kind: "not-found" }]);
   });
 
   it("rethrows a refused credential and a rate limit unchanged, ending the whole read", async () => {
@@ -447,8 +471,14 @@ describe("the Jira adapter's failures", () => {
   });
 
   it("rethrows a refused credential met while listing", async () => {
-    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
+    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 401 }] } });
     await expect(read()).rejects.toMatchObject({ kind: "auth" });
+  });
+
+  it("reports a listing the token may not read (403) as a listing failure, not as a refused credential", async () => {
+    const { read } = await world({ settings: { pageSize: null, etag: false, failures: [{ pathContains: "/search/jql", status: 403 }] } });
+    const outcome = await read();
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
   });
 
   it("ends the read when it is aborted, rather than reporting every item failed", async () => {

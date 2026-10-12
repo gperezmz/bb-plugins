@@ -40,7 +40,7 @@ const MAX_PAGES = 10;
 /** A failure to read that the adapter reports in its own words: a `ReadFailure`'s reason never quotes the service. */
 class ReadProblem extends Error {}
 
-const user = z.object({ accountId: z.string(), emailAddress: z.string().nullish() });
+const user = z.object({ accountId: z.string(), emailAddress: z.string().nullish(), displayName: z.string().nullish() });
 type User = z.infer<typeof user>;
 
 const issueAnswer = z.object({
@@ -81,6 +81,13 @@ const toIso = (text: string): string | null => {
   const offset = match[2] === "Z" ? "Z" : match[2]!.length === 3 ? `${match[2]}:00` : match[2]!.replace(/^([+-]\d\d)(\d\d)$/, "$1:$2");
   const parsed = new Date(`${match[1]}${offset}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+/** The other names Jira knows a person by, which an echo actor may have been registered under; the account id is the actor itself, and none is sent on. */
+const aliasesOf = (account: User | null | undefined): { actorAliases?: string[] } => {
+  if (account === null || account === undefined) return {};
+  const names = [account.emailAddress, account.displayName].filter((value): value is string => typeof value === "string" && value.trim() !== "");
+  return names.length === 0 ? {} : { actorAliases: [...new Set(names)] };
 };
 
 const quote = (value: string): string => `"${value.replace(/[\\"]/g, "\\$&")}"`;
@@ -144,7 +151,7 @@ class Reading {
   private settle(error: unknown, ref: string | null): void {
     if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
     if (this.request.signal.aborted) throw error;
-    this.failures.push({ ref, reason: reasonOf(error) });
+    this.failures.push(ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) });
   }
 
   private async get(path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown> {
@@ -226,20 +233,21 @@ class Reading {
       if (Date.parse(at) < this.sinceMs) continue;
       const entry = history.parse(raw);
       const actor = entry.author?.accountId ?? null;
+      const aliases = aliasesOf(entry.author);
       const made: Omit<Transition, "id">[] = [];
       for (const change of entry.items) {
         if (change.field === "status") {
           const from = await this.categoryOf(change.from, change.fromString);
           const to = await this.categoryOf(change.to, change.toString);
-          if (from !== "done" && to === "done") made.push({ kind: "closed", actor, at });
-          else if (from === "done" && to !== "done") made.push({ kind: "reopened", actor, at });
+          if (from !== "done" && to === "done") made.push({ kind: "closed", actor, ...aliases, at });
+          else if (from === "done" && to !== "done") made.push({ kind: "reopened", actor, ...aliases, at });
         } else if (change.field === "labels") {
           const before = new Set(words(change.fromString).map((label) => label.toLowerCase()));
           const after = new Set(words(change.toString).map((label) => label.toLowerCase()));
           for (const label of registered) {
             const lower = label.toLowerCase();
-            if (after.has(lower) && !before.has(lower)) made.push({ kind: "labelled", label, actor, at });
-            else if (before.has(lower) && !after.has(lower)) made.push({ kind: "unlabelled", label, actor, at });
+            if (after.has(lower) && !before.has(lower)) made.push({ kind: "labelled", label, actor, ...aliases, at });
+            else if (before.has(lower) && !after.has(lower)) made.push({ kind: "unlabelled", label, actor, ...aliases, at });
           }
         }
       }
@@ -269,7 +277,7 @@ class Reading {
           continue;
         }
         const parsed = comment.parse(raw);
-        events.push({ id: `jira:comment:${parsed.id}`, role: "tracker", ref, url: this.url(issueKey), kind: "commented", actor: parsed.author?.accountId ?? null, at, lastLine: lastLineOf(parsed.body) });
+        events.push({ id: `jira:comment:${parsed.id}`, role: "tracker", ref, url: this.url(issueKey), kind: "commented", actor: parsed.author?.accountId ?? null, ...aliasesOf(parsed.author), at, lastLine: lastLineOf(parsed.body) });
       }
       startAt += answer.comments.length;
       if (reachedOlder || answer.comments.length === 0 || startAt >= answer.total) break;
