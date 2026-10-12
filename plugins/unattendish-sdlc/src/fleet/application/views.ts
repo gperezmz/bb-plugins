@@ -313,26 +313,26 @@ export type Result<T> = ({ readonly ok: true } & T) | { readonly ok: false; read
 
 // ---- the API ----
 
-/** Everything the dashboard's pages call. The RPC contract carries each method under the same name. */
+/** Everything the dashboard's pages call, each answering asynchronously because the wire does. The RPC contract carries each method under the same name. */
 export interface DashboardApi {
   /** The Fleets page and the nav page's header count. */
-  fleets(): FleetsView;
+  fleets(): Promise<FleetsView>;
   /** What the Fleet chip and the Fleet tab know of a thread. */
   threadFleet(input: { threadId: string }): Promise<ThreadFleetView>;
   /** The whole Fleet tab for the fleet a manager holds. */
   fleetDetail(input: { repo: string }): Promise<Result<{ detail: FleetDetailView }>>;
-  ledger(input: { repo: string; filter?: LedgerFilter }): Result<{ ledger: LedgerView }>;
+  ledger(input: { repo: string; filter?: LedgerFilter }): Promise<Result<{ ledger: LedgerView }>>;
   /**
    * Sends the manager one message for an Inbox row and records the action. `text` is the operator's words for
    * Answer… and Grant…, required and non-empty for those; Re-grant is `grant` with `regrant: true` and no text; Build it
    * takes none. A refusal by bb answers `{ ok: false, reason }` (bb's reason) and the row keeps its action.
    */
   sendAction(input: { fleet: string; rowId: string; kind: ActionKind; text?: string; regrant?: boolean }): Promise<Result<{ action: ActionRecordView }>>;
-  settings(): SettingsView;
+  settings(): Promise<SettingsView>;
   saveCredential(input: CredentialDraft): Promise<Result<{ settings: SettingsView }>>;
   removeCredential(input: { prefix: string }): Promise<Result<{ settings: SettingsView }>>;
   /** Refuses under 30 seconds. `null` returns the fleet to the default. */
-  setInterval(input: { repo: string; seconds: number | null }): Result<{ settings: SettingsView }>;
+  setInterval(input: { repo: string; seconds: number | null }): Promise<Result<{ settings: SettingsView }>>;
 }
 
 // ---- realtime ----
