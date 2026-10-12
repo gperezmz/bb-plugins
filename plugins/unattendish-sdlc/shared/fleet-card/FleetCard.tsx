@@ -1,6 +1,6 @@
 import type { CredentialWarningView, FleetCardView, HalfView, ReasonView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
-import { costText, countsText, halfAction, halfLine, managerText, pollText, roleName, warningLine } from "../card-model";
+import { costText, countsText, halfAction, halfLine, managerText, pollText, warningLine } from "../card-model";
 import { CanWrite } from "../connect/Field";
 import { openConnect } from "../connect/requests";
 import { LINK_CLASS } from "../ItemLink";
@@ -49,11 +49,11 @@ function Half({ half, repo }: { half: HalfView; repo: string }) {
   const action = halfAction(half);
   return (
     <li className="flex flex-wrap items-baseline gap-x-2 text-xs">
-      <span className="font-medium">{roleName(half.role)}</span>
+      <span className="font-medium">{half.role}</span>
       <span className="text-muted-foreground">{halfLine(half)}</span>
       {half.canWrite ? <CanWrite /> : null}
       {half.needs !== null ? <span className="text-destructive">{half.needs}</span> : null}
-      <button type="button" className={LINK_CLASS} aria-label={`${action} ${roleName(half.role)} of ${repo}`} onClick={() => openConnect({ target: { fleet: repo, role: half.role } })}>
+      <button type="button" className={LINK_CLASS} aria-label={`${action} ${half.role} of ${repo}`} onClick={() => openConnect({ target: { fleet: repo, role: half.role } })}>
         {action}
       </button>
     </li>

@@ -53,9 +53,6 @@ export function warningLine(warning: CredentialWarningView): WarningLine {
   return { ...daysWarning(warning.daysLeft), label: warning.label };
 }
 
-/** The half's name on a card: `forge` or `tracker`. */
-export const roleName = (role: HalfView["role"]): string => role;
-
 /** What a half reads and as whom: `acme/web · reads as GitHub · yuser`, or `· no account yet` while no assignment covers it. */
 export function halfLine(half: HalfView): string {
   return `${half.what} · ${half.account !== null ? `reads as ${half.account.label}` : "no account yet"}`;
