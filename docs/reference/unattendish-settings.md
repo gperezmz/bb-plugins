@@ -62,7 +62,7 @@ The API root each service is read from, unless `baseUrl` says otherwise:
 | `linear` | `https://api.linear.app/graphql` |
 | `jira` | `https://{site}` |
 
-A token is sent only to its credential's base URL, so `baseUrl` is only for a service whose API root differs, and the plugin permits it nowhere else. It is refused unless it is `https` on the prefix's own host for a repository prefix (`api.github.com` is also allowed for `github.com`, and no other `api.` host is), on `api.linear.app` for Linear, or on the site for Jira, and it may not carry a user name or password. `127.0.0.1`, `localhost` and `[::1]` are also allowed, with `http` or `https`, so a fake service can stand in for a test. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested.
+A token is sent only to its credential's base URL, so `baseUrl` is only for a service whose API root differs, and the plugin permits it nowhere else. It is refused unless it is `https` on the prefix's own host for a repository prefix (`api.github.com` is also allowed for `github.com`, and no other `api.` host is), on `api.linear.app` for Linear, or on the site for Jira, and it may not carry a user name or password. `127.0.0.1`, `localhost` and `[::1]` are also allowed, with `http` or `https`, so a fake service can stand in for a test. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested. An item that has moved out of the fleet is not followed either; it is recorded as a failed read, `moved outside the fleet`.
 
 ### Tokens
 
