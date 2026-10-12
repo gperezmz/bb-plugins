@@ -246,6 +246,20 @@ describe("one wake per poll (AC7)", () => {
     expect(w.channel.sent).toHaveLength(2);
   });
 
+  it("adds the catch-up a later poll brings to a queued wake that had none", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    await poll(w);
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ catchUpMs: null });
+    w.clock.advance(20 * 60_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:10:00.000Z" })] }));
+    expect(await poll(w)).toMatchObject({ delivery: "amended" });
+    expect(w.channel.queue.get("q1")!.text.split("\n").at(-1)).toBe("Catch-up: the plugin was away for 20m.");
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ catchUpMs: 20 * 60_000 });
+  });
+
   it("sends a new wake when the queued one left the queue before the amendment", async () => {
     const w = world();
     w.channel.mode = "busy";

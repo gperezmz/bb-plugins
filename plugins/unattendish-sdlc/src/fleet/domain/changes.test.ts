@@ -324,6 +324,13 @@ describe("stateOnly", () => {
     expect(later.changes.map((change) => change.key)).toEqual(["forge:#9|labelled:ready|l1", "forge:#9|merged|m1"]);
   });
 
+  it("keeps a label an item the cursor does not know carried before its listed transitions, so the next poll does not report it", () => {
+    const read = outcome({ snapshots: [snapshot({ ref: "#9", fleetLabels: ["ready"], inPartition: true })] });
+    const { nextCursor } = derive({ outcome: read, stateOnly: true, watchedRefs: new Set(["#9"]) });
+    expect(nextCursor.items["forge:#9"]!.fleetLabels).toEqual(["ready"]);
+    expect(derive({ prev: nextCursor, outcome: read, watchedRefs: new Set(["#9"]) }).changes).toEqual([]);
+  });
+
   it("keeps the state an item the cursor knows reads as, whatever its transitions", () => {
     const prev = cursor({ "forge:#9": state() });
     const read = outcome({ snapshots: [snapshot({ ref: "#9", fleetLabels: ["ready"], transitions: [transition({ label: "ready" })] })] });
@@ -416,6 +423,14 @@ describe("partitionRevisit", () => {
   it("leaves out a closed item", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true, open: false }), "forge:#2": state({ fleetLabels: ["ready"], inPartition: true, open: false, merged: true }) });
     expect(partitionRevisit(prev, "forge", labels, new Set())).toEqual([]);
+  });
+
+  it("pins, as it behaves now and left for a follow-up: a reopened partition item wakes as labelled for its old label, not as reopened", () => {
+    const closed = derive({ prev: cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }) }), outcome: outcome({ snapshots: [snapshot({ fleetLabels: ["spec"], inPartition: true, open: false })] }) });
+    expect(closed.nextCursor.items).toEqual({});
+    const reopened = snapshot({ fleetLabels: ["spec"], inPartition: true, transitions: [transition({ kind: "reopened", id: "r1", at: "2026-10-12T09:50:00.000Z" })] });
+    const { changes } = derive({ prev: closed.nextCursor, outcome: outcome({ snapshots: [reopened] }) });
+    expect(kinds(changes)).toEqual(["labelled spec"]);
   });
 
   it("is given no closed item by the cursor a read of it leaves, unless the item is watched", () => {
