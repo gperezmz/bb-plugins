@@ -179,10 +179,10 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect(reasons[1]!.text).toBe("3 manifest rows cannot be read: In flight, Inbox");
   });
 
-  it("names a missing manifest, and a refused credential once a poll found it so, without a place to fix the first", async () => {
+  it("names a missing manifest, which the Fleet tab shows, and a refused credential once a poll found it so, which the settings fix", async () => {
     const w = world();
     await start(w, undefined);
-    expect((await cardOf(w)).reasons).toEqual([{ code: "manifest-missing", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "none" } }]);
+    expect((await cardOf(w)).reasons).toEqual([{ code: "manifest-missing", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
     w.manifests.files.set(MANIFEST_PATH, manifest());
     w.store.savePollState(REPO_KEY, {
       lastPolledAt: w.clock.now().toISOString(),
@@ -195,6 +195,12 @@ describe("the card (AC3, AC4, AC14)", () => {
       outages: { forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", announced: true, why: "refused" } } },
     });
     expect((await cardOf(w)).reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org"), fix: { kind: "settings" } }]);
+  });
+
+  it("sends an unreadable manifest to the Fleet tab, which shows why it cannot be read", async () => {
+    const w = world();
+    await start(w, "not a manifest");
+    expect((await cardOf(w)).reasons).toEqual([{ code: "manifest-unreadable", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
   });
 
   it("has no reason for a fleet that is fully watched", async () => {
