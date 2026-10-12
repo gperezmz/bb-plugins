@@ -1,6 +1,7 @@
 // The Fleets page, the card and the Fleet tab as data (AC1 to AC5, AC8 to AC11, AC14).
 import { describe, expect, it } from "vitest";
 import { args, inboxRow, issueUrl, manifest, MANAGER, MANIFEST_PATH, pullUrl, REPO_KEY, world, type World } from "../testing/kit";
+import { MANAGER_GONE_TEXT } from "../domain/dashboard";
 import { createDashboard } from "./dashboard";
 import { pollFleet } from "./poll";
 import { registerFleet } from "./register";
@@ -35,17 +36,18 @@ describe("the counts (AC1, AC3)", () => {
     expect((await fleets(w)).waiting).toBe(4);
   });
 
-  it("counts the In flight rows, and landed today only for rows merged on today's local date", async () => {
+  it("counts the In flight and Blocked rows, and the Landed rows merged in the last 7 days", async () => {
     const w = world();
     const now = w.clock.now().toISOString();
     await start(
       w,
       manifest({
         inFlight: [`| #4 | Build | building | 2026-10-12T09:00:00Z | thr_b | ${pullUrl(4)} |`, `| #5 | Build | at the bar | 2026-10-12T09:00:00Z | — | ${pullUrl(5)} |`, "| bad | x | building | 2026-10-12T09:00:00Z | — | https://github.com/org/repo/pull/6 |"],
-        landed: [landedRow(7, now), landedRow(8, hoursAgo(w, 25)), landedRow(9, hoursAgo(w, 24 * 8))],
+        blocked: [`| #10 | #4 | ${issueUrl(10)} |`],
+        landed: [landedRow(7, now), landedRow(8, hoursAgo(w, 24 * 3)), landedRow(9, hoursAgo(w, 24 * 8))],
       }),
     );
-    expect(await cardOf(w)).toMatchObject({ inFlight: 2, landedToday: 1 });
+    expect(await cardOf(w)).toMatchObject({ inFlight: 2, blocked: 1, landed: 2 });
   });
 
   it("sums the header over all fleets, and counts a fleet with a missing or unreadable manifest as zero", async () => {
@@ -149,6 +151,35 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).manager).toEqual({ state: "none", since: null });
   });
 
+  it("counts a manager that is archived or gone among the problems, and a live one not", async () => {
+    const w = world();
+    await start(w, manifest());
+    expect((await cardOf(w)).reasons).toEqual([]);
+    w.threads.states.set(MANAGER, "archived");
+    expect((await cardOf(w)).reasons).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
+    w.threads.states.delete(MANAGER);
+    expect((await cardOf(w)).reasons.map((reason) => reason.code)).toEqual(["manager-gone"]);
+  });
+
+  it("names the service behind the forge", async () => {
+    const w = world();
+    await start(w, manifest());
+    expect((await cardOf(w)).forge).toBe("github");
+  });
+
+  it("warns of polling that has never run, then of polling more than two intervals late", async () => {
+    const w = world();
+    await start(w, manifest());
+    expect((await cardOf(w)).warnings).toEqual([{ kind: "never-polled" }]);
+    await pollFleet(w.poll, REPO_KEY);
+    const polledAt = w.clock.now().toISOString();
+    expect((await cardOf(w)).warnings).toEqual([]);
+    w.clock.advance(4 * 60_000);
+    expect((await cardOf(w)).warnings).toEqual([]);
+    w.clock.advance(60_000);
+    expect((await cardOf(w)).warnings).toEqual([{ kind: "polling-late", lastPolledAt: polledAt }]);
+  });
+
   it("carries the tracker, when it was last polled and the interval", async () => {
     const w = world();
     await start(w, manifest());
@@ -218,6 +249,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "gh", owner: null, expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, null);
     const save = (expiresAt: string) => w.accounts.noteExpiry("github.com/org", expiresAt);
     save(expiry);
+    await pollFleet(w.poll, REPO_KEY);
     expect((await cardOf(w)).warnings).toEqual([
       { kind: "expires", label: "github.com/org", credentialId: "github.com/org", accountId: "account:github.com/org", role: "forge", expiresAt: expiry, daysLeft: 3 },
       { kind: "shares-rate-limit", label: "github.com/org" },
@@ -231,6 +263,7 @@ describe("the card (AC3, AC4, AC14)", () => {
   it("does not warn of a token credential with no expiry", async () => {
     const w = world();
     await start(w, manifest());
+    await pollFleet(w.poll, REPO_KEY);
     expect((await cardOf(w)).warnings).toEqual([]);
   });
 });

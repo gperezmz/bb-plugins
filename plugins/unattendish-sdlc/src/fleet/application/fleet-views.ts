@@ -2,7 +2,7 @@
 // the Inbox rows, the manifest and the watched set built from that.
 import type { ActionRecord } from "../domain/actions";
 import { heldBy, latestOn, recentActions as recentOf } from "../domain/actions";
-import { credentialWarnings, landedToday, landedWithin, listWatched, oldestFirst, reasonsOf, unreadableInbox } from "../domain/dashboard";
+import { credentialWarnings, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, reasonsOf, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import { offerFor, parseLink, uniqueRowIds } from "../domain/inbox";
 import type { InboxRow, WrittenSection } from "../domain/model";
@@ -166,20 +166,24 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
   const manifest = g.watching.manifest;
   const unreadable = manifest.status === "ok" ? manifest.manifest.unreadable : [];
   const cost = await deps.cost.costOf(registration.managerThreadId).catch(() => null);
+  const intervalMs = effectiveInterval(registration);
+  const polling = pollingWarning(g.fleet.lastPolledAt, intervalMs, now);
   return {
     repo: g.name,
+    forge: forgeServiceOf(g.watching),
     tracker: formatTracker(registration.tracker),
     managerThreadId: registration.managerThreadId,
     manager: managerOf(g.standing),
     waiting: manifest.status === "ok" ? manifest.manifest.inbox.length + unreadableInbox(unreadable).length : 0,
     inFlight: manifest.status === "ok" ? manifest.manifest.inFlight.length : 0,
-    landedToday: manifest.status === "ok" ? landedToday(manifest.manifest.landed, now) : 0,
+    blocked: manifest.status === "ok" ? manifest.manifest.blocked.length : 0,
+    landed: manifest.status === "ok" ? landedWithin(manifest.manifest.landed, now, LANDED_DAYS).length : 0,
     cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD },
     lastPolledAt: g.fleet.lastPolledAt,
-    intervalMs: effectiveInterval(registration),
-    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable),
+    intervalMs,
+    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing.state !== "live"),
     halves: halvesOf(g),
-    warnings: credentialWarnings(warnedOf(deps, g), now),
+    warnings: [...credentialWarnings(warnedOf(deps, g), now), ...(polling === null ? [] : [polling])],
   };
 }
 
@@ -188,7 +192,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
 export const landedViews = (g: Gathered, now: Date): LandedRowView[] =>
   g.watching.manifest.status !== "ok"
     ? []
-    : landedWithin(g.watching.manifest.manifest.landed, now, 7).slice(0, MAX_ROWS).map((row) => ({ fleet: g.name, ref: row.ref, spec: clip(row.spec, CELL_MAX_CHARS), merged: row.merged, link: parseLink(row.link) }));
+    : landedWithin(g.watching.manifest.manifest.landed, now, LANDED_DAYS).slice(0, MAX_ROWS).map((row) => ({ fleet: g.name, ref: row.ref, spec: clip(row.spec, CELL_MAX_CHARS), merged: row.merged, link: parseLink(row.link) }));
 
 export function manifestViewOf(g: Gathered, inbox: InboxViews, now: Date): ManifestView {
   const manifest = g.watching.manifest;

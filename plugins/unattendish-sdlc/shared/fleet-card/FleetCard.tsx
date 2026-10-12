@@ -1,6 +1,6 @@
-import type { CredentialWarningView, FleetCardView, HalfView, ReasonView } from "@/src/fleet/application/views";
+import type { WarningView, FleetCardView, HalfView, ReasonView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
-import { cardReasons, costText, countsText, halfAction, halfLine, managerText, pollText, warningLine } from "../card-model";
+import { cardReasons, costText, countsText, halfAction, halfLine, managerText, pollText, warningKey, warningLine } from "../card-model";
 import { CanWrite } from "../connect/Field";
 import { openConnect } from "../connect/requests";
 import { LINK_CLASS } from "../ItemLink";
@@ -39,7 +39,7 @@ export function FleetCard({ card, now, className, inFleetTab = false }: { card: 
         <Reason key={`${reason.code}:${reason.text}`} reason={reason} repo={card.repo} managerThreadId={card.managerThreadId} onOpenFleetTab={inFleetTab ? null : openFleetTab} />
       ))}
       {card.warnings.map((warning) => (
-        <Warning key={`${warning.kind}:${warning.label}`} warning={warning} repo={card.repo} />
+        <Warning key={warningKey(warning)} warning={warning} repo={card.repo} now={now} />
       ))}
     </article>
   );
@@ -78,12 +78,12 @@ function Reason({ reason, repo, managerThreadId, onOpenFleetTab }: { reason: Rea
   );
 }
 
-function Warning({ warning, repo }: { warning: CredentialWarningView; repo: string }) {
-  const line = warningLine(warning);
+function Warning({ warning, repo, now }: { warning: WarningView; repo: string; now: string }) {
+  const line = warningLine(warning, now);
   return (
     <div className={cn("flex flex-wrap items-baseline gap-x-2 text-xs", line.tone === "destructive" ? "text-destructive" : "text-warning")}>
       <span>{line.text}</span>
-      <span className="text-muted-foreground">{line.label}</span>
+      {warning.kind === "expires" || warning.kind === "shares-rate-limit" ? <span className="text-muted-foreground">{line.label}</span> : null}
       {warning.kind === "expires" ? (
         <button
           type="button"

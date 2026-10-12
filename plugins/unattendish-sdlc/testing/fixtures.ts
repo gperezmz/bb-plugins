@@ -30,12 +30,14 @@ export const DAY = 24 * HOUR;
 export function fleetCard(over: Partial<FleetCardView> = {}): FleetCardView {
   return {
     repo: "acme/web",
-    tracker: "linear",
+    forge: "github",
+    tracker: "linear:ENG",
     managerThreadId: "thr_acme",
     manager: { state: "idle", since: ago(12 * MINUTE) },
     waiting: 0,
     inFlight: 0,
-    landedToday: 0,
+    blocked: 0,
+    landed: 0,
     cost: null,
     lastPolledAt: ago(40_000),
     intervalMs: 120_000,

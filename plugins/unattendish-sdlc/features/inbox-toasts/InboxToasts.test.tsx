@@ -15,7 +15,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const signal = { fleet: "acme/web", ref: "ENG-212", what: "which locale wins?", rowId: "row_1" };
+const signal = { fleet: "acme/web", ref: "ENG-212", what: "which locale wins?", rowId: "row_1", waitsFor: "answer", forge: "github" };
 
 describe("the Inbox toasts", () => {
   it("toasts nothing on mount", () => {

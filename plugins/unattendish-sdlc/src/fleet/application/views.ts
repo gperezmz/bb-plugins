@@ -114,15 +114,16 @@ export interface WrittenSectionView {
 
 // ---- a fleet ----
 
-/** Where a not-fully-watched reason is fixed: Connect… for the half that needs an account, or the Fleet tab for the manifest. */
+/** Where a problem is fixed: Connect… for the half that needs an account, the Fleet tab for the manifest, or nowhere on the page. */
 export type FixView =
   | { readonly kind: "connect"; readonly role: SourceRole }
   | { readonly kind: "fleet-tab" }
   | { readonly kind: "none" };
 
+/** A problem the server flags about a fleet. */
 export interface ReasonView {
-  /** The contract's `notWatched` codes, or `unreadable-rows` for manifest rows the plugin cannot read. */
-  readonly code: NotWatchedCode | "unreadable-rows";
+  /** The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, or `manager-gone` for a manager thread archived or gone. */
+  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
   readonly text: string;
   readonly fix: FixView;
 }
@@ -185,29 +186,38 @@ export interface CostView {
 export interface FleetCardView {
   /** `host/path`, as the manifest's first line spells it. */
   readonly repo: string;
+  /** The service behind the forge: what reads it, else what its host is known as, else GitHub. */
+  readonly forge: "github" | "gitlab";
+  /** The registration's tracker: `forge-issues`, `linear:<team key>` or `jira:<site>/<project key>`. */
   readonly tracker: string;
   readonly managerThreadId: string;
   readonly manager: ManagerView;
   /** Rows in the Inbox, unreadable ones among them. */
   readonly waiting: number;
   readonly inFlight: number;
-  /** Landed rows merged on today's date (the server's local day). */
-  readonly landedToday: number;
+  readonly blocked: number;
+  /** Landed rows merged in the last 7 days. */
+  readonly landed: number;
   readonly cost: CostView | null;
   readonly lastPolledAt: string | null;
   readonly intervalMs: number;
-  /** Every reason the fleet is not fully watched. */
+  /** The fleet's problems: every reason it is not fully watched, and a manager that is gone. */
   readonly reasons: readonly ReasonView[];
   /** The forge, then the tracker where it is a service of its own. */
   readonly halves: readonly HalfView[];
-  /** Credentials expiring within 7 days, and those sharing the agents' rate limit, for the card to warn of. */
-  readonly warnings: readonly CredentialWarningView[];
+  /** What to warn of: credentials expiring within 7 days, those sharing the agents' rate limit, and polling that is late or has never run. */
+  readonly warnings: readonly WarningView[];
 }
 
-/** An expiring credential carries what Renew needs: the credential, its account and the half it serves. */
-export type CredentialWarningView =
+/**
+ * An expiring credential carries what Renew needs: the credential, its account and the half it serves. Polling is
+ * `late` once the last poll is more than twice the fleet's interval ago.
+ */
+export type WarningView =
   | { readonly kind: "expires"; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly role: SourceRole; readonly expiresAt: string; readonly daysLeft: number }
-  | { readonly kind: "shares-rate-limit"; readonly label: string };
+  | { readonly kind: "shares-rate-limit"; readonly label: string }
+  | { readonly kind: "polling-late"; readonly lastPolledAt: string }
+  | { readonly kind: "never-polled" };
 
 /** A fleet half that cannot be read, listed at the top of Waits on you with Connect…. */
 export interface NeedsAccountView {
@@ -221,7 +231,7 @@ export interface NeedsAccountView {
 
 export interface FleetsView {
   readonly generatedAt: string;
-  /** Every Inbox row of every fleet, unreadable ones included, sent ones too, and every fleet half that needs an account: the header's count. */
+  /** Every Inbox row of every fleet, unreadable ones included, sent ones too: the header's count. */
   readonly waiting: number;
   /** Fleet halves that cannot be read for want of an account or a credential that reads them, listed first. */
   readonly needsAccount: readonly NeedsAccountView[];
@@ -555,4 +565,7 @@ export interface InboxNewSignal {
   readonly ref: string;
   readonly what: string;
   readonly rowId: string;
+  readonly waitsFor: WaitsFor;
+  /** The service behind the fleet's forge, for the toast's logo. */
+  readonly forge: "github" | "gitlab";
 }

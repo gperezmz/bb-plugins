@@ -52,6 +52,6 @@ export function observeManifest(
   if (!baselined) deps.store.setInboxBaselined(repo);
   const announced = new Set(news.announce);
   manifest.manifest.inbox.forEach((row, index) => {
-    if (announced.has(ids[index]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: clip(row.what, CELL_MAX_CHARS), rowId: ids[index]! });
+    if (announced.has(ids[index]!)) deps.events.inboxNew({ fleet: formatRepo(registration.repo), ref: row.ref, what: clip(row.what, CELL_MAX_CHARS), rowId: ids[index]!, waitsFor: row.waitsFor, forge });
   });
 }

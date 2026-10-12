@@ -11,9 +11,10 @@ describe("a toast for a new Inbox row", () => {
   });
 
   it("reads the server's signal, and nothing else", () => {
-    const signal = { fleet: "acme/web", ref: "#1", what: "x", rowId: "r1" };
+    const signal = { fleet: "acme/web", ref: "#1", what: "x", rowId: "r1", waitsFor: "answer", forge: "github" };
     expect(parseInboxNew(signal)).toEqual(signal);
     expect(parseInboxNew({ fleet: "acme/web" })).toBeNull();
+    expect(parseInboxNew({ ...signal, waitsFor: "lunch" })).toBeNull();
     expect(parseInboxNew(null)).toBeNull();
     expect(parseInboxNew("inbox-new")).toBeNull();
   });

@@ -5,16 +5,16 @@ const NOW = "2026-10-12T12:00:00Z";
 
 describe("a fleet's counts", () => {
   it("spells each count and joins them", () => {
-    expect(countsText({ waiting: 1, inFlight: 3, landedToday: 2 })).toBe("1 waits on you · 3 in flight · 2 landed today");
+    expect(countsText({ waiting: 1, inFlight: 3, landed: 2 })).toBe("1 waits on you · 3 in flight · 2 landed in 7d");
   });
 
   it("leaves out a count of zero", () => {
-    expect(countParts({ waiting: 0, inFlight: 2, landedToday: 0 })).toEqual(["2 in flight"]);
-    expect(countsText({ waiting: 1, inFlight: 0, landedToday: 0 })).toBe("1 waits on you");
+    expect(countParts({ waiting: 0, inFlight: 2, landed: 0 })).toEqual(["2 in flight"]);
+    expect(countsText({ waiting: 1, inFlight: 0, landed: 0 })).toBe("1 waits on you");
   });
 
   it("reads Fleet idle with no count", () => {
-    expect(countsText({ waiting: 0, inFlight: 0, landedToday: 0 })).toBe("Fleet idle");
+    expect(countsText({ waiting: 0, inFlight: 0, landed: 0 })).toBe("Fleet idle");
   });
 });
 
@@ -50,17 +50,22 @@ const expires = (daysLeft: number, expiresAt = "2026-10-18") =>
 
 describe("a credential warning", () => {
   it("says how many days are left", () => {
-    expect(warningLine(expires(6))).toEqual({ text: "token expires in 6 days", label: "GitHub · yuser for acme", tone: "warning" });
-    expect(warningLine(expires(1)).text).toBe("token expires in 1 day");
-    expect(warningLine(expires(0)).text).toBe("token expires today");
+    expect(warningLine(expires(6), NOW)).toEqual({ text: "token expires in 6 days", label: "GitHub · yuser for acme", tone: "warning" });
+    expect(warningLine(expires(1), NOW).text).toBe("token expires in 1 day");
+    expect(warningLine(expires(0), NOW).text).toBe("token expires today");
   });
 
   it("says an expired credential expired, in the destructive tone", () => {
-    expect(warningLine(expires(-2))).toMatchObject({ text: "token expired 2 days ago", tone: "destructive" });
+    expect(warningLine(expires(-2), NOW)).toMatchObject({ text: "token expired 2 days ago", tone: "destructive" });
   });
 
   it("says a gh or glab login shares the agents' rate limit", () => {
-    expect(warningLine({ kind: "shares-rate-limit", label: "GitHub · yuser for every owner" }).text).toBe("shares the agents' rate limit");
+    expect(warningLine({ kind: "shares-rate-limit", label: "GitHub · yuser for every owner" }, NOW).text).toBe("shares the agents' rate limit");
+  });
+
+  it("says polling is late, with when it last ran, or that it has never run", () => {
+    expect(warningLine({ kind: "polling-late", lastPolledAt: "2026-10-12T11:51:00Z" }, NOW).text).toBe("polling is late: polled 9m ago");
+    expect(warningLine({ kind: "never-polled" }, NOW).text).toBe("not polled yet");
   });
 });
 

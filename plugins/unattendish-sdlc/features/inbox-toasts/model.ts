@@ -2,12 +2,18 @@
 import type { InboxNewSignal } from "@/src/fleet/application/views";
 import { itemTitle } from "@/shared/item-title";
 
+type WaitsFor = InboxNewSignal["waitsFor"];
+type Forge = InboxNewSignal["forge"];
+const WAITS_FOR: readonly WaitsFor[] = ["answer", "grant", "ready", "other"];
+const FORGES: readonly Forge[] = ["github", "gitlab"];
+
 /** Reads a realtime payload as the signal the server publishes; null for anything else. */
 export function parseInboxNew(payload: unknown): InboxNewSignal | null {
   if (typeof payload !== "object" || payload === null) return null;
-  const { fleet, ref, what, rowId } = payload as Record<string, unknown>;
+  const { fleet, ref, what, rowId, waitsFor, forge } = payload as Record<string, unknown>;
   if (typeof fleet !== "string" || typeof ref !== "string" || typeof what !== "string" || typeof rowId !== "string") return null;
-  return { fleet, ref, what, rowId };
+  if (!WAITS_FOR.includes(waitsFor as WaitsFor) || !FORGES.includes(forge as Forge)) return null;
+  return { fleet, ref, what, rowId, waitsFor: waitsFor as WaitsFor, forge: forge as Forge };
 }
 
 /** `acme/web waits on you — ENG-212 which locale wins?`; a Ref of `—` is left out. */

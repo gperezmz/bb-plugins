@@ -44,7 +44,8 @@ describe("a fleet that cannot be read (AC1)", () => {
     expect(fleet.reasons).toContainEqual({ code: "no-credential", text, fix: { kind: "connect", role: "forge" } });
     const view = await api(w).fleets();
     expect(view.needsAccount).toEqual([{ fleet: "github.com/other-org/x", managerThreadId: MANAGER, role: "forge", text }]);
-    expect(view.waiting).toBe(1);
+    // A half that needs an account is a Connect… on the board, not a row: it does not wait in the header's count.
+    expect(view.waiting).toBe(0);
   });
 
   it("shows a GitLab forge as read by its account and a Jira tracker as needing a Jira account for its site", async () => {

@@ -23,7 +23,7 @@ describe("Inbox rows new to the repository (AC6)", () => {
     w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(7), inboxRow(8, "grant")] }));
     w.clock.advance(120_000);
     await poll(w);
-    expect(w.events.inboxNews).toEqual([{ fleet: "github.com/org/repo", ref: "#8", what: "A parked question", rowId: "#8|grant|2026-10-12T09:00:00Z" }]);
+    expect(w.events.inboxNews).toEqual([{ fleet: "github.com/org/repo", ref: "#8", what: "A parked question", rowId: "#8|grant|2026-10-12T09:00:00Z", waitsFor: "grant", forge: "github" }]);
 
     w.clock.advance(120_000);
     await poll(w);

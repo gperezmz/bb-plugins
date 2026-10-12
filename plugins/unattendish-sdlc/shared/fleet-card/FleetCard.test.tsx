@@ -20,15 +20,15 @@ const show = (over = {}) => render(<FleetCard card={fleetCard(over)} now={NOW} /
 
 describe("a fleet card", () => {
   it("shows the repo, tracker, the manager's state, its labelled counts and when it was last polled", () => {
-    show({ waiting: 1, inFlight: 3, landedToday: 2 });
+    show({ waiting: 1, inFlight: 3, landed: 2 });
     const card = screen.getByRole("article", { name: "Fleet acme/web" });
-    expect(within(card).getByText("linear · manager idle 12m")).toBeTruthy();
-    expect(within(card).getByText("1 waits on you · 3 in flight · 2 landed today")).toBeTruthy();
+    expect(within(card).getByText("linear:ENG · manager idle 12m")).toBeTruthy();
+    expect(within(card).getByText("1 waits on you · 3 in flight · 2 landed in 7d")).toBeTruthy();
     expect(within(card).getByText(/polled 40s ago/)).toBeTruthy();
   });
 
   it("leaves out a count of zero", () => {
-    show({ waiting: 0, inFlight: 2, landedToday: 0 });
+    show({ waiting: 0, inFlight: 2, landed: 0 });
     expect(screen.getByText("2 in flight")).toBeTruthy();
   });
 
