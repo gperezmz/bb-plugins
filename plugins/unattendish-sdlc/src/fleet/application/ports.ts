@@ -138,6 +138,12 @@ export interface ResolvedCredential {
   readonly host: string;
 }
 
+/** A source and the credential chosen for it. */
+export interface ResolvedSource {
+  readonly credential: ResolvedCredential;
+  readonly source: Source;
+}
+
 export type CredentialLookup =
   | { readonly found: true; readonly credential: ResolvedCredential }
   | { readonly found: false; readonly prefix: string };
