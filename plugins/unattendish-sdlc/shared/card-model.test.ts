@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costText, countParts, countsText, managerText, warningLine } from "./card-model";
+import { costText, countParts, countsText, halfAction, halfLine, managerText, warningLine } from "./card-model";
 
 const NOW = "2026-10-12T12:00:00Z";
 
@@ -45,18 +45,35 @@ describe("the cost", () => {
   });
 });
 
+const expires = (daysLeft: number, expiresAt = "2026-10-18") =>
+  ({ kind: "expires", label: "GitHub · yuser for acme", credentialId: "cred_1", accountId: "acc_1", role: "forge", expiresAt, daysLeft }) as const;
+
 describe("a credential warning", () => {
   it("says how many days are left", () => {
-    expect(warningLine({ kind: "expires", prefix: "org", expiresAt: "2026-10-18", daysLeft: 6 })).toEqual({ text: "token expires in 6 days", prefix: "org", tone: "warning" });
-    expect(warningLine({ kind: "expires", prefix: "org", expiresAt: "2026-10-13", daysLeft: 1 }).text).toBe("token expires in 1 day");
-    expect(warningLine({ kind: "expires", prefix: "org", expiresAt: "2026-10-12", daysLeft: 0 }).text).toBe("token expires today");
+    expect(warningLine(expires(6))).toEqual({ text: "token expires in 6 days", label: "GitHub · yuser for acme", tone: "warning" });
+    expect(warningLine(expires(1)).text).toBe("token expires in 1 day");
+    expect(warningLine(expires(0)).text).toBe("token expires today");
   });
 
   it("says an expired credential expired, in the destructive tone", () => {
-    expect(warningLine({ kind: "expires", prefix: "org", expiresAt: "2026-10-10", daysLeft: -2 })).toMatchObject({ text: "token expired 2 days ago", tone: "destructive" });
+    expect(warningLine(expires(-2))).toMatchObject({ text: "token expired 2 days ago", tone: "destructive" });
   });
 
   it("says a gh or glab login shares the agents' rate limit", () => {
-    expect(warningLine({ kind: "shares-rate-limit", prefix: "github.com" }).text).toBe("shares the agents' rate limit");
+    expect(warningLine({ kind: "shares-rate-limit", label: "GitHub · yuser for every owner" }).text).toBe("shares the agents' rate limit");
+  });
+});
+
+describe("a fleet's halves", () => {
+  const half = (over = {}) => ({ role: "forge", what: "acme/web", account: { id: "a", label: "GitHub · yuser" }, credential: null, canWrite: false, needs: null, ...over }) as const;
+
+  it("names the account the half reads as, or says there is none yet", () => {
+    expect(halfLine(half())).toBe("acme/web · reads as GitHub · yuser");
+    expect(halfLine(half({ account: null }))).toBe("acme/web · no account yet");
+  });
+
+  it("offers Connect… while the half needs something and Change account… once it is read", () => {
+    expect(halfAction(half({ needs: "needs a GitHub account that can read other-org" }))).toBe("Connect…");
+    expect(halfAction(half())).toBe("Change account…");
   });
 });
