@@ -1,12 +1,12 @@
 # Unattendish: `bb unattendish fleet`
 
-The CLI runs on the bb server. Every command takes `--json`, which prints one JSON object on stdout in place of the text shown below. No command takes a token: [credentials](unattendish-settings.md#credentials) are entered in the plugin's settings. Source: [`src/fleet/adapters/cli.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/cli.ts), [`src/fleet/domain/wake.ts`](../../plugins/unattendish-sdlc/src/fleet/domain/wake.ts), [`src/fleet/application/status.ts`](../../plugins/unattendish-sdlc/src/fleet/application/status.ts).
+The CLI runs on the bb server. Every command takes `--json`, which prints one JSON object on stdout in place of the text shown below. No command takes a token: [accounts and their tokens](unattendish-settings.md#accounts) are added through **Connect…** and the plugin's settings section, as [connect a fleet to an account](../how-to/unattendish-connect-a-fleet.md) shows. Source: [`src/fleet/adapters/cli.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/cli.ts), [`src/fleet/domain/wake.ts`](../../plugins/unattendish-sdlc/src/fleet/domain/wake.ts), [`src/fleet/application/status.ts`](../../plugins/unattendish-sdlc/src/fleet/application/status.ts).
 
 | Command | Does |
 |---|---|
 | [`fleet register`](#bb-unattendish-fleet-register) | Registers the calling thread as the manager of a fleet |
 | [`fleet unregister`](#bb-unattendish-fleet-unregister) | Removes a registration and its cursors; the ledger ages out |
-| [`fleet status`](#bb-unattendish-fleet-status) | Lists each fleet, and why it is not watched |
+| [`fleet status`](#bb-unattendish-fleet-status) | Lists each fleet, the account each half reads as, and why it is not watched |
 | [`fleet ledger`](#bb-unattendish-fleet-ledger) | Prints what the plugin saw and what it did with it |
 | [`fleet interval`](#bb-unattendish-fleet-interval) | Sets how often a fleet is polled |
 
@@ -67,19 +67,33 @@ Lists every fleet. With none: `No fleet is registered.` For each, in this order,
 github.com/org/repo  tracker forge-issues
   manager thr_… (live), manifest /path/to/fleet/manifest.md
   last polled 2026-10-12T02:22:28.877Z, every 120 s, 8 requests this hour
-  credential github.com/org (forge, github, token)
+  forge reads as GitHub · yuser
+  credential GitHub · yuser for org (forge, github, token)
   watched
   unreadable manifest row: Inbox, line 8: Waits for "soon" is not one of answer, grant, ready, other
 ```
 
-A fleet that a service refuses shows the cause and since when, here a token forbidden to read for 3 polls in a row. A fleet whose listing of what changed keeps failing shows it the same way, as `not watched: credential-refused: The service keeps failing to list what changed with the credential for github.example/org`. `not watched since` is the first of the three polls, two intervals before the poll that showed it. The other causes read the same way, with their [own text](../how-to/unattendish-set-credentials.md#what-credential-refused-says):
+Each half of the fleet, its `forge` and a `tracker` of its own, says which account it reads as. A half that no account reads says what it needs, and the fleet is not watched with `no-credential`:
+
+```text
+github.com/other-org/x  tracker forge-issues
+  manager thr_… (live), manifest /path/to/fleet/manifest.md
+  last polled never, every 120 s, 0 requests this hour
+  forge reads as no account: other-org/x needs a GitHub account that can read other-org
+  not watched: no-credential: other-org/x needs a GitHub account that can read other-org
+```
+
+A half whose account holds a login that cannot give a token reads as that account and says why: `forge reads as GitHub · buser: gh is signed in as yuser, not buser`. Connect the half again from its card, or from the **Waits on you** entry.
+
+A fleet that a service refuses shows the cause and since when, here a token forbidden to read for 3 polls in a row. A fleet whose listing of what changed keeps failing shows it the same way, as `not watched: credential-refused: The service keeps failing to list what changed with the credential for GitHub · yuser for org`. `not watched since` is the first of the three polls, two intervals before the poll that showed it. The other causes read the same way, with their [own text](../how-to/unattendish-connect-a-fleet.md#what-credential-refused-says):
 
 ```text
 github.example/org/repo  tracker forge-issues
   manager thr_… (live), manifest /path/to/fleet/manifest.md
   last polled 2026-10-12T04:37:33.342Z, every 120 s, 18 requests this hour
-  credential github.example/org (forge, github, token)
-  not watched: credential-refused: The credential for github.example/org was forbidden to read what the fleet needs (403)
+  forge reads as GitHub · yuser
+  credential GitHub · yuser for org (forge, github, token)
+  not watched: credential-refused: The credential for GitHub · yuser for org was forbidden to read what the fleet needs (403)
   not watched since 2026-10-12T04:33:33.342Z
 ```
 
@@ -92,16 +106,17 @@ github.example/org/repo  tracker forge-issues
 | `manifest` | The manifest's absolute path |
 | `lastPolledAt` | When the fleet was last polled, or `null` before its first poll. Text: `never` |
 | `intervalMs` | The poll interval in milliseconds, the default 120000 until [set](#bb-unattendish-fleet-interval) |
-| `credentials` | One entry for the forge and one for a separate tracker, where a credential is chosen: `role` (`forge` or `tracker`), `prefix`, `service`, `auth` (`token`, `gh` or `glab`), `expiresAt` and `sharesAgentRateLimit` |
+| `accounts` | One entry for the forge and one for a separate tracker: `role` (`forge` or `tracker`), `account` (`GitHub · yuser`, or `null` where no account reads the half) and `needs` (what the half needs, or `null` while it reads) |
+| `credentials` | One entry for the forge and one for a separate tracker, where an account has a credential that reads it: `role`, `credential` (`GitHub · yuser for acme`), `account`, `service`, `kind` (`fine-grained`, `classic`, `gitlab-token`, `linear-key`, `jira-token`, `gh` or `glab`), `auth` (`token`, `gh` or `glab`), `expiresAt`, `canWrite` and `sharesAgentRateLimit` |
 | `requestsThisHour` | Requests the plugin made for the fleet in the last hour |
 | `watched` | True while `notWatched` is empty |
-| `notWatched` | Why the fleet is not watched, each as `{code, text}`; the codes are the contract's, and [how to read them](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched) says what each asks of you |
+| `notWatched` | Why the fleet is not watched, each as `{code, text}`; the codes are the contract's, and [how to read them](../how-to/unattendish-connect-a-fleet.md#read-why-a-fleet-is-not-watched) says what each asks of you |
 | `notWatchedSince` | While a credential is refused, forbidden, unanswered, finds nothing, reads only outside the fleet or its listing keeps failing, when the fleet stopped being watched: the time of the first unreadable poll of the streak, and for a 401 that poll; with an outage in both sources, the earlier; else `null` |
 | `unreadableRows` | Manifest rows the contract cannot read, each `{section, line, reason}`. They are skipped and the rest of the manifest still counts |
 | `outside` | References and links the manifest names that lie outside the fleet's repository and tracker, each `{text, section, line}`. They are never fetched |
 | `heldSince` | While changes are held because no manager holds the fleet, since when; else `null` |
 
-In the text, `credentials` is one `credential {prefix} ({role}, {service}, {auth})` line each, with `, expires {date}` where the service reports one and `, shares the fleet's agents' rate limit` for a `gh` or `glab` login. `expiresAt` is reported for a GitHub token that expires and a GitLab personal access token with an expiry date, and is `null` for a service that reports none. Each `notWatched` reason is a `not watched: {code}: {text}` line, joined by `; `; the other fields print as `not watched since …`, `unreadable manifest row: …`, `outside the fleet, never fetched: …` and `changes held since …: no manager holds the fleet`.
+In the text, `accounts` is one `{role} reads as {account}` line each, ending in `: {needs}` where the half needs something, and `credentials` is one `credential {credential} ({role}, {service}, {auth})` line each, with `, expires {date}` where the service reports one, `, can write` for a classic token or a `gh` or `glab` login, and `, shares the fleet's agents' rate limit` for a `gh` or `glab` login. `expiresAt` is reported for a GitHub token that expires and a GitLab personal access token with an expiry date, and is `null` for a service that reports none. Each `notWatched` reason is a `not watched: {code}: {text}` line, joined by `; `; the other fields print as `not watched since …`, `unreadable manifest row: …`, `outside the fleet, never fetched: …` and `changes held since …: no manager holds the fleet`.
 
 ## `bb unattendish fleet ledger`
 
@@ -152,21 +167,21 @@ Catch-up: the plugin was away for 8h 12m.
 - **Closing lines**, each only where it applies:
   - `Gathered while no manager held the fleet, since {time}.`
   - `Catch-up: the plugin was away for {duration}.` with the two largest units of days, hours, minutes and seconds, such as `3d 2h`, `8h 12m` or `45s`.
-  - `Not watched since {time}: {why}.`, where `{time}` is the full timestamp and `{why}` is one of:
-    - `the credential for {prefix} was refused by the service` (401)
-    - `the credential for {prefix} was forbidden to read what the fleet needs (403)`
-    - `the service did not answer reads with the credential for {prefix}` (no answer, a 5xx, or a poll cut off at its deadline)
-    - `the credential for {prefix} could not find what the fleet needs (404)` (the listing answers 404 and the rest fails too)
-    - `everything the fleet reads with the credential for {prefix} has moved outside its repository, project or team`
-    - `the service keeps failing to list what changed with the credential for {prefix}` (the items read, and the listing fails by itself: an error on the listing alone, the partition listing past the page limit, or a cut-off that cannot move the cursor)
+  - `Not watched since {time}: {why}.`, where `{time}` is the full timestamp and `{why}` is one of, with `{credential}` the credential's label, such as `GitHub · yuser for acme` (a GitHub token names its owner):
+    - `the credential for {credential} was refused by the service` (401)
+    - `the credential for {credential} was forbidden to read what the fleet needs (403)`
+    - `the service did not answer reads with the credential for {credential}` (no answer, a 5xx, or a poll cut off at its deadline)
+    - `the credential for {credential} could not find what the fleet needs (404)` (the listing answers 404 and the rest fails too)
+    - `everything the fleet reads with the credential for {credential} has moved outside its repository, project or team`
+    - `the service keeps failing to list what changed with the credential for {credential}` (the items read, and the listing fails by itself: an error on the listing alone, the partition listing past the page limit, or a cut-off that cannot move the cursor)
 
-    A 401 sends it at once; the others after 3 polls in a row in which every read failed, or in which the listing failed, and `{time}` is that of the first of the 3. All six are `credential-refused` in the status, which shows the same cause, capitalised, as `not watched: credential-refused: {text}`. An outage is kept per source, the forge and a tracker of its own, and a wake names one source's: two sources refused at once take two wakes, the forge's first. A rate-limited poll in the middle of an outage neither ends it nor sends the wake again.
+    A 401 sends it at once; the others after 3 polls in a row in which every read failed, or in which the listing failed, and `{time}` is that of the first of the 3. All six are `credential-refused` in the status, which shows the same cause, capitalised, as `not watched: credential-refused: {text}`. The status also reports under `credential-refused` a credential the service accepts but that cannot read the fleet's repository, tracker team or project, which Connect found and keeps until a read succeeds; it is not one of the six, and [the how-to](../how-to/unattendish-connect-a-fleet.md#what-credential-refused-says) words it. An outage is kept per source, the forge and a tracker of its own, and a wake names one source's: two sources refused at once take two wakes, the forge's first. A rate-limited poll in the middle of an outage neither ends it nor sends the wake again.
 
     A wake that carries only this line reads, for the listing that keeps failing:
 
     ```text
     Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.
-    Not watched since 2026-10-12T10:00:00.000Z: the service keeps failing to list what changed with the credential for github.example/org.
+    Not watched since 2026-10-12T10:00:00.000Z: the service keeps failing to list what changed with the credential for GitHub · yuser for org.
     ```
 
 The changes are `commented`, `reviewed: approved`, `reviewed: changes requested`, `reviewed: commented`, `labelled {label}`, `unlabelled {label}`, `closed`, `reopened` and `merged`. The plugin reads no CI, so no change reports a check, a commit status or a pipeline. GitHub and GitLab give all of them. GitLab gives `reviewed: approved` for an approval, and `reviewed: changes requested` and `reviewed: commented` from the states of a merge request's reviewers. GitLab's request-changes review is behind a flag before 17.2, on an instance with the flag off no reviewer is ever in that state, and the wake never gives `reviewed: changes requested`. A wake never holds text written on the service.

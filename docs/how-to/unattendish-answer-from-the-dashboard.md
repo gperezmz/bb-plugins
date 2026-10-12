@@ -4,7 +4,7 @@ Use this when a fleet's Inbox holds a row waiting on you and you would rather ac
 
 ## Answer a parked question
 
-1. Open **Fleets** in bb's navigation, or the **Fleet** tab of the manager's thread. A toast tells you when a row has just appeared.
+1. Open **Fleets** in bb's navigation, or the **Fleet** tab of the manager's thread. A toast tells you when a row has just appeared. Above the table, **Needs an account** lists any fleet no account reads, with **Connect…**: [connect it](unattendish-connect-a-fleet.md) first, since a fleet no account reads is not watched and sends no wakes.
 2. On a row waiting for `answer`, choose **Answer…**. The composer shows the row's What and a link to the park.
 3. Write your answer, over as many lines as you need, and press ⌘/Ctrl+Enter. Esc cancels, and nothing sends while the text is empty.
 

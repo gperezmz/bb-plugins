@@ -7,23 +7,27 @@ flowchart LR
   state --> chip["Fleet chip"]
   state --> tab["Fleet tab"]
   poll -->|a new Inbox row| toast["Toast in every window"]
+  poll -->|a fleet that newly needs an account| needs["Toast with Connect…"]
+  needs --> connect["Connect popup"]
+  page -->|Connect… Change account…| connect
+  tab --> connect
   page -->|Answer… Grant… Build it| manager["Manager thread"]
   tab -->|the same actions| manager
   manager -->|writes to the tracker| service["Tracker and forge"]
   service --> poll
 ```
 
-What the operator sees of their fleets. The pages only read what the plugin keeps and send the manager a message when the operator acts; they write nothing to a tracker or forge. Source: [`views.ts`](../../plugins/unattendish-sdlc/src/fleet/application/views.ts) (what the pages read), [`rpc.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/rpc.ts), [`app.tsx`](../../plugins/unattendish-sdlc/app.tsx). To do the jobs, see [answer, grant or build from the dashboard](../how-to/unattendish-answer-from-the-dashboard.md). The words are defined in the [Unattendish glossary](../../plugins/unattendish-sdlc/GLOSSARY.md).
+What the operator sees of their fleets. The pages only read what the plugin keeps, send the manager a message when the operator acts, and open **Connect…** to give a fleet an account; they write nothing to a tracker or forge. Source: [`views.ts`](../../plugins/unattendish-sdlc/src/fleet/application/views.ts) (what the pages read), [`rpc.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/rpc.ts), [`app.tsx`](../../plugins/unattendish-sdlc/app.tsx). To do the jobs, see [answer, grant or build from the dashboard](../how-to/unattendish-answer-from-the-dashboard.md) and [connect a fleet to an account](../how-to/unattendish-connect-a-fleet.md). The words are defined in the [Unattendish glossary](../../plugins/unattendish-sdlc/GLOSSARY.md).
 
 ## What the numbers count
 
 | Count | What |
 |---|---|
-| Waits on you | Every Inbox row of the fleet: rows the plugin cannot read, rows waiting for `other`, and rows whose action is *sent* all count, since each still waits until the manager acts |
+| Waits on you | Every Inbox row of the fleet: rows the plugin cannot read, rows waiting for `other`, and rows whose action is *sent* all count, since each still waits until the manager acts. On the Fleets page the heading's number, and the one in the navigation, also count each half of a fleet that needs an account, which waits on you to connect it |
 | In flight | The In flight rows |
 | Landed today | The Landed rows whose Merged falls on today's date, by the bb server's clock and time zone |
 
-A fleet whose manifest is missing or unreadable counts zero in each. The Fleets page's header counts every fleet's Waits on you, and shows nothing at zero.
+A fleet whose manifest is missing or unreadable counts zero in each. The Fleets page's header counts every fleet's Waits on you, and shows nothing at zero. A card's own count is its Inbox rows alone.
 
 ## The Fleets page
 
@@ -31,7 +35,7 @@ Open it from **Fleets** in bb's navigation. It has three parts, in this order. A
 
 | Part | What it shows |
 |---|---|
-| **Table of Inbox rows** | Every Inbox row of every fleet, longest wait first: the fleet, what it is, what it waits for, how long it has waited, a link to the item on the tracker or forge, and its action. A row waiting for `other` has its link and no action. A row the plugin cannot read reads `unreadable: <column>`, links to that fleet's Fleet tab, and counts as waiting. On a compact viewport each row stacks its fleet, what it is and its wait above its action. Beneath it, the actions finished in the last hour whose row has left the Inbox |
+| **Waits on you** | At its top, a **Needs an account** list: for each fleet half that no account reads, what it needs, such as `other-org/x needs a GitHub account that can read other-org`, with **Connect…**. Beneath it, a table of Inbox rows. Every Inbox row of every fleet, longest wait first: the fleet, what it is, what it waits for, how long it has waited, a link to the item on the tracker or forge, and its action. A row waiting for `other` has its link and no action. A row the plugin cannot read reads `unreadable: <column>`, links to that fleet's Fleet tab, and counts as waiting. On a compact viewport each row stacks its fleet, what it is and its wait above its action. Beneath it, the actions finished in the last hour whose row has left the Inbox |
 | **Cards** | One for each registered fleet; see below |
 | **Recently landed** | Each spec landed in any fleet in the last 7 days, newest first, with its fleet, its title and a link to the pull request that merged |
 
@@ -46,8 +50,9 @@ With no fleet registered the page says none is, and that a fleet appears once `/
 | Counts | Waits on you, in flight and landed today, a count of zero left out |
 | Cost | The manager's thread tree's total from Thread Usage, "since this manager started". Left out, with no error, where Thread Usage is not installed or its answer cannot be read. Cached for 30 seconds |
 | Polled | When the fleet was last polled |
-| Reasons | Every reason the fleet is not fully watched: the [`notWatched` reasons](unattendish-fleet-contract.md), an outage the poll found, and how many manifest rows cannot be read and in which sections. Each links to where it is put right: a credential to this plugin's [settings section](unattendish-settings.md#the-settings-section), a missing or unreadable manifest or unreadable rows to the Fleet tab |
-| Warnings | A credential the service says expires within 7 days, or has expired, with the date; and, for a `gh` or `glab` login, that it shares the fleet's agents' rate limit |
+| Accounts | One line for the `forge` and one for a `tracker` of its own: what it reads (`acme/web`, `team ENG`, `OPS`), `reads as GitHub · yuser` or `no account yet`, **can write** where the credential can, and what it needs. A half that needs something offers **Connect…**; a half that is read offers **Change account…**. Both open the [Connect popup](../how-to/unattendish-connect-a-fleet.md#connect-a-half) for that half |
+| Reasons | Every reason the fleet is not fully watched: the [`notWatched` reasons](unattendish-fleet-contract.md), an outage the poll found, and how many manifest rows cannot be read and in which sections. Each links to where it is put right: a credential reason to **Connect…**, a missing or unreadable manifest or unreadable rows to the Fleet tab |
+| Warnings | A credential the service says expires within 7 days, or has expired (`token expires in 3 days`, `token expires today`, `token expired 2 days ago`), with the credential and **Renew**; and, for a `gh` or `glab` login, that it shares the fleet's agents' rate limit |
 
 ## The Fleet chip
 
@@ -67,12 +72,15 @@ Opened from the chip, from a card's link, or from **Fleet** in a thread panel's 
 | Backlog, Set aside, Standing orders and any other section | As the manifest writes them |
 | Unreadable rows | Each row the plugin cannot read, with its section, line and the column |
 | Watched set | Each item and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
-| Credentials | Each credential the fleet uses: its prefix, its expiry date where the service reports one, and whether it shares the agents' rate limit; with the poll interval, when the fleet was last polled and the requests spent this hour |
+| Credentials | Each credential the fleet uses: the account it is read as beside it, its kind, **can write** where it can, its expiry date or `no expiry reported`, and whether it shares the agents' rate limit |
+| Polling | The poll interval, when the fleet was last polled and the requests spent this hour |
 | Ledger | The fleet's [ledger](unattendish-cli.md#bb-unattendish-fleet-ledger), filterable by item and by what was done, with dropped changes grouped by reason and a count for each, so a noisy echo source stands out. A change shows once: under All the list holds the changes that were not dropped, and the groups hold the dropped ones; an item filter hides the wakes, which name no item |
 
 A table shows at most 200 rows, and the Fleets page at most 400 in all; the counts are of every row. The ledger shows at most 250 changes, as the command does.
 
 ## Toasts
+
+A fleet that newly needs an account raises a toast in every open bb window, saying what it needs, with **Connect…**, which opens the popup over the view that is open. There is one toast for each half of a fleet, so a signal delivered twice raises one. It appears when a fleet becomes not watched for want of an account, a credential the service refuses, or a credential that cannot read the repository, and not again while the reason stays.
 
 When a poll or a manager's turn ending shows an Inbox row never seen before for its repository, every open bb window shows a toast naming the fleet and the row, which opens the Fleets page. A row is told apart by its Ref, what it waits for, its Since and, for a row with no Ref, its Link.
 
@@ -99,4 +107,4 @@ A takeover drops the actions still *sent* on the fleet, since the new manager ne
 
 ## Live updates
 
-The pages refetch when the server publishes `board-changed`, at most once a second whatever the number of polls, when a connection returns, and every 60 seconds. `inbox-new` carries a new row's fleet, Ref, What (cut to 500 characters) and id, for the toast.
+The pages refetch when the server publishes `board-changed`, at most once a second whatever the number of polls, when a connection returns, and every 60 seconds. `inbox-new` carries a new row's fleet, Ref, What (cut to 500 characters) and id, for the toast. `fleet-needs` carries a fleet, its manager's thread, the half (`forge` or `tracker`) and what it needs, for the Connect… toast.

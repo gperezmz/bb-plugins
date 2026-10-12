@@ -58,7 +58,7 @@ The pages each plugin's behaviour rests on:
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
 - [When Cache Keeper acts](explanation/cache-keeper-timing.md): the deadline, the compaction line, waiting and the cost stop.
-- [How Unattendish wakes a manager](explanation/unattendish-polling.md): the poll, the watched set, echoes, cursors that advance only on an accepted wake, credentials bound to a host, and what the dashboard adds.
+- [How Unattendish wakes a manager](explanation/unattendish-polling.md): the poll, the watched set, echoes, cursors that advance only on an accepted wake, accounts whose tokens go only to their own host, and what the dashboard adds.
 
 ## Map
 
@@ -82,7 +82,7 @@ The pages each plugin's behaviour rests on:
 - [Approve your team's commands](how-to/team-onboarding-approve-commands.md)
 - [Title threads with a local model](how-to/openai-inference-local-server.md)
 - [Compact a thread when it goes idle](how-to/cache-keeper-compact-a-thread.md)
-- [Set the credentials for a fleet](how-to/unattendish-set-credentials.md)
+- [Connect a fleet to an account](how-to/unattendish-connect-a-fleet.md): Connect…, read-only tokens, and managing accounts in Settings
 - [Answer, grant or build from the dashboard](how-to/unattendish-answer-from-the-dashboard.md)
 
 **Reference** lists every part, one entry each.
@@ -103,7 +103,7 @@ The pages each plugin's behaviour rests on:
 - [Cache Keeper: `bb cache-keeper` and the agent tool](reference/cache-keeper-cli.md)
 - [UI Tweaks: settings](reference/ui-tweaks-settings.md)
 - [Unattendish: `bb unattendish fleet` and the wake](reference/unattendish-cli.md)
-- [Unattendish: settings and what it stores](reference/unattendish-settings.md)
+- [Unattendish: accounts, settings and what it stores](reference/unattendish-settings.md)
 - [Unattendish: the Fleets page, the Fleet chip and the Fleet tab](reference/unattendish-dashboard.md)
 - [Unattendish: the Fleet contract, version 1](reference/unattendish-fleet-contract.md)
 

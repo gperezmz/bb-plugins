@@ -1,85 +1,100 @@
 # Unattendish: settings and what it stores
 
-Set these under Settings → Installed plugins → Unattendish, or with `bb plugin config unattendish-sdlc set <key> <value>`. A change applies at once, without a reload. Source: [`src/fleet/adapters/settings.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/settings.ts), [`src/fleet/adapters/credentials.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/credentials.ts), [`src/fleet/domain/identity.ts`](../../plugins/unattendish-sdlc/src/fleet/domain/identity.ts), [`src/fleet/adapters/store.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/store.ts). To choose a Credential for a fleet, see [set the credentials](../how-to/unattendish-set-credentials.md).
+```mermaid
+flowchart LR
+  account["Account<br/>one login on one host or service"] --> credential["Credential<br/>a token, or a gh or glab login,<br/>and the owner or host it reaches"]
+  assignment["Assignment<br/>a host, owner or group, team or project"] -->|names| account
+  fleet["A fleet's forge, and its tracker<br/>if it has one"] -->|"the most specific assignment wins"| assignment
+```
 
-| Key | Label | Default | Meaning |
-|---|---|---|---|
-| `credentials` | Credentials | `[]` | A JSON list of entries, each saying how the plugin signs in to the services under one prefix. Multi-line |
-| `tokens` | Tokens | not set | A JSON object from prefix to a pasted token; secret |
-
-`bb plugin config unattendish-sdlc` lists `tokens` as secret and does not print its value. Put a token in the settings page, not in a command: a value on a command line stays in your shell history and, run from an agent thread, in that thread's transcript. No `bb unattendish` command takes a token.
-
-Both settings are checked when saved: an entry that cannot be used is refused with a sentence naming it and why, and a sentence never quotes a token. Settings are checked again when the plugin loads, and the plugin's log gets one `settings:` warning for each fault. An entry with a fault is not used.
+The plugin has no `bb plugin config` key. It keeps its accounts, their credentials and the assignments in its own database, and shows them in one settings section, under Settings → Installed plugins → Unattendish, titled **Fleets: accounts and polling**. A change applies at once, without a reload. Source: [`src/fleet/domain/accounts.ts`](../../plugins/unattendish-sdlc/src/fleet/domain/accounts.ts) (the rules), [`src/fleet/application/accounts.ts`](../../plugins/unattendish-sdlc/src/fleet/application/accounts.ts) (what Connect and the section do), [`features/accounts-settings/`](../../plugins/unattendish-sdlc/features/accounts-settings), [`src/fleet/adapters/account-store.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/account-store.ts) and [`src/fleet/adapters/store.ts`](../../plugins/unattendish-sdlc/src/fleet/adapters/store.ts). To connect a fleet to an account, see [connect a fleet to an account](../how-to/unattendish-connect-a-fleet.md). The words are in the [Unattendish glossary](../../plugins/unattendish-sdlc/GLOSSARY.md).
 
 ## The settings section
 
-Under the form, the plugin's settings section edits the same two settings without JSON, and sets a fleet's poll interval. Both forms edit one list; a change in either shows in the other.
-
-| What | How |
+| Part | What |
 |---|---|
-| Credentials | Each credential is listed with its prefix, its kind (a pasted token, or the `gh` or `glab` login) and its expiry where a fleet's service has reported one. Add, edit and remove them; removing asks first. The token field is write-only: it is never shown, a blank field keeps the stored token, and what you type is not copied into the page's HTML |
-| Poll interval | One field in seconds for each registered fleet, with a button back to the default. Under 30 seconds is refused |
+| **Accounts** | One entry for each [account](#accounts); see below. With none, it says `No account is connected.` |
+| **Add account** | Opens the Connect popup without a fleet. It asks for the service and its host or Jira site, and for GitHub the owner the token is for, and lists that owner's registered fleets to tick on the token. It then asks for a credential and verifies it as Connect does. The first account on a host or site becomes its default |
+| **Poll interval** | One field in seconds for each registered fleet, with **Set** and a **Default** button back to the default. Under 30 seconds is refused |
 
-An entry that cannot be used is shown with the reason, as the form's own check words it.
+## Accounts
 
-## Credentials
+An account is one login on one host or service: `GitHub · yuser` and `GitHub · buser` on github.com are two accounts, and so is `GitLab · yuser` on gitlab.example.com, a Linear key and its user, or a Jira Cloud account on a site. Each entry shows:
 
-A Credential is one entry of `credentials`, and for a pasted token its matching key in `tokens`. A fleet uses the entry with the longest prefix that matches its repository, and separately the one that matches its tracker. If no entry matches, nothing is used: the fleet registers, and [shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched), naming the prefix that is missing.
+| Line | What |
+|---|---|
+| Name | The account as `GitHub · yuser`, its host (for Linear `linear.app`, for Jira its site), **can write** where the account uses a `gh` or `glab` login, `default for <host>` where it is that place's default, and **Make default** on the other accounts of a place |
+| Credentials | One for each token or login the account holds: what it reaches (an owner on GitHub, the host on GitLab, every team the key reaches on Linear, the site on Jira), its kind, **can write** where it can, its expiry or `no expiry reported` or `refused by the service`, and `read by <fleets>` or `no fleet reads with it`. Each has **Remove**, and **Renew** where one is given |
+| Assignments | The owners, groups, Linear teams and Jira projects assigned to the account, each with **Remove**, which returns them to the default |
+| Actions | **Add token for another owner**, on a GitHub account that uses tokens, which opens the popup at step 2; and **Remove**, which asks first |
 
-```json
-[
-  {"prefix": "github.com/org", "auth": "token"},
-  {"prefix": "gitlab.example.com", "auth": "glab", "service": "gitlab"},
-  {"prefix": "linear:ENG", "auth": "token"}
-]
-```
+An account's login comes from its first token and is shown for you to confirm; for a `gh` or `glab` account it is picked from that tool's logins. Its service and host or site, and its API address, are fixed once it is added.
 
-### An entry
+A credential is one of:
 
-Every key outside this table is refused.
-
-| Key | Required | Meaning |
+| Kind | Reaches | Can write |
 |---|---|---|
-| `prefix` | yes | What the entry applies to; see [prefixes](#prefixes) |
-| `auth` | yes | `token`, a token pasted under `tokens` for the same prefix; `gh`, use my `gh` login; or `glab`, use my `glab` login. The choice is made for each prefix and never falls back to another |
-| `service` | for a host other than `github.com` and `gitlab.com` | `github`, `gitlab`, `linear` or `jira`. A `linear:` prefix is Linear and a `jira:` prefix is Jira; a repository prefix is `github` or `gitlab` |
-| `baseUrl` | no | The API root the token is sent to; see [base URLs](#base-urls) |
+| Fine-grained token (GitHub) | One owner | No |
+| Classic token (GitHub), pasted only for an owner GitHub cannot issue a fine-grained token for | Every owner of its account | **Yes** |
+| Personal access token (GitLab) | The host | No |
+| API key (Linear) | Every team the key reaches | No |
+| API token (Jira) | The site | No |
+| `gh` login, `glab` login | Every owner or the host, as the login can | **Yes** |
 
-`gh` needs `service` `github` and `glab` needs `gitlab`. Two entries may not spell one prefix, case aside: the later is refused. An entry that is refused still stops a fleet falling back to a shorter prefix: the fleet shows no credential.
+The plugin only reads. **can write** says the credential could write, wherever it is shown: Settings, the popup, the Fleet tab, the card and `bb unattendish fleet status`.
 
-### Prefixes
+### Expiry and refused credentials
 
-| Prefix | Applies to |
+A credential whose token expires within 7 days, or has expired, shows `token expires in N days`, `token expires today` or `token expired N days ago` in Settings and on the cards of the fleets it serves, with **Renew**. `expiresAt` is what the service reports: a GitHub token that expires and a GitLab personal access token with an expiry date; none for a Linear or Jira key. A credential the service now refuses shows `refused by the service`, and its fleets show **Connect…**.
+
+| Credential | **Renew** |
+|---|---|
+| GitHub or GitLab token | Opens the same pre-filled page as **Create token**, with the same repositories to tick. A token saved through it replaces the old one |
+| Linear or Jira key | Opens the field to paste a new one, checked like any other |
+| `gh` or `glab` login | None. Settings shows `gh auth login --hostname <host>` (or `glab auth login`) to run as the account's login |
+
+### Remove
+
+| Remove | Does |
+|---|---|
+| A credential | Deletes its token from the plugin's database. Its fleets then need an account |
+| An account | Deletes all its tokens, and its default if no fleet reads as it. It is refused while a registered fleet reads as the account, and the refusal names those fleets |
+| An assignment | Returns the owner, group, team or project to the host's default. The default itself is changed with **Make default** on another account |
+
+After a **Remove** or a **Renew**, Settings says the old token still works at the service until it expires or is revoked there, and links to the service's token page. Removing a `gh` or `glab` credential says the login stays signed in on the machine, and that `gh auth logout` (or `glab auth logout`) signs it out.
+
+## Assignments
+
+An assignment says which account reads a host or an owner or group. A fleet's forge is matched against its repository, and its tracker against the Linear team or Jira project it names. Of the assignments that cover it, the one with the most segments wins: a Linear team or a Jira project beats a bare `linear:` or a site. An assignment names only an account on the host, site or service it covers, and is refused otherwise, naming both. The assignment on a bare host or site, or on `linear:`, is that place's **default**, and the first account on a place becomes it.
+
+| Scope | Covers |
 |---|---|
 | `github.com` | Every repository on the host |
 | `github.com/org` | Every repository under an owner or a group path |
-| `github.com/org/repo` | One repository |
 | `linear:` | Every Linear team |
 | `linear:ENG` | One Linear team, by its key |
 | `jira:example.atlassian.net` | Every project of a Jira Cloud site |
 | `jira:example.atlassian.net/PROJ` | One Jira project, by its key |
 
-A prefix matches only a whole host and whole path segments, without regard to case: `github.com/or` does not match `github.com/org/repo`, and `gitlab.com` does not match `gitlab.com.evil.net/x`. Of the entries that match, the one with the most segments wins; a Linear team or a Jira project beats a bare `linear:` or a site. A fleet's forge is matched against its repository, and its tracker against `forge-issues` as the repository, or against the Linear team or Jira project it names.
+A scope matches only a whole host and whole path segments, without regard to case: `github.com/or` does not cover `github.com/org/repo`, and `gitlab.com` does not cover `gitlab.com.evil.net/x`. An assignment is never made for one repository, since a credential covers an owner.
 
-### Base URLs
+A fleet with no assignment covering a half, or whose account holds no credential reaching it, is not watched, and its card says `no account yet` or what it needs. Choosing an account in Connect assigns it the fleet's owner or group (the repository path without its last segment), or the fleet's Jira project or Linear team; choosing the default again removes that assignment.
 
-The API root each service is read from, unless `baseUrl` says otherwise:
+## Where a token goes
 
-| Service | Default base URL |
+A token is sent only to its own account's host, whoever changed the account. It goes over https only; plain http is allowed only on loopback.
+
+| Service | The token goes to |
 |---|---|
-| `github` on `github.com` | `https://api.github.com` |
-| `github` on another host (GitHub Enterprise Server) | `https://{host}/api/v3` |
-| `gitlab` | `https://{host}/api/v4` |
-| `linear` | `https://api.linear.app/graphql` |
-| `jira` | `https://{site}` |
+| GitHub on `github.com` | `https://api.github.com` |
+| GitHub on another host (GitHub Enterprise Server) | `https://{host}/api/v3` |
+| GitLab | `https://{host}/api/v4` |
+| Linear | `https://api.linear.app/graphql` |
+| Jira | `https://{site}`, a host ending in `.atlassian.net` |
 
-A token is sent only to its credential's base URL, so `baseUrl` is only for a service whose API root differs, and the plugin permits it nowhere else. It is refused unless it is `https` on the prefix's own host for a repository prefix (`api.github.com` is also allowed for `github.com`, and no other `api.` host is), on `api.linear.app` for Linear, or on the site for Jira, and it may not carry a user name or password. `127.0.0.1`, `localhost` and `[::1]` are also allowed, with `http` or `https`, so a fake service can stand in for a test. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested. An item that has moved out of the fleet is not followed either; it is recorded as a failed read, `moved outside the fleet`.
+An account may carry an API address of its own for a service whose API root differs, only on its own host (for github.com also `api.github.com`) or on loopback (`127.0.0.1`, `localhost` and `[::1]`, so a fake service can stand in for a test). It is set through the plugin's RPC when the account is added, cannot be changed afterwards, takes no user name or password, and is not shown on screen. A `gh` or `glab` account takes none. No call changes an account's service, host or site once it is added. An item is read only where it lies under the fleet's repository or tracker, and any other Ref or Link is never requested. An item that has moved out of the fleet is not followed either; it is recorded as a failed read, `moved outside the fleet`.
 
-### Tokens
-
-`tokens` is a JSON object from a prefix to the token pasted for it, such as `{"github.com/org": "…"}`. A token is used only for the entry whose `auth` is `token` and whose prefix is the same, case aside. A token that is empty or holds whitespace is refused, and so is a prefix given twice. A Jira token is `email:api-token`. Jira's scoped tokens call another host, `api.atlassian.com`, which a Jira credential's base URL may not name, so create a Jira token without scopes.
-
-A `gh` or `glab` login is asked for its token on the bb server, as the user bb runs as, for the prefix's host: `gh auth token --hostname {host}`, or `glab auth status --hostname {host} --show-token`. The command runs without a shell and gets 10 seconds. The variables `gh` and `glab` read before their own login (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`) are removed from its environment, so the login you chose is the one used. The token is kept in memory for 5 minutes. A login is the same account the fleet's agents use, so its reads share their rate limit; `bb unattendish fleet status` says so for each fleet.
+A `gh` or `glab` login is asked for its token on the bb server, as the user bb runs as, for the account's host and login: `gh auth token --hostname {host} --user {login}`, or `glab auth status --hostname {host} --show-token`. The command runs without a shell and gets 10 seconds. The variables `gh` and `glab` read before their own login (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN` and `OAUTH_TOKEN`) are removed from its environment, so the login you chose is the one used. The account reads only as its own login: a token for another user shows `gh is signed in as yuser, not buser`, and its fleets are not watched with reason `no-credential`. The token is kept in memory for 5 minutes. A login is the same account the fleet's agents use, so its reads share their rate limit; `bb unattendish fleet status` says so for each fleet.
 
 ## The polling interval
 
@@ -92,12 +107,12 @@ Each fleet is polled every 2 minutes unless its own interval is set. The shortes
 | `<data dir>/plugins/unattendish-sdlc/data.db` (SQLite) | Each fleet's registration, its cursors and the state of its last poll | Until [unregistered](unattendish-cli.md#bb-unattendish-fleet-unregister) |
 | The same file | The Inbox rows it has seen for each repository, which keeps a toast from repeating, and the dashboard's actions with whether each is sent or done | The rows until the fleet is unregistered; a done action for a day |
 | The same file | The ledger: every change seen, each wake with its queued and dispatched times, each poll's requests, and each failed read | 30 days, also after the fleet is unregistered; the plugin deletes older rows hourly |
-| The plugin's settings and secrets | `credentials` and `tokens` | Until uninstalled |
+| The same file | The accounts, their credentials with each pasted token, and the assignments, and which credentials the services accepted but could not read a fleet with | Until removed in Settings |
 
-A token is stored only in `tokens`. It is in no wake, no ledger entry, no log line and no error message, and the registration holds the marker, the labels and the echo actors but no token. A change holds no text written on the service.
+A token is stored only as a row of the credentials. It is in no wake, no ledger entry, no log line, no refusal and no answer to the frontend, and no `bb unattendish` command shows or takes one. The registration holds the marker, the labels and the echo actors but no token. A change holds no text written on the service.
 
-`bb plugin uninstall` deletes the settings, so the credentials and tokens go. `data.db` stays, with every registration, cursor and ledger row; installing the plugin again polls the registered fleets again, and each shows not watched until you set its credentials. To start from nothing, delete `data.db` while the plugin is uninstalled.
+`bb plugin remove` deletes a plugin's settings, its secrets and its schedules, and the plugin is given no signal when it is removed. So **`bb plugin remove` leaves `data.db` on disk, with every registration, cursor and ledger row and every stored token.** Installing the plugin again polls the registered fleets again with the accounts it finds. To delete the tokens, remove every account in Settings before you uninstall; revoke them at the services too, since removing deletes only the plugin's copy. To start from nothing, delete `data.db` while the plugin is uninstalled.
 
 ## What it sends off the server
 
-Reads, and only reads, to the services the credentials name: a GET, or a GraphQL query with no mutation. Nothing is sent to a service that no credential matches, and a token goes only to its credential's base URL. The plugin sends the manager's thread one message per poll, the [wake](unattendish-cli.md#the-wake).
+Reads, and only reads, to the services the accounts name: a GET, or a GraphQL query with no mutation. The plugin reads no CI: no check run, commit status, Actions run or pipeline. Nothing is sent to a service no account covers, and a token goes only to its own account's host. Connect sends a pasted token to the service once to ask whose it is, and to read the fleet's repository, before it stores it. The plugin sends the manager's thread one message per poll, the [wake](unattendish-cli.md#the-wake).
