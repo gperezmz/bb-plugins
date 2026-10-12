@@ -27,6 +27,14 @@ describe("a fleet card", () => {
     expect(within(card).getByText(/polled 40s ago/)).toBeTruthy();
   });
 
+  it("says a fleet was never polled once, and warns when polling is late", () => {
+    show({ lastPolledAt: null, warnings: [{ kind: "never-polled" }] });
+    expect(screen.getAllByText(/not polled yet/)).toHaveLength(1);
+    cleanup();
+    show({ lastPolledAt: ago(9 * 60_000), warnings: [{ kind: "polling-late", lastPolledAt: ago(9 * 60_000) }] });
+    expect(screen.getByText("polling is late: polled 9m ago")).toBeTruthy();
+  });
+
   it("leaves out a count of zero", () => {
     show({ waiting: 0, inFlight: 2, landed: 0 });
     expect(screen.getByText("2 in flight")).toBeTruthy();

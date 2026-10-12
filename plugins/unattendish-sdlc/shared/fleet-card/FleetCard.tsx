@@ -38,7 +38,8 @@ export function FleetCard({ card, now, className, inFleetTab = false }: { card: 
       {cardReasons(card).map((reason) => (
         <Reason key={`${reason.code}:${reason.text}`} reason={reason} repo={card.repo} managerThreadId={card.managerThreadId} onOpenFleetTab={inFleetTab ? null : openFleetTab} />
       ))}
-      {card.warnings.map((warning) => (
+      {/* The poll line above already says a fleet was never polled. */}
+      {card.warnings.filter((warning) => warning.kind !== "never-polled").map((warning) => (
         <Warning key={warningKey(warning)} warning={warning} repo={card.repo} now={now} />
       ))}
     </article>
