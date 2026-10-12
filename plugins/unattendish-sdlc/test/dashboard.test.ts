@@ -221,7 +221,10 @@ describe("the signals the pages listen for", () => {
     await register(harness, manifest);
     const signals = (channel: string) => harness.realtimeSignals.filter((signal) => signal.channel === channel);
     await idle(harness);
-    expect(signals("board-changed").length).toBeGreaterThan(1);
+    // The registration's signal went out at once; the read after it, within the second, waits and goes out as one.
+    expect(signals("board-changed")).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(signals("board-changed")).toHaveLength(2);
     expect(signals("inbox-new")).toEqual([]);
 
     writeFileSync(manifest, manifestText(`${row(7)}\n${row(8, "grant")}`));
