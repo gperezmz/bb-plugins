@@ -340,3 +340,16 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
     expect(answer.detail.generatedAt).toBe(w.clock.now().toISOString());
   });
 });
+
+describe("what a view carries", () => {
+  it("lists at most 200 rows of the Inbox for a fleet and still counts them all, and clips a long What", async () => {
+    const w = world();
+    const rows = Array.from({ length: 250 }, (_, n) => `| #${n + 1} | ${"w".repeat(2000)} | answer | 2026-10-12T09:00:00Z | ${issueUrl(n + 1)} |`);
+    await start(w, manifest({ inbox: rows }));
+    const page = await fleets(w);
+    expect(page.waiting).toBe(250);
+    expect(page.inbox).toHaveLength(200);
+    expect(page.inbox[0]!.what.length).toBe(500);
+    expect(JSON.stringify(page).length).toBeLessThan(1024 * 1024);
+  });
+});

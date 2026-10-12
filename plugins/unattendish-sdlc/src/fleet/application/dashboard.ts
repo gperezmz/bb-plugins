@@ -8,7 +8,7 @@ import { messageOf } from "../domain/redact";
 import { clip } from "../domain/text";
 import { effectiveInterval, validateInterval } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
-import { cardOf, credentialViews, gather, inboxOf, landedViews, manifestViewOf, recentActionsOf, watchedOf, type ViewDeps } from "./fleet-views";
+import { cardOf, credentialViews, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, recentActionsOf, watchedOf, type ViewDeps } from "./fleet-views";
 import type { CredentialAdmin, DashboardEvents, ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
 import { setFleetInterval } from "./schedule";
 import type { SerialQueue } from "./serial";
@@ -64,12 +64,14 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       generatedAt: now.toISOString(),
       waiting: cards.reduce((total, card) => total + card.waiting, 0),
       fleets: cards,
-      inbox: oldestFirst(parts.flatMap(({ inbox }) => inbox.rows)),
-      unreadableInbox: parts.flatMap(({ inbox }) => inbox.unreadable),
-      recentActions: parts.flatMap(({ g, inbox }) => recentActionsOf(g, inbox.ids, now)).sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : a.doneAt! > b.doneAt! ? -1 : 0)),
+      inbox: oldestFirst(parts.flatMap(({ inbox }) => inbox.rows)).slice(0, MAX_ROWS * 2),
+      unreadableInbox: parts.flatMap(({ inbox }) => inbox.unreadable).slice(0, MAX_ROWS * 2),
+      recentActions: parts.flatMap(({ g, inbox }) => recentActionsOf(g, inbox.ids, now)).sort((a, b) => (a.doneAt! < b.doneAt! ? 1 : a.doneAt! > b.doneAt! ? -1 : 0))
+        .slice(0, MAX_ROWS),
       landed: parts
         .flatMap(({ g }) => landedViews(g, now))
-        .sort((a, b) => Date.parse(b.merged) - Date.parse(a.merged)),
+        .sort((a, b) => Date.parse(b.merged) - Date.parse(a.merged))
+        .slice(0, MAX_ROWS * 2),
     };
   };
 

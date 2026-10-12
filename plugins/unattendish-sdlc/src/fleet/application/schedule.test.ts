@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { args, manifest, MANAGER, MANIFEST_PATH, outcome, REPO_KEY, TOKEN, world, type World } from "../testing/kit";
 import { pollFleet } from "./poll";
 import { registerFleet } from "./register";
-import { pollDue, refreshFleetsOf, setFleetInterval } from "./schedule";
+import { pollDue, pruneLedger, refreshFleetsOf, setFleetInterval } from "./schedule";
 import { SerialQueue } from "./serial";
 
 const OTHER_REPO = "github.com/org/other";
@@ -170,5 +170,18 @@ describe("setting a fleet's interval", () => {
     const w = world();
     expect(setFleetInterval(w.poll, REPO_KEY, 45_000)).toBe(false);
     expect(w.store.getFleet(REPO_KEY)).toBeNull();
+  });
+});
+
+describe("pruning", () => {
+  it("keeps a done action for a day, a sent one however old, and drops those of a fleet no longer registered", async () => {
+    const w = world();
+    await startBoth(w);
+    const action = (id: string, over = {}) => ({ id, repo: REPO_KEY, rowId: id, kind: "answer" as const, ref: "#1", what: "w", managerThreadId: MANAGER, state: "sent" as const, sentAt: "2026-10-01T10:00:00.000Z", doneAt: null as string | null, ...over });
+    w.store.saveAction(action("sent"));
+    w.store.saveAction(action("done-old", { state: "done", doneAt: "2026-10-11T09:00:00.000Z" }));
+    w.store.saveAction(action("done-new", { state: "done", doneAt: "2026-10-11T11:00:00.000Z" }));
+    pruneLedger(w.poll);
+    expect(w.store.actions(REPO_KEY).map((a) => a.id).sort()).toEqual(["done-new", "sent"]);
   });
 });
