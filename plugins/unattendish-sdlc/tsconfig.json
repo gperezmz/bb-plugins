@@ -4,6 +4,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "lib": [
       "ES2022",
       "DOM"
@@ -11,13 +12,27 @@
     "types": [
       "node"
     ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
     "noEmit": true,
     "skipLibCheck": false
   },
   "include": [
     "server.ts",
+    "app.tsx",
     "src",
     "test",
+    "features",
+    "testing",
+    "shared",
+    "components",
+    "lib",
+    "architecture-ui.test.ts",
+    "app.test.tsx",
+    "build-isolation.test.ts",
     "vitest.config.ts"
   ]
 }
