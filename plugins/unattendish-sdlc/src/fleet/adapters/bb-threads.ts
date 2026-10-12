@@ -1,5 +1,6 @@
 // The Fleet context's two needs from bb's threads: whether a manager is still
-// there, and a way to send it a wake that waits behind its turn.
+// there, and a way to send it a wake that waits behind its turn. Every call to bb is bounded
+// by `SDK_TIMEOUT_MS`.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { DeliveryResult, ManagerChannel, ThreadDirectory } from "../application/ports";
 
@@ -19,6 +20,19 @@ const reasonOf = (error: unknown): string => {
   return status === null ? "no answer from bb" : `HTTP ${status}`;
 };
 
+/** How long any one call to bb's SDK may take before it is given up on. */
+export const SDK_TIMEOUT_MS = 30_000;
+
+/** Runs one SDK call, failing it when bb has not answered within `SDK_TIMEOUT_MS`, so a hung call fails one poll rather than stopping every fleet's. */
+const bounded = <T>(call: () => Promise<T>): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`bb did not answer within ${SDK_TIMEOUT_MS / 1000} seconds`)), SDK_TIMEOUT_MS);
+    call().then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error: unknown) => { clearTimeout(timer); reject(error); },
+    );
+  });
+
 /** Reads a thread's standing from bb: live, archived, or gone (deleted, or no such thread). */
 export class BbThreadDirectory implements ThreadDirectory {
   constructor(private readonly sdk: BbSdk) {}
@@ -26,7 +40,7 @@ export class BbThreadDirectory implements ThreadDirectory {
   async state(threadId: string): Promise<"live" | "archived" | "gone"> {
     let thread: { archivedAt: number | null; deletedAt: number | null };
     try {
-      thread = await this.sdk.threads.get({ threadId });
+      thread = await bounded(() => this.sdk.threads.get({ threadId }));
     } catch (error) {
       if (httpStatusOf(error) === 404) return "gone";
       throw error;
@@ -45,12 +59,14 @@ export class BbManagerChannel implements ManagerChannel {
 
   async send(threadId: string, text: string): Promise<DeliveryResult> {
     try {
-      const answer = await this.sdk.threads.send({
-        threadId,
-        input: [{ type: "text", text, mentions: [] }],
-        mode: "queue-if-active",
-        pluginSubmission: { pluginId: this.pluginId, data: {} },
-      });
+      const answer = await bounded(() =>
+        this.sdk.threads.send({
+          threadId,
+          input: [{ type: "text", text, mentions: [] }],
+          mode: "queue-if-active",
+          pluginSubmission: { pluginId: this.pluginId, data: {} },
+        }),
+      );
       return answer.delivery === "sent" ? { delivered: "sent" } : { delivered: "queued", queuedMessageId: answer.queuedMessage.id };
     } catch (error) {
       return { delivered: "refused", reason: reasonOf(error) };
@@ -69,18 +85,20 @@ export class BbManagerChannel implements ManagerChannel {
     for (let attempt = 0; attempt < 2; attempt++) {
       let row: { id: string; updatedAt: number; editable: boolean } | undefined;
       try {
-        row = (await this.sdk.threads.queuedMessages.list({ threadId })).find((queued) => queued.id === queuedMessageId);
+        row = (await bounded(() => this.sdk.threads.queuedMessages.list({ threadId }))).find((queued) => queued.id === queuedMessageId);
       } catch (error) {
         return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error) };
       }
       if (row === undefined || !row.editable) return "gone";
       try {
-        await this.sdk.threads.queuedMessages.update({
-          threadId,
-          queuedMessageId,
-          expectedUpdatedAt: row.updatedAt,
-          input: [{ type: "text", text, mentions: [] }],
-        });
+        await bounded(() =>
+          this.sdk.threads.queuedMessages.update({
+            threadId,
+            queuedMessageId,
+            expectedUpdatedAt: row.updatedAt,
+            input: [{ type: "text", text, mentions: [] }],
+          }),
+        );
         return "amended";
       } catch (error) {
         const status = httpStatusOf(error);
