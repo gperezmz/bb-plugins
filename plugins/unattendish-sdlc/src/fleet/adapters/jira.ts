@@ -82,11 +82,13 @@ const toIso = (text: string): string | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
-/** The other names Jira knows a person by, which an echo actor may have been registered under; the account id is the actor itself, and none is sent on. */
+/**
+ * The email address Jira shows for a person, which an echo actor may have been registered under; the account id is the
+ * actor itself. A display name is never an alias: anyone can choose one, so a teammate could pass for an echo actor.
+ */
 const aliasesOf = (account: User | null | undefined): { actorAliases?: string[] } => {
-  if (account === null || account === undefined) return {};
-  const names = [account.emailAddress, account.displayName].filter((value): value is string => typeof value === "string" && value.trim() !== "");
-  return names.length === 0 ? {} : { actorAliases: [...new Set(names)] };
+  const email = account?.emailAddress;
+  return typeof email === "string" && email.trim() !== "" ? { actorAliases: [email] } : {};
 };
 
 const quote = (value: string): string => `"${value.replace(/[\\"]/g, "\\$&")}"`;

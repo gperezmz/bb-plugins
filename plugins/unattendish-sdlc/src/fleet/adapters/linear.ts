@@ -78,11 +78,13 @@ export const isOperator = (person: Person | null, operator: string): boolean => 
   return [person.email, person.displayName, person.id].some((value) => typeof value === "string" && value.toLowerCase() === wanted);
 };
 
-/** The other names Linear knows a person by, which an echo actor may have been registered under; the account id is the actor itself, and none is sent on. */
+/**
+ * The email address Linear shows for a person, which an echo actor may have been registered under; the user id is the
+ * actor itself. A display name is never an alias: anyone can choose one, so a teammate could pass for an echo actor.
+ */
 const aliasesOf = (person: Person | null): { actorAliases?: string[] } => {
-  if (person === null) return {};
-  const names = [person.email, person.displayName].filter((value): value is string => typeof value === "string" && value.trim() !== "");
-  return names.length === 0 ? {} : { actorAliases: [...new Set(names)] };
+  const email = person?.email;
+  return typeof email === "string" && email.trim() !== "" ? { actorAliases: [email] } : {};
 };
 
 const atOrAfter = (at: string, since: string): boolean => Date.parse(at) >= Date.parse(since);

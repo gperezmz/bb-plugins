@@ -136,15 +136,15 @@ describe("the snapshot of an issue", () => {
 });
 
 describe("transitions", () => {
-  it("reports a close and a reopening with the actor's account id and other names, time and the history entry's id", async () => {
+  it("reports a close and a reopening with the actor's user id and email address, time and the history entry's id", async () => {
     const history = [
       entry("h1", { createdAt: "2026-10-11T08:00:00Z", fromState: "started", toState: "completed" }),
       entry("h2", { createdAt: "2026-10-12T08:00:00Z", actor: "u-dana", fromState: "completed", toState: "started" }),
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "closed", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
-      { kind: "reopened", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
+      { kind: "closed", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
+      { kind: "reopened", actor: "u-dana", actorAliases: ["dana@acme.test"], at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
     ]);
   });
 
@@ -164,8 +164,8 @@ describe("transitions", () => {
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "labelled", label: "Ready", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
-      { kind: "unlabelled", label: "in progress", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
+      { kind: "labelled", label: "Ready", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
+      { kind: "unlabelled", label: "in progress", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
       { kind: "unlabelled", label: "spec", actor: null, at: "2026-10-11T00:00:00Z", id: "linear:history:h2:unlabelled:spec" },
     ]);
   });
@@ -204,14 +204,28 @@ describe("events", () => {
     const { read } = await setup({ issues: [issue("ENG-1", { url: "https://linear.app/acme/issue/ENG-1", comments })] });
     const outcome = await read(["ENG-1"]);
     expect(outcome.events).toEqual([
-      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
-      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
+      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", actorAliases: ["dana@acme.test"], at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
+      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
       { id: "linear:comment:c3", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: null, at: "2026-10-11T02:00:00Z", lastLine: null },
     ]);
     expect(JSON.stringify(outcome)).not.toContain("Secret rationale");
   });
 
-  it("gives no alias for an actor whose email and display name are blank, and none for the account id", async () => {
+  it("gives a teammate who shares an echo actor's display name no alias that echo actor is registered under", async () => {
+    const users = [
+      { id: "u-bot", email: "bot@acme.test", displayName: "Fleet Bot" },
+      { id: "u-mate", email: "mate@acme.test", displayName: "Fleet Bot" },
+    ];
+    const history = [entry("h1", { actor: "u-mate", fromState: "started", toState: "completed" })];
+    const comments = [comment("c1", { user: "u-mate", body: "hello" })];
+    const { read } = await setup({ users, issues: [issue("ENG-1", { history, comments })] });
+    const outcome = await read(["ENG-1"]);
+    expect(outcome.snapshots[0]!.transitions[0]).toMatchObject({ actor: "u-mate", actorAliases: ["mate@acme.test"] });
+    expect(outcome.events[0]).toMatchObject({ actor: "u-mate", actorAliases: ["mate@acme.test"] });
+    expect(JSON.stringify(outcome)).not.toContain("Fleet Bot");
+  });
+
+  it("gives no alias for an actor whose email is blank, and none for the user id or display name", async () => {
     const blank = [{ id: "u-ghost", email: "", displayName: "" }];
     const history = [entry("h1", { actor: "u-ghost", fromState: "started", toState: "completed" })];
     const { read } = await setup({ users: blank, issues: [issue("ENG-1", { history, assignee: null, creator: null })] });
