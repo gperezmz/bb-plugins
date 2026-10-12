@@ -7,16 +7,18 @@ import { SettingsLink } from "../SettingsLink";
 const LINK_BUTTON = "text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm";
 
 /** One fleet at a glance: its manager, counts, cost, last poll, every reason it is not fully watched, and what to warn of. */
-export function FleetCard({ card, now, className }: { card: FleetCardView; now: string; className?: string }) {
+export function FleetCard({ card, now, className, showManagerLink = true }: { card: FleetCardView; now: string; className?: string; showManagerLink?: boolean }) {
   const openFleetTab = useOpenFleetTab();
   const cost = costText(card);
   return (
     <article aria-label={`Fleet ${card.repo}`} className={cn("flex flex-col gap-1 rounded-lg border p-3 text-sm", card.reasons.length > 0 ? "border-destructive/50" : "border-border", className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-medium">{card.repo}</span>
-        <button type="button" className={cn(LINK_BUTTON, "text-xs")} aria-label={`Open the Fleet tab of ${card.repo}`} onClick={() => openFleetTab(card.managerThreadId)}>
-          manager ↗
-        </button>
+        {showManagerLink ? (
+          <button type="button" className={cn(LINK_BUTTON, "text-xs")} aria-label={`Open the Fleet tab of ${card.repo}`} onClick={() => openFleetTab(card.managerThreadId)}>
+            manager ↗
+          </button>
+        ) : null}
       </div>
       <div className="text-xs text-muted-foreground">
         {card.tracker} · {managerText(card.manager, now)}
