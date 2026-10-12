@@ -26,6 +26,10 @@
     {
       "name": "ui-tweaks",
       "source": "./plugins/ui-tweaks"
+    },
+    {
+      "name": "unattendish-sdlc",
+      "source": "./plugins/unattendish-sdlc"
     }
   ]
 }

@@ -101,6 +101,12 @@ git config core.hooksPath .githooks
 | `npm run bench` | After changing the engine, the store or the host entry, to measure the plugin's CPU, bb calls, host calls and transcript bytes read at 50, 500 and 5,000 threads, on a restart, learning a 1, 10 and 35 MiB transcript, and for the page's overview, each next to its target. It runs the real server against a fake bb and the real host entry in about 5 minutes and writes `bench/out/results.md`; `node bench/run.mjs steady 500` runs one size. Its header comment lists every option. |
 | `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against real Claude Code threads on a throwaway bb with the plugin installed from your checkout, on a clock the harness moves forward, so a compaction, a tree keep-warm, the cost stop, a check-in, Skip and Undo and a reinstall are each reached in under 2 minutes. It needs Linux, `node`, `jq`, `curl`, `git`, `rsync`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/cache-keeper/harness/README.md) has the drives, the fake Anthropic API and the ports. |
 
+### Unattendish
+
+| Script | When to run it |
+|---|---|
+| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against the real plugin in a throwaway bb: a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, scripted over HTTP, and Claude Code manager threads on Cache Keeper's fake Anthropic API, with every poll interval at the 30-second floor, so registering, a wake, an echo, a fleet with no manager, a refused credential and a restart are each reached in under 2 minutes. It needs Linux, `node` 24, `jq`, `curl`, `git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/unattendish-sdlc/harness/README.md) has the drives and the ports. |
+
 ## Third-party notices
 
 Each plugin lists the code it bundles in its `THIRD_PARTY_NOTICES.md`, and CI fails when the committed file differs from what the script writes. After a dependency change, build, then regenerate it:

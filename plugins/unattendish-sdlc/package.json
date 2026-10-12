@@ -1,0 +1,57 @@
+{
+  "name": "@gperezmz/bb-plugin-unattendish-sdlc",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.37"
+  },
+  "bb": {
+    "name": "Unattendish",
+    "description": "Wakes the manager thread of an Unattendish fleet when its tracker or forge changes, so the fleet moves when the operator answers, reviews or marks a spec ready.",
+    "branding": {
+      "icon": "./icons/fleet.svg"
+    },
+    "server": "./server.ts"
+  },
+  "description": "Polls the tracker and forge of an Unattendish fleet and wakes its manager thread in bb when something it waits on changes.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gperezmz/bb-plugins.git",
+    "directory": "plugins/unattendish-sdlc"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "bb plugin build",
+    "notices": "node scripts/third-party-notices.mjs"
+  },
+  "files": [
+    "dist",
+    "icons",
+    "server.ts",
+    "tsconfig.json",
+    "THIRD_PARTY_NOTICES.md",
+    "src",
+    "!**/*.test.*"
+  ],
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.6.37",
+    "@octokit/openapi-types": "^29.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "better-sqlite3": "^12.11.1",
+    "cron-parser": "^5.10.1",
+    "hono": "^4.13.9",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  }
+}
