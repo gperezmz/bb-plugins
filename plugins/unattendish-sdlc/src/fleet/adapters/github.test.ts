@@ -221,6 +221,25 @@ describe("GitHub adapter: checks", () => {
     expect((await outcomeOf({ checkRuns, statuses: [{ sha: "sha1", context: "ci", state: "pending" }] })).checks).toEqual({ sha: "sha1", outcome: "pending" });
   });
 
+  it("asks for the latest check runs by name, so a run re-run green after a failure leaves the pull request passed", async () => {
+    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }, run(3, "sha1", "completed", "success")];
+    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
+    const outcome = await read({ items: [1] });
+    expect(outcome.snapshots[0]?.checks).toEqual({ sha: "sha1", outcome: "passed" });
+    const asked = server.requests.filter((request) => request.url.includes("/check-runs"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((request) => new URL(request.url, server.url).searchParams.get("filter") === "latest")).toBe(true);
+  });
+
+  it("serves the most recent run of each name for filter=latest and by default, and every run for filter=all", async () => {
+    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }];
+    const { server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
+    const count = async (query: string) => ((await (await fetch(`${server.url}/api/v3/repos/org/repo/commits/sha1/check-runs${query}`)).json()) as { total_count: number }).total_count;
+    expect(await count("?filter=latest")).toBe(1);
+    expect(await count("")).toBe(1);
+    expect(await count("?filter=all")).toBe(2);
+  });
+
   it("follows the pages of a long run list", async () => {
     const checkRuns = Array.from({ length: 250 }, (_, index) => run(index + 1, "sha1", "completed", index === 249 ? "failure" : "success"));
     expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "failed" });

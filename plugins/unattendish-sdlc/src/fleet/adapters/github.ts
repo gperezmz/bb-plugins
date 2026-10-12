@@ -50,6 +50,11 @@
 //  - Whether submitting a review moves the `updated_at` of its inline comments,
 //    which is what `since` filters them on: they are read without `since`, up to
 //    10 pages of 100, and a review comment counts at its review's `submitted_at`.
+//  - What `filter=latest` keeps: /en/rest/checks/runs gives `latest` (the default) and
+//    `all`, and says "Filters check runs by their completed_at timestamp. latest
+//    returns the most recent check runs." It does not say a re-run replaces the run
+//    it re-ran. The filter is sent explicitly, and a re-run is taken to replace the
+//    earlier run of the same name; `all` is never used.
 //  - Whether the issue schema's `labels` are objects or names: both are read.
 import {
   HttpError,

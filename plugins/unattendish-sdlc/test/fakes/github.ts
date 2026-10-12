@@ -372,7 +372,14 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
       return true;
     }
     if (tail[0] === "commits" && tail[2] === "check-runs" && tail.length === 3) {
-      const runs = repo.checkRuns.filter((run) => run.sha === tail[1]).sort((a, b) => a.id - b.id);
+      // `filter` is `latest` (the default: the most recent run of each check name) or `all` (every run, re-runs included).
+      const filter = url.searchParams.get("filter") ?? "latest";
+      if (filter !== "latest" && filter !== "all") {
+        send(response, { message: "Validation Failed" }, 422);
+        return true;
+      }
+      const onCommit = repo.checkRuns.filter((run) => run.sha === tail[1]);
+      const runs = (filter === "all" ? onCommit : onCommit.filter((run) => !onCommit.some((other) => other.name === run.name && other.id > run.id))).sort((a, b) => a.id - b.id);
       pageConditional(
         runs.map((run) => ({ id: run.id, name: run.name, head_sha: run.sha, status: run.status, conclusion: run.conclusion })),
         (page, total) => ({ total_count: total, check_runs: page }),
