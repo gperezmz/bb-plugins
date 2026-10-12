@@ -221,6 +221,25 @@ describe("GitHub adapter: checks", () => {
     expect((await outcomeOf({ checkRuns, statuses: [{ sha: "sha1", context: "ci", state: "pending" }] })).checks).toEqual({ sha: "sha1", outcome: "pending" });
   });
 
+  it("asks for the latest check runs by name, so a run re-run green after a failure leaves the pull request passed", async () => {
+    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }, run(3, "sha1", "completed", "success")];
+    const { read, server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
+    const outcome = await read({ items: [1] });
+    expect(outcome.snapshots[0]?.checks).toEqual({ sha: "sha1", outcome: "passed" });
+    const asked = server.requests.filter((request) => request.url.includes("/check-runs"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((request) => new URL(request.url, server.url).searchParams.get("filter") === "latest")).toBe(true);
+  });
+
+  it("serves the most recent run of each name for filter=latest and by default, and every run for filter=all", async () => {
+    const reruns = [{ ...run(1, "sha1", "completed", "failure"), name: "build" }, { ...run(2, "sha1", "completed", "success"), name: "build" }];
+    const { server } = await harness(repo({ issues: [pull(1)], checkRuns: reruns }));
+    const count = async (query: string) => ((await (await fetch(`${server.url}/api/v3/repos/org/repo/commits/sha1/check-runs${query}`)).json()) as { total_count: number }).total_count;
+    expect(await count("?filter=latest")).toBe(1);
+    expect(await count("")).toBe(1);
+    expect(await count("?filter=all")).toBe(2);
+  });
+
   it("follows the pages of a long run list", async () => {
     const checkRuns = Array.from({ length: 250 }, (_, index) => run(index + 1, "sha1", "completed", index === 249 ? "failure" : "success"));
     expect((await outcomeOf({ checkRuns })).checks).toEqual({ sha: "sha1", outcome: "failed" });
@@ -566,7 +585,7 @@ describe("GitHub adapter: failures", () => {
     const { read } = await harness(state);
     const outcome = await read({ items: [1, 2] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
-    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("500") }]);
+    expect(outcome.failures).toEqual([{ ref: "#2", reason: expect.stringContaining("500"), kind: "unreachable" }]);
   });
 
   it("fails an item whose events lack a field a change depends on", async () => {
@@ -607,7 +626,7 @@ describe("GitHub adapter: failures", () => {
     const outcome = await read({ items: [1, 2, 99] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
     expect(outcome.failures).toEqual([
-      { ref: "#2", reason: expect.any(String) },
+      { ref: "#2", reason: expect.any(String), kind: "unreachable" },
       { ref: "#99", reason: expect.any(String), kind: "not-found" },
     ]);
   });
@@ -632,7 +651,7 @@ describe("GitHub adapter: failures", () => {
     const { read } = await harness(state);
     const outcome = await read({ items: [1, 2] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
-    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String), kind: "forbidden" }]);
   });
 
   it("fails a listing the token may not read as a listing failure, not as a refused credential", async () => {
@@ -640,7 +659,31 @@ describe("GitHub adapter: failures", () => {
     state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 403 }];
     const { read } = await harness(state);
     const outcome = await read();
-    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String), kind: "forbidden" }]);
+  });
+
+  it("calls a listing that gets a 5xx unreachable, and one that gets no answer too", async () => {
+    const state = repo({ issues: [issue(1)] });
+    state.faults = [{ pathIncludes: "/repos/org/repo/issues", status: 502 }];
+    const { read } = await harness(state);
+    expect((await read()).failures).toEqual([{ ref: null, reason: expect.any(String), kind: "unreachable" }]);
+
+    const { server, adapter } = await harness(repo({ issues: [issue(1)] }));
+    const credential: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: `${server.url}/api/v3`, host: "127.0.0.1" };
+    const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(credential, "ghp_secret");
+    const outcome = await adapter.read({
+      source: { role: "forge", service: "github", host: "127.0.0.1", path: REPO },
+      http: silent,
+      items: [item(1)],
+      watchedRefs: new Set(),
+      labels: LABELS,
+      operator: "olivia",
+      since: SINCE,
+      scanPartition: false,
+      stateOnly: true,
+      signal: new AbortController().signal,
+    });
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.not.stringContaining("fetch failed"), kind: "unreachable" }]);
   });
 
   it("rethrows a rate limit unchanged", async () => {
@@ -663,6 +706,54 @@ describe("GitHub adapter: failures", () => {
     const outcome = await read({ watched: [1] });
     expect(outcome.failures).toHaveLength(1);
     expect(outcome.failures[0]!.reason).not.toMatch(/ghp_|\?/);
+  });
+});
+
+describe("GitHub adapter: an item or repository that moved", () => {
+  const requested = (server: Mounted) => server.requests.map((request) => request.url);
+
+  it("fails a transferred issue as outside the fleet, reads the others, and never asks for the other repository", async () => {
+    const state = repo({ issues: [issue(1, { transferredTo: { repo: "org/elsewhere", number: 9 } }), issue(2)] });
+    state.repos!["org/elsewhere"] = { id: 42, issues: [issue(9)], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] };
+    const { read, server } = await harness(state);
+    const outcome = await read({ items: [1, 2] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(requested(server).filter((url) => url.includes("/repositories/") || url.includes("elsewhere"))).toEqual([]);
+  });
+
+  it("fails every read of a renamed repository as outside the fleet, listings included", async () => {
+    const state = repo({ issues: [issue(1, { labels: ["spec"], assignees: ["olivia"] })] });
+    state.repos!["org/renamed"] = { id: 7, issues: [issue(1)], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] };
+    state.renames = { "org/repo": "org/renamed" };
+    const { read, server } = await harness(state);
+    const outcome = await read({ items: [1], scanPartition: true });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.updated).toEqual([]);
+    expect(outcome.failures.length).toBeGreaterThan(1);
+    expect(outcome.failures.every((failure) => failure.reason === "moved outside the fleet" && failure.kind === "outside-fleet")).toBe(true);
+    expect(outcome.failures.map((failure) => failure.ref)).toContain("#1");
+    expect(outcome.failures.map((failure) => failure.ref)).toContain(null);
+    expect(requested(server).filter((url) => url.includes("/repositories/"))).toEqual([]);
+  });
+
+  it("fails a listing whose next link leaves the repository, and reads no further page", async () => {
+    const comments = Array.from({ length: 150 }, (_, index) => comment(index + 1, 1));
+    const state = repo({ issues: [issue(1)], comments });
+    state.nextLinkPath = "/api/v3/repos/org/other/issues/1/comments";
+    const { read, server } = await harness(state);
+    const outcome = await read({ watched: [1] });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(requested(server).filter((url) => url.includes("/org/other/"))).toEqual([]);
+  });
+
+  it("still reads an issue whose path differs from the source's only in case", async () => {
+    const { read } = await harness(repo({ issues: [issue(1)] }));
+    const outcome = await read({ items: [1], source: { role: "forge", service: "github", host: "127.0.0.1", path: "ORG/Repo" } });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots).toHaveLength(1);
   });
 });
 

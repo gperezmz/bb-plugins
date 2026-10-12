@@ -33,23 +33,41 @@
 // - Token expiry: `GET /personal_access_tokens/self`, `expires_at` as
 //   `YYYY-MM-DD` or null (/api/personal_access_tokens/).
 //
+// Moved items (docs.gitlab.com, read 2026-10-12): moving an issue "closes and copies
+// it to the target project" and "the original issue is not deleted"
+// (/user/project/issues/managing_issues/), so the old iid is read where it is,
+// closed. A renamed or transferred project's old path "is redirected to the new
+// one" and "API redirects might need to be followed explicitly"
+// (/user/project/working_with_projects/, /user/project/repository/, "Repository
+// path changes"); the status code is not given. Every request of the project is
+// made with `stayUnder` `/projects/:id/` (the id as read, URL-encoded), so a
+// redirect or next link to any other path is a failure of kind `outside-fleet`.
+//
 // A 403 that is not a rate limit is the HTTP layer's `forbidden`: on the
 // pipelines of a merge request it leaves `checks` null and the rest of the item
 // is still read; anywhere else it fails that one item or listing. Only a 401 or
 // a rate limit ends the read.
 //
 // Not confirmed by those pages, and what is done instead:
-// - The text of the system notes for an approval and for a request for changes
-//   is not documented, so no system note is read. An approval is read from the
-//   approvals list. `reviewed: changes requested` and `reviewed: commented`
-//   are never produced. The merge request page's "Retrieve merge request
-//   reviewers" (`GET .../merge_requests/:iid/reviewers`) lists each reviewer's
-//   `user`, `state` and `created_at`, but shows only `unreviewed` and `reviewed`
-//   as states and gives no time or id for a change of state (its `created_at`
-//   dates the request, so a review could not be placed after `since` or keyed
-//   stably); `requested_changes` is documented as a reviewer state only in the
-//   webhook payloads (/user/project/integrations/webhook_events/), and the
-//   `reviewers[].state` of the merge request answer is the account's state.
+// - Reviewers: "Retrieve merge request reviewers" (/api/merge_requests/,
+//   `GET .../merge_requests/:iid/reviewers`) lists each reviewer's `user`, `state`
+//   and `created_at`. Its example shows only `unreviewed` and `reviewed`, and the
+//   page lists no states, gives no version and does not say what `created_at`
+//   dates. The webhook payloads page (/user/project/integrations/webhook_events/)
+//   lists a reviewer's `state` as `unreviewed`, `review_started`, `reviewed`,
+//   `requested_changes`, `approved` or `unapproved`, and GitLab's source
+//   (gitlab-org/gitlab, `lib/api/entities/merge_request_reviewer.rb`, which
+//   exposes `state` as it is, and `app/models/concerns/merge_request_reviewer_state.rb`,
+//   which defines those six) shows the REST endpoint gives the same values.
+//   "Request changes" arrived behind a flag in GitLab 16.11, is on by default in
+//   17.2 and has no flag from 17.3 (/user/project/merge_requests/reviews/); on an
+//   older instance no reviewer is ever `requested_changes`. A state has no time or
+//   id, so a merge request's snapshot carries the states as they are now
+//   (`reviewers`): `requested_changes` is `changes requested` and `reviewed` is
+//   `commented`; `approved` is left to the approvals list, so it is not reported
+//   twice. An instance or token that cannot list reviewers (404, 403) leaves the
+//   merge request read without them. No system note is read: the text of the
+//   notes for an approval or a request for changes is not documented.
 // - A state event's `merged` value is not documented. It is used when sent;
 //   otherwise a merged request's `merged_at` gives the `merged` transition.
 // - ETag and 304 are not documented for the REST API. The session sends a
@@ -78,10 +96,13 @@ import {
   mergeRequestSchema,
   parse,
   pipelinesSchema,
+  reviewerStates,
+  reviewersSchema,
   stateTransitions,
   tokenSchema,
   userNote,
 } from "./gitlab-normalise";
+import { forgeFailure } from "./forge-failure";
 import { isFatal, ReadProblem } from "./service-support";
 
 const PAGE_SIZE = 100;
@@ -92,6 +113,8 @@ interface Context {
   readonly http: HttpSession;
   /** The project's `:id`, URL-encoded. */
   readonly project: string;
+  /** The prefix every project request, redirect and next link must stay under: a renamed or transferred project answers elsewhere. */
+  readonly stayUnder: string;
   readonly failures: ReadFailure[];
 }
 
@@ -111,12 +134,8 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
     return await run();
   } catch (error) {
     if (isFatal(error)) throw error;
-    if (error instanceof HttpError) {
-      context.failures.push(ref !== null && error.kind === "not-found" ? { ref, reason: error.message, kind: "not-found" } : { ref, reason: error.message });
-      return undefined;
-    }
-    if (error instanceof ReadProblem) {
-      context.failures.push({ ref, reason: error.message });
+    if (error instanceof HttpError || error instanceof ReadProblem) {
+      context.failures.push(forgeFailure(ref, error));
       return undefined;
     }
     throw error;
@@ -124,11 +143,11 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
 }
 
 const get = async (context: Context, path: string, query?: Record<string, string | number | undefined>): Promise<unknown> =>
-  (await context.http.request({ method: "GET", path, query }, { signal: context.request.signal })).json;
+  (await context.http.request({ method: "GET", path, query, stayUnder: context.stayUnder }, { signal: context.request.signal })).json;
 
 /** Every entry of a list, read in pages of 100; a list longer than 10 pages is a problem. */
 async function list(context: Context, path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown[]> {
-  const { items, truncated } = await context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE } }, { maxPages: MAX_PAGES, signal: context.request.signal });
+  const { items, truncated } = await context.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: context.stayUnder }, { maxPages: MAX_PAGES, signal: context.request.signal });
   if (truncated) throw new ReadProblem(`${path.replace(/%2F/gi, "/")} has more than ${MAX_PAGES} pages`);
   return items;
 }
@@ -136,7 +155,7 @@ async function list(context: Context, path: string, query: Record<string, string
 /** Reports the token's expiry when GitLab gives one; a failure of this call is not a failure of the read. */
 async function noteExpiry(context: Context): Promise<void> {
   try {
-    const answer = parse(tokenSchema, await get(context, "/personal_access_tokens/self"), "the token");
+    const answer = parse(tokenSchema, (await context.http.request({ method: "GET", path: "/personal_access_tokens/self" }, { signal: context.request.signal })).json, "the token");
     const expires = answer.expires_at === null || answer.expires_at === undefined ? null : expiryIso(answer.expires_at);
     if (expires !== null) context.http.noteExpiresAt(expires);
   } catch (error) {
@@ -148,6 +167,19 @@ async function noteExpiry(context: Context): Promise<void> {
 async function latestPipelineOf(context: Context, base: string, ref: string, sha: string): Promise<{ readonly id: number; readonly status: string } | undefined> {
   const listed = parse(pipelinesSchema, await list(context, `${base}/pipelines`), `the pipelines of ${ref}`).filter((pipeline) => pipeline.sha === sha);
   return listed.reduce<(typeof listed)[number] | undefined>((newest, pipeline) => (newest === undefined || pipeline.id > newest.id ? pipeline : newest), undefined);
+}
+
+/**
+ * The reviewers' review states of a merge request, or undefined where GitLab will not give them (an instance without
+ * the endpoint answers 404, a token that may not read it 403): the merge request is still read, without reviewers.
+ */
+async function readReviewers(context: Context, base: string, ref: string): Promise<ItemSnapshot["reviewers"]> {
+  try {
+    return reviewerStates(parse(reviewersSchema, await list(context, `${base}/reviewers`), `the reviewers of ${ref}`));
+  } catch (error) {
+    if (error instanceof HttpError && (error.kind === "forbidden" || error.kind === "not-found")) return undefined;
+    throw error;
+  }
 }
 
 async function readItem(context: Context, item: WatchedItem, withEvents: boolean): Promise<{ snapshot: ItemSnapshot; events: ActivityEvent[] }> {
@@ -180,6 +212,7 @@ async function readItem(context: Context, item: WatchedItem, withEvents: boolean
     }
   }
 
+  const reviewers = isMergeRequest ? await readReviewers(context, base, item.ref) : undefined;
   const snapshot: ItemSnapshot = {
     role: item.role,
     ref: item.ref,
@@ -190,6 +223,7 @@ async function readItem(context: Context, item: WatchedItem, withEvents: boolean
     checks,
     inPartition: inPartition(found, request.operator),
     transitions: transitions.sort(byTimeThenId),
+    ...(reviewers === undefined ? {} : { reviewers }),
   };
   return { snapshot, events: withEvents ? await readEvents(context, item, base, found.web_url, isMergeRequest) : [] };
 }
@@ -267,7 +301,7 @@ export function createGitlabAdapter(): ServiceAdapter {
       if (request.source.service !== "gitlab") {
         return { snapshots: [], events: [], updated: [], failures: [{ ref: null, reason: "the source is not a GitLab project" }] };
       }
-      const context: Context = { request, http: request.http, project: encodeURIComponent(request.source.path), failures: [] };
+      const context: Context = { request, http: request.http, project: encodeURIComponent(request.source.path), stayUnder: `/projects/${encodeURIComponent(request.source.path)}/`, failures: [] };
       const roles = new Map(request.items.map((item) => [item.ref, item.role]));
       const roleOf = (ref: string): SourceRole => roles.get(ref) ?? request.source.role;
 

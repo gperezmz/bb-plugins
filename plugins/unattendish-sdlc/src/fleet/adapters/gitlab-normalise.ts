@@ -6,7 +6,7 @@
 // v4); the adapter's header comment names the pages.
 import { z } from "zod";
 import { combineChecks } from "../domain/checks";
-import type { ChecksOutcome, FleetLabels, Transition } from "../domain/model";
+import type { ChecksOutcome, FleetLabels, ItemSnapshot, Transition } from "../domain/model";
 import { parseAnswer, ReadProblem } from "./service-support";
 
 const timestamp = z.string().refine((value) => !Number.isNaN(Date.parse(value)));
@@ -44,6 +44,9 @@ export const mergeRequestSchema = z.object({
 export const listedSchema = z.object({ iid: z.number().int(), web_url: z.string().min(1), updated_at: timestamp });
 
 export const pipelinesSchema = z.array(pipelineSchema);
+
+/** The entries of `GET .../merge_requests/:iid/reviewers`: each reviewer's `user` and review `state`. */
+export const reviewersSchema = z.array(z.object({ user: username, state: z.string().min(1) }));
 
 const isSystemSchema = z.object({ system: z.boolean() });
 export const noteSchema = z.object({ id: z.number().int(), body: z.string(), author: username, created_at: timestamp });
@@ -185,4 +188,20 @@ export const byTimeThenId = (a: Transition, b: Transition): number => Date.parse
 export function expiryIso(value: string): string | null {
   const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+/**
+ * The reviewers' states a merge request carries, in the Fleet's words: `requested_changes` is a review that
+ * `changes requested`, and `reviewed` one that `commented` (a review submitted with or without a comment). The other
+ * states are no review the Fleet reads: `approved` is left to the approvals list so an approval is not reported twice,
+ * and `unreviewed`, `review_started`, `unapproved` and any state GitLab adds later say no review was submitted.
+ */
+export function reviewerStates(reviewers: readonly { readonly user: { readonly username: string }; readonly state: string }[]): NonNullable<ItemSnapshot["reviewers"]> {
+  const states: Record<string, "changes requested" | "commented" | undefined> = { requested_changes: "changes requested", reviewed: "commented" };
+  const found: { actor: string; state: "changes requested" | "commented" }[] = [];
+  for (const reviewer of reviewers) {
+    const state = states[reviewer.state];
+    if (state !== undefined) found.push({ actor: reviewer.user.username, state });
+  }
+  return found.sort((a, b) => a.actor.localeCompare(b.actor));
 }

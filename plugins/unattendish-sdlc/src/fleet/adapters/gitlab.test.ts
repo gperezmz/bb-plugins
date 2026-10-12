@@ -262,6 +262,88 @@ describe("the GitLab adapter: events", () => {
   });
 });
 
+describe("the GitLab adapter: reviewers", () => {
+  const reviewing = (reviewers: NonNullable<FakeMergeRequest["reviewers"]>, extra: Partial<FakeMergeRequest> = {}) => mr(4, { reviewers, ...extra });
+
+  it("reports a bare request for changes, with no comment and no event, as the reviewer's state", async () => {
+    const { read } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "requested_changes" }])] } });
+    const outcome = await read({ items: [watch("!4")], watchedRefs: new Set(["!4"]) });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.events).toEqual([]);
+    expect(only(outcome.snapshots).reviewers).toEqual([{ actor: "rita", state: "changes requested" }]);
+  });
+
+  it("reports a review submitted without a comment as commented, and several reviewers by name", async () => {
+    const { read } = await world({
+      [PATH]: { mergeRequests: [reviewing([{ user: "zed", state: "reviewed" }, { user: "amy", state: "requested_changes" }])] },
+    });
+    const { snapshots } = await read({ items: [watch("!4")] });
+    expect(only(snapshots).reviewers).toEqual([
+      { actor: "amy", state: "changes requested" },
+      { actor: "zed", state: "commented" },
+    ]);
+  });
+
+  it("leaves an approval to the approvals list, and a reviewer who has not reviewed out", async () => {
+    const approval = { user: "ann", approved_at: AFTER };
+    const { read } = await world({
+      [PATH]: {
+        mergeRequests: [
+          reviewing(
+            ["approved", "unreviewed", "review_started", "unapproved", "a_state_from_the_future"].map((state, index) => ({ user: `u${index}`, state })),
+            { approvals: [approval] },
+          ),
+        ],
+      },
+    });
+    const outcome = await read({ items: [watch("!4")], watchedRefs: new Set(["!4"]) });
+    expect(only(outcome.snapshots).reviewers).toEqual([]);
+    expect(outcome.events.filter((event) => event.kind === "reviewed: approved")).toHaveLength(1);
+    expect(outcome.events.some((event) => event.kind === "reviewed: changes requested" || event.kind === "reviewed: commented")).toBe(false);
+  });
+
+  it("reads the same reviewers twice alike, the second time as a conditional request", async () => {
+    const { read, http } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "requested_changes" }])] } });
+    const first = await read({ items: [watch("!4")] });
+    http.drainRequests();
+    const second = await read({ items: [watch("!4")] });
+    expect(second.snapshots).toEqual(first.snapshots);
+    expect(http.drainRequests().filter((record) => record.path.endsWith("/reviewers")).map((record) => record.status)).toEqual([304]);
+  });
+
+  it("reads reviewers in a state-only read too, and gives an issue none", async () => {
+    const { read } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "reviewed" }])], issues: [issue(1)] } });
+    const { snapshots } = await read({ items: [watch("!4"), watch("#1")], stateOnly: true });
+    expect(snapshots.map((snapshot) => [snapshot.ref, snapshot.reviewers])).toEqual([
+      ["!4", [{ actor: "rita", state: "commented" }]],
+      ["#1", undefined],
+    ]);
+  });
+
+  it("reads the merge request without reviewers where GitLab will not list them (403, 404)", async () => {
+    for (const status of [403, 404]) {
+      const { read } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "requested_changes" }])] } }, { faults: [{ match: "/reviewers", status }] });
+      const outcome = await read({ items: [watch("!4")] });
+      expect(outcome.failures).toEqual([]);
+      expect(only(outcome.snapshots)).not.toHaveProperty("reviewers");
+    }
+  });
+
+  it("fails the merge request, with no snapshot, where a reviewer's state is missing, and names no text from the service", async () => {
+    const { read, fake } = await world({ [PATH]: { mergeRequests: [reviewing([{ user: "rita", state: "reviewed" }])] } });
+    const state = fake.getState() as FakeGitlabState;
+    (state.projects[PATH]!.mergeRequests[0]!.reviewers![0] as { state?: string }).state = "";
+    const outcome = await read({ items: [watch("!4")] });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "!4", reason: expect.stringContaining("reviewers") }]);
+  });
+
+  it("rethrows a refused credential met on the reviewers", async () => {
+    const { read } = await world({ [PATH]: { mergeRequests: [reviewing([])] } }, { faults: [{ match: "/reviewers", status: 401 }] });
+    await expect(read({ items: [watch("!4")] })).rejects.toMatchObject({ kind: "auth" });
+  });
+});
+
 describe("the GitLab adapter: checks", () => {
   const statuses = async (pipelines: { id: number; sha: string; status: string }[], sha = "head") => {
     const { read } = await world({ [PATH]: { mergeRequests: [mr(1, { sha, pipelines })] } });
@@ -421,7 +503,24 @@ describe("the GitLab adapter: failures", () => {
     const { read } = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1", status: 403 }] });
     const outcome = await read({ items: [watch("#1"), watch("#2")] });
     expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
-    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String) }]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: expect.any(String), kind: "forbidden" }]);
+  });
+
+  it("calls a listing the token may not read forbidden, and an item or listing that gets a 5xx or no answer unreachable", async () => {
+    const forbidden = await world({ [PATH]: { issues: [issue(1)] } }, { faults: [{ match: "/projects/org/sub/repo/issues?", status: 403 }] });
+    expect((await forbidden.read()).failures).toEqual(expect.arrayContaining([{ ref: null, reason: expect.any(String), kind: "forbidden" }]));
+    const broken = await world({ [PATH]: { issues: [issue(1), issue(2)] } }, { faults: [{ match: "/issues/1", status: 503 }, { match: "/projects/org/sub/repo/issues?", status: 502 }] });
+    const outcome = await broken.read({ items: [watch("#1"), watch("#2")] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual(expect.arrayContaining([{ ref: "#1", reason: expect.any(String), kind: "unreachable" }, { ref: null, reason: expect.any(String), kind: "unreachable" }]));
+    expect(outcome.failures.every((failure) => failure.kind === "unreachable")).toBe(true);
+
+    const silent = new HttpClient({ sleep: async () => undefined, fetch: async () => Promise.reject(new TypeError("fetch failed")) }).session(
+      { prefix: "gitlab.com/org", service: "gitlab", auth: "token", baseUrl: `${broken.mounted.url}/api/v4`, host: "127.0.0.1" },
+      TOKEN,
+    );
+    const none = await broken.read({ http: silent, items: [watch("#1")], stateOnly: true });
+    expect(none.failures).toEqual([{ ref: "#1", reason: expect.not.stringContaining("fetch failed"), kind: "unreachable" }]);
   });
 
   it("leaves checks null, and reads the rest of the merge request, where its pipelines are forbidden (CI off)", async () => {
@@ -453,6 +552,47 @@ describe("the GitLab adapter: failures", () => {
     const outcome = await read({ source: { role: "tracker", service: "linear", team: "ENG" } });
     expect(outcome.failures).toEqual([{ ref: null, reason: expect.any(String) }]);
     expect(mounted.requests).toEqual([]);
+  });
+});
+
+describe("the GitLab adapter: a project or issue that moved", () => {
+  const asked = (mounted: Mounted) => mounted.requests.map((request) => decodeURIComponent(request.url));
+
+  it("reads an issue moved to another project where GitLab keeps it: in this project, closed", async () => {
+    const { read } = await world({ [PATH]: { issues: [issue(1, { state: "closed", movedToId: 77, stateEvents: [{ id: 5, user: "olga", created_at: AFTER, state: "closed" }] })] } });
+    const outcome = await read({ items: [watch("#1")] });
+    expect(outcome.failures).toEqual([]);
+    expect(only(outcome.snapshots)).toMatchObject({ ref: "#1", open: false, transitions: [{ kind: "closed", actor: "olga" }] });
+  });
+
+  it("fails every read of a renamed or transferred project as outside the fleet, and follows the redirect nowhere", async () => {
+    const { read, mounted } = await world(
+      { "org/new-name": { issues: [issue(1, { labels: ["spec"], assignees: ["olga"] })], mergeRequests: [mr(2)] } },
+      { renames: { [PATH]: "org/new-name" } },
+    );
+    const outcome = await read({ items: [watch("#1"), watch("!2")], scanPartition: true });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.updated).toEqual([]);
+    expect(outcome.failures.length).toBeGreaterThan(2);
+    expect(outcome.failures.every((failure) => failure.reason === "moved outside the fleet" && failure.kind === "outside-fleet")).toBe(true);
+    expect(outcome.failures.map((failure) => failure.ref)).toEqual(expect.arrayContaining(["#1", "!2", null]));
+    expect(asked(mounted).filter((url) => url.includes("org/new-name"))).toEqual([]);
+  });
+
+  it("fails an item whose list's next link leaves the project, and reads no further page", async () => {
+    const notes = Array.from({ length: 150 }, (_, index) => note(index + 1, "text"));
+    const { read, mounted } = await world({ [PATH]: { issues: [issue(1, { notes })] } }, { nextLinkPath: "/api/v4/projects/org%2Fother/issues/1/notes" });
+    const outcome = await read({ items: [watch("#1")], watchedRefs: new Set(["#1"]) });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(asked(mounted).filter((url) => url.includes("org/other"))).toEqual([]);
+  });
+
+  it("asks for the token's expiry outside the project's prefix without failing", async () => {
+    const { read, http } = await world({ [PATH]: { issues: [issue(1)] } }, { token: { expires_at: "2026-12-01" } });
+    expect((await read({ items: [watch("#1")] })).failures).toEqual([]);
+    expect(http.expiresAt()).toBe("2026-12-01T00:00:00.000Z");
   });
 });
 
@@ -537,7 +677,7 @@ describe("the GitLab adapter: requests", () => {
 describe("the fake GitLab, driven over HTTP", () => {
   it("is loaded and read back as JSON through /__admin/state, and the adapter reads what was loaded", async () => {
     const { mounted, read } = await world({ [PATH]: {} });
-    const loaded = { projects: { [PATH]: { issues: [issue(1, { labels: ["spec"] })], mergeRequests: [] } }, token: null, maxPerPage: 100, faults: [] };
+    const loaded = { projects: { [PATH]: { issues: [issue(1, { labels: ["spec"] })], mergeRequests: [] } }, token: null, maxPerPage: 100, faults: [], renames: {} };
     const posted = await fetch(`${mounted.url}/__admin/state`, { method: "POST", body: JSON.stringify(loaded) });
     expect(posted.status).toBe(200);
     const back = await fetch(`${mounted.url}/__admin/state`);

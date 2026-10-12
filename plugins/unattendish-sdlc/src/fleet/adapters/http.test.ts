@@ -110,6 +110,108 @@ describe("HttpClient", () => {
     });
   });
 
+  describe("a host that only looks like the credential's", () => {
+    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://api.github.com", host: "api.github.com" };
+    const fetching = (answer: (url: string) => Response) => {
+      const fetched: string[] = [];
+      return { fetched, fetch: (async (url: URL | string) => (fetched.push(String(url)), answer(String(url)))) as typeof fetch };
+    };
+    const lookalikes = ["https://evil-api.github.com/x", "https://api.github.com.evil.test/x", "https://xapi.github.com/x", "https://api.github.com@evil.test/x", "https://api.github.com:8443/x"];
+
+    it.each(lookalikes)("refuses %s as an absolute path before any request leaves", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response("{}"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: target })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual([]);
+    });
+
+    it.each(lookalikes)("does not follow a redirect to %s, and does not resend the token there", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response(null, { status: 302, headers: { location: target } }));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual(["https://api.github.com/x"]);
+    });
+
+    it.each(lookalikes)("refuses a next link to %s", async (target) => {
+      const { fetched, fetch } = fetching(() => new Response("[1]", { headers: { link: `<${target}?page=2>; rel="next"` } }));
+      await expect(client({ fetch }).session(github, TOKEN).paginate({ path: "/x" }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual(["https://api.github.com/x"]);
+    });
+
+    it("follows an absolute link on the credential's own host and port", async () => {
+      const { fetched, fetch } = fetching((url) => new Response(url.endsWith("/x") ? "[1]" : "[2]", { headers: url.endsWith("/x") ? { link: '<https://api.github.com/x?page=2>; rel="next"' } : {} }));
+      expect(await client({ fetch }).session(github, TOKEN).paginate({ path: "/x" }, { maxPages: 5 })).toEqual({ items: [1, 2], truncated: false });
+      expect(fetched).toEqual(["https://api.github.com/x", "https://api.github.com/x?page=2"]);
+    });
+
+    it("keeps a credential's own port: a link to the host without it, or to another port, is refused", async () => {
+      const enterprise: ResolvedCredential = { ...github, baseUrl: "https://ghe.example.com:8443/api/v3", host: "ghe.example.com" };
+      const { fetched, fetch } = fetching(() => new Response("{}"));
+      const session = client({ fetch }).session(enterprise, TOKEN);
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com/api/v3/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com:9443/api/v3/x" })).rejects.toMatchObject({ kind: "outside-host" });
+      await expect(session.request({ method: "GET", path: "https://ghe.example.com:8443/api/v3/x" })).resolves.toMatchObject({ status: 200 });
+      expect(fetched).toEqual(["https://ghe.example.com:8443/api/v3/x"]);
+    });
+  });
+
+  describe("stayUnder", () => {
+    const github: ResolvedCredential = { prefix: "github.com/org", service: "github", auth: "token", baseUrl: "https://ghe.example.com/api/v3", host: "ghe.example.com" };
+    const under = "/repos/Org/Repo/";
+    const moved = (location: string, status = 301) => async (url: URL | string) =>
+      String(url).includes("/repos/Org/Repo/") && String(url).includes("/old") ? new Response(null, { status, headers: { location } }) : new Response("{}");
+    const recording = (answer: (url: URL | string) => Promise<Response>) => {
+      const fetched: string[] = [];
+      return { fetched, fetch: (async (url: URL | string) => (fetched.push(String(url)), answer(url))) as typeof fetch };
+    };
+
+    it("refuses a redirect to another repository's path, and does not follow it", async () => {
+      for (const location of ["/api/v3/repositories/42/issues/9", "https://ghe.example.com/api/v3/repos/org/other/issues/9", "/api/v3/repos/Org/Repo2/issues/9", "/api/v3/repos/Org/Repo"]) {
+        const { fetched, fetch } = recording(moved(location));
+        const error = await client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", query: { access_token: TOKEN }, stayUnder: under }).catch((e: unknown) => e as Error);
+        expect(error).toMatchObject({ kind: "outside-host" });
+        expect((error as Error).message).not.toMatch(/access_token|secret/);
+        expect(fetched).toHaveLength(1);
+      }
+    });
+
+    it("follows a redirect that stays under it, without regard to case", async () => {
+      const { fetched, fetch } = recording(moved("/api/v3/repos/org/repo/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).resolves.toMatchObject({ status: 200 });
+      expect(fetched).toEqual(["https://ghe.example.com/api/v3/repos/Org/Repo/issues/old", "https://ghe.example.com/api/v3/repos/org/repo/issues/9"]);
+    });
+
+    it("reads the prefix after the credential's base path", async () => {
+      const { fetched, fetch } = recording(moved("/repos/Org/Repo/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toHaveLength(1);
+    });
+
+    it("refuses a dot-dot path that climbs out of it", async () => {
+      const { fetched, fetch } = recording(moved("/api/v3/repos/Org/Repo/../Other/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toHaveLength(1);
+    });
+
+    it("refuses a request whose own path is outside it", async () => {
+      const { fetched, fetch } = recording(async () => new Response("{}"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Other/issues/1", stayUnder: under })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(fetched).toEqual([]);
+    });
+
+    it("sends the same request unrestricted where no prefix is given", async () => {
+      const { fetch } = recording(moved("/api/v3/repositories/42/issues/9"));
+      await expect(client({ fetch }).session(github, TOKEN).request({ method: "GET", path: "/repos/Org/Repo/issues/old" })).resolves.toMatchObject({ status: 200 });
+    });
+
+    it("refuses a next link outside it and follows one under it", async () => {
+      const page = (link: string) => async (url: URL | string) => new Response("[1]", { headers: String(url).includes("page=2") ? {} : { link: `<${link}>; rel="next"` } });
+      const off = recording(page("https://ghe.example.com/api/v3/repositories/42/issues?page=2"));
+      await expect(client({ fetch: off.fetch }).session(github, TOKEN).paginate({ path: "/repos/Org/Repo/issues", stayUnder: under }, { maxPages: 5 })).rejects.toMatchObject({ kind: "outside-host" });
+      expect(off.fetched).toHaveLength(1);
+      const on = recording(page("https://ghe.example.com/api/v3/repos/Org/Repo/issues?page=2"));
+      expect(await client({ fetch: on.fetch }).session(github, TOKEN).paginate({ path: "/repos/Org/Repo/issues", stayUnder: under }, { maxPages: 5 })).toEqual({ items: [1, 1], truncated: false });
+    });
+  });
+
   it("follows a redirect on the same host", async () => {
     const { seen, credential } = await serve((request, response) => {
       if (request.url === "/api/old") {
@@ -258,6 +360,57 @@ describe("HttpClient", () => {
         .catch((e: unknown) => e as Error);
       expect((refused as Error).message).not.toContain(TOKEN);
       expect((refused as Error).message).toBe("GET /api/x failed: no answer");
+    });
+  });
+
+  describe("a GraphQL query answered outside 2xx", () => {
+    const QUERY = { query: "query { viewer { id } }" };
+    const KEY = "lin_api_secretsecretsecret";
+    const post = async (status: number, body: unknown, headers: Record<string, string> = {}) => {
+      const { credential } = await serve((_, response) => (typeof body === "string" ? (response.writeHead(status, headers), response.end(body)) : json(response, body, status, headers)));
+      return client().session(credential("linear"), KEY).request({ method: "POST", path: "", graphql: QUERY }).catch((e: unknown) => e as HttpError);
+    };
+
+    it("carries each error's extensions type and code, and no message or other field", async () => {
+      const error = await post(400, {
+        errors: [
+          { message: `Bad key ${KEY} for Jane Doe`, path: ["viewer"], locations: [{ line: 1 }], extensions: { type: "authentication error", code: "AUTHENTICATION_ERROR", userPresentableMessage: "Your key is revoked" } },
+          { message: "Rate limited", extensions: { code: "RATELIMITED" } },
+          { message: "no extensions" },
+        ],
+      });
+      expect(error).toBeInstanceOf(HttpError);
+      expect(error).toMatchObject({ kind: "client", status: 400, graphql: [{ type: "authentication error", code: "AUTHENTICATION_ERROR" }, { type: null, code: "RATELIMITED" }] });
+      const shown = JSON.stringify([(error as HttpError).graphql, (error as HttpError).message]);
+      for (const text of [KEY, "Bad key", "Jane Doe", "revoked", "viewer", "Rate limited"]) expect(shown).not.toContain(text);
+    });
+
+    it("cuts a long value to 64 characters, takes only strings and keeps a token out", async () => {
+      const error = (await post(400, { errors: [{ extensions: { type: "x".repeat(200), code: 12 } }, { extensions: { type: `t-${KEY}`, code: { nested: true } } }] })) as HttpError;
+      expect(error.graphql).toEqual([{ type: "x".repeat(64), code: null }, { type: expect.not.stringContaining(KEY), code: null }]);
+    });
+
+    it("also rides on a rate limit", async () => {
+      const error = await post(429, { errors: [{ message: "slow down", extensions: { code: "RATELIMITED" } }] }, { "retry-after": "600" });
+      expect(error).toMatchObject({ kind: "rate-limit", graphql: [{ type: null, code: "RATELIMITED" }] });
+    });
+
+    it("is absent where the body is not JSON, names no errors, or names none with a type or code", async () => {
+      for (const body of ["<html>bad gateway</html>", {}, { errors: "no" }, { errors: [{ message: "m" }] }, { errors: [] }]) {
+        const error = await post(400, body);
+        expect(error).toMatchObject({ kind: "client" });
+        expect((error as HttpError).graphql).toBeUndefined();
+      }
+    });
+
+    it("is not read for a GET, nor attached to an answer that is 2xx", async () => {
+      const { credential } = await serve((_, response) => json(response, { errors: [{ extensions: { code: "X" } }] }, 400));
+      const error = await client().session(credential(), TOKEN).request({ method: "GET", path: "/x" }).catch((e: unknown) => e as HttpError);
+      expect(error).toMatchObject({ kind: "client" });
+      expect((error as HttpError).graphql).toBeUndefined();
+      server?.close();
+      const ok = await serve((_, response) => json(response, { errors: [{ extensions: { code: "X" } }], data: null }));
+      await expect(client().session(ok.credential("linear"), KEY).request({ method: "POST", path: "", graphql: QUERY })).resolves.toMatchObject({ status: 200 });
     });
   });
 

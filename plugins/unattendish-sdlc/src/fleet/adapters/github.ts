@@ -24,6 +24,15 @@
 //    limit, which the HTTP session accounts for). Enterprise Server's REST root
 //    is `http(s)://HOSTNAME/api/v3` (/en/enterprise-server@latest/rest/using-the-rest-api/getting-started-with-the-rest-api).
 //
+// Moved items: "Get an issue" (/en/rest/issues/issues) says the API "returns a 301
+// Moved Permanently status if the issue was transferred to another repository",
+// and /en/rest/repos/repos lists a 301 for a repository without saying when;
+// /en/rest/using-the-rest-api/best-practices-for-using-the-rest-api says to
+// follow a 301 to its `location`. The docs give no Location form (the
+// `/repositories/{id}/...` path is not documented), so every request is made with
+// `stayUnder` `/repos/{owner}/{repo}/`: a redirect or next link that leaves it,
+// whatever it looks like, is a failure of kind `outside-fleet`, never read.
+//
 // A 403 that is not a rate limit is the HTTP layer's `forbidden`. On the check
 // runs or commit statuses of a pull request it leaves `checks` null and the
 // rest of the item is still read (a fine-grained token may lack those
@@ -41,6 +50,11 @@
 //  - Whether submitting a review moves the `updated_at` of its inline comments,
 //    which is what `since` filters them on: they are read without `since`, up to
 //    10 pages of 100, and a review comment counts at its review's `submitted_at`.
+//  - What `filter=latest` keeps: /en/rest/checks/runs gives `latest` (the default) and
+//    `all`, and says "Filters check runs by their completed_at timestamp. latest
+//    returns the most recent check runs." It does not say a re-run replaces the run
+//    it re-ran. The filter is sent explicitly, and a re-run is taken to replace the
+//    earlier run of the same name; `all` is never used.
 //  - Whether the issue schema's `labels` are objects or names: both are read.
 import {
   HttpError,
@@ -81,6 +95,7 @@ import {
   reviewShape,
   type IssueWire,
 } from "./github-wire";
+import { forgeFailure } from "./forge-failure";
 import { isFatal, ReadProblem } from "./service-support";
 import { z } from "zod";
 
@@ -105,6 +120,8 @@ interface Reading {
   readonly http: HttpSession;
   /** `/repos/owner/repo`. */
   readonly repo: string;
+  /** The prefix every request, redirect and next link must stay under: a moved or renamed repository answers elsewhere. */
+  readonly stayUnder: string;
   readonly sinceMs: number;
   /** The four registered labels by lower-cased spelling. */
   readonly fleetLabels: ReadonlyMap<string, string>;
@@ -124,16 +141,6 @@ const nextLink = (link: string | null): string | null => {
   }
   return null;
 };
-
-/** The reason a failed read may carry: the HTTP layer's own text, or the names of the fields an answer lacked. */
-const reasonOf = (error: unknown): string => {
-  if (error instanceof HttpError || error instanceof ReadProblem) return error.message;
-  return "the answer could not be read";
-};
-
-/** A failed read of the item `ref`; one the service answers not-found is marked so, as no later read will do better. */
-const failureOf = (ref: string | null, error: unknown): ReadFailure =>
-  ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) };
 
 const repoPath = (path: string): string | null => {
   const parts = path.split("/");
@@ -162,6 +169,7 @@ class GithubAdapter implements ServiceAdapter {
       request,
       http: request.http,
       repo,
+      stayUnder: `${repo}/`,
       sinceMs,
       fleetLabels: new Map(
         [request.labels.spec, request.labels.ready, request.labels.inProgress, request.labels.needsInput].map((name) => [name.toLowerCase(), name]),
@@ -178,7 +186,7 @@ class GithubAdapter implements ServiceAdapter {
         events.push(...read.events);
       } catch (error) {
         if (isFatal(error)) throw error;
-        failures.push(failureOf(item.ref, error));
+        failures.push(forgeFailure(item.ref, error));
       }
     }
 
@@ -343,7 +351,7 @@ class GithubAdapter implements ServiceAdapter {
         listed = await this.list(reading, `${reading.repo}/issues`, query, "the partition listing");
       } catch (error) {
         if (isFatal(error)) throw error;
-        failures.push({ ref: null, reason: reasonOf(error) });
+        failures.push(forgeFailure(null, error));
         continue;
       }
       for (const entry of listed) {
@@ -356,7 +364,7 @@ class GithubAdapter implements ServiceAdapter {
           snapshots.push(read.snapshot);
         } catch (error) {
           if (isFatal(error)) throw error;
-          failures.push(failureOf(ref, error));
+          failures.push(forgeFailure(ref, error));
         }
       }
     }
@@ -368,7 +376,7 @@ class GithubAdapter implements ServiceAdapter {
       listed = await this.list(reading, `${reading.repo}/issues`, { state: "all", since: sinceParam(reading.sinceMs), sort: "updated", direction: "asc" }, "the updated listing");
     } catch (error) {
       if (isFatal(error)) throw error;
-      failures.push({ ref: null, reason: reasonOf(error) });
+      failures.push(forgeFailure(null, error));
       return;
     }
     for (const entry of listed) {
@@ -376,7 +384,7 @@ class GithubAdapter implements ServiceAdapter {
         const item = parse("a listed issue", listedShape, entry);
         updated.push({ role: reading.request.source.role, ref: `#${item.number}`, url: item.html_url, at: iso(item.updated_at) });
       } catch (error) {
-        failures.push({ ref: refOfListed(entry), reason: reasonOf(error) });
+        failures.push(forgeFailure(refOfListed(entry), error));
       }
     }
   }
@@ -384,12 +392,12 @@ class GithubAdapter implements ServiceAdapter {
   // ---- requests ----
 
   private get(reading: Reading, path: string, query?: Query): Promise<HttpResponse> {
-    return reading.http.request({ method: "GET", path, ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
+    return reading.http.request({ method: "GET", path, stayUnder: reading.stayUnder, ...(query === undefined ? {} : { query }) }, { signal: reading.request.signal });
   }
 
   /** Every entry of a list, page after page; a list longer than 10 pages is an error naming `what`. */
   private async list(reading: Reading, path: string, query: Query, what: string): Promise<unknown[]> {
-    const { items, truncated } = await reading.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE } }, { maxPages: MAX_PAGES, signal: reading.request.signal });
+    const { items, truncated } = await reading.http.paginate({ path, query: { ...query, per_page: PAGE_SIZE }, stayUnder: reading.stayUnder }, { maxPages: MAX_PAGES, signal: reading.request.signal });
     if (truncated) throw new ReadProblem(`${what} was longer than ${MAX_PAGES} pages`);
     return items;
   }
