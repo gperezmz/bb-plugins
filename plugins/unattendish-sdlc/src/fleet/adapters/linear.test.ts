@@ -548,10 +548,36 @@ describe("a read that fails", () => {
     await expect(read(["ENG-1"], { http: limited })).rejects.toMatchObject({ kind: "rate-limit" });
   });
 
-  it("gives a listing failure, not a throw, for the documented HTTP 400 rate-limit answer the HTTP layer reports as a client error", async () => {
+  it("rethrows the documented HTTP 400 rate-limit answer as a rate limit, from the codes the HTTP layer keeps", async () => {
     const { read } = await setup({ issues: [], rateLimited: true });
-    const outcome = await read([]);
-    expect(outcome.failures.every((f) => f.ref === null)).toBe(true);
+    await expect(read([])).rejects.toMatchObject({ name: "HttpError", kind: "rate-limit" });
+  });
+
+  const refusing = (graphql: HttpError["graphql"]): HttpSession => ({
+    ...answering({}),
+    request: async () => {
+      throw new HttpError("client", "POST graphql answered 400", 400, null, graphql);
+    },
+  });
+
+  it.each([
+    ["a revoked key", [{ type: "authentication error", code: null }], "auth"],
+    ["a rate limit", [{ type: null, code: "RATELIMITED" }], "rate-limit"],
+  ])("turns HTTP 400 with the codes of %s into the error it means", async (_, graphql, kind) => {
+    const { read } = await setup({ issues: [] });
+    const failure = await read(["ENG-1"], { http: refusing(graphql) }).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ name: "HttpError", kind });
+  });
+
+  it("fails only the read for HTTP 400 with the codes of a key that may not read it", async () => {
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: refusing([{ type: "forbidden", code: null }]) });
+    expect(outcome.failures.map((f) => f.kind)).toContain("forbidden");
+  });
+
+  it("leaves an HTTP 400 with no known code an ordinary failure of the read", async () => {
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: refusing([{ type: null, code: "SOMETHING" }]) });
     expect(outcome.failures.length).toBeGreaterThan(0);
   });
 

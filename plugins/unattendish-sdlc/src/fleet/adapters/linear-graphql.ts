@@ -191,7 +191,14 @@ export async function send<T>(
   variables: Record<string, unknown>,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const response = await http.request({ method: "POST", path: "", graphql: { query: document, variables } }, { signal });
+  let response;
+  try {
+    response = await http.request({ method: "POST", path: "", graphql: { query: document, variables } }, { signal });
+  } catch (error) {
+    // Linear answers a revoked key or a rate limit as HTTP 400 with GraphQL errors; the HTTP layer keeps only their codes.
+    if (error instanceof HttpError && error.graphql !== undefined) rethrowFatal(error.graphql.map((entry) => ({ extensions: { type: entry.type ?? undefined, code: entry.code ?? undefined } })));
+    throw error;
+  }
   const body = response.json;
   if (typeof body !== "object" || body === null) throw new ReadProblem("Linear answered a body that is not a GraphQL response");
   const { data, errors } = body as { data?: unknown; errors?: unknown };
