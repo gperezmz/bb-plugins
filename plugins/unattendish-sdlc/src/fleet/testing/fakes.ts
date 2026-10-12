@@ -138,9 +138,9 @@ export class FakeHttp implements Http {
 /** An adapter that answers each read with the next outcome queued, or throws what was queued. */
 export class FakeAdapter implements ServiceAdapter {
   readonly reads: ReadRequest[] = [];
-  private readonly script: (ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome))[] = [];
+  private readonly script: (ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome | Promise<ReadOutcome>))[] = [];
   constructor(readonly service: ServiceKind) {}
-  queue(next: ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome)): void {
+  queue(next: ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome | Promise<ReadOutcome>)): void {
     this.script.push(next);
   }
   async read(request: ReadRequest): Promise<ReadOutcome> {
