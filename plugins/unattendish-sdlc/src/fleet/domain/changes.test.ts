@@ -183,6 +183,24 @@ describe("failures", () => {
     expect(derived.nextCursor.since).toBe(firstSince);
   });
 
+  it("does not hold since for an item the service says does not exist, but does for any other failure of one item", () => {
+    const prev = cursor({});
+    const gone = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }] }) });
+    expect(gone.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    const other = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }, { ref: "#8", reason: "server error" }] }) });
+    expect(other.nextCursor.since).toBe(prev.since);
+    const listing = derive({ prev, outcome: outcome({ failures: [{ ref: null, reason: "listing failed", kind: "not-found" }] }) });
+    expect(listing.nextCursor.since).toBe(prev.since);
+  });
+
+  it("holds since no further back than seven days before the poll's start", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const held = derive({ prev: old, outcome: outcome({ failures: [{ ref: "#8", reason: "server error" }] }) });
+    expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
   it("moves since to the poll's start less the overlap otherwise", () => {
     expect(derive({ outcome: outcome() }).nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
     expect(derive({ outcome: outcome(), overlapMs: 10_000 }).nextCursor.since).toBe("2026-10-12T09:59:50.000Z");

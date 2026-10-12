@@ -18,6 +18,8 @@ import {
 } from "./model";
 
 const DEFAULT_OVERLAP_MS = 60_000;
+/** The furthest a failed read may hold a cursor's `since` back from the poll's start, so one item that never reads cannot make every later poll read ever more. */
+export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
 export interface DeriveInput {
   readonly role: SourceRole;
@@ -59,7 +61,11 @@ export interface Derived {
  * The changes a read shows against the previous cursor. A change's key does
  * not depend on when it is derived: deriving again from the same, uncommitted
  * cursor gives the same keys. An item whose read failed leaves its previous
- * state in the cursor and gives no change, and any failure holds `since`.
+ * state in the cursor and gives no change. Such a failure, and a failed
+ * listing, hold `since` where it was, but never more than `MAX_HOLD_MS` before
+ * the poll's start: changes held while no manager exists are in the ledger
+ * and are not lost by the cap. A failure of kind `not-found` holds nothing,
+ * since no later read of that item will succeed.
  */
 export const deriveChanges = (input: DeriveInput): Derived => {
   const { role, prev, outcome, watchedRefs, labels, startedAt, firstSince, stateOnly } = input;
@@ -99,8 +105,9 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     for (const [id, state] of Object.entries(prev?.items ?? {})) if (!(id in items)) items[id] = state;
   }
 
-  const holdsSince = outcome.failures.length > 0 || stateOnly;
-  const since = holdsSince ? base : new Date(Date.parse(startedAt) - overlapMs).toISOString();
+  const holdsSince = outcome.failures.some((failure) => failure.ref === null || failure.kind !== "not-found") || stateOnly;
+  const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
+  const since = holdsSince ? (base < oldest ? oldest : base) : new Date(Date.parse(startedAt) - overlapMs).toISOString();
 
   changes.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
