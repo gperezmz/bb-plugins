@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { AccountStep } from "./AccountStep";
-import { dialogTitle, newLoginService, setupProblem, type ResultAction } from "./model";
+import { dialogTitle, newLoginService, type ResultAction } from "./model";
 import type { ConnectRequest } from "./requests";
 import { ResultStep } from "./ResultStep";
 import { SetupStep } from "./SetupStep";
