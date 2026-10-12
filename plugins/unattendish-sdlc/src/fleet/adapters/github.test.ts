@@ -519,12 +519,52 @@ describe("GitHub adapter: the updated listing", () => {
     expect(server.requests.some((request) => request.url.includes("since=2026-10-10T00%3A00%3A00Z"))).toBe(true);
   });
 
-  it("cuts a listing off past 10 pages of 100 and says so without naming an item", async () => {
-    const issues = Array.from({ length: 1001 }, (_, index) => issue(index + 1));
-    const { read } = await harness(repo({ issues }));
-    const outcome = await read();
-    expect(outcome.failures).toEqual([{ ref: null, reason: expect.stringContaining("10 pages") }]);
-    expect(outcome.updated).toEqual([]);
+  describe("a listing cut off at 10 pages of 100", () => {
+    const minute = (index: number) => new Date(Date.parse(AFTER) + index * 60_000).toISOString();
+    const stepped = (count: number) => Array.from({ length: count }, (_, index) => issue(index + 1, { updatedAt: minute(index) }));
+
+    it("returns what it listed oldest first and where it stopped, no failure, and the next poll goes on from there", async () => {
+      const { read } = await harness(repo({ issues: stepped(1050) }));
+      const first = await read();
+      expect(first.failures).toEqual([]);
+      expect(first.updated).toHaveLength(1000);
+      expect(first.updated[0]).toMatchObject({ ref: "#1", at: minute(0) });
+      expect(first.updated[999]).toMatchObject({ ref: "#1000", at: minute(999) });
+      const cut = first.listingCutAt!;
+      expect(cut).toBe(new Date(Date.parse(minute(999)) - 1000).toISOString());
+
+      const second = await read({ since: cut });
+      expect(second.failures).toEqual([]);
+      expect(second.listingCutAt).toBeUndefined();
+      expect(second.updated.map((one) => one.ref)).toEqual(["#1000", ...Array.from({ length: 50 }, (_, index) => `#${1001 + index}`)]);
+    });
+
+    it("leaves listingCutAt unset where the listing fits", async () => {
+      const { read } = await harness(repo({ issues: stepped(1000) }));
+      const outcome = await read();
+      expect(outcome.updated).toHaveLength(1000);
+      expect(outcome.listingCutAt).toBeUndefined();
+    });
+
+    it("is a failure with no ref where the last issue it listed does not move the cursor", async () => {
+      const issues = Array.from({ length: 1001 }, (_, index) => issue(index + 1));
+      const { read } = await harness(repo({ issues }));
+      const first = await read();
+      expect(first.listingCutAt).toBe("2026-10-10T09:59:59.000Z");
+      const stuck = await read({ since: first.listingCutAt! });
+      expect(stuck.failures).toEqual([{ ref: null, reason: expect.stringContaining("10 pages") }]);
+      expect(stuck.listingCutAt).toBeUndefined();
+    });
+
+    it("is not a cut-off where the listing failed for another reason", async () => {
+      const state = repo({ issues: stepped(3) });
+      state.faults = [{ pathIncludes: "/issues", status: 422 }];
+      const { read } = await harness(state);
+      const outcome = await read();
+      expect(outcome.failures).toHaveLength(1);
+      expect(outcome.failures[0]!.ref).toBeNull();
+      expect(outcome.listingCutAt).toBeUndefined();
+    });
   });
 
   it("follows the pages of a listing that fits", async () => {

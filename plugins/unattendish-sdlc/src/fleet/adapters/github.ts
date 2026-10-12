@@ -55,6 +55,11 @@
 //  - The order of issue events: they are sorted here by time and id.
 //  - Whether a merged pull request reports a `closed` event beside `merged`: the
 //    timeline is passed on as GitHub gives it.
+//  - What `sort=updated` sorts on, and whether `since` includes its own instant:
+//    /en/rest/issues/issues lists `sort` as created|updated|comments and `direction` as asc|desc,
+//    and `since` as "last updated after" a time, naming neither `updated_at` nor
+//    the boundary. The updated listing is taken to run oldest `updated_at` first, and
+//    one cut off at its page limit reports its last `updated_at` less one second.
 //  - Whether a review, a label change or a check moves `updated_at`: watched
 //    items are read themselves, and the updated listing is only a hint.
 //  - Whether submitting a review moves the `updated_at` of its inline comments,
@@ -167,7 +172,8 @@ class GithubAdapter implements ServiceAdapter {
     const events: ActivityEvent[] = [];
     const updated: UpdatedItem[] = [];
     const failures: ReadFailure[] = [];
-    const outcome = (): ReadOutcome => ({ snapshots, events, updated, failures });
+    let listingCutAt: string | undefined;
+    const outcome = (): ReadOutcome => ({ snapshots, events, updated, failures, ...(listingCutAt === undefined ? {} : { listingCutAt }) });
 
     const repo = request.source.role === "forge" && request.source.service === "github" ? repoPath(request.source.path) : null;
     const sinceMs = Date.parse(request.since);
@@ -203,7 +209,7 @@ class GithubAdapter implements ServiceAdapter {
     if (request.stateOnly) return outcome();
 
     if (request.scanPartition) await this.scanPartition(reading, seen, snapshots, failures);
-    await this.listUpdated(reading, updated, failures);
+    listingCutAt = await this.listUpdated(reading, updated, failures);
     return outcome();
   }
 
@@ -380,23 +386,40 @@ class GithubAdapter implements ServiceAdapter {
     }
   }
 
-  private async listUpdated(reading: Reading, updated: UpdatedItem[], failures: ReadFailure[]): Promise<void> {
+  /**
+   * Lists the issues updated since the cursor, oldest first. A listing cut off at its page limit returns the `updated_at`
+   * of the last issue it listed, less one second because the docs do not say whether `since` includes its own instant;
+   * everything older was listed. The cut-off is no failure unless that time is not after the cursor, when the listing
+   * could not move it.
+   */
+  private async listUpdated(reading: Reading, updated: UpdatedItem[], failures: ReadFailure[]): Promise<string | undefined> {
     let listed: unknown[];
+    let truncated: boolean;
     try {
-      listed = await this.list(reading, `${reading.repo}/issues`, { state: "all", since: sinceParam(reading.sinceMs), sort: "updated", direction: "asc" }, "the updated listing");
+      ({ items: listed, truncated } = await reading.http.paginate(
+        { path: `${reading.repo}/issues`, query: { state: "all", since: sinceParam(reading.sinceMs), sort: "updated", direction: "asc", per_page: PAGE_SIZE }, stayUnder: reading.stayUnder },
+        { maxPages: MAX_PAGES, signal: reading.request.signal },
+      ));
     } catch (error) {
       if (isFatal(error)) throw error;
       failures.push(forgeFailure(null, error));
-      return;
+      return undefined;
     }
+    let last: string | null = null;
     for (const entry of listed) {
       try {
         const item = parse("a listed issue", listedShape, entry);
         updated.push({ role: reading.request.source.role, ref: `#${item.number}`, url: item.html_url, at: iso(item.updated_at) });
+        last = iso(item.updated_at);
       } catch (error) {
         failures.push(forgeFailure(refOfListed(entry), error));
       }
     }
+    if (!truncated) return undefined;
+    const cut = last === null ? null : Date.parse(last) - 1000;
+    if (cut !== null && cut > reading.sinceMs) return new Date(cut).toISOString();
+    failures.push({ ref: null, reason: `the updated listing was longer than ${MAX_PAGES} pages` });
+    return undefined;
   }
 
   // ---- requests ----

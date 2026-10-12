@@ -95,6 +95,8 @@ export interface FakeJiraSettings {
   etag: boolean;
   /** Keys of issues every search lists whatever its JQL says, as a service that leaked another project's issues into a listing would. */
   alsoListed: string[];
+  /** Lists newest first whatever the JQL's ORDER BY says, as a service that did not honour it across pages would. */
+  unordered?: boolean;
   /** Answers any request whose path contains `pathContains` with `status`. */
   failures: { pathContains: string; status: number; headers?: Record<string, string> }[];
 }
@@ -128,7 +130,7 @@ const normalise = (raw: Partial<FakeJiraState> | undefined): FakeJiraState => ({
   users: raw?.users ?? [],
   statuses: raw?.statuses ?? DEFAULT_STATUSES,
   issues: raw?.issues ?? [],
-  settings: { pageSize: raw?.settings?.pageSize ?? null, etag: raw?.settings?.etag ?? false, alsoListed: raw?.settings?.alsoListed ?? [], failures: raw?.settings?.failures ?? [] },
+  settings: { pageSize: raw?.settings?.pageSize ?? null, etag: raw?.settings?.etag ?? false, alsoListed: raw?.settings?.alsoListed ?? [], failures: raw?.settings?.failures ?? [], unordered: raw?.settings?.unordered ?? false },
 });
 
 // ---- JQL ----
@@ -433,7 +435,8 @@ export function createFakeJira(initial?: Partial<FakeJiraState>): FakeService {
       }
       const ctx: JqlContext = { now: state.now === null ? Date.now() : parseTime(state.now), state };
       const hits = state.issues.filter((issue) => parsed.test(issue, ctx) || state.settings.alsoListed.includes(issue.key));
-      if (parsed.orderBy === "updated") hits.sort((a, b) => parseTime(a.updated) - parseTime(b.updated));
+      if (state.settings.unordered === true) hits.sort((a, b) => parseTime(b.updated) - parseTime(a.updated));
+      else if (parsed.orderBy === "updated") hits.sort((a, b) => parseTime(a.updated) - parseTime(b.updated));
       const offset = Number(Buffer.from(query.get("nextPageToken") ?? "MA", "base64url").toString() || "0");
       const size = pageSize(query.get("maxResults"), 50);
       const page = hits.slice(offset, offset + size);

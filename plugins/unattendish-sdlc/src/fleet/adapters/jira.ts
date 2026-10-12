@@ -29,6 +29,12 @@
 //   returned `updated` is at or after `since`. `labels = "x"`, `assignee is EMPTY`, `statusCategory = Done` ("a work
 //   item is resolved when statusCategory = Done") and `assignee`/`creator` by account id or email are documented.
 //
+// The updated listing is read `ORDER BY updated ASC` ("JQL keywords", https://support.atlassian.com/jira-core-cloud/docs/advanced-search-reference-jql-keywords/:
+//   ORDER BY sorts "by the values" of a field, `ASC` overriding the field's own order, and goes at the end of the query).
+//   The search/jql reference, which pages by token, says nothing on whether the order holds across pages (its page
+//   would not load in full when read), so a listing cut off at its page limit moves the cursor only if the times it
+//   listed did run oldest first, and is a failure otherwise.
+//
 // Not confirmed by Atlassian's documentation, so taken at the cheapest fallback:
 //   - a `status` changelog item's `from`/`to` being status ids and `fromString`/`toString` names: the status list
 //     is looked up by id, then by name, and an item that matches neither fails to read;
@@ -150,11 +156,12 @@ class Reading {
       seen.add(item.ref.toUpperCase());
       await this.item(item);
     }
+    let listingCutAt: string | undefined;
     if (!this.request.stateOnly) {
       if (this.request.scanPartition) await this.scan(seen);
-      await this.listUpdated();
+      listingCutAt = await this.listUpdated();
     }
-    return { snapshots: this.snapshots, events: this.events, updated: this.updated, failures: this.failures };
+    return { snapshots: this.snapshots, events: this.events, updated: this.updated, failures: this.failures, ...(listingCutAt === undefined ? {} : { listingCutAt }) };
   }
 
   // ---- shared ----
@@ -357,17 +364,23 @@ class Reading {
     }
   }
 
-  /** The issues the site lists as updated since `since`, to the minute and a little wider, then cut exactly at `since`. */
-  private async listUpdated(): Promise<void> {
+  /**
+   * The issues the site lists as updated since `since`, to the minute and a little wider, then cut exactly at `since`.
+   * The listing is oldest first. One cut off at its page limit returns the `updated` of the last issue it listed as
+   * `listingCutAt`, and is no failure, provided the times it listed did run oldest first and the last is after `since`;
+   * otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip nothing.
+   */
+  private async listUpdated(): Promise<string | undefined> {
     const minutes = Math.max(2, Math.ceil((Date.now() - this.sinceMs) / 60_000) + 2);
     let found: { issues: unknown[]; truncated: boolean };
     try {
       found = await this.search(`project = ${quote(this.project)} AND updated >= "-${minutes}m" ORDER BY updated ASC`);
     } catch (error) {
       this.settle(error, null);
-      return;
+      return undefined;
     }
-    if (found.truncated) this.failures.push({ ref: null, reason: `the updated listing runs to more than ${MAX_PAGES} pages of ${PAGE_SIZE}` });
+    let last: number | null = null;
+    let ordered = true;
     for (const raw of found.issues) {
       const hit = listed.safeParse(raw);
       const at = hit.success ? toIso(hit.data.fields.updated) : null;
@@ -375,9 +388,16 @@ class Reading {
         this.failures.push({ ref: hit.success ? hit.data.key : null, reason: "the updated listing holds an issue without a valid key and update time" });
         continue;
       }
+      const time = Date.parse(at);
+      if (last !== null && time < last) ordered = false;
+      last = time;
       if (this.refuseListed(hit.data.key)) continue;
-      if (Date.parse(at) >= this.sinceMs) this.updated.push({ role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at });
+      if (time >= this.sinceMs) this.updated.push({ role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at });
     }
+    if (!found.truncated) return undefined;
+    if (ordered && last !== null && last > this.sinceMs) return new Date(last).toISOString();
+    this.failures.push({ ref: null, reason: `the updated listing runs to more than ${MAX_PAGES} pages of ${PAGE_SIZE}` });
+    return undefined;
   }
 }
 

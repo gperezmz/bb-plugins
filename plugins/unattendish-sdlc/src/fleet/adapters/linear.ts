@@ -29,6 +29,10 @@
 //  - The direction of `orderBy` and of `history`: nothing relies on it. Every
 //    page of a history is read and filtered by time here, and a listing is
 //    filtered by `updatedAt: {gte: since}`, not cut at a cursor.
+//  - Whether a listing can run oldest first: https://linear.app/developers/pagination gives `orderBy: updatedAt` only
+//    "to get most recently updated resources", and the other pages read give no direction argument, so the listing
+//    of updates is taken to run newest first. A listing cut off at its page limit then lacks the oldest changes, and
+//    the cursor cannot move to where it stopped: the cut-off is a failure with no ref, never a `listingCutAt`.
 //  - The maximum page size: pages are 50, the documented default.
 //  - The status and error of a refused key: the SDK (packages/sdk/src/error.ts,
 //    types.ts) knows `extensions.type` values `authentication error` and
