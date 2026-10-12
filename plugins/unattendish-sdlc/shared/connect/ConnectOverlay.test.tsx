@@ -360,6 +360,23 @@ describe("Renew", () => {
     });
     expect(screen.queryByRole("button", { name: "Choose another account" })).toBeNull();
   });
+
+  it("sends the fleet and role of the card it was opened from, with the account and the credential it replaces", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption()] }) });
+    fake.api.connect.mockResolvedValue(savedResult());
+    await open({ target: { fleet: "github.com/acme/web", role: "forge" }, account: "acc_yuser", replaces: "cred_acme" });
+    await screen.findByRole("button", { name: "Verify and save" });
+    fireEvent.change(field("Token"), { target: { value: "new-secret" } });
+    click("Verify and save");
+    await screen.findByText(/Saved/);
+    expect(fake.api.connect).toHaveBeenCalledWith({
+      fleet: "github.com/acme/web",
+      role: "forge",
+      account: { id: "acc_yuser" },
+      secret: { kind: "token", token: "new-secret" },
+      replaces: "cred_acme",
+    });
+  });
 });
 
 describe("the popup", () => {
