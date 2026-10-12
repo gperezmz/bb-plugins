@@ -221,6 +221,28 @@ describe("the ledger", () => {
     expect(screen.getByText(/round close · queued .* · not dispatched yet/)).toBeTruthy();
   });
 
+  it("shows a dropped change once under All: in its group, not in the main list", async () => {
+    await showDetail();
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger });
+    fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
+    await screen.findByText("echo: marker · 31");
+    // #150 is the one dropped change; #163 the one that woke.
+    const body = within(document.getElementById("tab-ledger-body")!);
+    expect(body.getAllByText("#163")).toHaveLength(1);
+    expect(body.getAllByText("#150")).toHaveLength(1);
+    expect(body.getByText("#150").closest("details")).toBeTruthy();
+    expect(body.getByText("#163").closest("details")).toBeNull();
+  });
+
+  it("hides the wakes while an item filter is set", async () => {
+    await showDetail();
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger });
+    fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
+    await screen.findByText(/round close/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter by item" }), { target: { value: "#163" } });
+    await waitFor(() => expect(screen.queryByText(/round close/)).toBeNull());
+  });
+
   it("filters by item, once the typing pauses", async () => {
     await showDetail();
     fake.api.ledger.mockResolvedValue({ ok: true, ledger });
