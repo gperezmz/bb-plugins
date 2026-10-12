@@ -2,7 +2,7 @@
 import type { AccountSettingView, CredentialSettingView } from "@/src/fleet/application/views";
 import { daysWarning } from "@/shared/card-model";
 import type { ConnectRequest } from "@/shared/connect/requests";
-import { dateLabel } from "@/shared/format";
+import { expiryText as expiresText } from "@/shared/format";
 
 /** The shortest poll interval the server accepts. */
 export const MIN_INTERVAL_SECONDS = 30;
@@ -15,7 +15,7 @@ export function defaultText(account: Pick<AccountSettingView, "defaultFor">): st
 /** What a credential's expiry reads as: refused by the service, expiring on a date, or no expiry reported. */
 export function expiryText(credential: Pick<CredentialSettingView, "refused" | "expiresAt">): string {
   if (credential.refused) return "refused by the service";
-  return credential.expiresAt === null ? "no expiry reported" : `expires ${dateLabel(credential.expiresAt)}`;
+  return expiresText(credential.expiresAt);
 }
 
 /** The warning a credential expiring within the window carries; null otherwise. */

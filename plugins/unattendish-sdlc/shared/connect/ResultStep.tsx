@@ -1,9 +1,10 @@
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { ConnectResult, NotReadableView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
+import { expiryText } from "../format";
 import { LINK_CLASS } from "../ItemLink";
 import { CanWrite } from "./Field";
-import { actionLabel, expiryText, halfText, remedyText, resultActions, type Checked, type ResultAction } from "./model";
+import { actionLabel, halfText, remedyText, resultActions, type Checked, type ResultAction } from "./model";
 
 /** Step 3: what Verify and save found, and what the operator may do next. */
 export function ResultStep({

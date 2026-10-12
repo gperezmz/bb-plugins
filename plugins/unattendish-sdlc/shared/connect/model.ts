@@ -1,6 +1,5 @@
 // What the Connect popup asks, says and sends, decided from the request and the views alone.
 import type { ConnectInput, ConnectResult, ConnectSecret, ConnectTarget, ConnectView, HalfView, NotReadableView, TokenPageView } from "@/src/fleet/application/views";
-import { dateLabel } from "../format";
 import type { ConnectRequest } from "./requests";
 
 export type Service = NonNullable<ConnectTarget["service"]>;
@@ -240,10 +239,6 @@ export function actionLabel(action: ResultAction, result: ConnectResult): string
     case "choose-another-account":
       return "Choose another account";
   }
-}
-
-export function expiryText(expiresAt: string | null): string {
-  return expiresAt === null ? "no expiry reported" : `expires ${dateLabel(expiresAt)}`;
 }
 
 /** What to do about a repository a saved credential could not read. */

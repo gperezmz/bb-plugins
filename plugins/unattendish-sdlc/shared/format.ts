@@ -67,6 +67,11 @@ export function dateLabel(iso: string): string {
   return format(DAY_MONTH, iso);
 }
 
+/** What a credential's expiry reads as: `expires 18 Oct`, or `no expiry reported` where the service reports none. */
+export function expiryText(expiresAt: string | null): string {
+  return expiresAt === null ? "no expiry reported" : `expires ${dateLabel(expiresAt)}`;
+}
+
 /** `12 Oct, 01:39`, in the viewer's time zone. */
 export function dateTimeLabel(iso: string): string {
   return format(DAY_MONTH_TIME, iso);

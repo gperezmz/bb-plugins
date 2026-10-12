@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageLabel, formatMoney, intervalLabel, plural, polledLabel, spanLabel } from "./format";
+import { ageLabel, expiryText, formatMoney, intervalLabel, plural, polledLabel, spanLabel } from "./format";
 
 const NOW = "2026-10-12T12:00:00Z";
 const ago = (ms: number) => new Date(Date.parse(NOW) - ms).toISOString();
@@ -58,5 +58,12 @@ describe("plural", () => {
   it("agrees the noun with the count", () => {
     expect(plural(1, "day")).toBe("1 day");
     expect(plural(6, "day")).toBe("6 days");
+  });
+});
+
+describe("expiry", () => {
+  it("names the date, or says none was reported", () => {
+    expect(expiryText("2026-10-18T12:00:00Z")).toBe("expires 18 Oct");
+    expect(expiryText(null)).toBe("no expiry reported");
   });
 });
