@@ -246,6 +246,20 @@ describe("one wake per poll (AC7)", () => {
     expect(w.channel.sent).toHaveLength(2);
   });
 
+  it("adds the catch-up a later poll brings to a queued wake that had none", async () => {
+    const w = world();
+    w.channel.mode = "busy";
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    await poll(w);
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ catchUpMs: null });
+    w.clock.advance(20 * 60_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7, { actor: "bob", at: "2026-10-12T10:10:00.000Z" })] }));
+    expect(await poll(w)).toMatchObject({ delivery: "amended" });
+    expect(w.channel.queue.get("q1")!.text.split("\n").at(-1)).toBe("Catch-up: the plugin was away for 20m.");
+    expect(w.store.openWake(REPO_KEY)).toMatchObject({ catchUpMs: 20 * 60_000 });
+  });
+
   it("sends a new wake when the queued one left the queue before the amendment", async () => {
     const w = world();
     w.channel.mode = "busy";
@@ -701,7 +715,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     w.clock.advance(120_000);
   };
 
-  it("is not watched after three polls in a row forbidden, tells the manager once, and is watched again after a poll that reads", async () => {
+  it("is not watched after three polls in a row forbidden, since the first of them, tells the manager once, and is watched again after a poll that reads", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     await pollWith(w, forbidden);
@@ -713,19 +727,20 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(w.channel.sent).toHaveLength(1);
     expect(sentText(w)).toBe(
       "Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.\n" +
-        "Not watched since 2026-10-12T10:04:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
+        "Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
     );
+    expect(w.store.getFleet(REPO_KEY)!.refused).toMatchObject({ since: "2026-10-12T10:00:00.000Z" });
     expect(await statusOf(w)).toMatchObject({
       watched: false,
-      notWatchedSince: "2026-10-12T10:04:00.000Z",
+      notWatchedSince: "2026-10-12T10:00:00.000Z",
       notWatched: [{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }],
     });
     await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
     expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
-    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0 });
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0, unreadableSince: null });
   });
 
-  it("says the service did not answer when no read got an answer, and counts the polls in a row only", async () => {
+  it("says the service did not answer when no read got an answer, and counts the polls in a row only, since the first of the last run", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     await pollWith(w, unreachable);
@@ -735,7 +750,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     await pollWith(w, new HttpError("network", "GET /x got no answer"));
     expect(w.channel.sent).toEqual([]);
     await pollWith(w, unreachable);
-    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:10:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:06:00.000Z: the service did not answer reads with the credential for github.com/org.");
     expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 
@@ -744,6 +759,82 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     for (let i = 0; i < 3; i += 1) await pollWith(w, new DOMException("The operation was aborted due to timeout", "TimeoutError") as unknown as Error);
     expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
+  });
+
+  it("is not watched after three polls in a row where every read answered 404, as for a private repository the token cannot see", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const gone = outcome({ failures: [{ ref: null, reason: "the listing answered 404", kind: "not-found" }, { ref: "#7", reason: "#7 answered 404", kind: "not-found" }] });
+    await pollWith(w, gone);
+    await pollWith(w, new HttpError("not-found", "GET /x answered 404", 404));
+    expect(w.channel.sent).toEqual([]);
+    await pollWith(w, gone);
+    await pollWith(w, gone);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(sentText(w)).toMatch(/\nNot watched since [^:]+:\d\d:\d\d\.000Z: the credential for github\.com\/org could not find what the fleet needs \(404\)\.$/);
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org could not find what the fleet needs (404)" }]);
+    expect(w.store.getFleet(REPO_KEY)!.refused).toMatchObject({ why: "not-found" });
+  });
+
+  it("is not watched after three polls in a row where everything read lay outside the fleet", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const moved = outcome({ failures: [{ ref: null, reason: "moved outside the fleet", kind: "outside-fleet" }, { ref: "#7", reason: "moved outside the fleet", kind: "outside-fleet" }] });
+    await pollWith(w, moved);
+    await pollWith(w, new HttpError("outside-host", "GET /x was sent outside the source"));
+    await pollWith(w, moved);
+    expect(sentText(w)).toContain("everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team.");
+    expect((await statusOf(w)).notWatched).toEqual([
+      { code: "credential-refused", text: "Everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team" },
+    ]);
+  });
+
+  it("counts nothing for a 404 on one item while the rest of the source reads", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7), inboxRow(8)] }));
+    for (let i = 0; i < 4; i += 1) {
+      await pollWith(w, outcome({ failures: [{ ref: "#7", reason: "#7 answered 404", kind: "not-found" }] }));
+      await pollWith(w, outcome({ snapshots: [snapshot(8)], failures: [{ ref: "#7", reason: "#7 answered 404", kind: "not-found" }] }));
+    }
+    expect(w.channel.sent).toEqual([]);
+    expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [] });
+    expect(w.store.getFleet(REPO_KEY)!.unreadablePolls).toBe(0);
+  });
+
+  it("tells the manager of an outage once, though a rate limit cuts into it", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    const during = w.store.getFleet(REPO_KEY)!;
+    await pollWith(w, new HttpError("rate-limit", "GET /x answered 429", 429, 150_000));
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: during.refused, unreadablePolls: during.unreadablePolls, unreadableSince: during.unreadableSince });
+    await poll(w);
+    w.clock.advance(120_000);
+    expect(w.adapters.github.reads).toHaveLength(4);
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: during.refused, unreadablePolls: during.unreadablePolls, unreadableSince: during.unreadableSince });
+    expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }]);
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    expect(w.channel.sent).toHaveLength(1);
+    expect(w.store.getFleet(REPO_KEY)!.refused).toEqual({ ...during.refused, announced: true });
+  });
+
+  it("keeps counting the polls in a row across a poll that got no token and asked no adapter", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await pollWith(w, forbidden);
+    await pollWith(w, forbidden);
+    const token = w.credentials.token.bind(w.credentials);
+    w.credentials.token = async () => {
+      throw new Error("No token is set for github.com/org");
+    };
+    await poll(w);
+    w.clock.advance(120_000);
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ unreadablePolls: 2, unreadableSince: "2026-10-12T10:00:00.000Z", refused: null });
+    w.credentials.token = token;
+    await pollWith(w, forbidden);
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden");
   });
 
   it("counts nothing for a read that gave back anything, or failed some other way", async () => {

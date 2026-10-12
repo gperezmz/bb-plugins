@@ -14,13 +14,14 @@ import {
   type SourceCursor,
   type SourceRole,
   type Transition,
+  type UnreadableWhy,
   type WatchedItem,
 } from "./model";
 
 const DEFAULT_OVERLAP_MS = 60_000;
 /**
- * The furthest a failed read may hold a cursor's `since` back from the poll's start while the rest of the source
- * reads, so one item that never reads cannot make every later poll read ever more.
+ * The furthest a failed read may hold a cursor's `since` back from the poll's start while the listing and every
+ * other item of the source read, so one item that never reads cannot make every later poll read ever more.
  */
 export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
@@ -69,10 +70,12 @@ export interface Derived {
  * cursor gives the same keys. An item whose read failed leaves its previous
  * state in the cursor and gives no change. Such a failure, and a failed
  * listing, hold `since` where it was, so a failed read never lets the cursor
- * skip a change. While some snapshot, event or updated item came back, the
- * hold reaches no more than `MAX_HOLD_MS` before the poll's start: one item
- * that never reads cannot hold the source back for good. While nothing came
- * back, the hold has no limit. A failure of one item of kind `not-found` or
+ * skip a change. Where the listing and some snapshot, event or updated item
+ * read, and the read was no `stateOnly` one, the hold reaches no more than
+ * `MAX_HOLD_MS` before the poll's start: one item that never reads cannot
+ * hold the source back for good. A `stateOnly` read, a failed listing, or a
+ * read where nothing came back holds `since` with no limit, since none of
+ * them read the changes the hold keeps. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will
  * succeed.
  */
@@ -116,23 +119,33 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   }
 
   const holdsSince = outcome.failures.some((failure) => failure.ref === null || !isTerminal(failure)) || stateOnly;
+  const listed = !outcome.failures.some((failure) => failure.ref === null);
   const readable = outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0;
+  const capped = !stateOnly && listed && readable;
   const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
-  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : readable && base < oldest ? oldest : base;
+  const since = !holdsSince ? new Date(Date.parse(startedAt) - overlapMs).toISOString() : capped && base < oldest ? oldest : base;
 
   changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
 };
 
+/** The kinds a source's read can fail with as a whole, in the order the first one present is reported. */
+const UNREADABLE: readonly UnreadableWhy[] = ["forbidden", "unreachable", "not-found", "outside-fleet"];
+
 /**
  * How a source's read failed as a whole, or null when it did not: it gave no
  * snapshot, no event and no updated item, and gave failures, every one of
- * them `forbidden` or `unreachable`. Forbidden when any of them is.
+ * them `forbidden`, `unreachable`, `not-found` or `outside-fleet`; the first
+ * of those present, in that order. With a `not-found` or `outside-fleet`
+ * failure among them, a listing must have failed too: an item that does not
+ * exist, while the listing reads, is a single failed read.
  */
-export const unreadableKind = (outcome: ReadOutcome): "forbidden" | "unreachable" | null => {
+export const unreadableKind = (outcome: ReadOutcome): UnreadableWhy | null => {
   if (outcome.snapshots.length > 0 || outcome.events.length > 0 || outcome.updated.length > 0 || outcome.failures.length === 0) return null;
-  if (!outcome.failures.every((failure) => failure.kind === "forbidden" || failure.kind === "unreachable")) return null;
-  return outcome.failures.some((failure) => failure.kind === "forbidden") ? "forbidden" : "unreachable";
+  const kinds = new Set(outcome.failures.map((failure) => failure.kind));
+  if (![...kinds].every((kind) => kind !== undefined && UNREADABLE.includes(kind))) return null;
+  if ((kinds.has("not-found") || kinds.has("outside-fleet")) && !outcome.failures.some((failure) => failure.ref === null)) return null;
+  return UNREADABLE.find((kind) => kinds.has(kind)) ?? null;
 };
 
 /** Orders changes, and ledger rows, by the time they happened, then by key. */

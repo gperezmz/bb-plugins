@@ -67,6 +67,14 @@ describe("SqliteStore on a database", () => {
     db.close();
   });
 
+  it("reads a fleet stored before the first unreadable poll's time was kept as having none", () => {
+    const db = migrated(new Database(":memory:"), MIGRATIONS.indexOf("ALTER TABLE fleets ADD COLUMN unreadable_since TEXT"));
+    db.prepare("INSERT INTO fleets (repo_id, registration, unreadable_polls) VALUES ('r', ?, 2)").run(JSON.stringify(registration));
+    migrated(db);
+    expect(new SqliteStore(db).getFleet("r")).toMatchObject({ unreadablePolls: 2, unreadableSince: null });
+    db.close();
+  });
+
   it("runs every migration as one statement", () => {
     const db = new Database(":memory:");
     for (const statement of MIGRATIONS) expect(() => db.prepare(statement).run()).not.toThrow();

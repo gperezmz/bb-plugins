@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Change } from "./model";
+import type { Change, RefusedWhy } from "./model";
 import { changeText, clockTime, formatDuration, formatWake, safeActor, WAKE_MOVED, WAKE_NOTHING, type WakeInput } from "./wake";
 
 const change = (over: Partial<Change> = {}): Change => ({
@@ -44,10 +44,14 @@ describe("formatWake", () => {
     ]);
   });
 
-  it("says in its closing line whether the credential was refused, forbidden, or got no answer", () => {
-    const line = (why: "refused" | "forbidden" | "unreachable") => wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org", why } }).split("\n")[1];
+  it("says in its closing line whether the credential was refused, forbidden, got no answer, found nothing, or read outside the fleet", () => {
+    const line = (why: RefusedWhy) => wake({ notWatched: { since: "2026-10-12T00:00:00.000Z", prefix: "github.com/org", why } }).split("\n")[1];
     expect(line("forbidden")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).");
     expect(line("unreachable")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect(line("not-found")).toBe("Not watched since 2026-10-12T00:00:00.000Z: the credential for github.com/org could not find what the fleet needs (404).");
+    expect(line("outside-fleet")).toBe(
+      "Not watched since 2026-10-12T00:00:00.000Z: everything the fleet reads with the credential for github.com/org has moved outside its repository, project or team.",
+    );
   });
 
   it("starts with what moved and keeps the order it is given", () => {

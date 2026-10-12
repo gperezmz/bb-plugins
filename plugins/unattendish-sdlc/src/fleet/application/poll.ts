@@ -3,7 +3,7 @@
 import { byTimeThenKey, deriveChanges, partitionRevisit, unreadableKind, type Derived } from "../domain/changes";
 import { classify } from "../domain/echo";
 import { formatRepo, repoId, urlUnder } from "../domain/identity";
-import type { Change, Disposition, NotWatched, RefusedWhy, ServiceKind, SourceRole, WatchedItem } from "../domain/model";
+import type { Change, Disposition, NotWatched, RefusedWhy, ServiceKind, SourceRole, UnreadableWhy, WatchedItem } from "../domain/model";
 import { messageOf, redact } from "../domain/redact";
 import { catchUp, credentialRefused, effectiveInterval, UNREADABLE_POLLS } from "../domain/registration";
 import { formatWake } from "../domain/wake";
@@ -85,9 +85,12 @@ interface Reading {
   readonly reads: SourceRead[];
   readonly notWatched: NotWatched[];
   readonly refusedPrefix: string | null;
-  /** The first source whose read, every part of it, was forbidden or got no answer. */
-  readonly unreadable: { readonly prefix: string; readonly why: "forbidden" | "unreachable" } | null;
-  /** Whether any source's adapter was asked to read: a poll that asked none says nothing of whether a source is readable. */
+  /** The first source whose read, every part of it, failed as `UnreadableWhy` says. */
+  readonly unreadable: { readonly prefix: string; readonly why: UnreadableWhy } | null;
+  /**
+   * Whether any source's adapter was asked to read and gave an answer other than a rate limit: a poll that asked
+   * none, or was only told to wait, says nothing of whether a source is readable.
+   */
   readonly attempted: boolean;
   readonly expiries: Record<string, string | null>;
 }
@@ -137,7 +140,6 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       continue;
     }
     let derived: Derived | null = null;
-    attempted = true;
     try {
       const outcome = await deps.adapters[resolved.credential.service].read({
         source: resolved.source,
@@ -152,9 +154,11 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
         signal,
       });
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
+      attempted = true;
       const kind = unreadableKind(outcome);
       if (kind !== null) unreadable ??= { prefix, why: kind };
     } catch (error) {
+      if (!(error instanceof HttpError && error.kind === "rate-limit")) attempted = true;
       if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
       const kind = error instanceof HttpError ? unreadableOf(error) : error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError") ? "unreachable" : null;
       if (kind !== null) unreadable ??= { prefix, why: kind };
@@ -177,21 +181,50 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
 /** The larger of two lengths of time, either of which may be absent. */
 const larger = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
 
-/** How an error an adapter let through says its source is unreadable: a 403 forbids, no answer or a 5xx is unreachable. */
-const unreadableOf = (error: HttpError): "forbidden" | "unreachable" | null =>
-  error.kind === "forbidden" ? "forbidden" : error.kind === "network" || error.kind === "server" ? "unreachable" : null;
+/**
+ * How an error an adapter let through says its source is unreadable: a 403 forbids, no answer or a 5xx is
+ * unreachable, a 404 finds nothing, and a redirect off the source lies outside the fleet.
+ */
+const unreadableOf = (error: HttpError): UnreadableWhy | null => {
+  switch (error.kind) {
+    case "forbidden":
+      return "forbidden";
+    case "network":
+    case "server":
+      return "unreachable";
+    case "not-found":
+      return "not-found";
+    case "outside-host":
+      return "outside-fleet";
+    default:
+      return null;
+  }
+};
+
+interface Refusal {
+  /** Why the credential counts as refused, and since when; null when it does not. */
+  readonly cause: { readonly since: string; readonly prefix: string; readonly why: RefusedWhy } | null;
+  readonly unreadablePolls: number;
+  readonly unreadableSince: string | null;
+}
 
 /**
- * Whether the fleet's credential counts as refused after this poll, and why: a
- * 401 at once, a source unreadable for `UNREADABLE_POLLS` polls in a row. A
- * poll that asked no adapter to read leaves the count of unreadable polls as
- * it was.
+ * Whether the fleet's credential counts as refused after this poll, why, and
+ * since when: a 401 at once, from this poll; a source unreadable for
+ * `UNREADABLE_POLLS` polls in a row, from the first of them. A poll that asked
+ * no adapter to read, or was only told to wait, leaves the refusal, its time
+ * and the count of unreadable polls as they were.
  */
-const refusalOf = (fleet: StoredFleet, reading: Reading): { readonly cause: { readonly prefix: string; readonly why: RefusedWhy } | null; readonly unreadablePolls: number } => {
-  const unreadablePolls = reading.unreadable !== null ? fleet.unreadablePolls + 1 : reading.attempted ? 0 : fleet.unreadablePolls;
-  if (reading.refusedPrefix !== null) return { cause: { prefix: reading.refusedPrefix, why: "refused" }, unreadablePolls };
-  if (reading.unreadable !== null && unreadablePolls >= UNREADABLE_POLLS) return { cause: reading.unreadable, unreadablePolls };
-  return { cause: null, unreadablePolls };
+const refusalOf = (fleet: StoredFleet, reading: Reading, now: string): Refusal => {
+  if (!reading.attempted) {
+    const kept = fleet.refused;
+    return { cause: kept === null ? null : { since: kept.since, prefix: kept.prefix, why: kept.why }, unreadablePolls: fleet.unreadablePolls, unreadableSince: fleet.unreadableSince };
+  }
+  const unreadablePolls = reading.unreadable !== null ? fleet.unreadablePolls + 1 : 0;
+  const unreadableSince = reading.unreadable !== null ? (fleet.unreadablePolls > 0 ? (fleet.unreadableSince ?? now) : now) : null;
+  if (reading.refusedPrefix !== null) return { cause: { since: now, prefix: reading.refusedPrefix, why: "refused" }, unreadablePolls, unreadableSince };
+  if (reading.unreadable !== null && unreadablePolls >= UNREADABLE_POLLS) return { cause: { ...reading.unreadable, since: unreadableSince ?? now }, unreadablePolls, unreadableSince };
+  return { cause: null, unreadablePolls, unreadableSince };
 };
 
 /**
@@ -210,8 +243,8 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const reading = await readSources(deps, fleet, watching, now, options);
   const notWatched = [...reading.notWatched];
 
-  const { cause, unreadablePolls } = refusalOf(fleet, reading);
-  const refused = cause === null ? null : { since: fleet.refused?.since ?? now, prefix: cause.prefix, why: cause.why };
+  const { cause, unreadablePolls, unreadableSince } = refusalOf(fleet, reading, now);
+  const refused = cause === null ? null : { since: fleet.refused?.since ?? cause.since, prefix: cause.prefix, why: cause.why };
   if (refused !== null) notWatched.push(credentialRefused(refused.prefix, refused.why));
 
   const cursors = reading.reads.map((read) => ({ role: read.role, cursor: read.derived.nextCursor }));
@@ -223,6 +256,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
     expiries: reading.expiries,
     heldSince,
     unreadablePolls,
+    unreadableSince,
     pendingCatchUpMs,
     refused: refused === null ? undefined : { ...refused, announced: fleet.refused?.announced ?? false },
   });

@@ -60,10 +60,14 @@ export interface NotWatched {
 }
 
 /**
- * Why a source's credential counts as refused: the service answered 401 (`refused`), forbade every read the fleet
- * needs with a 403 (`forbidden`), or did not answer (`unreachable`).
+ * How every read of a source failed: forbidden with a 403 (`forbidden`), with no answer (`unreachable`), with a 404
+ * (`not-found`, which is also how a service may answer for a private repository the token cannot see), or by finding
+ * what it read outside the fleet's repository, project or team (`outside-fleet`).
  */
-export type RefusedWhy = "refused" | "forbidden" | "unreachable";
+export type UnreadableWhy = "forbidden" | "unreachable" | "not-found" | "outside-fleet";
+
+/** Why a source's credential counts as refused: the service answered 401 (`refused`), or every read failed as `UnreadableWhy` says. */
+export type RefusedWhy = "refused" | UnreadableWhy;
 
 // ---- the manifest, as the plugin reads it ----
 
@@ -232,10 +236,12 @@ export interface ReadFailure {
   readonly ref: string | null;
   readonly reason: string;
   /**
-   * Why the read failed, where that matters. `not-found` (the item does not exist) and `outside-fleet` (it moved out
-   * of the fleet's repository, project or team) are terminal: no read will succeed, so they do not hold the source's
-   * cursor back. `forbidden` is a 403 that is no rate limit; `unreachable` is no answer, or a 5xx. When every read of
-   * a source fails with one of these, the fleet is not watched.
+   * Why the read failed, where that matters. `not-found` (a 404: the item does not exist, or the token cannot see it)
+   * and `outside-fleet` (it moved out of the fleet's repository, project or team) are terminal: no read of that item
+   * will succeed, so one item failing so does not hold the source's cursor back. `forbidden` is a 403 that is no rate
+   * limit; `unreachable` is no answer, or a 5xx. A read that fails with no kind counts toward none. The fleet is not
+   * watched only when every read of a source, a listing among them for `not-found` and `outside-fleet`, fails with
+   * one of the four kinds, in `UNREADABLE_POLLS` polls in a row.
    */
   readonly kind?: "not-found" | "outside-fleet" | "forbidden" | "unreachable";
 }

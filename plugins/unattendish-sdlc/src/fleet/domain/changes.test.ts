@@ -257,14 +257,25 @@ describe("failures", () => {
     expect(listing.nextCursor.since).toBe(prev.since);
   });
 
-  it("holds since no further back than seven days before the poll's start while the rest of the source reads", () => {
+  it("holds since no further back than seven days before the poll's start while one item fails and the listing and every other item read", () => {
     const old = cursor({}, "2026-09-01T00:00:00.000Z");
     const held = derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "server error" }] }) });
     expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    const listed = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: null, reason: "x" }] }) });
-    expect(listed.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
-    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+    const updated = derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [{ ref: "#8", reason: "x", kind: "unreachable" }] }) });
+    expect(updated.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ snapshots: [snapshot()], failures: [{ ref: "#8", reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
+  });
+
+  it("holds since with no limit on a turn-end read, however long the outage before it", () => {
+    const old = cursor({}, "2026-10-02T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome({ snapshots: [snapshot()] }) }).nextCursor.since).toBe(old.since);
+  });
+
+  it("holds since with no limit on a failed listing, though the items read", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const listing = { ref: null, reason: "the listing failed" };
+    expect(derive({ prev: old, outcome: outcome({ snapshots: [snapshot()], failures: [listing] }) }).nextCursor.since).toBe(old.since);
+    expect(derive({ prev: old, outcome: outcome({ updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }], failures: [listing] }) }).nextCursor.since).toBe(old.since);
   });
 
   it("holds since with no limit while nothing of the source reads", () => {
@@ -311,6 +322,13 @@ describe("stateOnly", () => {
 
     const later = derive({ prev: nextCursor, outcome: outcome({ snapshots: [read.snapshots[0]!] }), watchedRefs: new Set(["#9"]) });
     expect(later.changes.map((change) => change.key)).toEqual(["forge:#9|labelled:ready|l1", "forge:#9|merged|m1"]);
+  });
+
+  it("keeps a label an item the cursor does not know carried before its listed transitions, so the next poll does not report it", () => {
+    const read = outcome({ snapshots: [snapshot({ ref: "#9", fleetLabels: ["ready"], inPartition: true })] });
+    const { nextCursor } = derive({ outcome: read, stateOnly: true, watchedRefs: new Set(["#9"]) });
+    expect(nextCursor.items["forge:#9"]!.fleetLabels).toEqual(["ready"]);
+    expect(derive({ prev: nextCursor, outcome: read, watchedRefs: new Set(["#9"]) }).changes).toEqual([]);
   });
 
   it("keeps the state an item the cursor knows reads as, whatever its transitions", () => {
@@ -407,6 +425,14 @@ describe("partitionRevisit", () => {
     expect(partitionRevisit(prev, "forge", labels, new Set())).toEqual([]);
   });
 
+  it("pins, as it behaves now and left for a follow-up: a reopened partition item wakes as labelled for its old label, not as reopened", () => {
+    const closed = derive({ prev: cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }) }), outcome: outcome({ snapshots: [snapshot({ fleetLabels: ["spec"], inPartition: true, open: false })] }) });
+    expect(closed.nextCursor.items).toEqual({});
+    const reopened = snapshot({ fleetLabels: ["spec"], inPartition: true, transitions: [transition({ kind: "reopened", id: "r1", at: "2026-10-12T09:50:00.000Z" })] });
+    const { changes } = derive({ prev: closed.nextCursor, outcome: outcome({ snapshots: [reopened] }) });
+    expect(kinds(changes)).toEqual(["labelled spec"]);
+  });
+
   it("is given no closed item by the cursor a read of it leaves, unless the item is watched", () => {
     const prev = cursor({ "forge:#1": state({ fleetLabels: ["spec"], inPartition: true }), "forge:#2": state({ fleetLabels: ["spec"], inPartition: true }) });
     const read = outcome({ snapshots: [snapshot({ ref: "#1", fleetLabels: ["spec"], inPartition: true, open: false }), snapshot({ ref: "#2", fleetLabels: ["spec"], inPartition: true, open: false })] });
@@ -420,9 +446,32 @@ describe("unreadableKind", () => {
   const forbidden = { ref: null, reason: "403", kind: "forbidden" as const };
   const unreachable = { ref: "#1", reason: "no answer", kind: "unreachable" as const };
 
+  const listingGone = { ref: null, reason: "404", kind: "not-found" as const };
+  const itemGone = { ref: "#3", reason: "gone", kind: "not-found" as const };
+  const listingMoved = { ref: null, reason: "moved", kind: "outside-fleet" as const };
+  const itemMoved = { ref: "#4", reason: "moved", kind: "outside-fleet" as const };
+
   it("says forbidden when any failure is, else unreachable, when nothing but those failures came back", () => {
     expect(unreadableKind(outcome({ failures: [unreachable, forbidden] }))).toBe("forbidden");
     expect(unreadableKind(outcome({ failures: [unreachable] }))).toBe("unreachable");
+  });
+
+  it("says not-found or outside-fleet when every read, the listing's among them, failed so", () => {
+    expect(unreadableKind(outcome({ failures: [listingGone, itemGone] }))).toBe("not-found");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemMoved] }))).toBe("outside-fleet");
+  });
+
+  it("reports mixed kinds in the order forbidden, unreachable, not-found, outside-fleet", () => {
+    expect(unreadableKind(outcome({ failures: [itemGone, forbidden, unreachable, listingMoved] }))).toBe("forbidden");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemGone, unreachable] }))).toBe("unreachable");
+    expect(unreadableKind(outcome({ failures: [listingMoved, itemGone] }))).toBe("not-found");
+  });
+
+  it("is null for an item that does not exist or moved while the listing read", () => {
+    expect(unreadableKind(outcome({ failures: [itemGone] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [itemMoved, itemGone] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [itemGone], snapshots: [snapshot()] }))).toBeNull();
+    expect(unreadableKind(outcome({ failures: [listingGone], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
   });
 
   it("is null when anything came back, when there is no failure, or when a failure is of another kind", () => {
@@ -430,7 +479,6 @@ describe("unreadableKind", () => {
     expect(unreadableKind(outcome({ failures: [forbidden], snapshots: [snapshot()] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [forbidden], events: [event()] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [forbidden], updated: [{ role: "forge", ref: "#2", url: "u", at: startedAt }] }))).toBeNull();
-    expect(unreadableKind(outcome({ failures: [forbidden, { ref: "#3", reason: "gone", kind: "not-found" }] }))).toBeNull();
     expect(unreadableKind(outcome({ failures: [unreachable, { ref: null, reason: "field missing" }] }))).toBeNull();
   });
 });
