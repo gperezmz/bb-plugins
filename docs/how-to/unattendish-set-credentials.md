@@ -110,12 +110,14 @@ Under the reasons, `unreadable manifest row` names a row the contract cannot rea
 
 ### What `credential-refused` says
 
-The text names the prefix and one of three causes; [how the plugin tells them apart](../explanation/unattendish-polling.md#credentials) is in the explanation. The fleet is watched again on the first poll in which a read succeeds, so fix the cause and wait for the next poll.
+The text names the prefix and one of five causes; [how the plugin tells them apart](../explanation/unattendish-polling.md#credentials) is in the explanation. The fleet is watched again on the first poll in which a read succeeds, so fix the cause and wait for the next poll.
 
 | Text | Do |
 |---|---|
 | `refused by the service` | Create a new token and paste it in **Tokens**. A revoked Linear key reads the same |
 | `forbidden to read what the fleet needs (403)` | Give the token permission to read the repository or tracker: GitHub's `repo` scope for a private repository, or GitLab's `read_api` |
 | `the service did not answer` | Check that the service is up and, for a self-managed host, that the entry's `baseUrl` is right |
+| `could not find what the fleet needs (404)` | The service answers 404 to the listing, as GitHub does for a private repository the token cannot see and Jira does for a token without permission. Give the token access to the repository or project, and check that `--repo` is spelled as the service spells it |
+| `has moved outside its repository, project or team` | Every read left the repository, project or team, as after a rename or transfer. Unregister the fleet and register it under the new name, with the manifest's first line and links changed to match |
 
 A setting the plugin cannot use is refused when you save it. One that came in another way is logged: `bb plugin logs unattendish-sdlc` shows each as a `settings:` warning.
