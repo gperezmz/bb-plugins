@@ -1,6 +1,6 @@
 // The three actions sent to a manager (AC13).
 import { describe, expect, it } from "vitest";
-import { args, inboxRow, issueUrl, manifest, MANAGER, MANIFEST_PATH, REPO_KEY, world, type World } from "../testing/kit";
+import { args, inboxRow, issueUrl, manifest, MANAGER, MANIFEST_PATH, REPO_KEY, TOKEN, world, type World } from "../testing/kit";
 import { createDashboard } from "./dashboard";
 import { pollFleet } from "./poll";
 import { registerFleet } from "./register";
@@ -100,18 +100,27 @@ describe("sending an action", () => {
     expect(w.channel.sent).toHaveLength(1);
   });
 
-  it("answers with bb's reason when bb refuses, records nothing, never quotes the text, and the row keeps its action", async () => {
+  it("answers with bb's own reason when bb refuses, records nothing, and the row keeps its action", async () => {
     const w = world();
     await start(w, [inboxRow(7)]);
     w.channel.mode = "refuse";
+    w.channel.refusal = "HTTP 409: Thread is archived";
     const id = await rowId(w, "#7");
-    const result = await dashboard(w).sendAction({ fleet: REPO, rowId: id, kind: "answer", text: "The secret plan is B" });
-    expect(result).toEqual({ ok: false, reason: "HTTP 500" });
-    expect(JSON.stringify(result)).not.toContain("secret plan");
+    const result = await dashboard(w).sendAction({ fleet: REPO, rowId: id, kind: "answer", text: "The plan is B" });
+    expect(result).toEqual({ ok: false, reason: "HTTP 409: Thread is archived" });
     expect(w.store.actions(REPO_KEY)).toEqual([]);
     expect((await dashboard(w).fleets()).inbox[0]).toMatchObject({ offer: { kind: "answer" }, action: null });
     w.channel.mode = "idle";
     expect(await dashboard(w).sendAction({ fleet: REPO, rowId: id, kind: "answer", text: "Try again" })).toMatchObject({ ok: true });
+  });
+
+  it("scrubs a stored token from bb's reason once more", async () => {
+    const w = world();
+    await start(w, [inboxRow(7)]);
+    w.channel.mode = "refuse";
+    w.channel.refusal = `HTTP 400: bad header ${TOKEN}`;
+    const result = await dashboard(w).sendAction({ fleet: REPO, rowId: await rowId(w, "#7"), kind: "answer", text: "x1x1x1" });
+    expect(JSON.stringify(result)).not.toContain(TOKEN);
   });
 
   it("keeps a sent action sent through any number of polls, with its age, and never marks it failed", async () => {

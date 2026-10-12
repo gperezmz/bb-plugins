@@ -2,6 +2,8 @@
 // there, and a way to send it a wake that waits behind its turn. Every call to bb is bounded
 // by `SDK_TIMEOUT_MS`.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { redact } from "../domain/redact";
+import { clip } from "../domain/text";
 import type { DeliveryResult, ManagerChannel, ThreadDirectory, ThreadRepositories, ThreadStanding } from "../application/ports";
 
 type BbSdk = BbPluginApi["sdk"];
@@ -14,10 +16,29 @@ export const httpStatusOf = (error: unknown): number | null => {
   return match === null ? null : Number(match[1]);
 };
 
-/** All a failed call may say: its status, never bb's message, which can quote the text sent. */
-const reasonOf = (error: unknown): string => {
+/** The most characters of bb's own message a reason carries. */
+export const REASON_MESSAGE_MAX = 160;
+/** The text sent, or one of its lines, is replaced where bb quotes it only when it is at least this long, so a short one does not garble the message. */
+const QUOTED_LINE_MIN = 4;
+
+/** `text` with every occurrence of each of `quoted` replaced by `…`, the longest first. */
+const withoutQuotes = (text: string, quoted: readonly string[]): string =>
+  [...quoted].sort((a, b) => b.length - a.length).reduce((rest, quote) => (quote === "" ? rest : rest.split(quote).join("…")), text);
+
+/**
+ * Why a call to bb failed, for the ledger's log, the dashboard and the operator: `HTTP <status>: <bb's message>`, or
+ * the status alone where bb gave no message, or `no answer from bb` where it gave no status. bb's message is cut to
+ * `REASON_MESSAGE_MAX` characters on one line, with the text that was sent (the whole message and each of its
+ * lines of four or more characters, as bb may quote them) replaced by `…` and every token the plugin holds scrubbed.
+ */
+export const reasonOf = (error: unknown, sent: string, secrets: readonly string[]): string => {
   const status = httpStatusOf(error);
-  return status === null ? "no answer from bb" : `HTTP ${status}`;
+  if (status === null) return "no answer from bb";
+  const raw = error instanceof Error ? error.message : "";
+  const own = raw.replace(/^\s*HTTP \d{3}\b[\s:,-]*/i, "");
+  const quoted = [sent, sent.trim(), sent.replace(/\s+/g, " ").trim(), ...sent.split(/\r\n|\r|\n/).map((line) => line.trim())].filter((quote) => quote.length >= QUOTED_LINE_MIN);
+  const message = clip(redact(withoutQuotes(own, quoted), secrets).replace(/\s+/g, " ").trim(), REASON_MESSAGE_MAX);
+  return message === "" ? `HTTP ${status}` : `HTTP ${status}: ${message}`;
 };
 
 /** How long any one call to bb's SDK may take before it is given up on. */
@@ -78,6 +99,8 @@ export class BbManagerChannel implements ManagerChannel {
   constructor(
     private readonly sdk: BbSdk,
     private readonly pluginId: string,
+    /** Every token the plugin holds, scrubbed from the reasons it reports. */
+    private readonly secrets: () => string[] = () => [],
   ) {}
 
   async send(threadId: string, text: string): Promise<DeliveryResult> {
@@ -92,7 +115,7 @@ export class BbManagerChannel implements ManagerChannel {
       );
       return answer.delivery === "sent" ? { delivered: "sent" } : { delivered: "queued", queuedMessageId: answer.queuedMessage.id };
     } catch (error) {
-      return { delivered: "refused", reason: reasonOf(error) };
+      return { delivered: "refused", reason: reasonOf(error, text, this.secrets()) };
     }
   }
 
@@ -110,7 +133,7 @@ export class BbManagerChannel implements ManagerChannel {
       try {
         row = (await bounded(() => this.sdk.threads.queuedMessages.list({ threadId }))).find((queued) => queued.id === queuedMessageId);
       } catch (error) {
-        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error) };
+        return httpStatusOf(error) === 404 ? "gone" : { refused: reasonOf(error, text, this.secrets()) };
       }
       if (row === undefined || !row.editable) return "gone";
       try {
@@ -126,7 +149,7 @@ export class BbManagerChannel implements ManagerChannel {
       } catch (error) {
         const status = httpStatusOf(error);
         if (status === 404) return "gone";
-        if (status !== 409) return { refused: reasonOf(error) };
+        if (status !== 409) return { refused: reasonOf(error, text, this.secrets()) };
       }
     }
     return "gone";

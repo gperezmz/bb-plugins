@@ -181,7 +181,8 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       if (!plan.ok) return refused(plan.reason);
 
       const delivery = await deps.channel.send(registration.managerThreadId, plan.message);
-      if (delivery.delivered === "refused") return refused(messageOf(delivery.reason, [...deps.secrets(), input.text ?? ""].filter((secret) => secret.length >= 6)));
+      // bb's own reason, already bounded and scrubbed of the text sent by the channel; a token is scrubbed again here.
+      if (delivery.delivered === "refused") return refused(messageOf(delivery.reason, deps.secrets()));
       // The send took time: a take-over meanwhile means the message went to a manager that no longer holds the fleet.
       if (deps.store.getFleet(key)?.registration.managerThreadId !== registration.managerThreadId) return refused("the fleet changed manager while the message was sent, so the new manager did not get it; send it again");
       const row = read[at]!;

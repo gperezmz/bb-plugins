@@ -90,7 +90,7 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
   const poll: PollDeps = {
     store,
     threads,
-    channel: new BbManagerChannel(sdk, bb.pluginId),
+    channel: new BbManagerChannel(sdk, bb.pluginId, () => credentials.secrets()),
     credentials,
     http: new HttpClient(options.fetch === undefined ? {} : { fetch: options.fetch }),
     adapters,
