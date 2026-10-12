@@ -85,6 +85,7 @@ export class InMemoryStore implements Store {
       lastPolledAt: null,
       refused: null,
       unreadablePolls: 0,
+      pendingCatchUpMs: null,
       unreadableRows: [],
       outsideLinks: [],
       expiries: {},
@@ -125,6 +126,7 @@ export class InMemoryStore implements Store {
       expiries: structuredClone(state.expiries),
       heldSince: state.heldSince,
       unreadablePolls: state.unreadablePolls,
+      pendingCatchUpMs: state.pendingCatchUpMs,
       refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why },
     };
   }
@@ -220,9 +222,11 @@ export class InMemoryStore implements Store {
     this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, queuedMessageId } : wake));
   }
 
-  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "catchUpMs" | "heldSince" | "notWatched">): void {
     const notWatched = update.notWatched === null ? null : { ...update.notWatched };
-    this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, kind: update.kind, heldSince: update.heldSince, notWatched } : wake));
+    this.wakes = this.wakes.map((wake) =>
+      wake.repo === repo && wake.id === wakeId ? { ...wake, kind: update.kind, catchUpMs: update.catchUpMs, heldSince: update.heldSince, notWatched } : wake,
+    );
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

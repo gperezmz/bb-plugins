@@ -75,6 +75,7 @@ const pollState = (over: Partial<Parameters<Store["savePollState"]>[1]> = {}): P
   expiries: {},
   heldSince: null,
   unreadablePolls: 0,
+  pendingCatchUpMs: null,
   ...over,
 });
 
@@ -115,6 +116,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           notWatched,
           refused: null,
           unreadablePolls: 0,
+          pendingCatchUpMs: null,
           unreadableRows: [],
           outsideLinks: [],
           expiries: {},
@@ -348,6 +350,13 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         }
         store.savePollState(REPO, pollState());
         expect(store.getFleet(REPO)!.unreadablePolls).toBe(0);
+      });
+
+      it("records the catch-up owed to the next wake, and clears it", () => {
+        store.savePollState(REPO, pollState({ pendingCatchUpMs: 3_600_000 }));
+        expect(store.getFleet(REPO)!.pendingCatchUpMs).toBe(3_600_000);
+        store.savePollState(REPO, pollState());
+        expect(store.getFleet(REPO)!.pendingCatchUpMs).toBeNull();
       });
 
       it("marks nothing announced while no credential is refused", () => {
@@ -700,9 +709,9 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         it("records what an amendment made of the wake", () => {
           const wake = store.createWake(REPO, wakeFields({ kind: "not-watched" }));
           const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org", why: "unreachable" as const };
-          store.updateWake(REPO, wake.id, { kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
-          expect(store.openWake(REPO)).toEqual({ ...wake, kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
-          store.updateWake(OTHER, wake.id, { kind: "not-watched", heldSince: null, notWatched: null });
+          store.updateWake(REPO, wake.id, { kind: "changes", catchUpMs: 3_600_000, heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
+          expect(store.openWake(REPO)).toEqual({ ...wake, kind: "changes", catchUpMs: 3_600_000, heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
+          store.updateWake(OTHER, wake.id, { kind: "not-watched", catchUpMs: null, heldSince: null, notWatched: null });
           expect(store.openWake(REPO)).toMatchObject({ kind: "changes", notWatched: line });
         });
 

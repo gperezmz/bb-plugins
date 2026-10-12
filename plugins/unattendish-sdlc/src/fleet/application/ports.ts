@@ -216,6 +216,8 @@ export interface StoredFleet {
   readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
   /** How many polls in a row found a source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
   readonly unreadablePolls: number;
+  /** The catch-up a wake bb refused carried, owed to the next wake bb accepts; null when none is owed. */
+  readonly pendingCatchUpMs: number | null;
   readonly unreadableRows: readonly UnreadableRow[];
   readonly outsideLinks: readonly OutsideLink[];
   /** The tokens' expiry dates reported by the services, by credential prefix. */
@@ -300,7 +302,7 @@ export interface Store {
   /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
   savePollState(
     repo: string,
-    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls"> & { readonly refused?: StoredFleet["refused"] | undefined },
+    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls" | "pendingCatchUpMs"> & { readonly refused?: StoredFleet["refused"] | undefined },
   ): void;
   markRefusedAnnounced(repo: string): void;
 
@@ -327,7 +329,7 @@ export interface Store {
   wakeChanges(repo: string, wakeId: number): Change[];
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void;
   /** Records what an amendment made of a queued wake: its kind, and the lines it now carries. */
-  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void;
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "catchUpMs" | "heldSince" | "notWatched">): void;
   markDispatched(queuedMessageId: string, at: string): void;
 
   ledger(repo: string, query: LedgerQuery): LedgerEntry[];

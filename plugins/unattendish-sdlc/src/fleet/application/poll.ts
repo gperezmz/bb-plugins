@@ -174,6 +174,9 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
   return { ...reading, refusedPrefix, unreadable, attempted };
 }
 
+/** The larger of two lengths of time, either of which may be absent. */
+const larger = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
+
 /** How an error an adapter let through says its source is unreadable: a 403 forbids, no answer or a 5xx is unreachable. */
 const unreadableOf = (error: HttpError): "forbidden" | "unreachable" | null =>
   error.kind === "forbidden" ? "forbidden" : error.kind === "network" || error.kind === "server" ? "unreachable" : null;
@@ -212,7 +215,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   if (refused !== null) notWatched.push(credentialRefused(refused.prefix, refused.why));
 
   const cursors = reading.reads.map((read) => ({ role: read.role, cursor: read.derived.nextCursor }));
-  const pollState = (heldSince: string | null) => ({
+  const pollState = (heldSince: string | null, pendingCatchUpMs = fleet.pendingCatchUpMs) => ({
     lastPolledAt: now,
     notWatched,
     unreadableRows: watching.unreadableRows,
@@ -220,6 +223,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
     expiries: reading.expiries,
     heldSince,
     unreadablePolls,
+    pendingCatchUpMs,
     refused: refused === null ? undefined : { ...refused, announced: fleet.refused?.announced ?? false },
   });
 
@@ -294,22 +298,23 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   }
 
   const interval = effectiveInterval(registration);
-  const catchUpMs = catchUp(fleet.lastPolledAt, now, interval);
+  // A catch-up a refused wake carried is still owed: that poll's time is the last poll's now, so the gap no longer shows it.
+  const catchUpMs = larger(fleet.pendingCatchUpMs, catchUp(fleet.lastPolledAt, now, interval));
   const earliest = reading.reads.map((read) => read.since).sort()[0] ?? registration.registeredAt;
   const since = heldFrom !== null && heldNow.length > 0 && heldFrom < earliest ? heldFrom : earliest;
   const notWatchedLine = announce && refused !== null ? { since: refused.since, prefix: refused.prefix, why: refused.why } : null;
 
   const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? heldFrom : null, notWatched: notWatchedLine, now });
   if (delivery.result === "refused") {
-    // The same changes are offered again at the next poll: no cursor moves.
-    deps.store.savePollState(repo, pollState(fleet.heldSince));
+    // The same changes, and the catch-up, are offered again at the next poll: no cursor moves.
+    deps.store.savePollState(repo, pollState(fleet.heldSince, catchUpMs));
     return { polled: true, woke: 0, echoes, outOfScope, held, delivery: "refused" };
   }
   const keys = changes.map((change) => change.key);
   for (const change of changes) deps.store.recordChange(repo, rowOf(change, { kind: "wake" }, now));
   if (keys.length > 0) deps.store.markWoke(repo, delivery.wakeId, keys);
   if (cursors.length > 0) deps.store.commit({ repo, at: now, cursors });
-  deps.store.savePollState(repo, pollState(null));
+  deps.store.savePollState(repo, pollState(null, null));
   if (notWatchedLine !== null) deps.store.markRefusedAnnounced(repo);
   return { polled: true, woke: changes.length, echoes, outOfScope, held, delivery: delivery.result };
 }
@@ -338,10 +343,11 @@ async function deliver(
     const merged = [...deps.store.wakeChanges(repo, open.id), ...wake.changes].sort(byTimeThenKey);
     const heldSince = open.heldSince ?? wake.heldSince;
     const notWatched = wake.notWatched ?? open.notWatched;
-    const text = formatWake({ since: open.since, changes: merged, catchUpMs: open.catchUpMs, heldSince, notWatched });
+    const catchUpMs = larger(open.catchUpMs, wake.catchUpMs);
+    const text = formatWake({ since: open.since, changes: merged, catchUpMs, heldSince, notWatched });
     const amended = await deps.channel.amend(thread, open.queuedMessageId, text);
     if (amended === "amended") {
-      deps.store.updateWake(repo, open.id, { kind: merged.length > 0 ? "changes" : "not-watched", heldSince, notWatched });
+      deps.store.updateWake(repo, open.id, { kind: merged.length > 0 ? "changes" : "not-watched", catchUpMs, heldSince, notWatched });
       return { result: "amended", wakeId: open.id };
     }
     if (amended !== "gone") return { result: "refused" };

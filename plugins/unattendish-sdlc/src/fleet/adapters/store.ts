@@ -112,6 +112,7 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE fleets ADD COLUMN refused_why TEXT`,
   `ALTER TABLE fleets ADD COLUMN unreadable_polls INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE wakes ADD COLUMN not_watched_why TEXT`,
+  `ALTER TABLE fleets ADD COLUMN pending_catch_up_ms INTEGER`,
 ];
 
 interface FleetRow {
@@ -125,6 +126,7 @@ interface FleetRow {
   /** Null on a row written before the column existed, when only a 401 counted as refused. */
   refused_why: RefusedWhy | null;
   unreadable_polls: number;
+  pending_catch_up_ms: number | null;
   unreadable_rows: string;
   outside_links: string;
   expiries: string;
@@ -189,6 +191,7 @@ const toFleet = (row: FleetRow): StoredFleet => ({
       ? null
       : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" },
   unreadablePolls: row.unreadable_polls,
+  pendingCatchUpMs: row.pending_catch_up_ms,
   unreadableRows: JSON.parse(row.unreadable_rows) as StoredFleet["unreadableRows"],
   outsideLinks: JSON.parse(row.outside_links) as StoredFleet["outsideLinks"],
   expiries: JSON.parse(row.expiries) as StoredFleet["expiries"],
@@ -304,7 +307,7 @@ export class SqliteStore implements Store {
       this.db
         .prepare(
           `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?,
-             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?
+             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?, pending_catch_up_ms = ?
            WHERE repo_id = ?`,
         )
         .run(
@@ -319,6 +322,7 @@ export class SqliteStore implements Store {
           announced ? 1 : 0,
           refused?.why ?? null,
           state.unreadablePolls,
+          state.pendingCatchUpMs,
           repo,
         );
     })();
@@ -450,10 +454,10 @@ export class SqliteStore implements Store {
     this.db.prepare("UPDATE wakes SET queued_message_id = ? WHERE repo_id = ? AND id = ?").run(queuedMessageId, repo, wakeId);
   }
 
-  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "catchUpMs" | "heldSince" | "notWatched">): void {
     this.db
-      .prepare("UPDATE wakes SET kind = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ?, not_watched_why = ? WHERE repo_id = ? AND id = ?")
-      .run(update.kind, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, update.notWatched?.why ?? null, repo, wakeId);
+      .prepare("UPDATE wakes SET kind = ?, catch_up_ms = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ?, not_watched_why = ? WHERE repo_id = ? AND id = ?")
+      .run(update.kind, update.catchUpMs, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, update.notWatched?.why ?? null, repo, wakeId);
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

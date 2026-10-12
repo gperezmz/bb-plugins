@@ -388,6 +388,27 @@ describe("no change is lost (AC8)", () => {
     expect(w.store.getCursor(REPO_KEY, "forge")).not.toBeNull();
   });
 
+  it("keeps the catch-up line of a wake bb refused for the wake it next accepts, and only that one", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+    await poll(w);
+    w.clock.advance(20 * 60_000);
+    w.channel.mode = "refuse";
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    expect(await poll(w)).toMatchObject({ delivery: "refused" });
+    w.channel.mode = "idle";
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
+    expect(await poll(w)).toMatchObject({ delivery: "sent", woke: 1 });
+    expect(sentText(w)).toContain("Catch-up: the plugin was away for 20m.");
+    expect(w.store.getFleet(REPO_KEY)!.pendingCatchUpMs).toBeNull();
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c2", 7)] }));
+    await poll(w);
+    expect(sentText(w, 1)).not.toContain("Catch-up");
+  });
+
   it("does not send a change twice once it was woken", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
