@@ -11,6 +11,17 @@ Set these under Settings → Installed plugins → Unattendish, or with `bb plug
 
 Both settings are checked when saved: an entry that cannot be used is refused with a sentence naming it and why, and a sentence never quotes a token. Settings are checked again when the plugin loads, and the plugin's log gets one `settings:` warning for each fault. An entry with a fault is not used.
 
+## The settings section
+
+Under the form, the plugin's settings section edits the same two settings without JSON, and sets a fleet's poll interval. Both forms edit one list; a change in either shows in the other.
+
+| What | How |
+|---|---|
+| Credentials | Each credential is listed with its prefix, its kind (a pasted token, or the `gh` or `glab` login) and its expiry where a fleet's service has reported one. Add, edit and remove them; removing asks first. The token field is write-only: it is never shown, a blank field keeps the stored token, and what you type is not copied into the page's HTML |
+| Poll interval | One field in seconds for each registered fleet, with a button back to the default. Under 30 seconds is refused |
+
+An entry that cannot be used is shown with the reason, as the form's own check words it.
+
 ## Credentials
 
 A Credential is one entry of `credentials`, and for a pasted token its matching key in `tokens`. A fleet uses the entry with the longest prefix that matches its repository, and separately the one that matches its tracker. If no entry matches, nothing is used: the fleet registers, and [shows not watched](../how-to/unattendish-set-credentials.md#read-why-a-fleet-is-not-watched), naming the prefix that is missing.
@@ -72,13 +83,14 @@ A `gh` or `glab` login is asked for its token on the bb server, as the user bb r
 
 ## The polling interval
 
-Each fleet is polled every 2 minutes unless its own interval is set. The shortest is 30 seconds. Set it for one fleet with [`bb unattendish fleet interval`](unattendish-cli.md#bb-unattendish-fleet-interval); there is no global setting. The plugin checks which fleets are due every 5 seconds, so a poll starts up to 5 seconds after its interval ends.
+Each fleet is polled every 2 minutes unless its own interval is set. The shortest is 30 seconds. Set it for one fleet with [`bb unattendish fleet interval`](unattendish-cli.md#bb-unattendish-fleet-interval) or in the [settings section](#the-settings-section); there is no global setting. The plugin checks which fleets are due every 5 seconds, so a poll starts up to 5 seconds after its interval ends.
 
 ## What it stores
 
 | Where | What | For how long |
 |---|---|---|
 | `<data dir>/plugins/unattendish-sdlc/data.db` (SQLite) | Each fleet's registration, its cursors and the state of its last poll | Until [unregistered](unattendish-cli.md#bb-unattendish-fleet-unregister) |
+| The same file | The Inbox rows it has seen for each repository, which keeps a toast from repeating, and the dashboard's actions with whether each is sent or done | The rows until the fleet is unregistered; a done action for a day |
 | The same file | The ledger: every change seen, each wake with its queued and dispatched times, each poll's requests, and each failed read | 30 days, also after the fleet is unregistered; the plugin deletes older rows hourly |
 | The plugin's settings and secrets | `credentials` and `tokens` | Until uninstalled |
 

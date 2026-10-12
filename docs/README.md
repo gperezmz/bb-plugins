@@ -1,6 +1,6 @@
 # bb plugins
 
-Seven plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. The seventh, **Unattendish**, wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, so an answer written on an issue, a review or a spec marked ready reaches the manager without the operator telling it; it reads GitHub, GitLab, Linear and Jira Cloud on an interval and sends one message per poll. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state.
+Seven plugins for [bb](https://getbb.app). Three show something bb's own interface does not. **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **Team Onboarding** checks every machine against a setup your team writes down once, and fixes what it safely can. The fourth, **OpenAI-compatible inference**, lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. The fifth, **Cache Keeper**, keeps idle Claude Code threads cheap to come back to, by compacting them just before their prompt cache goes cold and keeping threads that wait on background work warm, wherever you switch it on. The sixth, **UI Tweaks**, adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. The seventh, **Unattendish**, wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, so an answer written on an issue, a review or a spec marked ready reaches the manager without the operator telling it; it reads GitHub, GitLab, Linear and Jira Cloud on an interval and sends one message per poll, and shows the operator what waits on them across fleets, on a Fleets page, a Fleet chip in each manager's header and a Fleet tab in its panel, where Answer…, Grant… and Build it send the manager the message. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state, but for one read: Unattendish shows a fleet's cost from Thread Usage when that is installed, and leaves it out when it is not.
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,7 @@ The pages each plugin's behaviour rests on:
 - [How Team Onboarding checks machines](explanation/team-onboarding-checks.md) without prompting, and why approvals happen only in the page.
 - [How an AI task is sent](explanation/openai-inference-requests.md) by OpenAI-compatible inference, and how it asks for no reasoning.
 - [When Cache Keeper acts](explanation/cache-keeper-timing.md): the deadline, the compaction line, waiting and the cost stop.
-- [How Unattendish wakes a manager](explanation/unattendish-polling.md): the poll, the watched set, echoes, cursors that advance only on an accepted wake, and credentials bound to a host.
+- [How Unattendish wakes a manager](explanation/unattendish-polling.md): the poll, the watched set, echoes, cursors that advance only on an accepted wake, credentials bound to a host, and what the dashboard adds.
 
 ## Map
 
@@ -83,6 +83,7 @@ The pages each plugin's behaviour rests on:
 - [Title threads with a local model](how-to/openai-inference-local-server.md)
 - [Compact a thread when it goes idle](how-to/cache-keeper-compact-a-thread.md)
 - [Set the credentials for a fleet](how-to/unattendish-set-credentials.md)
+- [Answer, grant or build from the dashboard](how-to/unattendish-answer-from-the-dashboard.md)
 
 **Reference** lists every part, one entry each.
 
@@ -103,6 +104,7 @@ The pages each plugin's behaviour rests on:
 - [UI Tweaks: settings](reference/ui-tweaks-settings.md)
 - [Unattendish: `bb unattendish fleet` and the wake](reference/unattendish-cli.md)
 - [Unattendish: settings and what it stores](reference/unattendish-settings.md)
+- [Unattendish: the Fleets page, the Fleet chip and the Fleet tab](reference/unattendish-dashboard.md)
 - [Unattendish: the Fleet contract, version 1](reference/unattendish-fleet-contract.md)
 
 **Explanation** says why things work the way they do.
