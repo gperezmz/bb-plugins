@@ -12,7 +12,7 @@ export default defineConfig({
       "test/**/*.test.ts",
       "features/**/*.test.{ts,tsx}",
       "shared/**/*.test.{ts,tsx}",
-      "*.test.ts",
+      "*.test.{ts,tsx}",
     ],
     testTimeout: 30_000,
   },
