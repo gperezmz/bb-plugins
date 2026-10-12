@@ -65,7 +65,7 @@ describe("the Inbox table", () => {
 
   it("opens the thread of a message link", () => {
     show([inboxRow({ managerThreadId: "thr_acme", link: { kind: "message", message: { threadId: "thr_old", message: 3, at: ago(MINUTE) } } })]);
-    fireEvent.click(screen.getByRole("button", { name: /message 3/ }));
+    fireEvent.click(screen.getByRole("button", { name: /thread thr_old, message 3/ }));
     expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_old");
   });
 
