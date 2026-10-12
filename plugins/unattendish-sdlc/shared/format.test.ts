@@ -39,6 +39,16 @@ describe("money", () => {
     expect(formatMoney(14.2, "USD")).toBe("$14.20");
   });
 
+  it("writes a currency symbol in front of the number", () => {
+    expect(formatMoney(0.17, "$")).toBe("$0.17");
+    expect(formatMoney(3, "€")).toBe("€3.00");
+    expect(formatMoney(12.345, "£")).toBe("£12.35");
+  });
+
+  it("writes a code Intl knows in its own way, not as a symbol", () => {
+    expect(formatMoney(0.17, "USD")).toBe("$0.17");
+  });
+
   it("writes a currency code Intl does not know after the number", () => {
     expect(formatMoney(3.05, "not-a-code")).toBe("3.05 not-a-code");
   });

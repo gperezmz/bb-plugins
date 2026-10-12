@@ -167,7 +167,17 @@ describe("what is watched, and how", () => {
   });
 
   it("shows the card with its cost and reasons, and no link back to this tab", async () => {
-    await showDetail({ card: fleetCard({ cost: { amount: 14.2, currency: "USD", period: "since this manager started" }, reasons: [{ code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } }] }) });
+    await showDetail({
+      card: fleetCard({
+        cost: { amount: 14.2, currency: "USD", period: "since this manager started" },
+        reasons: [
+          { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "settings" } },
+          { code: "unreadable-rows", text: "1 manifest row cannot be read, in Blocked", fix: { kind: "fleet-tab" } },
+        ],
+      }),
+    });
+    expect(screen.queryByRole("button", { name: "Open the Fleet tab" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Fleet tab/ })).toBeNull();
     expect(screen.getByText(/\$14\.20 since this manager started/)).toBeTruthy();
     expect(screen.getByText("Linear is not watched: token refused")).toBeTruthy();
     expect(within(screen.getByRole("article", { name: "Fleet acme/web" })).queryByRole("button", { name: /Open the Fleet tab of/ })).toBeNull();
@@ -209,6 +219,28 @@ describe("the ledger", () => {
     fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
     expect(await screen.findByText("woke")).toBeTruthy();
     expect(screen.getByText(/round close · queued .* · not dispatched yet/)).toBeTruthy();
+  });
+
+  it("shows a dropped change once under All: in its group, not in the main list", async () => {
+    await showDetail();
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger });
+    fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
+    await screen.findByText("echo: marker · 31");
+    // #150 is the one dropped change; #163 the one that woke.
+    const body = within(document.getElementById("tab-ledger-body")!);
+    expect(body.getAllByText("#163")).toHaveLength(1);
+    expect(body.getAllByText("#150")).toHaveLength(1);
+    expect(body.getByText("#150").closest("details")).toBeTruthy();
+    expect(body.getByText("#163").closest("details")).toBeNull();
+  });
+
+  it("hides the wakes while an item filter is set", async () => {
+    await showDetail();
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger });
+    fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
+    await screen.findByText(/round close/);
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter by item" }), { target: { value: "#163" } });
+    await waitFor(() => expect(screen.queryByText(/round close/)).toBeNull());
   });
 
   it("filters by item, once the typing pauses", async () => {

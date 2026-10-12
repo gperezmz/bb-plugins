@@ -29,7 +29,7 @@ function Sections({ view, refetch }: { view: FleetsView; refetch: () => Promise<
         <h2 id="fleets-inbox" className="text-base font-semibold">
           Waits on you <span className="font-normal text-muted-foreground">{view.waiting}</span>
         </h2>
-        <InboxTable rows={view.inbox} unreadable={view.unreadableInbox} now={view.generatedAt} showFleet refetch={refetch} />
+        <InboxTable rows={view.inbox} unreadable={view.unreadableInbox} now={view.generatedAt} inFleetTab={false} refetch={refetch} />
         {view.recentActions.length > 0 ? (
           <ul aria-label="Recently sent" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
             {view.recentActions.map((action) => (

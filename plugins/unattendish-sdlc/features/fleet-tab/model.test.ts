@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ago, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
-import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerIsEmpty, ledgerParts, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
+import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerContent, ledgerIsEmpty, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
 
 describe("the manifest's rows", () => {
   it("says how long an In flight row has been at its stage", () => {
@@ -43,17 +43,46 @@ describe("the ledger's filters", () => {
     expect(ledgerFilter("wakes", "#1")).toEqual({ item: "#1" });
   });
 
-  it("shows the part each filter is about", () => {
-    expect(ledgerParts("all")).toEqual({ changes: true, dropped: true, wakes: true });
-    expect(ledgerParts("dropped")).toEqual({ changes: false, dropped: true, wakes: false });
-    expect(ledgerParts("wakes")).toEqual({ changes: false, dropped: false, wakes: true });
-    expect(ledgerParts("woke")).toEqual({ changes: true, dropped: false, wakes: false });
+  const dropped = ledgerChange({ ref: "#150", done: "echo", rule: "marker" });
+  const outOfScope = ledgerChange({ ref: "#151", done: "out-of-scope" });
+  const woke = ledgerChange({ ref: "#163", done: "woke" });
+  const held = ledgerChange({ ref: "#164", done: "held" });
+  const wake = { queuedAt: ago(10 * MINUTE), dispatchedAt: null, kind: "round close" };
+  const ledger = ledgerView({
+    changes: [woke, dropped, held, outOfScope],
+    dropped: [
+      { reason: "echo: marker", count: 1, changes: [dropped] },
+      { reason: "out of scope", count: 1, changes: [outOfScope] },
+    ],
+    wakes: [wake],
+  });
+
+  it("shows a change once under All: the main list holds what was not dropped, the groups what was", () => {
+    const content = ledgerContent(ledger, "all", "");
+    expect(content.changes).toEqual([woke, held]);
+    expect(content.dropped.flatMap((group) => group.changes)).toEqual([dropped, outOfScope]);
+    expect(content.wakes).toEqual([wake]);
+    const shown = [...content.changes, ...content.dropped.flatMap((group) => group.changes)];
+    expect(new Set(shown).size).toBe(shown.length);
+  });
+
+  it("shows only the groups under Dropped, only the wakes under Wakes, and the server's list under an outcome", () => {
+    expect(ledgerContent(ledger, "dropped", "")).toEqual({ changes: [], dropped: ledger.dropped, wakes: [] });
+    expect(ledgerContent(ledger, "wakes", "")).toEqual({ changes: [], dropped: [], wakes: [wake] });
+    expect(ledgerContent(ledger, "woke", "")).toEqual({ changes: ledger.changes, dropped: [], wakes: [] });
+  });
+
+  it("shows no wake while an item filter is set, since a wake carries no item", () => {
+    expect(ledgerContent(ledger, "all", "#163").wakes).toEqual([]);
+    expect(ledgerContent(ledger, "wakes", " #163 ").wakes).toEqual([]);
+    expect(ledgerContent(ledger, "all", "  ").wakes).toEqual([wake]);
   });
 
   it("is empty where the filter shows nothing the ledger holds", () => {
-    expect(ledgerIsEmpty(ledgerView(), "all")).toBe(true);
-    expect(ledgerIsEmpty(ledgerView({ changes: [ledgerChange()] }), "dropped")).toBe(true);
-    expect(ledgerIsEmpty(ledgerView({ changes: [ledgerChange()] }), "all")).toBe(false);
+    expect(ledgerIsEmpty(ledgerContent(ledgerView(), "all", ""))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledgerView({ changes: [woke] }), "dropped", ""))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledger, "wakes", "#1"))).toBe(true);
+    expect(ledgerIsEmpty(ledgerContent(ledger, "all", ""))).toBe(false);
   });
 
   it("heads a dropped group with its reason and count, and says what was done with a change", () => {

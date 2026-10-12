@@ -42,6 +42,16 @@ describe("the Fleet chip", () => {
     expect(screen.getByRole("button").textContent).toBe("Fleet idle");
   });
 
+  it("is named Fleet idle when idle, and keeps its text on one line", async () => {
+    await show(fleetCard({ waiting: 1, inFlight: 3, landedToday: 2 }));
+    const button = screen.getByRole("button");
+    expect(button.className).toContain("whitespace-nowrap");
+    expect(button.querySelector("span")!.className).toContain("truncate");
+    cleanup();
+    await show(fleetCard());
+    expect(screen.getByRole("button", { name: "Fleet idle" })).toBeTruthy();
+  });
+
   it("draws nothing for a thread that is no manager", async () => {
     await show(null);
     expect(screen.queryByRole("button")).toBeNull();

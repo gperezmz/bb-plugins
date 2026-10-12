@@ -22,6 +22,11 @@ describe("the Fleet chip", () => {
     expect(chipFace({ waiting: 0, inFlight: 3, landedToday: 0 }, true)).toMatchObject({ text: null, dot: true });
   });
 
+  it("names an idle chip Fleet idle, not Fleet: Fleet idle", () => {
+    expect(chipFace({ waiting: 0, inFlight: 0, landedToday: 0 }, false).label).toBe("Fleet idle");
+    expect(chipFace({ waiting: 0, inFlight: 0, landedToday: 0 }, true).label).toBe("Fleet idle");
+  });
+
   it("names the chip by its counts, on a compact viewport too", () => {
     expect(chipFace({ waiting: 2, inFlight: 0, landedToday: 0 }, true).label).toBe("Fleet: 2 waits on you");
   });

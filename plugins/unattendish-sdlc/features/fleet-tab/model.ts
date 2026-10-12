@@ -62,24 +62,40 @@ export function ledgerFilter(what: LedgerShow, item: string): LedgerFilter {
   };
 }
 
-/** Which parts of the ledger a filter shows. */
-export function ledgerParts(what: LedgerShow): { changes: boolean; dropped: boolean; wakes: boolean } {
+/** True for a change the plugin dropped rather than sent: an echo, or out of scope. */
+export function isDropped(change: Pick<LedgerChangeView, "done">): boolean {
+  return change.done === "echo" || change.done === "out-of-scope";
+}
+
+export interface LedgerContent {
+  readonly changes: readonly LedgerChangeView[];
+  readonly dropped: LedgerView["dropped"];
+  readonly wakes: LedgerView["wakes"];
+}
+
+/**
+ * What the ledger shows for a filter, each change once. Under All the main list holds the changes that were not
+ * dropped and the groups hold the dropped ones; the outcome filters show the list the server filtered; Dropped
+ * shows the groups; Wakes shows the wakes. A wake carries no item, so no wake is shown while an item filter is set.
+ */
+export function ledgerContent(ledger: LedgerView, what: LedgerShow, item: string): LedgerContent {
+  const none = { changes: [], dropped: [], wakes: [] } satisfies LedgerContent;
+  const wakes = item.trim() === "" ? ledger.wakes : none.wakes;
   switch (what) {
     case "all":
-      return { changes: true, dropped: true, wakes: true };
+      return { changes: ledger.changes.filter((change) => !isDropped(change)), dropped: ledger.dropped, wakes };
     case "dropped":
-      return { changes: false, dropped: true, wakes: false };
+      return { ...none, dropped: ledger.dropped };
     case "wakes":
-      return { changes: false, dropped: false, wakes: true };
+      return { ...none, wakes };
     default:
-      return { changes: true, dropped: false, wakes: false };
+      return { ...none, changes: ledger.changes };
   }
 }
 
 /** True where the ledger holds nothing that the filter shows. */
-export function ledgerIsEmpty(ledger: LedgerView, what: LedgerShow): boolean {
-  const parts = ledgerParts(what);
-  return (!parts.changes || ledger.changes.length === 0) && (!parts.dropped || ledger.dropped.length === 0) && (!parts.wakes || ledger.wakes.length === 0);
+export function ledgerIsEmpty(content: LedgerContent): boolean {
+  return content.changes.length === 0 && content.dropped.length === 0 && content.wakes.length === 0;
 }
 
 /** A dropped group's heading: its reason and how many changes it holds. */

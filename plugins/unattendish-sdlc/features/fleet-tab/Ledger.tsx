@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useDashboardApi } from "@/shared/client";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
-import { changeWhen, doneText, droppedHeading, LEDGER_FILTERS, ledgerFilter, ledgerIsEmpty, ledgerParts, wakeText, type LedgerShow } from "./model";
+import { changeWhen, doneText, droppedHeading, LEDGER_FILTERS, ledgerContent, ledgerFilter, ledgerIsEmpty, wakeText, type LedgerShow } from "./model";
 import { useDebounced } from "./use-debounced";
 
 const TYPING_PAUSE_MS = 250;
@@ -65,15 +65,15 @@ function Ledger({ repo }: { repo: string }) {
       </div>
       <LiveScreen live={live} what="the ledger">
         {(ledger) => {
-          const parts = ledgerParts(show);
-          if (ledgerIsEmpty(ledger, show)) return <p className="text-muted-foreground">Nothing in the ledger matches.</p>;
+          const content = ledgerContent(ledger, show, settledItem);
+          if (ledgerIsEmpty(content)) return <p className="text-muted-foreground">Nothing in the ledger matches.</p>;
           return (
             <>
-              {parts.changes && ledger.changes.length > 0 ? <ChangeList changes={ledger.changes} /> : null}
-              {parts.dropped && ledger.dropped.length > 0 ? (
+              {content.changes.length > 0 ? <ChangeList changes={content.changes} /> : null}
+              {content.dropped.length > 0 ? (
                 <div className="flex flex-col gap-1">
                   <div className="font-medium">Dropped, by reason</div>
-                  {ledger.dropped.map((group) => (
+                  {content.dropped.map((group) => (
                     <details key={group.reason}>
                       <summary className="cursor-pointer">
                         {droppedHeading(group)}
@@ -85,11 +85,11 @@ function Ledger({ repo }: { repo: string }) {
                   ))}
                 </div>
               ) : null}
-              {parts.wakes && ledger.wakes.length > 0 ? (
+              {content.wakes.length > 0 ? (
                 <div className="flex flex-col gap-1">
                   <div className="font-medium">Wakes</div>
                   <ul>
-                    {ledger.wakes.map((wake) => (
+                    {content.wakes.map((wake) => (
                       <li key={`${wake.queuedAt}:${wake.kind}`} className="text-muted-foreground">
                         {wakeText(wake)}
                       </li>

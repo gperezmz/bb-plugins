@@ -15,8 +15,11 @@ interface TableProps {
   readonly unreadable: readonly UnreadableInboxRowView[];
   /** The view's clock. */
   readonly now: string;
-  /** The Fleets page lists every fleet's rows; a fleet's own tab needs no Fleet column. */
-  readonly showFleet: boolean;
+  /**
+   * True inside a fleet's own Fleet tab: its rows all belong to that one fleet, so they do not name it, and an
+   * unreadable row has no link to a tab the operator is already on.
+   */
+  readonly inFleetTab: boolean;
   readonly refetch: () => Promise<void>;
 }
 
@@ -28,17 +31,18 @@ const CELL = "px-2 py-2 align-top";
  */
 export function InboxTable(props: TableProps) {
   const compact = useIsCompactViewport();
-  const { rows, unreadable, now, showFleet, refetch } = props;
+  const { rows, unreadable, now, inFleetTab, refetch } = props;
+  const showFleet = !inFleetTab;
   const stateOf = useRowActions(refetch);
   if (rows.length === 0 && unreadable.length === 0) return <p className="text-sm text-muted-foreground">Nothing waits on you</p>;
   if (compact) {
     return (
       <ul className="divide-y divide-border">
         {rows.map((row) => (
-          <StackedRow key={row.id} row={row} now={now} state={stateOf(row)} />
+          <StackedRow key={row.id} row={row} now={now} showFleet={showFleet} state={stateOf(row)} />
         ))}
         {unreadable.map((row) => (
-          <StackedUnreadable key={`${row.managerThreadId}:${row.line}`} row={row} />
+          <StackedUnreadable key={`${row.managerThreadId}:${row.line}`} row={row} inFleetTab={inFleetTab} />
         ))}
       </ul>
     );
@@ -60,7 +64,7 @@ export function InboxTable(props: TableProps) {
           <TableRow key={row.id} row={row} now={now} showFleet={showFleet} state={stateOf(row)} />
         ))}
         {unreadable.map((row) => (
-          <UnreadableTableRow key={`${row.managerThreadId}:${row.line}`} row={row} showFleet={showFleet} />
+          <UnreadableTableRow key={`${row.managerThreadId}:${row.line}`} row={row} inFleetTab={inFleetTab} />
         ))}
       </tbody>
     </table>
@@ -94,11 +98,11 @@ function TableRow({ row, now, showFleet, state }: { row: InboxRowView; now: stri
   );
 }
 
-function StackedRow({ row, now, state }: { row: InboxRowView; now: string; state: RowActionState }) {
+function StackedRow({ row, now, showFleet, state }: { row: InboxRowView; now: string; showFleet: boolean; state: RowActionState }) {
   const action = rowAction(row, now, state);
   return (
     <li className="flex flex-col gap-1 py-3 text-sm">
-      <span className="text-xs text-muted-foreground">{row.fleet}</span>
+      {showFleet ? <span className="text-xs text-muted-foreground">{row.fleet}</span> : null}
       <span>{itemTitle(row.ref, row.what)}</span>
       <span className="text-xs text-muted-foreground">
         waits for {waitsForText(row.waitsFor)} · {waitedText(row, now)}
@@ -112,30 +116,34 @@ function StackedRow({ row, now, state }: { row: InboxRowView; now: string; state
   );
 }
 
-function UnreadableTableRow({ row, showFleet }: { row: UnreadableInboxRowView; showFleet: boolean }) {
+function UnreadableTableRow({ row, inFleetTab }: { row: UnreadableInboxRowView; inFleetTab: boolean }) {
   const open = useOpenFleetTab();
   return (
     <tr>
-      {showFleet ? <td className={CELL}>{row.fleet}</td> : null}
-      <td className={cn(CELL, "text-destructive")} colSpan={3}>
+      {!inFleetTab ? <td className={CELL}>{row.fleet}</td> : null}
+      <td className={cn(CELL, "text-destructive")} colSpan={inFleetTab ? 5 : 3}>
         {unreadableText(row)} <span className="text-muted-foreground">(line {row.line})</span>
       </td>
-      <td className={CELL} colSpan={2}>
-        <FleetTabButton onClick={() => open(row.managerThreadId)} fleet={row.fleet} />
-      </td>
+      {!inFleetTab ? (
+        <td className={CELL} colSpan={2}>
+          <FleetTabButton onClick={() => open(row.managerThreadId)} fleet={row.fleet} />
+        </td>
+      ) : null}
     </tr>
   );
 }
 
-function StackedUnreadable({ row }: { row: UnreadableInboxRowView }) {
+function StackedUnreadable({ row, inFleetTab }: { row: UnreadableInboxRowView; inFleetTab: boolean }) {
   const open = useOpenFleetTab();
   return (
     <li className="flex flex-col gap-1 py-3 text-sm">
-      <span className="text-xs text-muted-foreground">{row.fleet}</span>
+      {!inFleetTab ? <span className="text-xs text-muted-foreground">{row.fleet}</span> : null}
       <span className="text-destructive">{unreadableText(row)}</span>
-      <div className="pt-1">
-        <FleetTabButton onClick={() => open(row.managerThreadId)} fleet={row.fleet} />
-      </div>
+      {!inFleetTab ? (
+        <div className="pt-1">
+          <FleetTabButton onClick={() => open(row.managerThreadId)} fleet={row.fleet} />
+        </div>
+      ) : null}
     </li>
   );
 }
