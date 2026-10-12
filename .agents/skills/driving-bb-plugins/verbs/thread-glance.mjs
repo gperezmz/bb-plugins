@@ -88,6 +88,7 @@ export async function readList(page) {
           expanded: toggle.getAttribute("aria-expanded") === "true",
           sort: el.querySelector("select")?.value ?? null,
           clean: el.querySelector("button")?.parentElement?.querySelector('button[aria-label="Close terminals and ports of settled threads"]') != null,
+          rule: Math.round(el.querySelector("[data-shelf-rule]")?.getBoundingClientRect().width ?? 0),
         });
       } else if (el.dataset.groupKey !== undefined) {
         const toggle = el.querySelector("button[aria-expanded]");
@@ -112,6 +113,9 @@ export async function readList(page) {
           status: lines(card.querySelector("[data-status-slot]")).join(" "),
           woke: card.querySelector("[data-woke]") !== null,
           ports: indicator?.getAttribute("aria-label") ?? null,
+          stripe: card.querySelector("[data-project-stripe]")?.style.backgroundColor ?? null,
+          projectColour: card.querySelector("[data-project-name]")?.style.color || null,
+          projectIcon: card.querySelector("img[data-project-icon]") !== null,
           chip: chip === null ? null : { label: chip.getAttribute("aria-label"), expanded: chip.getAttribute("aria-expanded") === "true" },
           labels: [...card.querySelectorAll("[aria-label]")]
             .filter((e) => e.tagName !== "BUTTON" && e.tagName !== "A" && e !== indicator)
@@ -137,6 +141,10 @@ export async function readList(page) {
       rows,
       loadMore: more,
       allClear: body.includes("All clear. Time to touch some grass."),
+      scene: (() => {
+        const scene = document.querySelector("[data-scene]");
+        return scene === null ? null : { name: scene.dataset.scene, text: scene.innerText.trim() };
+      })(),
       loading: body.includes("Loading threads…"),
       failed: body.includes("Could not load threads."),
     };
@@ -275,8 +283,9 @@ export async function readWindow(page) {
     const bottom = Math.min(box.bottom, innerHeight) + 240;
     const lists = [...document.querySelectorAll("[data-item-list]")];
     const anchors = lists.flatMap((list) => [...list.querySelectorAll("a[data-sidebar-thread-id]")]);
-    // The first nine rows bb's jump keys reach stay mounted wherever the list is scrolled.
-    const jumps = new Set(anchors.slice(0, 9));
+    // The upper list's first nine rows, which bb's jump keys reach, and the open thread's row stay mounted wherever the list is scrolled.
+    const kept = lists.length === 0 ? [] : [...lists[0].querySelectorAll("a[data-sidebar-thread-id]")].slice(0, 9);
+    const jumps = new Set([...kept, ...anchors.filter((a) => a.getAttribute("aria-current") === "page")]);
     const outside = anchors.filter((a) => {
       if (jumps.has(a)) return false;
       const r = a.getBoundingClientRect();
@@ -459,6 +468,17 @@ async function settingUntil(cli, label, key, want) {
   return value;
 }
 
+/** Presses Undo on the action's toast and polls until the lifecycle row satisfies `ok` again; the row, the toasts after and the list. */
+async function undo(page, capture, cli, label, id, ok) {
+  await page.locator("[data-sonner-toast]").getByRole("button", { name: "Undo" }).first().click();
+  const lifecycle = await lifecycleUntil(cli, label, id, ok);
+  await sleep(600);
+  const shown = await toasts(page);
+  const list = await readList(page);
+  await capture("undone", "press Undo");
+  return { lifecycle, toasts: shown, after: list };
+}
+
 /** The server's lifecycle row for a thread, or null. */
 function lifecycleOf(cli, label, id) {
   return synced(cli, label).records[id]?.lifecycle ?? null;
@@ -518,7 +538,7 @@ export const verbs = {
   },
 
   shelf: {
-    usage: "<pinned|active|working|inactive|snoozed|parked|settled> [expand|collapse]: press a shelf's header; its label ('Name (count)' while collapsed) and the device's collapsed shelves",
+    usage: "<pinned|active|working|inactive|snoozed|parked|settled> [expand|collapse]: press a shelf's header; its label ('Name (count)' while collapsed), the rows it still draws, and the device's collapsed shelves",
     async run(ctx) {
       const { page, args } = ctx;
       const [name, arg] = args;
@@ -527,7 +547,10 @@ export const verbs = {
       let target;
       return drive(ctx, {
         name: `${arg ?? "toggle"} the ${name} shelf`,
-        observe: async (p) => (await readList(p)).shelves.find((s) => s.shelf === name) ?? null,
+        observe: async (p) => {
+          const list = await readList(p);
+          return { ...(list.shelves.find((s) => s.shelf === name) ?? {}), rows: list.rows.filter((r) => r.shelf === name).map((r) => r.title) };
+        },
         act: async (p) => {
           target = toggleTarget(arg, (await toggle(p).getAttribute("aria-expanded")) === "true");
           if ((await toggle(p).getAttribute("aria-expanded")) === String(target)) return;
@@ -558,13 +581,18 @@ export const verbs = {
   },
 
   scope: {
-    usage: "<project name|All projects>: pick the project scope; the rows and shelves it leaves",
-    async run({ page, url, capture, args }) {
+    usage: "<project name|All projects> [--filter <text>]: pick the project scope, typing <text> into the picker's filter first with --filter; the options shown and the rows and shelves the scope leaves",
+    valued: ["filter"],
+    async run({ page, url, capture, args, flags }) {
       await ready(page, url);
       const before = await readList(page);
       await capture("before", "before picking the scope");
       await scopeButton(page).click();
-      const options = await page.getByRole("listbox", { name: "Projects" }).getByRole("option").evaluateAll((els) => els.map((e) => ({ name: e.textContent.trim(), selected: e.getAttribute("aria-selected") === "true" })));
+      if (flags.filter !== undefined) await page.getByRole("combobox", { name: "Filter projects" }).fill(flags.filter);
+      await sleep(200);
+      const listbox = page.getByRole("listbox", { name: "Projects" });
+      const options = await listbox.getByRole("option").evaluateAll((els) => els.map((e) => ({ name: e.textContent.trim(), selected: e.getAttribute("aria-selected") === "true" })));
+      const empty = options.length === 0 ? (await listbox.innerText().catch(() => "")).trim() || null : null;
       await capture("picker", "the project picker");
       if (args[0] !== undefined) {
         await page.getByRole("option", { name: args[0], exact: true }).click();
@@ -572,13 +600,13 @@ export const verbs = {
       } else await page.keyboard.press("Escape");
       const after = await readList(page);
       await capture("after", `scope ${args[0] ?? "(unchanged)"}`);
-      return { options, before, after };
+      return { options, empty, before, after };
     },
   },
 
   hover: {
-    usage: "<title>: rest the pointer on a row; the hover card's lines, its 'Workspace ports (N)' entries (port, process, link, Stop) and the card's port indicator",
-    async run({ page, url, capture, cli, args }) {
+    usage: "<title> [--subthreads]: rest the pointer on a row; the hover card's lines, its 'Workspace ports (N)' entries (port, process, link, Stop) and the card's port indicator; --subthreads also presses 'Subthreads (N)' and reads the children it lists",
+    async run({ page, url, capture, cli, args, flags }) {
       await ready(page, url);
       const card = await hoverCard(page, args[0]);
       // Ports arrive from the shared snapshot, so a card opened before it loads gains them a moment later.
@@ -586,6 +614,13 @@ export const verbs = {
       const shown = await readHoverCard(card);
       await capture("hover", `hover ${args[0]}`);
       const list = (await readList(page)).rows.find((r) => r.title === args[0]);
+      if (flags.subthreads) {
+        const toggle = card.getByRole("button", { name: /^Subthreads \(\d+\)$/ });
+        await toggle.click();
+        await card.locator('button[aria-expanded="true"]').waitFor();
+        shown.subthreads = { label: await toggle.textContent(), expanded: true, lines: (await readHoverCard(card)).lines };
+        await capture("subthreads", "press Subthreads");
+      }
       return { indicator: list?.ports ?? null, card: shown };
     },
   },
@@ -647,7 +682,7 @@ export const verbs = {
   },
 
   lifecycle: {
-    usage: "<snooze|park|resume|wake|unsettle|pin|unpin> <title> [<preset label>] [--menu]: snooze (a preset of the clock menu, default the first enabled), park, resume, wake now, un-settle, pin or unpin a thread, from the hover buttons or with --menu from its thread menu; the list before and after, the toasts and the server's lifecycle row",
+    usage: "<snooze|park|resume|wake|unsettle|pin|unpin> <title> [<preset label>] [--menu] [--undo]: snooze (a preset of the clock menu, default the first enabled), park, resume, wake now, un-settle, pin or unpin a thread, from the hover buttons or with --menu from its thread menu, and with --undo press the toast's Undo; the list before and after, the toasts and the server's lifecycle row",
     async run({ page, url, capture, cli, args, flags }) {
       const [action, title, preset] = args;
       await ready(page, url);
@@ -657,14 +692,18 @@ export const verbs = {
       let clock;
       const menuItem = async (name, sub) => {
         await openRowMenu(page, title);
+        let menu = page.getByRole("menu");
         if (sub !== undefined) {
           await page.getByRole("menuitem", { name: sub, exact: true }).hover();
           await page.getByRole("menuitem", { name: sub, exact: true }).press("ArrowRight");
+          // The submenu opens beside the menu, which stays open: pick from the submenu only.
+          menu = page.getByRole("menu", { name: sub, exact: true });
+          await menu.waitFor();
         }
-        await page.getByRole("menuitem", { name }).first().click();
+        await menu.getByRole("menuitem", { name, disabled: false }).first().click();
       };
       const slimButton = { resume: "Resume thread", wake: "Wake thread now", unsettle: "Un-settle thread" }[action];
-      const menuName = { park: "Park thread", resume: "Resume", wake: "Wake now", unsettle: "Un-settle", pin: "Pin" }[action];
+      const menuName = { park: "Park thread", resume: "Resume", wake: "Wake now", unsettle: "Un-settle", pin: "Pin", unpin: "Unpin" }[action];
       if (action === "snooze") {
         const presetName = preset === undefined ? /./ : new RegExp(`^${esc(preset)}`);
         const full = (await cardOf(page, title).getAttribute("data-card")) !== "slim";
@@ -680,7 +719,7 @@ export const verbs = {
         } else {
           await menuItem(presetName, "Snooze");
         }
-      } else if (action === "unpin") {
+      } else if (action === "unpin" && !flags.menu) {
         await pointAt(page, title);
         await page.getByRole("button", { name: `Unpin ${title}` }).click();
       } else if (!flags.menu && slimButton !== undefined && (await cardOf(page, title).getAttribute("data-card")) === "slim") {
@@ -703,12 +742,14 @@ export const verbs = {
       const toast = await toasts(page);
       const after = await readList(page);
       await capture("after", `${action} ${title}`);
-      return { before, ...(clock ? { clockMenu: clock } : {}), toasts: toast, lifecycle, after };
+      const result = { before, ...(clock ? { clockMenu: clock } : {}), toasts: toast, lifecycle, after };
+      if (flags.undo) result.undone = await undo(page, capture, cli, "thread-glance.lifecycle/sync", id, (r) => !ok(r));
+      return result;
     },
   },
 
   settle: {
-    usage: "<title> [--menu] [--ports close|keep] [--unsettle-first]: settle a thread from its hover button (--menu: thread menu); the 'Close this thread's ports?' prompt it raises, answered with --ports (Close ports or Keep open), and whether each named port still listens; --unsettle-first un-settles through the server before answering",
+    usage: "<title> [--menu] [--ports close|keep] [--unsettle-first] [--undo]: settle a thread from its hover button (--menu: thread menu); the 'Close this thread's ports?' prompt it raises, answered with --ports (Close ports or Keep open), and whether each named port still listens; --unsettle-first un-settles through the server before answering; --undo then presses the settle toast's Undo",
     valued: ["ports"],
     async run({ page, url, capture, cli, args, flags }) {
       const title = args[0];
@@ -750,6 +791,7 @@ export const verbs = {
         await capture("answered", `${label}`);
       }
       result.after = await readList(page);
+      if (flags.undo) result.undone = await undo(page, capture, cli, "thread-glance.settle/sync", id, (r) => r?.settledAt == null);
       return result;
     },
   },
@@ -868,11 +910,13 @@ export const verbs = {
     valued: ["sub"],
     async run({ page, url, capture, args, flags }) {
       const title = args[0];
+      // A phone draws no "…" button: its menu opens by a long press.
+      if (flags.mobile) throw new Error("a phone has no thread actions button; use long-press <title> --mobile");
       await ready(page, url);
       if (flags.context) {
         const link = await pointAt(page, title);
         await link.click({ button: "right", position: { x: 40, y: 8 } });
-      } else if (flags.keyboard || flags.mobile) {
+      } else if (flags.keyboard) {
         await pointAt(page, title);
         const opener = cardOf(page, title).getByRole("button", { name: `Thread actions for ${title}` });
         await opener.focus();
@@ -1084,6 +1128,326 @@ export const verbs = {
       return { closed, open: { mounted: open.mounted, outside: open.outside, missing: open.missing, walk: open.walk.length } };
     },
   },
+  rename: {
+    usage: "<title> <new title> [--menu] [--steal] [--escape]: rename a row inline, opened by a double-click on its link or the thread menu's Rename (--menu); where focus is at once and 1.5 s later, and with --steal whether the editor takes focus back from the page's composer; Enter saves (--escape: Escape keeps the title); the title bb holds and the list after",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [title, next] = args;
+      await ready(page, url);
+      const id = threadId(cli, "thread-glance.rename/threads", title);
+      if (flags.menu) {
+        await openRowMenu(page, title);
+        await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+      } else await (await reveal(page, title)).dblclick();
+      const editor = page.getByRole("textbox", { name: `Rename ${title}` });
+      await editor.waitFor();
+      const focusAtOnce = await focused(page);
+      await sleep(1500);
+      const focusLater = await focused(page);
+      await capture("editing", `open the editor (${flags.menu ? "menu" : "double-click"})`);
+      let focusAfterSteal = null;
+      if (flags.steal) {
+        const composer = await page.evaluate(() => {
+          const e = [...document.querySelectorAll("textarea, [contenteditable=true]")].find((c) => c.offsetParent !== null);
+          e?.focus();
+          return e?.getAttribute("aria-label") ?? null;
+        });
+        if (composer === null) throw new Error("no composer on the page to move focus to");
+        await sleep(300);
+        focusAfterSteal = await focused(page);
+        await capture("stolen", "move focus to the composer");
+      }
+      await editor.fill(next);
+      await page.keyboard.press(flags.escape ? "Escape" : "Enter");
+      await editor.waitFor({ state: "detached" });
+      const kept = flags.escape ? title : next;
+      await row(page, kept).waitFor();
+      let stored;
+      for (let i = 0; i < 20; i++) {
+        stored = JSON.parse(cli("thread-glance.rename/show", "thread", "show", id, "--json")).thread.title;
+        if (stored === kept) break;
+        await sleep(250);
+      }
+      await capture("after", flags.escape ? "Escape" : "Enter");
+      return { focusAtOnce, focusLater, focusAfterSteal, stored, after: (await readList(page)).rows.find((r) => r.id === id) ?? null };
+    },
+  },
+
+  "snooze-at": {
+    usage: "<title> <YYYY-MM-DD> <HH:MM> [--cancel]: snooze a thread to a picked time, from its thread menu's Snooze ▸ Pick date & time…; the 'Snooze until' dialog's wake line, then (unless --cancel) the toasts and the server's lifecycle row",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [title, date, time] = args;
+      await ready(page, url);
+      const id = threadId(cli, "thread-glance.snooze-at/threads", title);
+      await openRowMenu(page, title);
+      await page.getByRole("menuitem", { name: "Snooze", exact: true }).hover();
+      await page.getByRole("menuitem", { name: "Snooze", exact: true }).press("ArrowRight");
+      await page.getByRole("menuitem", { name: "Pick date & time…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Snooze until" });
+      await dialog.waitFor();
+      const [y, m, d] = date.split("-").map(Number);
+      const month = new Date(y, m - 1, 1).toLocaleString("en-US", { month: "long" });
+      // The calendar shows one month, named in its status; step forward to the wanted one.
+      for (let i = 0; i < 13 && (await dialog.getByRole("status").textContent()).trim() !== `${month} ${y}`; i++) await dialog.getByRole("button", { name: "Go to the Next Month" }).click();
+      const day = new RegExp(`${month} ${d}(st|nd|rd|th), ${y}`);
+      await dialog.getByRole("gridcell").getByRole("button", { name: day }).click();
+      await dialog.getByRole("textbox", { name: "Time" }).fill(time);
+      await sleep(200);
+      const shown = (await dialog.innerText()).split("\n").map((t) => t.trim()).filter((t) => /^Wakes /.test(t) || /^(Pick|Choose|Use)/.test(t));
+      await capture("dialog", `pick ${date} ${time}`);
+      if (flags.cancel) {
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+        await dialog.waitFor({ state: "hidden" });
+        return { dialog: shown, lifecycle: lifecycleOf(cli, "thread-glance.snooze-at/sync", id) };
+      }
+      await dialog.getByRole("button", { name: "Snooze", exact: true }).click();
+      const lifecycle = await lifecycleUntil(cli, "thread-glance.snooze-at/sync", id, (r) => r?.snoozeUntil != null);
+      await sleep(600);
+      const shownToasts = await toasts(page);
+      await capture("after", "Snooze");
+      return { dialog: shown, toasts: shownToasts, lifecycle, wakesAt: lifecycle?.snoozeUntil == null ? null : new Date(lifecycle.snoozeUntil).toString() };
+    },
+  },
+
+  parent: {
+    usage: "<title> <parent title|None>: set a thread's parent from its thread menu's Parent… dialog (a child's menu by right-clicking it in its parent's child list), searching for the parent by title; the dialog's options, the parent bb holds and the list after",
+    async run({ page, url, capture, cli, args }) {
+      const [title, parent] = args;
+      await ready(page, url);
+      const id = threadId(cli, "thread-glance.parent/threads", title);
+      const want = parent === "None" ? null : threadId(cli, "thread-glance.parent/threads", parent);
+      if ((await row(page, title).count()) > 0) await openRowMenu(page, title);
+      else {
+        // A child has no row of its own: open its parent's child list and right-click it there.
+        const { thread } = JSON.parse(cli("thread-glance.parent/show", "thread", "show", id, "--json"));
+        const above = threads(cli, "thread-glance.parent/threads").find((t) => t.id === thread.parentThreadId);
+        if (above === undefined) throw new Error(`no row "${title}" is drawn and it has no parent; pass --shelf <name>`);
+        const chip = cardOf(page, above.title).locator("[data-children-chip]");
+        if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+        await page.locator(`li[data-child-id="${id}"] a`).first().click({ button: "right" });
+        await page.getByRole("menu").waitFor();
+      }
+      await page.getByRole("menuitem", { name: "Parent…" }).click();
+      const dialog = page.getByRole("dialog", { name: "Parent" });
+      await dialog.waitFor();
+      const options = await dialog.getByRole("option").allTextContents();
+      await capture("dialog", "the Parent dialog");
+      if (parent !== "None") await dialog.getByRole("combobox", { name: "Search threads" }).fill(parent);
+      await dialog.getByRole("option", { name: parent, exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+      let stored;
+      for (let i = 0; i < 20; i++) {
+        stored = JSON.parse(cli("thread-glance.parent/show", "thread", "show", id, "--json")).thread.parentThreadId ?? null;
+        if (stored === want) break;
+        await sleep(250);
+      }
+      const after = await readList(page);
+      await capture("after", `parent ${parent}`);
+      return { options, stored, wanted: want, after };
+    },
+  },
+
+  project: {
+    usage: "<title> <Project settings|Rename project|Add local path|Remove project> [<text>] [--confirm]: open an item of the thread menu's Project ▸ submenu; the dialog it opens (or the page, for Project settings), with <text> typed into the dialog's field and whether its action button is enabled then; --confirm presses that button; bb's projects after",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [title, item, text] = args;
+      await ready(page, url);
+      await openRowMenu(page, title);
+      await page.getByRole("menuitem", { name: "Project", exact: true }).hover();
+      await page.getByRole("menuitem", { name: "Project", exact: true }).press("ArrowRight");
+      await page.getByRole("menu", { name: "Project" }).getByRole("menuitem", { name: item, exact: true }).click();
+      await sleep(600);
+      const dialog = page.getByRole("dialog", { name: item });
+      if ((await dialog.count()) === 0) {
+        await capture("page", item);
+        return { url: page.url(), dialog: null };
+      }
+      const action = dialog.getByRole("button").filter({ hasNotText: /^(Cancel|Close)$/ }).last();
+      const result = { dialog: await dialog.ariaSnapshot() };
+      if (text !== undefined) {
+        await dialog.getByRole("textbox").last().fill(text);
+        result.actionEnabled = await action.isEnabled();
+      }
+      await capture("dialog", `${item}${text === undefined ? "" : `, type ${text}`}`);
+      if (flags.confirm) {
+        result.action = (await action.textContent()).trim();
+        await action.click();
+        await dialog.waitFor({ state: "hidden", timeout: 15_000 });
+      } else await page.keyboard.press("Escape");
+      await sleep(600);
+      await capture("after", flags.confirm ? `press ${result.action}` : "Escape");
+      result.projects = JSON.parse(cli("thread-glance.project/projects", "project", "list", "--json"));
+      result.after = await readList(page);
+      return result;
+    },
+  },
+
+  woke: {
+    usage: "<title> [--open] [--wait <s>]: wait up to <s> (default 90) for a woke row (back from a snooze), then press its 'Dismiss Woke marker' (--open: open the thread instead); the row before and after, and the server's lifecycle row",
+    valued: ["wait"],
+    async run({ page, url, capture, cli, args, flags }) {
+      const title = args[0];
+      await ready(page, url);
+      const id = threadId(cli, "thread-glance.woke/threads", title);
+      const marker = () => cardOf(page, title).locator("[data-woke]");
+      await marker().waitFor({ timeout: Number(flags.wait ?? 90) * 1000 });
+      const before = (await readList(page)).rows.find((r) => r.id === id);
+      await capture("before", `${title} woke`);
+      if (flags.open) await (await reveal(page, title)).click();
+      else {
+        await pointAt(page, title);
+        await cardOf(page, title).getByRole("button", { name: "Dismiss Woke marker" }).click();
+      }
+      await marker().waitFor({ state: "detached" });
+      await sleep(400);
+      const after = (await readList(page)).rows.find((r) => r.id === id);
+      await capture("after", flags.open ? "open the thread" : "Dismiss Woke marker");
+      return { before, after, lifecycle: lifecycleOf(cli, "thread-glance.woke/sync", id) };
+    },
+  },
+
+  hints: {
+    usage: "[--with <key>]: hold Control alone for 900 ms (--with: press <key> too, such as Shift); the jump hints the rows' status slots show, then after release",
+    valued: ["with"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      await page.mouse.click(1000, 450);
+      await page.keyboard.down("Control");
+      if (flags.with) await page.keyboard.down(flags.with);
+      await sleep(900);
+      const held = await page.locator("[data-jump-hint]").evaluateAll((els) => els.map((e) => ({ hint: e.textContent.trim(), row: e.closest("[data-thread-id]")?.querySelector("a[data-sidebar-thread-id]")?.getAttribute("aria-label") ?? null })));
+      await capture("held", `hold Control${flags.with ? `+${flags.with}` : ""}`);
+      if (flags.with) await page.keyboard.up(flags.with);
+      await page.keyboard.up("Control");
+      await sleep(200);
+      const released = await page.locator("[data-jump-hint]").count();
+      await capture("released", "release");
+      return { held, released };
+    },
+  },
+
+  header: {
+    usage: "<title> [--children] [--back]: open a thread and read its header's Thread Glance buttons ('Back to parent: <title>', and the children button); --children opens the 'Child threads' popover and reads it, --back presses Back to parent; the thread open after",
+    async run({ page, url, capture, cli, args, flags }) {
+      const title = args[0];
+      // A child's row is no top-level link, so the thread opens by its address.
+      const { thread } = JSON.parse(cli("thread-glance.header/show", "thread", "show", threadId(cli, "thread-glance.header/threads", title), "--json"));
+      await page.goto(`${url}projects/${thread.projectId}/threads/${thread.id}`);
+      await scopeButton(page).waitFor();
+      await page.waitForLoadState("networkidle");
+      await sleep(800);
+      const main = page.locator("main");
+      const back = main.getByRole("button", { name: /^Back to parent: / });
+      const kids = main.locator("button[aria-haspopup], button[aria-expanded]").filter({ hasText: /child|Needs you/ });
+      const result = { back: (await back.count()) ? await back.getAttribute("aria-label") : null, children: (await kids.count()) ? ((await kids.first().getAttribute("aria-label")) ?? (await kids.first().textContent()).trim()) : null };
+      await capture("header", `open ${title}`);
+      if (flags.children) {
+        await kids.first().click();
+        const region = page.getByRole("region", { name: "Child threads" });
+        await region.waitFor();
+        result.popover = { lines: (await region.innerText()).split("\n").map((t) => t.trim()).filter(Boolean), buttons: await region.getByRole("button").allTextContents() };
+        await capture("children", "open the Child threads popover");
+        await page.keyboard.press("Escape");
+      }
+      if (flags.back) {
+        await back.click();
+        await sleep(800);
+        await capture("back", "Back to parent");
+      }
+      result.current = JSON.parse(cli("thread-glance.header/show", "thread", "show", page.url().match(/threads\/([^/?#]+)/)[1], "--json")).thread.title;
+      result.url = page.url();
+      return result;
+    },
+  },
+
+  more: {
+    usage: "[--times <n>]: press the Settled shelf's 'Load N more' n times (default 1), opening Settled first; the label and the Settled rows drawn before and after",
+    valued: ["times"],
+    async run({ page, url, capture, flags }) {
+      shelfToOpen = "settled";
+      await ready(page, url);
+      // The list windows its rows, so Settled's threads are its mounted rows plus the ids its spacers stand for.
+      const read = async () => {
+        const list = await readList(page);
+        const settled = await page.evaluate(() => {
+          let n = 0;
+          let on = false;
+          for (const el of [...document.querySelectorAll("[data-item-list]")].flatMap((l) => [...l.children])) {
+            if (el.dataset.shelf !== undefined) on = el.dataset.shelf === "settled";
+            else if (on && el.dataset.rowId !== undefined) n += 1;
+            else if (on && el.dataset.sidebarWindowedNav !== undefined) n += el.dataset.sidebarWindowedNav.split(" ").length;
+          }
+          return n;
+        });
+        return { loadMore: list.loadMore, settled };
+      };
+      const before = await read();
+      await capture("before", "Settled open");
+      const steps = [];
+      for (let i = 0; i < Number(flags.times ?? 1); i++) {
+        const button = page.getByRole("button", { name: /^Load \d+ more$/ });
+        if ((await button.count()) === 0) break;
+        await button.scrollIntoViewIfNeeded();
+        await button.click();
+        await sleep(400);
+        steps.push(await read());
+        await capture(`more-${i + 1}`, "press Load more");
+      }
+      return { before, steps };
+    },
+  },
+
+  appearance: {
+    usage: "<project> [--colour <#rrggbb>] [--reset] [--icon <file>] [--automatic]: on the settings page's Customize a project, choose <project>, then type a colour, press Reset, upload an icon or press Use automatic; the preview, the source line and any alert, the server's appearance record, and the project's rows in the list after",
+    valued: ["colour", "icon"],
+    async run({ page, url, capture, cli, args, flags }) {
+      const project = args[0];
+      await settingsReady(page, url);
+      const region = page.getByRole("region", { name: "Project appearance" });
+      await region.getByRole("combobox", { name: "Customize a project" }).selectOption({ label: project });
+      const read = async () => ({
+        preview: (await region.getByRole("group", { name: "Preview" }).innerText()).trim(),
+        colour: await region.getByRole("textbox", { name: "Project colour", exact: true }).inputValue(),
+        lines: (await region.innerText()).split("\n").map((t) => t.trim()).filter((t) => /^(Found|Uploaded|Using|No icon|Turn on|The image)/.test(t)),
+        alerts: await region.getByRole("alert").allTextContents(),
+      });
+      const before = await read();
+      await capture("before", `customize ${project}`);
+      if (flags.colour) await region.getByRole("textbox", { name: "Project colour", exact: true }).fill(flags.colour);
+      if (flags.reset) await region.getByRole("button", { name: "Reset" }).click();
+      if (flags.icon) await region.locator('input[type="file"]').setInputFiles(flags.icon);
+      if (flags.automatic) await region.getByRole("button", { name: "Use automatic" }).click();
+      // A colour saves 500 ms after the last change; an icon on upload.
+      await sleep(1500);
+      const after = await read();
+      await capture("after", "the change");
+      const appearance = synced(cli, "thread-glance.appearance/sync").appearance ?? null;
+      await ready(page, url);
+      const rows = (await readList(page)).rows.filter((r) => r.text.includes(project)).map((r) => ({ title: r.title, stripe: r.stripe, projectColour: r.projectColour, projectIcon: r.projectIcon }));
+      await capture("list", "the list");
+      return { before, after, appearance, rows };
+    },
+  },
+
+  "remove-project": {
+    usage: "<project> [<typed name>] [--confirm]: on the settings page's Project management, choose <project> and type <typed name> (default the project's name); whether 'Remove project' is enabled, and with --confirm, press it; bb's projects after",
+    async run({ page, url, capture, cli, args, flags }) {
+      const [project, typed = args[0]] = args;
+      await settingsReady(page, url);
+      const region = page.getByRole("region", { name: "Project management" });
+      await region.getByRole("combobox", { name: "Remove a project" }).selectOption({ label: project });
+      await region.getByRole("textbox", { name: "Project name" }).fill(typed);
+      const button = region.getByRole("button", { name: "Remove project" });
+      const enabled = await button.isEnabled();
+      await capture("typed", `type ${typed}`);
+      if (flags.confirm && enabled) {
+        await button.click();
+        await sleep(1500);
+        await capture("after", "Remove project");
+      }
+      return { enabled, lines: (await region.innerText()).split("\n").map((t) => t.trim()).filter(Boolean), projects: JSON.parse(cli("thread-glance.remove-project/projects", "project", "list", "--json")) };
+    },
+  },
+
 };
 
 // Every verb takes --shelf <name>: the shelf its rows sit on, opened on each load (shelves start collapsed except Pinned, Active and Working).
