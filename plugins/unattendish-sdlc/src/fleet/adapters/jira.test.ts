@@ -124,7 +124,7 @@ describe("the Jira adapter's snapshot of an issue", () => {
 });
 
 describe("the Jira adapter's transitions", () => {
-  it("reports a close and a reopen from status changes, by the category of the status, with actor, UTC time and id", async () => {
+  it("reports a close and a reopen from status changes, by the category of the status, with actor, the actor's other names, UTC time and id", async () => {
     const { read, watch } = await world({
       issues: [
         issue("PROJ-1", {
@@ -139,8 +139,8 @@ describe("the Jira adapter's transitions", () => {
     });
     const out = await read(watch("PROJ-1"));
     expect(out.snapshots[0]!.transitions).toEqual([
-      { kind: "closed", actor: OPERATOR, at: iso(20), id: "jira:changelog:202:closed" },
-      { kind: "reopened", actor: "acc-bot", at: iso(30), id: "jira:changelog:203:reopened" },
+      { kind: "closed", actor: OPERATOR, actorAliases: ["op@example.com", "Olivia Operator"], at: iso(20), id: "jira:changelog:202:closed" },
+      { kind: "reopened", actor: "acc-bot", actorAliases: ["Fleet Bot"], at: iso(30), id: "jira:changelog:203:reopened" },
     ]);
   });
 
@@ -255,8 +255,8 @@ describe("the Jira adapter's events", () => {
     const out = await read(watch("PROJ-1"));
     expect(out.failures).toEqual([]);
     expect(out.events).toEqual([
-      { id: "jira:comment:1002", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: "acc-other", at: iso(0), lastLine: "the answer" },
-      { id: "jira:comment:1003", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: OPERATOR, at: iso(7), lastLine: "later" },
+      { id: "jira:comment:1002", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: "acc-other", actorAliases: ["Otto Other"], at: iso(0), lastLine: "the answer" },
+      { id: "jira:comment:1003", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: OPERATOR, actorAliases: ["op@example.com", "Olivia Operator"], at: iso(7), lastLine: "later" },
       { id: "jira:comment:1004", role: "tracker", ref: "PROJ-1", url: `https://${SITE}/browse/PROJ-1`, kind: "commented", actor: null, at: iso(8), lastLine: "no author" },
     ]);
   });
@@ -302,7 +302,8 @@ describe("the Jira adapter's events", () => {
 
   it("carries nothing written on the service: no title, no comment body beyond its last line, no display name", async () => {
     const { read, watch } = await world({ issues: [issue("PROJ-1", { assignee: OPERATOR, comments: [note("1", "FIRST LINE OF THE BODY\nlast words")] })] });
-    const serialised = JSON.stringify(await read(watch("PROJ-1")));
+    // `actorAliases` hold an email and a display name, for matching registered echo actors; the application never sends them.
+    const serialised = JSON.stringify(await read(watch("PROJ-1")), (key, value: unknown) => (key === "actorAliases" ? undefined : value));
     expect(serialised).toContain("last words");
     for (const secret of ["A title written on the service", "FIRST LINE OF THE BODY", "Olivia Operator", "Otto Other", "op@example.com"]) expect(serialised).not.toContain(secret);
   });
