@@ -28,6 +28,8 @@ export interface FakeIssue {
   dropFields?: string[];
   /** Answer 404 for it, as for a deleted issue. */
   gone?: boolean;
+  /** The repository (by `owner/repo`) and number it was transferred to: `GET` of it answers 301, as GitHub's "Get an issue" does. */
+  transferredTo?: { repo: string; number: number };
 }
 
 export interface FakeComment {
@@ -82,6 +84,8 @@ export interface FakeCommitStatus {
 }
 
 export interface FakeRepo {
+  /** The repository's numeric id, which a redirect names it by (`/repositories/{id}/...`) where given. */
+  id?: number;
   issues: FakeIssue[];
   comments: FakeComment[];
   reviewComments: FakeReviewComment[];
@@ -103,6 +107,10 @@ export interface FakeGithubState {
   /** Repositories by `owner/repo`. */
   repos: Record<string, FakeRepo>;
   faults: FakeFault[];
+  /** Repository paths that have been renamed or transferred, by old `owner/repo` to the new one: any request under the old path answers 301. */
+  renames: Record<string, string>;
+  /** A full path (API root included) every `Link: rel="next"` points at instead of the request's own, to script a link that leaves the repository. */
+  nextLinkPath?: string;
 }
 
 const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] });
@@ -110,7 +118,7 @@ const emptyRepo = (): FakeRepo => ({ issues: [], comments: [], reviewComments: [
 const normalise = (state: Partial<FakeGithubState> | undefined): FakeGithubState => {
   const repos: Record<string, FakeRepo> = {};
   for (const [name, repo] of Object.entries(state?.repos ?? {})) repos[name] = { ...emptyRepo(), ...repo };
-  return { repos, faults: state?.faults ?? [] };
+  return { repos, faults: state?.faults ?? [], renames: state?.renames ?? {}, ...(state?.nextLinkPath === undefined ? {} : { nextLinkPath: state.nextLinkPath }) };
 };
 
 const send = (response: ServerResponse, body: unknown, status = 200, headers: Record<string, string> = {}): void => {
@@ -179,7 +187,7 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
     const { page, next } = pageOf(items, url.searchParams);
     const headers: Record<string, string> = {};
     if (next !== null) {
-      const link = new URL(`http://${request.headers.host ?? "127.0.0.1"}${url.pathname}`);
+      const link = new URL(`http://${request.headers.host ?? "127.0.0.1"}${state.nextLinkPath ?? url.pathname}`);
       for (const [name, value] of url.searchParams) link.searchParams.set(name, value);
       link.searchParams.set("page", String(next));
       headers.link = `<${link.toString()}>; rel="next"`;
@@ -196,13 +204,25 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
   const route = (request: IncomingMessage, response: ServerResponse): boolean => {
     const host = request.headers.host ?? "127.0.0.1";
     const url = new URL(request.url ?? "/", `http://${host}`);
-    const split = url.pathname.indexOf("/repos/");
+    const byId = url.pathname.indexOf("/repositories/");
+    const split = byId >= 0 ? byId : url.pathname.indexOf("/repos/");
     if (split < 0) return false;
     const origin = `http://${host}${url.pathname.slice(0, split)}`;
-    const rest = url.pathname.slice(split + "/repos/".length).split("/");
-    const path = `${rest[0]}/${rest[1]}`;
-    const tail = rest.slice(2);
-    const repo = state.repos[path];
+    const rest = url.pathname.slice(split + (byId >= 0 ? "/repositories/" : "/repos/").length).split("/");
+    // `/repositories/{id}/...` names the repository by its id; it is served as the same repository's `/repos/` path.
+    const path = byId >= 0 ? (Object.entries(state.repos).find(([, candidate]) => String(candidate.id) === rest[0])?.[0] ?? `${rest[0]}`) : `${rest[0]}/${rest[1]}`;
+    const tail = rest.slice(byId >= 0 ? 1 : 2);
+    // GitHub names a repository without regard to case.
+    const repo = Object.entries(state.repos).find(([name]) => name.toLowerCase() === path.toLowerCase())?.[1];
+    const location = (target: string, tailPath: string): string => {
+      const targetId = state.repos[target]?.id;
+      return `${origin}${targetId === undefined ? `/repos/${target}` : `/repositories/${targetId}`}${tailPath}${url.search}`;
+    };
+    const renamed = byId >= 0 ? undefined : Object.entries(state.renames).find(([name]) => name.toLowerCase() === path.toLowerCase())?.[1];
+    if (renamed !== undefined) {
+      send(response, { message: "Moved Permanently" }, 301, { location: location(renamed, `/${tail.join("/")}`) });
+      return true;
+    }
 
     for (const fault of state.faults) {
       if (url.pathname.includes(fault.pathIncludes)) {
@@ -264,6 +284,11 @@ export function createFakeGithub(initial?: Partial<FakeGithubState>): FakeServic
       return true;
     }
     if (tail[0] === "issues" && tail.length === 2) {
+      const transferred = repo.issues.find((candidate) => String(candidate.number) === tail[1])?.transferredTo;
+      if (transferred !== undefined) {
+        send(response, { message: "Moved Permanently" }, 301, { location: location(transferred.repo, `/issues/${transferred.number}`) });
+        return true;
+      }
       const found = issue(tail[1]);
       if (found === undefined) send(response, { message: "Not Found" }, 404);
       else respondConditional(issueJson(path, found, origin));

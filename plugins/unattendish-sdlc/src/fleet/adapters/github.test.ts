@@ -666,6 +666,54 @@ describe("GitHub adapter: failures", () => {
   });
 });
 
+describe("GitHub adapter: an item or repository that moved", () => {
+  const requested = (server: Mounted) => server.requests.map((request) => request.url);
+
+  it("fails a transferred issue as outside the fleet, reads the others, and never asks for the other repository", async () => {
+    const state = repo({ issues: [issue(1, { transferredTo: { repo: "org/elsewhere", number: 9 } }), issue(2)] });
+    state.repos!["org/elsewhere"] = { id: 42, issues: [issue(9)], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] };
+    const { read, server } = await harness(state);
+    const outcome = await read({ items: [1, 2] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#2"]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(requested(server).filter((url) => url.includes("/repositories/") || url.includes("elsewhere"))).toEqual([]);
+  });
+
+  it("fails every read of a renamed repository as outside the fleet, listings included", async () => {
+    const state = repo({ issues: [issue(1, { labels: ["spec"], assignees: ["olivia"] })] });
+    state.repos!["org/renamed"] = { id: 7, issues: [issue(1)], comments: [], reviewComments: [], reviews: [], events: [], checkRuns: [], statuses: [] };
+    state.renames = { "org/repo": "org/renamed" };
+    const { read, server } = await harness(state);
+    const outcome = await read({ items: [1], scanPartition: true });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.updated).toEqual([]);
+    expect(outcome.failures.length).toBeGreaterThan(1);
+    expect(outcome.failures.every((failure) => failure.reason === "moved outside the fleet" && failure.kind === "outside-fleet")).toBe(true);
+    expect(outcome.failures.map((failure) => failure.ref)).toContain("#1");
+    expect(outcome.failures.map((failure) => failure.ref)).toContain(null);
+    expect(requested(server).filter((url) => url.includes("/repositories/"))).toEqual([]);
+  });
+
+  it("fails a listing whose next link leaves the repository, and reads no further page", async () => {
+    const comments = Array.from({ length: 150 }, (_, index) => comment(index + 1, 1));
+    const state = repo({ issues: [issue(1)], comments });
+    state.nextLinkPath = "/api/v3/repos/org/other/issues/1/comments";
+    const { read, server } = await harness(state);
+    const outcome = await read({ watched: [1] });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "#1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(requested(server).filter((url) => url.includes("/org/other/"))).toEqual([]);
+  });
+
+  it("still reads an issue whose path differs from the source's only in case", async () => {
+    const { read } = await harness(repo({ issues: [issue(1)] }));
+    const outcome = await read({ items: [1], source: { role: "forge", service: "github", host: "127.0.0.1", path: "ORG/Repo" } });
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots).toHaveLength(1);
+  });
+});
+
 describe("GitHub adapter: only reads", () => {
   it("sends nothing but GETs, to the credential's host, with the token", async () => {
     const { read, server } = await harness(
