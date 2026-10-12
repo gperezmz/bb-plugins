@@ -66,6 +66,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cron-parser": "^5.10.1",
+    "esbuild": "0.28.2",
     "hono": "^4.13.9",
     "jsdom": "^30.1.1",
     "react": "^19.3.0",
