@@ -16,7 +16,6 @@ import {
   needsSetup,
   NEW_LOGIN,
   placeFrom,
-  remedyText,
   resultActions,
   secretFor,
   secretLabel,
@@ -210,10 +209,6 @@ describe("step 3", () => {
     expect(actionLabel("another-credential", { outcome: "unreachable", text: "t" })).toBe("Try again");
   });
 
-  it("gives the remedy for an unreadable repository", () => {
-    expect(remedyText({ fleet: "a", text: "t", fineGrained: true })).toContain("Add the repository to the token on GitHub, or create a new token");
-    expect(remedyText({ fleet: "a", text: "t", fineGrained: false })).toContain("Choose another account");
-  });
 
   it("says how a half stands after a read", () => {
     const half = { role: "forge", what: "acme/web", account: { id: "a", label: "GitHub · yuser" }, credential: null, canWrite: false, needs: null } as const;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costText, countParts, countsText, halfAction, halfLine, managerText, warningLine } from "./card-model";
+import { cardReasons, costText, countParts, countsText, halfAction, halfLine, managerText, warningLine } from "./card-model";
 
 const NOW = "2026-10-12T12:00:00Z";
 
@@ -75,5 +75,22 @@ describe("a fleet's halves", () => {
   it("offers Connect… while the half needs something and Change account… once it is read", () => {
     expect(halfAction(half({ needs: "needs a GitHub account that can read other-org" }))).toBe("Connect…");
     expect(halfAction(half())).toBe("Change account…");
+  });
+});
+
+describe("the reasons below the halves", () => {
+  const needing = { role: "forge" as const, what: "acme/api", account: null, credential: null, canWrite: false, needs: "acme/api needs a GitHub account that can read acme" };
+  const reasons = [
+    { code: "no-credential" as const, text: "acme/api needs a GitHub account that can read acme", fix: { kind: "connect" as const, role: "forge" as const } },
+    { code: "credential-refused" as const, text: "The service did not answer reads with the credential for GitHub · yuser", fix: { kind: "none" as const } },
+    { code: "manifest-missing" as const, text: "The manifest does not exist yet", fix: { kind: "fleet-tab" as const } },
+  ];
+
+  it("leaves to a half's line the reason Connect… fixes for it, and keeps every other", () => {
+    expect(cardReasons({ reasons, halves: [needing] }).map((reason) => reason.code)).toEqual(["credential-refused", "manifest-missing"]);
+  });
+
+  it("keeps a Connect… reason whose half says it needs nothing", () => {
+    expect(cardReasons({ reasons, halves: [{ ...needing, needs: null }] })).toHaveLength(3);
   });
 });

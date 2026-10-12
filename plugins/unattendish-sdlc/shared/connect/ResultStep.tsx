@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { expiryText } from "../format";
 import { LINK_CLASS } from "../ItemLink";
 import { CanWrite } from "./Field";
-import { actionLabel, halfText, remedyText, resultActions, type Checked, type ResultAction } from "./model";
+import { actionLabel, halfText, resultActions, type Checked, type ResultAction } from "./model";
 
 /** Step 3: what Verify and save found, and what the operator may do next. */
 export function ResultStep({
@@ -99,9 +99,8 @@ function Reread({ checked }: { checked: { half: Checked["half"] | null; notReada
 function NotReadable({ entry }: { entry: NotReadableView }) {
   return (
     <li className="flex flex-col gap-0.5 rounded-md border border-destructive/50 p-2 text-sm">
-      <span className="font-medium">{entry.fleet} is not readable</span>
+      <span className="font-medium">{entry.fleet}</span>
       <span>{entry.text}</span>
-      <span className="text-xs text-muted-foreground">{remedyText(entry)}</span>
     </li>
   );
 }

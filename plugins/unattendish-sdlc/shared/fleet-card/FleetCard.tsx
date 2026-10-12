@@ -1,6 +1,6 @@
 import type { CredentialWarningView, FleetCardView, HalfView, ReasonView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
-import { costText, countsText, halfAction, halfLine, managerText, pollText, warningLine } from "../card-model";
+import { cardReasons, costText, countsText, halfAction, halfLine, managerText, pollText, warningLine } from "../card-model";
 import { CanWrite } from "../connect/Field";
 import { openConnect } from "../connect/requests";
 import { LINK_CLASS } from "../ItemLink";
@@ -35,7 +35,7 @@ export function FleetCard({ card, now, className, inFleetTab = false }: { card: 
           ))}
         </ul>
       ) : null}
-      {card.reasons.map((reason) => (
+      {cardReasons(card).map((reason) => (
         <Reason key={`${reason.code}:${reason.text}`} reason={reason} repo={card.repo} managerThreadId={card.managerThreadId} onOpenFleetTab={inFleetTab ? null : openFleetTab} />
       ))}
       {card.warnings.map((warning) => (

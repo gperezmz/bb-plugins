@@ -22,6 +22,8 @@ export default definePluginApp((app) => {
     path: "fleets",
     component: FleetsPage,
     headerContent: FleetsHeaderCount,
+    // The same count beside the page's entry in the sidebar, where a bb mounts it; no bb does yet.
+    experimental_sidebarAccessory: FleetsHeaderCount,
   });
 
   app.slots.threadPanelAction({

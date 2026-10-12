@@ -62,3 +62,12 @@ export function halfLine(half: HalfView): string {
 export function halfAction(half: HalfView): "Connect…" | "Change account…" {
   return half.needs !== null ? "Connect…" : "Change account…";
 }
+
+/**
+ * The reasons a card lists below its halves: a reason Connect… fixes for a half that already says what it needs is
+ * left to that half's line, so the card says it, with its Connect…, once.
+ */
+export function cardReasons(card: Pick<FleetCardView, "reasons" | "halves">): FleetCardView["reasons"] {
+  const saying = new Set(card.halves.filter((half) => half.needs !== null).map((half) => half.role));
+  return card.reasons.filter((reason) => reason.fix.kind !== "connect" || !saying.has(reason.fix.role));
+}

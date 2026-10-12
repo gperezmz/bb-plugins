@@ -246,13 +246,6 @@ export function actionLabel(action: ResultAction, result: ConnectResult): string
   }
 }
 
-/** What to do about a repository a saved credential could not read. */
-export function remedyText(entry: NotReadableView): string {
-  return entry.fineGrained
-    ? "Add the repository to the token on GitHub, or create a new token."
-    : "Choose another account, one whose login can see this repository.";
-}
-
 /** How a half stands after a read: what it needs, or the account it reads as. */
 export function halfText(half: HalfView): string {
   if (half.needs !== null) return `${half.what} still needs an account: ${half.needs}`;
