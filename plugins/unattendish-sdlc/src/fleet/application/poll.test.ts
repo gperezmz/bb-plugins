@@ -701,7 +701,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     w.clock.advance(120_000);
   };
 
-  it("is not watched after three polls in a row forbidden, tells the manager once, and is watched again after a poll that reads", async () => {
+  it("is not watched after three polls in a row forbidden, since the first of them, tells the manager once, and is watched again after a poll that reads", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     await pollWith(w, forbidden);
@@ -713,19 +713,20 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     expect(w.channel.sent).toHaveLength(1);
     expect(sentText(w)).toBe(
       "Nothing moved on the tracker or the forge since 2026-10-12 10:00 UTC.\n" +
-        "Not watched since 2026-10-12T10:04:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
+        "Not watched since 2026-10-12T10:00:00.000Z: the credential for github.com/org was forbidden to read what the fleet needs (403).",
     );
+    expect(w.store.getFleet(REPO_KEY)!.refused).toMatchObject({ since: "2026-10-12T10:00:00.000Z" });
     expect(await statusOf(w)).toMatchObject({
       watched: false,
-      notWatchedSince: "2026-10-12T10:04:00.000Z",
+      notWatchedSince: "2026-10-12T10:00:00.000Z",
       notWatched: [{ code: "credential-refused", text: "The credential for github.com/org was forbidden to read what the fleet needs (403)" }],
     });
     await pollWith(w, outcome({ snapshots: [snapshot(7)] }));
     expect(await statusOf(w)).toMatchObject({ watched: true, notWatched: [], notWatchedSince: null });
-    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0 });
+    expect(w.store.getFleet(REPO_KEY)).toMatchObject({ refused: null, unreadablePolls: 0, unreadableSince: null });
   });
 
-  it("says the service did not answer when no read got an answer, and counts the polls in a row only", async () => {
+  it("says the service did not answer when no read got an answer, and counts the polls in a row only, since the first of the last run", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     await pollWith(w, unreachable);
@@ -735,7 +736,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     await pollWith(w, new HttpError("network", "GET /x got no answer"));
     expect(w.channel.sent).toEqual([]);
     await pollWith(w, unreachable);
-    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:10:00.000Z: the service did not answer reads with the credential for github.com/org.");
+    expect(sentText(w)).toContain("Not watched since 2026-10-12T10:06:00.000Z: the service did not answer reads with the credential for github.com/org.");
     expect((await statusOf(w)).notWatched).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org" }]);
   });
 

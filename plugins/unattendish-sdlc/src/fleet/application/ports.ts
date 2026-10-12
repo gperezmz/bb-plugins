@@ -228,6 +228,8 @@ export interface StoredFleet {
   readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean; readonly why: RefusedWhy } | null;
   /** How many polls in a row found a source unreadable; `UNREADABLE_POLLS` of them make the fleet not watched. */
   readonly unreadablePolls: number;
+  /** When the first of those polls ran (ISO 8601 UTC), which the fleet is not watched since; null while no poll in a row found a source unreadable. */
+  readonly unreadableSince: string | null;
   /** The catch-up a wake bb refused carried, owed to the next wake bb accepts; null when none is owed. */
   readonly pendingCatchUpMs: number | null;
   readonly unreadableRows: readonly UnreadableRow[];
@@ -314,7 +316,7 @@ export interface Store {
   /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
   savePollState(
     repo: string,
-    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls" | "pendingCatchUpMs"> & { readonly refused?: StoredFleet["refused"] | undefined },
+    state: Pick<StoredFleet, "lastPolledAt" | "notWatched" | "unreadableRows" | "outsideLinks" | "expiries" | "heldSince" | "unreadablePolls" | "unreadableSince" | "pendingCatchUpMs"> & { readonly refused?: StoredFleet["refused"] | undefined },
   ): void;
   markRefusedAnnounced(repo: string): void;
 

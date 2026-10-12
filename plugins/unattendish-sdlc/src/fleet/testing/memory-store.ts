@@ -85,6 +85,7 @@ export class InMemoryStore implements Store {
       lastPolledAt: null,
       refused: null,
       unreadablePolls: 0,
+      unreadableSince: null,
       pendingCatchUpMs: null,
       unreadableRows: [],
       outsideLinks: [],
@@ -126,6 +127,7 @@ export class InMemoryStore implements Store {
       expiries: structuredClone(state.expiries),
       heldSince: state.heldSince,
       unreadablePolls: state.unreadablePolls,
+      unreadableSince: state.unreadableSince,
       pendingCatchUpMs: state.pendingCatchUpMs,
       refused: refused === null ? null : { since: refused.since, prefix: refused.prefix, announced, why: refused.why },
     };

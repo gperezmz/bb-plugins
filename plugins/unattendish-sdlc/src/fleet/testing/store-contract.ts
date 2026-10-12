@@ -75,6 +75,7 @@ const pollState = (over: Partial<Parameters<Store["savePollState"]>[1]> = {}): P
   expiries: {},
   heldSince: null,
   unreadablePolls: 0,
+  unreadableSince: null,
   pendingCatchUpMs: null,
   ...over,
 });
@@ -116,6 +117,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           notWatched,
           refused: null,
           unreadablePolls: 0,
+          unreadableSince: null,
           pendingCatchUpMs: null,
           unreadableRows: [],
           outsideLinks: [],
@@ -350,6 +352,13 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         }
         store.savePollState(REPO, pollState());
         expect(store.getFleet(REPO)!.unreadablePolls).toBe(0);
+      });
+
+      it("records when the polls in a row that found a source unreadable began, and clears it", () => {
+        store.savePollState(REPO, pollState({ unreadablePolls: 2, unreadableSince: "2026-10-12T09:30:00.000Z" }));
+        expect(store.getFleet(REPO)).toMatchObject({ unreadablePolls: 2, unreadableSince: "2026-10-12T09:30:00.000Z" });
+        store.savePollState(REPO, pollState());
+        expect(store.getFleet(REPO)!.unreadableSince).toBeNull();
       });
 
       it("records the catch-up owed to the next wake, and clears it", () => {

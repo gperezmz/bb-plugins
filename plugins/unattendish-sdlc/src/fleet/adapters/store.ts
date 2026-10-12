@@ -113,6 +113,7 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE fleets ADD COLUMN unreadable_polls INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE wakes ADD COLUMN not_watched_why TEXT`,
   `ALTER TABLE fleets ADD COLUMN pending_catch_up_ms INTEGER`,
+  `ALTER TABLE fleets ADD COLUMN unreadable_since TEXT`,
 ];
 
 interface FleetRow {
@@ -126,6 +127,8 @@ interface FleetRow {
   /** Null on a row written before the column existed, when only a 401 counted as refused. */
   refused_why: RefusedWhy | null;
   unreadable_polls: number;
+  /** Null on a row written before the column existed, though `unreadable_polls` counts polls. */
+  unreadable_since: string | null;
   pending_catch_up_ms: number | null;
   unreadable_rows: string;
   outside_links: string;
@@ -191,6 +194,7 @@ const toFleet = (row: FleetRow): StoredFleet => ({
       ? null
       : { since: row.refused_since, prefix: row.refused_prefix, announced: row.refused_announced === 1, why: row.refused_why ?? "refused" },
   unreadablePolls: row.unreadable_polls,
+  unreadableSince: row.unreadable_since,
   pendingCatchUpMs: row.pending_catch_up_ms,
   unreadableRows: JSON.parse(row.unreadable_rows) as StoredFleet["unreadableRows"],
   outsideLinks: JSON.parse(row.outside_links) as StoredFleet["outsideLinks"],
@@ -307,7 +311,7 @@ export class SqliteStore implements Store {
       this.db
         .prepare(
           `UPDATE fleets SET last_polled_at = ?, not_watched = ?, unreadable_rows = ?, outside_links = ?, expiries = ?, held_since = ?,
-             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?, pending_catch_up_ms = ?
+             refused_since = ?, refused_prefix = ?, refused_announced = ?, refused_why = ?, unreadable_polls = ?, unreadable_since = ?, pending_catch_up_ms = ?
            WHERE repo_id = ?`,
         )
         .run(
@@ -322,6 +326,7 @@ export class SqliteStore implements Store {
           announced ? 1 : 0,
           refused?.why ?? null,
           state.unreadablePolls,
+          state.unreadableSince,
           state.pendingCatchUpMs,
           repo,
         );
