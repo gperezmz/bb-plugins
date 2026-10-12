@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest } from "./model";
-import { parseManifest } from "./manifest";
+import { MAX_WRITTEN_CHARS, parseManifest, parseMessageLink, writtenSections } from "./manifest";
 
 const FULL = `# Fleet: GitHub.com/org/repo
 
@@ -344,5 +344,77 @@ describe("parseManifest: row failures", () => {
 
   it("does not echo a long cell whole", () => {
     expect(failures(inbox(row({ waits: "x".repeat(300) })))[0]!.reason.length).toBeLessThan(120);
+  });
+});
+
+describe("parseMessageLink", () => {
+  it("reads the manager's own thread and another thread", () => {
+    expect(parseMessageLink("this thread, message 12, 2026-10-12T07:29:00+00:00")).toEqual({ threadId: null, message: 12, at: "2026-10-12T07:29:00+00:00" });
+    expect(parseMessageLink("thread thr_abc123, message 4, 2026-10-11T18:00:00-05:00")).toEqual({ threadId: "thr_abc123", message: 4, at: "2026-10-11T18:00:00-05:00" });
+  });
+
+  it("reads a URL, a bad time and other text as no message", () => {
+    expect(parseMessageLink("https://github.com/org/repo/issues/1")).toBeNull();
+    expect(parseMessageLink("this thread, message 1, yesterday")).toBeNull();
+    expect(parseMessageLink("thread abc, message 1, 2026-10-12T07:29:00Z")).toBeNull();
+  });
+});
+
+describe("writtenSections", () => {
+  const FILE = `# Fleet: github.com/org/repo
+
+Prose before any section.
+
+## Inbox
+
+| Ref | What | Waits for | Since | Link |
+| --- | --- | --- | --- | --- |
+
+## Backlog
+
+- #190 Rework the cache
+- #191 Docs
+
+## In flight
+
+Nothing here.
+
+## Standing orders ##
+
+\`\`\`
+## Not a section
+\`\`\`
+
+Merge anything green.
+
+# A top heading
+
+Not part of any section.
+
+## Set aside
+
+- #5
+`;
+
+  it("returns every section the plugin does not read by column, in the file's order, as written", () => {
+    expect(writtenSections(FILE)).toEqual([
+      { heading: "Backlog", markdown: "- #190 Rework the cache\n- #191 Docs" },
+      { heading: "Standing orders", markdown: "```\n## Not a section\n```\n\nMerge anything green." },
+      { heading: "Set aside", markdown: "- #5" },
+    ]);
+  });
+
+  it("matches a read section's heading without regard to case or spacing, and leaves its rows to the reader", () => {
+    expect(writtenSections("# Fleet: github.com/org/repo\n\n##  in  FLIGHT\n\nx\n\n## Landed\n\ny\n")).toEqual([]);
+  });
+
+  it("cuts a section longer than the limit and says so", () => {
+    const [section] = writtenSections(`# Fleet: github.com/org/repo\n\n## Backlog\n\n${"x".repeat(MAX_WRITTEN_CHARS + 10)}\n`);
+    expect(section!.markdown.length).toBeLessThan(MAX_WRITTEN_CHARS + 10);
+    expect(section!.markdown.endsWith("…")).toBe(true);
+  });
+
+  it("changes nothing in how the read sections are read", () => {
+    expect(parseManifest(FILE)).toMatchObject({ status: "ok", manifest: { inbox: [], inFlight: [] } });
   });
 });
