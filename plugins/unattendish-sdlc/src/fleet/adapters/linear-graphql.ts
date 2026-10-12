@@ -138,6 +138,18 @@ export const issuesListed = z.object({
 /** A read that failed in a way specific to one item or listing. `reason` never carries text from the service. */
 export class ReadProblem extends Error {}
 
+/** A read of an issue that Linear says does not exist (or that the key may not see). */
+export class NotFoundProblem extends ReadProblem {}
+
+/**
+ * Whether every error of an answer says an entity was not found. Linear's docs
+ * (linear.app/developers/graphql) give no code or wording for it, so this
+ * matches the message "Entity not found" alone; an answer worded otherwise is
+ * an ordinary failure of the read.
+ */
+const isNotFound = (errors: readonly unknown[]): boolean =>
+  errors.length > 0 && errors.every((error) => typeof (error as { message?: unknown } | null)?.message === "string" && /entity not found/i.test((error as { message: string }).message));
+
 const codesOf = (error: unknown): string[] => {
   if (typeof error !== "object" || error === null) return [];
   const extensions = (error as { extensions?: unknown }).extensions;
@@ -179,6 +191,7 @@ export async function send<T>(
   const { data, errors } = body as { data?: unknown; errors?: unknown };
   if (Array.isArray(errors)) rethrowFatal(errors);
   if (data === null || data === undefined || typeof data !== "object") {
+    if (Array.isArray(errors) && isNotFound(errors)) throw new NotFoundProblem("Linear answered that the entity was not found");
     throw new ReadProblem(Array.isArray(errors) && errors.length > 0 ? "Linear answered errors and no data" : "Linear answered no data");
   }
   const parsed = schema.safeParse(data);

@@ -101,7 +101,7 @@ async function guarded<T>(context: Context, ref: string | null, run: () => Promi
   } catch (error) {
     if (error instanceof HttpError) {
       if (error.kind === "auth" || error.kind === "rate-limit") throw error;
-      context.failures.push({ ref, reason: error.message });
+      context.failures.push(ref !== null && error.kind === "not-found" ? { ref, reason: error.message, kind: "not-found" } : { ref, reason: error.message });
       return undefined;
     }
     if (error instanceof ReadProblem) {

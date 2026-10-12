@@ -369,8 +369,7 @@ describe("a read that fails", () => {
     const { read } = await setup({ issues: [issue("ENG-2")] });
     const outcome = await read(["ENG-1", "ENG-2"]);
     expect(outcome.snapshots.map((s) => s.ref)).toEqual(["ENG-2"]);
-    expect(outcome.failures).toHaveLength(1);
-    expect(outcome.failures[0]!.ref).toBe("ENG-1");
+    expect(outcome.failures).toEqual([{ ref: "ENG-1", reason: expect.any(String), kind: "not-found" }]);
     expect(outcome.failures[0]!.reason).not.toMatch(/Entity not found|INVALID_INPUT/);
   });
 

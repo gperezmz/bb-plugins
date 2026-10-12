@@ -33,6 +33,9 @@
 //  - The error code of a refused key: matched by its stem (see
 //    `rethrowFatal`); an HTTP 401 is the layer's `auth` already, and a 403 that
 //    is no rate limit is its `forbidden`, which fails the one read.
+//  - The answer for an issue that does not exist: no page gives its code or
+//    wording, so an answer whose every error says "Entity not found" and has
+//    no data is taken as not-found, and any other as an ordinary failure.
 //  - Whether `Issue.comments` lists replies: every comment of the issue is
 //    read with its replies nested, and replies are de-duplicated by id.
 //  - Whether every label change reaches `addedLabels`/`removedLabels`: it is
@@ -55,6 +58,7 @@ import {
   issueRead,
   issuesListed,
   MAX_PAGES,
+  NotFoundProblem,
   ReadProblem,
   send,
   type Comment,
@@ -146,7 +150,7 @@ class LinearAdapter implements ServiceAdapter {
         events.push(...result.events);
       } catch (error) {
         if (isFatal(error) || request.signal.aborted) throw error;
-        failures.push({ ref, reason: failureReason(error) });
+        failures.push(error instanceof NotFoundProblem ? { ref, reason: failureReason(error), kind: "not-found" } : { ref, reason: failureReason(error) });
       }
     };
 

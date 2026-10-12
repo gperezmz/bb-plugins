@@ -433,7 +433,7 @@ describe("the Jira adapter's failures", () => {
     const { read, watch } = await world({ issues: [issue("PROJ-2")] });
     const out = await read(watch("PROJ-1", "PROJ-2"));
     expect(out.snapshots.map((s) => s.ref)).toEqual(["PROJ-2"]);
-    expect(out.failures).toEqual([{ ref: "PROJ-1", reason: "GET /rest/api/3/issue/PROJ-1 answered 404" }]);
+    expect(out.failures).toEqual([{ ref: "PROJ-1", reason: "GET /rest/api/3/issue/PROJ-1 answered 404", kind: "not-found" }]);
   });
 
   it("rethrows a refused credential and a rate limit unchanged, ending the whole read", async () => {

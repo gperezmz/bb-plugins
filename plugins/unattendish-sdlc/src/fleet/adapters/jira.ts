@@ -144,7 +144,7 @@ class Reading {
   private settle(error: unknown, ref: string | null): void {
     if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
     if (this.request.signal.aborted) throw error;
-    this.failures.push({ ref, reason: reasonOf(error) });
+    this.failures.push(ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) });
   }
 
   private async get(path: string, query: Record<string, string | number | undefined> = {}): Promise<unknown> {

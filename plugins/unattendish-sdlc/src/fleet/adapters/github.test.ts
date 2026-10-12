@@ -579,6 +579,18 @@ describe("GitHub adapter: failures", () => {
     expect((await read({ watched: [1] })).events).toHaveLength(250);
   });
 
+  it("marks an item GitHub does not know as not-found, and one it fails to read otherwise as a plain failure", async () => {
+    const state = repo({ issues: [issue(1), issue(2)] });
+    state.faults = [{ pathIncludes: "/issues/2", status: 500 }];
+    const { read } = await harness(state);
+    const outcome = await read({ items: [1, 2, 99] });
+    expect(outcome.snapshots.map((snapshot) => snapshot.ref)).toEqual(["#1"]);
+    expect(outcome.failures).toEqual([
+      { ref: "#2", reason: expect.any(String) },
+      { ref: "#99", reason: expect.any(String), kind: "not-found" },
+    ]);
+  });
+
   it("rethrows a refused credential unchanged", async () => {
     const state = repo({ issues: [issue(1)] });
     state.faults = [{ pathIncludes: "/issues/1", status: 401 }];

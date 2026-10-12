@@ -370,6 +370,7 @@ describe("the GitLab adapter: failures", () => {
     expect(outcome.snapshots.map((s) => s.ref)).toEqual(["#1"]);
     expect(outcome.failures.map((f) => f.ref)).toEqual(["#99", "ENG-1"]);
     expect(outcome.failures[0]!.reason).toContain("404");
+    expect(outcome.failures.map((f) => f.kind)).toEqual(["not-found", undefined]);
   });
 
   it("fails a label event without its id", async () => {

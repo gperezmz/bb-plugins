@@ -129,6 +129,10 @@ const reasonOf = (error: unknown): string => {
   return "the answer could not be read";
 };
 
+/** A failed read of the item `ref`; one the service answers not-found is marked so, as no later read will do better. */
+const failureOf = (ref: string | null, error: unknown): ReadFailure =>
+  ref !== null && error instanceof HttpError && error.kind === "not-found" ? { ref, reason: reasonOf(error), kind: "not-found" } : { ref, reason: reasonOf(error) };
+
 /** Rethrows what fails the whole read: a refused credential or a rate limit. */
 const rethrowFatal = (error: unknown): void => {
   if (error instanceof HttpError && (error.kind === "auth" || error.kind === "rate-limit")) throw error;
@@ -177,7 +181,7 @@ class GithubAdapter implements ServiceAdapter {
         events.push(...read.events);
       } catch (error) {
         rethrowFatal(error);
-        failures.push({ ref: item.ref, reason: reasonOf(error) });
+        failures.push(failureOf(item.ref, error));
       }
     }
 
@@ -356,7 +360,7 @@ class GithubAdapter implements ServiceAdapter {
           snapshots.push(read.snapshot);
         } catch (error) {
           rethrowFatal(error);
-          failures.push({ ref, reason: reasonOf(error) });
+          failures.push(failureOf(ref, error));
         }
       }
     }
