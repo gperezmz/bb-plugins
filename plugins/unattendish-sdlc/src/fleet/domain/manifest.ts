@@ -3,7 +3,7 @@
 // every other section is shown as written and read by nobody here. A row that
 // breaks the contract is skipped and named; the rows around it still count.
 import { formatRepo, parseRepo } from "./identity";
-import type { BlockedRow, InboxRow, InFlightRow, LandedRow, Manifest, ManifestRead, Stage, UnreadableRow, WaitsFor } from "./model";
+import type { BlockedRow, InboxRow, InFlightRow, LandedRow, Manifest, ManifestRead, Stage, UnreadableRow, WaitsFor, WrittenSection } from "./model";
 
 const WAITS_FOR: readonly WaitsFor[] = ["answer", "grant", "ready", "other"];
 const STAGES: readonly Stage[] = ["building", "asking", "waiting on you", "under review", "at the bar", "round open", "brainstorming"];
@@ -66,11 +66,18 @@ const isHttpUrl = (value: string): boolean => {
   }
 };
 
-/** Whether a Link names a message in a bb thread: the form a row with no Ref carries. */
-const isMessageLink = (value: string): boolean => {
-  const match = OWN_THREAD_LINK.exec(value) ?? OTHER_THREAD_LINK.exec(value);
-  return match !== null && isTimeWithOffset(match[match.length - 1]!);
+/** The message a Link names in a bb thread, the form a row with no Ref carries; `threadId` is null for the manager's own thread. Null for any other Link. */
+export const parseMessageLink = (value: string): { readonly threadId: string | null; readonly message: number; readonly at: string } | null => {
+  const own = OWN_THREAD_LINK.exec(value);
+  const other = own === null ? OTHER_THREAD_LINK.exec(value) : null;
+  const match = own ?? other;
+  if (match === null) return null;
+  const at = match[match.length - 1]!;
+  if (!isTimeWithOffset(at)) return null;
+  return { threadId: other === null ? null : other[1]!, message: Number(match[match.length - 2]), at };
 };
+
+const isMessageLink = (value: string): boolean => parseMessageLink(value) !== null;
 
 const linkFailure = (ref: string, value: string): string | null => {
   if (isHttpUrl(value)) return null;
@@ -264,4 +271,48 @@ export function parseManifest(text: string): ManifestRead {
     else if (section.name === normal(LANDED.heading)) readTable(LANDED, section.lines, landed, unreadable);
   }
   return { status: "ok", manifest: { repo: formatRepo(repo), inbox, inFlight, blocked, landed, unreadable } satisfies Manifest };
+}
+
+/** The longest a written section's Markdown is kept; a longer one is cut and says so. */
+export const MAX_WRITTEN_CHARS = 100_000;
+
+const READ_HEADINGS: ReadonlySet<string> = new Set([INBOX, IN_FLIGHT, BLOCKED, LANDED].map((spec) => normal(spec.heading)));
+
+/**
+ * Every `##` section of the file the plugin does not read by column (Backlog, Set aside, Standing orders, any other),
+ * in the file's order, each with its heading and Markdown as written. A fenced code block may hold a `##` line that
+ * starts no section. The text of the first line and of anything under a `#` heading belongs to no section.
+ */
+export function writtenSections(text: string): WrittenSection[] {
+  const lines = text.replace(/^﻿/, "").split(/\r?\n/);
+  const found: { heading: string; name: string; body: string[] }[] = [];
+  let current: (typeof found)[number] | null = null;
+  let fence: string | null = null;
+  lines.forEach((line, index) => {
+    if (index === 0) return;
+    const opening = FENCE.exec(line);
+    if (fence !== null) {
+      if (opening !== null && opening[1]![0] === fence[0] && opening[1]!.length >= fence.length && line.trim() === opening[1]) fence = null;
+      current?.body.push(line);
+      return;
+    }
+    if (opening !== null) {
+      fence = opening[1]!;
+      current?.body.push(line);
+      return;
+    }
+    const heading = HEADING.exec(line);
+    if (heading !== null && heading[1]!.length <= 2) {
+      current = heading[1]!.length === 2 ? { heading: heading[2]!.trim(), name: normal(heading[2]!), body: [] } : null;
+      if (current !== null) found.push(current);
+      return;
+    }
+    current?.body.push(line);
+  });
+  return found
+    .filter((section) => !READ_HEADINGS.has(section.name))
+    .map((section) => {
+      const markdown = section.body.join("\n").trim();
+      return { heading: section.heading, markdown: markdown.length > MAX_WRITTEN_CHARS ? `${markdown.slice(0, MAX_WRITTEN_CHARS)}\n\n…` : markdown };
+    });
 }

@@ -6,7 +6,8 @@ import type { ManifestRead } from "../domain/model";
 
 // The parser is the domain's; here it only shows what text it was given.
 const parseManifest = vi.hoisted(() => vi.fn<(text: string) => ManifestRead>());
-vi.mock("../domain/manifest", () => ({ parseManifest }));
+const writtenSections = vi.hoisted(() => vi.fn<(text: string) => { heading: string; markdown: string }[]>());
+vi.mock("../domain/manifest", () => ({ parseManifest, writtenSections }));
 
 import { FileManifests, MAX_MANIFEST_BYTES } from "./manifest-file";
 
@@ -23,6 +24,8 @@ afterAll(async () => {
 beforeEach(() => {
   parseManifest.mockReset();
   parseManifest.mockReturnValue(MANIFEST);
+  writtenSections.mockReset();
+  writtenSections.mockReturnValue([{ heading: "Backlog", markdown: "- #1" }]);
 });
 
 describe("FileManifests.read", () => {
@@ -102,5 +105,23 @@ describe("FileManifests.read", () => {
     const link = join(dir, "link.md");
     await symlink(target, link);
     expect(await new FileManifests().read(link)).toBe(MANIFEST);
+  });
+});
+
+describe("FileManifests.readSections", () => {
+  it("returns what read returns with the sections written, from the one reading of the file", async () => {
+    const path = join(dir, "sections.md");
+    await writeFile(path, "# Fleet: github.com/org/repo\n\n## Backlog\n\n- #1\n");
+    expect(await new FileManifests().readSections(path)).toEqual({ read: MANIFEST, written: [{ heading: "Backlog", markdown: "- #1" }] });
+    expect(writtenSections).toHaveBeenCalledWith("# Fleet: github.com/org/repo\n\n## Backlog\n\n- #1\n");
+  });
+
+  it("has no written sections for a manifest that is missing or unreadable", async () => {
+    expect(await new FileManifests().readSections(join(dir, "nowhere.md"))).toEqual({ read: { status: "missing" }, written: [] });
+    parseManifest.mockReturnValue({ status: "unreadable", reason: "x" });
+    const path = join(dir, "bad.md");
+    await writeFile(path, "no heading");
+    expect(await new FileManifests().readSections(path)).toEqual({ read: { status: "unreadable", reason: "x" }, written: [] });
+    expect(writtenSections).not.toHaveBeenCalled();
   });
 });

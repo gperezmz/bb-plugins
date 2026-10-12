@@ -19,3 +19,9 @@ export const lastLine = (body: string | null | undefined): string | null => {
   }
   return null;
 };
+
+/** `text` cut to `max` code points, ending in `…` where it was cut (never through a surrogate pair). */
+export const clip = (text: string, max: number): string => {
+  const points = Array.from(text);
+  return points.length <= max ? text : `${points.slice(0, max - 1).join("")}…`;
+};

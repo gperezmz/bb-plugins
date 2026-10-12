@@ -2,7 +2,7 @@
 // there, and a way to send it a wake that waits behind its turn. Every call to bb is bounded
 // by `SDK_TIMEOUT_MS`.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import type { DeliveryResult, ManagerChannel, ThreadDirectory } from "../application/ports";
+import type { DeliveryResult, ManagerChannel, ThreadDirectory, ThreadRepositories, ThreadStanding } from "../application/ports";
 
 type BbSdk = BbPluginApi["sdk"];
 
@@ -33,20 +33,43 @@ const bounded = <T>(call: () => Promise<T>): Promise<T> =>
     );
   });
 
-/** Reads a thread's standing from bb: live, archived, or gone (deleted, or no such thread). */
+/** Reads a thread's standing from bb: live (at work or idle), archived, or gone (deleted, or no such thread). */
 export class BbThreadDirectory implements ThreadDirectory {
   constructor(private readonly sdk: BbSdk) {}
 
   async state(threadId: string): Promise<"live" | "archived" | "gone"> {
-    let thread: { archivedAt: number | null; deletedAt: number | null };
+    return (await this.standing(threadId)).state;
+  }
+
+  async standing(threadId: string): Promise<ThreadStanding> {
+    let thread: { archivedAt: number | null; deletedAt: number | null; status?: string; updatedAt?: number };
     try {
       thread = await bounded(() => this.sdk.threads.get({ threadId }));
     } catch (error) {
-      if (httpStatusOf(error) === 404) return "gone";
+      if (httpStatusOf(error) === 404) return { state: "gone" };
       throw error;
     }
-    if (thread.deletedAt !== null) return "gone";
-    return thread.archivedAt !== null ? "archived" : "live";
+    if (thread.deletedAt !== null) return { state: "gone" };
+    if (thread.archivedAt !== null) return { state: "archived" };
+    // bb gives the thread's status and when the thread last changed; it keeps no time of the status itself, so that stands for it.
+    const busy = typeof thread.status === "string" && thread.status !== "idle" && thread.status !== "error";
+    return { state: "live", busy, since: typeof thread.updatedAt === "number" ? new Date(thread.updatedAt).toISOString() : null };
+  }
+}
+
+/** Reads the git remote of a thread's project from bb. */
+export class BbThreadRepositories implements ThreadRepositories {
+  constructor(private readonly sdk: BbSdk) {}
+
+  async remoteOf(threadId: string): Promise<string | null> {
+    try {
+      const thread = await bounded(() => this.sdk.threads.get({ threadId }));
+      if (typeof thread.projectId !== "string") return null;
+      const project = await bounded(() => this.sdk.projects.get({ projectId: thread.projectId }));
+      return typeof project.gitRemoteUrl === "string" && project.gitRemoteUrl !== "" ? project.gitRemoteUrl : null;
+    } catch {
+      return null;
+    }
   }
 }
 

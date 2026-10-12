@@ -1,5 +1,6 @@
 // The Fleet store as plain objects, for the use-case tests. It behaves as the
 // SQLite store does; `describeStore` runs the same suite over both.
+import type { ActionRecord } from "../domain/actions";
 import { keptAnnounced, type LedgerEntry, type LedgerQuery, type LedgerRow, type PollCommit, type PollRecord, type Store, type StoredFleet, type StoredWake } from "../application/ports";
 import { byTimeThenKey } from "../domain/changes";
 import { repoId } from "../domain/identity";
@@ -23,6 +24,10 @@ interface RepoData {
   changes: Map<string, LedgerRow>;
   failedReads: FailedRead[];
   polls: PollRecord[];
+  actions: ActionRecord[];
+  /** Inbox row id to the time it was last seen. */
+  inboxSeen: Map<string, string>;
+  inboxBaselined: boolean;
 }
 
 const sameRef = (a: string | null, b: string): boolean => a !== null && a.toLowerCase() === b.toLowerCase();
@@ -61,7 +66,7 @@ export class InMemoryStore implements Store {
   private data(repo: string): RepoData {
     let data = this.records.get(repo);
     if (data === undefined) {
-      data = { fleet: null, cursors: new Map(), changes: new Map(), failedReads: [], polls: [] };
+      data = { fleet: null, cursors: new Map(), changes: new Map(), failedReads: [], polls: [], actions: [], inboxSeen: new Map(), inboxBaselined: false };
       this.records.set(repo, data);
     }
     return data;
@@ -101,6 +106,8 @@ export class InMemoryStore implements Store {
     if (data !== undefined) {
       data.fleet = null;
       data.cursors.clear();
+      data.actions = [];
+      data.inboxBaselined = false;
     }
     return existed;
   }
@@ -259,7 +266,62 @@ export class InMemoryStore implements Store {
     return entries.sort((a, b) => (entryTime(a) < entryTime(b) ? 1 : entryTime(a) > entryTime(b) ? -1 : 0)).slice(0, limit);
   }
 
+  recentWakes(repo: string, limit: number): StoredWake[] {
+    return this.wakes
+      .filter((wake) => wake.repo === repo)
+      .sort((a, b) => (a.queuedAt < b.queuedAt ? 1 : a.queuedAt > b.queuedAt ? -1 : b.id - a.id))
+      .slice(0, Math.max(0, limit))
+      .map((wake) => ({ ...wake }));
+  }
+
+  saveAction(action: ActionRecord): void {
+    const actions = this.data(action.repo).actions;
+    const at = actions.findIndex((known) => known.id === action.id);
+    if (at === -1) actions.push({ ...action });
+    else actions[at] = { ...action };
+  }
+
+  actions(repo: string): ActionRecord[] {
+    return [...(this.records.get(repo)?.actions ?? [])].sort((a, b) => (a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((action) => ({ ...action }));
+  }
+
+  markActionsDone(repo: string, ids: readonly string[], at: string): void {
+    const data = this.records.get(repo);
+    if (data === undefined) return;
+    data.actions = data.actions.map((action) => (ids.includes(action.id) && action.state === "sent" ? { ...action, state: "done", doneAt: at } : action));
+  }
+
+  dropSentActions(repo: string): void {
+    const data = this.records.get(repo);
+    if (data !== undefined) data.actions = data.actions.filter((action) => action.state !== "sent");
+  }
+
+  pruneActions(doneBefore: string): void {
+    for (const data of this.records.values()) {
+      data.actions = data.fleet === null ? [] : data.actions.filter((action) => action.state === "sent" || (action.doneAt ?? "") >= doneBefore);
+    }
+  }
+
+  inboxSeen(repo: string): Set<string> {
+    return new Set(this.records.get(repo)?.inboxSeen.keys() ?? []);
+  }
+
+  touchInboxSeen(repo: string, ids: readonly string[], at: string): void {
+    const seen = this.data(repo).inboxSeen;
+    for (const id of ids) seen.set(id, at);
+  }
+
+  inboxBaselined(repo: string): boolean {
+    return this.records.get(repo)?.inboxBaselined === true;
+  }
+
+  setInboxBaselined(repo: string): void {
+    const data = this.records.get(repo);
+    if (data?.fleet != null) data.inboxBaselined = true;
+  }
+
   prune(before: string): void {
+    for (const record of this.records.values()) for (const [id, at] of record.inboxSeen) if (at < before) record.inboxSeen.delete(id);
     this.wakes = this.wakes.filter((wake) => wake.queuedAt >= before);
     for (const record of this.records.values()) {
       for (const [key, row] of record.changes) if (row.seenAt < before) record.changes.delete(key);
