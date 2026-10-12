@@ -225,13 +225,17 @@ export interface ThreadRepositories {
 export type DeliveryResult =
   | { readonly delivered: "sent" }
   | { readonly delivered: "queued"; readonly queuedMessageId: string }
-  | { readonly delivered: "refused"; readonly reason: string };
+  /**
+   * `status` is all that may be logged or stored: `HTTP <n>`, or `no answer from bb`. `reason` adds bb's own message,
+   * which can quote part of the text sent; it is for the operator who sent it and for nothing that is kept.
+   */
+  | { readonly delivered: "refused"; readonly status: string; readonly reason: string };
 
 export interface ManagerChannel {
   /** Sends the wake as a plain message that waits behind a running turn and never steers it. */
   send(threadId: string, text: string): Promise<DeliveryResult>;
   /** Replaces the text of a wake still waiting in bb's queue. `gone` when it already dispatched or was deleted. */
-  amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }>;
+  amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string; readonly status: string }>;
 }
 
 // ---- what the dashboard reads and says ----

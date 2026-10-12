@@ -410,7 +410,8 @@ async function deliver(
   const text = formatWake({ since: wake.since, changes: wake.changes, catchUpMs: wake.catchUpMs, heldSince: wake.heldSince, notWatched: wake.notWatched });
   const sent = await deps.channel.send(thread, text);
   if (sent.delivered === "refused") {
-    deps.log.warn(`bb refused a wake for ${formatRepo(registration.repo)}: ${sent.reason}`);
+    // Only the status: bb's message can quote part of the wake, and a log carries none of what a wake says.
+    deps.log.warn(`bb refused a wake for ${formatRepo(registration.repo)}: ${sent.status}`);
     return { result: "refused" };
   }
   const stored = deps.store.createWake(repo, {

@@ -438,16 +438,17 @@ describe("no change is lost (AC8)", () => {
     expect(w.store.getCursor(REPO_KEY, "forge")).not.toBeNull();
   });
 
-  it("says in the log why bb refused a wake, in bb's own bounded words and nowhere else", async () => {
+  it("logs only the status of a refused wake: bb's message can quote a piece of the wake, and a log carries none of it", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     w.channel.mode = "refuse";
-    w.channel.refusal = "HTTP 409: Thread is archived";
+    w.channel.refusal = "HTTP 409: cannot post 'Moved on the tracker or the' to a thread that is archived";
+    w.channel.refusalStatus = "HTTP 409";
     w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], events: [event("c1", 7)] }));
     await poll(w);
-    expect(w.warnings).toEqual(["bb refused a wake for github.com/org/repo: HTTP 409: Thread is archived"]);
-    const everywhere = JSON.stringify([ledger(w), w.store.getFleet(REPO_KEY)]);
-    expect(everywhere).not.toContain("Thread is archived");
+    expect(w.warnings).toEqual(["bb refused a wake for github.com/org/repo: HTTP 409"]);
+    const everywhere = JSON.stringify([ledger(w), w.store.getFleet(REPO_KEY), w.warnings]);
+    expect(everywhere).not.toMatch(/archived|Moved on the tracker or the/);
   });
 
   it("keeps the catch-up line of a wake bb refused for the wake it next accepts, and only that one", async () => {

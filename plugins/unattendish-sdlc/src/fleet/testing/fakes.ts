@@ -108,11 +108,13 @@ export class FakeChannel implements ManagerChannel {
   mode: "idle" | "busy" | "refuse" = "idle";
   /** What a refused send or amendment says. */
   refusal = "HTTP 500";
+  /** The status alone of a refusal, which is all a log may carry. */
+  refusalStatus = "HTTP 500";
   readonly sent: { threadId: string; text: string; id: string | null }[] = [];
   readonly queue = new Map<string, { threadId: string; text: string }>();
   private next = 1;
   async send(threadId: string, text: string): Promise<DeliveryResult> {
-    if (this.mode === "refuse") return { delivered: "refused", reason: this.refusal };
+    if (this.mode === "refuse") return { delivered: "refused", status: this.refusalStatus, reason: this.refusal };
     if (this.mode === "idle") {
       this.sent.push({ threadId, text, id: null });
       return { delivered: "sent" };
@@ -122,8 +124,8 @@ export class FakeChannel implements ManagerChannel {
     this.sent.push({ threadId, text, id });
     return { delivered: "queued", queuedMessageId: id };
   }
-  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string }> {
-    if (this.mode === "refuse") return { refused: this.refusal };
+  async amend(threadId: string, queuedMessageId: string, text: string): Promise<"amended" | "gone" | { readonly refused: string; readonly status: string }> {
+    if (this.mode === "refuse") return { refused: this.refusal, status: this.refusalStatus };
     const row = this.queue.get(queuedMessageId);
     if (row === undefined || row.threadId !== threadId) return "gone";
     this.queue.set(queuedMessageId, { threadId, text });
