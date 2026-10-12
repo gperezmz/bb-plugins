@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ago, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
-import { blockedText, credentialParts, droppedHeading, doneText, itemTitle, ledgerFilter, ledgerIsEmpty, ledgerParts, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
+import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerIsEmpty, ledgerParts, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
 
 describe("the manifest's rows", () => {
   it("says how long an In flight row has been at its stage", () => {
@@ -13,11 +13,6 @@ describe("the manifest's rows", () => {
 
   it("names the section, line and column of a row it cannot read", () => {
     expect(unreadableRowText({ section: "In flight", line: 14, reason: 'the table has no "Stage" column' })).toBe('unreadable in In flight, line 14: the table has no "Stage" column');
-  });
-
-  it("leaves a Ref of — out of a title", () => {
-    expect(itemTitle("—", "Brainstorm on Backlog")).toBe("Brainstorm on Backlog");
-    expect(itemTitle("#163", "refuse long titles")).toBe("#163 refuse long titles");
   });
 });
 

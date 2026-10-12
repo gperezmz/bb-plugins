@@ -3,10 +3,11 @@ import { useDashboardApi } from "@/shared/client";
 import { FleetCard } from "@/shared/fleet-card/FleetCard";
 import { InboxTable } from "@/shared/inbox/InboxTable";
 import { recentActionText } from "@/shared/inbox/row-model";
+import { itemTitle } from "@/shared/item-title";
 import { ItemLink } from "@/shared/ItemLink";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
-import { landedDate, landedTitle, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_LANDED_TEXT } from "./model";
+import { landedDate, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_LANDED_TEXT } from "./model";
 
 /** Every fleet at a glance, and everything that waits on the operator, across fleets, with its action. */
 export function FleetsPage() {
@@ -66,7 +67,7 @@ function Sections({ view, refetch }: { view: FleetsView; refetch: () => Promise<
             {view.landed.map((row) => (
               <li key={`${row.fleet}:${row.ref}:${row.merged}`} className="flex items-baseline gap-2 rounded-md border border-border px-2 py-1">
                 <span className="text-muted-foreground">{row.fleet}</span>
-                <span>{landedTitle(row)}</span>
+                <span>{itemTitle(row.ref, row.spec)}</span>
                 <ItemLink link={row.link} managerThreadId="" />
                 <span className="text-muted-foreground">{landedDate(row)}</span>
               </li>

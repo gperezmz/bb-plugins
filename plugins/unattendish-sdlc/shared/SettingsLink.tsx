@@ -1,5 +1,6 @@
 import { experimental_usePluginId, UrlLink } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
+import { LINK_CLASS } from "./ItemLink";
 
 /**
  * A link to this plugin's settings section. bb gives a page no call that opens it, so this is
@@ -10,7 +11,7 @@ export function SettingsLink({ children, className }: { children: string; classN
   return (
     <UrlLink
       href={`/settings/plugins/${pluginId}`}
-      className={cn("text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground", className)}
+      className={cn(LINK_CLASS, className)}
     >
       {children}
     </UrlLink>

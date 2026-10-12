@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CredentialSettingView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { useDashboardApi } from "@/shared/client";
+import { messageOf } from "@/shared/errors";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
 import { CredentialForm } from "./CredentialForm";
@@ -18,12 +19,14 @@ export function CredentialsSettings() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [removeRefusal, setRemoveRefusal] = useState<string | null>(null);
 
-  async function save(): Promise<void> {
+  async function save(token: string): Promise<void> {
     if (form === null) return;
     setSaving(true);
     setRefusal(null);
+    // The field was cleared as the token was read, so a refusal leaves it empty to be typed again.
+    setForm({ ...form, tokenTyped: false });
     try {
-      const result = await api.saveCredential(draftFrom(form));
+      const result = await api.saveCredential(draftFrom(form, token));
       if (result.ok) {
         setForm(null);
         await live.refetch();
@@ -31,7 +34,7 @@ export function CredentialsSettings() {
         setRefusal(result.reason);
       }
     } catch (error) {
-      setRefusal(error instanceof Error ? error.message : String(error));
+      setRefusal(messageOf(error));
     } finally {
       setSaving(false);
     }
@@ -44,7 +47,7 @@ export function CredentialsSettings() {
       if (result.ok) await live.refetch();
       else setRemoveRefusal(result.reason);
     } catch (error) {
-      setRemoveRefusal(error instanceof Error ? error.message : String(error));
+      setRemoveRefusal(messageOf(error));
     }
     setRemoving(null);
   }
@@ -56,7 +59,7 @@ export function CredentialsSettings() {
       await live.refetch();
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : String(error);
+      return messageOf(error);
     }
   }
 
@@ -102,7 +105,7 @@ export function CredentialsSettings() {
                 </p>
               ) : null}
               {form !== null ? (
-                <CredentialForm form={form} onChange={setForm} onSave={() => void save()} onCancel={() => setForm(null)} saving={saving} refusal={refusal} />
+                <CredentialForm form={form} onChange={setForm} onSave={(token) => void save(token)} onCancel={() => setForm(null)} saving={saving} refusal={refusal} />
               ) : (
                 <div>
                   <Button

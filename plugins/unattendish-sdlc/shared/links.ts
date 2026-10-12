@@ -9,5 +9,6 @@ export type LinkTarget =
 export function linkTarget(link: LinkView, managerThreadId: string): LinkTarget {
   if (link.kind === "url") return { kind: "url", url: link.url, text: link.text };
   const { threadId, message } = link.message;
-  return { kind: "thread", threadId: threadId ?? managerThreadId, text: `message ${message}` };
+  // A message of the manager's own thread needs no thread named; one of another names it in full.
+  return { kind: "thread", threadId: threadId ?? managerThreadId, text: threadId === null ? `message ${message}` : `thread ${threadId}, message ${message}` };
 }

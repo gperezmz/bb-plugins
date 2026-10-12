@@ -1,16 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { actionName, recentActionText, rowAction, rowTitle, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
+import { type LocalAction, actionName, recentActionText, rowAction, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
 
-const idle = { sending: false, refusal: null };
+const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
 describe("what a row says", () => {
-  it("joins the item and what it is, leaving out a Ref of —", () => {
-    expect(rowTitle({ ref: "ENG-212", what: "which locale wins?" })).toBe("ENG-212 which locale wins?");
-    expect(rowTitle({ ref: "—", what: "a note" })).toBe("a note");
-  });
-
   it("says what each row waits for", () => {
     expect(["answer", "grant", "ready", "other"].map((w) => waitsForText(w as "answer"))).toEqual(["your answer", "a grant to merge", "your ready label", "something else"]);
   });
@@ -44,8 +39,27 @@ describe("a row's action cell", () => {
     expect(rowAction(row, NOW, idle).kind).toBe("sent");
   });
 
-  it("shows sent while the call is in flight, offer or not", () => {
-    expect(rowAction(inboxRow(), NOW, { sending: true, refusal: null })).toEqual({ kind: "sent", text: "sent · 0s" });
+  it("shows sending… while the call is in flight, never sent", () => {
+    expect(rowAction(inboxRow(), NOW, { ...idle, phase: "sending" })).toEqual({ kind: "sending", text: "sending…" });
+  });
+
+  it("shows sent, aged from the server's record, once bb has accepted the message and the view is being fetched", () => {
+    expect(rowAction(inboxRow(), NOW, { ...idle, phase: "accepted", acceptedAt: ago(2 * MINUTE) })).toEqual({ kind: "sent", text: "sent · 2m" });
+  });
+
+  it("says the result is unknown while the view is fetched after a call that failed", () => {
+    expect(rowAction(inboxRow(), NOW, { ...idle, phase: "unknown" })).toMatchObject({ kind: "unknown" });
+  });
+
+  it("lets the server's view decide after a call that failed: sent if it recorded the action, the offer again if it did not", () => {
+    const failed = { ...idle, unconfirmed: true };
+    expect(rowAction(inboxRow({ offer: null, action: actionRecord({ sentAt: ago(MINUTE) }) }), NOW, failed)).toEqual({ kind: "sent", text: "sent · 1m" });
+    expect(rowAction(inboxRow(), NOW, failed)).toMatchObject({ kind: "offer", unconfirmed: true, refusal: null });
+  });
+
+  it("shows the server's action over a call in flight", () => {
+    const row = inboxRow({ offer: null, action: actionRecord({ sentAt: ago(MINUTE) }) });
+    expect(rowAction(row, NOW, { ...idle, phase: "sending" }).kind).toBe("sent");
   });
 
   it("shows done when the action is done", () => {
@@ -53,7 +67,7 @@ describe("a row's action cell", () => {
   });
 
   it("keeps the action on a refused row and carries bb's reason", () => {
-    expect(rowAction(inboxRow(), NOW, { sending: false, refusal: "thread is archived" })).toMatchObject({ kind: "offer", refusal: "thread is archived" });
+    expect(rowAction(inboxRow(), NOW, { ...idle, refusal: "thread is archived" })).toMatchObject({ kind: "offer", refusal: "thread is archived" });
   });
 });
 

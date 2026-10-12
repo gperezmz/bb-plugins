@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, inboxRow, MINUTE, NOW, unreadableInboxRow } from "@/testing/fixtures";
+import type { InboxRowView } from "@/src/fleet/application/views";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { clearFleetTabWishes, takeFleetTab } from "../pending-open";
@@ -26,6 +27,17 @@ afterEach(() => {
 
 function show(rows = [inboxRow()], unreadable = [] as ReturnType<typeof unreadableInboxRow>[], showFleet = true) {
   return render(<InboxTable rows={rows} unreadable={unreadable} now={NOW} showFleet={showFleet} refetch={refetch} />);
+}
+
+/** The row as the server's view shows it after it recorded the action: sent 7 minutes ago, the offer gone. */
+const SERVER_SENT_AT = 7 * MINUTE;
+const sentOnServer = (row = inboxRow()): InboxRowView => ({ ...row, offer: null, action: actionRecord({ kind: row.offer?.kind ?? "answer", sentAt: ago(SERVER_SENT_AT) }) });
+
+/** The next refetch brings back the row as the server shows it. */
+function serverRecordsTheAction(view: ReturnType<typeof show>, row = inboxRow()) {
+  refetch.mockImplementationOnce(async () => {
+    view.rerender(<InboxTable rows={[sentOnServer(row)]} unreadable={[]} now={NOW} showFleet refetch={refetch} />);
+  });
 }
 
 describe("the Inbox table", () => {
@@ -53,7 +65,7 @@ describe("the Inbox table", () => {
 
   it("opens the thread of a message link", () => {
     show([inboxRow({ managerThreadId: "thr_acme", link: { kind: "message", message: { threadId: "thr_old", message: 3, at: ago(MINUTE) } } })]);
-    fireEvent.click(screen.getByRole("button", { name: /message 3/ }));
+    fireEvent.click(screen.getByRole("button", { name: /thread thr_old, message 3/ }));
     expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_old");
   });
 
@@ -100,12 +112,12 @@ describe("what a row shows after an action", () => {
 
 describe("Answer…", () => {
   const open = () => {
-    show();
     fireEvent.click(screen.getByRole("button", { name: "Answer… ENG-212" }));
     return screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement;
   };
 
   it("opens a composer showing the row's What and a link to the park", () => {
+    show();
     open();
     const composer = screen.getByRole("textbox").closest("div")!.parentElement!;
     expect(within(composer).getByText("ENG-212 which locale wins?")).toBeTruthy();
@@ -113,31 +125,43 @@ describe("Answer…", () => {
   });
 
   it("sends nothing while the text is empty", () => {
+    show();
     const field = open();
     expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
     expect(fake.api.sendAction).not.toHaveBeenCalled();
   });
 
-  it("sends the text of several lines on Ctrl+Enter, then shows the row as sent, from the server's view", async () => {
-    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord() });
+  it("sends the text of several lines on Ctrl+Enter, and shows the row as sent from the server's view", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ sentAt: ago(0) }) });
     const view = show();
-    // The refetch brings the row back carrying the action the server kept.
-    refetch.mockImplementationOnce(async () => {
-      view.rerender(<InboxTable rows={[inboxRow({ offer: null, action: actionRecord({ sentAt: ago(0) }) })]} unreadable={[]} now={NOW} showFleet refetch={refetch} />);
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Answer… ENG-212" }));
-    const field = screen.getByRole("textbox", { name: "Your answer for ENG-212" });
+    serverRecordsTheAction(view);
+    const field = open();
     fireEvent.change(field, { target: { value: "en-GB\nbecause the spec says so" } });
     fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "answer", text: "en-GB\nbecause the spec says so" });
-    expect(await screen.findByText("sent · 0s")).toBeTruthy();
-    await waitFor(() => expect(refetch).toHaveBeenCalled());
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Answer/ })).toBeNull();
+  });
+
+  it("shows sending… while the call is in flight and sent only once bb accepted the message", async () => {
+    let accept: (value: Awaited<ReturnType<typeof fake.api.sendAction>>) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((resolve) => (accept = resolve)));
+    const view = show();
+    serverRecordsTheAction(view);
+    const field = open();
+    fireEvent.change(field, { target: { value: "yes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("sending…")).toBeTruthy();
+    expect(screen.queryByText(/^sent/)).toBeNull();
+    await act(async () => accept({ ok: true, action: actionRecord({ sentAt: ago(0) }) }));
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
+    expect(screen.queryByText("sending…")).toBeNull();
   });
 
   it("sends on ⌘+Enter too", () => {
     fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord() });
+    show();
     const field = open();
     fireEvent.change(field, { target: { value: "yes" } });
     fireEvent.keyDown(field, { key: "Enter", metaKey: true });
@@ -146,6 +170,7 @@ describe("Answer…", () => {
 
   it("sends from the Send button", () => {
     fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord() });
+    show();
     const field = open();
     fireEvent.change(field, { target: { value: "yes" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -153,6 +178,7 @@ describe("Answer…", () => {
   });
 
   it("is cancelled with Esc", () => {
+    show();
     const field = open();
     fireEvent.change(field, { target: { value: "yes" } });
     fireEvent.keyDown(field, { key: "Escape" });
@@ -160,49 +186,106 @@ describe("Answer…", () => {
     expect(fake.api.sendAction).not.toHaveBeenCalled();
   });
 
-  it("shows not sent with bb's reason, keeps the action, and keeps the composer's text", async () => {
+  it("shows not sent with bb's reason, never sent, keeps the action, and keeps the composer's text", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
+    show();
     const field = open();
     fireEvent.change(field, { target: { value: "en-GB" } });
     fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
     expect(await screen.findByText("not sent")).toBeTruthy();
+    expect(screen.queryByText(/^sent/)).toBeNull();
     expect(screen.getByText("the manager thread is archived")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Answer… ENG-212" })).toBeTruthy();
     expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("en-GB");
   });
+
+  it("does not claim not sent when the call fails: it says the result is unknown and lets the server's view decide", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("connection dropped"));
+    const view = show();
+    serverRecordsTheAction(view);
+    const field = open();
+    fireEvent.change(field, { target: { value: "en-GB" } });
+    fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+    // The server recorded the action: the row shows it sent, and no failure is claimed.
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
+    expect(screen.queryByText("not sent")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("offers the action again, with the text kept, when the failed call left no record", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("connection dropped"));
+    show();
+    const field = open();
+    fireEvent.change(field, { target: { value: "en-GB" } });
+    fireEvent.keyDown(field, { key: "Enter", ctrlKey: true });
+    expect(await screen.findByText(/could not confirm whether the last send went through/)).toBeTruthy();
+    expect(screen.queryByText("not sent")).toBeNull();
+    expect(screen.getByRole("button", { name: "Answer… ENG-212" })).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("en-GB");
+  });
+
+  it("keeps the composer and its text when the viewport crosses the compact width", () => {
+    show();
+    const field = open();
+    fireEvent.change(field, { target: { value: "en-GB\nso" } });
+    setCompactViewport(true);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("en-GB\nso");
+    setCompactViewport(false);
+    expect((screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement).value).toBe("en-GB\nso");
+  });
+
+  it("keeps sending… across the compact width too", async () => {
+    fake.api.sendAction.mockReturnValue(new Promise(() => {}));
+    show();
+    const field = open();
+    fireEvent.change(field, { target: { value: "yes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByText("sending…");
+    setCompactViewport(true);
+    expect(screen.getByText("sending…")).toBeTruthy();
+  });
 });
 
 describe("Grant…, Build it and Re-grant", () => {
-  it("Grant… opens a composer and sends the text as a grant", async () => {
-    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "grant" }) });
-    show([inboxRow({ waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false } })]);
+  const grantRow = (regrant: boolean) => inboxRow({ waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant } });
+
+  it("Grant… opens a composer, sends the text as a grant, and shows the server's sent action", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "grant", sentAt: ago(0) }) });
+    const row = grantRow(false);
+    const view = show([row]);
+    serverRecordsTheAction(view, row);
     fireEvent.click(screen.getByRole("button", { name: "Grant… ENG-212" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Your grant for ENG-212" }), { target: { value: "merge it" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "grant", text: "merge it" });
-    await screen.findByText("sent · 0s");
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
   });
 
-  it("Build it sends in one click, with no text", async () => {
-    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "build" }) });
-    show([inboxRow({ waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })]);
+  it("Build it sends in one click, with no text, and shows the server's sent action", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "build", sentAt: ago(0) }) });
+    const row = inboxRow({ waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } });
+    const view = show([row]);
+    serverRecordsTheAction(view, row);
     fireEvent.click(screen.getByRole("button", { name: "Build it ENG-212" }));
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "build" });
-    await screen.findByText("sent · 0s");
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
-  it("offers Re-grant beside Grant… and sends it in one click", async () => {
-    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "grant" }) });
-    show([inboxRow({ waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } })]);
+  it("offers Re-grant beside Grant… and sends it in one click, showing the server's sent action", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ kind: "grant", sentAt: ago(0) }) });
+    const row = grantRow(true);
+    const view = show([row]);
+    serverRecordsTheAction(view, row);
     expect(screen.getByRole("button", { name: "Grant… ENG-212" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Re-grant ENG-212" }));
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "grant", regrant: true });
-    await screen.findByText("sent · 0s");
+    expect(await screen.findByText("sent · 7m")).toBeTruthy();
   });
 
   it("offers no Re-grant on a plain grant row", () => {
-    show([inboxRow({ waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false } })]);
+    show([grantRow(false)]);
     expect(screen.queryByRole("button", { name: /Re-grant/ })).toBeNull();
   });
 });

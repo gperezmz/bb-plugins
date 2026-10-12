@@ -10,7 +10,7 @@ describe("a row's link", () => {
     expect(linkTarget({ kind: "message", message: { threadId: null, message: 3, at: "2026-10-12T01:00:00Z" } }, "thr_m")).toEqual({ kind: "thread", threadId: "thr_m", text: "message 3" });
   });
 
-  it("opens the previous manager's thread when the message names one", () => {
-    expect(linkTarget({ kind: "message", message: { threadId: "thr_old", message: 3, at: "2026-10-12T01:00:00Z" } }, "thr_m")).toMatchObject({ threadId: "thr_old" });
+  it("opens the previous manager's thread and names it when the message names one", () => {
+    expect(linkTarget({ kind: "message", message: { threadId: "thr_old", message: 3, at: "2026-10-12T01:00:00Z" } }, "thr_m")).toEqual({ kind: "thread", threadId: "thr_old", text: "thread thr_old, message 3" });
   });
 });

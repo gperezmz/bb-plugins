@@ -23,13 +23,19 @@ describe("the Inbox toasts", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it("toasts nothing when the connection returns", () => {
-    const view = render(<InboxToasts />);
-    sdk.connection = "reconnecting";
-    view.rerender(<InboxToasts />);
-    sdk.connection = "connected";
-    view.rerender(<InboxToasts />);
+  it("toasts nothing when the connection drops and returns", () => {
+    render(<InboxToasts />);
+    sdk.setConnection("reconnecting");
+    sdk.setConnection("connected");
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("still toasts a signal that arrives after the connection returned", () => {
+    render(<InboxToasts />);
+    sdk.setConnection("reconnecting");
+    sdk.setConnection("connected");
+    sdk.emit(INBOX_NEW, signal);
+    expect(toast).toHaveBeenCalledTimes(1);
   });
 
   it("toasts once per signal, naming the fleet and the row", () => {

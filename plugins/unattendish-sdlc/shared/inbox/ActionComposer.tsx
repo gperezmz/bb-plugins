@@ -2,9 +2,9 @@ import { useEffect, useRef } from "react";
 import type { InboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { itemTitle } from "../item-title";
 import { ItemLink } from "../ItemLink";
 import { canSend, keyIntent } from "./composer-model";
-import { rowTitle } from "./row-model";
 
 /**
  * The composer under an Inbox row: the row's What, a link to the park, and a text area for the
@@ -31,7 +31,7 @@ export function ActionComposer({
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">{rowTitle(row)}</span>
+        <span className="text-muted-foreground">{itemTitle(row.ref, row.what)}</span>
         <ItemLink link={row.link} managerThreadId={row.managerThreadId} />
       </div>
       <Textarea

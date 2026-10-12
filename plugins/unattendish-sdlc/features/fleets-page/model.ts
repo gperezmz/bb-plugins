@@ -17,11 +17,6 @@ export const NO_FLEET_COMMAND = "/run-fleet";
 export const NO_FLEET_TAIL = "from unattendish-sdlc runs with this plugin installed.";
 export const NO_LANDED_TEXT = "Nothing landed in the last 7 days";
 
-/** A landed spec in the strip: the item and its title. */
-export function landedTitle(row: Pick<LandedRowView, "ref" | "spec">): string {
-  return row.ref === "—" || row.ref === "" ? row.spec : `${row.ref} ${row.spec}`;
-}
-
 export function landedDate(row: Pick<LandedRowView, "merged">): string {
   return dateLabel(row.merged);
 }

@@ -3,23 +3,24 @@ import { draftFrom, emptyForm, formFrom, formProblem, intervalProblem, parseSeco
 
 describe("the credential form", () => {
   it("needs a prefix", () => {
-    expect(formProblem({ ...emptyForm(), token: "x" })).toBe("Enter the prefix the credential applies to.");
+    expect(formProblem({ ...emptyForm(), tokenTyped: true })).toBe("Enter the prefix the credential applies to.");
   });
 
   it("needs a token to add a pasted token, but not to edit one or to add a login", () => {
     expect(formProblem({ ...emptyForm(), prefix: "github.com/acme" })).toBe("Paste the token.");
+    expect(formProblem({ ...emptyForm(), prefix: "github.com/acme", tokenTyped: true })).toBeNull();
     expect(formProblem({ ...emptyForm(), prefix: "github.com/acme", auth: "gh" })).toBeNull();
     expect(formProblem({ ...emptyForm(), prefix: "github.com/acme", was: "github.com/acme" })).toBeNull();
   });
 
   it("sends a blank token as no token, which keeps the stored one", () => {
-    const draft = draftFrom({ ...emptyForm(), prefix: " github.com/acme ", was: "github.com/acme" });
+    const draft = draftFrom({ ...emptyForm(), prefix: " github.com/acme ", was: "github.com/acme" }, "  ");
     expect(draft).toEqual({ was: "github.com/acme", prefix: "github.com/acme", auth: "token" });
     expect("token" in draft).toBe(false);
   });
 
   it("sends a new token, trimmed, and the optional fields only where filled", () => {
-    expect(draftFrom({ ...emptyForm(), prefix: "gitlab.example.com", service: "gitlab", baseUrl: " https://gitlab.example.com/api/v4 ", token: " fake-token " })).toEqual({
+    expect(draftFrom({ ...emptyForm(), prefix: "gitlab.example.com", service: "gitlab", baseUrl: " https://gitlab.example.com/api/v4 " }, " fake-token ")).toEqual({
       prefix: "gitlab.example.com",
       auth: "token",
       service: "gitlab",
@@ -29,7 +30,7 @@ describe("the credential form", () => {
   });
 
   it("sends no token for a gh or glab login, even if one was typed before the kind changed", () => {
-    expect("token" in draftFrom({ ...emptyForm(), prefix: "github.com", auth: "gh", token: "stale" })).toBe(false);
+    expect("token" in draftFrom({ ...emptyForm(), prefix: "github.com", auth: "gh" }, "stale")).toBe(false);
   });
 
   it("starts an edit from the stored entry with the token field empty", () => {
@@ -39,7 +40,7 @@ describe("the credential form", () => {
       auth: "token",
       service: "github",
       baseUrl: "",
-      token: "",
+      tokenTyped: false,
     });
   });
 

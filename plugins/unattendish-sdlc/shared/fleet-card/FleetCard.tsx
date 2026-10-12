@@ -1,10 +1,9 @@
 import type { FleetCardView, ReasonView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { costText, countsText, managerText, pollText, warningLine } from "../card-model";
+import { LINK_CLASS } from "../ItemLink";
 import { useOpenFleetTab } from "../open-fleet-tab";
 import { SettingsLink } from "../SettingsLink";
-
-const LINK_BUTTON = "text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm";
 
 /** One fleet at a glance: its manager, counts, cost, last poll, every reason it is not fully watched, and what to warn of. */
 export function FleetCard({ card, now, className, showManagerLink = true }: { card: FleetCardView; now: string; className?: string; showManagerLink?: boolean }) {
@@ -15,7 +14,7 @@ export function FleetCard({ card, now, className, showManagerLink = true }: { ca
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-medium">{card.repo}</span>
         {showManagerLink ? (
-          <button type="button" className={cn(LINK_BUTTON, "text-xs")} aria-label={`Open the Fleet tab of ${card.repo}`} onClick={() => openFleetTab(card.managerThreadId)}>
+          <button type="button" className={cn(LINK_CLASS, "text-xs")} aria-label={`Open the Fleet tab of ${card.repo}`} onClick={() => openFleetTab(card.managerThreadId)}>
             manager ↗
           </button>
         ) : null}
@@ -49,7 +48,7 @@ function Reason({ reason, managerThreadId, onOpenFleetTab }: { reason: ReasonVie
       <span>{reason.text}</span>
       {reason.fix.kind === "settings" ? <SettingsLink>Open settings</SettingsLink> : null}
       {reason.fix.kind === "fleet-tab" ? (
-        <button type="button" className={LINK_BUTTON} onClick={() => onOpenFleetTab(managerThreadId)}>
+        <button type="button" className={LINK_CLASS} onClick={() => onOpenFleetTab(managerThreadId)}>
           Open the Fleet tab
         </button>
       ) : null}

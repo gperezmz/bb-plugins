@@ -2,12 +2,13 @@ import type { ReactNode } from "react";
 import type { InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { itemTitle } from "../item-title";
 import { ItemLink } from "../ItemLink";
 import { useOpenFleetTab } from "../open-fleet-tab";
 import { useIsCompactViewport } from "../use-compact-viewport";
 import { ActionComposer } from "./ActionComposer";
-import { actionName, rowAction, rowTitle, unreadableText, waitedText, waitsForText } from "./row-model";
-import { useRowAction } from "./use-row-action";
+import { actionName, rowAction, unreadableText, waitedText, waitsForText, type RowAction } from "./row-model";
+import { useRowActions, type RowActionState } from "./use-row-action";
 
 interface TableProps {
   readonly rows: readonly InboxRowView[];
@@ -21,16 +22,20 @@ interface TableProps {
 
 const CELL = "px-2 py-2 align-top";
 
-/** The Inbox rows of one or more fleets with their actions: a table, or each row stacked on a compact viewport. */
+/**
+ * The Inbox rows of one or more fleets with their actions: a table, or each row stacked on a compact viewport.
+ * The rows' action state is held here, above that switch, so a viewport change keeps a composer's text.
+ */
 export function InboxTable(props: TableProps) {
   const compact = useIsCompactViewport();
   const { rows, unreadable, now, showFleet, refetch } = props;
+  const stateOf = useRowActions(refetch);
   if (rows.length === 0 && unreadable.length === 0) return <p className="text-sm text-muted-foreground">Nothing waits on you</p>;
   if (compact) {
     return (
       <ul className="divide-y divide-border">
         {rows.map((row) => (
-          <StackedRow key={row.id} row={row} now={now} refetch={refetch} />
+          <StackedRow key={row.id} row={row} now={now} state={stateOf(row)} />
         ))}
         {unreadable.map((row) => (
           <StackedUnreadable key={`${row.managerThreadId}:${row.line}`} row={row} />
@@ -52,7 +57,7 @@ export function InboxTable(props: TableProps) {
       </thead>
       <tbody className="divide-y divide-border">
         {rows.map((row) => (
-          <TableRow key={row.id} row={row} now={now} showFleet={showFleet} refetch={refetch} />
+          <TableRow key={row.id} row={row} now={now} showFleet={showFleet} state={stateOf(row)} />
         ))}
         {unreadable.map((row) => (
           <UnreadableTableRow key={`${row.managerThreadId}:${row.line}`} row={row} showFleet={showFleet} />
@@ -62,23 +67,23 @@ export function InboxTable(props: TableProps) {
   );
 }
 
-function TableRow({ row, now, showFleet, refetch }: { row: InboxRowView; now: string; showFleet: boolean; refetch: () => Promise<void> }) {
-  const state = useRowAction(row, refetch);
+function TableRow({ row, now, showFleet, state }: { row: InboxRowView; now: string; showFleet: boolean; state: RowActionState }) {
+  const action = rowAction(row, now, state);
   return (
     <>
       <tr>
         {showFleet ? <td className={CELL}>{row.fleet}</td> : null}
-        <td className={CELL}>{rowTitle(row)}</td>
+        <td className={CELL}>{itemTitle(row.ref, row.what)}</td>
         <td className={cn(CELL, "text-muted-foreground")}>{waitsForText(row.waitsFor)}</td>
         <td className={cn(CELL, "tabular-nums text-muted-foreground")}>{waitedText(row, now)}</td>
         <td className={CELL}>
           <ItemLink link={row.link} managerThreadId={row.managerThreadId} />
         </td>
         <td className={CELL}>
-          <ActionCell row={row} now={now} state={state} />
+          <ActionCell row={row} action={action} state={state} />
         </td>
       </tr>
-      {state.composing !== null ? (
+      {state.composing !== null && action.kind === "offer" ? (
         <tr>
           <td colSpan={showFleet ? 6 : 5} className="px-2 pb-3">
             <Composer row={row} state={state} />
@@ -89,20 +94,20 @@ function TableRow({ row, now, showFleet, refetch }: { row: InboxRowView; now: st
   );
 }
 
-function StackedRow({ row, now, refetch }: { row: InboxRowView; now: string; refetch: () => Promise<void> }) {
-  const state = useRowAction(row, refetch);
+function StackedRow({ row, now, state }: { row: InboxRowView; now: string; state: RowActionState }) {
+  const action = rowAction(row, now, state);
   return (
     <li className="flex flex-col gap-1 py-3 text-sm">
       <span className="text-xs text-muted-foreground">{row.fleet}</span>
-      <span>{rowTitle(row)}</span>
+      <span>{itemTitle(row.ref, row.what)}</span>
       <span className="text-xs text-muted-foreground">
         waits for {waitsForText(row.waitsFor)} · {waitedText(row, now)}
       </span>
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <ItemLink link={row.link} managerThreadId={row.managerThreadId} />
-        <ActionCell row={row} now={now} state={state} />
+        <ActionCell row={row} action={action} state={state} />
       </div>
-      {state.composing !== null ? <Composer row={row} state={state} /> : null}
+      {state.composing !== null && action.kind === "offer" ? <Composer row={row} state={state} /> : null}
     </li>
   );
 }
@@ -143,7 +148,7 @@ function FleetTabButton({ onClick, fleet }: { onClick(): void; fleet: string }) 
   );
 }
 
-function Composer({ row, state }: { row: InboxRowView; state: ReturnType<typeof useRowAction> }) {
+function Composer({ row, state }: { row: InboxRowView; state: RowActionState }) {
   const kind = state.composing;
   if (kind === null) return null;
   return (
@@ -158,11 +163,12 @@ function Composer({ row, state }: { row: InboxRowView; state: ReturnType<typeof 
   );
 }
 
-function ActionCell({ row, now, state }: { row: InboxRowView; now: string; state: ReturnType<typeof useRowAction> }): ReactNode {
-  const action = rowAction(row, now, { sending: state.sending, refusal: state.refusal });
+function ActionCell({ row, action, state }: { row: InboxRowView; action: RowAction; state: RowActionState }): ReactNode {
   switch (action.kind) {
     case "none":
       return null;
+    case "sending":
+    case "unknown":
     case "sent":
     case "done":
       return <span className="text-sm italic text-muted-foreground">{action.text}</span>;
@@ -190,6 +196,7 @@ function ActionCell({ row, now, state }: { row: InboxRowView; now: string; state
               <span className="text-muted-foreground">{action.refusal}</span>
             </span>
           ) : null}
+          {action.unconfirmed ? <span className="text-xs text-muted-foreground">could not confirm whether the last send went through</span> : null}
         </div>
       );
     }
