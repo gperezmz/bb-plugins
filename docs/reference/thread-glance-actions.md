@@ -54,7 +54,7 @@ The dialog re-reads the clock every 15 s while it is open.
 
 ### Waking
 
-The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button (**Wake now** in the thread menu), clears the snooze and toasts "Thread woke up" with **Undo**; Undo snoozes the thread again only while its old wake time is still ahead. A thread otherwise wakes at its time or on [attention](../../GLOSSARY.md) and is then [woke](thread-glance-list.md#woke).
+The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button (**Wake now** in the thread menu), clears the snooze and toasts "Thread woke up" with **Undo**; Undo snoozes the thread again only while its old wake time is still ahead. A thread otherwise wakes at its time or on [attention](../../plugins/thread-glance/GLOSSARY.md) and is then [woke](thread-glance-list.md#woke).
 
 ## Park
 

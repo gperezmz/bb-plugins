@@ -31,8 +31,9 @@ job as its own to do.
 ## Glossary
 
 The words this repository has settled are in `GLOSSARY.md` at the root, or,
-where a `GLOSSARY-MAP.md` sits at the root, in the `GLOSSARY.md` beside each
-part's code that the map lists. Call the Skill tool with `naming-concepts`
+where a `GLOSSARY-MAP.md` sits at the root, in the glossaries the map lists:
+the root `GLOSSARY.md` for the words every plugin shares, and the
+`GLOSSARY.md` beside each plugin's code for that plugin's own. Call the Skill tool with `naming-concepts`
 before naming anything the work is about.
 
 ## Claims

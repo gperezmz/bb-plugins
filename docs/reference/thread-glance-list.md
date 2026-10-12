@@ -53,7 +53,7 @@ Archived threads appear nowhere.
 
 A child thread whose parent is visible in the current scope is not a row of its own: it appears under its parent's card, behind the [children chip](#children-chip). A child whose parent is archived, in another project or outside the scope is an ordinary row. A pinned child is a row of its own on Pinned and leaves its parent's chip and child list while it is pinned.
 
-The server keeps a [lifecycle row](../../GLOSSARY.md) per thread. The shelf is the first of these that applies:
+The server keeps a [lifecycle row](../../plugins/thread-glance/GLOSSARY.md) per thread. The shelf is the first of these that applies:
 
 | # | Rule | Shelf |
 |---|---|---|
@@ -208,7 +208,7 @@ flowchart LR
 ```
 
 - A listener belongs to the workspace that is the longest match for its process's working directory. Several environments on one path all show it. bb's own listeners are left out.
-- A port is the thread's [owned port](../../GLOSSARY.md) when its process's environment holds a single `BB_THREAD_ID` naming that thread, and the thread works in that environment. Only that one entry is read: nothing else of a process's environment or command line leaves its machine. Every other port belongs to the workspace only.
+- A port is the thread's [owned port](../../plugins/thread-glance/GLOSSARY.md) when its process's environment holds a single `BB_THREAD_ID` naming that thread, and the thread works in that environment. Only that one entry is read: nothing else of a process's environment or command line leaves its machine. Every other port belongs to the workspace only.
 - A Docker container whose compose working directory is inside a workspace adds its published ports, with no owner and nothing to stop.
 - The **port indicator**, a plug on the full card's third line and on the folded card, shows while the environment has listeners; its accessible name counts them. Slim rows have none.
 - The hover card's "Workspace ports (N)" lists each listener's port and executable name, or its container, scrolling beyond 4. A listener with a process has **Stop** ([Stop a port](thread-glance-actions.md#stop-a-port)).
