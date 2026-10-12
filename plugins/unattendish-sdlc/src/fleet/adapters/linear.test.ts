@@ -136,15 +136,15 @@ describe("the snapshot of an issue", () => {
 });
 
 describe("transitions", () => {
-  it("reports a close and a reopening with the actor's account id and other names, time and the history entry's id", async () => {
+  it("reports a close and a reopening with the actor's user id and email address, time and the history entry's id", async () => {
     const history = [
       entry("h1", { createdAt: "2026-10-11T08:00:00Z", fromState: "started", toState: "completed" }),
       entry("h2", { createdAt: "2026-10-12T08:00:00Z", actor: "u-dana", fromState: "completed", toState: "started" }),
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "closed", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
-      { kind: "reopened", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
+      { kind: "closed", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T08:00:00Z", id: "linear:history:h1" },
+      { kind: "reopened", actor: "u-dana", actorAliases: ["dana@acme.test"], at: "2026-10-12T08:00:00Z", id: "linear:history:h2" },
     ]);
   });
 
@@ -164,8 +164,8 @@ describe("transitions", () => {
     ];
     const { read } = await setup({ issues: [issue("ENG-1", { history })] });
     expect((await read(["ENG-1"])).snapshots[0]!.transitions).toEqual([
-      { kind: "labelled", label: "Ready", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
-      { kind: "unlabelled", label: "in progress", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
+      { kind: "labelled", label: "Ready", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:labelled:Ready" },
+      { kind: "unlabelled", label: "in progress", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T00:00:00Z", id: "linear:history:h1:unlabelled:in progress" },
       { kind: "unlabelled", label: "spec", actor: null, at: "2026-10-11T00:00:00Z", id: "linear:history:h2:unlabelled:spec" },
     ]);
   });
@@ -204,14 +204,28 @@ describe("events", () => {
     const { read } = await setup({ issues: [issue("ENG-1", { url: "https://linear.app/acme/issue/ENG-1", comments })] });
     const outcome = await read(["ENG-1"]);
     expect(outcome.events).toEqual([
-      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", actorAliases: ["dana@acme.test", "dana"], at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
-      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", actorAliases: ["eli@acme.test", "eli"], at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
+      { id: "linear:comment:c1", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-dana", actorAliases: ["dana@acme.test"], at: "2026-10-11T00:00:00Z", lastLine: "<kbd>🤖 unattendish agent</kbd>" },
+      { id: "linear:comment:c2", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: "u-eli", actorAliases: ["eli@acme.test"], at: "2026-10-11T01:00:00Z", lastLine: "reply body" },
       { id: "linear:comment:c3", role: "tracker", ref: "ENG-1", url: "https://linear.app/acme/issue/ENG-1", kind: "commented", actor: null, at: "2026-10-11T02:00:00Z", lastLine: null },
     ]);
     expect(JSON.stringify(outcome)).not.toContain("Secret rationale");
   });
 
-  it("gives no alias for an actor whose email and display name are blank, and none for the account id", async () => {
+  it("gives a teammate who shares an echo actor's display name no alias that echo actor is registered under", async () => {
+    const users = [
+      { id: "u-bot", email: "bot@acme.test", displayName: "Fleet Bot" },
+      { id: "u-mate", email: "mate@acme.test", displayName: "Fleet Bot" },
+    ];
+    const history = [entry("h1", { actor: "u-mate", fromState: "started", toState: "completed" })];
+    const comments = [comment("c1", { user: "u-mate", body: "hello" })];
+    const { read } = await setup({ users, issues: [issue("ENG-1", { history, comments })] });
+    const outcome = await read(["ENG-1"]);
+    expect(outcome.snapshots[0]!.transitions[0]).toMatchObject({ actor: "u-mate", actorAliases: ["mate@acme.test"] });
+    expect(outcome.events[0]).toMatchObject({ actor: "u-mate", actorAliases: ["mate@acme.test"] });
+    expect(JSON.stringify(outcome)).not.toContain("Fleet Bot");
+  });
+
+  it("gives no alias for an actor whose email is blank, and none for the user id or display name", async () => {
     const blank = [{ id: "u-ghost", email: "", displayName: "" }];
     const history = [entry("h1", { actor: "u-ghost", fromState: "started", toState: "completed" })];
     const { read } = await setup({ users: blank, issues: [issue("ENG-1", { history, assignee: null, creator: null })] });
@@ -336,6 +350,55 @@ describe("the updated listing", () => {
   });
 });
 
+describe("the fleet boundary", () => {
+  const issueRequests = (m: Mounted): string[] => m.requests.map((r) => JSON.parse(r.body) as { query: string; variables: { id?: string } }).filter((b) => b.variables.id !== undefined).map((b) => `${b.query.match(/query (\w+)/)![1]!} ${b.variables.id!}`);
+
+  it("refuses an old identifier that now answers an issue of another team, reading nothing more of it", async () => {
+    const moved = issue("OPS-3", { team: "OPS", formerIdentifiers: ["ENG-12"], labels: ["spec"], comments: [comment("c1")], history: [entry("h1", { addedLabels: ["spec"] })] });
+    const { read, mounted } = await setup({ issues: [moved, issue("ENG-2")] });
+    const outcome = await read(["ENG-12", "ENG-2"]);
+    expect(outcome.snapshots.map((s) => s.ref)).toEqual(["ENG-2"]);
+    expect(outcome.events).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "ENG-12", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+    expect(issueRequests(mounted).filter((request) => request.endsWith("ENG-12"))).toEqual(["IssueRead ENG-12"]);
+  });
+
+  it("refuses an identifier of another team given in the items", async () => {
+    const { read } = await setup({ issues: [issue("OPS-1", { team: "OPS" })] });
+    const outcome = await read(["OPS-1"]);
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toEqual([{ ref: "OPS-1", reason: "moved outside the fleet", kind: "outside-fleet" }]);
+  });
+
+  it("reads an old identifier of another team that now answers an issue of the fleet's team, under the ref it was named by", async () => {
+    const { read } = await setup({ issues: [issue("ENG-5", { formerIdentifiers: ["OPS-1"], url: "https://linear.app/acme/issue/ENG-5" })] });
+    const outcome = await read(["OPS-1"]);
+    expect(outcome.failures).toEqual([]);
+    expect(outcome.snapshots).toMatchObject([{ ref: "OPS-1", url: "https://linear.app/acme/issue/ENG-5" }]);
+  });
+
+  it("matches the team key ignoring case", async () => {
+    const { read } = await setup({ issues: [issue("eng-5")] });
+    expect((await read(["ENG-5"])).snapshots).toHaveLength(1);
+  });
+
+  it("refuses a scan hit and an updated hit that belong to another team, without reading them", async () => {
+    const issues = [
+      issue("ENG-1", { labels: ["spec"], updatedAt: "2026-10-11T00:00:00Z" }),
+      issue("OPS-9", { team: "OPS", labels: ["spec"], updatedAt: "2026-10-11T00:00:00Z" }),
+    ];
+    const { read, mounted } = await setup({ issues, alsoListed: ["OPS-9"] });
+    const outcome = await read([], { scanPartition: true });
+    expect(outcome.snapshots.map((s) => s.ref)).toEqual(["ENG-1"]);
+    expect(outcome.updated.map((u) => u.ref)).toEqual(["ENG-1"]);
+    expect(outcome.failures).toEqual([
+      { ref: "OPS-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+      { ref: "OPS-9", reason: "listed outside the fleet", kind: "outside-fleet" },
+    ]);
+    expect(issueRequests(mounted).some((request) => request.endsWith("OPS-9"))).toBe(false);
+  });
+});
+
 describe("a read that fails", () => {
   it("gives a failure and no snapshot or events for an issue answered without its state, and still reads the others", async () => {
     const { read } = await setup({ issues: [issue("ENG-1", { omit: ["state"], comments: [comment("c1")] }), issue("ENG-2")] });
@@ -404,6 +467,37 @@ describe("a read that fails", () => {
     expect((failure as HttpError).message).not.toContain(TOKEN);
   });
 
+  const answering = (json: unknown): HttpSession => ({
+    service: "linear",
+    baseUrl: "http://127.0.0.1:1/graphql",
+    request: async (): Promise<HttpResponse> => ({ status: 200, json, notModified: false, header: () => null }),
+    paginate: async () => ({ items: [], truncated: false }),
+    drainRequests: () => [],
+    expiresAt: () => null,
+    noteExpiresAt: () => undefined,
+  });
+
+  it.each([
+    ["the SDK's type, spelled with a space", { type: "authentication error" }],
+    ["the type spelled with an underscore", { type: "authentication_error" }],
+    ["the code AUTHENTICATION_ERROR", { code: "AUTHENTICATION_ERROR" }],
+    ["the code UNAUTHENTICATED", { code: "UNAUTHENTICATED" }],
+    ["the type and a user error flag", { type: "AuthenticationError", userError: true }],
+  ])("rethrows a refused key answered with %s, whatever the message says", async (_, extensions) => {
+    const { read } = await setup({ issues: [] });
+    const refused = await read(["ENG-1"], { http: answering({ errors: [{ message: "anything at all", extensions }] }) }).catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(HttpError);
+    expect(refused).toMatchObject({ kind: "auth" });
+    expect((refused as HttpError).message).not.toContain("anything at all");
+  });
+
+  it.each([{ type: "forbidden" }, { type: "Forbidden", userError: true }])("fails the item with the kind forbidden for a key that may not read it (%o)", async (extensions) => {
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: answering({ errors: [{ message: "No access", extensions }], data: null }) });
+    expect(outcome.snapshots).toEqual([]);
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.not.stringContaining("No access"), kind: "forbidden" });
+  });
+
   it("fails the item, not the read, where the HTTP layer reports it forbidden (403)", async () => {
     const forbidden: HttpSession = {
       service: "linear",
@@ -419,7 +513,25 @@ describe("a read that fails", () => {
     const { read } = await setup({ issues: [] });
     const outcome = await read(["ENG-1"], { http: forbidden });
     expect(outcome.snapshots).toEqual([]);
-    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String) });
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String), kind: "forbidden" });
+  });
+
+  it.each([["server", 502], ["network", undefined]] as const)("gives the kind unreachable to an item and a listing whose read ends in a %s error", async (errorKind, status) => {
+    const down: HttpSession = {
+      service: "linear",
+      baseUrl: "http://127.0.0.1:1/graphql",
+      request: async (): Promise<HttpResponse> => {
+        throw new HttpError(errorKind, "POST / failed", status);
+      },
+      paginate: async () => ({ items: [], truncated: false }),
+      drainRequests: () => [],
+      expiresAt: () => null,
+      noteExpiresAt: () => undefined,
+    };
+    const { read } = await setup({ issues: [] });
+    const outcome = await read(["ENG-1"], { http: down });
+    expect(outcome.failures).toContainEqual({ ref: "ENG-1", reason: expect.any(String), kind: "unreachable" });
+    expect(outcome.failures).toContainEqual({ ref: null, reason: expect.any(String), kind: "unreachable" });
   });
 
   it("rethrows a rate-limit error found in a GraphQL response", async () => {

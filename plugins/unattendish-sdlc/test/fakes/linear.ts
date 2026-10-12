@@ -43,6 +43,12 @@ export interface LinearIssue {
   identifier: string;
   /** The team key; defaults to the identifier's prefix. */
   team?: string;
+  /**
+   * Identifiers the issue had before it was moved to another team. Asking for one answers the issue under its current
+   * `identifier`: Linear's help center says a search for the old ID returns the current issue; its API reference does
+   * not say, so this is the fake's assumption.
+   */
+  formerIdentifiers?: string[];
   url?: string;
   /** A workflow state type: triage, backlog, unstarted, started, completed, canceled or duplicate. */
   state: string;
@@ -61,6 +67,8 @@ export interface LinearIssue {
 export interface LinearState {
   users: LinearUser[];
   issues: LinearIssue[];
+  /** Identifiers of issues every `IssuesListed` query lists whatever its filter says, as a service that leaked another team's issues into a listing would. */
+  alsoListed?: string[];
   /** Answer every request with HTTP 401. */
   unauthenticated?: boolean;
   /** Answer every query with HTTP 200 and an authentication error in `errors`. */
@@ -289,7 +297,10 @@ const SORT_NEWEST = (a: LinearIssue, b: LinearIssue) => Date.parse(b.updatedAt) 
 export function createFakeLinear(initial?: Partial<LinearState>): FakeService {
   let state: LinearState = { users: [], issues: [], ...initial };
 
-  const find = (id: unknown): LinearIssue | undefined => state.issues.find((issue) => issue.identifier.toLowerCase() === String(id).toLowerCase());
+  const find = (id: unknown): LinearIssue | undefined => {
+    const wanted = String(id).toLowerCase();
+    return state.issues.find((issue) => issue.identifier.toLowerCase() === wanted) ?? state.issues.find((issue) => (issue.formerIdentifiers ?? []).some((former) => former.toLowerCase() === wanted));
+  };
 
   const answer = (name: string, select: Map<string, Field>, variables: Record<string, unknown>): Json => {
     const root = [...select.entries()][0];
@@ -304,7 +315,7 @@ export function createFakeLinear(initial?: Partial<LinearState>): FakeService {
       value = issueObject(state, issue!);
     } else if (name === "IssuesListed") {
       const filter = (variables.filter ?? {}) as Obj;
-      const listed = state.issues.filter((issue) => matches(filter, issueObject(state, issue))).sort(SORT_NEWEST);
+      const listed = state.issues.filter((issue) => matches(filter, issueObject(state, issue)) || (state.alsoListed ?? []).includes(issue.identifier)).sort(SORT_NEWEST);
       value = listed.map((issue) => issueObject(state, issue));
     } else if (name === "CommentReplies") {
       for (const issue of state.issues) {

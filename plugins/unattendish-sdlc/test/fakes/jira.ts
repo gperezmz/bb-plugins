@@ -3,7 +3,8 @@
 // with the shapes Atlassian's OpenAPI description gives them:
 //
 //   GET /rest/api/3/search/jql          token-paged (`nextPageToken`, `isLast`), JQL subset below
-//   GET /rest/api/3/issue/{key}         `fields=` and `expand=changelog` (newest first, with `total`)
+//   GET /rest/api/3/issue/{key}         `fields=` and `expand=changelog` (newest first, with `total`); a key the issue
+//                                       had before a move answers the issue under its current key, with no redirect
 //   GET /rest/api/3/issue/{key}/changelog   `startAt`/`maxResults` pages, oldest first, `isLast`
 //   GET /rest/api/3/issue/{key}/comment     `startAt`/`maxResults`/`orderBy`, `total`
 //   GET /rest/api/3/status              every status with its category
@@ -73,6 +74,11 @@ export interface FakeJiraIssue {
   assignee: string | null;
   creator: string;
   updated: string;
+  /**
+   * Keys the issue had before it was moved. Asking for one answers the issue under its current `key`, with no redirect,
+   * as the getIssue operation documents.
+   */
+  formerKeys?: string[];
   /** Written on the service; the adapter must never pass it on. */
   summary?: string;
   comments?: FakeJiraComment[];
@@ -87,6 +93,8 @@ export interface FakeJiraSettings {
   pageSize: number | null;
   /** Sends an ETag and answers `If-None-Match` with 304. Atlassian does not document either for these endpoints. */
   etag: boolean;
+  /** Keys of issues every search lists whatever its JQL says, as a service that leaked another project's issues into a listing would. */
+  alsoListed: string[];
   /** Answers any request whose path contains `pathContains` with `status`. */
   failures: { pathContains: string; status: number; headers?: Record<string, string> }[];
 }
@@ -120,7 +128,7 @@ const normalise = (raw: Partial<FakeJiraState> | undefined): FakeJiraState => ({
   users: raw?.users ?? [],
   statuses: raw?.statuses ?? DEFAULT_STATUSES,
   issues: raw?.issues ?? [],
-  settings: { pageSize: raw?.settings?.pageSize ?? null, etag: raw?.settings?.etag ?? false, failures: raw?.settings?.failures ?? [] },
+  settings: { pageSize: raw?.settings?.pageSize ?? null, etag: raw?.settings?.etag ?? false, alsoListed: raw?.settings?.alsoListed ?? [], failures: raw?.settings?.failures ?? [] },
 });
 
 // ---- JQL ----
@@ -381,7 +389,10 @@ export function createFakeJira(initial?: Partial<FakeJiraState>): FakeService {
     return Math.max(1, Math.min(wanted, state.settings.pageSize ?? Number.MAX_SAFE_INTEGER));
   };
 
-  const find = (key: string): FakeJiraIssue | undefined => state.issues.find((issue) => issue.key.toLowerCase() === key.toLowerCase());
+  const find = (key: string): FakeJiraIssue | undefined => {
+    const wanted = key.toLowerCase();
+    return state.issues.find((issue) => issue.key.toLowerCase() === wanted) ?? state.issues.find((issue) => (issue.formerKeys ?? []).some((former) => former.toLowerCase() === wanted));
+  };
 
   const handle = (request: IncomingMessage, _body: string, response: ServerResponse): boolean => {
     const url = new URL(request.url ?? "/", "http://fake");
@@ -421,7 +432,7 @@ export function createFakeJira(initial?: Partial<FakeJiraState>): FakeService {
         return true;
       }
       const ctx: JqlContext = { now: state.now === null ? Date.now() : parseTime(state.now), state };
-      const hits = state.issues.filter((issue) => parsed.test(issue, ctx));
+      const hits = state.issues.filter((issue) => parsed.test(issue, ctx) || state.settings.alsoListed.includes(issue.key));
       if (parsed.orderBy === "updated") hits.sort((a, b) => parseTime(a.updated) - parseTime(b.updated));
       const offset = Number(Buffer.from(query.get("nextPageToken") ?? "MA", "base64url").toString() || "0");
       const size = pageSize(query.get("maxResults"), 50);

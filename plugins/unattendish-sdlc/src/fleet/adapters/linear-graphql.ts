@@ -160,15 +160,23 @@ const codesOf = (error: unknown): string[] => {
 
 /**
  * Throws the `HttpError` an answer's `errors` call for: `auth` for an
- * authentication code, `rate-limit` for a rate-limit code. Linear's docs name
- * only `RATELIMITED` (https://linear.app/developers/rate-limiting); the
- * authentication code is matched by its stem because the docs name none.
+ * authentication error, `rate-limit` for a rate-limit error, and `forbidden`
+ * for a key that may not read the entity (which fails that one read).
+ *
+ * What Linear's own sources settle: the SDK (github.com/linear/linear,
+ * packages/sdk/src/error.ts and types.ts) reads `extensions.type` and knows
+ * the values `authentication error`, `forbidden` and `ratelimited`; the rate
+ * limit page names `extensions.code` `RATELIMITED`. Neither says which status
+ * a refused key is answered with or whether `code` is set, so both fields
+ * are read, with case, spaces and underscores ignored, and an authentication
+ * error is taken wherever it comes (HTTP 200 with `errors` or 401).
  */
 export const rethrowFatal = (errors: readonly unknown[]): void => {
   const codes = errors.flatMap(codesOf);
   if (codes.some((code) => code.includes("AUTHENTICATION") || code.includes("UNAUTHENTICATED") || code === "UNAUTHORIZED"))
     throw new HttpError("auth", "POST graphql answered an authentication error");
   if (codes.some((code) => code.includes("RATELIMIT"))) throw new HttpError("rate-limit", "POST graphql was rate limited");
+  if (codes.some((code) => code === "FORBIDDEN")) throw new HttpError("forbidden", "POST graphql answered forbidden");
 };
 
 /**

@@ -30,9 +30,19 @@
 //    page of a history is read and filtered by time here, and a listing is
 //    filtered by `updatedAt: {gte: since}`, not cut at a cursor.
 //  - The maximum page size: pages are 50, the documented default.
-//  - The error code of a refused key: matched by its stem (see
-//    `rethrowFatal`); an HTTP 401 is the layer's `auth` already, and a 403 that
-//    is no rate limit is its `forbidden`, which fails the one read.
+//  - The status and error of a refused key: the SDK (packages/sdk/src/error.ts,
+//    types.ts) knows `extensions.type` values `authentication error` and
+//    `forbidden`, and the docs give no status or `code` for either, so an
+//    authentication error is matched wherever it comes (see `rethrowFatal`).
+//    An HTTP 401 is the layer's `auth`, and a 403 that is no rate limit, or a
+//    `forbidden` type, fails the one read as `forbidden`. A status other than
+//    these (the documented 400 of a rate limit, say) reaches the adapter
+//    without its body, so it fails the one read with no kind.
+//  - What `issue(id:)` answers for an identifier the issue had before a move to another team: Linear's help center
+//    (linear.app/docs/move-to-new-team, excerpt only; the page itself answered 404) says a moved issue gets a new
+//    identifier and a search for the old one returns the current issue, and its API pages say nothing. The answer's
+//    `identifier` is checked against the fleet's team whichever way it answers, so a moved issue is refused if it
+//    comes back under another team's key and a 404 is a plain not-found.
 //  - The answer for an issue that does not exist: no page gives its code or
 //    wording, so an answer whose every error says "Entity not found" and has
 //    no data is taken as not-found, and any other as an ordinary failure.
@@ -65,7 +75,7 @@ import {
   type HistoryEntry,
   type Person,
 } from "./linear-graphql";
-import { isFatal, ReadProblem } from "./service-support";
+import { failureOf, isFatal, ReadProblem } from "./service-support";
 
 const CLOSED_TYPES = ["completed", "canceled", "duplicate"];
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
@@ -78,11 +88,13 @@ export const isOperator = (person: Person | null, operator: string): boolean => 
   return [person.email, person.displayName, person.id].some((value) => typeof value === "string" && value.toLowerCase() === wanted);
 };
 
-/** The other names Linear knows a person by, which an echo actor may have been registered under; the account id is the actor itself, and none is sent on. */
+/**
+ * The email address Linear shows for a person, which an echo actor may have been registered under; the user id is the
+ * actor itself. A display name is never an alias: anyone can choose one, so a teammate could pass for an echo actor.
+ */
 const aliasesOf = (person: Person | null): { actorAliases?: string[] } => {
-  if (person === null) return {};
-  const names = [person.email, person.displayName].filter((value): value is string => typeof value === "string" && value.trim() !== "");
-  return names.length === 0 ? {} : { actorAliases: [...new Set(names)] };
+  const email = person?.email;
+  return typeof email === "string" && email.trim() !== "" ? { actorAliases: [email] } : {};
 };
 
 const atOrAfter = (at: string, since: string): boolean => Date.parse(at) >= Date.parse(since);
@@ -119,6 +131,12 @@ const transitionsOf = (history: readonly HistoryEntry[], labels: FleetLabels, si
   return found;
 };
 
+/** An issue whose identifier belongs to a team other than the fleet's. */
+class OutsideFleet extends ReadProblem {}
+
+/** The team key of an identifier (`ENG` of `ENG-12`). */
+const teamOf = (identifier: string): string => identifier.slice(0, identifier.lastIndexOf("-"));
+
 const failureReason = (error: unknown): string => {
   if (error instanceof ReadProblem) return error.message;
   if (error instanceof HttpError) return error.message;
@@ -146,8 +164,21 @@ class LinearAdapter implements ServiceAdapter {
         events.push(...result.events);
       } catch (error) {
         if (isFatal(error) || request.signal.aborted) throw error;
-        failures.push(error instanceof NotFoundProblem ? { ref, reason: failureReason(error), kind: "not-found" } : { ref, reason: failureReason(error) });
+        failures.push(
+          error instanceof OutsideFleet
+            ? { ref, reason: error.message, kind: "outside-fleet" }
+            : error instanceof NotFoundProblem
+              ? { ref, reason: failureReason(error), kind: "not-found" }
+              : failureOf(ref, error, failureReason(error)),
+        );
       }
+    };
+
+    /** Whether a listing's hit belongs to another team, which is recorded as a failure and never read. */
+    const refuseListed = (ref: string): boolean => {
+      if (teamOf(ref).toLowerCase() === team.toLowerCase()) return false;
+      failures.push({ ref, reason: "listed outside the fleet", kind: "outside-fleet" });
+      return true;
     };
 
     for (const watched of request.items) {
@@ -159,6 +190,7 @@ class LinearAdapter implements ServiceAdapter {
       const listed = await this.list(request, scanFilter(team, request.labels, request.operator), failures);
       for (const found of listed) {
         request.signal.throwIfAborted();
+        if (refuseListed(found.ref)) continue;
         if (!read.has(found.ref.toUpperCase())) await item(found.ref, false);
       }
     }
@@ -166,6 +198,7 @@ class LinearAdapter implements ServiceAdapter {
     if (!request.stateOnly) {
       const since = { team: { key: { eq: team } }, updatedAt: { gte: request.since } };
       for (const found of await this.list(request, since, failures)) {
+        if (refuseListed(found.ref)) continue;
         updated.push({ role: "tracker", ref: found.ref, url: found.url, at: found.at });
       }
     }
@@ -178,6 +211,7 @@ class LinearAdapter implements ServiceAdapter {
     const { http, signal } = request;
     let page = await send(http, signal, ISSUE_READ, { id: ref }, issueRead);
     const issue = page.issue;
+    if (request.source.service !== "linear" || teamOf(issue.identifier).toLowerCase() !== request.source.team.toLowerCase()) throw new OutsideFleet("moved outside the fleet");
     if (issue.labels.pageInfo.hasNextPage) throw new ReadProblem(`${ref} carries more labels than one page holds`);
     const history = [...issue.history.nodes];
     for (let pages = 1; page.issue.history.pageInfo.hasNextPage; pages += 1) {
@@ -258,7 +292,7 @@ class LinearAdapter implements ServiceAdapter {
       }
     } catch (error) {
       if (isFatal(error) || request.signal.aborted) throw error;
-      failures.push({ ref: null, reason: failureReason(error) });
+      failures.push(failureOf(null, error, failureReason(error)));
       return listed;
     }
   }
