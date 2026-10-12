@@ -18,6 +18,8 @@ import {
 } from "./model";
 
 const DEFAULT_OVERLAP_MS = 60_000;
+/** The furthest a failed read may hold a cursor's `since` back from the poll's start, so one item that never reads cannot make every later poll read ever more. */
+export const MAX_HOLD_MS = 7 * 24 * 3_600_000;
 
 export interface DeriveInput {
   readonly role: SourceRole;
@@ -59,7 +61,11 @@ export interface Derived {
  * The changes a read shows against the previous cursor. A change's key does
  * not depend on when it is derived: deriving again from the same, uncommitted
  * cursor gives the same keys. An item whose read failed leaves its previous
- * state in the cursor and gives no change, and any failure holds `since`.
+ * state in the cursor and gives no change. Such a failure, and a failed
+ * listing, hold `since` where it was, but never more than `MAX_HOLD_MS` before
+ * the poll's start: changes held while no manager exists are in the ledger
+ * and are not lost by the cap. A failure of kind `not-found` holds nothing,
+ * since no later read of that item will succeed.
  */
 export const deriveChanges = (input: DeriveInput): Derived => {
   const { role, prev, outcome, watchedRefs, labels, startedAt, firstSince, stateOnly } = input;
@@ -76,13 +82,13 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     const before = prev?.items[id];
     const watched = watchedRefs.has(snapshot.ref);
     if (!stateOnly) changes.push(...snapshotChanges({ snapshot, before, watched, labels, startedAt, base, id }));
-    items[id] = nextState(snapshot);
+    items[id] = nextState(snapshot, before);
   }
 
   if (!stateOnly) {
     for (const event of outcome.events) {
       if (!watchedRefs.has(event.ref)) continue;
-      changes.push({ key: event.id, role: event.role, ref: event.ref, url: event.url, kind: event.kind, label: null, actor: event.actor, at: event.at, lastLine: event.lastLine });
+      changes.push({ key: event.id, role: event.role, ref: event.ref, url: event.url, kind: event.kind, label: null, actor: event.actor, at: event.at, lastLine: event.lastLine, ...aliasesOf(event) });
     }
   }
 
@@ -99,12 +105,17 @@ export const deriveChanges = (input: DeriveInput): Derived => {
     for (const [id, state] of Object.entries(prev?.items ?? {})) if (!(id in items)) items[id] = state;
   }
 
-  const holdsSince = outcome.failures.length > 0 || stateOnly;
-  const since = holdsSince ? base : new Date(Date.parse(startedAt) - overlapMs).toISOString();
+  const holdsSince = outcome.failures.some((failure) => failure.ref === null || failure.kind !== "not-found") || stateOnly;
+  const oldest = new Date(Date.parse(startedAt) - MAX_HOLD_MS).toISOString();
+  const since = holdsSince ? (base < oldest ? oldest : base) : new Date(Date.parse(startedAt) - overlapMs).toISOString();
 
-  changes.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  changes.sort(byTimeThenKey);
   return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
 };
+
+/** Orders changes, and ledger rows, by the time they happened, then by key. */
+export const byTimeThenKey = (a: { readonly at: string; readonly key: string }, b: { readonly at: string; readonly key: string }): number =>
+  a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 
 /**
  * The items a poll must read again though the watched set no longer names
@@ -148,6 +159,7 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
     actor: transition?.actor ?? null,
     at: transition?.at ?? context.startedAt,
     lastLine: null,
+    ...(transition === undefined ? {} : aliasesOf(transition)),
   });
 
   const registered: readonly { readonly label: string; readonly partitioned: boolean }[] = [
@@ -179,23 +191,38 @@ const snapshotChanges = (context: SnapshotContext): Change[] => {
 
   const checks = snapshot.checks;
   if (watched && before !== undefined && checks !== null && checks.outcome !== "pending") {
-    const reported = before.checks !== null && before.checks.sha === checks.sha && before.checks.reported;
-    if (!reported) {
+    const known = before.checks !== null && before.checks.sha === checks.sha ? before.checks : null;
+    if (known === null || !known.reported) {
       const kind: ChangeKind = checks.outcome === "passed" ? "checks passed" : "checks failed";
-      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${checks.sha}` });
+      const round = known?.round ?? 0;
+      changes.push({ ...make(kind, null, undefined), key: `${id}|${kind}|${checks.sha}${round === 0 ? "" : `|round ${round}`}` });
     }
   }
   return changes;
 };
 
-/** The item's state to keep. Final checks are kept as reported: they were reported just now, before, or are a baseline nobody is told of. */
-const nextState = (snapshot: ItemSnapshot): ItemState => ({
-  open: snapshot.open,
-  merged: snapshot.merged,
-  fleetLabels: [...snapshot.fleetLabels],
-  checks: snapshot.checks === null ? null : { sha: snapshot.checks.sha, outcome: snapshot.checks.outcome, reported: isFinal(snapshot.checks.outcome) },
-  inPartition: snapshot.inPartition,
-});
+/**
+ * The item's state to keep. Final checks are kept as reported: they were
+ * reported just now, before, or are a baseline nobody is told of. A pending
+ * seen after a reported final on the same commit is a re-run: it opens the
+ * next round, so the re-run's final outcome is reported under its own key.
+ * A re-run that no poll saw pending is not reported, since nothing tells it
+ * from the outcome already reported.
+ */
+const nextState = (snapshot: ItemSnapshot, before: ItemState | undefined): ItemState => {
+  const checks = snapshot.checks;
+  let kept: ItemState["checks"] = null;
+  if (checks !== null) {
+    const known = before?.checks != null && before.checks.sha === checks.sha ? before.checks : null;
+    const round = (known?.round ?? 0) + (known?.reported === true && !isFinal(checks.outcome) ? 1 : 0);
+    kept = { sha: checks.sha, outcome: checks.outcome, reported: isFinal(checks.outcome), ...(round === 0 ? {} : { round }) };
+  }
+  return { open: snapshot.open, merged: snapshot.merged, fleetLabels: [...snapshot.fleetLabels], checks: kept, inPartition: snapshot.inPartition };
+};
+
+/** The other names the service knows an actor by, as the field of a `Change`; nothing when there are none. */
+const aliasesOf = (source: { readonly actorAliases?: readonly string[] | undefined }): { readonly actorAliases?: readonly string[] } =>
+  source.actorAliases === undefined || source.actorAliases.length === 0 ? {} : { actorAliases: [...source.actorAliases] };
 
 const isFinal = (outcome: ChecksOutcome): boolean => outcome !== "pending";
 

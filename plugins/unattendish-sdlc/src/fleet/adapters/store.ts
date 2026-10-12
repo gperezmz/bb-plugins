@@ -23,9 +23,9 @@ const DEFAULT_LEDGER_LIMIT = 200;
 const CHUNK = 500;
 
 /**
- * One statement per element, for `bb.storage.migrate`. Append-only: a shipped
- * statement is never edited or reordered. Every statement is idempotent, so
- * running the list again changes nothing.
+ * One statement per element, for `bb.storage.migrate`, which runs each
+ * statement once, by its index. Append-only: a shipped statement is never
+ * edited or reordered.
  */
 export const MIGRATIONS: string[] = [
   `CREATE TABLE IF NOT EXISTS fleets (
@@ -107,6 +107,8 @@ export const MIGRATIONS: string[] = [
   `CREATE INDEX IF NOT EXISTS wakes_repo ON wakes (repo_id, kind, id)`,
   `CREATE INDEX IF NOT EXISTS wakes_queued_message ON wakes (queued_message_id)`,
   `CREATE INDEX IF NOT EXISTS wakes_pruning ON wakes (queued_at)`,
+  `ALTER TABLE wakes ADD COLUMN not_watched_since TEXT`,
+  `ALTER TABLE wakes ADD COLUMN not_watched_prefix TEXT`,
 ];
 
 interface FleetRow {
@@ -164,6 +166,8 @@ interface WakeRow {
   since: string;
   catch_up_ms: number | null;
   held_since: string | null;
+  not_watched_since: string | null;
+  not_watched_prefix: string | null;
 }
 
 const DONE_DISPOSITION = { woke: "wake", echo: "echo", "out-of-scope": "out-of-scope", held: "held" } as const;
@@ -218,6 +222,7 @@ const toWake = (row: WakeRow): StoredWake => ({
   since: row.since,
   catchUpMs: row.catch_up_ms,
   heldSince: row.held_since,
+  notWatched: row.not_watched_since === null || row.not_watched_prefix === null ? null : { since: row.not_watched_since, prefix: row.not_watched_prefix },
 });
 
 const toPoll = (row: PollRow): PollRecord => ({
@@ -266,7 +271,8 @@ export class SqliteStore implements Store {
 
   removeFleet(repo: string): boolean {
     return this.db.transaction(() => {
-      for (const table of ["cursors", "changes", "failed_reads", "polls", "wakes"]) this.db.prepare(`DELETE FROM ${table} WHERE repo_id = ?`).run(repo);
+      // The ledger stays: retention ages it out, and a registration that follows still sees what it holds.
+      this.db.prepare("DELETE FROM cursors WHERE repo_id = ?").run(repo);
       return this.db.prepare("DELETE FROM fleets WHERE repo_id = ?").run(repo).changes > 0;
     })();
   }
@@ -368,10 +374,10 @@ export class SqliteStore implements Store {
     const dispatchedAt = wake.dispatchedAt ?? null;
     const result = this.db
       .prepare(
-        `INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, dispatched_at, since, catch_up_ms, held_since)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO wakes (repo_id, kind, thread_id, queued_message_id, queued_at, dispatched_at, since, catch_up_ms, held_since, not_watched_since, not_watched_prefix)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(repo, wake.kind, wake.threadId, wake.queuedMessageId, wake.queuedAt, dispatchedAt, wake.since, wake.catchUpMs, wake.heldSince);
+      .run(repo, wake.kind, wake.threadId, wake.queuedMessageId, wake.queuedAt, dispatchedAt, wake.since, wake.catchUpMs, wake.heldSince, wake.notWatched?.since ?? null, wake.notWatched?.prefix ?? null);
     return {
       id: Number(result.lastInsertRowid),
       repo,
@@ -383,12 +389,13 @@ export class SqliteStore implements Store {
       since: wake.since,
       catchUpMs: wake.catchUpMs,
       heldSince: wake.heldSince,
+      notWatched: wake.notWatched === null ? null : { ...wake.notWatched },
     };
   }
 
   openWake(repo: string): StoredWake | null {
     const row = this.db
-      .prepare("SELECT * FROM wakes WHERE repo_id = ? AND kind = 'changes' AND queued_message_id IS NOT NULL AND dispatched_at IS NULL ORDER BY id DESC LIMIT 1")
+      .prepare("SELECT * FROM wakes WHERE repo_id = ? AND queued_message_id IS NOT NULL AND dispatched_at IS NULL ORDER BY id DESC LIMIT 1")
       .get(repo) as WakeRow | undefined;
     return row === undefined ? null : toWake(row);
   }
@@ -411,6 +418,12 @@ export class SqliteStore implements Store {
 
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void {
     this.db.prepare("UPDATE wakes SET queued_message_id = ? WHERE repo_id = ? AND id = ?").run(queuedMessageId, repo, wakeId);
+  }
+
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+    this.db
+      .prepare("UPDATE wakes SET kind = ?, held_since = ?, not_watched_since = ?, not_watched_prefix = ? WHERE repo_id = ? AND id = ?")
+      .run(update.kind, update.heldSince, update.notWatched?.since ?? null, update.notWatched?.prefix ?? null, repo, wakeId);
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

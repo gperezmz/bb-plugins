@@ -1,7 +1,7 @@
 // Fakes for the ports the use cases need, for tests that run on fakes alone.
 import { longestMatch, parsePrefix, repoSubject, trackerSubject, type Prefix } from "../domain/identity";
 import { parseManifest } from "../domain/manifest";
-import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, Source, TrackerSpec } from "../domain/model";
+import type { ManifestRead, RepoRef, ReadOutcome, ServiceKind, TrackerSpec } from "../domain/model";
 import type {
   Clock,
   Credentials,
@@ -138,9 +138,9 @@ export class FakeHttp implements Http {
 /** An adapter that answers each read with the next outcome queued, or throws what was queued. */
 export class FakeAdapter implements ServiceAdapter {
   readonly reads: ReadRequest[] = [];
-  private readonly script: (ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome))[] = [];
+  private readonly script: (ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome | Promise<ReadOutcome>))[] = [];
   constructor(readonly service: ServiceKind) {}
-  queue(next: ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome)): void {
+  queue(next: ReadOutcome | Error | ((request: ReadRequest) => ReadOutcome | Promise<ReadOutcome>)): void {
     this.script.push(next);
   }
   async read(request: ReadRequest): Promise<ReadOutcome> {
@@ -150,5 +150,3 @@ export class FakeAdapter implements ServiceAdapter {
     return typeof next === "function" ? next(request) : next;
   }
 }
-
-export const sourceOf = (source: Source): Source => source;

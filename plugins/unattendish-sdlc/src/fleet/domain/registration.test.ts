@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideHolder, DEFAULT_INTERVAL_MS, effectiveInterval, isDue, MIN_INTERVAL_MS, validateInterval, validateRegistration, type RegisterArgs } from "./registration";
+import { catchUp, credentialRefused, decideHolder, DEFAULT_INTERVAL_MS, effectiveInterval, isDue, MIN_INTERVAL_MS, validateInterval, validateRegistration, type RegisterArgs } from "./registration";
 
 const args = (over: Partial<RegisterArgs> = {}): RegisterArgs => ({
   contract: 1,
@@ -128,5 +128,32 @@ describe("isDue", () => {
   });
   it("is due when a time cannot be read", () => {
     expect(isDue("garbage", "2026-10-12T10:00:00.000Z", 120_000)).toBe(true);
+  });
+});
+
+describe("catchUp", () => {
+  const last = "2026-10-12T10:00:00.000Z";
+  const after = (ms: number) => new Date(Date.parse(last) + ms).toISOString();
+  it("is the gap when the plugin was away for more than three intervals and ten minutes", () => {
+    expect(catchUp(last, after(8 * 3_600_000), 120_000)).toBe(8 * 3_600_000);
+  });
+  it("is null for an ordinary gap, and at the threshold itself", () => {
+    expect(catchUp(last, after(150_000), 120_000)).toBeNull();
+    expect(catchUp(last, after(600_000), 120_000)).toBeNull();
+    expect(catchUp(last, after(600_001), 120_000)).toBe(600_001);
+  });
+  it("scales with the interval: three long intervals are not an absence", () => {
+    expect(catchUp(last, after(3_600_000), 1_200_000)).toBeNull();
+    expect(catchUp(last, after(3_600_001), 1_200_000)).toBe(3_600_001);
+  });
+  it("is null for a fleet never polled, and for times that cannot be read", () => {
+    expect(catchUp(null, after(10 * 3_600_000), 120_000)).toBeNull();
+    expect(catchUp("not a time", after(10 * 3_600_000), 120_000)).toBeNull();
+  });
+});
+
+describe("credentialRefused", () => {
+  it("names the prefix whose credential the service refused", () => {
+    expect(credentialRefused("github.com/org")).toEqual({ code: "credential-refused", text: "The credential for github.com/org was refused by the service" });
   });
 });

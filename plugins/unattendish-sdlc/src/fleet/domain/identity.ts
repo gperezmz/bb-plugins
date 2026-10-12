@@ -20,6 +20,18 @@ export const formatRepo = (repo: RepoRef): string => `${repo.host}/${repo.path}`
 /** The key a registration is stored under: the repository, lower case. */
 export const repoId = (repo: RepoRef): string => formatRepo(repo).toLowerCase();
 
+/** The tracker as `--tracker` spells it: `forge-issues`, `linear:<team key>` or `jira:<site>/<project key>`. */
+export const formatTracker = (tracker: TrackerSpec): string => {
+  switch (tracker.kind) {
+    case "forge-issues":
+      return "forge-issues";
+    case "linear":
+      return `linear:${tracker.team}`;
+    case "jira":
+      return `jira:${tracker.site}/${tracker.project}`;
+  }
+};
+
 /** `forge-issues`, `linear:<team key>` or `jira:<site>/<project key>`; null for anything else. */
 export const parseTracker = (text: string): TrackerSpec | null => {
   const value = text.trim();

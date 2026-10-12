@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
+import { byTimeThenKey, deriveChanges, partitionRevisit, type DeriveInput } from "./changes";
 import type { ActivityEvent, ItemSnapshot, ItemState, ReadOutcome, SourceCursor, Transition } from "./model";
 
 const labels = { spec: "spec", ready: "ready", inProgress: "in progress", needsInput: "needs input" };
@@ -158,6 +158,35 @@ describe("checks", () => {
     expect(derived.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true });
   });
 
+  it("reports checks that settle again after a re-run on the same commit, once per round", () => {
+    let cursorNow = derive({ prev: at(state({ checks: { sha: "aaa", outcome: "pending", reported: false } })), watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
+    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa"]);
+
+    const rerun = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    expect(rerun.changes).toEqual([]);
+    expect(rerun.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "pending", reported: false, round: 1 });
+    const stillRunning = derive({ prev: rerun.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    expect(stillRunning.nextCursor.items["forge:#7"]!.checks).toMatchObject({ round: 1 });
+
+    cursorNow = derive({ prev: stillRunning.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) });
+    expect(cursorNow.changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|aaa|round 1"]);
+    expect(cursorNow.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "aaa", outcome: "failed", reported: true, round: 1 });
+    expect(derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed")] }) }).changes).toEqual([]);
+
+    const second = derive({ prev: cursorNow.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending")] }) });
+    const settled = derive({ prev: second.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) });
+    expect(settled.changes.map((c) => c.key)).toEqual(["forge:#7|checks passed|aaa|round 2"]);
+  });
+
+  it("starts the rounds again for a new commit, and reports nothing for a re-run no poll saw pending", () => {
+    const reported = at(state({ checks: { sha: "aaa", outcome: "failed", reported: true, round: 2 } }));
+    const pushed = derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("pending", "bbb")] }) });
+    expect(pushed.nextCursor.items["forge:#7"]!.checks).toEqual({ sha: "bbb", outcome: "pending", reported: false });
+    expect(derive({ prev: pushed.nextCursor, watchedRefs: watched, outcome: outcome({ snapshots: [pr("failed", "bbb")] }) }).changes.map((c) => c.key)).toEqual(["forge:#7|checks failed|bbb"]);
+    // A re-run that never showed pending between two polls looks like the outcome already reported.
+    expect(derive({ prev: reported, watchedRefs: watched, outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
+  });
+
   it("does not report checks of an unwatched item", () => {
     expect(derive({ prev: at(state()), outcome: outcome({ snapshots: [pr("passed")] }) }).changes).toEqual([]);
   });
@@ -181,6 +210,24 @@ describe("failures", () => {
   it("holds since on a failed listing, and at the registration time before a first cursor", () => {
     const derived = derive({ outcome: outcome({ failures: [{ ref: null, reason: "listing failed" }] }) });
     expect(derived.nextCursor.since).toBe(firstSince);
+  });
+
+  it("does not hold since for an item the service says does not exist, but does for any other failure of one item", () => {
+    const prev = cursor({});
+    const gone = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }] }) });
+    expect(gone.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    const other = derive({ prev, outcome: outcome({ failures: [{ ref: "#9", reason: "no such issue", kind: "not-found" }, { ref: "#8", reason: "server error" }] }) });
+    expect(other.nextCursor.since).toBe(prev.since);
+    const listing = derive({ prev, outcome: outcome({ failures: [{ ref: null, reason: "listing failed", kind: "not-found" }] }) });
+    expect(listing.nextCursor.since).toBe(prev.since);
+  });
+
+  it("holds since no further back than seven days before the poll's start", () => {
+    const old = cursor({}, "2026-09-01T00:00:00.000Z");
+    const held = derive({ prev: old, outcome: outcome({ failures: [{ ref: "#8", reason: "server error" }] }) });
+    expect(held.nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: old, stateOnly: true, outcome: outcome() }).nextCursor.since).toBe("2026-10-05T10:00:00.000Z");
+    expect(derive({ prev: cursor({}, "2026-10-08T00:00:00.000Z"), outcome: outcome({ failures: [{ ref: null, reason: "x" }] }) }).nextCursor.since).toBe("2026-10-08T00:00:00.000Z");
   });
 
   it("moves since to the poll's start less the overlap otherwise", () => {
@@ -225,6 +272,17 @@ describe("events and out of scope", () => {
     ]);
   });
 
+  it("carries the other names the service knows an actor by from an event and from a transition, and leaves the field out otherwise", () => {
+    const watchedOne = new Set(["#1"]);
+    const viaEvent = derive({ watchedRefs: watchedOne, outcome: outcome({ events: [event({ actorAliases: ["bot@example.com"] }), event({ id: "e2", actorAliases: [] })] }) }).changes;
+    expect(viaEvent.find((c) => c.key === "github:issuecomment:5")!.actorAliases).toEqual(["bot@example.com"]);
+    expect("actorAliases" in viaEvent.find((c) => c.key === "e2")!).toBe(false);
+    const prev = cursor({ "forge:#1": state() });
+    const labelled = snapshot({ fleetLabels: ["in progress"], transitions: [transition({ label: "in progress", actorAliases: ["bot@example.com"] })] });
+    const [viaTransition] = derive({ prev, watchedRefs: watchedOne, outcome: outcome({ snapshots: [labelled] }) }).changes;
+    expect(viaTransition!.actorAliases).toEqual(["bot@example.com"]);
+  });
+
   it("lists updated items that are not watched as out of scope", () => {
     const updated = [
       { role: "forge" as const, ref: "#1", url: "https://github.com/org/repo/issues/1", at: "2026-10-12T09:50:00.000Z" },
@@ -260,5 +318,13 @@ describe("partitionRevisit", () => {
     ]);
     expect(partitionRevisit(prev, "tracker", labels, new Set())).toEqual([{ role: "tracker", ref: "ENG-1", url: null }]);
     expect(partitionRevisit(null, "forge", labels, new Set())).toEqual([]);
+  });
+});
+
+describe("byTimeThenKey", () => {
+  it("orders by time, then by key", () => {
+    const rows = [{ at: "2026-10-12T10:00:02.000Z", key: "a" }, { at: "2026-10-12T10:00:01.000Z", key: "z" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }, { at: "2026-10-12T10:00:01.000Z", key: "b" }];
+    expect([...rows].sort(byTimeThenKey).map((row) => `${row.at.slice(17, 19)}${row.key}`)).toEqual(["01b", "01b", "01z", "02a"]);
+    expect(byTimeThenKey(rows[2]!, rows[3]!)).toBe(0);
   });
 });

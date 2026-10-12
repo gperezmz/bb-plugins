@@ -3,9 +3,8 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { PluginCliError } from "@get-bb/plugin-sdk";
 import type { PollDeps } from "./fleet/application/poll";
-import { pollFleet } from "./fleet/application/poll";
 import { registerFleet } from "./fleet/application/register";
-import { pollDue, pruneLedger } from "./fleet/application/schedule";
+import { pollDue, pruneLedger, refreshFleetsOf, setFleetInterval } from "./fleet/application/schedule";
 import { SerialQueue } from "./fleet/application/serial";
 import { fleetStatus } from "./fleet/application/status";
 import type { Clock, ServiceAdapter } from "./fleet/application/ports";
@@ -22,7 +21,7 @@ import { SETTINGS } from "./fleet/adapters/settings";
 import { MIGRATIONS, SqliteStore } from "./fleet/adapters/store";
 import { parseRepo, repoId } from "./fleet/domain/identity";
 import type { ServiceKind } from "./fleet/domain/model";
-import { redact } from "./fleet/domain/redact";
+import { messageOf, redact } from "./fleet/domain/redact";
 
 export interface ComposeOptions {
   readonly clock?: Clock;
@@ -32,7 +31,7 @@ export interface ComposeOptions {
 
 export interface Fleets {
   readonly app: FleetCliApp;
-  /** Polls every fleet whose interval has run out. */
+  /** Starts the poll of every fleet whose interval has run out and is not being worked on; settles when those polls have. */
   pollDue(): Promise<void>;
   /** The manager's turn ended: reads the state of items the manifest now names, so changes before the next poll are changes. */
   refreshWatched(threadId: string): Promise<void>;
@@ -41,6 +40,8 @@ export interface Fleets {
   prune(): void;
   /** Logs a warning with every configured token scrubbed from it. */
   warn(message: string): void;
+  /** Logs that `what` failed with `error`, scrubbed of every configured token. */
+  failed(what: string, error: unknown): void;
   /** What is wrong with the settings, for a person. */
   settingsProblems(): string[];
 }
@@ -85,37 +86,45 @@ export async function compose(bb: BbPluginApi, options: ComposeOptions = {}): Pr
     manifests: new FileManifests(),
     clock,
     log,
+    rateLimits: new Map(),
   };
   const queue = new SerialQueue();
 
+  // Work that changes a fleet runs behind any poll of it; a caller that cannot wait gets its answer from the registry as it stands.
+  const failed = (what: string, error: unknown): void => log.warn(`${what} failed: ${messageOf(error, credentials.secrets())}`);
+  const settle = (work: Promise<unknown>, what: string): void => {
+    work.catch((error: unknown) => failed(what, error));
+  };
+
   const app: FleetCliApp = {
-    register: (thread, args) => registerFleet(poll, thread, args),
-    unregister: (repo) => store.removeFleet(repoOf(repo)),
+    register(thread, args) {
+      const repo = parseRepo(args.repo);
+      return repo === null ? registerFleet(poll, thread, args) : queue.run(repoId(repo), () => registerFleet(poll, thread, args));
+    },
+    unregister(repo) {
+      const key = repoOf(repo);
+      const registered = store.getFleet(key) !== null;
+      settle(queue.run(key, async () => store.removeFleet(key)), `unregistering ${key}`);
+      return registered;
+    },
     status: () => fleetStatus(poll),
     ledger: (repo, query) => store.ledger(repoOf(repo), query),
     setInterval(repo, intervalMs) {
       const key = repoOf(repo);
-      if (store.getFleet(key) === null) return false;
-      store.setIntervalMs(key, intervalMs);
-      return true;
+      const registered = store.getFleet(key) !== null;
+      settle(queue.run(key, async () => setFleetInterval(poll, key, intervalMs)), `setting the interval of ${key}`);
+      return registered;
     },
   };
 
   return {
     app,
     pollDue: () => pollDue(poll, queue),
-    async refreshWatched(threadId) {
-      const held = store.listFleets().filter((fleet) => fleet.registration.managerThreadId === threadId);
-      await Promise.all(
-        held.map((fleet) => {
-          const key = repoId(fleet.registration.repo);
-          return queue.run(key, () => pollFleet(poll, key, { stateOnly: true })).catch((error: unknown) => log.warn(`reading ${key} after a turn failed: ${error instanceof Error ? error.message : String(error)}`));
-        }),
-      );
-    },
+    refreshWatched: (threadId) => refreshFleetsOf(poll, queue, threadId),
     dispatched: (queuedMessageId) => store.markDispatched(queuedMessageId, clock.now().toISOString()),
     prune: () => pruneLedger(poll),
     warn: log.warn,
+    failed,
     settingsProblems: () => credentials.problems(),
   };
 }

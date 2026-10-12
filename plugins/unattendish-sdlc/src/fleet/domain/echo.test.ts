@@ -65,6 +65,12 @@ describe("classify", () => {
     expect(classify(change({ kind: "merged", actor: "Fleet-Bot" }), fleet)).toEqual({ kind: "echo", rule: "echo actor" });
     expect(classify(change({ kind: "labelled", label: "ready", actor: "fleet-bot" }), fleet)).toEqual({ kind: "echo", rule: "echo actor" });
   });
+  it("drops a change when any other name the service knows its actor by is an echo actor", () => {
+    expect(classify(change({ actor: "Display Name", actorAliases: ["bot@example.com", "Fleet-Bot"] }), fleet)).toEqual({ kind: "echo", rule: "echo actor" });
+    expect(classify(change({ actor: null, actorAliases: ["fleet-bot"] }), fleet)).toEqual({ kind: "echo", rule: "echo actor" });
+    expect(classify(change({ actor: "alice", actorAliases: ["alice@example.com"] }), fleet)).toEqual({ kind: "wake" });
+    expect(classify(change({ actor: "alice", actorAliases: [] }), fleet)).toEqual({ kind: "wake" });
+  });
   it("names the marker rule before the echo actor rule", () => {
     expect(classify(change({ actor: "fleet-bot", lastLine: marker }), fleet)).toEqual({ kind: "echo", rule: "marker" });
   });

@@ -1,7 +1,7 @@
 // The rules of registering a fleet and of polling it on time: which
 // arguments are valid, who may hold a repository, and how often it is read.
 import { parseRepo, parseTracker } from "./identity";
-import { CONTRACT_VERSION, type FleetLabels, type Registration } from "./model";
+import { CONTRACT_VERSION, type FleetLabels, type NotWatched, type Registration } from "./model";
 
 export const DEFAULT_INTERVAL_MS = 120_000;
 /** The shortest interval a fleet may be polled at. */
@@ -122,5 +122,24 @@ export const isDue = (lastPolledAt: string | null, now: string, intervalMs: numb
   const elapsed = Date.parse(now) - Date.parse(lastPolledAt);
   return Number.isNaN(elapsed) || elapsed >= intervalMs;
 };
+
+/** A gap since the last poll beyond this many intervals, and at least `AWAY_MIN_MS`, is the plugin having been away. */
+const AWAY_INTERVALS = 3;
+const AWAY_MIN_MS = 10 * 60_000;
+
+/**
+ * How long the plugin was away, when a poll at `now` follows one at
+ * `lastPolledAt` after a gap longer than three intervals and ten minutes;
+ * null for an ordinary gap, for a fleet never polled, and for times that
+ * cannot be read.
+ */
+export const catchUp = (lastPolledAt: string | null, now: string, intervalMs: number): number | null => {
+  if (lastPolledAt === null) return null;
+  const gap = Date.parse(now) - Date.parse(lastPolledAt);
+  return gap > Math.max(AWAY_INTERVALS * intervalMs, AWAY_MIN_MS) ? gap : null;
+};
+
+/** Why a fleet whose credential the service refused is not watched. */
+export const credentialRefused = (prefix: string): NotWatched => ({ code: "credential-refused", text: `The credential for ${prefix} was refused by the service` });
 
 const shown = (text: string): string => (text.length > 80 ? `${text.slice(0, 80)}…` : text).replace(CONTROL, " ");

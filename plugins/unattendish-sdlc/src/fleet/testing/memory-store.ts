@@ -1,6 +1,7 @@
 // The Fleet store as plain objects, for the use-case tests. It behaves as the
 // SQLite store does; `describeStore` runs the same suite over both.
 import type { LedgerEntry, LedgerQuery, LedgerRow, PollCommit, PollRecord, Store, StoredFleet, StoredWake } from "../application/ports";
+import { byTimeThenKey } from "../domain/changes";
 import { repoId } from "../domain/identity";
 import type { Change, ChangeKind, Disposition, NotWatched, Registration, SourceCursor, SourceRole } from "../domain/model";
 
@@ -14,7 +15,7 @@ interface FailedRead {
   readonly reason: string;
 }
 
-/** Everything one repository owns, so removing the fleet is dropping the record. Ledger data may exist before a registration does, as in the SQLite store. */
+/** Everything one repository owns. Ledger data may exist before a registration does and outlives it, as in the SQLite store. */
 interface RepoData {
   fleet: StoredFleet | null;
   cursors: Map<SourceRole, SourceCursor>;
@@ -25,7 +26,6 @@ interface RepoData {
 }
 
 const sameRef = (a: string | null, b: string): boolean => a !== null && a.toLowerCase() === b.toLowerCase();
-const byAtThenKey = (a: LedgerRow, b: LedgerRow): number => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 const toChange = (row: LedgerRow): Change => ({
   key: row.key,
@@ -95,9 +95,12 @@ export class InMemoryStore implements Store {
   }
 
   removeFleet(repo: string): boolean {
-    this.wakes = this.wakes.filter((wake) => wake.repo !== repo);
-    const existed = this.records.get(repo)?.fleet != null;
-    this.records.delete(repo);
+    const data = this.records.get(repo);
+    const existed = data?.fleet != null;
+    if (data !== undefined) {
+      data.fleet = null;
+      data.cursors.clear();
+    }
     return existed;
   }
 
@@ -160,7 +163,7 @@ export class InMemoryStore implements Store {
   }
 
   heldChanges(repo: string): Change[] {
-    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.disposition === "held").sort(byAtThenKey).map(toChange);
+    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.disposition === "held").sort(byTimeThenKey).map(toChange);
   }
 
   recordFailedRead(repo: string, entry: FailedRead): void {
@@ -187,13 +190,14 @@ export class InMemoryStore implements Store {
       since: wake.since,
       catchUpMs: wake.catchUpMs,
       heldSince: wake.heldSince,
+      notWatched: wake.notWatched === null ? null : { ...wake.notWatched },
     };
     this.wakes.push(stored);
     return { ...stored };
   }
 
   openWake(repo: string): StoredWake | null {
-    const open = this.wakes.filter((wake) => wake.repo === repo && wake.kind === "changes" && wake.queuedMessageId !== null && wake.dispatchedAt === null);
+    const open = this.wakes.filter((wake) => wake.repo === repo && wake.queuedMessageId !== null && wake.dispatchedAt === null);
     const latest = open[open.length - 1];
     return latest === undefined ? null : { ...latest };
   }
@@ -207,11 +211,16 @@ export class InMemoryStore implements Store {
   }
 
   wakeChanges(repo: string, wakeId: number): Change[] {
-    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.wakeId === wakeId).sort(byAtThenKey).map(toChange);
+    return [...(this.records.get(repo)?.changes.values() ?? [])].filter((row) => row.wakeId === wakeId).sort(byTimeThenKey).map(toChange);
   }
 
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void {
     this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, queuedMessageId } : wake));
+  }
+
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void {
+    const notWatched = update.notWatched === null ? null : { ...update.notWatched };
+    this.wakes = this.wakes.map((wake) => (wake.repo === repo && wake.id === wakeId ? { ...wake, kind: update.kind, heldSince: update.heldSince, notWatched } : wake));
   }
 
   markDispatched(queuedMessageId: string, at: string): void {

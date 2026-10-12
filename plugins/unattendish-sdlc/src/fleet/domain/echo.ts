@@ -31,15 +31,13 @@ export interface EchoRules {
   readonly echoActors: readonly string[];
 }
 
-/** What becomes of a change: an echo by the first rule that matches (marker, label, echo actor), else a wake. */
+/** What becomes of a change: an echo by the first rule that matches (marker, label, echo actor), else a wake. The echo actor rule also matches any other name the service knows the actor by. */
 export const classify = (change: Change, fleet: EchoRules): Disposition => {
   const isComment = change.kind === "commented" || change.kind.startsWith("reviewed: ");
   if (isComment && isMarker(change.lastLine, fleet.marker)) return { kind: "echo", rule: "marker" };
   const isLabelChange = change.kind === "labelled" || change.kind === "unlabelled";
   if (isLabelChange && (change.label === fleet.labels.inProgress || change.label === fleet.labels.needsInput)) return { kind: "echo", rule: "label" };
-  if (change.actor !== null) {
-    const actor = change.actor.toLowerCase();
-    if (fleet.echoActors.some((echoActor) => echoActor.toLowerCase() === actor)) return { kind: "echo", rule: "echo actor" };
-  }
+  const names = [change.actor, ...(change.actorAliases ?? [])].flatMap((name) => (name === null ? [] : [name.toLowerCase()]));
+  if (fleet.echoActors.some((echoActor) => names.includes(echoActor.toLowerCase()))) return { kind: "echo", rule: "echo actor" };
   return { kind: "wake" };
 };

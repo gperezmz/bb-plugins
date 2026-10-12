@@ -23,21 +23,26 @@ export default async function plugin(bb: BbPluginApi) {
   bb.background.service("poll-fleets", {
     async start(signal) {
       let lastPruned = 0;
+      const running = new Set<Promise<void>>();
       while (!signal.aborted) {
         try {
-          await fleets.pollDue();
+          // The polls run on; one slow fleet does not hold up the others' next tick.
+          const polls = fleets.pollDue().catch((error: unknown) => fleets.failed("polling", error));
+          running.add(polls);
+          void polls.then(() => running.delete(polls));
           if (Date.now() - lastPruned > PRUNE_EVERY_MS) {
             fleets.prune();
             lastPruned = Date.now();
           }
         } catch (error) {
-          fleets.warn(`polling failed: ${error instanceof Error ? error.message : String(error)}`);
+          fleets.failed("polling", error);
         }
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, TICK_MS);
           signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
         });
       }
+      await Promise.all(running);
     },
   });
 }

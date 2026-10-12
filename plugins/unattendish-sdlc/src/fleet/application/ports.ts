@@ -5,10 +5,9 @@ import type {
   ChangeKind,
   Disposition,
   FleetLabels,
-  ItemId,
-  ItemSnapshot,
   ManifestRead,
   NotWatched,
+  OutsideLink,
   ReadOutcome,
   Registration,
   RepoRef,
@@ -211,7 +210,7 @@ export interface StoredFleet {
   /** Set while a credential is refused: when the outage began, and the prefix. */
   readonly refused: { readonly since: string; readonly prefix: string; readonly announced: boolean } | null;
   readonly unreadableRows: readonly UnreadableRow[];
-  readonly outsideLinks: readonly { readonly text: string; readonly section: string; readonly line: number }[];
+  readonly outsideLinks: readonly OutsideLink[];
   /** The tokens' expiry dates reported by the services, by credential prefix. */
   readonly expiries: Readonly<Record<string, string | null>>;
   /** When no manager held the fleet, the time the first change was held; null otherwise. */
@@ -233,6 +232,8 @@ export interface StoredWake {
   readonly since: string;
   readonly catchUpMs: number | null;
   readonly heldSince: string | null;
+  /** The "not watched since" line the wake carries, kept so it is worded again whenever the queued wake is amended. */
+  readonly notWatched: { readonly since: string; readonly prefix: string } | null;
 }
 
 export interface LedgerRow {
@@ -286,6 +287,7 @@ export interface Store {
   listFleets(): StoredFleet[];
   /** Registers or re-registers; keeps the cursors, the ledger and the poll state of a repository already held. */
   saveRegistration(registration: Registration, notWatched: readonly NotWatched[]): void;
+  /** Deletes the registration and the cursors; the ledger (changes, failed reads, polls, wakes) stays until retention ages it out. Says whether a fleet was registered. */
   removeFleet(repo: string): boolean;
   setIntervalMs(repo: string, intervalMs: number | null): void;
   /** Records the state of the last poll: its time, why the fleet is not watched, what the manifest could not give. */
@@ -311,17 +313,17 @@ export interface Store {
 
   /** `dispatchedAt` is set for a wake bb sent at once, and left out for one waiting in bb's queue. */
   createWake(repo: string, wake: Omit<StoredWake, "id" | "repo" | "dispatchedAt"> & { readonly dispatchedAt?: string | null }): StoredWake;
-  /** The wake still waiting in bb's queue, if any. */
+  /** The latest wake, of either kind, still waiting in bb's queue, if any. */
   openWake(repo: string): StoredWake | null;
   markWoke(repo: string, wakeId: number, keys: readonly string[]): void;
   /** Keys of the changes a wake carries. */
   wakeChanges(repo: string, wakeId: number): Change[];
   setWakeQueuedMessage(repo: string, wakeId: number, queuedMessageId: string | null): void;
+  /** Records what an amendment made of a queued wake: its kind, and the lines it now carries. */
+  updateWake(repo: string, wakeId: number, update: Pick<StoredWake, "kind" | "heldSince" | "notWatched">): void;
   markDispatched(queuedMessageId: string, at: string): void;
 
   ledger(repo: string, query: LedgerQuery): LedgerEntry[];
   /** Deletes ledger rows older than the cutoff. */
   prune(before: string): void;
 }
-
-export type { ItemId, ItemSnapshot };

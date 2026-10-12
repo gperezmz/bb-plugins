@@ -1,6 +1,6 @@
 // What a fleet can be watched with right now: its credentials, its manifest,
 // and from those its sources and its watched set.
-import { defaultServiceOfHost, forgeSource, formatRepo, trackerSource } from "../domain/identity";
+import { defaultServiceOfHost, forgeSource, formatRepo, formatTracker, trackerSource } from "../domain/identity";
 import type { ManifestRead, NotWatched, Registration, UnreadableRow, WatchedSet } from "../domain/model";
 import { watchedSet } from "../domain/watched";
 import type { Credentials, ManifestFiles, ResolvedSource } from "./ports";
@@ -15,11 +15,6 @@ export interface Watching {
   readonly tracker: ResolvedSource | null;
   readonly notWatched: readonly NotWatched[];
 }
-
-const trackerName = (registration: Registration): string => {
-  const tracker = registration.tracker;
-  return tracker.kind === "linear" ? `linear:${tracker.team}` : tracker.kind === "jira" ? `jira:${tracker.site}/${tracker.project}` : "forge-issues";
-};
 
 export const assessWatching = async (deps: { credentials: Credentials; manifests: ManifestFiles }, registration: Registration): Promise<Watching> => {
   const notWatched: NotWatched[] = [];
@@ -40,7 +35,7 @@ export const assessWatching = async (deps: { credentials: Credentials; manifests
   if (separate !== null) {
     const lookup = deps.credentials.forTracker(registration.tracker, registration.repo);
     if (lookup.found && lookup.credential.service === separate.service) tracker = { credential: lookup.credential, source: separate };
-    else notWatched.push({ code: "no-credential", text: `No credential is chosen for the tracker ${trackerName(registration)}` });
+    else notWatched.push({ code: "no-credential", text: `No credential is chosen for the tracker ${formatTracker(registration.tracker)}` });
   }
 
   const service = forge?.source.role === "forge" ? forge.source.service : (defaultServiceOfHost(registration.repo.host) ?? "github");

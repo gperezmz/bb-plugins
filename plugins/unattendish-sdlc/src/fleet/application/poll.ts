@@ -1,11 +1,11 @@
 // One poll of one fleet: read what changed in its sources, sort every change
 // into woken, echo, out of scope or held, and send the manager one wake.
-import { deriveChanges, partitionRevisit, type Derived } from "../domain/changes";
+import { byTimeThenKey, deriveChanges, partitionRevisit, type Derived } from "../domain/changes";
 import { classify } from "../domain/echo";
-import { repoId, urlUnder } from "../domain/identity";
+import { formatRepo, repoId, urlUnder } from "../domain/identity";
 import type { Change, Disposition, NotWatched, ServiceKind, SourceRole, WatchedItem } from "../domain/model";
 import { messageOf, redact } from "../domain/redact";
-import { effectiveInterval } from "../domain/registration";
+import { catchUp, credentialRefused, effectiveInterval } from "../domain/registration";
 import { formatWake } from "../domain/wake";
 import {
   HttpError,
@@ -34,6 +34,8 @@ export interface PollDeps {
   readonly manifests: ManifestFiles;
   readonly clock: Clock;
   readonly log: { warn(message: string): void };
+  /** Per credential prefix, the time (epoch milliseconds) before which the service asked to be left alone. Lives in memory: a restart forgets it and the first refusal sets it again. */
+  readonly rateLimits: Map<string, number>;
 }
 
 export interface PollOptions {
@@ -54,9 +56,6 @@ export interface PollResult {
 }
 
 const NOTHING: PollResult = { polled: false, woke: 0, echoes: 0, outOfScope: 0, held: 0, delivery: "none" };
-/** A gap since the last poll beyond this many intervals, and at least ten minutes, is the plugin having been away. */
-const AWAY_INTERVALS = 3;
-const AWAY_MIN_MS = 10 * 60_000;
 /** What counts as already settled: a change with one of these dispositions is never handled twice. */
 const SETTLED: ReadonlySet<Disposition["kind"]> = new Set(["wake", "echo", "out-of-scope"]);
 
@@ -73,8 +72,6 @@ const rowOf = (change: Change, disposition: Disposition, seenAt: string): Omit<L
   disposition: disposition.kind,
   rule: disposition.kind === "echo" ? disposition.rule : disposition.kind === "held" ? disposition.reason : null,
 });
-
-const byTimeThenKey = (a: Change, b: Change): number => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 interface SourceRead {
   readonly role: SourceRole;
@@ -97,6 +94,8 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
   const stateOnly = options.stateOnly === true;
   const signal = options.signal ?? AbortSignal.timeout(120_000);
   const secrets = () => deps.credentials.secrets();
+  const nowMs = Date.parse(now);
+  const limited = new Set<string>();
   const reading: Reading = { reads: [], notWatched: [...watching.notWatched], refusedPrefix: null, expiries: { ...fleet.expiries } };
   let refusedPrefix: string | null = null;
 
@@ -112,6 +111,15 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       : [...wanted, ...partitionRevisit(cursor, role, registration.labels, watchedRefs)];
     if (stateOnly && items.length === 0) continue;
     const since = cursor?.since ?? registration.registeredAt;
+
+    const prefix = resolved.credential.prefix;
+    const notBefore = deps.rateLimits.get(prefix);
+    if (notBefore !== undefined && notBefore > nowMs) {
+      if (!limited.has(prefix)) deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: `${prefix} is rate limited; not read until ${new Date(notBefore).toISOString()}` });
+      limited.add(prefix);
+      continue;
+    }
+    deps.rateLimits.delete(prefix);
 
     let session;
     try {
@@ -138,6 +146,7 @@ async function readSources(deps: PollDeps, fleet: StoredFleet, watching: Watchin
       derived = deriveChanges({ role, prev: cursor, outcome, watchedRefs, labels: registration.labels, startedAt: now, firstSince: registration.registeredAt, stateOnly });
     } catch (error) {
       if (error instanceof HttpError && error.kind === "auth") refusedPrefix = resolved.credential.prefix;
+      if (error instanceof HttpError && error.kind === "rate-limit" && error.retryAfterMs !== null) deps.rateLimits.set(prefix, nowMs + error.retryAfterMs);
       deps.store.recordFailedRead(repo, { at: now, role, ref: null, reason: messageOf(error, secrets()) });
     }
     const requests = session.drainRequests();
@@ -170,7 +179,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const notWatched = [...reading.notWatched];
 
   const refused = reading.refusedPrefix === null ? null : { since: fleet.refused?.since ?? now, prefix: reading.refusedPrefix };
-  if (refused !== null) notWatched.push({ code: "credential-refused", text: `The credential for ${refused.prefix} was refused by the service` });
+  if (refused !== null) notWatched.push(credentialRefused(refused.prefix));
 
   const cursors = reading.reads.map((read) => ({ role: read.role, cursor: read.derived.nextCursor }));
   const pollState = (heldSince: string | null) => ({
@@ -240,8 +249,9 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
     return { polled: true, woke: 0, echoes, outOfScope, held, delivery: "none" };
   }
 
-  // The changes held while no manager held the fleet go out in the first wake a manager gets.
-  const heldNow = fleet.heldSince === null ? [] : deps.store.heldChanges(repo);
+  // The changes held while no manager held the fleet go out in the first wake a manager gets; the ledger holds them though the fleet's `heldSince` does not (a repository registered again).
+  const heldNow = deps.store.heldChanges(repo);
+  const heldFrom = fleet.heldSince ?? heldNow[0]?.at ?? null;
   for (const change of heldNow) if (!toWake.has(change.key)) toWake.set(change.key, change);
   const changes = [...toWake.values()].sort(byTimeThenKey);
 
@@ -253,13 +263,12 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   }
 
   const interval = effectiveInterval(registration);
-  const gap = fleet.lastPolledAt === null ? 0 : Date.parse(now) - Date.parse(fleet.lastPolledAt);
-  const catchUpMs = gap > Math.max(AWAY_INTERVALS * interval, AWAY_MIN_MS) ? gap : null;
+  const catchUpMs = catchUp(fleet.lastPolledAt, now, interval);
   const earliest = reading.reads.map((read) => read.since).sort()[0] ?? registration.registeredAt;
-  const since = heldNow.length > 0 && fleet.heldSince !== null && fleet.heldSince < earliest ? fleet.heldSince : earliest;
+  const since = heldFrom !== null && heldNow.length > 0 && heldFrom < earliest ? heldFrom : earliest;
   const notWatchedLine = announce && refused !== null ? { since: refused.since, prefix: refused.prefix } : null;
 
-  const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? fleet.heldSince : null, notWatched: notWatchedLine, now });
+  const delivery = await deliver(deps, fleet, { changes, since, catchUpMs, heldSince: heldNow.length > 0 ? heldFrom : null, notWatched: notWatchedLine, now });
   if (delivery.result === "refused") {
     // The same changes are offered again at the next poll: no cursor moves.
     deps.store.savePollState(repo, pollState(fleet.heldSince));
@@ -294,11 +303,16 @@ async function deliver(
   const thread = registration.managerThreadId;
 
   const open = deps.store.openWake(repo);
-  if (open !== null && open.threadId === thread && open.queuedMessageId !== null && wake.changes.length > 0) {
+  if (open !== null && open.threadId === thread && open.queuedMessageId !== null) {
     const merged = [...deps.store.wakeChanges(repo, open.id), ...wake.changes].sort(byTimeThenKey);
-    const text = formatWake({ since: open.since, changes: merged, catchUpMs: open.catchUpMs, heldSince: open.heldSince ?? wake.heldSince, notWatched: wake.notWatched });
+    const heldSince = open.heldSince ?? wake.heldSince;
+    const notWatched = wake.notWatched ?? open.notWatched;
+    const text = formatWake({ since: open.since, changes: merged, catchUpMs: open.catchUpMs, heldSince, notWatched });
     const amended = await deps.channel.amend(thread, open.queuedMessageId, text);
-    if (amended === "amended") return { result: "amended", wakeId: open.id };
+    if (amended === "amended") {
+      deps.store.updateWake(repo, open.id, { kind: merged.length > 0 ? "changes" : "not-watched", heldSince, notWatched });
+      return { result: "amended", wakeId: open.id };
+    }
     if (amended !== "gone") return { result: "refused" };
     // It left the queue since: its turn has started, so these changes go in a new wake.
     deps.store.markDispatched(open.queuedMessageId, wake.now);
@@ -307,7 +321,7 @@ async function deliver(
   const text = formatWake({ since: wake.since, changes: wake.changes, catchUpMs: wake.catchUpMs, heldSince: wake.heldSince, notWatched: wake.notWatched });
   const sent = await deps.channel.send(thread, text);
   if (sent.delivered === "refused") {
-    deps.log.warn(`bb refused a wake for ${registration.repo.host}/${registration.repo.path}: ${sent.reason}`);
+    deps.log.warn(`bb refused a wake for ${formatRepo(registration.repo)}: ${sent.reason}`);
     return { result: "refused" };
   }
   const stored = deps.store.createWake(repo, {
@@ -318,6 +332,7 @@ async function deliver(
     since: wake.since,
     catchUpMs: wake.catchUpMs,
     heldSince: wake.heldSince,
+    notWatched: wake.notWatched,
     ...(sent.delivered === "sent" ? { dispatchedAt: wake.now } : {}),
   });
   return { result: sent.delivered, wakeId: stored.id };

@@ -58,6 +58,7 @@ const wakeFields = (over: Record<string, unknown> = {}) => ({
   since: "2026-10-12T09:58:00.000Z",
   catchUpMs: null,
   heldSince: null,
+  notWatched: null as { since: string; prefix: string } | null,
   ...over,
 });
 
@@ -197,7 +198,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       describe("removing a fleet", () => {
-        it("deletes the registration, cursors, ledger rows, wakes and polls of that repository and says it existed", () => {
+        it("deletes the registration and cursors of that repository, keeps its ledger for retention to age out, and says it existed", () => {
           store.saveRegistration(registration(REPO), []);
           store.commit({ repo: REPO, at: "2026-10-12T10:05:00.000Z", cursors: [{ role: "forge", cursor: cursor("2026-10-12T10:04:00.000Z") }, { role: "tracker", cursor: cursor("2026-10-12T10:03:00.000Z") }] });
           store.recordChange(REPO, row("k1"));
@@ -211,10 +212,28 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           expect(store.listFleets()).toEqual([]);
           expect(store.getCursor(REPO, "forge")).toBeNull();
           expect(store.getCursor(REPO, "tracker")).toBeNull();
+          expect(store.ledger(REPO, {}).map((entry) => entry.type).sort()).toEqual(["change", "failed read", "poll", "wake"]);
+          expect(store.openWake(REPO)).not.toBeNull();
+          expect(store.requestsSince(REPO, "2000-01-01T00:00:00.000Z")).toBe(1);
+          expect(store.dispositions(REPO, ["k1"]).get("k1")).toBe("wake");
+        });
+
+        it("keeps the changes held for no manager, for a registration that follows", () => {
+          store.saveRegistration(registration(REPO), []);
+          store.recordChange(REPO, row("k1", { disposition: "held", rule: "no manager" }));
+          store.removeFleet(REPO);
+          expect(store.heldChanges(REPO).map((change) => change.key)).toEqual(["k1"]);
+          store.saveRegistration(registration(REPO), []);
+          expect(store.getFleet(REPO)).toMatchObject({ lastPolledAt: null, heldSince: null });
+          expect(store.getCursor(REPO, "forge")).toBeNull();
+        });
+
+        it("lets retention age the kept ledger out", () => {
+          store.saveRegistration(registration(REPO), []);
+          store.recordChange(REPO, row("k1"));
+          store.removeFleet(REPO);
+          store.prune("2030-01-01T00:00:00.000Z");
           expect(store.ledger(REPO, {})).toEqual([]);
-          expect(store.openWake(REPO)).toBeNull();
-          expect(store.requestsSince(REPO, "2000-01-01T00:00:00.000Z")).toBe(0);
-          expect(store.dispositions(REPO, ["k1"]).size).toBe(0);
         });
 
         it("says so when there was none", () => {
@@ -604,6 +623,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           since: "2026-10-12T09:58:00.000Z",
           catchUpMs: 3_600_000,
           heldSince: "2026-10-12T08:00:00.000Z",
+          notWatched: null,
         });
         expect(new Set([first.id, second.id, third.id]).size).toBe(3);
         expect(second.id).toBeGreaterThan(first.id);
@@ -625,7 +645,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
       });
 
       describe("the open wake", () => {
-        it("is the latest changes wake that waits in bb's queue", () => {
+        it("is the latest wake of either kind that waits in bb's queue", () => {
           expect(store.openWake(REPO)).toBeNull();
           const first = store.createWake(REPO, wakeFields({ queuedMessageId: "msg_1" }));
           expect(store.openWake(REPO)).toEqual(first);
@@ -641,11 +661,19 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           expect(store.ledger(REPO, {})).toEqual([{ type: "wake", wake: { ...wake, dispatchedAt: "2026-10-12T10:05:00.000Z" } }]);
         });
 
-        it("skips a wake without a queued message, a dispatched one and one of another kind", () => {
+        it("skips a wake without a queued message and a dispatched one", () => {
           const waiting = store.createWake(REPO, wakeFields({ queuedMessageId: "msg_1" }));
           store.createWake(REPO, wakeFields({ queuedMessageId: null, dispatchedAt: "2026-10-12T10:00:01.000Z" }));
-          store.createWake(REPO, wakeFields({ kind: "not-watched", queuedMessageId: "msg_nw" }));
+          store.createWake(REPO, wakeFields({ queuedMessageId: "msg_2", dispatchedAt: "2026-10-12T10:00:02.000Z" }));
           expect(store.openWake(REPO)).toEqual(waiting);
+        });
+
+        it("returns a queued not-watched wake, with the line it carries", () => {
+          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org" };
+          const wake = store.createWake(REPO, wakeFields({ kind: "not-watched", queuedMessageId: "msg_nw", notWatched: line }));
+          expect(wake.notWatched).toEqual(line);
+          expect(store.openWake(REPO)).toEqual(wake);
+          expect(store.ledger(REPO, {})).toEqual([{ type: "wake", wake }]);
         });
 
         it("follows the queued message set on the wake", () => {
@@ -655,6 +683,15 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
           expect(store.openWake(REPO)).toEqual({ ...wake, queuedMessageId: "msg_9" });
           store.setWakeQueuedMessage(REPO, wake.id, null);
           expect(store.openWake(REPO)).toBeNull();
+        });
+
+        it("records what an amendment made of the wake", () => {
+          const wake = store.createWake(REPO, wakeFields({ kind: "not-watched" }));
+          const line = { since: "2026-10-12T09:00:00.000Z", prefix: "github.com/org" };
+          store.updateWake(REPO, wake.id, { kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
+          expect(store.openWake(REPO)).toEqual({ ...wake, kind: "changes", heldSince: "2026-10-12T08:00:00.000Z", notWatched: line });
+          store.updateWake(OTHER, wake.id, { kind: "not-watched", heldSince: null, notWatched: null });
+          expect(store.openWake(REPO)).toMatchObject({ kind: "changes", notWatched: line });
         });
 
         it("is not changed by setting a message on a wake of another repository", () => {
