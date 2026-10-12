@@ -1,6 +1,7 @@
 // The Store port's behaviour as one suite, run over every implementation so
 // the in-memory fake cannot drift from the SQLite store.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ActionRecord } from "../domain/actions";
 import type { LedgerRow, PollRecord, SourceOutage, Store, StoredFleet, StoredWake } from "../application/ports";
 import { repoId } from "../domain/identity";
 import type { Registration, SourceCursor } from "../domain/model";
@@ -920,6 +921,125 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         const wake = store.createWake(REPO, wakeFields({ queuedAt: "2026-10-12T10:00:00.000Z" }));
         store.prune("2026-10-12T09:00:00.000Z");
         expect(store.openWake(REPO)).toEqual(wake);
+      });
+    });
+
+    describe("actions the dashboard sent", () => {
+      const action = (id: string, over: Partial<ActionRecord> = {}): ActionRecord => ({
+        id,
+        repo: REPO,
+        rowId: `row-${id}`,
+        kind: "answer",
+        ref: "#163",
+        what: "Which cache?",
+        managerThreadId: "thr_manager",
+        state: "sent",
+        sentAt: "2026-10-12T10:00:00.000Z",
+        doneAt: null,
+        ...over,
+      });
+
+      beforeEach(() => {
+        store.saveRegistration(registration(), []);
+        store.saveRegistration(registration(OTHER), []);
+      });
+
+      it("keeps a sent action, oldest first, per repository", () => {
+        store.saveAction(action("b", { sentAt: "2026-10-12T10:05:00.000Z" }));
+        store.saveAction(action("a"));
+        store.saveAction(action("c", { repo: OTHER }));
+        expect(store.actions(REPO).map((a) => a.id)).toEqual(["a", "b"]);
+        expect(store.actions(OTHER).map((a) => a.id)).toEqual(["c"]);
+        expect(store.actions("github.com/none/none")).toEqual([]);
+      });
+
+      it("marks sent actions done once, with the time of the poll that saw the result", () => {
+        store.saveAction(action("a"));
+        store.saveAction(action("b"));
+        store.markActionsDone(REPO, ["a"], "2026-10-12T10:10:00.000Z");
+        store.markActionsDone(REPO, ["a", "b"], "2026-10-12T10:20:00.000Z");
+        expect(store.actions(REPO).map((a) => [a.id, a.state, a.doneAt])).toEqual([
+          ["a", "done", "2026-10-12T10:10:00.000Z"],
+          ["b", "done", "2026-10-12T10:20:00.000Z"],
+        ]);
+      });
+
+      it("drops the sent actions of a repository and keeps the done ones", () => {
+        store.saveAction(action("a"));
+        store.saveAction(action("b", { state: "done", doneAt: "2026-10-12T10:10:00.000Z" }));
+        store.saveAction(action("c", { repo: OTHER }));
+        store.dropSentActions(REPO);
+        expect(store.actions(REPO).map((a) => a.id)).toEqual(["b"]);
+        expect(store.actions(OTHER).map((a) => a.id)).toEqual(["c"]);
+      });
+
+      it("deletes the actions of a repository when its fleet is removed", () => {
+        store.saveAction(action("a"));
+        store.removeFleet(REPO);
+        expect(store.actions(REPO)).toEqual([]);
+      });
+
+      it("prunes done actions older than the cutoff, keeps sent ones however old, and drops those of no fleet", () => {
+        store.saveAction(action("old-done", { state: "done", doneAt: "2026-10-10T10:00:00.000Z" }));
+        store.saveAction(action("new-done", { state: "done", doneAt: "2026-10-12T09:30:00.000Z" }));
+        store.saveAction(action("old-sent", { sentAt: "2026-09-01T10:00:00.000Z" }));
+        store.saveAction(action("orphan", { repo: "github.com/gone/gone" }));
+        store.pruneActions("2026-10-11T10:00:00.000Z");
+        expect(store.actions(REPO).map((a) => a.id)).toEqual(["old-sent", "new-done"]);
+        expect(store.actions("github.com/gone/gone")).toEqual([]);
+      });
+    });
+
+    describe("Inbox rows seen", () => {
+      beforeEach(() => {
+        store.saveRegistration(registration(), []);
+      });
+
+      it("records rows per repository and keeps them", () => {
+        store.touchInboxSeen(REPO, ["a", "b"], "2026-10-12T10:00:00.000Z");
+        store.touchInboxSeen(OTHER, ["c"], "2026-10-12T10:00:00.000Z");
+        expect([...store.inboxSeen(REPO)].sort()).toEqual(["a", "b"]);
+        expect([...store.inboxSeen(OTHER)]).toEqual(["c"]);
+      });
+
+      it("survives the removal of the fleet, so a re-registration finds the rows", () => {
+        store.touchInboxSeen(REPO, ["a"], "2026-10-12T10:00:00.000Z");
+        store.removeFleet(REPO);
+        expect([...store.inboxSeen(REPO)]).toEqual(["a"]);
+      });
+
+      it("moves the time of a row seen again, so pruning forgets only rows gone from the manifest", () => {
+        store.touchInboxSeen(REPO, ["old", "kept"], "2026-08-01T00:00:00.000Z");
+        store.touchInboxSeen(REPO, ["kept"], "2026-10-12T00:00:00.000Z");
+        store.prune("2026-09-12T00:00:00.000Z");
+        expect([...store.inboxSeen(REPO)]).toEqual(["kept"]);
+      });
+
+      it("knows a repository has been baselined only once it was, and forgets it with the fleet", () => {
+        expect(store.inboxBaselined(REPO)).toBe(false);
+        store.setInboxBaselined(REPO);
+        expect(store.inboxBaselined(REPO)).toBe(true);
+        expect(store.inboxBaselined(OTHER)).toBe(false);
+        store.saveRegistration(registration(), []);
+        expect(store.inboxBaselined(REPO)).toBe(true);
+        store.removeFleet(REPO);
+        expect(store.inboxBaselined(REPO)).toBe(false);
+      });
+
+      it("baselines nothing for a repository no fleet holds", () => {
+        store.setInboxBaselined("github.com/none/none");
+        expect(store.inboxBaselined("github.com/none/none")).toBe(false);
+      });
+    });
+
+    describe("recent wakes", () => {
+      it("returns the latest wakes of a repository, newest first, up to the limit", () => {
+        store.createWake(REPO, wakeFields({ queuedMessageId: "m1", queuedAt: "2026-10-12T10:00:00.000Z" }));
+        store.createWake(REPO, wakeFields({ queuedMessageId: "m2", queuedAt: "2026-10-12T10:02:00.000Z" }));
+        store.createWake(OTHER, wakeFields({ queuedMessageId: "m3", queuedAt: "2026-10-12T10:03:00.000Z" }));
+        store.createWake(REPO, wakeFields({ queuedMessageId: "m4", queuedAt: "2026-10-12T10:01:00.000Z" }));
+        expect(store.recentWakes(REPO, 2).map((w) => w.queuedMessageId)).toEqual(["m2", "m4"]);
+        expect(store.recentWakes(REPO, 0)).toEqual([]);
       });
     });
   });

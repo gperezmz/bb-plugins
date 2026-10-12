@@ -92,6 +92,17 @@ describe("SqliteStore on a database", () => {
     db.close();
   });
 
+  it("reads a fleet stored before Inbox rows were recorded as one whose first read is yet to come, with no actions", () => {
+    const db = migrated(new Database(":memory:"), MIGRATIONS.findIndex((statement) => statement.includes("TABLE IF NOT EXISTS actions")));
+    db.prepare("INSERT INTO fleets (repo_id, registration) VALUES ('github.com/org/repo', ?)").run(JSON.stringify(registration));
+    migrated(db);
+    const store = new SqliteStore(db);
+    expect(store.inboxBaselined("github.com/org/repo")).toBe(false);
+    expect(store.actions("github.com/org/repo")).toEqual([]);
+    expect([...store.inboxSeen("github.com/org/repo")]).toEqual([]);
+    db.close();
+  });
+
   it("runs every migration as one statement", () => {
     const db = new Database(":memory:");
     for (const statement of MIGRATIONS) expect(() => db.prepare(statement).run()).not.toThrow();
@@ -107,6 +118,8 @@ describe("SqliteStore on a database", () => {
     expect(plan("SELECT * FROM changes WHERE repo_id = ? AND wake_id = ?", "r", 1)).toContain("USING INDEX");
     expect(plan("SELECT * FROM wakes WHERE queued_message_id = ?", "m")).toContain("USING INDEX");
     expect(plan("DELETE FROM changes WHERE seen_at < ?", "t")).toContain("USING INDEX");
+    expect(plan("SELECT row_id FROM inbox_seen WHERE repo_id = ?", "r")).toContain("USING");
+    expect(plan("DELETE FROM inbox_seen WHERE seen_at < ?", "t")).toContain("USING INDEX");
     db.close();
   });
 

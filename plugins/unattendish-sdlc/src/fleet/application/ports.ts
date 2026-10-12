@@ -1,5 +1,6 @@
 // What the Fleet use cases need from the outside, phrased in the context's
 // words. Adapters implement these; the use cases name no vendor package.
+import type { ActionRecord } from "../domain/actions";
 import type {
   Change,
   ChangeKind,
@@ -388,6 +389,31 @@ export interface Store {
   markDispatched(queuedMessageId: string, at: string): void;
 
   ledger(repo: string, query: LedgerQuery): LedgerEntry[];
-  /** Deletes ledger rows older than the cutoff. */
+  /** The latest wakes of a repository, newest first. */
+  recentWakes(repo: string, limit: number): StoredWake[];
+  /** Deletes ledger rows, and Inbox rows not seen since, older than the cutoff. */
   prune(before: string): void;
+
+  // ---- actions the dashboard sent ----
+
+  /** Records an action as sent. */
+  saveAction(action: ActionRecord): void;
+  /** Every action kept for a repository, oldest first. */
+  actions(repo: string): ActionRecord[];
+  /** Marks sent actions done at `at`; one already done stays as it was. */
+  markActionsDone(repo: string, ids: readonly string[], at: string): void;
+  /** Drops the actions still sent on a repository: the manager they were sent to no longer holds it. */
+  dropSentActions(repo: string): void;
+  /** Deletes done actions finished before the cutoff, and every action of a repository no fleet is registered for. */
+  pruneActions(doneBefore: string): void;
+
+  // ---- Inbox rows seen ----
+
+  /** The ids of the Inbox rows ever recorded for a repository (not per manager). */
+  inboxSeen(repo: string): Set<string>;
+  /** Records Inbox rows as seen at `at`, those already recorded kept and their time moved. */
+  touchInboxSeen(repo: string, ids: readonly string[], at: string): void;
+  /** Whether the repository's Inbox has been read once since it was registered, so that a new row is news. */
+  inboxBaselined(repo: string): boolean;
+  setInboxBaselined(repo: string): void;
 }
