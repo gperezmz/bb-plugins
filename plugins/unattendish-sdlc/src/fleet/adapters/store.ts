@@ -517,6 +517,11 @@ export class SqliteStore implements Store {
     return row.total;
   }
 
+  failedReadsSince(repo: string, since: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS total FROM failed_reads WHERE repo_id = ? AND at >= ?").get(repo, since) as { total: number };
+    return row.total;
+  }
+
   createWake(repo: string, wake: Parameters<Store["createWake"]>[1]): StoredWake {
     const dispatchedAt = wake.dispatchedAt ?? null;
     const result = this.db

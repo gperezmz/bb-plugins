@@ -1,6 +1,6 @@
 // A fleet's problems and warnings, decided from its card alone: every problem the server flags is red and every warning
 // amber, each with the fix that puts it right, in the order the fleet board shows the first of them.
-import type { FleetCardView, HalfView, ReasonView, WarningView } from "@/src/fleet/application/views";
+import type { FleetCardView, HalfView, ProblemView, WarningView } from "@/src/fleet/application/views";
 import { warningLine } from "./card-model";
 import { ICONS } from "./look/icons";
 import { COUNTS } from "./look/tones";
@@ -37,7 +37,7 @@ function rankOf(flag: Flag, code: string | null): number {
   return 6;
 }
 
-function problemOf(reason: ReasonView): Flag {
+function problemOf(reason: ProblemView): Flag {
   const fix: FlagFix = reason.fix.kind === "connect" ? { kind: "connect", role: reason.fix.role } : reason.fix.kind === "fleet-tab" ? { kind: "fleet-tab" } : { kind: "none" };
   const verb = fix.kind === "connect" ? "Connect…" : fix.kind === "fleet-tab" ? "Review" : null;
   return { kind: "problem", sentence: reason.text, verb, fix, saidElsewhere: false };
@@ -54,9 +54,9 @@ function warningOf(warning: WarningView, now: string): Flag | null {
 }
 
 /** Every problem and warning of the fleet, in the order the board shows them. */
-export function flagsOf(card: Pick<FleetCardView, "reasons" | "warnings">, now: string): Flag[] {
+export function flagsOf(card: Pick<FleetCardView, "problems" | "warnings">, now: string): Flag[] {
   const ranked = [
-    ...card.reasons.map((reason) => ({ flag: problemOf(reason), code: reason.code as string | null })),
+    ...card.problems.map((reason) => ({ flag: problemOf(reason), code: reason.code as string | null })),
     ...card.warnings.flatMap((warning) => {
       const flag = warningOf(warning, now);
       return flag === null ? [] : [{ flag, code: null }];
@@ -101,6 +101,6 @@ export function flagSummary(flags: readonly Flag[]): string | null {
 }
 
 /** A quiet fleet: every Status count at zero, no problem and no warning. */
-export function isQuiet(card: Pick<FleetCardView, "blocked" | "inFlight" | "waiting" | "landed" | "reasons" | "warnings">, now: string): boolean {
+export function isQuiet(card: Pick<FleetCardView, "blocked" | "inFlight" | "waiting" | "landed" | "problems" | "warnings">, now: string): boolean {
   return COUNTS.every((count) => card[count] === 0) && flagsOf(card, now).length === 0;
 }

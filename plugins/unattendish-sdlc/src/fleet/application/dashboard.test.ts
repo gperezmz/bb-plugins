@@ -154,11 +154,11 @@ describe("the card (AC3, AC4, AC14)", () => {
   it("counts a manager that is archived or gone among the problems, and a live one not", async () => {
     const w = world();
     await start(w, manifest());
-    expect((await cardOf(w)).reasons).toEqual([]);
+    expect((await cardOf(w)).problems).toEqual([]);
     w.threads.states.set(MANAGER, "archived");
-    expect((await cardOf(w)).reasons).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
+    expect((await cardOf(w)).problems).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
     w.threads.states.delete(MANAGER);
-    expect((await cardOf(w)).reasons.map((reason) => reason.code)).toEqual(["manager-gone"]);
+    expect((await cardOf(w)).problems.map((reason) => reason.code)).toEqual(["manager-gone"]);
   });
 
   it("does not call a manager gone when bb fails to answer for its thread", async () => {
@@ -167,7 +167,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     w.threads.unanswered.add(MANAGER);
     const card = await cardOf(w);
     expect(card.manager).toEqual({ state: "none", since: null });
-    expect(card.reasons).toEqual([]);
+    expect(card.problems).toEqual([]);
   });
 
   it("names the service behind the forge", async () => {
@@ -211,18 +211,18 @@ describe("the card (AC3, AC4, AC14)", () => {
     const w = world();
     w.credentials.set([]);
     await start(w, manifest({ inbox: [BAD_ROW("answer"), BAD_ROW("later")], inFlight: ["| nope | x | building | 2026-10-12T09:00:00Z | — | https://github.com/org/repo/pull/6 |"] }));
-    const { reasons } = await cardOf(w);
-    expect(reasons.map((reason) => [reason.code, reason.fix.kind])).toEqual([
+    const { problems } = await cardOf(w);
+    expect(problems.map((reason) => [reason.code, reason.fix.kind])).toEqual([
       ["no-credential", "connect"],
       ["unreadable-rows", "fleet-tab"],
     ]);
-    expect(reasons[1]!.text).toBe("3 manifest rows cannot be read: In flight, Inbox");
+    expect(problems[1]!.text).toBe("3 manifest rows cannot be read: In flight, Inbox");
   });
 
   it("names a missing manifest, which the Fleet tab shows, and a refused credential once a poll found it so, which the settings fix", async () => {
     const w = world();
     await start(w, undefined);
-    expect((await cardOf(w)).reasons).toEqual([{ code: "manifest-missing", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
+    expect((await cardOf(w)).problems).toEqual([{ code: "manifest-missing", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
     w.manifests.files.set(MANIFEST_PATH, manifest());
     w.store.savePollState(REPO_KEY, {
       lastPolledAt: w.clock.now().toISOString(),
@@ -233,19 +233,19 @@ describe("the card (AC3, AC4, AC14)", () => {
       pendingCatchUpMs: null,
       outages: { forge: { unreadablePolls: 0, unreadableSince: null, refused: { since: "2026-10-12T09:00:00.000Z", credential: "github.com/org", announced: true, why: "refused" } } },
     });
-    expect((await cardOf(w)).reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org"), fix: { kind: "connect", role: "forge" } }]);
+    expect((await cardOf(w)).problems).toEqual([{ code: "credential-refused", text: expect.stringContaining("github.com/org"), fix: { kind: "connect", role: "forge" } }]);
   });
 
   it("sends an unreadable manifest to the Fleet tab, which shows why it cannot be read", async () => {
     const w = world();
     await start(w, "not a manifest");
-    expect((await cardOf(w)).reasons).toEqual([{ code: "manifest-unreadable", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
+    expect((await cardOf(w)).problems).toEqual([{ code: "manifest-unreadable", text: expect.stringContaining(MANIFEST_PATH), fix: { kind: "fleet-tab" } }]);
   });
 
   it("has no reason for a fleet that is fully watched", async () => {
     const w = world();
     await start(w, manifest());
-    expect((await cardOf(w)).reasons).toEqual([]);
+    expect((await cardOf(w)).problems).toEqual([]);
   });
 
   it("warns of a credential expiring within 7 days, one passed, and a login that shares the agents' rate limit", async () => {
@@ -282,7 +282,18 @@ describe("what a thread is to the Fleet tab (AC9)", () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(1)] }));
     const answer = await view(w).threadFleet({ threadId: MANAGER });
-    expect(answer).toMatchObject({ kind: "manager", card: { repo: "github.com/org/repo", waiting: 1 } });
+    expect(answer).toMatchObject({ kind: "manager", generatedAt: w.clock.now().toISOString(), card: { repo: "github.com/org/repo", waiting: 1 }, lastAction: null });
+  });
+
+  it("gives a manager the action seen done most recently in the last hour whose row left the Inbox", async () => {
+    const w = world();
+    await start(w, manifest());
+    const done = (id: string, doneAt: string) => w.store.saveAction({ id, repo: REPO_KEY, rowId: id, kind: "answer", ref: "#5", what: "Which queue", managerThreadId: MANAGER, state: "done", sentAt: hoursAgo(w, 3), doneAt });
+    done("old", hoursAgo(w, 2));
+    done("a", hoursAgo(w, 0.5));
+    done("b", hoursAgo(w, 0.1));
+    const answer = await view(w).threadFleet({ threadId: MANAGER });
+    expect(answer).toMatchObject({ kind: "manager", lastAction: { id: "b", kind: "answer", ref: "#5", what: "Which queue", state: "done" } });
   });
 
   it("names the manager holding the thread's repository when the thread runs no fleet, matching without regard to case or .git", async () => {
@@ -389,8 +400,29 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
       { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", canWrite: true, sharesAgentRateLimit: true },
     ]);
     expect(answer.detail.requestsThisHour).toBe(7);
+    expect(answer.detail.failedReads).toBe(0);
+    expect(answer.detail.lastAction).toBeNull();
     expect(answer.detail.card).toMatchObject({ lastPolledAt: "2026-10-12T09:58:00.000Z", intervalMs: 120_000 });
     expect(answer.detail.generatedAt).toBe(w.clock.now().toISOString());
+  });
+});
+
+describe("the Ledger tab's count (#258 AC2)", () => {
+  it("counts the reads that failed in the last 24 hours", async () => {
+    const w = world();
+    await start(w, manifest());
+    const failed = (hours: number) => w.store.recordFailedRead(REPO_KEY, { at: hoursAgo(w, hours), role: "forge", ref: null, reason: "listing returned 500" });
+    const count = async () => {
+      const answer = await view(w).fleetDetail({ repo: "github.com/org/repo" });
+      if (!answer.ok) throw new Error(answer.reason);
+      return answer.detail.failedReads;
+    };
+    expect(await count()).toBe(0);
+    failed(2);
+    expect(await count()).toBe(1);
+    failed(25);
+    failed(23.9);
+    expect(await count()).toBe(2);
   });
 });
 

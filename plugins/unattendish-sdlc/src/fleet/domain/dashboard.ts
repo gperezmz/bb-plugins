@@ -37,10 +37,10 @@ export const oldestFirst = <Row extends Pick<InboxRow, "since" | "ref">>(rows: r
 
 // ---- why a fleet is not fully watched ----
 
-/** Where a reason is fixed: Connect… for the half a credential reason is about, or the Fleet tab for the manifest. */
+/** Where a problem is fixed: Connect… for the half a credential problem is about, or the Fleet tab for the manifest. */
 export type Fix = { readonly kind: "connect"; readonly role: SourceRole } | { readonly kind: "fleet-tab" } | { readonly kind: "none" };
 
-export interface Reason {
+export interface Problem {
   readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
   readonly text: string;
   readonly fix: Fix;
@@ -67,13 +67,13 @@ export const MANAGER_GONE_TEXT = "The manager thread is archived or gone: run /r
  * The fleet's problems, each text once: what `notWatched` says, then the unreadable rows, then a manager that is gone
  * (`managerGone`).
  */
-export const reasonsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false): Reason[] => {
-  const reasons: Reason[] = [];
-  for (const line of notWatched) if (!reasons.some((known) => known.text === line.text)) reasons.push({ code: line.code, text: line.text, fix: fixOf(line) });
+export const problemsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false): Problem[] => {
+  const problems: Problem[] = [];
+  for (const line of notWatched) if (!problems.some((known) => known.text === line.text)) problems.push({ code: line.code, text: line.text, fix: fixOf(line) });
   const text = unreadableRowsText(unreadable);
-  if (text !== null) reasons.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
-  if (managerGone) reasons.push({ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } });
-  return reasons;
+  if (text !== null) problems.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
+  if (managerGone) problems.push({ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } });
+  return problems;
 };
 
 // ---- warnings ----

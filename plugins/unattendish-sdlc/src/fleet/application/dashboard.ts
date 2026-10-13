@@ -85,7 +85,10 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const now = deps.clock.now();
     const stored = deps.store.listFleets();
     const own = stored.find((fleet) => fleet.registration.managerThreadId === threadId);
-    if (own !== undefined) return { kind: "manager", card: await cardOf(deps, await gather(deps, own, false), now) };
+    if (own !== undefined) {
+      const g = await gather(deps, own, false);
+      return { kind: "manager", generatedAt: now.toISOString(), card: await cardOf(deps, g, now), lastAction: recentActionsOf(g, inboxOf(g).ids, now)[0] ?? null };
+    }
     const remote = await deps.repositories.remoteOf(threadId).catch(() => null);
     const repo = remote === null ? null : repoFromRemote(remote);
     const holder = repo === null ? undefined : stored.find((fleet) => sameRepo(fleet.registration.repo, repo));
@@ -108,7 +111,8 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         watched: watchedOf(deps, g),
         credentials: credentialsOf(deps, g),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
-        recentActions: recentActionsOf(g, inbox.ids, now),
+        failedReads: deps.store.failedReadsSince(key, new Date(now.getTime() - 24 * 3_600_000).toISOString()),
+        lastAction: recentActionsOf(g, inbox.ids, now)[0] ?? null,
       },
     };
   };

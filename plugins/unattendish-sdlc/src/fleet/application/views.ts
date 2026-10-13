@@ -126,7 +126,7 @@ export type FixView =
   | { readonly kind: "none" };
 
 /** A problem the server flags about a fleet. */
-export interface ReasonView {
+export interface ProblemView {
   /** The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, or `manager-gone` for a manager thread archived or gone. */
   readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
   readonly text: string;
@@ -207,7 +207,7 @@ export interface FleetCardView {
   readonly lastPolledAt: string | null;
   readonly intervalMs: number;
   /** The fleet's problems: every reason it is not fully watched, and a manager that is gone. */
-  readonly reasons: readonly ReasonView[];
+  readonly problems: readonly ProblemView[];
   /** The forge, then the tracker where it is a service of its own. */
   readonly halves: readonly HalfView[];
   /** What to warn of: credentials expiring within 7 days, those sharing the agents' rate limit, and polling that is late or has never run. */
@@ -282,12 +282,21 @@ export interface FleetDetailView {
   readonly watched: readonly WatchedItemView[];
   readonly credentials: readonly FleetCredentialView[];
   readonly requestsThisHour: number;
-  readonly recentActions: readonly ActionRecordView[];
+  /** Reads that failed in the last 24 hours: the Ledger tab's count, so the ledger itself loads only when its tab opens. */
+  readonly failedReads: number;
+  /** The action seen done most recently in the last hour whose row has left the Inbox; null when none was. */
+  readonly lastAction: ActionRecordView | null;
 }
 
 /** What a thread is to the Fleet tab and the chip. */
 export type ThreadFleetView =
-  | { readonly kind: "manager"; readonly card: FleetCardView }
+  | {
+      readonly kind: "manager";
+      readonly generatedAt: string;
+      readonly card: FleetCardView;
+      /** The action seen done most recently in the last hour whose row has left the Inbox; null when none was. */
+      readonly lastAction: ActionRecordView | null;
+    }
   | {
       readonly kind: "none";
       /** The manager holding this thread's repository, where a fleet does. */

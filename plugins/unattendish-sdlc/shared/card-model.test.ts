@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardReasons, costText, countParts, countsText, halfAction, halfLine, managerText, trackerOf, warningLine } from "./card-model";
+import { cardProblems, costText, countParts, countsText, halfAction, halfLine, managerText, trackerOf, warningLine } from "./card-model";
 
 const NOW = "2026-10-12T12:00:00Z";
 
@@ -96,11 +96,11 @@ describe("the reasons below the halves", () => {
   ];
 
   it("leaves to a half's line the reason Connect… fixes for it, and keeps every other", () => {
-    expect(cardReasons({ reasons, halves: [needing] }).map((reason) => reason.code)).toEqual(["credential-refused", "manifest-missing"]);
+    expect(cardProblems({ problems: reasons, halves: [needing] }).map((reason) => reason.code)).toEqual(["credential-refused", "manifest-missing"]);
   });
 
   it("keeps a Connect… reason whose half says it needs nothing", () => {
-    expect(cardReasons({ reasons, halves: [{ ...needing, needs: null }] })).toHaveLength(3);
+    expect(cardProblems({ problems: reasons, halves: [{ ...needing, needs: null }] })).toHaveLength(3);
   });
 });
 

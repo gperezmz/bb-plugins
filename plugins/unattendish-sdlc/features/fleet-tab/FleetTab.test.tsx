@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
-import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
+import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, managerFleet, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { FleetTab } from "./index";
@@ -14,7 +14,7 @@ beforeEach(() => {
   sdk.reset();
   resetFakeApi();
   setCompactViewport(false);
-  fake.api.threadFleet.mockResolvedValue({ kind: "manager", card: fleetCard() });
+  fake.api.threadFleet.mockResolvedValue(managerFleet());
 });
 afterEach(cleanup);
 
@@ -173,7 +173,7 @@ describe("what is watched, and how", () => {
     await showDetail({
       card: fleetCard({
         cost: { amount: 14.2, currency: "USD", period: "since this manager started" },
-        reasons: [
+        problems: [
           { code: "credential-refused", text: "Linear is not watched: token refused", fix: { kind: "connect", role: "tracker" } },
           { code: "unreadable-rows", text: "1 manifest row cannot be read, in Blocked", fix: { kind: "fleet-tab" } },
         ],

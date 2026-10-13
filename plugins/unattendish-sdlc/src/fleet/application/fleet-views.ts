@@ -2,7 +2,7 @@
 // the Inbox rows, the manifest and the watched set built from that.
 import type { ActionRecord } from "../domain/actions";
 import { heldBy, latestOn, recentActions as recentOf } from "../domain/actions";
-import { credentialWarnings, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, reasonsOf, unreadableInbox } from "../domain/dashboard";
+import { credentialWarnings, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, problemsOf, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import { offerFor, parseLink, uniqueRowIds } from "../domain/inbox";
 import type { InboxRow, WrittenSection } from "../domain/model";
@@ -183,7 +183,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD },
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs,
-    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing !== null && g.standing.state !== "live"),
+    problems: problemsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing !== null && g.standing.state !== "live"),
     halves: halvesOf(g),
     warnings: [...credentialWarnings(warnedOf(deps, g), now), ...(polling === null ? [] : [polling])],
   };

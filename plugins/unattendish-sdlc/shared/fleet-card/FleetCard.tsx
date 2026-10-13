@@ -1,6 +1,6 @@
-import type { WarningView, FleetCardView, HalfView, ReasonView } from "@/src/fleet/application/views";
+import type { WarningView, FleetCardView, HalfView, ProblemView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
-import { cardReasons, costText, countsText, halfAction, halfLine, managerText, pollText, warningKey, warningLine } from "../card-model";
+import { cardProblems, costText, countsText, halfAction, halfLine, managerText, pollText, warningKey, warningLine } from "../card-model";
 import { CanWrite } from "../connect/Field";
 import { openConnect } from "../connect/requests";
 import { LINK_CLASS } from "../ItemLink";
@@ -11,7 +11,7 @@ export function FleetCard({ card, now, className, inFleetTab = false }: { card: 
   const openFleetTab = useOpenFleetTab();
   const cost = costText(card);
   return (
-    <article aria-label={`Fleet ${card.repo}`} className={cn("flex flex-col gap-1 rounded-lg border p-3 text-sm", card.reasons.length > 0 ? "border-destructive/50" : "border-border", className)}>
+    <article aria-label={`Fleet ${card.repo}`} className={cn("flex flex-col gap-1 rounded-lg border p-3 text-sm", card.problems.length > 0 ? "border-destructive/50" : "border-border", className)}>
       <div className="flex items-baseline justify-between gap-2">
         <span className="font-medium">{card.repo}</span>
         {!inFleetTab ? (
@@ -35,7 +35,7 @@ export function FleetCard({ card, now, className, inFleetTab = false }: { card: 
           ))}
         </ul>
       ) : null}
-      {cardReasons(card).map((reason) => (
+      {cardProblems(card).map((reason) => (
         <Reason key={`${reason.code}:${reason.text}`} reason={reason} repo={card.repo} managerThreadId={card.managerThreadId} onOpenFleetTab={inFleetTab ? null : openFleetTab} />
       ))}
       {/* The poll line above already says a fleet was never polled. */}
@@ -61,7 +61,7 @@ function Half({ half, repo }: { half: HalfView; repo: string }) {
   );
 }
 
-function Reason({ reason, repo, managerThreadId, onOpenFleetTab }: { reason: ReasonView; repo: string; managerThreadId: string; onOpenFleetTab: ((threadId: string) => void) | null }) {
+function Reason({ reason, repo, managerThreadId, onOpenFleetTab }: { reason: ProblemView; repo: string; managerThreadId: string; onOpenFleetTab: ((threadId: string) => void) | null }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-destructive">
       <span>{reason.text}</span>

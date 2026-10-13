@@ -75,7 +75,7 @@ describe("a fleet card", () => {
 describe("why a fleet is not fully watched", () => {
   it("lists every reason, each offering the place that mends it", () => {
     show({
-      reasons: [
+      problems: [
         { code: "no-credential", text: "other-org/x needs a GitHub account that can read other-org", fix: { kind: "connect", role: "forge" } },
         { code: "unreadable-rows", text: "2 manifest rows cannot be read, in In flight", fix: { kind: "fleet-tab" } },
         { code: "manifest-missing", text: "no manifest at the registered path", fix: { kind: "none" } },
@@ -90,7 +90,7 @@ describe("why a fleet is not fully watched", () => {
   });
 
   it("opens Connect… for the role of a reason that names one, over the current view", () => {
-    show({ reasons: [{ code: "no-credential", text: "Linear needs an account", fix: { kind: "connect", role: "tracker" } }] });
+    show({ problems: [{ code: "no-credential", text: "Linear needs an account", fix: { kind: "connect", role: "tracker" } }] });
     fireEvent.click(screen.getByRole("button", { name: /^Connect… tracker of acme\/web/ }));
     expect(currentConnect()?.request).toEqual({ target: { fleet: "acme/web", role: "tracker" } });
   });
@@ -103,14 +103,14 @@ describe("a card inside its own Fleet tab", () => {
   ];
 
   it("offers no link to the tab it is in, but still says the reason and offers Connect…", () => {
-    render(<FleetCard card={fleetCard({ reasons })} now={NOW} inFleetTab />);
+    render(<FleetCard card={fleetCard({ problems: reasons })} now={NOW} inFleetTab />);
     expect(screen.queryByRole("button", { name: "Open the Fleet tab" })).toBeNull();
     expect(screen.getByText("2 manifest rows cannot be read, in In flight")).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Connect…/ })).toBeTruthy();
   });
 
   it("offers both on the Fleets page", () => {
-    render(<FleetCard card={fleetCard({ reasons })} now={NOW} />);
+    render(<FleetCard card={fleetCard({ problems: reasons })} now={NOW} />);
     expect(screen.getByRole("button", { name: "Open the Fleet tab of acme/web" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open the Fleet tab" })).toBeTruthy();
   });

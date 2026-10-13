@@ -50,11 +50,9 @@ function Detail({ repo, managerThreadId }: { repo: string; managerThreadId: stri
       {(detail) => (
         <>
           <FleetCard card={detail.card} now={detail.generatedAt} inFleetTab />
-          {detail.recentActions.length > 0 ? (
+          {detail.lastAction !== null ? (
             <ul aria-label="Recently sent" className="flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-              {detail.recentActions.map((action) => (
-                <li key={action.id}>{recentActionText(action)}</li>
-              ))}
+              <li>{recentActionText(detail.lastAction)}</li>
             </ul>
           ) : null}
           <ManifestSections manifest={detail.manifest} managerThreadId={managerThreadId} fleet={repo} now={detail.generatedAt} refetch={live.refetch} />

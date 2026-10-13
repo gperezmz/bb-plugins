@@ -78,12 +78,12 @@ export function halfAction(half: HalfView): "Connect…" | "Change account…" {
 }
 
 /**
- * The reasons a card lists below its halves: a reason Connect… fixes for a half that already says what it needs is
+ * The problems a card lists below its halves: a problem Connect… fixes for a half that already says what it needs is
  * left to that half's line, so the card says it, with its Connect…, once.
  */
-export function cardReasons(card: Pick<FleetCardView, "reasons" | "halves">): FleetCardView["reasons"] {
+export function cardProblems(card: Pick<FleetCardView, "problems" | "halves">): FleetCardView["problems"] {
   const saying = new Set(card.halves.filter((half) => half.needs !== null).map((half) => half.role));
-  return card.reasons.filter((reason) => reason.fix.kind !== "connect" || !saying.has(reason.fix.role));
+  return card.problems.filter((reason) => reason.fix.kind !== "connect" || !saying.has(reason.fix.role));
 }
 
 /** The tracker where it is a service of its own, with the key the board names it by: Linear's team key or Jira's project key. */

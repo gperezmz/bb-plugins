@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FleetCardView, ReasonView } from "@/src/fleet/application/views";
+import type { FleetCardView, ProblemView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
@@ -28,10 +28,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const missing: ReasonView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
-const unreadableRows: ReasonView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
-const noForge: ReasonView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
-const noTracker: ReasonView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
+const missing: ProblemView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
+const unreadableRows: ProblemView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
+const noForge: ProblemView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
+const noTracker: ProblemView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
 
 const fleet = (repo: string, over: Partial<FleetCardView> = {}) => fleetCard({ repo, managerThreadId: `thr_${repo}`, tracker: "forge-issues", ...over });
 
@@ -198,7 +198,7 @@ describe("the page (AC1)", () => {
     const fleets = [
       fleet("org/dash", { waiting: 3 }),
       fleet("org/wake", { waiting: 3 }),
-      fleet("other-org/x", { waiting: 2, reasons: [noForge] }),
+      fleet("other-org/x", { waiting: 2, problems: [noForge] }),
       fleet("acme/web"),
       fleet("acme/api"),
       fleet("acme/docs", { inFlight: 1 }),
@@ -218,8 +218,8 @@ describe("the page (AC1)", () => {
       fleetsView({
         fleets: [
           fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p" } }),
-          fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
-          fleet("org/gone", { forge: "gitlab", reasons: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
+          fleet("platform/infra", { tracker: "linear:PLAT", problems: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
+          fleet("org/gone", { forge: "gitlab", problems: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
         ],
         inbox: [
           inboxRow({ id: "a", fleet: "org/dash", waitsFor: "answer" }),
@@ -316,7 +316,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("marks a fleet with a missing manifest with a red bar and Review, which opens its Fleet tab", async () => {
-    await show(fleetsView({ fleets: [fleet("org/gone", { reasons: [missing] })] }));
+    await show(fleetsView({ fleets: [fleet("org/gone", { problems: [missing] })] }));
     const gone = line("org/gone");
     expect(gone.querySelector(".bg-destructive")).not.toBeNull();
     const review = within(gone).getByRole("button", { name: missing.text });
@@ -326,7 +326,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("shows the first of several flags with how many more, every sentence on hover", async () => {
-    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noForge, noTracker, unreadableRows] })] }));
+    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", problems: [noForge, noTracker, unreadableRows] })] }));
     const fix = within(line("platform/infra")).getByRole("button", { name: /2 manifest rows/ });
     expect(fix.textContent).toBe("Review +2");
     const text = await hoverText(fix);
@@ -334,7 +334,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("offers Connect… in red where an account fixes it, which opens the Connect popup over the page", async () => {
-    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    await show(fleetsView({ fleets: [fleet("other-org/x", { problems: [noForge] })] }));
     const x = line("other-org/x");
     expect(x.querySelector(".bg-destructive")).not.toBeNull();
     const connect = within(x).getByRole("button", { name: "no GitHub account can read other-org" });
@@ -354,8 +354,8 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("shows a red ✕ for a gone manager, saying to run /run-fleet in a new thread", async () => {
-    const gone: ReasonView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
-    await show(fleetsView({ fleets: [fleet("org/dash", { reasons: [gone] })] }));
+    const gone: ProblemView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
+    await show(fleetsView({ fleets: [fleet("org/dash", { problems: [gone] })] }));
     const mark = within(line("org/dash")).getByLabelText(gone.text);
     expect(mark.tagName).not.toBe("BUTTON");
     expect(drawnIcons(mark)).toEqual(["CircleX"]);
@@ -394,7 +394,7 @@ describe("the board's order and quiet fleets (AC7)", () => {
   });
 
   it("lists a fleet with a missing manifest and every count at zero first", async () => {
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 9 }), fleet("org/gone", { reasons: [missing] })] }));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 9 }), fleet("org/gone", { problems: [missing] })] }));
     expect(boardRepos()).toEqual(["org/gone", "org/dash"]);
   });
 
@@ -595,7 +595,7 @@ describe("on a phone (AC15)", () => {
   });
 
   it("makes a fleet's fix a touch-sized button named by its sentence, doing what the verb does", async () => {
-    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    await show(fleetsView({ fleets: [fleet("other-org/x", { problems: [noForge] })] }));
     const fix = within(line("other-org/x")).getByRole("button", { name: "no GitHub account can read other-org" });
     expect(fix.className).toContain("size-11");
     fireEvent.click(fix);

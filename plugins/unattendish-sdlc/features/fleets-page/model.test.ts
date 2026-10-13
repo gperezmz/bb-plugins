@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ReasonView } from "@/src/fleet/application/views";
+import type { ProblemView } from "@/src/fleet/application/views";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, NOW, unreadableInboxRow } from "@/testing/fixtures";
 import {
   boardLines,
@@ -25,7 +25,7 @@ import {
   unreadableLine,
 } from "./model";
 
-const missing: ReasonView = { code: "manifest-missing", text: "The manifest does not exist yet", fix: { kind: "fleet-tab" } };
+const missing: ProblemView = { code: "manifest-missing", text: "The manifest does not exist yet", fix: { kind: "fleet-tab" } };
 
 describe("the header", () => {
   it("counts the Inbox rows across fleets, and nothing at zero or before the view arrives", () => {
@@ -49,7 +49,7 @@ describe("the fleet board's order", () => {
       fleetCard({ repo: "b/quiet" }),
       fleetCard({ repo: "a/two", waiting: 2 }),
       fleetCard({ repo: "c/late", warnings: [{ kind: "never-polled" }] }),
-      fleetCard({ repo: "z/gone", reasons: [missing] }),
+      fleetCard({ repo: "z/gone", problems: [missing] }),
       fleetCard({ repo: "a/six", waiting: 6 }),
       fleetCard({ repo: "b/two", waiting: 2 }),
     ];
@@ -57,7 +57,7 @@ describe("the fleet board's order", () => {
   });
 
   it("folds quiet fleets, but never one with a problem, nor the selected one", () => {
-    const cards = [fleetCard({ repo: "acme/web" }), fleetCard({ repo: "org/gone", reasons: [missing] }), fleetCard({ repo: "org/dash", waiting: 1 })];
+    const cards = [fleetCard({ repo: "acme/web" }), fleetCard({ repo: "org/gone", problems: [missing] }), fleetCard({ repo: "org/dash", waiting: 1 })];
     const lines = boardLines(cards, NOW, null);
     expect(lines.listed.map((card) => card.repo)).toEqual(["org/gone", "org/dash"]);
     expect(lines.quiet.map((card) => card.repo)).toEqual(["acme/web"]);

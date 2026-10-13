@@ -3,7 +3,7 @@ import { type ReactNode, useEffect } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
-import { fleetCard, half } from "@/testing/fixtures";
+import { fleetCard, half, managerFleet } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
 import { ConnectOverlay } from "@/shared/connect/ConnectOverlay";
 import { closeConnect } from "@/shared/connect/requests";
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 async function show(card: ReturnType<typeof fleetCard> | null, compact = false) {
-  fake.api.threadFleet.mockResolvedValue(card === null ? { kind: "none", holder: null } : { kind: "manager", card });
+  fake.api.threadFleet.mockResolvedValue(card === null ? { kind: "none", holder: null } : managerFleet(card));
   await act(async () => {
     render(<FleetChip threadId="thr_acme" projectId="proj_a" isCompactViewport={compact} />);
   });
@@ -104,10 +104,7 @@ describe("the Fleet chip", () => {
 describe("Connect… from the card", () => {
   it("opens the popup over the view, outside the hover card, which does not swallow it", async () => {
     fake.api.connectView.mockResolvedValue({ ok: true, connect: (await import("@/testing/fixtures")).connectView() });
-    fake.api.threadFleet.mockResolvedValue({
-      kind: "manager",
-      card: fleetCard({ halves: [half({ role: "tracker", what: "OPS", account: null, credential: null, needs: "needs a Jira account for acme.atlassian.net" })] }),
-    });
+    fake.api.threadFleet.mockResolvedValue(managerFleet(fleetCard({ halves: [half({ role: "tracker", what: "OPS", account: null, credential: null, needs: "needs a Jira account for acme.atlassian.net" })] })));
     await act(async () => {
       render(
         <>
@@ -170,7 +167,7 @@ describe("a card link that navigated to this thread", () => {
       return children;
     }
     requestFleetTab("thr_acme");
-    fake.api.threadFleet.mockResolvedValue({ kind: "manager", card: fleetCard() });
+    fake.api.threadFleet.mockResolvedValue(managerFleet());
     await act(async () => {
       render(
         <ThreadView>
