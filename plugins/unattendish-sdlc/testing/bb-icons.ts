@@ -1,7 +1,8 @@
 // Every built-in icon name bb 0.46 resolves, so a test can tell a name bb draws from one that falls back to its generic
-// icon. Read from bb 0.46.0's web bundle (app/dist/assets/index-*.js): the keys of its eager icon map joined with the
-// dot-separated list its extended icons chunk registers, which together are the names its `isBuiltinIconName` accepts.
-// The list stays at the oldest bb the plugin supports: a newer bb may add names, and a name it dropped would fall back.
+// icon. bb resolves a name as a registered one, then a built-in, then a declared `<pluginId>/<name>`, and anything else
+// draws the fallback. The built-ins are a closed list in bb's web bundle; `node scripts/bb-icon-names.mjs <bundle>`
+// prints it, which is how this list was made from bb 0.46.0. The list stays at the oldest bb the plugin supports: a
+// newer bb may add names, and a name it dropped would fall back.
 export const BB_0_46_ICON_NAMES: ReadonlySet<string> = new Set([
   "AiBrain01",
   "AiBrowser",
