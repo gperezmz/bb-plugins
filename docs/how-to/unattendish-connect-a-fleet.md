@@ -26,10 +26,10 @@ A fleet that is watched shows **Change account…** in place of **Connect…** o
 
 ## Connect a half
 
-The popup is titled `Connect <repository>`, or `Connect the tracker of <repository> (<project>)`. It takes three steps.
+The popup is titled `Connect <repository>`, or `Connect the tracker of <repository> (<project>)`, after the service's logo (GitHub's; GitLab, Linear and Jira by name, since their trademark rules leave no logo to show). Under the title, **Account › Token › Done** marks how far it has got: a step done with a green check, the current one solid, the rest grey. It takes three steps.
 
-1. **Which account reads `github.com/acme`?** (the owner or group, or the Linear team or Jira project, in its place). It lists the accounts on the fleet's host, the default first and marked `default`, and **a new login**. For a Linear or Jira tracker it lists the accounts on that service or site. Choose the default, or the account that holds the login the owner's repositories read as. When the chosen account already has a credential that reaches the fleet, the popup goes straight to step 3.
-2. **A credential.** The popup names the host the token will be sent to, and to nowhere else. Choose **Create token**, **Paste a token**, or on GitHub and GitLab **Use your `gh` login** or **Use your `glab` login**. Each is below.
+1. **Which account reads `github.com/acme`?** (the owner or group, or the Linear team or Jira project, in its place). It lists the accounts on the fleet's host as cards, the default first and marked `default`, each also marked **can write** or **already reads this** where it is, and **a new login** last. For a Linear or Jira tracker it lists the accounts on that service or site. Choose the default, or the account that holds the login the owner's repositories read as. When the chosen account already has a credential that reaches the fleet, the popup goes straight to step 3.
+2. **A credential**, in two parts. **Create a token** opens the service's token page with **Create token**, where the service has one, and lists what to tick on it. **Give it to the plugin** takes it: **Paste a token**, or on GitHub and GitLab **Use your `gh` login** or **Use your `glab` login**. The popup names the host the token will be sent to, and nowhere else. Each is below. **Back** returns to step 1, where the popup was opened for a fleet rather than for an account.
 3. **Verify and save.** The plugin asks the service whose the token is, and that it can read the fleet, before it stores anything; [what it says](#what-verify-and-save-says) follows. A saved credential makes the plugin read the fleet at once, and the board and the card show the result without waiting for the next poll.
 
 Choosing an account other than the host's default assigns it the fleet's owner or group, or for a tracker its Jira project or Linear team; every fleet under that owner then reads as it. Choosing the default again removes that assignment. The most specific assignment wins, and the first account on a host, Jira site or Linear is that place's default.
@@ -75,7 +75,7 @@ Only `github.com` and `gitlab.com` name their service. For a fleet on any other 
 | `This token belongs to yuser. Add as GitHub · yuser?` | A new login's first token or key: nothing is stored until you confirm | **Add as GitHub · yuser**. The first account on a host becomes its default |
 | `This token belongs to yuser, not buser. Sign in as buser and create the token again.` | The account already has a login and the token is another's. Nothing is stored | **Use another credential**, or **Check again** where it offers it |
 | `GitHub rejected the token. Nothing was stored.` | The service answered 401 | **Use another credential** |
-| `Saved: GitHub · yuser, yuser, expires <date>.` with the fleet's line, `acme/api is read as GitHub · yuser.` | Stored and read at once | **Done** |
+| `Saved: GitHub · yuser`, then `yuser, expires <date>`, in a green box, with the fleet's line, `acme/api is read as GitHub · yuser.` | Stored and read at once | **Done** |
 | `<repository> is not readable`, with the cause | The service accepts the credential, but the repository, team or project answers "not found" or 403. The credential is stored anyway, and the card keeps saying so until a read succeeds | The remedies below |
 | `could not be asked whose the token is` | The service did not answer. Nothing was stored | **Try again** |
 
@@ -88,18 +88,18 @@ Settings → Installed plugins → Unattendish shows the section **Fleets: accou
 | You want | Do |
 |---|---|
 | Another login, or a service not yet connected | **Add account**: choose the service and its host or Jira site, then a credential as above. For GitHub it asks the owner the token is for first, and lists that owner's registered fleets to tick |
-| A token for another owner of a GitHub account | **Add token for another owner** on the account, which opens the popup at step 2 |
+| A token for another owner of a GitHub account | **Add token for another owner** in the account's ⋯ menu, which opens the popup at step 2 |
 | One account to read every repository of a host by default | **Make default** on the account |
-| An owner, group, team or project to read as the default again | **Remove** beside it, under the account it is assigned to |
-| A token that is about to expire, or expired | **Renew**. For a GitHub or GitLab token it opens the same pre-filled page as **Create token**, with the same repositories to tick, and the token you save replaces the old one. For a Linear or Jira key it opens the field to paste a new one. A `gh` or `glab` login has no **Renew**: Settings shows `gh auth login --hostname <host>` (or `glab auth login`) to run as the account's login |
-| A credential gone | **Remove** on the credential. Its fleets then need an account |
-| An account gone | **Remove** on the account, with all its tokens. It is refused while a registered fleet reads as it, and the refusal names those fleets: connect them to another account first |
+| An owner, group, team or project to read as the default again | The ✕ on its chip, after **Reads** on the account it is assigned to |
+| A token that is about to expire, or expired | **Renew…**. For a GitHub or GitLab token it opens the same pre-filled page as **Create token**, with the same repositories to tick, and the token you save replaces the old one. For a Linear or Jira key it opens the field to paste a new one. A `gh` or `glab` login has no **Renew…**: Settings shows `gh auth login --hostname <host>` (or `glab auth login`) to run as the account's login |
+| A credential gone | The 🗑 on the credential's line. Its fleets then need an account |
+| An account gone | **Remove account** in the account's ⋯ menu, with all its tokens. It is refused while a registered fleet reads as it, and the refusal names those fleets: connect them to another account first |
 
-A credential whose token expires within 7 days, or has expired, shows that warning in Settings, on the cards of the fleets it serves with **Renew**, and on their lines of the fleet board as **Renew…**. One the service now refuses shows `refused by the service`.
+A credential whose token expires within 7 days, or has expired, shows it in amber in Settings with **Renew…**, on the cards of the fleets it serves with **Renew**, and on their lines of the fleet board as **Renew…**. One the service now refuses shows `refused by the service`.
 
 ### Removing does not revoke
 
-**Remove** deletes the plugin's copy of a token, and **Renew** replaces it; neither revokes it. The old token still works at the service until it expires or you revoke it there, and Settings links to the service's token page after each.
+Removing deletes the plugin's copy of a token, and renewing replaces it; neither revokes it. The old token still works at the service until it expires or you revoke it there, and Settings links to the service's token page after each.
 
 ### Uninstalling
 
@@ -124,7 +124,7 @@ The text names the credential, such as `GitHub · yuser for acme`, and one of ei
 
 | Text | Do |
 |---|---|
-| `refused by the service` | Press **Renew** on the credential in Settings, or **Connect…** on the fleet board or the card. A revoked Linear key reads the same |
+| `refused by the service` | Press **Renew…** on the credential in Settings, or **Connect…** on the fleet board or the card. A revoked Linear key reads the same |
 | `forbidden to read what the fleet needs (403)` | Give the token permission to read the repository or tracker: on GitHub, Issues, Pull requests and Metadata set to read and the repository ticked; on GitLab, `read_api` |
 | `the service did not answer` | Check that the service is up and, for a self-managed host, that the account's host is right |
 | `could not find what the fleet needs (404)` | The service answers 404 to the listing, as GitHub does for a private repository the token cannot see and Jira does for a token without permission. Give the token access to the repository or project, and check that `--repo` is spelled as the service spells it |

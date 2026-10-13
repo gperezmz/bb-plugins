@@ -49,7 +49,7 @@ A toast in bb titled `acme/widgets can't be read` says `acme/widgets needs a Git
 
 1. The popup asks `Which account reads github.com/acme?`. You have no account yet, so the only choice is **a new login**. Choose it and press **Continue**.
 2. Press **Create token**. GitHub opens in your browser on a new fine-grained token, filled in for the owner `acme` with Issues, Pull requests and Metadata set to read, 90 days, and nothing else. Make sure the browser is signed in as your login, tick `acme/widgets` under repository access, create the token and copy it. Paste it into **Token** and press **Verify and save**.
-3. The popup says `This token belongs to olivia. Add as GitHub · olivia?`. Press **Add as GitHub · olivia**. It then says `Saved: GitHub · olivia, olivia, expires …` and `acme/widgets is read as GitHub · olivia.` Press **Done**.
+3. The popup says `This token belongs to olivia. Add as GitHub · olivia?`. Press **Add as GitHub · olivia**. It then says `Saved: GitHub · olivia`, with `olivia, expires …` under it, and `acme/widgets is read as GitHub · olivia.` Press **Done**.
 
 The plugin checked whose the token is and that it can read the repository before it stored anything, and read the fleet at once. `GitHub · olivia` is now the default account for github.com. No `bb unattendish` command takes a token. [Connect a fleet to an account](../how-to/unattendish-connect-a-fleet.md) covers a `gh` login, GitLab, Linear and Jira, and managing accounts in Settings.
 
