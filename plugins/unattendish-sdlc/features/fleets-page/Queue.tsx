@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ActionRecordView, FleetCardView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
+import type { ActionOffer, ActionRecordView, FleetCardView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { ActionComposer } from "@/shared/inbox/ActionComposer";
 import { actionName, rowAction, type RowAction } from "@/shared/inbox/row-model";
@@ -84,7 +84,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} name={nameOf(row.fleet)} showFleet={showFleet} compact={compact} state={stateOf(row)} />
+              <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} compact={compact} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} />
@@ -128,7 +128,7 @@ function FleetName({ fleet, name, short = name, className }: { fleet: FleetCardV
 /** A tap area at least 44 px square centred on a small link, reaching past its text without moving what is beside it. */
 const TAP_AREA = "relative before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-[max(100%,2.75rem)] before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
 
-function QueueRow({ row, now, fleet, name, showFleet, compact, state }: { row: InboxRowView; now: string; fleet: FleetCardView | undefined; name: string; showFleet: boolean; compact: boolean; state: RowActionState }) {
+function QueueRow({ row, now, fleet, shortName, showFleet, compact, state }: { row: InboxRowView; now: string; fleet: FleetCardView | undefined; shortName: string; showFleet: boolean; compact: boolean; state: RowActionState }) {
   const action = rowAction(row, now, state);
   const age = rowAge(row, now);
   const kind = <Glyph name={KIND_ICONS[row.waitsFor]} tone={KIND_TONES[row.waitsFor]} />;
@@ -174,9 +174,10 @@ function QueueRow({ row, now, fleet, name, showFleet, compact, state }: { row: I
           <span className="line-clamp-2 min-w-0 flex-1">{itemTitle(row.ref, row.what)}</span>
         </span>
         {/* The details wrap as two pieces: a short name too wide to share the line takes it whole, cut only where it
-            is wider than the line, and the link and the age, which never part, go under it. */}
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6">
-          {showFleet ? <FleetName fleet={fleet} name={row.fleet} short={name} className="max-w-full shrink-0" /> : null}
+            is wider than the line, and the link and the age, which never part, go under it. Its margin keeps the
+            link's tap area, which reaches 14 px past a line of text, clear of the title and the buttons. */}
+        <span className="my-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-6">
+          {showFleet ? <FleetName fleet={fleet} name={row.fleet} short={shortName} className="max-w-full shrink-0" /> : null}
           <span className="flex shrink-0 grow items-center gap-3">
             <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} arrowOnly className={cn("text-xs", TAP_AREA)} />
             <span className="ml-auto">{ageCell}</span>
@@ -220,55 +221,18 @@ const UNCONFIRMED = "could not confirm whether the last send went through";
 
 const OFFER_KIND: Readonly<Record<"answer" | "grant" | "build", InboxRowView["waitsFor"]>> = { answer: "answer", grant: "grant", build: "ready" };
 
+const QUIET = "flex items-center gap-1 text-xs text-muted-foreground";
+
 /** The action cell: the offered action as an outlined button in the kind's colour, or the action's state. */
 function ActionCell({ row, action, state }: { row: InboxRowView; action: RowAction; state: RowActionState }) {
-  const quiet = "flex items-center gap-1 text-xs text-muted-foreground";
-  if (state.composing !== null && action.kind === "offer") return <span className={quiet}>composing…</span>;
-  switch (action.kind) {
-    case "none":
-      return <span className={quiet}>watch only</span>;
-    case "sending":
-      return (
-        <span className={quiet}>
-          <Glyph name={ICONS.sending} spin />
-          {action.text}
-        </span>
-      );
-    case "unknown":
-    case "sent":
-      return <span className={quiet}>{action.text}</span>;
-    case "done":
-      return (
-        <span className={quiet}>
-          <Glyph name={ICONS.done} tone="green" />
-          done
-        </span>
-      );
-    case "offer": {
-      const { offer } = action;
-      const kind = OFFER_KIND[offer.kind];
-      const tone = KIND_TONES[kind];
-      return (
-        <span className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            aria-label={actionName(offer.label, row)}
-            className={cn(FOCUS, "flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium hover:bg-accent", TONE_BORDER[tone], TONE_TEXT[tone])}
-            onClick={() => (offer.kind === "build" ? void state.send("build") : state.compose(offer.kind))}
-          >
-            <Glyph name={KIND_ICONS[kind]} />
-            {offer.label}
-          </button>
-          {offer.regrant ? (
-            <button type="button" aria-label={actionName("Re-grant", row)} className={cn(FOCUS, "h-7 rounded-md border border-border px-2 text-xs hover:bg-accent")} onClick={() => void state.send("grant", { regrant: true })}>
-              Re-grant
-            </button>
-          ) : null}
-          {action.unconfirmed ? <span className="text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
-        </span>
-      );
-    }
-  }
+  if (state.composing !== null && action.kind === "offer") return <span className={QUIET}>composing…</span>;
+  if (action.kind !== "offer") return <ActionState action={action} className={QUIET} />;
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-2">
+      <OfferButtons row={row} offer={action.offer} state={state} className="flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent" />
+      {action.unconfirmed ? <span className="text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
+    </span>
+  );
 }
 
 /**
@@ -277,60 +241,73 @@ function ActionCell({ row, action, state }: { row: InboxRowView; action: RowActi
  * its height, but watch only, which never turns into a button.
  */
 function ActionLine({ row, action, state }: { row: InboxRowView; action: RowAction; state: RowActionState }) {
-  // Positioned, so it sits over the tap area the link above reaches into.
-  const quiet = "relative flex items-center gap-1 text-xs text-muted-foreground";
-  const held = cn(quiet, "h-11");
-  if (state.composing !== null && action.kind === "offer") return <span className={held}>composing…</span>;
+  const held = cn(QUIET, "h-11");
+  const composing = state.composing !== null && action.kind === "offer";
+  return (
+    <div className="flex flex-col gap-1">
+      {composing ? (
+        <span className={held}>composing…</span>
+      ) : action.kind !== "offer" ? (
+        <ActionState action={action} className={action.kind === "none" ? QUIET : held} />
+      ) : (
+        <div className="flex gap-2">
+          <OfferButtons row={row} offer={action.offer} state={state} className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border px-3 text-xs hover:bg-accent" />
+        </div>
+      )}
+      {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}
+      {action.kind === "offer" && action.refusal !== null && !composing ? <p className="text-xs text-destructive-text">Not sent: {action.refusal}</p> : null}
+      {action.kind === "offer" && action.unconfirmed ? <p className="text-xs text-muted-foreground">{UNCONFIRMED}</p> : null}
+    </div>
+  );
+}
+
+/** Every state of a row's action but an offer, in words. */
+function ActionState({ action, className }: { action: Exclude<RowAction, { kind: "offer" }>; className: string }) {
   switch (action.kind) {
     case "none":
-      return <span className={quiet}>watch only</span>;
+      return <span className={className}>watch only</span>;
     case "sending":
       return (
-        <span className={held}>
+        <span className={className}>
           <Glyph name={ICONS.sending} spin />
           {action.text}
         </span>
       );
     case "unknown":
     case "sent":
-      return <span className={held}>{action.text}</span>;
+      return <span className={className}>{action.text}</span>;
     case "done":
       return (
-        <span className={held}>
+        <span className={className}>
           <Glyph name={ICONS.done} tone="green" />
           done
         </span>
       );
-    case "offer": {
-      const { offer } = action;
-      const kind = OFFER_KIND[offer.kind];
-      const tone = KIND_TONES[kind];
-      const button = "flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border px-3 text-xs hover:bg-accent";
-      return (
-        <div className="relative flex flex-col gap-1">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              aria-label={actionName(offer.label, row)}
-              className={cn(FOCUS, button, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone])}
-              onClick={() => (offer.kind === "build" ? void state.send("build") : state.compose(offer.kind))}
-            >
-              <Glyph name={KIND_ICONS[kind]} />
-              {offer.label}
-            </button>
-            {offer.regrant ? (
-              <button type="button" aria-label={actionName("Re-grant", row)} className={cn(FOCUS, button, "border-border")} onClick={() => void state.send("grant", { regrant: true })}>
-                Re-grant
-              </button>
-            ) : null}
-          </div>
-          {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}
-          {action.refusal !== null ? <p className="text-xs text-destructive-text">Not sent: {action.refusal}</p> : null}
-          {action.unconfirmed ? <p className="text-xs text-muted-foreground">{UNCONFIRMED}</p> : null}
-        </div>
-      );
-    }
   }
+}
+
+/** The offered action as an outlined button in the kind's colour, and Re-grant beside it for a grant carried over. */
+function OfferButtons({ row, offer, state, className }: { row: InboxRowView; offer: ActionOffer; state: RowActionState; className: string }) {
+  const kind = OFFER_KIND[offer.kind];
+  const tone = KIND_TONES[kind];
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={actionName(offer.label, row)}
+        className={cn(FOCUS, className, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone])}
+        onClick={() => (offer.kind === "build" ? void state.send("build") : state.compose(offer.kind))}
+      >
+        <Glyph name={KIND_ICONS[kind]} />
+        {offer.label}
+      </button>
+      {offer.regrant ? (
+        <button type="button" aria-label={actionName("Re-grant", row)} className={cn(FOCUS, className, "border-border")} onClick={() => void state.send("grant", { regrant: true })}>
+          Re-grant
+        </button>
+      ) : null}
+    </>
+  );
 }
 
 function SentList({ actions, now, fleets, showFleet, nameOf }: { actions: readonly ActionRecordView[]; now: string; fleets: ReadonlyMap<string, FleetCardView>; showFleet: boolean; nameOf(fleet: string): string }) {

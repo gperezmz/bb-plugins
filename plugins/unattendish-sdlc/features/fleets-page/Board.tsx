@@ -200,7 +200,7 @@ export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProp
     <section aria-label="Fleet board" className="flex flex-col text-sm">
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {shown.map((card) => (
-          <PhoneLine key={card.repo} card={card} name={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
+          <PhoneLine key={card.repo} card={card} shortName={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
         ))}
       </ul>
       {more > 0 ? (
@@ -212,7 +212,7 @@ export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProp
   );
 }
 
-function PhoneLine({ card, name, now, selected, onToggle }: { card: FleetCardView; name: string; now: string; selected: boolean; onToggle(): void }) {
+function PhoneLine({ card, shortName, now, selected, onToggle }: { card: FleetCardView; shortName: string; now: string; selected: boolean; onToggle(): void }) {
   const fixOf = useFix(card);
   const flags = flagsOf(card, now);
   const first = flags[0];
@@ -225,7 +225,7 @@ function PhoneLine({ card, name, now, selected, onToggle }: { card: FleetCardVie
       {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
       <ServiceLogo service={card.forge} />
       <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
-        {name}
+        {shortName}
       </button>
       {worst !== null ? (
         run !== null ? (

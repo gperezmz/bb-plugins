@@ -694,6 +694,13 @@ describe("a queue row on a phone (#273)", () => {
     expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_den6jrijzx");
   });
 
+  it("shows a URL with no short form as the arrow alone, its text the accessible name (AC5)", async () => {
+    await show(fleetsView({ fleets: [gh("org/orphan")], inbox: [inboxRow({ fleet: "github.example/org/orphan", link: { kind: "url", url: "https://github.example/org/orphan/wiki/Home", text: "github.example/org/orphan/wiki/Home" } })] }));
+    const link = within(queue()).getByRole("link", { name: "github.example/org/orphan/wiki/Home" });
+    expect(link.textContent).toBe("↗");
+    expect(link.getAttribute("href")).toBe("https://github.example/org/orphan/wiki/Home");
+  });
+
   it("shows a link's short form where its URL has one (AC5)", async () => {
     await show(fleetsView({ fleets: [fleet("gitlab.example/group/proj", { waiting: 1 })], inbox: [inboxRow({ fleet: "gitlab.example/group/proj", link: { kind: "url", url: "https://gitlab.example/group/proj/-/merge_requests/3", text: "gitlab.example/group/proj/-/merge_requests/3" } })] }));
     expect(within(queue()).getByRole("link", { name: "!3 ↗" }).className).toContain("before:h-11");
@@ -711,7 +718,7 @@ describe("a queue row on a phone (#273)", () => {
         ],
       }),
     );
-    const actions = queueRows().map((row) => parts(row)[2]!);
+    const actions = queueRows().map((row) => parts(row)[2]!.firstElementChild as HTMLElement);
     expect(within(actions[0]!).getByRole("button", { name: "Answer… #1" }).className).toContain("h-11");
     expect(actions[1]!.textContent).toBe("sent · 4m");
     expect(actions[1]!.className).toContain("h-11");
@@ -721,12 +728,29 @@ describe("a queue row on a phone (#273)", () => {
     expect(actions[3]!.className).not.toContain("h-11");
   });
 
+  it("keeps the action line at the buttons' height while a send is in flight and while its result is checked (AC6)", async () => {
+    let fail: (error: Error) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)));
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    const view = fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] });
+    await show(view);
+    const line = () => parts(queueRows()[0]!)[2]!.firstElementChild as HTMLElement;
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    await waitFor(() => expect(line().textContent).toBe("sending…"));
+    expect(line().className).toContain("h-11");
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    act(() => fail(new Error("the connection dropped")));
+    await waitFor(() => expect(line().textContent).toBe("checking…"));
+    expect(line().className).toContain("h-11");
+    await act(async () => answer(view));
+  });
+
   it("says composing… in the action line with the composer under the row (AC6)", async () => {
     await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#1" })] }));
     fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #1" }));
     const row = queueRows()[0]!;
     expect(parts(row)[2]!.textContent).toBe("composing…");
-    expect(parts(row)[2]!.className).toContain("h-11");
+    expect(parts(row)[2]!.firstElementChild!.className).toContain("h-11");
     expect(within(row).getByRole("textbox")).toBeTruthy();
   });
 
@@ -748,6 +772,18 @@ describe("a queue row on a phone (#273)", () => {
     const action = parts(queueRows()[0]!)[2]!;
     expect(within(action).getByText("could not confirm whether the last send went through")).toBeTruthy();
     expect(within(action).getByRole("button", { name: "Build it #9" })).toBeTruthy();
+  });
+
+  it("spells out an unconfirmed Answer… under composing…, its composer open again (AC7)", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#1" })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #1" }));
+    fireEvent.change(within(queue()).getByRole("textbox"), { target: { value: "Redis" } });
+    fireEvent.click(within(queue()).getByRole("button", { name: /^Send/ }));
+    await within(queue()).findByText("could not confirm whether the last send went through");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(action.textContent).toBe("composing…could not confirm whether the last send went through");
+    expect(within(queueRows()[0]!).getByRole("textbox")).toBeTruthy();
   });
 
   it("names a Sent line's fleet by its short name (AC8)", async () => {
