@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ago, fleetCard, MINUTE, NOW } from "@/testing/fixtures";
 import type { ProblemView, WarningView } from "@/src/fleet/application/views";
-import { fixIcon, flagsOf, flagSummary, isQuiet, phoneFlagIcon, worstFlag } from "./fleet-flags";
+import { fixIcon, flagsOf, flagSummary, isQuiet, narrowFlagIcon, worstFlag } from "./fleet-flags";
 
 const missing: ProblemView = { code: "manifest-missing", text: "The manifest at /x/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
 const unreadable: ProblemView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
@@ -89,9 +89,9 @@ describe("a flag's icon", () => {
   });
 
   it("is ⚠ on a phone for a problem or a polling warning, and a key for a token to renew", () => {
-    expect(phoneFlagIcon(flagsOf(fleetCard({ problems: [gone] }), NOW))).toBe("AlertTriangle");
-    expect(phoneFlagIcon(flagsOf(fleetCard({ warnings: [late] }), NOW))).toBe("AlertTriangle");
-    expect(phoneFlagIcon(flagsOf(fleetCard({ warnings: [expires] }), NOW))).toBe("unattendish-sdlc/key");
-    expect(phoneFlagIcon([])).toBeNull();
+    expect(narrowFlagIcon(flagsOf(fleetCard({ problems: [gone] }), NOW))).toBe("AlertTriangle");
+    expect(narrowFlagIcon(flagsOf(fleetCard({ warnings: [late] }), NOW))).toBe("AlertTriangle");
+    expect(narrowFlagIcon(flagsOf(fleetCard({ warnings: [expires] }), NOW))).toBe("unattendish-sdlc/key");
+    expect(narrowFlagIcon([])).toBeNull();
   });
 });

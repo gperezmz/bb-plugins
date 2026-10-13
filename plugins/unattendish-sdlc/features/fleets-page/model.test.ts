@@ -12,7 +12,8 @@ import {
   headerCount,
   headerCountLabel,
   moreLabel,
-  phoneBoard,
+  narrowBoard,
+  pageLayout,
   pollingCell,
   queueFor,
   quietLabel,
@@ -21,6 +22,7 @@ import {
   tabCounts,
   tabRows,
   tabsShown,
+  SWITCH_POINT_REM,
 } from "./model";
 
 const missing: ProblemView = { code: "manifest-missing", text: "The manifest does not exist yet", fix: { kind: "fleet-tab" } };
@@ -66,8 +68,8 @@ describe("the fleet board's order", () => {
 
   it("condenses to three fleets on a phone, the rest folded", () => {
     const cards = ["a", "b", "c", "d", "e"].map((name) => fleetCard({ repo: `org/${name}` }));
-    expect(phoneBoard(cards, NOW)).toMatchObject({ more: 2 });
-    expect(phoneBoard(cards, NOW).shown.map((card) => card.repo)).toEqual(["org/a", "org/b", "org/c"]);
+    expect(narrowBoard(cards, NOW)).toMatchObject({ more: 2 });
+    expect(narrowBoard(cards, NOW).shown.map((card) => card.repo)).toEqual(["org/a", "org/b", "org/c"]);
     expect(moreLabel(2)).toBe("2 more fleets");
     expect(moreLabel(1)).toBe("1 more fleet");
   });
@@ -179,5 +181,14 @@ describe("the row a toast opens", () => {
 
   it("says a row gone from the Inbox no longer waits on you (AC4)", () => {
     expect(goneText({ ref: "#7", what: "Which cache to use" })).toBe("#7 Which cache to use no longer waits on you");
+  });
+});
+
+describe("the page's layout", () => {
+  it("is wide from the switch point up and narrow below it, at any rem size", () => {
+    expect(pageLayout(SWITCH_POINT_REM * 16, 16)).toBe("wide");
+    expect(pageLayout(SWITCH_POINT_REM * 16 - 0.5, 16)).toBe("narrow");
+    expect(pageLayout(SWITCH_POINT_REM * 16, 20)).toBe("narrow");
+    expect(pageLayout(SWITCH_POINT_REM * 20, 20)).toBe("wide");
   });
 });

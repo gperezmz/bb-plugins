@@ -78,10 +78,10 @@ export function fixIcon(flag: Flag): string | null {
 }
 
 /**
- * The icon a phone shows for a fleet's flags, where there is no hover: ⚠ for a problem, a key for a warning a renewal
+ * The icon the Fleets page's narrow layout shows for a fleet's flags, its sentences on hover: ⚠ for a problem, a key for a warning a renewal
  * fixes, ⚠ for any other warning; null with no flag.
  */
-export function phoneFlagIcon(flags: readonly Flag[]): string | null {
+export function narrowFlagIcon(flags: readonly Flag[]): string | null {
   const first = flags[0];
   if (first === undefined) return null;
   return first.kind === "warning" && first.fix.kind === "renew" ? ICONS.renew : ICONS.review;

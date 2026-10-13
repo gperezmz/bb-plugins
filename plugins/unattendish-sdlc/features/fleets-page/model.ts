@@ -45,6 +45,24 @@ export function shortNames(fleets: readonly string[]): ReadonlyMap<string, strin
   );
 }
 
+// ---- the page's layout ----
+
+/** The Fleets page's two layouts: `wide` is the board and one line per queue row, `narrow` the condensed board and stacked rows. */
+export type PageLayout = "wide" | "narrow";
+
+/**
+ * The switch point, in rem: the narrowest page, padding included, at which the widest row the wide layout can hold
+ * keeps each of its parts whole. That row names its fleet, links with no short form cut at 16rem, offers Grant… and
+ * Re-grant with a refused Re-grant's "not sent" beside a 12rem title, has waited 99d 23h, and has an unconfirmed send.
+ * Measured in bb, since the buttons' and "not sent"'s widths are their text's.
+ */
+export const SWITCH_POINT_REM = 65;
+
+/** The layout for a page `widthPx` wide, where a rem is `remPx`: wide from the switch point up, narrow below it. */
+export function pageLayout(widthPx: number, remPx: number): PageLayout {
+  return widthPx >= SWITCH_POINT_REM * remPx ? "wide" : "narrow";
+}
+
 // ---- the fleet board ----
 
 /**
@@ -67,14 +85,14 @@ export function quietLabel(count: number): string {
   return `${count} quiet ${count === 1 ? "fleet" : "fleets"}`;
 }
 
-/** How many fleets the condensed board on a phone shows before folding the rest. */
-export const PHONE_FLEETS_SHOWN = 3;
+/** How many fleets the narrow layout's condensed board shows before folding the rest. */
+export const NARROW_FLEETS_SHOWN = 3;
 
 /** The condensed board: the first fleets in board order, and how many fold under "N more fleets"; every fleet once `expanded`. */
-export function phoneBoard(cards: readonly FleetCardView[], now: string, expanded = false): { readonly shown: FleetCardView[]; readonly more: number } {
+export function narrowBoard(cards: readonly FleetCardView[], now: string, expanded = false): { readonly shown: FleetCardView[]; readonly more: number } {
   const ordered = boardOrder(cards, now);
   if (expanded) return { shown: ordered, more: 0 };
-  return { shown: ordered.slice(0, PHONE_FLEETS_SHOWN), more: Math.max(0, ordered.length - PHONE_FLEETS_SHOWN) };
+  return { shown: ordered.slice(0, NARROW_FLEETS_SHOWN), more: Math.max(0, ordered.length - NARROW_FLEETS_SHOWN) };
 }
 
 /** `2 more fleets`, `1 more fleet`. */
