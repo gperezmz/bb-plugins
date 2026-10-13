@@ -40,7 +40,7 @@ run_env_set_by_run=(
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC # likewise
   CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_AGENT_SDK_VERSION CLAUDE_CODE_EXECPATH COREPACK_ENABLE_AUTO_PIN
   AI_AGENT DISABLE_INSTALLATION_CHECKS DISABLE_NON_ESSENTIAL_MODEL_CALLS CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
-  CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
+  SHELL CLAUDE_CODE_SHELL CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
   NoDefaultCurrentDirectoryInExePath CLAUDE_CODE_DISABLE_1M_CONTEXT
                              # bb sets these for Claude Code, or Claude Code for its commands, as for the caller's
   NODE_PATH                  # bb's launcher scripts set it to bb's own modules, as they did in the caller's bb
@@ -59,10 +59,12 @@ for _name in "${run_env_passed[@]}"; do
   [[ -n ${!_name+x} ]] && run_env+=("$_name=${!_name}")
 done
 unset _name
-# Claude Code's shell is run-shell/bash, bash with no profile, whatever shell
-# the caller logs in with. No process of a run reaches the user's D-Bus session
-# bus, where a keyring would hand gh, and through it bb, the user's token.
-run_env+=("SHELL=$run_env_dir/run-shell/bash" "DBUS_SESSION_BUS_ADDRESS=disabled:")
+# Claude Code's shell is bash, whatever shell the caller logs in with, and the
+# bash it runs commands in skips the system bashrc, which on NixOS sources the
+# machine's profile into every bash, so nothing that profile exports enters a
+# run. No process of a run reaches the user's D-Bus session bus, where a
+# keyring would hand gh, and through it bb, the user's token.
+run_env+=("SHELL=$(command -v bash)" NOSYSBASHRC=1 "DBUS_SESSION_BUS_ADDRESS=disabled:")
 
 # The line a failed start ends with, so a variable a machine needs can be added.
 run_env_note() {

@@ -2,7 +2,7 @@
 
 A throwaway bb with Cache Keeper installed from this checkout, real Claude Code threads that talk to a fake Anthropic API, and drives that move the plugin's clock forward, so behaviour that waits minutes or hours in real use is reached and checked in seconds.
 
-The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Claude Code runs its commands in `run-shell/bash`, bash with no profile, so nothing the machine's profile exports enters the run either. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is.
+The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Every bash in the run, the one Claude Code runs its commands in included, skips the system bashrc (`NOSYSBASHRC=1`), which on NixOS sources the machine's profile, so nothing that profile exports enters the run either. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is.
 
 ## Requirements
 
@@ -121,7 +121,6 @@ To find a run's processes yourself, test each one's environment for the mark, as
 
 - `start.sh`, `stop.sh`, `config.sh`: the throwaway bb; `config.sh` holds the ports, the run directory and the process search both use.
 - `run-env.sh`: the passed list, and the leak check, for this harness, Unattendish's and the driving-bb-plugins skill's.
-- `run-shell/bash`: the shell a run's Claude Code runs its commands in, bash with no profile and no rc file.
 - `run-env.test.sh`: checks `run-env.sh`'s leak check against processes it starts itself, with no bb; run it after changing `run-env.sh`.
 - `fake-anthropic.mjs`: the fake Anthropic API.
 - `drives/lib.sh`: what every drive shares. `drives/*.sh`: the drives, and `run-all.sh`.

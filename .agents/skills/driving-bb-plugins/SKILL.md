@@ -67,7 +67,8 @@ credentials: every process of the run starts from an empty environment
 holding the **passed list**, the variables named with why in
 `plugins/cache-keeper/harness/run-env.sh`, and what the harness sets for the
 run, its mark (`DBP_MARK`), its bb's address, `HOME` inside its scratch
-directory and a `SHELL` that runs bash with no profile among them. A variable this machine's runs need goes on that list;
+directory and `NOSYSBASHRC=1`, so no bash in the run reads the machine's
+profile, among them. A variable this machine's runs need goes on that list;
 a `start` that fails says where it is. Reach the run only through the
 harness's commands, since a bare `bb` in this shell talks to the user's own
 bb; a shell that sources the evidence's `env.sh` stops exporting whatever is
