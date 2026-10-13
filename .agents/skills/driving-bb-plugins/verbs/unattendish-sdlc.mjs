@@ -142,17 +142,54 @@ async function openThread(page, url, cli, thread, label) {
 /** The Fleet chip in an open thread's header. */
 const chipOf = (page) => page.getByRole("button", { name: /^Fleet( idle$|: )/ });
 
-/** What the Fleet tab draws: each section's heading and lines, and the card at its top. */
+/** The Fleet tab's tab bar, which shows once the tab has loaded its fleet. */
+const tabBar = (page) => page.getByRole("tablist", { name: "Fleet", exact: true });
+
+/** The fleet header in the open Fleet tab, or in the chip's hover card. */
+const headerOf = (scope) => scope.getByRole("banner", { name: /^Fleet / });
+
+/**
+ * What the Fleet tab draws: the fleet header's lines and strips; each tab's name, text and whether it is selected;
+ * and the shown panel's sections, each heading with whether it is unfolded, then its lines.
+ */
 export async function readTab(page) {
   await sleep(300);
-  const tab = page.getByRole("region", { name: "Polling" }).locator("xpath=..");
+  const bar = tabBar(page);
+  const header = headerOf(page).last();
+  const tabs = await bar.getByRole("tab").evaluateAll((ts) =>
+    ts.map((t) => ({ name: t.getAttribute("aria-label"), text: t.innerText.replace(/\s+/g, " ").trim(), selected: t.getAttribute("aria-selected") === "true" })),
+  );
+  const panel = page.locator("[role=tabpanel]:not([hidden])").last();
   const sections = [];
-  for (const region of await tab.locator(":scope > [role=region], :scope > section").all()) {
-    const text = lines(await region.innerText());
-    sections.push({ heading: text[0], lines: text.slice(1) });
+  for (const section of await panel.locator("section").all()) {
+    const heading = section.locator(":scope > h3").first();
+    const fold = heading.getByRole("button");
+    const text = lines(await section.innerText());
+    sections.push({ heading: text[0], unfolded: (await fold.count()) ? (await fold.getAttribute("aria-expanded")) === "true" : null, lines: text.slice(1) });
   }
-  const card = tab.getByRole("article").first();
-  return { card: (await card.count()) ? lines(await card.innerText()) : null, sections };
+  return {
+    header: (await header.count()) ? lines(await header.innerText()) : null,
+    strips: (await header.count()) ? await header.getByRole("listitem").allInnerTexts() : [],
+    tabs,
+    panel: { name: await panel.getAttribute("aria-labelledby"), lines: sections.length > 0 ? null : lines(await panel.innerText()), sections },
+  };
+}
+
+/** The chip's look in the page: its height, its border's width, the header row's height, and its dot's colour class. */
+async function chipLook(chip) {
+  return chip.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const dot = el.querySelector("span[aria-hidden].rounded-full");
+    const row = el.closest("header") ?? el.parentElement;
+    return {
+      height: box.height,
+      width: box.width,
+      borderWidth: getComputedStyle(el).borderTopWidth,
+      rowHeight: row?.getBoundingClientRect().height ?? null,
+      dot: dot === null ? null : [...dot.classList].find((c) => c.startsWith("bg-")) ?? null,
+      count: el.querySelector(".tabular-nums")?.textContent ?? null,
+    };
+  });
 }
 
 export const verbs = {
@@ -176,7 +213,7 @@ export const verbs = {
       }
       if (!flags["open-tab"]) return result;
       await board.getByRole("listitem", { name: `Fleet ${flags["open-tab"]}` }).getByRole("button", { name: `Open the Fleet tab of ${flags["open-tab"]}` }).click();
-      await page.getByRole("region", { name: "Polling" }).waitFor();
+      await tabBar(page).waitFor();
       const tab = await readTab(page);
       await capture("tab", `press the Fleet tab icon on ${flags["open-tab"]}'s line`);
       result.opened = { url: page.url(), tab };
@@ -226,23 +263,30 @@ export const verbs = {
   },
 
   chip: {
-    usage: "<thread> [--hover] [--open] [--mobile]: open a manager thread and read its header's Fleet chip; --hover reads the card it opens, --open clicks it and reads the Fleet tab; the `threadFleet` RPC",
+    usage: "<thread> [--hover] [--review] [--open] [--mobile]: open a manager thread and read its header's Fleet chip (name, text, height, border and dot); --hover reads the fleet header its hover card shows, --review then presses Review in that card and reads the Fleet tab it opens, --open clicks the chip and reads the Fleet tab; the `threadFleet` RPC",
     async run({ page, url, capture, cli, args, flags }) {
       await openThread(page, url, cli, args[0], "unattendish.chip/show");
       const chip = chipOf(page);
       await chip.waitFor();
-      const result = { name: await chip.getAttribute("aria-label"), text: (await chip.innerText()).trim() };
+      const result = { name: await chip.getAttribute("aria-label"), text: (await chip.innerText()).trim(), look: await chipLook(chip) };
       await capture("chip", `open ${args[0]}`);
-      if (flags.hover) {
+      if (flags.hover || flags.review) {
         await chip.hover();
-        const card = page.getByRole("article").filter({ hasText: "forge" }).last();
-        await card.waitFor({ timeout: 3000 }).catch(() => {});
-        result.hover = (await card.count()) ? lines(await card.innerText()) : null;
+        const header = headerOf(page).last();
+        await header.waitFor({ timeout: 3000 }).catch(() => {});
+        result.hover = (await header.count()) ? lines(await header.locator("xpath=..").innerText()) : null;
         await capture("hover", "hover the chip");
+        if (flags.review) {
+          await header.getByRole("button", { name: /^Review/ }).click();
+          await tabBar(page).waitFor();
+          await sleep(800);
+          result.reviewed = await readTab(page);
+          await capture("reviewed", "press Review in the chip's card");
+        }
       }
       if (flags.open) {
         await chip.click();
-        await page.getByRole("region", { name: "Polling" }).waitFor();
+        await tabBar(page).waitFor();
         result.tab = await readTab(page);
         await capture("tab", "click the chip");
       }
@@ -252,28 +296,61 @@ export const verbs = {
     },
   },
 
+  tab: {
+    usage: "<thread> [--tab <Work|Notes|Watching|Ledger>] [--fold <section>] [--review]: open a manager's Fleet tab from its chip and read it; --tab presses that tab, --fold presses that Work section's heading, --review presses Review in the fleet header, each read as `after`; the `fleetDetail` RPC",
+    valued: ["tab", "fold"],
+    async run({ page, url, capture, cli, args, flags }) {
+      await openThread(page, url, cli, args[0], "unattendish.tab/show");
+      await chipOf(page).click();
+      await tabBar(page).waitFor();
+      const result = { shown: await readTab(page) };
+      await capture("tab", "click the chip");
+      if (flags.tab || flags.fold || flags.review) {
+        if (flags.tab) await tabBar(page).getByRole("tab", { name: new RegExp(`^${escape(flags.tab)}`) }).click();
+        if (flags.fold) await page.locator("[role=tabpanel]:not([hidden])").last().getByRole("button", { name: new RegExp(`^${escape(flags.fold)}`) }).click();
+        if (flags.review) await headerOf(page).last().getByRole("button", { name: /^Review/ }).click();
+        await sleep(800);
+        result.after = await readTab(page);
+        result.scrolledTo = await page.evaluate(() => {
+          const rows = [...document.querySelectorAll("[id^=fleet-tab-unreadable-]")];
+          return rows.map((row) => ({ id: row.id, top: Math.round(row.getBoundingClientRect().top), viewport: window.innerHeight }));
+        });
+        await capture("after", [flags.tab && `tab ${flags.tab}`, flags.fold && `fold ${flags.fold}`, flags.review && "Review"].filter(Boolean).join(", "));
+      }
+      const repo = result.shown.header?.[0] ?? null;
+      const stored = rpc(cli, "unattendish.tab/rpc", "fleets").fleets?.find((card) => card.managerThreadId === args[0]);
+      if (stored) result.stored = JSON.parse(cli("unattendish.tab/rpc", "plugin", "rpc", "call", "unattendish-sdlc", "fleetDetail", "--input-file", writeInput({ repo: stored.repo }), "--json"));
+      result.repo = repo;
+      return result;
+    },
+  },
+
   ledger: {
-    usage: "<thread> [--filter <All|Woke|Dropped|Held|Failed reads|Wakes>] [--item <ref>]: open a manager's Fleet tab, open Ledger ▸, press a filter and type an item; what the ledger lists",
+    usage: "<thread> [--filter <All|Woke|Dropped|Held|Failed reads|Wakes>] [--item <ref>]: open a manager's Fleet tab, press its Ledger tab, press a filter and type an item; what the ledger lists, with each entry's outcome icon",
     valued: ["filter", "item"],
     async run({ page, url, capture, cli, args, flags }) {
       await openThread(page, url, cli, args[0], "unattendish.tab/show");
       await chipOf(page).click();
-      const open = page.getByRole("button", { name: /^Ledger/ });
+      const open = tabBar(page).getByRole("tab", { name: /^Ledger/ });
+      const tabName = await open.getAttribute("aria-label");
       await open.click();
       const group = page.getByRole("group", { name: "What was done" });
       await group.waitFor();
-      const ledger = () => open.locator("xpath=ancestor::*[@role='region' or self::section][1]");
+      const ledger = () => page.locator("#fleet-tab-panel-ledger");
+      const icons = () => ledger().locator("ol > li").evaluateAll((items) => items.map((li) => li.querySelector("[data-icon], svg")?.closest("span[class*='text-']")?.className.match(/text-[\w-]+/)?.[0] ?? null));
+      await sleep(800);
       const before = lines(await ledger().innerText());
-      await capture("ledger", "open Ledger ▸");
+      const beforeTones = await icons();
+      await capture("ledger", "press the Ledger tab");
       if (flags.filter) {
         await group.getByRole("button", { name: flags.filter, exact: true }).click();
         await group.getByRole("button", { name: flags.filter, exact: true, pressed: true }).waitFor();
       }
-      if (flags.item) await page.getByRole("textbox", { name: "Filter by item" }).fill(flags.item);
+      if (flags.item) await page.getByRole("searchbox", { name: "Filter by item" }).fill(flags.item);
       await sleep(800);
       const after = lines(await ledger().innerText());
       await capture("filtered", `filter ${flags.filter ?? "All"}${flags.item ? `, item ${flags.item}` : ""}`);
-      return { expanded: await open.getAttribute("aria-expanded"), filters: await group.getByRole("button").allInnerTexts(), before, after };
+      return { tab: tabName, filters: await group.getByRole("button").allInnerTexts(), before, beforeTones, after, afterTones: await icons() };
     },
   },
 
