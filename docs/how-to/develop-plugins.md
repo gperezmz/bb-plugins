@@ -63,9 +63,10 @@ The repository-wide checks:
 gitleaks git --redact .
 lychee --offline --include-fragments '*.md' 'docs/**/*.md' 'plugins/*/*.md'
 npm ci --prefix scripts/ci && node scripts/ci/check-mermaid.mjs
+plugins/cache-keeper/harness/run-env.test.sh
 ```
 
-`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses.
+`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the passed list and leak check in `plugins/cache-keeper/harness/run-env.sh`, which every drive harness's run takes its environment from, against processes it starts itself. It needs no install and no bb, and takes about two seconds.
 
 ## Turn on the commit hooks
 
