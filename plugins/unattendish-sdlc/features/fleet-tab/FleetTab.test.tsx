@@ -128,11 +128,12 @@ describe("the header (#258 AC1)", () => {
     expect(within(strip).getByRole("button", { name: /^Review/ }).textContent).toBe("Review");
   });
 
-  it("shows the forge's logo, the fleet's name, and a tracker of its own as its name and key", async () => {
+  it("shows the forge's logo, the fleet's name, and a tracker of its own as its logo and key", async () => {
     const header = await showDetail();
     expect(within(header).getByRole("img", { name: "GitHub" })).toBeTruthy();
     expect(within(header).getByText("acme/web")).toBeTruthy();
-    expect(within(header).getByText("Linear")).toBeTruthy();
+    expect(within(header).getByRole("img", { name: "Linear" })).toBeTruthy();
+    expect(within(header).queryByText("Linear")).toBeNull();
     expect(within(header).getByText("ENG")).toBeTruthy();
   });
 

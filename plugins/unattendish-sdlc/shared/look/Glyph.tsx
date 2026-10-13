@@ -1,5 +1,6 @@
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
+import { BRAND_ARTWORK, BrandLogo } from "./brand-logos";
 import { SERVICE_LOGOS, SERVICE_NAMES, type Service } from "./icons";
 import { TONE_TEXT, type Tone } from "./tones";
 
@@ -21,12 +22,12 @@ export function Glyph({ name, tone, label, spin = false, className }: { name: st
 }
 
 /**
- * A service's logo, whose accessible name is the service's name unless `decorative`; for a service with no logo to
- * show, the service's name in small muted type, or nothing with `logoOnly`, where the words beside it already name it.
+ * A service's logo, whose accessible name is the service's name unless `decorative`, for where the words beside it
+ * already name the service. GitHub's is drawn by bb in the text colour; the others are their brands' own artwork.
  */
-export function ServiceLogo({ service, decorative = false, logoOnly = false, className }: { service: Service; decorative?: boolean; logoOnly?: boolean; className?: string }) {
-  const logo = SERVICE_LOGOS[service];
-  if (logo === undefined && logoOnly) return null;
-  if (logo === undefined) return <span className={cn("shrink-0 text-xs text-muted-foreground", className)}>{SERVICE_NAMES[service]}</span>;
-  return <Glyph name={logo} label={decorative ? undefined : SERVICE_NAMES[service]} className={className} />;
+export function ServiceLogo({ service, decorative = false, className }: { service: Service; decorative?: boolean; className?: string }) {
+  const label = decorative ? undefined : SERVICE_NAMES[service];
+  const artwork = BRAND_ARTWORK[service];
+  if (artwork !== undefined) return <BrandLogo service={service} artwork={artwork} label={label} className={className} />;
+  return <Glyph name={SERVICE_LOGOS[service]!} label={label} className={className} />;
 }

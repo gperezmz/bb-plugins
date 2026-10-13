@@ -23,3 +23,13 @@ These files under `icons/` are copied from icon sets, as single-colour drawings 
 | icons/rocket.svg | Lucide (lucide-static): rocket | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/scale.svg | Lucide (lucide-static): scale | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/user-x.svg | Lucide (lucide-static): user-x | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+
+## Brand logos
+
+GitLab's, Jira's and Linear's logos, drawn in `shared/look/brand-logos.tsx`, are trademarks of the companies below and their artwork, which this plugin's licence does not cover. They are shown only to refer to those services, in the owners' own colours and unmodified except in size. Unattendish is not made by, endorsed by or affiliated with any of them.
+
+| Logo | Trademark of | Published as, and from | Changed | Retrieved |
+|---|---|---|---|---|
+| GitLab | GitLab Inc. | gitlab-logo-500-rgb.svg (Logomark), https://about.gitlab.com/images/press/gitlab-logo-500-rgb.svg, from the press kit at https://about.gitlab.com/press/press-kit/ | viewBox cropped to the mark | 2026-10-14 |
+| Jira | Atlassian | Jira_icon.svg, in https://atlassian.design/assets/700bfde52eb7/logos/jira_app.zip, from the logo library at https://atlassian.design/foundations/logos | none | 2026-10-14 |
+| Linear | Linear Orbit, Inc. | logo-dark.svg (light pages) and logo-light.svg (dark pages), in https://static.linear.app/design-assets/Linear-Brand-Assets.zip?v=3, from https://linear.app/brand | none | 2026-10-14 |

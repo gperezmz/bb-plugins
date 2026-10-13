@@ -15,6 +15,11 @@ export function expectIconsResolve(names: Iterable<string>): void {
   expect(unresolvedIcons(names)).toEqual([]);
 }
 
+/** Every brand logo drawn under `root`, by the service it stands for: the plugin's own SVG, which the SDK stub never draws. */
+export function drawnLogos(root: ParentNode): string[] {
+  return [...root.querySelectorAll("[data-logo]")].map((logo) => logo.getAttribute("data-logo")!);
+}
+
 /** Every icon name drawn under `root`, as the SDK stub marks each. */
 export function drawnIcons(root: ParentNode): string[] {
   return [...root.querySelectorAll("[data-icon]")].map((icon) => icon.getAttribute("data-icon")!);

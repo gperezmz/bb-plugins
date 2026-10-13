@@ -1,6 +1,6 @@
 // The plugin draws every colour from bb's theme tokens: no Tailwind palette colour and no colour value of its own,
 // which would ignore bb's palette, and no `dark:` variant, which in a plugin follows the operating system's mode
-// rather than bb's own setting.
+// rather than bb's own setting. The one exception is the brand logos' file, whose artwork keeps its owners' colours.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,15 +8,17 @@ import { TONE_BORDER, TONE_FILL, TONE_TEXT, TONE_TINT } from "./tones";
 
 const root = join(import.meta.dirname, "..", "..");
 const filesUnder = (dir: string): string[] => readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? filesUnder(join(dir, name)) : [join(dir, name)]));
+/** The file of GitLab's, Jira's and Linear's logos, drawn in the brands' own colours. */
+const BRAND_LOGOS = join(root, "shared", "look", "brand-logos.tsx");
 const uiFiles = (): string[] => [join(root, "app.tsx"), ...["features", "shared", "components", "lib"].flatMap((folder) => filesUnder(join(root, folder)))].filter((file) => /\.tsx?$/.test(file) && !/\.test\./.test(file));
 
 const PALETTE = /(?<!dark:)\b(?:text|bg|border|ring|fill|stroke|from|to|via|outline|decoration|divide)-(?:red|blue|green|amber|yellow|purple|violet|orange|gray|grey|slate|zinc|neutral|stone|emerald|sky|indigo|pink|rose|lime|teal|cyan|fuchsia|black|white)(?:-\d{2,3})?\b/;
 const VALUE = /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b(?![0-9])|\brgba?\(|\bhsla?\(|\boklch\(/i;
 
-/** The colour classes and values a source text names that are not bb's tokens. */
-export function foreignColours(text: string): string[] {
+/** The colour classes and values a source text names that are not bb's tokens; `values: false` leaves out colour values. */
+export function foreignColours(text: string, { values = true } = {}): string[] {
   const found: string[] = [];
-  for (const pattern of [PALETTE, VALUE, /\bdark:[\w-]+/]) {
+  for (const pattern of [PALETTE, ...(values ? [VALUE] : []), /\bdark:[\w-]+/]) {
     const global = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
     for (const match of text.matchAll(global)) found.push(match[0]);
   }
@@ -26,7 +28,7 @@ export function foreignColours(text: string): string[] {
 
 describe("the plugin's colours", () => {
   it("are all bb's theme tokens, with no dark: variant", () => {
-    const hits = uiFiles().flatMap((file) => foreignColours(readFileSync(file, "utf8")).map((hit) => `${relative(root, file)}: ${hit}`));
+    const hits = uiFiles().flatMap((file) => foreignColours(readFileSync(file, "utf8"), { values: file !== BRAND_LOGOS }).map((hit) => `${relative(root, file)}: ${hit}`));
     expect(hits).toEqual([]);
   });
 
@@ -37,6 +39,7 @@ describe("the plugin's colours", () => {
     const red = ["bg", "[#ff0000]"].join("-");
     expect(foreignColours(`className="${purple} ${red} ${dark}" style={{ color: "rgb(1,2,3)" }}`)).toEqual([purple, "#ff0000", "rgb(", dark]);
     expect(foreignColours('"text-timeline-accent text-warning-text" #163')).toEqual([]);
+    expect(foreignColours('fill="#e24329" className="[.dark_&]:hidden"', { values: false })).toEqual([]);
   });
 
   it("give coloured text the text variants of the error and warning tones", () => {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FleetCardView, ProblemView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
-import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { drawnIcons, drawnLogos, expectIconsResolve } from "@/testing/icons";
 import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { setPageWidth } from "@/testing/page-width";
@@ -259,14 +259,27 @@ describe("a board line (AC2–AC6)", () => {
     const infra = line("platform/infra");
     const parts = [...infra.querySelectorAll("[role=img], button, span")].map((el) => el.getAttribute("aria-label") ?? el.textContent);
     expect(parts.indexOf("GitHub")).toBeLessThan(parts.indexOf("platform/infra"));
-    expect(within(infra).getByText("Linear")).toBeTruthy();
-    expect(within(infra).getByText(/PLAT/)).toBeTruthy();
-    expect(within(line("org/dash")).queryByText("Linear")).toBeNull();
+    expect(parts.indexOf("Linear")).toBeGreaterThan(parts.indexOf("platform/infra"));
+    expect(drawnLogos(infra)).toEqual(["linear"]);
+    expect(within(infra).getByRole("img", { name: "Linear" }).parentElement!.textContent).toBe("PLAT");
+    expect(within(infra).queryByText("Linear")).toBeNull();
+    expect(within(line("org/dash")).queryByRole("img", { name: "Linear" })).toBeNull();
   });
 
-  it("names a GitLab forge, which has no logo to show", async () => {
+  it("starts a GitLab forge's line with GitLab's logo, not its name", async () => {
     await show(fleetsView({ fleets: [fleet("group/billing", { forge: "gitlab", waiting: 1 })] }));
-    expect(within(line("group/billing")).getByText("GitLab")).toBeTruthy();
+    const billing = line("group/billing");
+    expect(within(billing).getByRole("img", { name: "GitLab" })).toBeTruthy();
+    expect(drawnLogos(billing)).toEqual(["gitlab"]);
+    expect(within(billing).queryByText("GitLab")).toBeNull();
+  });
+
+  it("starts a Jira tracker with Jira's logo followed by its key", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { tracker: "jira:acme.atlassian.net/Q", waiting: 1 })] }));
+    const dash = line("org/dash");
+    expect(within(dash).getByRole("img", { name: "Jira" })).toBeTruthy();
+    expect(within(dash).queryByText("Jira")).toBeNull();
+    expect(within(dash).getByRole("img", { name: "Jira" }).parentElement!.textContent).toBe("Q");
   });
 
   it("leaves spend empty where it is unknown, and shows it where it is known", async () => {

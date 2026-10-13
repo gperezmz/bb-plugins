@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
 import { accountSetting, credentialSetting, settingsView } from "@/testing/fixtures";
-import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { drawnIcons, drawnLogos, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { announceConnectSaved, closeConnect, currentConnect } from "@/shared/connect/requests";
 import { AccountsSettings } from "./index";
@@ -267,11 +267,19 @@ describe("the section's look", () => {
     expect(fake.api.removeAccount).not.toHaveBeenCalled();
   });
 
-  it("shows GitLab, Linear and Jira accounts by their names, which their trademark rules leave as the only mark (AC6)", async () => {
-    fake.api.settings.mockResolvedValue(settingsView({ accounts: [accountSetting({ id: "acc_gl", label: "GitLab · yuser", service: "gitlab", place: "gitlab.com", credentials: [] })] }));
+  it("heads a GitLab, Linear or Jira account with its logo where a GitHub account has GitHub's (AC6)", async () => {
+    const service = (id: string, label: string, kind: "gitlab" | "linear" | "jira", place: string) => accountSetting({ id, label, service: kind, place, credentials: [] });
+    fake.api.settings.mockResolvedValue(
+      settingsView({
+        accounts: [service("acc_gl", "GitLab · yuser", "gitlab", "gitlab.com"), service("acc_li", "Linear · yuser", "linear", "linear.app"), service("acc_ji", "Jira · yuser", "jira", "acme.atlassian.net")],
+      }),
+    );
     await show();
-    expect(drawnIcons(account("GitLab · yuser"))).toEqual(["MoreHorizontal"]);
-    expect(within(account("GitLab · yuser")).getByText("GitLab · yuser")).toBeTruthy();
+    for (const [label, kind] of [["GitLab · yuser", "gitlab"], ["Linear · yuser", "linear"], ["Jira · yuser", "jira"]] as const) {
+      expect(drawnLogos(account(label))).toEqual([kind]);
+      expect(drawnIcons(account(label))).toEqual(["MoreHorizontal"]);
+      expect(within(account(label)).getByText(label)).toBeTruthy();
+    }
   });
 
   it("draws each token as a line with its key, reach, kind, readers and a 🗑 that asks first (AC7)", async () => {
@@ -349,7 +357,7 @@ describe("the section's look", () => {
     await waitFor(() => expect(fake.api.removeAssignment).toHaveBeenCalledWith({ scope: "github.com/org" }));
   });
 
-  it("lists the poll intervals as a table, each fleet with its forge's logo or name (AC9)", async () => {
+  it("lists the poll intervals as a table, each fleet with its forge's logo (AC9)", async () => {
     fake.api.settings.mockResolvedValue(
       settingsView({
         fleets: [
@@ -361,8 +369,10 @@ describe("the section's look", () => {
     await show();
     const table = screen.getByRole("table", { name: "Poll interval" });
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows.map((row) => within(row).getByRole("rowheader").textContent)).toEqual(["acme/web", "GitLabgit.example.com/group/proj"]);
+    expect(rows.map((row) => within(row).getByRole("rowheader").textContent)).toEqual(["acme/web", "git.example.com/group/proj"]);
     expect(drawnIcons(rows[0]!)).toEqual(["GithubLogo"]);
+    expect(drawnLogos(rows[1]!)).toEqual(["gitlab"]);
+    expect(within(rows[1]!).getByRole("img", { name: "GitLab" })).toBeTruthy();
     expect(within(rows[0]!).getByText("seconds")).toBeTruthy();
     expect(within(rows[1]!).getByText("seconds (default)")).toBeTruthy();
     expect(within(rows[1]!).getByRole("button", { name: /to the default/ })).toHaveProperty("disabled", true);

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
 import { accountOption, connectView, half, tokenPage } from "@/testing/fixtures";
-import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { drawnIcons, drawnLogos, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { ConnectOverlay } from "./ConnectOverlay";
 import { closeConnect, onConnectSaved, openConnect, type ConnectRequest } from "./requests";
@@ -467,8 +467,9 @@ describe("the popup's look", () => {
     await open({ target: {} });
     const tiles = within(screen.getByRole("group", { name: "Service" })).getAllByRole("radio");
     expect(tiles.map((tile) => tile.closest("label")!.textContent)).toEqual(["GitHub", "GitLab", "Linear", "Jira"]);
-    // GitHub's logo is bb's; GitLab, Linear and Jira show their names, which their trademark rules leave as the only mark.
+    // GitHub's logo is bb's; the other three are their brands' own.
     expect(iconsIn(screen.getByRole("group", { name: "Service" }))).toEqual(["GithubLogo"]);
+    expect(drawnLogos(screen.getByRole("group", { name: "Service" }))).toEqual(["gitlab", "linear", "jira"]);
     fireEvent.click(screen.getByRole("radio", { name: "GitLab" }));
     expect(screen.getByRole("radio", { name: "GitLab" })).toHaveProperty("checked", true);
     expect(iconsIn(screen.getByRole("radio", { name: "GitLab" }).closest("label")!)).toEqual(["Check"]);
