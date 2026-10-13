@@ -5,19 +5,19 @@
 # none; the planted variable is one whatever its value; the report names
 # variables and never prints a value; run_env keeps a run off the system
 # bashrc, the D-Bus session bus and XDG_RUNTIME_DIR, and a bash started with it
-# holds no leak once it has reached sleep, and fails if it never does; the
-# passed list, run_env_set_by_run and every name run-env.sh adds to run_env
-# outside the passed list hold no refused name, a credential or a way to one,
-# nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or CREDENTIAL in any
-# letter case unless the test excepts it with why, and the
+# holds no leak once it has reached sleep; a check on a process that never
+# reaches sleep fails and is not run, but for the gh case, which does not read
+# the process; the passed list, run_env_set_by_run and every name run-env.sh
+# adds to run_env outside the passed list hold no refused name, a credential or
+# a way to one, nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or
+# CREDENTIAL in any letter case unless the test excepts it with why, and the
 # failure names each such name and where it was found, never a value; a shell
 # sourcing run_env_script stops exporting what is not on the list, and the
-# functions the shell exported before sourcing it;
-# run_env_start_check fails on a leak and on a gh that finds a
-# token; run_env_default_branch names the caller's init.defaultBranch, else the
-# branch git itself gives a new repository, ignores the repository the caller
-# stands in and fails on an empty setting. Prints PASS or FAIL per case and
-# exits non-zero on any FAIL.
+# functions the shell exported before sourcing it; run_env_start_check fails on
+# a leak and on a gh that finds a token; run_env_default_branch names the
+# caller's init.defaultBranch, else the branch git itself gives a new
+# repository, ignores the repository the caller stands in and fails on an empty
+# setting. Prints PASS or FAIL per case and exits non-zero on any FAIL.
 #
 #   plugins/cache-keeper/harness/run-env.test.sh
 # shellcheck disable=SC2016,SC2329 # the bash -c scripts expand their own arguments; check calls the helpers
@@ -54,20 +54,30 @@ wait_for_sleep() {
   return 1
 }
 
-# A process holding exactly the given environment; appends its PID to pids. env
-# execs sleep at once, so the wait is short; one that runs out is not reported
-# here.
+# A process holding exactly the given environment; appends its PID to pids.
+# Returns wait_for_sleep's result: 1 where the process never reached sleep, and
+# so does not yet hold the environment it was given.
 holding() {
   env -i "$@" sleep 60 &
   pids+=($!)
   wait_for_sleep "${pids[-1]}"
 }
 
+# fail_never_reached <name>: FAIL for a check whose process never reached
+# sleep, so the check is not run.
+fail_never_reached() {
+  echo "FAIL $1: its process never reached sleep"
+  failed=1
+}
+
 # case_ <name> <expect leak|none> <leaked name or -> <env>...
 case_() {
   local name=$1 expect=$2 leaked=$3 out status
   shift 3
-  holding "$@"
+  if ! holding "$@"; then
+    fail_never_reached "$name"
+    return
+  fi
   out=$(run_env_leaks "$dir/caller-env" "${pids[-1]}")
   status=$?
   if [[ $out == *"$value"* ]]; then
@@ -348,15 +358,25 @@ check "a shell sourcing run_env_script stops exporting the caller's functions" \
 # run_env_start_check, in a subshell since it exits: <command> stands in for
 # the harness's env -i prefix, `false` a gh that finds no token, `true` one
 # that finds one.
-holding
+# The gh case below runs whether or not its process reached sleep: its gh always
+# finds a token, whatever the process holds.
+holding && clean_reached=1 || clean_reached=0
 clean=${pids[-1]}
-holding "RUN_ENV_TEST_SECRET=$value"
+holding "RUN_ENV_TEST_SECRET=$value" && leaking_reached=1 || leaking_reached=0
 leaking=${pids[-1]}
-check "run_env_start_check passes a run with no leak" \
-  bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$clean"
-out=$(bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$leaking" 2>&1) && status=0 || status=$?
-check "run_env_start_check fails on a leak, each line headed by the script, naming the list" \
-  bash -c '[[ $1 -eq 1 && $2 == "test: leak: RUN_ENV_TEST_SECRET,"* && $2 == *"test: a run passes only"* && $2 != *"$3"* ]]' _ "$status" "$out" "$value"
+if ((clean_reached)); then
+  check "run_env_start_check passes a run with no leak" \
+    bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$clean"
+else
+  fail_never_reached "run_env_start_check passes a run with no leak"
+fi
+if ((leaking_reached)); then
+  out=$(bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$leaking" 2>&1) && status=0 || status=$?
+  check "run_env_start_check fails on a leak, each line headed by the script, naming the list" \
+    bash -c '[[ $1 -eq 1 && $2 == "test: leak: RUN_ENV_TEST_SECRET,"* && $2 == *"test: a run passes only"* && $2 != *"$3"* ]]' _ "$status" "$out" "$value"
+else
+  fail_never_reached "run_env_start_check fails on a leak, each line headed by the script, naming the list"
+fi
 if command -v gh > /dev/null; then
   out=$(bash -c 'source "$1"; run_env_start_check test "$2" true -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$clean" 2>&1) && status=0 || status=$?
   check "run_env_start_check fails when gh finds a token, naming the list" \
