@@ -7,10 +7,12 @@
 # later. A variable a machine needs in its runs goes on the passed list here.
 #
 # A leak is a variable the caller held at start, same name and value, found in
-# a process of the run, its name on neither list below; the variable
-# run_env_record plants under a random name is a leak wherever it turns up.
-# The record keeps each caller variable's name and a salted SHA-256 of its
-# value, never the value, and the check prints names alone.
+# a process of the run, its name on neither list below and its value not the
+# one a login shell takes from the machine's profile (Claude Code runs its
+# commands in one); the variable run_env_record plants under a random name is
+# a leak wherever it turns up. The record keeps each variable's name and a
+# salted SHA-256 of its value, never the value, and the check prints names
+# alone.
 
 run_env_file=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-env.sh
 
@@ -41,7 +43,9 @@ run_env_own=(
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC # likewise
   CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_AGENT_SDK_VERSION CLAUDE_CODE_EXECPATH COREPACK_ENABLE_AUTO_PIN
   AI_AGENT DISABLE_INSTALLATION_CHECKS DISABLE_NON_ESSENTIAL_MODEL_CALLS CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
-                             # Claude Code sets these in its commands, as it did in the caller's
+  CLAUDE_CODE_SHELL CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
+  NoDefaultCurrentDirectoryInExePath CLAUDE_CODE_DISABLE_1M_CONTEXT
+                             # bb sets these for Claude Code, or Claude Code for its commands, as for the caller's
   NODE_PATH                  # bb's launcher scripts set it to bb's own modules, as they did in the caller's bb
   PWD OLDPWD SHLVL _         # every shell sets them, to the directory and depth it runs at
   BB_CLI                     # bb points its threads at its own CLI, the caller's bb when it runs the same install
@@ -67,25 +71,33 @@ run_env_note() {
 }
 
 # run_env_record <file>: records, in <file>, every variable of this process's
-# environment not on the passed list, by name and salted hash, then plants a
-# randomly named variable, exported, that counts as a leak wherever it turns up.
-# Call it from start, before anything of the run is started.
+# environment not on the passed list, and every one a login shell started with
+# the passed list alone sets, by name and salted hash, then plants a randomly
+# named variable, exported, that counts as a leak wherever it turns up. Call it
+# from start, before anything of the run is started.
 run_env_record() {
-  local file=$1 salt kv name hash plant
+  local file=$1 salt kv name hash plant home
   salt=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
   plant=RUN_ENV_PLANT_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+  home=$(mktemp -d)
+  # Each NAME=value on stdin, as "<kind> NAME <salted hash>".
+  run_env_hashed() {
+    while IFS= read -r -d '' kv; do
+      name=${kv%%=*}
+      [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
+      hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
+      printf '%s %s %s\n' "$1" "$name" "$hash"
+    done
+  }
   (
     umask 077
     {
       printf 'salt %s\nplant %s\n' "$salt" "$plant"
-      while IFS= read -r -d '' kv; do
-        name=${kv%%=*}
-        [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
-        hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
-        printf 'var %s %s\n' "$name" "$hash"
-      done < <(env -0)
+      env -0 | run_env_hashed var
+      env -i "${run_env[@]}" HOME="$home" bash -lc 'env -0' < /dev/null 2> /dev/null | run_env_hashed profile
     } > "$file"
   )
+  rm -rf "$home"
   export "$plant=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 }
 
@@ -94,12 +106,13 @@ run_env_record() {
 run_env_leaks() {
   local file=$1 salt="" plant="" kind name hash pid comm kv found=0
   shift
-  local -A recorded=()
+  local -A recorded=() profile=()
   while read -r kind name hash; do
     case $kind in
       salt) salt=$name ;;
       plant) plant=$name ;;
       var) recorded[$name]=$hash ;;
+      profile) profile[$name]=$hash ;;
     esac
   done < "$file"
   for pid in "$@"; do
@@ -112,7 +125,7 @@ run_env_leaks() {
         found=1
       elif [[ -n ${recorded[$name]:-} && " ${run_env_passed[*]} ${run_env_own[*]} " != *" $name "* ]]; then
         hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
-        [[ $hash == "${recorded[$name]}" ]] && { echo "leak: $name, the caller's own, is in process $pid ($comm)"; found=1; }
+        [[ $hash == "${recorded[$name]}" && $hash != "${profile[$name]:-}" ]] && { echo "leak: $name, the caller's own, is in process $pid ($comm)"; found=1; }
       fi
     done < "/proc/$pid/environ" 2> /dev/null
   done

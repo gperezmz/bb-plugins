@@ -83,7 +83,7 @@ evidence_root=${DBP_EVIDENCE_ROOT:-${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins}
 latest=$evidence_root/latest-$(printf '%s' "$repo" | sha256sum | cut -c1-12)
 scratch_root=${DBP_SCRATCH_ROOT:-${TMPDIR:-/tmp}/drive-bb-plugins}
 claims=$scratch_root/ports
-snapshot_root=${DBP_SNAPSHOT_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/drive-bb-plugins/snapshots}
+snapshot_root=${DBP_SNAPSHOT_ROOT:-${XDG_CACHE_HOME:-~/.cache}/drive-bb-plugins/snapshots}
 
 die() { echo "drive-bb-plugins: $*" >&2; exit 1; }
 # A size such as 6G, 512M or a byte count, in bytes.
@@ -297,9 +297,9 @@ ENV
   if [[ -n $unit ]]; then
     systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
       -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop -p Delegate=yes \
-      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   else
-    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   fi
   exec 7>&-
   # shellcheck source=/dev/null
@@ -382,6 +382,13 @@ fail() {
     [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
   done
   echo "drive-bb-plugins: $(run_env_note)" >&2
+  echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
+  exit 1
+}
+
+# Reports a launch that ended before it reported itself, and exits.
+launch_failed() {
+  echo "drive-bb-plugins: the run's launch failed; $(run_env_note)" >&2
   echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
   exit 1
 }
