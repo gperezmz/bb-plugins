@@ -65,7 +65,7 @@ export function Board({ cards, now, selected, onSelect }: BoardProps) {
       </div>
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {[...listed, ...(showQuiet ? quiet : [])].map((card) => (
-          <BoardLine key={card.managerThreadId} card={card} now={now} selected={selected === card.repo} onToggle={() => toggle(card.repo)} />
+          <BoardLine key={card.repo} card={card} now={now} selected={selected === card.repo} onToggle={() => toggle(card.repo)} />
         ))}
       </ul>
       {quiet.length > 0 ? (
@@ -197,7 +197,7 @@ export function PhoneBoard({ cards, now, selected, onSelect }: BoardProps) {
     <section aria-label="Fleet board" className="flex flex-col text-sm">
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {shown.map((card) => (
-          <PhoneLine key={card.managerThreadId} card={card} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
+          <PhoneLine key={card.repo} card={card} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
         ))}
       </ul>
       {more > 0 ? (

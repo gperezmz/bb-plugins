@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import { useDashboardApi } from "@/shared/client";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
 import { refetchEveryView, useLive } from "@/shared/use-live";
-import { headerCount, headerCountLabel, staleText } from "./model";
+import { headerCount, headerCountLabel, STALE_TICK_MS, staleText } from "./model";
 
 /**
  * The right of the Fleets page's title bar: the count of Inbox rows across fleets, nothing at zero, and, while a
@@ -15,7 +16,15 @@ export function FleetsHeaderCount() {
   const live = useLive(() => api.fleets(), [api]);
   const { data, error } = live;
   const count = headerCount(data);
-  const stale = data !== null && error !== null ? staleText(data.generatedAt, error, Date.now()) : null;
+  const failed = data !== null && error !== null;
+  // The pill's age is read off the clock, so it is redrawn while it shows, not only when a fetch answers.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!failed) return;
+    const timer = setInterval(() => tick((n) => n + 1), STALE_TICK_MS);
+    return () => clearInterval(timer);
+  }, [failed]);
+  const stale = failed ? staleText(data.generatedAt, error, Date.now()) : null;
   return (
     <span className="flex items-center gap-2">
       {stale !== null ? (

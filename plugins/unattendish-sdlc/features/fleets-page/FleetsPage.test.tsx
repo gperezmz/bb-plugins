@@ -9,6 +9,7 @@ import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { BOARD_CHANGED } from "@/shared/client";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
+import { rememberFilter } from "./filter";
 import { FleetsHeaderCount, FleetsPage } from "./index";
 
 vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
@@ -17,12 +18,14 @@ vi.mock("@/shared/client", async (original) => (await import("@/testing/api")).w
 beforeEach(() => {
   sdk.reset();
   resetFakeApi();
+  rememberFilter(null);
   setCompactViewport(false);
 });
 afterEach(() => {
   cleanup();
   closeConnect();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const missing: ReasonView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
@@ -110,6 +113,22 @@ describe("reloading from the stale pill", () => {
   });
 });
 
+describe("the stale pill's age", () => {
+  it("keeps up with the clock while it shows, not only when a fetch answers", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const loaded = Date.now() - 3 * MINUTE;
+    fake.api.fleets.mockResolvedValueOnce(fleetsView({ waiting: 1, generatedAt: new Date(loaded).toISOString() }));
+    render(<FleetsHeaderCount />);
+    await screen.findByLabelText("1 waiting on you");
+    fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
+    sdk.emit(BOARD_CHANGED);
+    expect((await screen.findByLabelText(/Couldn't refresh/)).textContent).toBe("3m old");
+    vi.spyOn(Date, "now").mockReturnValue(loaded + 5 * MINUTE);
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(screen.getByLabelText(/Couldn't refresh/).textContent).toBe("5m old");
+  });
+});
+
 describe("the page's states (AC14)", () => {
   it("draws grey bars while it loads", () => {
     fake.api.fleets.mockReturnValue(new Promise(() => {}));
@@ -128,6 +147,22 @@ describe("the page's states (AC14)", () => {
     fake.api.fleets.mockResolvedValue(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })] }));
     fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("region", { name: "Fleet board" })).toBeTruthy();
+  });
+
+  it("reloads the title bar too from Try again", async () => {
+    fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
+    render(
+      <>
+        <header>
+          <FleetsHeaderCount />
+        </header>
+        <FleetsPage />
+      </>,
+    );
+    const alert = await screen.findByRole("alert");
+    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, fleets: [fleet("org/dash", { waiting: 1 })] }));
+    fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await within(screen.getByRole("banner")).findByLabelText("1 waiting on you")).toBeTruthy();
   });
 
   it("keeps the board and queue as they were when a refresh fails", async () => {
@@ -340,6 +375,16 @@ describe("a board line (AC2–AC6)", () => {
   });
 });
 
+describe("two fleets one manager thread holds", () => {
+  it("draw one line each, however the board reorders them", async () => {
+    await show(fleetsView({ fleets: [fleet("org/gone", { managerThreadId: "thr_m", waiting: 2 }), fleet("other-org/z", { managerThreadId: "thr_m", waiting: 1 })] }));
+    expect(boardRepos()).toEqual(["org/gone", "other-org/z"]);
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: [fleet("org/gone", { managerThreadId: "thr_m", waiting: 1 }), fleet("other-org/z", { managerThreadId: "thr_m", waiting: 3 })] }));
+    sdk.emit(BOARD_CHANGED);
+    await waitFor(() => expect(boardRepos()).toEqual(["other-org/z", "org/gone"]));
+  });
+});
+
 describe("the board's order and quiet fleets (AC7)", () => {
   it("folds a quiet fleet until its line is clicked", async () => {
     await show(fleetsView({ fleets: [fleet("acme/web"), fleet("org/dash", { waiting: 1 })] }));
@@ -395,6 +440,16 @@ describe("filtering the queue to a fleet (AC8)", () => {
     expect(queueRows()).toHaveLength(3);
   });
 
+  it("keeps the filter when the operator comes back from the Fleet tab, which leaves the page", async () => {
+    await show(view());
+    fireEvent.click(line("org/dash"));
+    fireEvent.click(within(line("org/dash")).getByRole("button", { name: "Open the Fleet tab of org/dash" }));
+    cleanup();
+    await show(view());
+    expect(queueRows()).toHaveLength(2);
+    expect(within(line("org/dash")).getByRole("button", { name: "org/dash" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("leaves the filter as it is when the Fleet tab icon is clicked", async () => {
     await show(view());
     fireEvent.click(line("org/dash"));
@@ -419,7 +474,7 @@ describe("the queue (AC9–AC13)", () => {
       fleetsView({
         fleets: [fleet("org/dash", { waiting: 2 })],
         inbox: [
-          inboxRow({ id: "old", fleet: "org/dash", ref: "#7", what: "Which cache to use", since: ago(11 * HOUR + 36 * MINUTE), link: { kind: "url", url: "https://github.test/org/dash/issues/7", text: "#7" } }),
+          inboxRow({ id: "old", fleet: "org/dash", ref: "#7", what: "Which cache to use", since: ago(11 * HOUR + 36 * MINUTE), link: { kind: "url", url: "https://github.test/org/dash/issues/7", text: "github.test/org/dash/issues/7" } }),
           inboxRow({ id: "new", fleet: "org/dash", since: ago(20_000) }),
         ],
       }),
