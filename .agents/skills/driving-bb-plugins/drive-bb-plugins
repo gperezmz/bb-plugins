@@ -97,9 +97,6 @@ source "$repo/plugins/cache-keeper/harness/run-env.sh"
 sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
 bb_version() { env -i "${run_env[@]}" bb --version; }
-# The branch the caller's git starts a repository on, which a run's git, with
-# the run's HOME, would not read.
-default_branch() { git config --get init.defaultBranch || echo master; }
 # One value from a saved snapshot's snapshot.env.
 # shellcheck source=/dev/null
 snapshot_value() { (source "$1/snapshot.env" && printf '%s' "${!2}"); }
@@ -198,6 +195,10 @@ cmd_start() {
   for tool in node jq curl git rsync bb bb-server bb-host-daemon; do
     command -v "$tool" > /dev/null || die "$tool is not on PATH"
   done
+  # The demo repository starts on the branch the caller's git names for a new
+  # repository, which the run's git, with the run's HOME, would not read.
+  local demo_branch=""
+  [[ -n $snapshot ]] || demo_branch=$(run_env_default_branch) || die "git names no default branch for a new repository (see its message above)"
   # A run's Claude Code sessions can take gigabytes; start none on a machine
   # already short of memory, and none a cap cannot hold.
   local min_free avail headroom=0 other max current memory_max="" unit="" max_sessions=${DBP_MAX_SESSIONS:-4}
@@ -293,6 +294,7 @@ ENV
   fi
   : > "$ev/pids"
   : > "$ev/launch-pids"
+  rm -f "$ev/launch-reported"
 
   # The fake API, bb server and host daemon start inside the run's scope, and
   # everything they start (plugins, Claude Code, its commands) stays in it,
@@ -301,9 +303,9 @@ ENV
   if [[ -n $unit ]]; then
     systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
       -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop -p Delegate=yes \
-      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
+      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   else
-    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
+    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   fi
   exec 7>&-
   # shellcheck source=/dev/null
@@ -325,7 +327,7 @@ ENV
 
   if [[ -z $snapshot ]]; then
     tb env GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
-      bash -c 'git -C "$1" init -q -b "$2" && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo" "$(default_branch)"
+      bash -c 'git -C "$1" init -q -b "$2" && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo" "$demo_branch"
     project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
     [[ $project == proj_* ]] || fail "could not create the drives' project"
     echo "project=$project" >> "$ev/run.env"
@@ -386,13 +388,15 @@ fail() {
   done
   echo "drive-bb-plugins: $(run_env_note)" >&2
   echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
-  exit "${fail_status:-1}"
+  # The launch's failures end here, so start's launch_failed finds this file.
+  [[ -z ${launch_reports:-} ]] || : > "$ev/launch-reported"
+  exit 1
 }
 
-# Reports a launch that ended before it reported itself (any status but
-# fail's 3), and exits.
+# Reports a launch that ended without reporting itself, whatever its status
+# (fail leaves launch-reported when it reports), and exits.
 launch_failed() {
-  (($1 == 3)) && exit 1
+  [[ -e $ev/launch-reported ]] && exit 1
   echo "drive-bb-plugins: the run's launch failed; $(run_env_note)" >&2
   echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
   exit 1
@@ -403,7 +407,7 @@ launch_failed() {
 cmd__launch() {
   load_run
   # A failure reported here is not reported again by start's launch_failed.
-  fail_status=3
+  launch_reports=1
   wait_for() {
     for _ in $(seq 60); do tb curl -fs -o /dev/null "$2" && return 0; sleep 1; done
     fail "$1 did not answer at $2"
@@ -564,7 +568,7 @@ cmd_doctor() {
   load_run
   local bad=0 p row
   check() { if eval "$2" 2> /dev/null; then echo "ok   $1"; else echo "FAIL $1"; bad=1; fi; }
-  check "run $run points at $server_url, not the user's bb (BB_SERVER_URL $([[ -n ${BB_SERVER_URL+x} ]] && echo set || echo unset))" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
+  check "run $run points at $server_url, not the user's bb (BB_SERVER_URL $([[ -n ${BB_SERVER_URL:-} ]] && echo set || echo unset))" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
   if [[ -n ${unit:-} ]]; then
     local state
     state=$(sysu show "$unit" -p ActiveState -p Result --value 2> /dev/null | paste -sd/ -)
