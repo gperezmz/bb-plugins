@@ -10,7 +10,7 @@ type WaitsFor = InboxRowView["waitsFor"];
 export const own = (name: string): string => `unattendish-sdlc/${name}`;
 
 /** The plugin's own icons, by their key under bb.branding.experimental_icons. */
-export const DECLARED_ICONS = ["circle-dashed", "fleet", "hammer", "hourglass", "key", "lightbulb", "rocket", "scale", "user-x"] as const;
+export const DECLARED_ICONS = ["circle-dashed", "fleet", "hammer", "hourglass", "key", "lightbulb", "redo", "rocket", "scale", "user-x"] as const;
 
 export const ICONS = {
   fleet: own("fleet"),
@@ -49,6 +49,8 @@ export const ICONS = {
   unconfirmed: "CircleQuestion",
   unreadable: "AlertTriangle",
   clear: "X",
+  /** Re-grant: a redo mark, drawn nowhere else, since bb's two repeat marks mean an In flight row's round open and the page's reload. */
+  regrant: own("redo"),
 
   // The page's states.
   cantLoad: "CloudOff",

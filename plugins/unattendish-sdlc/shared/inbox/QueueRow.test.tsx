@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InboxRowView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
+import { drawnIcons } from "@/testing/icons";
+import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { QueueRow } from "./QueueRow";
 import { useRowActions } from "./use-row-action";
@@ -199,6 +201,18 @@ describe("Grant…, Build it and Re-grant", () => {
     fireEvent.click(screen.getByRole("button", { name: "Re-grant ENG-212" }));
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "grant", regrant: true });
     expect(await screen.findByText("sent · 7m")).toBeTruthy();
+  });
+
+  it.each(["columns", "two-line"] as const)("draws Re-grant as Grant… is in the %s layout: an outlined purple button in medium weight, with a redo icon of its own (AC1)", (layout) => {
+    show([grantRow(true)], layout);
+    const grant = screen.getByRole("button", { name: "Grant… ENG-212" });
+    const regrant = screen.getByRole("button", { name: "Re-grant ENG-212" });
+    for (const button of [grant, regrant]) expectGrantLook(button);
+    // Squeezed to the row's narrowest, a label stays on one line: "Re-grant" would break at its hyphen (AC3).
+    for (const button of [grant, regrant]) expect(button.className).toContain("whitespace-nowrap");
+    expect(drawnIcons(grant)).toEqual(["GitMerge"]);
+    expect(drawnIcons(regrant)).toEqual(["unattendish-sdlc/redo"]);
+    expect(regrant.textContent).toBe("Re-grant");
   });
 
   it("offers no Re-grant on a plain grant row", () => {

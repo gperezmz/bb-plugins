@@ -54,10 +54,11 @@ export type PageLayout = "wide" | "narrow";
  * The switch point, in rem: the narrowest page, padding included, at which the widest row the wide layout can hold
  * keeps each of its parts whole. That row names its fleet, links with no short form cut at 16rem, offers Grant… and
  * Re-grant with a refused Re-grant's "not sent" beside a 12rem title, has waited 99d 23h, and has an unconfirmed send.
- * Measured in bb, since the buttons' and "not sent"'s widths are their text's: that row at its narrowest, 60.46rem, and
- * the page's 3rem of padding, rounded up.
+ * Measured in bb, since the buttons' and "not sent"'s widths are their text's, Re-grant's icon and medium weight among
+ * them: that row at its narrowest, 62.85rem, and the page's 3rem of padding, rounded up. The 0.15rem left over is read
+ * from headless Chromium on Linux; a font that renders the row's text wider by more than that needs a new reading.
  */
-export const SWITCH_POINT_REM = 64;
+export const SWITCH_POINT_REM = 66;
 
 /**
  * The page's width as it is with a scrollbar drawn beside it, from its width now, `gutterNowPx` (the scrollbar it has

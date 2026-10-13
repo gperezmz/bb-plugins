@@ -7,6 +7,7 @@ import { clearReviewRequests, requestReview } from "@/shared/review-request";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, managerFleet, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { FleetTab } from "./index";
@@ -311,7 +312,9 @@ describe("Waits on you (#258 AC4)", () => {
     });
     const waits = section(/^Waits on you/);
     expect(within(waits).getByRole("button", { name: "Grant… #4" }).className).toContain("text-pr-merged");
-    expect(within(waits).getByRole("button", { name: "Re-grant #4" })).toBeTruthy();
+    const regrant = within(waits).getByRole("button", { name: "Re-grant #4" });
+    expectGrantLook(regrant);
+    expect(drawnIcons(regrant)).toEqual(["unattendish-sdlc/redo"]);
     expect(within(waits).getByRole("button", { name: "Build it #8" }).className).toContain("text-success");
     expect(within(waits).getByText("watch only")).toBeTruthy();
   });
