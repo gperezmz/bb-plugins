@@ -9,8 +9,9 @@
 # adds to run_env outside the passed list hold no refused name, a credential or
 # a way to one, nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or
 # CREDENTIAL in any letter case unless the test excepts it with why, and the
-# failure names each such name and where it was found, never a value; a shell sourcing run_env_script stops exporting what is not on
-# the list; run_env_start_check fails on a leak and on a gh that finds a
+# failure names each such name and where it was found, never a value; a shell
+# sourcing run_env_script stops exporting what is not on the list;
+# run_env_start_check fails on a leak and on a gh that finds a
 # token; run_env_default_branch names the caller's init.defaultBranch, else the
 # branch git itself gives a new repository, ignores the repository the caller
 # stands in and fails on an empty setting. Prints PASS or FAIL per case and
@@ -155,6 +156,9 @@ refused_among() {
   done
 }
 
+# The one entry of run_env that may name DBUS_SESSION_BUS_ADDRESS, once.
+dbus_entry=DBUS_SESSION_BUS_ADDRESS=disabled:
+
 # refused_entries <place>: reads, a line each, the labels of entries added to
 # run_env outside the passed list: a name, the exact DBUS_SESSION_BUS_ADDRESS
 # entry, or ? for one whose name could not be read. Prints a line per refused
@@ -164,7 +168,7 @@ refused_entries() {
   while IFS= read -r label; do
     case $label in
       '?') echo "$place: an entry whose name this test cannot read is refused" ;;
-      DBUS_SESSION_BUS_ADDRESS=disabled:)
+      "$dbus_entry")
         dbus=$((dbus + 1))
         ((dbus > 1)) && echo "$place: DBUS_SESSION_BUS_ADDRESS is refused: ${refused[DBUS_SESSION_BUS_ADDRESS]}"
         ;;
@@ -175,11 +179,23 @@ refused_entries() {
 
 # run_env_words <file>: the words of every run_env=(...) and run_env+=(...)
 # statement in <file>, a line each, quotes kept: what it adds whether or not
-# the variable is set. Reads the text, so it sees an unset variable's addition;
-# whole-line comments are skipped, and a quote inside a $(...) is not parsed.
+# the variable is set. Reads the text, so it sees an unset variable's addition.
+# A comment, a # starting a word outside quotes, is cut from its line first; a
+# quote inside a $(...) is not parsed.
 run_env_words() {
   awk '
-    { sub(/^[ \t]+/, ""); if ($0 !~ /^#/) text = text $0 "\n" }
+    function uncomment(line,   k, c, quote, prev) {
+      quote = ""; prev = " "
+      for (k = 1; k <= length(line); k++) {
+        c = substr(line, k, 1)
+        if (quote != "") { if (c == quote) quote = "" }
+        else if (c == "\"" || c == "\047") quote = c
+        else if (c == "#" && prev ~ /[ \t]/) return substr(line, 1, k - 1)
+        prev = c
+      }
+      return line
+    }
+    { text = text uncomment($0) "\n" }
     END {
       n = length(text); i = 1
       while (match(substr(text, i), /(^|[^A-Za-z0-9_])run_env\+?=\(/)) {
@@ -214,33 +230,56 @@ run_env_words() {
 
 # static_entries: the labels, for refused_entries, of the entries run-env.sh
 # adds to run_env outside the passed list, read off its text. The passed list's
-# own append, and a copy of run_env itself, are no addition.
+# own append, once, and a copy of run_env itself, are no addition. A write to
+# run_env made another way than run_env=(...) or run_env+=(...), by index,
+# mapfile, printf -v or eval, cannot be read and is labelled ?.
 static_entries() {
-  local word
+  local word loop=0
   while IFS= read -r word; do
     word=${word#[\"\']}
     case $word in
-      '$_name=${!_name}"' | '${run_env[@]}"') ;;
-      DBUS_SESSION_BUS_ADDRESS=disabled:*) [[ $word == 'DBUS_SESSION_BUS_ADDRESS=disabled:"' || $word == DBUS_SESSION_BUS_ADDRESS=disabled: ]] && echo DBUS_SESSION_BUS_ADDRESS=disabled: || echo DBUS_SESSION_BUS_ADDRESS ;;
-      [A-Za-z_]*) word=${word%%[!A-Za-z0-9_]*}; echo "$word" ;;
+      '$_name=${!_name}"')
+        loop=$((loop + 1))
+        ((loop > 1)) && echo '?'
+        ;;
+      '${run_env[@]}"') ;;
+      "$dbus_entry" | "$dbus_entry\"") echo "$dbus_entry" ;;
+      DBUS_SESSION_BUS_ADDRESS=*) echo DBUS_SESSION_BUS_ADDRESS ;;
+      [A-Za-z_]*) echo "${word%%[!A-Za-z0-9_]*}" ;;
       *) echo '?' ;;
     esac
   done < <(run_env_words "$here/run-env.sh")
+  grep -vE '^[[:space:]]*#' "$here/run-env.sh" |
+    grep -E '(mapfile|readarray)[^#]*[[:space:]]run_env([[:space:]]|$)|printf -v +["'\'']?run_env\[|run_env\[[^]@*]+\]=|(^|[^A-Za-z0-9_])eval[[:space:]]' |
+    sed 's/.*/?/'
 }
 
 # dynamic_entries: the same labels, read off the run_env that sourcing
-# run-env.sh builds with every refused name set, so an addition made some other
-# way than a literal, a name added to the passed list's loop, is found when it
-# is made for a set variable. Prints names, never the values it sets.
+# run-env.sh builds in a bare environment holding every refused name and every
+# word of run-env.sh that is upper-case or refused, so an entry added some way
+# the text scan cannot read, a name fed to the passed list's loop or an
+# addition made only when a variable is set, shows up when its variable is set.
+# A run-env.sh that fails to source is labelled ?. Prints names, never values.
 dynamic_entries() {
   local -a set=()
-  local name kv
-  for name in "${!refused[@]}"; do set+=("$name=set-for-the-test"); done
-  while IFS= read -r -d '' kv; do
-    name=${kv%%=*}
-    [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
-    if [[ $kv == DBUS_SESSION_BUS_ADDRESS=disabled: ]]; then echo "$kv"; else echo "$name"; fi
-  done < <(env -i PATH="$PATH" "${set[@]}" bash -c 'source "$1"; printf "%s\0" "${run_env[@]}"' _ "$here/run-env.sh")
+  local name out
+  while IFS= read -r name; do
+    set+=("$name=set-for-the-test")
+  done < <({
+    printf '%s\n' "${!refused[@]}"
+    grep -vE '^[[:space:]]*#' "$here/run-env.sh" | grep -oE '[A-Za-z_][A-Za-z0-9_]*' |
+      while IFS= read -r name; do
+        if [[ $name =~ ^[A-Z][A-Z0-9_]+$ ]] || refusal_why "$name" > /dev/null; then echo "$name"; fi
+      done
+  } | grep -vxE 'PATH|IFS|BASH.*|PS[0-9]|SHELLOPTS|LC_.*|LANG|LANGUAGE' | sort -u)
+  out=$(env -i PATH="$PATH" "${set[@]}" bash -c '
+    source "$1" || exit 1
+    for kv in "${run_env[@]}"; do
+      name=${kv%%=*}
+      [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
+      if [[ $kv == "$2" ]]; then echo "$kv"; else echo "$name"; fi
+    done' _ "$here/run-env.sh" "$dbus_entry") || echo '?'
+  [[ -n $out ]] && echo "$out"
 }
 
 # no_refused <case name> <findings>: PASS on no findings, else FAIL and each.
