@@ -316,6 +316,21 @@ describe("Waits on you (#258 AC4)", () => {
     expect(within(waits).getByText("watch only")).toBeTruthy();
   });
 
+  it("draws the buttons 28 px tall, with a 44 px tap area only on a phone", async () => {
+    const detail = {
+      manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ id: "b", ref: "#8", waitsFor: "ready" as const, offer: { kind: "build" as const, label: "Build it", regrant: false } })] },
+    };
+    await showDetail(detail);
+    const build = () => within(section(/^Waits on you/)).getByRole("button", { name: "Build it #8" });
+    expect(build().className).toContain("h-7");
+    expect(build().className).not.toContain("before:h-11");
+    cleanup();
+    setCompactViewport(true);
+    await showDetail(detail);
+    expect(build().className).toContain("h-7");
+    expect(build().className).toContain("before:h-11");
+  });
+
   it("shows sent and done states", async () => {
     await showDetail({
       manifest: {

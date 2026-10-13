@@ -90,9 +90,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   three children: the title (wrapping to two lines), the details (the short
   name, with the full name as screen-reader text, then the link, which is
   `↗` alone named by its full text where it has no short form, and the age),
-  and the action line (buttons across the row, `Not sent: <reason>` and the
+  and the action line (the buttons together at its end, `Not sent: <reason>` and the
   unconfirmed note under them). Sent lines and the filter chip also use the
-  short name; the chip's ✕ is 44 px.
+  short name; the chip's ✕ is drawn 20 px with a 44 px tap area.
 - A queue row's action: `button "Answer… #7"`, `"Grant… #8"` or `"Build it #9"`
   (and `"Re-grant #8"` beside Grant… for a grant a previous manager gave);
   `watch only` for a wait on something else. Answer and Grant open, in the same

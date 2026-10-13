@@ -631,6 +631,40 @@ describe("the queue (AC9–AC13)", () => {
     expect(sent.textContent).toBe("You answered #5 Which queue40m agoorg/dashdone");
     expect(drawnIcons(sent)).toEqual(["MessageSquare", "GithubLogo", "Check"]);
   });
+
+  it("draws the kind tabs borderless and 24 px tall, with a tap area 32 px tall", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
+    const tab = within(queue()).getByRole("tab", { name: "All 1" });
+    expect(tab.className).toContain("h-6");
+    expect(tab.className).toContain("before:-inset-y-1");
+    expect(tab.className).not.toContain("border");
+  });
+
+  it("draws the fleet filter chip as a shaded 24 px tag with a 20 px ✕ and no tap area past it", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })] }));
+    fireEvent.click(line("org/dash"));
+    const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only org/dash" });
+    const chip = clear.parentElement!;
+    expect(chip.className).toContain("h-6");
+    expect(chip.className).toContain("bg-accent");
+    expect(chip.className).not.toContain("border");
+    expect(clear.className).toContain("size-5");
+    expect(clear.className).not.toContain("before:h-11");
+  });
+
+  it("draws the action buttons 28 px tall and as wide as their labels, with no tap area past them", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } })] }));
+    for (const name of ["Grant… #7", "Re-grant #7"]) {
+      const button = within(queue()).getByRole("button", { name });
+      expect(button.className).toContain("h-7");
+      expect(button.className).not.toContain("before:h-11");
+    }
+  });
+
+  it("holds a row's action state at the buttons' height", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7", offer: null, action: actionRecord({ sentAt: ago(4 * MINUTE) }) })] }));
+    expect(within(queueRows()[0]!).getByText("sent · 4m").className).toContain("h-7");
+  });
 });
 
 describe("in the narrow layout (AC15)", () => {
@@ -663,9 +697,13 @@ describe("in the narrow layout (AC15)", () => {
     expect(within(line("org/dash")).queryByLabelText(/blocked/)).toBeNull();
   });
 
-  it("makes the kind tabs pills", async () => {
+  it("draws the kind tabs borderless and 24 px tall, as the narrow layout does", async () => {
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
-    expect(within(queue()).getByRole("tab", { name: "All 1" }).className).toContain("rounded-full");
+    const tab = within(queue()).getByRole("tab", { name: "All 1" });
+    expect(tab.className).toContain("h-6");
+    expect(tab.className).not.toContain("border");
+    expect(tab.className).not.toContain("rounded-full");
+    expect(tab.className).toContain("before:-inset-y-1");
   });
 });
 
@@ -689,8 +727,13 @@ describe("a queue row in the narrow layout (#273)", () => {
     expect(details!.textContent).toBe("orphangithub.example/org/orphan↗9h 4m");
     const buttons = within(action!).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Grant…", "Re-grant"]);
-    // Side by side, each taking half the line.
-    for (const button of buttons) expect(button.className).toContain("flex-1");
+    // Side by side at the end of the line, each as wide as its label and 28 px tall, with a 44 px tap area.
+    expect(buttons[0]!.parentElement!.className).toContain("justify-end");
+    for (const button of buttons) {
+      expect(button.className).not.toContain("flex-1");
+      expect(button.className).toContain("h-7");
+      expect(button.className).toContain("before:h-11");
+    }
   });
 
   it("lets the title wrap onto a second line, cut only past it, with nothing beside it (AC2)", async () => {
@@ -774,7 +817,8 @@ describe("a queue row in the narrow layout (#273)", () => {
       }),
     );
     const actions = queueRows().map((row) => parts(row)[2]!.firstElementChild as HTMLElement);
-    expect(within(actions[0]!).getByRole("button", { name: "Answer… #1" }).className).toContain("h-11");
+    expect(actions[0]!.className).toContain("h-11");
+    expect(within(actions[0]!).getByRole("button", { name: "Answer… #1" }).className).toContain("h-7");
     expect(actions[1]!.textContent).toBe("sent · 4m");
     expect(actions[1]!.className).toContain("h-11");
     expect(actions[2]!.textContent).toBe("done");
@@ -855,11 +899,12 @@ describe("a queue row in the narrow layout (#273)", () => {
     }
   });
 
-  it("names the filter chip's fleet by its short name, its ✕ touch-sized and naming the full fleet (AC12)", async () => {
+  it("names the filter chip's fleet by its short name, its ✕ with a 44 px tap area and naming the full fleet (AC12)", async () => {
     await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")] }));
     fireEvent.click(line("github.example/org/dash"));
     const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
-    expect(clear.className).toContain("size-11");
+    expect(clear.className).toContain("before:h-11");
+    expect(clear.className).toContain("before:w-[max(100%,2.75rem)]");
     expect(within(clear.parentElement!).getByText("dash")).toBeTruthy();
   });
 });

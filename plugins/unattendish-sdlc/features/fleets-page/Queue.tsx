@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ActionRecordView, FleetCardView, InboxRowView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { sentAgo, sentText } from "@/shared/fleet-header/model";
-import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
+import { FleetName, OFFER_KIND, QueueRow, TAP_AREA, UnreadableRow } from "@/shared/inbox/QueueRow";
 import { rowAction, rowKey, sameRow } from "@/shared/inbox/row-model";
 import type { RowActionState } from "@/shared/inbox/use-row-action";
 import { Glyph } from "@/shared/look/Glyph";
@@ -75,8 +75,9 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, narrow, nameO
   const card = filter === null ? undefined : fleets.get(filter);
   return (
     <section aria-label="Queue" className="flex flex-col gap-2 text-sm">
-      <div className="flex flex-wrap items-center gap-1 border-b border-border pb-1">
-        <div role="tablist" aria-label="Kind" className="flex flex-wrap items-center gap-1">
+      {/* The gaps between wrapped lines keep the tabs' and the ✕'s tap areas, which reach past what is drawn, apart. */}
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-3.5 border-b border-border pb-1">
+        <div role="tablist" aria-label="Kind" className="flex flex-wrap items-center gap-x-1 gap-y-2">
           {tabs.map((name) => (
             <button
               key={name}
@@ -85,9 +86,10 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, narrow, nameO
               aria-selected={tab === name}
               className={cn(
                 FOCUS,
-                "flex items-center gap-1 px-2 py-1 text-xs",
+                "relative flex h-6 items-center gap-1 rounded-md px-2 text-xs",
+                // A tap area 32 px tall, 4 px past the tab above and below.
+                "before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']",
                 name === "sent" && "ml-2 border-l border-border pl-3",
-                narrow ? "min-h-9 rounded-full border border-border" : "rounded-md",
                 tab === name ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => setPicked(name)}
@@ -98,9 +100,10 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, narrow, nameO
           ))}
         </div>
         {filter !== null ? (
-          <span className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border pl-2 text-xs", narrow ? "pr-0" : "py-0.5 pr-1")}>
+          <span className="ml-auto flex h-6 min-w-0 max-w-full items-center gap-1 rounded-md bg-accent pl-2 pr-0.5 text-xs">
             <FleetName fleet={card} name={filter} short={nameOf(filter)} className="text-foreground" />
-            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", narrow ? "size-11" : "size-5")} onClick={onClearFilter}>
+            {/* In the narrow layout the ✕ has a 44 px tap area, with room before it so the area stays off the name. */}
+            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex size-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", narrow && "ml-2", narrow && TAP_AREA)} onClick={onClearFilter}>
               <Glyph name={ICONS.clear} className="size-3" />
             </button>
           </span>
