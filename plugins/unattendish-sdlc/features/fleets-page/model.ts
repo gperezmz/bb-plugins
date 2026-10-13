@@ -3,7 +3,7 @@
 import type { ActionRecordView, FleetCardView, FleetsView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { flagsOf, isQuiet, worstFlag } from "@/shared/fleet-flags";
 import { ageLabel, elapsedMs, formatMoney, spanLabel } from "@/shared/format";
-import { hasRef, itemTitle } from "@/shared/item-title";
+import { itemTitle } from "@/shared/item-title";
 import { COUNTS, type CountKey } from "@/shared/look/tones";
 
 const HOUR = 3_600_000;
@@ -163,9 +163,24 @@ export function rowAge(row: Pick<InboxRowView, "since">, now: string): { readonl
   return { text: spanLabel(waited), long: waited >= AGE_AMBER_MS };
 }
 
-/** The queue's short text for a row's link to its item: its Ref, `#7`, where it has one; the link's own text otherwise. */
-export function shortLinkLabel(row: Pick<InboxRowView, "ref" | "link">): string | undefined {
-  return row.link.kind === "url" && hasRef(row.ref) ? row.ref : undefined;
+/** What a link's URL opens, as its service names it, by the URL's own path: an issue or a pull request `#12`, a merge request `!12`, a Linear or Jira key. */
+const SHORT_LINKS: readonly [RegExp, (match: RegExpExecArray) => string][] = [
+  [/\/-\/merge_requests\/(\d+)(?:[/?#]|$)/, (m) => `!${m[1]}`],
+  [/\/(?:-\/)?(?:issues|pull)\/(\d+)(?:[/?#]|$)/, (m) => `#${m[1]}`],
+  [/\/(?:issue|browse)\/([A-Z][A-Z0-9_]*-\d+)(?:[/?#]|$)/, (m) => m[1]!],
+];
+
+/**
+ * The queue's short text for a row's link: what the URL opens, `#12` or `ENG-212`, read off the URL itself, since a
+ * row's Link is its pull request where one is open and so need not be its Ref's item; the link's own text otherwise.
+ */
+export function shortLinkLabel(row: Pick<InboxRowView, "link">): string | undefined {
+  if (row.link.kind !== "url") return undefined;
+  for (const [pattern, label] of SHORT_LINKS) {
+    const match = pattern.exec(row.link.url);
+    if (match !== null) return label(match);
+  }
+  return undefined;
 }
 
 /** An unreadable row in a line: `Unreadable Inbox row, line 9: the table has no "Waits for" column`. */

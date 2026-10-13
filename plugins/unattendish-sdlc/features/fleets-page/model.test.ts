@@ -146,11 +146,16 @@ describe("the queue", () => {
     expect(rowAge({ since: ago(8 * HOUR) }, NOW).long).toBe(true);
   });
 
-  it("labels a row's link to its item by its Ref, and leaves a link with no Ref, or to a message, as it reads", () => {
-    const url = { kind: "url", url: "https://github.example/org/dash/issues/8", text: "github.example/org/dash/issues/8" } as const;
-    expect(shortLinkLabel({ ref: "#8", link: url })).toBe("#8");
-    expect(shortLinkLabel({ ref: "—", link: url })).toBeUndefined();
-    expect(shortLinkLabel({ ref: "#8", link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
+  it("labels a row's link by what its URL opens, whatever the row's Ref", () => {
+    const url = (href: string) => ({ link: { kind: "url", url: href, text: href.replace("https://", "") } }) as const;
+    expect(shortLinkLabel(url("https://github.example/org/dash/issues/8"))).toBe("#8");
+    expect(shortLinkLabel(url("https://github.example/org/dash/pull/12"))).toBe("#12");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/merge_requests/45"))).toBe("!45");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/issues/3"))).toBe("#3");
+    expect(shortLinkLabel(url("https://linear.app/acme/issue/ENG-212/which-locale"))).toBe("ENG-212");
+    expect(shortLinkLabel(url("https://acme.atlassian.net/browse/OPS-7"))).toBe("OPS-7");
+    expect(shortLinkLabel(url("https://example.test/somewhere"))).toBeUndefined();
+    expect(shortLinkLabel({ link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
   });
 
   it("says what an unreadable row is and why", () => {
