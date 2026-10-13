@@ -107,9 +107,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   title, named `not sent: HTTP 409: Thread is archived`, and the button stays.
 - The fleet header, at the top of the Fleet tab and in the chip's hover card,
   is a `header` labelled `Fleet <repo>` (a `banner` in the hover card only,
-  since bb's panel holds the tab inside a landmark of its own): the forge's logo (`img "GitHub"`, `img "GitLab"`),
-  `<repo>`, a Linear or Jira tracker's logo (`img "Linear"`, `img "Jira"`) and
-  key; the manager (`img "Manager idle for 12s"`, `Manager working`,
+  since bb's panel holds the tab inside a landmark of its own): the forge's
+  logo (`img "GitHub"`, `img "GitLab"`), `<repo>`, a Linear or Jira tracker's
+  logo (`img "Linear"`, `img "Jira"`) and key; the manager (`img "Manager idle for 12s"`, `Manager working`,
   `No manager: its thread is archived or gone`); each non-zero Status count
   named as on the board (`4 waiting on you`); the spend (`$0.17`, named
   `$0.17 spent since this manager started`) with Thread Usage installed;

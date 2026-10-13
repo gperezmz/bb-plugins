@@ -254,6 +254,14 @@ describe("the page (AC1)", () => {
 });
 
 describe("a board line (AC2–AC6)", () => {
+  it("shows a GitLab fleet's logo on its queue rows and on the filter chip, beside the name", async () => {
+    await show(fleetsView({ fleets: [fleet("group/billing", { forge: "gitlab", waiting: 1 }), fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ id: "1", fleet: "group/billing" }), inboxRow({ id: "2", fleet: "org/dash" })] }));
+    expect(drawnLogos(queue())).toEqual(["gitlab"]);
+    fireEvent.click(line("group/billing"));
+    expect(drawnLogos(queue())).toEqual(["gitlab"]);
+    expect(within(queue()).queryByText("GitLab")).toBeNull();
+  });
+
   it("shows the forge's logo and the name, then the tracker's logo and key where the tracker is a service of its own", async () => {
     await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", waiting: 1 }), fleet("org/dash", { waiting: 1 })] }));
     const infra = line("platform/infra");
@@ -759,6 +767,14 @@ describe("in the narrow layout (AC15)", () => {
     expect(boardRepos()).toEqual(["org/a", "org/b", "org/c"]);
     fireEvent.click(within(board()).getByRole("button", { name: "2 more fleets" }));
     expect(boardRepos()).toHaveLength(5);
+  });
+
+  it("starts a GitLab fleet's line with GitLab's logo, as a GitHub fleet's starts with GitHub's", async () => {
+    await show(fleetsView({ fleets: [fleet("group/billing", { forge: "gitlab", waiting: 1 }), fleet("org/dash", { waiting: 1 })] }));
+    expect(within(line("group/billing")).getByRole("img", { name: "GitLab" })).toBeTruthy();
+    expect(drawnLogos(line("group/billing"))).toEqual(["gitlab"]);
+    expect(within(line("group/billing")).queryByText("GitLab")).toBeNull();
+    expect(within(line("org/dash")).getByRole("img", { name: "GitHub" })).toBeTruthy();
   });
 
   it("filters the queue when a fleet's line is tapped", async () => {

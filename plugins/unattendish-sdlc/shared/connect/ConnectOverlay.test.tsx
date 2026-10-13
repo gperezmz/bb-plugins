@@ -512,6 +512,21 @@ describe("the popup's look", () => {
     expect(screen.getByRole("group", { name: "Which account reads acme?" })).toBeTruthy();
   });
 
+  it("draws a GitLab flow's logo in the title, on each account card and on Create token, not the word GitLab (AC1)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ service: "gitlab", place: "gitlab.example.com", accounts: [accountOption({ id: "acc_gl", label: "GitLab · yuser" })] }) });
+    fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage({ sentTo: "gitlab.example.com", grants: ["read_api"], repositories: [], chooseExpiry: true, signInAs: null }) });
+    await open(forge);
+    const card = (await screen.findByRole("radio", { name: /GitLab · yuser/ })).closest("label")!;
+    const title = screen.getByRole("heading", { name: /Connect acme\/web/ });
+    expect(drawnLogos(title)).toEqual(["gitlab"]);
+    expect(within(title).getByRole("img", { name: "GitLab" })).toBeTruthy();
+    expect(drawnLogos(card)).toEqual(["gitlab"]);
+    expect(within(card).queryByRole("img")).toBeNull();
+    click("Continue");
+    const create = await screen.findByRole("region", { name: "Create a token" });
+    expect(drawnLogos(within(create).getByRole("button", { name: "Create token" }))).toEqual(["gitlab"]);
+  });
+
   it("splits the token step into creating the token and giving it to the plugin, with Back and a shielded Verify and save (AC4)", async () => {
     fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ isDefault: false })] }) });
     fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage({ signInAs: "yuser", repositories: ["acme/web"], note: "A note from the server." }) });

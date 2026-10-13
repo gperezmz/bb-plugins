@@ -2,9 +2,11 @@
 // GitLab's, Jira's and Linear's logos are their owners' artwork in their owners' colours, named as the service, and
 // shown in a brand's dark version only where bb's `.dark` class is set.
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BRAND_ARTWORK } from "./brand-logos";
 import { ServiceLogo } from "./Glyph";
+
+vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
 
 afterEach(cleanup);
 
@@ -44,17 +46,29 @@ describe("a brand's logo", () => {
     expect(decorative.getAttribute("aria-label")).toBeNull();
   });
 
-  it("is 14px as GitHub's is, unless a size is given", () => {
+  it("is the size GitHub's logo is, unless a size is given", () => {
     const { baseElement: drawn } = render(
       <>
+        <ServiceLogo service="github" />
         <ServiceLogo service="linear" />
         <ServiceLogo service="linear" className="size-6" />
       </>,
     );
-    const [plain, sized] = [...drawn.querySelectorAll("[data-logo]")];
-    expect(plain!.className.split(" ")).toContain("size-3.5");
-    expect(sized!.className.split(" ")).toContain("size-6");
-    expect(sized!.className.split(" ")).not.toContain("size-3.5");
+    const sizes = [...drawn.querySelectorAll("[role=img]")].map((logo) => logo.className.split(" ").filter((name) => name.startsWith("size-")));
+    expect(sizes).toEqual([["size-3.5"], ["size-3.5"], ["size-6"]]);
+  });
+
+  it("gives each Jira drawing a clip path of its own, since a page holds many", () => {
+    const { baseElement: drawn } = render(
+      <>
+        <ServiceLogo service="jira" />
+        <ServiceLogo service="jira" />
+      </>,
+    );
+    const ids = [...drawn.querySelectorAll("clipPath")].map((clip) => clip.id);
+    expect(new Set(ids).size).toBe(2);
+    const used = [...drawn.querySelectorAll("g[clip-path]")].map((group) => group.getAttribute("clip-path"));
+    expect(used).toEqual(ids.map((id) => `url(#${id})`));
   });
 
   it("has a dark version where its owner publishes one: Linear's, shown under bb's .dark class and hidden elsewhere", () => {

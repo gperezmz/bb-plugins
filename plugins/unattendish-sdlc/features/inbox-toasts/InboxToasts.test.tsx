@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/testing/sdk";
 import { INBOX_NEW } from "@/shared/client";
 import { clearComposerRequests, useComposerRequest } from "@/shared/composer-request";
-import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { drawnIcons, drawnLogos, expectIconsResolve } from "@/testing/icons";
 import { InboxToasts } from "./index";
 
 const toast = vi.hoisted(() => vi.fn());
@@ -60,6 +60,16 @@ describe("the Inbox toasts", () => {
     expect(toast.mock.calls[0]![0]).toBe("ENG-212 which locale wins?");
     sdk.emit(INBOX_NEW, { ...signal, rowId: "row_2", ref: "#7" });
     expect(toast).toHaveBeenCalledTimes(2);
+  });
+
+  it("leads a toast's line with the forge's logo: GitHub's, or GitLab's in place of the word GitLab", () => {
+    render(<InboxToasts />);
+    sdk.emit(INBOX_NEW, signal);
+    sdk.emit(INBOX_NEW, { ...signal, rowId: "row_2", forge: "gitlab" });
+    const lines = toast.mock.calls.map((call) => render((call[1] as { description: ReactElement }).description).baseElement);
+    expect(drawnIcons(lines[0]!)).toContain("GithubLogo");
+    expect(drawnLogos(lines[1]!)).toEqual(["gitlab"]);
+    expect(lines[1]!.textContent).not.toContain("GitLab");
   });
 
   it("identifies a toast by its row, so one row raises one toast", () => {

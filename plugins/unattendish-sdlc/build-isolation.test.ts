@@ -49,3 +49,10 @@ it("builds the same app.js and app.css with and without the test-only files", ()
   expect(full.js.equals(app.js), "app.js differs: a test-only file changes the shipped bundle").toBe(true);
   expect(full.css.equals(app.css), "app.css differs: a test-only file adds Tailwind classes to the shipped CSS").toBe(true);
 }, 300_000);
+
+it("ships the rules that show Linear's dark logo under bb's .dark class and hide its light one", () => {
+  const css = build("dark-logos", false).css.toString();
+  // Tailwind scopes a rule to the plugin's root, so a rule is found by its class and by the `.dark` ancestor it needs.
+  expect(css).toMatch(/\.dark :is\([^{]*\.\\\[\\\.dark_\\&\\\]\\:hidden[^{]*\)\{display:none\}/);
+  expect(css).toMatch(/\.dark :is\([^{]*\.\\\[\\\.dark_\\&\\\]\\:block[^{]*\)\{display:block\}/);
+}, 300_000);

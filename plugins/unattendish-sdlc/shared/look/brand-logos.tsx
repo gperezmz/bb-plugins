@@ -2,15 +2,16 @@
 // paints an icon it draws in the current text colour. This file is the one place in the plugin's interface that names
 // colours of its own: brand artwork, an exception to the rule that every colour is one of bb's theme tokens
 // (`tones.test.ts` exempts it by name). Each mark's shapes and fills are copied from the file its owner publishes, as
-// `THIRD_PARTY_NOTICES.md` lists; the only change is a `viewBox` cropped to GitLab's mark, which the file draws with
-// clear space of its own that would leave the mark a few pixels wide at the size the plugin draws logos.
-import type { ReactNode } from "react";
+// `THIRD_PARTY_NOTICES.md` lists; the only changes are a `viewBox` cropped to GitLab's mark, which the file draws with
+// clear space of its own that would leave the mark a few pixels wide at the size the plugin draws logos, and the id of
+// Jira's clip path, made unique to each drawing since a page holds many.
+import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { Service } from "./icons";
 
 interface Artwork {
-  /** What the brand's file draws, as the paths and groups inside its `<svg>`. */
-  readonly draw: ReactNode;
+  /** What the brand's file draws, as the paths and groups inside its `<svg>`; `id` is unique to the drawing, for the ids the file refers to itself by. */
+  readonly draw: (id: string) => ReactNode;
   readonly viewBox: string;
 }
 
@@ -20,7 +21,7 @@ const LINEAR_MARK =
 /** GitLab's logomark, `gitlab-logo-500-rgb.svg` of its press kit, cropped to the mark. */
 const GITLAB: Artwork = {
   viewBox: "112.13 115 155.74 150",
-  draw: (
+  draw: () => (
     <>
       <path
         fill="#e24329"
@@ -45,17 +46,17 @@ const GITLAB: Artwork = {
 /** Jira's icon, `Jira_icon.svg` of Atlassian's logo library: its blue tile and white mark, which read on either theme. */
 const JIRA: Artwork = {
   viewBox: "0 0 48 48",
-  draw: (
+  draw: (id) => (
     <>
       <path d="M0 12C0 5.37258 5.37258 0 12 0H36C42.6274 0 48 5.37258 48 12V36C48 42.6274 42.6274 48 36 48H12C5.37258 48 0 42.6274 0 36V12Z" fill="#1868DB" />
-      <g clipPath="url(#unattendish-jira-clip)">
+      <g clipPath={`url(#${id})`}>
         <path
           d="M17.9475 31.0469H15.2429C11.1638 31.0469 8.23755 28.5484 8.23755 24.8899H22.7804C23.5341 24.8899 24.0218 25.4252 24.0218 26.1837V40.8178C20.3861 40.8178 17.9475 37.8731 17.9475 33.7684V31.0469ZM25.1303 23.7745H22.4257C18.3466 23.7745 15.4203 21.3206 15.4203 17.6621H29.9631C30.7168 17.6621 31.2489 18.1528 31.2489 18.9113V33.5454C27.6132 33.5454 25.1303 30.6007 25.1303 26.496V23.7745ZM32.3573 16.5467H29.6527C25.5736 16.5467 22.6473 14.0482 22.6473 10.3896H37.1902C37.9439 10.3896 38.4316 10.925 38.4316 11.6389V26.273C34.7959 26.273 32.3573 23.3283 32.3573 19.2236V16.5467Z"
           fill="white"
         />
       </g>
       <defs>
-        <clipPath id="unattendish-jira-clip">
+        <clipPath id={id}>
           <rect width="30.1941" height="30.4281" fill="white" transform="translate(8.23755 10.3901)" />
         </clipPath>
       </defs>
@@ -64,10 +65,10 @@ const JIRA: Artwork = {
 };
 
 /** Linear's mark in the colour its `logo-dark.svg` draws it, for a light page. */
-const LINEAR_ON_LIGHT: Artwork = { viewBox: "0 0 100 100", draw: <path fill="#222326" d={LINEAR_MARK} /> };
+const LINEAR_ON_LIGHT: Artwork = { viewBox: "0 0 100 100", draw: () => <path fill="#222326" d={LINEAR_MARK} /> };
 
 /** Linear's mark in the colour its `logo-light.svg` draws it, for a dark page. */
-const LINEAR_ON_DARK: Artwork = { viewBox: "0 0 100 100", draw: <path fill="#fff" d={LINEAR_MARK} /> };
+const LINEAR_ON_DARK: Artwork = { viewBox: "0 0 100 100", draw: () => <path fill="#fff" d={LINEAR_MARK} /> };
 
 /** One brand's artwork for a light page and, where it publishes one, for a dark page. */
 export interface BrandArtwork {
@@ -76,34 +77,34 @@ export interface BrandArtwork {
 }
 
 /**
- * A service's artwork, on a light page and, for a brand that publishes a version for dark backgrounds, on a dark one.
- * GitLab's press kit offers its mark in full colour and in one colour for where a page is limited to one; the full
- * colour reads on a dark page, so it is the one drawn there.
+ * The artwork of each service whose logo is a brand's own, on a light page and, for a brand that publishes a version
+ * for dark backgrounds, on a dark one. GitLab's press kit offers its mark in full colour and in one colour for where a
+ * page is limited to one; the full colour reads on a dark page, so it is the one drawn there. GitHub's logo is bb's.
  */
-export const BRAND_ARTWORK: Readonly<Partial<Record<Service, BrandArtwork>>> = {
+export const BRAND_ARTWORK: Readonly<Record<Exclude<Service, "github">, BrandArtwork>> = {
   gitlab: { light: GITLAB },
   jira: { light: JIRA },
   linear: { light: LINEAR_ON_LIGHT, dark: LINEAR_ON_DARK },
 };
 
 function Drawing({ artwork, className }: { artwork: Artwork; className?: string }) {
+  const id = `unattendish-${useId().replace(/:/g, "")}`;
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox={artwork.viewBox} aria-hidden="true" focusable="false" className={cn("size-full", className)}>
-      {artwork.draw}
+      {artwork.draw(id)}
     </svg>
   );
 }
 
 /**
- * A brand's logo as bb's `Glyph` is drawn: 14px by default and a size class overrides it, an image named `label` or,
- * with none, hidden from assistive technology. A brand with a dark version draws it where bb's `.dark` class is set
- * (Tailwind's `dark:` variant follows the operating system instead) and its light version elsewhere.
+ * A brand's artwork, to fill the box of a logo: the light version, and, where the brand has a dark one, the dark version
+ * where bb's `.dark` class is set (Tailwind's `dark:` variant follows the operating system instead) in its place.
  */
-export function BrandLogo({ service, artwork: { light, dark }, label, className }: { service: Service; artwork: BrandArtwork; label?: string; className?: string }) {
+export function BrandDrawing({ artwork: { light, dark } }: { artwork: BrandArtwork }) {
   return (
-    <span data-logo={service} role={label === undefined ? undefined : "img"} aria-label={label} aria-hidden={label === undefined ? true : undefined} className={cn("inline-flex size-3.5 shrink-0 items-center", className)}>
+    <>
       <Drawing artwork={light} className={dark !== undefined ? "[.dark_&]:hidden" : undefined} />
       {dark !== undefined ? <Drawing artwork={dark} className="hidden [.dark_&]:block" /> : null}
-    </span>
+    </>
   );
 }
