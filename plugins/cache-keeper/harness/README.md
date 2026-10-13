@@ -121,7 +121,7 @@ To find a run's processes yourself, test each one's environment for the mark, as
 
 - `start.sh`, `stop.sh`, `config.sh`: the throwaway bb; `config.sh` holds the ports, the run directory and the process search both use.
 - `run-env.sh`: the passed list, and the leak check, for this harness, Unattendish's and the driving-bb-plugins skill's.
-- `run-env.test.sh`: checks `run-env.sh` (the leak check, what a run's environment holds, `env.sh`'s un-exporting and the start-time check) against processes it starts itself, with no bb; run it after changing `run-env.sh`.
+- `run-env.test.sh`: checks `run-env.sh` (the leak check, what a run's environment holds, `env.sh`'s un-exporting and the start-time check) against processes it starts itself, with no bb. CI runs it on every pull request; run it yourself after changing `run-env.sh`, before you push.
 - `fake-anthropic.mjs`: the fake Anthropic API.
 - `drives/lib.sh`: what every drive shares. `drives/*.sh`: the drives, and `run-all.sh`.
 - In the run directory: `env.sh`, `caller-env`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `requests.jsonl`, `drive-threads` (every drive's threads), and bb's data under `bb/` (its own logs in `bb/logs/`).

@@ -24,11 +24,18 @@ source "$here/run-env.sh"
 run_env_record "$dir/caller-env"
 plant=$(awk '$1 == "plant" { print $2 }' "$dir/caller-env")
 
-# A process holding exactly the given environment; appends its PID to pids.
+# A process holding exactly the given environment; appends its PID to pids. env
+# execs sleep at once, but until it has, the process still holds the test's own
+# environment, so wait for the exec, bounded at about 5 seconds.
 holding() {
+  local pid
   env -i "$@" sleep 60 &
-  pids+=($!)
-  sleep 0.1
+  pid=$!
+  pids+=("$pid")
+  for _ in $(seq 500); do
+    [[ $(cat "/proc/$pid/comm" 2> /dev/null) == sleep ]] && break
+    sleep 0.01
+  done
 }
 
 # case_ <name> <expect leak|none> <leaked name or -> <env>...
