@@ -9,6 +9,14 @@ import { messageOf } from "./errors";
 
 export const FALLBACK_POLL_MS = 60_000;
 
+/** The refetch of every view mounted now, so one control can reload them all. */
+const mounted = new Set<() => Promise<void>>();
+
+/** Fetches every mounted view now, as a reload control does: the views on screen are fetched apart and must not drift. */
+export function refetchEveryView(): Promise<void> {
+  return Promise.all([...mounted].map((refetch) => refetch())).then(() => undefined);
+}
+
 export interface Live<T> {
   /** The latest view; null until the first one arrives. */
   readonly data: T | null;
@@ -48,7 +56,9 @@ export function useLive<T>(load: () => Promise<T>, deps: readonly unknown[], ena
     setHeld({ data: null, error: null });
     void refetch();
     const timer = setInterval(() => void refetch(), FALLBACK_POLL_MS);
+    mounted.add(refetch);
     return () => {
+      mounted.delete(refetch);
       clearInterval(timer);
       latest.current++;
     };

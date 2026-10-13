@@ -120,7 +120,8 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
   const title = (
     <span className="flex min-w-0 items-baseline gap-2">
       <span className="truncate">{itemTitle(row.ref, row.what)}</span>
-      {action.kind === "offer" && action.offer.kind === "build" && action.refusal !== null ? (
+      {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}
+      {action.kind === "offer" && action.refusal !== null && state.composing === null ? (
         <Tip text={action.refusal}>
           <span tabIndex={0} aria-label={`not sent: ${action.refusal}`} className={cn(FOCUS, "shrink-0 text-xs font-medium text-destructive-text")}>
             not sent

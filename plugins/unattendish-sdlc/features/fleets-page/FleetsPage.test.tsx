@@ -90,6 +90,26 @@ describe("the header count", () => {
   });
 });
 
+describe("reloading from the stale pill", () => {
+  it("reloads the page too, not only the title bar", async () => {
+    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, fleets: [fleet("org/dash", { waiting: 1 })] }));
+    render(
+      <>
+        <FleetsHeaderCount />
+        <FleetsPage />
+      </>,
+    );
+    await screen.findByRole("region", { name: "Fleet board" });
+    fake.api.fleets.mockRejectedValue(new Error("the server is not running"));
+    sdk.emit(BOARD_CHANGED);
+    const pill = await screen.findByLabelText(/Couldn't refresh/);
+    fake.api.fleets.mockResolvedValue(fleetsView({ waiting: 1, fleets: [fleet("org/dash", { waiting: 1 }), fleet("org/wake", { waiting: 1 })] }));
+    fireEvent.click(within(pill).getByRole("button", { name: "Reload now" }));
+    await waitFor(() => expect(boardRepos()).toEqual(["org/dash", "org/wake"]));
+    expect(screen.queryByLabelText(/Couldn't refresh/)).toBeNull();
+  });
+});
+
 describe("the page's states (AC14)", () => {
   it("draws grey bars while it loads", () => {
     fake.api.fleets.mockReturnValue(new Promise(() => {}));
@@ -471,6 +491,14 @@ describe("the queue (AC9–AC13)", () => {
     expect(mark.textContent).toBe("not sent");
     expect(await hoverText(mark)).toBe("the manager thread is archived");
     expect(within(queue()).getByRole("button", { name: "Build it #8" })).toBeTruthy();
+  });
+
+  it("says not sent beside the title when bb refuses a Re-grant", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#4", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Re-grant #4" }));
+    expect(await within(queue()).findByLabelText("not sent: the manager thread is archived")).toBeTruthy();
+    expect(within(queue()).getByRole("button", { name: "Re-grant #4" })).toBeTruthy();
   });
 
   it("lists under Sent what was seen done in the last hour", async () => {
