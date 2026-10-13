@@ -48,8 +48,11 @@ export function FleetName({ fleet, name, short = name, className }: { fleet: Fle
   );
 }
 
-/** A tap area at least 44 px square centred on a small link, reaching past its text without moving what is beside it. */
-const TAP_AREA = "relative before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-[max(100%,2.75rem)] before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
+/**
+ * A tap area at least 44 px square centred on a small link or button, reaching past what is drawn without moving what
+ * is beside it.
+ */
+export const TAP_AREA = "relative before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-[max(100%,2.75rem)] before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
 
 interface QueueRowProps {
   readonly row: InboxRowView;
@@ -65,7 +68,9 @@ interface QueueRowProps {
    * the age on a second, for the Fleet tab's side panel.
    */
   readonly layout: "columns" | "stacked" | "two-line";
-  /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `stacked` layout always has them. */
+  /**
+   * Tap areas of 44 px around the buttons in the `two-line` layout, for a phone; the `stacked` layout always has them.
+   */
   readonly touch?: boolean;
   readonly state: RowActionState;
   /** The `<li>`'s DOM id, as `UnreadableRow` takes one: for scrolling to the row and finding its composer. */
@@ -123,7 +128,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
           {kind}
           <span className="min-w-0 flex-1">{title}</span>
           <span className="shrink-0">
-            <ActionCell row={row} action={action} state={state} buttons={touch ? TOUCH_BUTTON : BUTTON} unconfirmed={false} />
+            <ActionCell row={row} action={action} state={state} touch={touch} unconfirmed={false} />
           </span>
         </span>
         <span className="flex min-w-0 items-center gap-x-3 pl-6">
@@ -169,7 +174,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
         <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} tip className={cn("whitespace-nowrap text-xs", linkLabel === undefined && "block w-max max-w-[16rem] truncate")} />
         {ageCell}
         {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
-        <ActionCell row={row} action={action} state={state} buttons={BUTTON} unconfirmed />
+        <ActionCell row={row} action={action} state={state} touch={false} unconfirmed />
       </div>
       {composer}
     </li>
@@ -217,29 +222,31 @@ export const OFFER_KIND: Readonly<Record<"answer" | "grant" | "build", InboxRowV
 
 const QUIET = "flex items-center gap-1 text-xs text-muted-foreground";
 
-/** The offered buttons at the header's height, and at a touch target's. */
+/** The offered buttons: drawn at the header's height and as wide as their labels in every layout. */
 const BUTTON = "flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent";
-const TOUCH_BUTTON = "flex min-h-11 items-center gap-1 rounded-md border px-3 text-xs hover:bg-accent";
 
 /**
- * The action cell: the offered action as outlined buttons in the kind's colour, `buttons` sizing them, or the action's
- * state; `unconfirmed` shows an unconfirmed send as an icon beside the buttons, kept on their line.
+ * The action cell: the offered action as outlined buttons in the kind's colour, or the action's state. Both take the
+ * buttons' height, which with `touch` includes the 44 px tap areas around them, so the cell keeps its height when a
+ * button turns into its state and back. Watch only is the exception, since it never turns into a button.
+ * `unconfirmed` shows an unconfirmed send as an icon beside the buttons, kept on their line.
  */
-function ActionCell({ row, action, state, buttons, unconfirmed }: { row: InboxRowView; action: RowAction; state: RowActionState; buttons: string; unconfirmed: boolean }) {
-  if (state.composing !== null && action.kind === "offer") return <span className={QUIET}>composing…</span>;
-  if (action.kind !== "offer") return <ActionState action={action} className={QUIET} />;
+function ActionCell({ row, action, state, touch, unconfirmed }: { row: InboxRowView; action: RowAction; state: RowActionState; touch: boolean; unconfirmed: boolean }) {
+  const held = cn(QUIET, touch ? "h-11" : "h-7");
+  if (state.composing !== null && action.kind === "offer") return <span className={held}>composing…</span>;
+  if (action.kind !== "offer") return <ActionState action={action} className={action.kind === "none" ? QUIET : held} />;
   return (
-    <span className={cn("flex items-center justify-end gap-2", unconfirmed ? "flex-nowrap" : "flex-wrap")}>
-      <OfferButtons row={row} offer={action.offer} state={state} className={buttons} />
+    <span className={cn("flex items-center justify-end gap-2", touch ? "min-h-11" : "min-h-7", unconfirmed ? "flex-nowrap" : "flex-wrap")}>
+      <OfferButtons row={row} offer={action.offer} state={state} className={cn(BUTTON, touch && TAP_AREA)} />
       {unconfirmed && action.unconfirmed ? <UnconfirmedIcon /> : null}
     </span>
   );
 }
 
 /**
- * The action line of a row in the `stacked` layout: the offered buttons across the row, Grant… and Re-grant at half each, a refusal
- * and an unconfirmed send spelled out under them; every other state as text at the buttons' height, so the row keeps
- * its height, but watch only, which never turns into a button.
+ * The action line of a row in the `stacked` layout: the offered buttons together at its end, on a line tall enough
+ * for their 44 px tap areas, a refusal and an unconfirmed send spelled out under them; every other state as text at
+ * that height, so the row keeps its height, but watch only, which never turns into a button.
  */
 function ActionLine({ row, action, state }: { row: InboxRowView; action: RowAction; state: RowActionState }) {
   const held = cn(QUIET, "h-11");
@@ -251,8 +258,8 @@ function ActionLine({ row, action, state }: { row: InboxRowView; action: RowActi
       ) : action.kind !== "offer" ? (
         <ActionState action={action} className={action.kind === "none" ? QUIET : held} />
       ) : (
-        <div className="flex gap-2">
-          <OfferButtons row={row} offer={action.offer} state={state} className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border px-3 text-xs hover:bg-accent" />
+        <div className="flex h-11 items-center justify-end gap-2">
+          <OfferButtons row={row} offer={action.offer} state={state} className={cn(BUTTON, TAP_AREA)} />
         </div>
       )}
       {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}

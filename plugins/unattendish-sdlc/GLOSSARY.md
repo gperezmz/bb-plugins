@@ -95,7 +95,7 @@ The Fleets page as it is drawn where it is at least as wide as the switch point:
 _Avoid_: Desktop layout
 
 **Narrow layout**:
-The Fleets page as it is drawn where it is narrower than the switch point, on a phone or in a narrow desktop window: a condensed fleet board, stacked queue rows, short names and touch-sized controls.
+The Fleets page as it is drawn where it is narrower than the switch point, on a phone or in a narrow desktop window: a condensed fleet board, stacked queue rows, short names and 44 px tap areas around its small controls.
 _Avoid_: Phone layout, compact layout, mobile layout
 
 **Switch point**:

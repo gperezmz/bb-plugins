@@ -316,6 +316,21 @@ describe("Waits on you (#258 AC4)", () => {
     expect(within(waits).getByText("watch only")).toBeTruthy();
   });
 
+  it("draws the buttons 28 px tall, with a 44 px tap area only on a phone", async () => {
+    const detail = {
+      manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ id: "b", ref: "#8", waitsFor: "ready" as const, offer: { kind: "build" as const, label: "Build it", regrant: false } })] },
+    };
+    await showDetail(detail);
+    const build = () => within(section(/^Waits on you/)).getByRole("button", { name: "Build it #8" });
+    expect(build().className).toContain("h-7");
+    expect(build().className).not.toContain("before:h-11");
+    cleanup();
+    setCompactViewport(true);
+    await showDetail(detail);
+    expect(build().className).toContain("h-7");
+    expect(build().className).toContain("before:h-11");
+  });
+
   it("shows sent and done states", async () => {
     await showDetail({
       manifest: {
@@ -327,6 +342,16 @@ describe("Waits on you (#258 AC4)", () => {
     const waits = section(/^Waits on you/);
     expect(within(waits).getByText("sent · 1h")).toBeTruthy();
     expect(drawnIcons(within(waits).getByText("done").parentElement!)).toEqual(["Check"]);
+  });
+
+  it("holds a state at the buttons' height, 44 px on a phone", async () => {
+    const detail = { manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ id: "s", ref: "#1", offer: null, action: actionRecord({ sentAt: ago(HOUR) }) })] } };
+    await showDetail(detail);
+    expect(within(section(/^Waits on you/)).getByText("sent · 1h").className).toContain("h-7");
+    cleanup();
+    setCompactViewport(true);
+    await showDetail(detail);
+    expect(within(section(/^Waits on you/)).getByText("sent · 1h").className).toContain("h-11");
   });
 
   it("opens the composer under its row, and says Not sent in its footer when bb refuses the message", async () => {

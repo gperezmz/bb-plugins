@@ -65,7 +65,7 @@ A problem is red, a warning amber, and a fleet with either starts its line with 
 
 A credential sharing the agents' rate limit is a warning on the fleet's card and not on the board.
 
-Fleets are listed with problems first, then warnings, then the rest with the most waiting first and ties in name order. A **quiet fleet**, with every Status count at zero, no problem and no warning, is folded under one line, `N quiet fleets`, which unfolds them when pressed. Clicking a line, anywhere but its buttons, or its name, filters the queue to that fleet; the line shows as selected and a chip with the fleet's name and an ✕ appears beside the queue's tabs. Clicking the line again or the ✕ clears the filter. A fleet selected as the filter is listed even if it is quiet. The Fleet tab icon, **Connect…**, **Renew…** and **Review** act without changing the filter.
+Fleets are listed with problems first, then warnings, then the rest with the most waiting first and ties in name order. A **quiet fleet**, with every Status count at zero, no problem and no warning, is folded under one line, `N quiet fleets`, which unfolds them when pressed. Clicking a line, anywhere but its buttons, or its name, filters the queue to that fleet; the line shows as selected and a chip with the fleet's name and an ✕ appears beside the queue's tabs. Clicking the line again or the ✕ clears the filter. The chip is a shaded tag as tall as the tabs, with the fleet's logo and name and a small ✕. A fleet selected as the filter is listed even if it is quiet. The Fleet tab icon, **Connect…**, **Renew…** and **Review** act without changing the filter.
 
 ### The queue
 
@@ -81,7 +81,7 @@ One list of every Inbox row across fleets, oldest first. Its tabs:
 | Unreadable | Rows the plugin cannot read; the tab shows only while there is one |
 | Sent | The actions seen done in the last hour, set apart by a divider: `You answered #5 Which queue · 40m ago · done`. An action still *sent* shows on its row in the queue instead |
 
-Each tab shows its count; with the queue filtered to one fleet the counts and the lists cover that fleet only, and the fleet is left off each row. In the [wide layout](#the-wide-and-narrow-layouts) a row is one line, in this order:
+Each tab shows its count; the tabs are borderless and 24 px tall, the picked one shaded, in both layouts. With the queue filtered to one fleet the counts and the lists cover that fleet only, and the fleet is left off each row. In the [wide layout](#the-wide-and-narrow-layouts) a row is one line, in this order:
 
 | Part | What |
 |---|---|
@@ -108,9 +108,9 @@ A row waiting for `other` has its link and no action: the cell reads `watch only
 
 The page draws its **wide layout**, the board and one line per queue row as above, wherever the page itself is at least 64rem wide, and its **narrow layout**, below, anywhere narrower: on a phone, and in a desktop window that bb's sidebar leaves narrow, such as a 1024 px window with the sidebar open. The width counted is the page's own, beside bb's sidebar, with a scrollbar drawn whether one shows or not, so the page goes wide up to one scrollbar's width later where nothing scrolls. 64rem is where the widest row the wide layout can hold still shows every part whole. The page switches as it is resized, with no reload, keeping an open composer with its draft, focus and caret, the queue's tab, its filter, every action's state, and whether each layout's board is unfolded.
 
-In the narrow layout a fleet is named by its [short name](../../plugins/unattendish-sdlc/GLOSSARY.md): the end of its name, with as many segments as tell it apart from every other registered fleet, so `github.example/org/dash` reads `dash` until another fleet ends in `dash`. The board's lines, the queue's rows, the Sent tab's lines and the filter chip use it, and each keeps the full name as its accessible name; the composer still names the full fleet. The filter chip's ✕ is touch-sized.
+In the narrow layout a fleet is named by its [short name](../../plugins/unattendish-sdlc/GLOSSARY.md): the end of its name, with as many segments as tell it apart from every other registered fleet, so `github.example/org/dash` reads `dash` until another fleet ends in `dash`. The board's lines, the queue's rows, the Sent tab's lines and the filter chip use it, and each keeps the full name as its accessible name; the composer still names the full fleet. The filter chip's ✕ is drawn small and has a 44 px tap area around it.
 
-The board shows three lines: each has the fleet's logo and short name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does; its accessible name is the full sentence. The tabs are pills. With a mouse or a keyboard, the ⚠ or key shows its sentences, each count its label, a short name the full name and a `↗` alone its link's text, on hover and keyboard focus, as the wide layout's icons do; a tap shows none of them.
+The board shows three lines: each has the fleet's logo and short name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does; its accessible name is the full sentence. A tab has a tap area 32 px tall, and the tabs wrapped onto two rows keep their areas apart. The Fleet tab's Waits on you section draws the same buttons, with the 44 px tap areas on a phone. With a mouse or a keyboard, the ⚠ or key shows its sentences, each count its label, a short name the full name and a `↗` alone its link's text, on hover and keyboard focus, as the wide layout's icons do; a tap shows none of them.
 
 Each queue row is three parts, one under the other:
 
@@ -118,7 +118,7 @@ Each queue row is three parts, one under the other:
 |---|---|
 | Title | The kind's icon, then the Ref and What across the row's width, wrapping onto a second line; only a title longer than two lines is cut with `…` |
 | Details | The fleet's logo and short name (left out while the queue is filtered to one fleet), the link and the age. The link shows its short form (`#7 ↗`, `!3 ↗`, `ENG-212 ↗`) or `↗` alone, its full text the accessible name, with a touch-sized tap area. A short name too wide to share the line takes it whole, and the link and the age go under it |
-| Action | The row's buttons across its width, each touch-sized, Grant… and Re-grant half each. Every other state is its text at the buttons' height, so the row keeps its height: `composing…`, `sending…`, `checking…`, `sent · 4m`, `done`; `watch only` takes a line of its own height. A refused Build it or Re-grant shows `Not sent: <reason>` in red under the buttons, and a send that could not be confirmed shows `could not confirm whether the last send went through` |
+| Action | The row's buttons together at the end of the line, each 28 px tall and as wide as its label, with a 44 px tap area around it that reaches past what is drawn. Every other state is its text at the height the buttons take, tap areas included, so the row keeps its height: `composing…`, `sending…`, `checking…`, `sent · 4m`, `done`; `watch only` takes a line of its own height. A refused Build it or Re-grant shows `Not sent: <reason>` in red under the buttons, and a send that could not be confirmed shows `could not confirm whether the last send went through` |
 
 ## The fleet header
 
