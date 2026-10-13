@@ -16,7 +16,7 @@ describe("setInterval (AC16)", () => {
     const w = world();
     await start(w);
     const answer = await api(w).setInterval({ repo: REPO, seconds: 45 });
-    expect(answer).toMatchObject({ ok: true, settings: { fleets: [{ repo: REPO, intervalMs: 45_000, isDefault: false }] } });
+    expect(answer).toMatchObject({ ok: true, settings: { fleets: [{ repo: REPO, forge: "github", intervalMs: 45_000, isDefault: false }] } });
     expect(w.store.getFleet(REPO_KEY)!.registration.intervalMs).toBe(45_000);
   });
 
@@ -60,5 +60,19 @@ describe("setInterval (AC16)", () => {
     await held;
     await w.queue.run(REPO_KEY, async () => undefined);
     expect(w.store.getFleet(REPO_KEY)!.registration.intervalMs).toBe(60_000);
+  });
+});
+
+describe("the settings' fleets", () => {
+  it("name the service behind each fleet's forge: its credential's, else its host's, else GitHub", async () => {
+    const w = world();
+    await start(w);
+    w.credentials.set([{ prefix: "git.example.com/group", service: "gitlab" }]);
+    w.manifests.files.set("/work/gl/manifest.md", manifest());
+    w.manifests.files.set("/work/gl2/manifest.md", manifest());
+    await registerFleet(w.register, MANAGER, args({ repo: "git.example.com/group/proj", manifest: "/work/gl/manifest.md" }));
+    await registerFleet(w.register, MANAGER, args({ repo: "gitlab.com/group/other", manifest: "/work/gl2/manifest.md" }));
+    const fleets = (await api(w).settings()).fleets;
+    expect(Object.fromEntries(fleets.map((fleet) => [fleet.repo, fleet.forge]))).toEqual({ [REPO]: "github", "git.example.com/group/proj": "gitlab", "gitlab.com/group/other": "gitlab" });
   });
 });

@@ -24,7 +24,7 @@ const buser = accountSetting({
   credentials: [credentialSetting({ id: "cred_zorg", reaches: "every owner on github.com", kindLabel: "classic token", kind: "classic", canWrite: true })],
   assignments: [{ scope: "github.com/other-org", what: "other-org" }],
 });
-const stored = settingsView({ accounts: [yuser, buser], fleets: [{ repo: "acme/web", intervalMs: 120_000, isDefault: false }] });
+const stored = settingsView({ accounts: [yuser, buser], fleets: [{ repo: "acme/web", forge: "github", intervalMs: 120_000, isDefault: false }] });
 
 beforeEach(() => {
   sdk.reset();

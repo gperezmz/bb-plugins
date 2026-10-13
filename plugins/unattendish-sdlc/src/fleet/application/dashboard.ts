@@ -12,6 +12,7 @@ import { uniqueRowIds } from "../domain/inbox";
 import { accountsView, checkAgain, connect, connectView, makeDefault, removeAccount, removeAssignment, removeCredential, tokenPage, type AccountsDeps } from "./accounts";
 import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
 import type { ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
+import { forgeServiceFor } from "./watching";
 import { setFleetInterval } from "./schedule";
 import type { SerialQueue } from "./serial";
 import type {
@@ -215,7 +216,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       accounts: await accountsView(deps),
       fleets: stored.map((fleet) => {
         const registration = overlay !== undefined && overlay.repo === repoId(fleet.registration.repo) ? { ...fleet.registration, intervalMs: overlay.intervalMs } : fleet.registration;
-        return { repo: formatRepo(registration.repo), intervalMs: effectiveInterval(registration), isDefault: registration.intervalMs === null };
+        return { repo: formatRepo(registration.repo), forge: forgeServiceFor(deps.credentials, registration), intervalMs: effectiveInterval(registration), isDefault: registration.intervalMs === null };
       }),
     };
   };

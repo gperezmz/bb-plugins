@@ -388,7 +388,8 @@ export interface AccountSettingView {
 
 export interface SettingsView {
   readonly accounts: readonly AccountSettingView[];
-  readonly fleets: readonly { readonly repo: string; readonly intervalMs: number; readonly isDefault: boolean }[];
+  /** Each fleet's poll interval, with the service behind its forge for its logo. */
+  readonly fleets: readonly { readonly repo: string; readonly forge: ForgeService; readonly intervalMs: number; readonly isDefault: boolean }[];
 }
 
 /** After a Remove or a Renew: the old token still works at the service until it expires or is revoked there. */
