@@ -164,9 +164,17 @@ const DONE_WITH: Readonly<Record<string, DoneWith>> = { wake: "woke", echo: "ech
 
 export const doneWith = (disposition: string): DoneWith => DONE_WITH[disposition] ?? "held";
 
-/** `echo: marker`, `echo: label`, `echo: echo actor` or `out of scope`: why a change was dropped. Null for a change that was not. */
+/**
+ * `echo: marker`, `echo: label`, `echo: echo actor`, `out of scope` or `out of scope: listing cut at its page limit`:
+ * why a change was dropped. Null for a change that was not.
+ */
 export const droppedReason = (row: { readonly disposition: string; readonly rule: string | null }): string | null =>
-  row.disposition === "echo" ? `echo: ${row.rule ?? "rule"}` : row.disposition === "out-of-scope" ? "out of scope" : null;
+  row.disposition === "echo" ? `echo: ${row.rule ?? "rule"}` : row.disposition === "out-of-scope" ? (row.rule === null ? "out of scope" : `out of scope: ${row.rule}`) : null;
+
+/** Whether a ledger row is the entry a skipped listing wrote, which names no item and carries the window it listed. */
+export const isSkippedListing = <Row extends { readonly kind: string; readonly window?: { readonly from: string; readonly to: string } | null }>(
+  row: Row,
+): row is Row & { readonly window: { readonly from: string; readonly to: string } } => row.kind === "skipped listing" && row.window != null;
 
 /** Dropped changes grouped by reason, largest group first, ties by reason; each group keeps its changes in the order given. */
 export const groupDropped = <Change extends { readonly reason: string }>(dropped: readonly Change[]): { reason: string; count: number; changes: Change[] }[] => {

@@ -8,6 +8,7 @@ import {
   type FleetLabels,
   type ItemSnapshot,
   type ItemState,
+  type ListingSkipped,
   type ReadFailure,
   type ReadOutcome,
   type RefusedWhy,
@@ -63,6 +64,8 @@ export interface Derived {
   /** What the source keeps once a wake carrying `changes` is accepted. */
   readonly nextCursor: SourceCursor;
   readonly failures: ReadFailure[];
+  /** Set where the listing was cut off at its page limit without getting past the cursor: rows went unrecorded, the cursor moved as usual. */
+  readonly skipped: ListingSkipped | null;
 }
 
 /**
@@ -80,7 +83,9 @@ export interface Derived {
  * that is later, since everything older was listed and every watched item
  * was read from the old `since`. A `stateOnly` read, a failed listing, or a
  * read where nothing came back holds `since` with no limit, since none of
- * them read the changes the hold keeps. A failure of one item of kind `not-found` or
+ * them read the changes the hold keeps. A listing cut off without getting past
+ * the cursor (`listingSkipped`) is no failure either, and `since` moves as it
+ * does after a listing that fit. A failure of one item of kind `not-found` or
  * `outside-fleet` holds nothing, since no later read of that item will
  * succeed.
  */
@@ -138,7 +143,7 @@ export const deriveChanges = (input: DeriveInput): Derived => {
   const since = holdsSince ? held : read;
 
   changes.sort(byTimeThenKey);
-  return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures] };
+  return { changes, outOfScope, nextCursor: { since, items }, failures: [...outcome.failures], skipped: outcome.listingSkipped ?? null };
 };
 
 /** The kinds a source's read can fail with as a whole, in the order the first one present is reported. */
@@ -164,7 +169,8 @@ export const unreadableKind = (outcome: ReadOutcome): UnreadableWhy | null => {
  * How a source's read counts toward its not being watched, or null when it
  * does not: as `unreadableKind` says, else `listing-failed` where a listing
  * failed (`ref` null), though items read. A listing cut off at its page
- * limit is no failure and counts toward nothing.
+ * limit, whether or not it got past the cursor, is no failure and counts toward
+ * nothing.
  */
 export const outageKind = (outcome: ReadOutcome): Exclude<RefusedWhy, "refused"> | null =>
   unreadableKind(outcome) ?? (outcome.failures.some((failure) => failure.ref === null) ? "listing-failed" : null);

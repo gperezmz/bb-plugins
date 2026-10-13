@@ -416,9 +416,12 @@ export interface StoredWake {
 export interface LedgerRow {
   readonly key: string;
   readonly role: SourceRole;
-  readonly ref: string;
-  readonly url: string;
-  readonly kind: ChangeKind | "updated";
+  /** Null on the entry a skipped listing writes, which names no item. */
+  readonly ref: string | null;
+  /** Null as `ref` is. */
+  readonly url: string | null;
+  /** `skipped listing` is that entry, whose `at` is the last update the listing reached. */
+  readonly kind: ChangeKind | "updated" | "skipped listing";
   readonly label: string | null;
   readonly actor: string | null;
   /** When it happened on the service. */
@@ -426,8 +429,10 @@ export interface LedgerRow {
   /** When the plugin saw it. */
   readonly seenAt: string;
   readonly disposition: Disposition["kind"];
-  /** The echo rule, or the hold reason. */
+  /** The echo rule, the hold reason, or what made an out-of-scope entry a drop of its own. */
   readonly rule: string | null;
+  /** The window a skipped listing covered: set on the entry it writes, absent on every other row. */
+  readonly window?: { readonly from: string; readonly to: string };
   readonly wakeId: number | null;
 }
 
@@ -449,6 +454,8 @@ export interface LedgerQuery {
   /** A reference (`#163`) or an item URL. */
   readonly item?: string;
   readonly done?: "woke" | "echo" | "out-of-scope" | "held" | "failed read";
+  /** True: only the entries skipped listings wrote. False: none of them. */
+  readonly skippedListing?: boolean;
   readonly limit?: number;
 }
 

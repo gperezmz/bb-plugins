@@ -68,6 +68,8 @@ export interface PollResult {
   readonly delivery: "none" | "sent" | "queued" | "amended" | "refused";
 }
 
+/** Why the out-of-scope entry a skipped listing writes is dropped, after `out of scope: `. */
+const LISTING_CUT = "listing cut at its page limit";
 const NOTHING: PollResult = { polled: false, woke: 0, echoes: 0, outOfScope: 0, held: 0, delivery: "none" };
 /** What counts as already settled: a change with one of these dispositions is never handled twice. */
 const SETTLED: ReadonlySet<Disposition["kind"]> = new Set(["wake", "echo", "out-of-scope"]);
@@ -369,6 +371,27 @@ async function runPoll(deps: PollDeps, repo: string, options: PollOptions): Prom
       rule: null,
     });
     outOfScope += 1;
+  }
+  // A skipped listing recorded none of the out-of-scope rows past its page limit, and says so. The entry is keyed by the
+  // cursor it was read from and the update it reached, so a poll that reads the same cut again from a cursor that held
+  // (no manager, or a refused wake) adds no second one.
+  for (const read of reading.reads) {
+    const skipped = read.derived.skipped;
+    if (skipped === null) continue;
+    deps.store.recordChange(repo, {
+      key: `skipped listing:${read.role}@${read.since}:${skipped.reached}`,
+      role: read.role,
+      ref: null,
+      url: null,
+      kind: "skipped listing",
+      label: null,
+      actor: null,
+      at: skipped.reached,
+      seenAt: now,
+      disposition: "out-of-scope",
+      rule: LISTING_CUT,
+      window: { from: skipped.from, to: skipped.to },
+    });
   }
 
   const heldSince = hasManager ? null : (fleet.heldSince ?? (held > 0 ? now : null));

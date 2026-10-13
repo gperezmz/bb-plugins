@@ -160,7 +160,8 @@ describe("the Jira adapter's transitions", () => {
   });
 
   it("reads a time written with another offset as the same instant in UTC", async () => {
-    const offset = new Date(BASE + 5 * 60_000).toISOString().replace("Z", "+0200").replace(/T(\d\d)/, (_, hour: string) => `T${String((Number(hour) + 2) % 24).padStart(2, "0")}`);
+    // The same instant written at +0200: the wall clock runs two hours ahead, so the date rolls with the hour.
+    const offset = new Date(BASE + 5 * 60_000 + 2 * 3_600_000).toISOString().replace("Z", "+0200");
     const { read, watch } = await world({
       issues: [issue("PROJ-1", { changelog: [{ id: "210", author: "acc-other", created: offset, items: labelChange("", "Ready") }] })],
     });
@@ -437,18 +438,78 @@ describe("the Jira adapter's updated listing", () => {
       expect(second.updated.map((u) => u.ref)).toEqual(Array.from({ length: 11 }, (_, i) => `PROJ-${20 + i}`));
     });
 
-    it("is a failure with no ref where the last issue it listed does not move the cursor", async () => {
+    it("is skipped, with no failure, where every issue it listed is at or before the cursor", async () => {
       const same = Array.from({ length: 25 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(5) }));
       const { read } = await world({ issues: same, settings: paged });
+      const before = Date.now();
       const out = await read({ since: iso(5) });
+      const after = Date.now();
+      expect(out.failures).toEqual([]);
+      expect(out.listingCutAt).toBeUndefined();
+      expect(out.listingSkipped).toEqual({ from: expect.any(String), to: expect.any(String), reached: iso(5) });
+      const { from, to } = out.listingSkipped!;
+      expect(Date.parse(to)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(to)).toBeLessThanOrEqual(after);
+      expect(Date.parse(from)).toBeLessThanOrEqual(Date.parse(iso(5)));
+      expect(Date.parse(from) % 60_000).toBe(0);
+      expect(out.updated).toHaveLength(20);
+    });
+
+    it("starts the window it skipped at a minute no later than the update it reached, though Jira's clock runs behind ours", async () => {
+      const early = Array.from({ length: 25 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(0, 30) }));
+      const { read } = await world({ issues: early, settings: paged, now: jiraTime(new Date(Date.now() - 5 * 60_000)) });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ from: iso(0), reached: iso(0, 30) });
+    });
+
+    it("is skipped where the issues it listed are all before the cursor, and reports every one of them as updated", async () => {
+      const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
+      const { read } = await world({ issues: early, settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ reached: iso(4, 19) });
+      expect(out.updated.map((u) => u.ref)).toEqual(Array.from({ length: 20 }, (_, i) => `PROJ-${i + 1}`));
+      expect(out.updated[19]).toMatchObject({ role: "tracker", url: `https://${SITE}/browse/PROJ-20`, at: iso(4, 19) });
+    });
+
+    it("is a failure, not skipped, where the service did not list oldest first and every issue it listed is at or before the cursor", async () => {
+      const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
+      const { read } = await world({ issues: early, settings: { ...paged, unordered: true } });
+      const out = await read({ since: iso(5) });
+      expect(out.listingSkipped).toBeUndefined();
       expect(out.listingCutAt).toBeUndefined();
       expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+    });
+
+    it("moves the cursor and skips nothing where the last issue it listed is after the cursor", async () => {
+      const { read } = await world({ issues: thirty(), settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(Date.parse(out.listingCutAt!)).toBeGreaterThan(Date.parse(iso(5)));
+      expect(out.listingSkipped).toBeUndefined();
+      expect(out.updated.length).toBeGreaterThan(0);
+      expect(out.updated.every((u) => Date.parse(u.at) >= Date.parse(iso(5)))).toBe(true);
+    });
+
+    it("reports, where it is skipped, the issues before the cursor first and then those at it", async () => {
+      const mixed = [
+        ...Array.from({ length: 10 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) })),
+        ...Array.from({ length: 20 }, (_, i) => issue(`PROJ-${i + 11}`, { updated: at(5) })),
+      ];
+      const { read } = await world({ issues: mixed, settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ reached: iso(5) });
+      expect(out.updated).toHaveLength(20);
+      expect(out.updated.slice(0, 10).map((u) => u.ref)).toEqual(Array.from({ length: 10 }, (_, i) => `PROJ-${i + 1}`));
+      expect(out.updated.slice(10).map((u) => u.at)).toEqual(Array.from({ length: 10 }, () => iso(5)));
     });
 
     it("is a failure with no ref where the service did not list oldest first", async () => {
       const { read } = await world({ issues: thirty(), settings: { ...paged, unordered: true } });
       const out = await read();
       expect(out.listingCutAt).toBeUndefined();
+      expect(out.listingSkipped).toBeUndefined();
       expect(out.updated).toHaveLength(20);
       expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
     });
@@ -458,6 +519,7 @@ describe("the Jira adapter's updated listing", () => {
       const out = await read();
       expect(out.updated).toHaveLength(20);
       expect(out.listingCutAt).toBeUndefined();
+      expect(out.listingSkipped).toBeUndefined();
     });
   });
 

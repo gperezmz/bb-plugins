@@ -64,6 +64,10 @@ _Avoid_: Watch list
 A change the fleet made itself, recognised by its registered rules and dropped rather than sent.
 _Avoid_: Self-change, loopback
 
+**Skipped listing**:
+A poll's listing of the items a service reports as updated, cut off at its page limit before it got past the cursor, as when a bulk edit updates more issues than the listing holds. It is no failure and the fleet stays watched: the cursor moves as after a listing that fit, the ledger's out-of-scope rows past the page limit go unrecorded, and the poll writes one Dropped entry to the Ledger saying so.
+_Avoid_: Stuck band, bulk-change failure
+
 **Wake**:
 The plugin's one message to a manager carrying what changed, as one line per change and never text written on the service.
 _Avoid_: Notification, ping
@@ -127,3 +131,7 @@ An action is **sent** from the moment bb accepts the message and is **done** onc
 **Contract version**:
 The integer naming the register call and the manifest's columns that a plugin and a skill share.
 _Avoid_: Protocol version
+
+## Flagged ambiguities
+
+- "Cut off" said of a listing: one cut off at its page limit that reached an update after the cursor moves the cursor there and is a plain cut-off; only one that reached nothing after the cursor is a Skipped listing.

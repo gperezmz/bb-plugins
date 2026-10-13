@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useDashboardApi } from "@/shared/client";
 import { LiveScreen } from "@/shared/LiveScreen";
 import { useLive } from "@/shared/use-live";
-import { changeWhen, doneText, droppedHeading, LEDGER_FILTERS, ledgerContent, ledgerFilter, ledgerIsEmpty, wakeText, type LedgerShow } from "./model";
+import { changeWhen, doneText, droppedHeading, LEDGER_FILTERS, ledgerContent, ledgerFilter, ledgerIsEmpty, listingText, wakeText, type LedgerShow } from "./model";
 import { useDebounced } from "./use-debounced";
 
 const TYPING_PAUSE_MS = 250;
@@ -111,9 +111,15 @@ function ChangeList({ changes }: { changes: readonly LedgerChangeView[] }) {
       {changes.map((change, at) => (
         <li key={`${change.at}:${change.ref}:${at}`} className="flex flex-wrap gap-x-3 text-xs">
           <span className="tabular-nums text-muted-foreground">{changeWhen(change)}</span>
-          <span>{change.ref}</span>
-          <span>{change.kind}</span>
-          <span className="text-muted-foreground">{change.actor ?? "—"}</span>
+          {change.listing === undefined ? (
+            <>
+              <span>{change.ref}</span>
+              <span>{change.kind}</span>
+              <span className="text-muted-foreground">{change.actor ?? "—"}</span>
+            </>
+          ) : (
+            <span>{listingText(change.listing)}</span>
+          )}
           <span>{doneText(change)}</span>
         </li>
       ))}
