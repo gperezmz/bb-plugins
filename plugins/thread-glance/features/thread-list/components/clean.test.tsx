@@ -120,11 +120,11 @@ describe("AC8: the dialog", () => {
     await flush();
     expect(calls(m, "runClean").map((call) => call.input)).toEqual([{ token: "tok-1" }]);
     const box = dialog();
-    expect(box.textContent).toContain("3 terminals closed · 1 port shutdown requests sent");
+    expect(box.textContent).toContain("3 terminals closed · 1 port shutdown request sent");
     expect(box.textContent).toContain("Still listening after the request: :3000, :5173");
     expect(box.textContent).toContain("Dev server: could not close a terminal");
     expect(within(box).queryByRole("button", { name: "Clean resources" })).toBeNull();
-    expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown requests sent", { description: "Still listening after the request: :3000, :5173" });
+    expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown request sent", { description: "Still listening after the request: :3000, :5173" });
   });
 
   it("cannot be closed while it runs, and still reports in a toast when the list is gone before the answer", async () => {
@@ -138,7 +138,7 @@ describe("AC8: the dialog", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeNull();
     cleanup();
     await act(async () => finish(result({ stillListening: [5173] })));
-    expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown requests sent", { description: "Still listening after the request: :5173" });
+    expect(toasts.success).toHaveBeenCalledWith("3 terminals closed · 1 port shutdown request sent", { description: "Still listening after the request: :5173" });
   });
 
   it("closes on Escape when nothing runs", async () => {

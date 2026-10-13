@@ -160,7 +160,8 @@ describe("the Jira adapter's transitions", () => {
   });
 
   it("reads a time written with another offset as the same instant in UTC", async () => {
-    const offset = new Date(BASE + 5 * 60_000).toISOString().replace("Z", "+0200").replace(/T(\d\d)/, (_, hour: string) => `T${String((Number(hour) + 2) % 24).padStart(2, "0")}`);
+    // The same instant written at +0200: the wall clock runs two hours ahead, so the date rolls with the hour.
+    const offset = new Date(BASE + 5 * 60_000 + 2 * 3_600_000).toISOString().replace("Z", "+0200");
     const { read, watch } = await world({
       issues: [issue("PROJ-1", { changelog: [{ id: "210", author: "acc-other", created: offset, items: labelChange("", "Ready") }] })],
     });
