@@ -3,6 +3,11 @@ import type { ProblemView } from "@/src/fleet/application/views";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, NOW, unreadableInboxRow } from "@/testing/fixtures";
 import {
   boardLines,
+  composerFor,
+  filterShowing,
+  goneText,
+  requestedRow,
+  tabShowing,
   boardOrder,
   headerCount,
   headerCountLabel,
@@ -133,5 +138,46 @@ describe("a fleet's short name (AC3)", () => {
 
   it("shortens again once the fleet it was told apart from is gone", () => {
     expect(short("github.example/org/dash")).toEqual(["dash"]);
+  });
+});
+
+describe("the row a toast opens", () => {
+  const dash = inboxRow({ fleet: "org/dash", id: "row_7", ref: "#7", what: "Which cache to use", waitsFor: "answer" });
+  const wake = inboxRow({ fleet: "org/wake", id: "row_7", waitsFor: "grant" });
+
+  it("is found by its fleet and its id, so two fleets' rows with the same id stay apart; a row gone finds nothing", () => {
+    const view = fleetsView({ inbox: [wake, dash] });
+    expect(requestedRow(view, { fleet: "org/dash", rowId: "row_7" })).toBe(dash);
+    expect(requestedRow(view, { fleet: "org/dash", rowId: "row_8" })).toBeNull();
+  });
+
+  it("clears a filter to another fleet, and keeps one that already shows it (AC3)", () => {
+    expect(filterShowing("org/wake", dash)).toBeNull();
+    expect(filterShowing("org/dash", dash)).toBe("org/dash");
+    expect(filterShowing(null, dash)).toBeNull();
+  });
+
+  it("shows All for a tab that hides it, and keeps one that lists it (AC3)", () => {
+    const queue = queueFor(fleetsView({ inbox: [wake, dash] }), null);
+    expect(tabShowing(queue, "grant", dash)).toBe("all");
+    expect(tabShowing(queue, "sent", dash)).toBe("all");
+    expect(tabShowing(queue, "answer", dash)).toBe("answer");
+    expect(tabShowing(queue, "all", dash)).toBe("all");
+  });
+
+  it("opens the composer its own button opens, and none while its action is under way, sent or done (AC4)", () => {
+    const offer = (kind: "answer" | "grant" | "build") => ({ kind: "offer" as const, offer: { kind, label: "x", regrant: false }, refusal: null, unconfirmed: false });
+    expect(composerFor(offer("answer"))).toBe("answer");
+    expect(composerFor(offer("grant"))).toBe("grant");
+    expect(composerFor(offer("build"))).toBeNull();
+    expect(composerFor({ kind: "sending", text: "sending…" })).toBeNull();
+    expect(composerFor({ kind: "unknown", text: "checking…" })).toBeNull();
+    expect(composerFor({ kind: "sent", text: "sent · 2m" })).toBeNull();
+    expect(composerFor({ kind: "done", text: "done" })).toBeNull();
+    expect(composerFor({ kind: "none" })).toBeNull();
+  });
+
+  it("says a row gone from the Inbox no longer waits on you (AC4)", () => {
+    expect(goneText({ ref: "#7", what: "Which cache to use" })).toBe("#7 Which cache to use no longer waits on you");
   });
 });

@@ -31,3 +31,10 @@ export function toastTitle(signal: Pick<InboxNewSignal, "ref" | "what">): string
 export function toastLine(signal: Pick<InboxNewSignal, "fleet" | "waitsFor">): string {
   return `${signal.fleet} waits for ${waitsForText(signal.waitsFor)}`;
 }
+
+/** The toast's button: the row's own Answer… or Grant…, which opens its composer, and Open Fleets for anything else. */
+export function toastAction(signal: Pick<InboxNewSignal, "waitsFor">): "Answer…" | "Grant…" | "Open Fleets" {
+  if (signal.waitsFor === "answer") return "Answer…";
+  if (signal.waitsFor === "grant") return "Grant…";
+  return "Open Fleets";
+}
