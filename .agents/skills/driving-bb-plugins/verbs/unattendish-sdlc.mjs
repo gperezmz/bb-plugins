@@ -21,7 +21,10 @@ function rpc(cli, label, method) {
   return answer.result ?? answer;
 }
 
-/** Opens the Fleets page from the sidebar navigation and waits for its first section. */
+/** A string as a regular expression's source, matched literally. */
+const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Opens the Fleets page from the sidebar navigation and waits for it to leave Loading: the fleet board, "No fleet is registered" or "Couldn't load your fleets". */
 export async function openFleets(page, url) {
   await page.goto(url);
   const nav = page.getByRole("button", { name: "Fleets", exact: true }).first();
@@ -32,41 +35,100 @@ export async function openFleets(page, url) {
     await page.getByRole("button", { name: /^Toggle sidebar/ }).click();
     await page.getByRole("dialog", { name: "Sidebar" }).getByRole("button", { name: "Fleets", exact: true }).evaluate((b) => b.click());
   }
-  await page.getByRole("heading", { name: /^Waits on you/, level: 2 }).waitFor();
+  await page
+    .getByRole("region", { name: "Fleet board" })
+    .or(page.getByText("No fleet is registered"))
+    .or(page.getByRole("alert").filter({ hasText: "Couldn't load your fleets" }))
+    .first()
+    .waitFor();
   await page.waitForLoadState("networkidle");
+  // On a phone the drawer can stay open over the page, its backdrop taking every click until it is closed.
+  const backdrop = page.locator("[data-sidebar-mobile-backdrop][data-state=open]");
+  if (await backdrop.count()) {
+    await page.keyboard.press("Escape");
+    await backdrop.waitFor({ state: "detached" });
+  }
 }
 
-/** What the Fleets page draws: the header count, each section, every Inbox row's cells, each card and Recently landed. */
+/** The queue's rows, one per list item of the open tab; a row's composer is part of its item. */
+const queueRows = (page) => page.getByRole("main").last().getByRole("region", { name: "Queue" }).getByRole("tabpanel").getByRole("listitem");
+
+/**
+ * What the Fleets page draws: its state, the title bar's count and refresh pill, each fleet board line (name, whether
+ * it is the filter, manager, Status slots, fix and the text of every cell), the fold under it, the queue's tabs, filter
+ * chip and rows with their buttons.
+ */
 export async function readFleets(page) {
   await sleep(300);
   const main = page.getByRole("main").last();
-  const count = main.locator("[aria-label$=' waiting on you']");
-  // A table on a desktop, its rows as cells; a stacked list on a phone, its items as lines.
-  const inbox = main.getByRole("region", { name: /^Waits on you/ });
-  const rows = (await inbox.getByRole("table").count())
-    ? await inbox.getByRole("row").evaluateAll((rs) => rs.slice(1).map((r) => [...r.querySelectorAll("td,[role=cell]")].map((c) => c.innerText.trim())))
-    : await inbox.getByRole("listitem").evaluateAll((ls) => ls.map((l) => l.innerText.split("\n").map((t) => t.trim()).filter(Boolean)));
-  const cards = [];
-  for (const card of await main.getByRole("article").all()) {
-    cards.push({ name: await card.getAttribute("aria-label"), lines: lines(await card.innerText()), buttons: await card.getByRole("button").evaluateAll((bs) => bs.map((b) => b.getAttribute("aria-label") ?? b.innerText.trim())) });
-  }
-  const list = async (name) => ((await main.getByRole("list", { name }).count()) ? lines(await main.getByRole("list", { name }).innerText()) : null);
-  return {
+  // The Status slots on the board carry the same "N waiting on you" label as the title bar's count: the count is the one outside the board.
+  const counts = await page.locator("[aria-label$=' waiting on you']").evaluateAll((es) => es.filter((e) => !e.closest("[aria-label='Fleet board']")).map((e) => e.getAttribute("aria-label")));
+  const pill = page.locator("[aria-label^=\"Couldn't refresh:\"]");
+  const board = main.getByRole("region", { name: "Fleet board" });
+  const queue = main.getByRole("region", { name: "Queue" });
+  const cantLoad = main.getByRole("alert").filter({ hasText: "Couldn't load your fleets" });
+  const state = (await main.getByRole("status", { name: "Loading your fleets" }).count())
+    ? "loading"
+    : (await cantLoad.count())
+      ? "cant-load"
+      : (await main.getByText("No fleet is registered").count())
+        ? "no-fleet"
+        : "ready";
+  const result = {
     url: page.url(),
-    count: (await count.count()) ? await count.first().getAttribute("aria-label") : null,
-    sections: await main.getByRole("heading", { level: 2 }).allInnerTexts(),
-    needsAnAccount: await list("Needs an account"),
-    recentlySent: await list("Recently sent"),
-    rows,
-    cards,
-    landed: (await main.getByRole("region", { name: /^Recently landed/ }).count()) ? lines(await main.getByRole("region", { name: /^Recently landed/ }).innerText()).slice(1) : null,
+    state,
+    count: counts[0] ?? null,
+    refreshPill: (await pill.count()) ? { name: await pill.first().getAttribute("aria-label"), reload: await pill.first().getByRole("button", { name: "Reload now" }).count() } : null,
+    notice: state === "cant-load" ? lines(await cantLoad.first().innerText()) : state === "no-fleet" ? lines(await main.innerText()).filter((l) => l.includes("fleet") || l.includes("/run-fleet")) : null,
   };
+  if (state !== "ready") return result;
+  result.board = {
+    lines: await board.getByRole("listitem").evaluateAll((items) =>
+      items.map((li) => {
+        const label = (e) => e.getAttribute("aria-label");
+        const slot = /^\d+ (blocked|in flight|waiting on you|landed in the last 7 days)$/;
+        return {
+          name: label(li),
+          filter: li.querySelector("button[aria-pressed]")?.getAttribute("aria-pressed") ?? null,
+          manager: [...li.querySelectorAll("[aria-label]")].map(label).find((n) => /^(Manager|No manager)/.test(n)) ?? null,
+          status: [...li.querySelectorAll("[aria-label]")].map(label).filter((n) => slot.test(n)),
+          // The fix: a verb button, a phone's icon button, or the ✕ with no verb; its name is the full sentence.
+          fix: [...li.querySelectorAll("button:not([aria-pressed]), [tabindex][aria-label], [role=img][aria-label]")]
+            .filter((e) => !/^Open the Fleet tab of /.test(label(e) ?? "") && !slot.test(label(e) ?? "") && !/^(Manager|No manager|GitHub|GitLab|Linear|Jira)/.test(label(e) ?? ""))
+            .map((e) => ({ name: label(e), text: e.innerText.trim(), button: e.tagName === "BUTTON" })),
+          text: li.innerText.split("\n").map((t) => t.trim()).filter(Boolean),
+        };
+      }),
+    ),
+    fold: await board.getByRole("button", { name: /^\d+ (quiet fleets?|more fleets?)$/ }).evaluateAll((bs) => bs.map((b) => ({ text: b.innerText.trim(), expanded: b.getAttribute("aria-expanded") }))),
+  };
+  const chip = queue.getByRole("button", { name: /^Show every fleet, not only / });
+  result.queue = {
+    tabs: await queue.getByRole("tab").evaluateAll((ts) => ts.map((t) => ({ name: t.innerText.replace(/\s+/g, " ").trim(), selected: t.getAttribute("aria-selected") === "true" }))),
+    filter: (await chip.count()) ? await chip.getAttribute("aria-label") : null,
+    panel: await queue.getByRole("tabpanel").getAttribute("aria-label"),
+    rows: await queueRows(page).evaluateAll((items) =>
+      items.map((li) => ({
+        lines: li.innerText.split("\n").map((t) => t.trim()).filter(Boolean),
+        buttons: [...li.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.innerText.trim()),
+        alerts: [...li.querySelectorAll("[role=alert]")].map((a) => a.innerText.trim()),
+      })),
+    ),
+    // A panel with no rows draws a line of its own: "Nothing waits on you", or Sent's "Nothing you sent was seen done in the last hour".
+    empty: (await queueRows(page).count()) ? null : lines(await queue.getByRole("tabpanel").innerText()),
+  };
+  return result;
 }
 
-/** The sonner toasts on screen: each one's text and buttons. */
+/** The sonner toasts on screen: each one's title, description, whole text and buttons. */
 export async function toasts(page) {
   return page.locator("[data-sonner-toast]").evaluateAll((ts) =>
-    ts.map((t) => ({ text: t.innerText.split("\n").map((s) => s.trim()).filter(Boolean), buttons: [...t.querySelectorAll("button")].map((b) => b.innerText.trim()).filter(Boolean) })),
+    ts.map((t) => ({
+      title: t.querySelector("[data-title]")?.innerText.trim() ?? null,
+      description: t.querySelector("[data-description]")?.innerText.trim() ?? null,
+      text: t.innerText.split("\n").map((s) => s.trim()).filter(Boolean),
+      buttons: [...t.querySelectorAll("button")].map((b) => b.innerText.trim()).filter(Boolean),
+    })),
   );
 }
 
@@ -95,41 +157,51 @@ export async function readTab(page) {
 
 export const verbs = {
   "fleets-page": {
-    usage: "[--open-tab <repo>]: open Fleets from the sidebar navigation and read it, with the dashboard's `fleets` RPC; --open-tab clicks that card's `manager ↗` and reads the Fleet tab it lands on",
-    valued: ["open-tab"],
+    usage: "[--unfold] [--filter <repo>] [--tab <All|Answer|Grant|Build|Other|Unreadable|Sent>] [--open-tab <repo>]: open Fleets from the sidebar navigation and read it, with the dashboard's `fleets` RPC; --unfold presses the board's \"N quiet fleet(s)\" or \"N more fleets\", --filter presses that fleet's name and --tab a queue tab, each read as `after`; --open-tab presses that fleet's \"Open the Fleet tab of <repo>\" and reads the Fleet tab it lands on (not on a phone, whose board has none)",
+    valued: ["filter", "tab", "open-tab"],
     async run({ page, url, capture, cli, flags }) {
       await openFleets(page, url);
       const shown = await readFleets(page);
       await capture("fleets", "open Fleets from the sidebar navigation");
       const stored = rpc(cli, "unattendish.page/rpc", "fleets");
-      if (!flags["open-tab"]) return { shown, stored };
-      await page.getByRole("article", { name: `Fleet ${flags["open-tab"]}` }).getByRole("button", { name: `Open the Fleet tab of ${flags["open-tab"]}` }).click();
+      const result = { shown, stored };
+      const board = page.getByRole("region", { name: "Fleet board" });
+      const queue = page.getByRole("main").last().getByRole("region", { name: "Queue" });
+      if (flags.unfold || flags.filter || flags.tab) {
+        if (flags.unfold) await board.getByRole("button", { name: /^\d+ (quiet fleets?|more fleets?)$/ }).first().click();
+        if (flags.filter) await board.getByRole("button", { name: flags.filter, exact: true }).click();
+        if (flags.tab) await queue.getByRole("tab", { name: new RegExp(`^${escape(flags.tab)} \\d+$`) }).click();
+        await capture("after", ["unfold", flags.filter && `filter ${flags.filter}`, flags.tab && `tab ${flags.tab}`].filter((a) => a && a !== true).join(", ") || "unfold");
+        result.after = await readFleets(page);
+      }
+      if (!flags["open-tab"]) return result;
+      await board.getByRole("listitem", { name: `Fleet ${flags["open-tab"]}` }).getByRole("button", { name: `Open the Fleet tab of ${flags["open-tab"]}` }).click();
       await page.getByRole("region", { name: "Polling" }).waitFor();
       const tab = await readTab(page);
-      await capture("tab", `click manager ↗ on ${flags["open-tab"]}'s card`);
-      return { shown, stored, opened: { url: page.url(), tab } };
+      await capture("tab", `press the Fleet tab icon on ${flags["open-tab"]}'s line`);
+      result.opened = { url: page.url(), tab };
+      return result;
     },
   },
 
   act: {
-    usage: "<Answer…|Grant…|Build it|Re-grant> <ref> [<text>] [--fleet <repo>] [--esc] [--wait <cell text>]: press an Inbox row's action on the Fleets page, write the text (each `\\n` in it a new line, typed with Shift+Enter; Ctrl+Enter sends; --esc cancels with Escape), and read the row's Action cell until it reads --wait (default `sent`); the row as the `fleets` RPC stores it",
+    usage: "<Answer…|Grant…|Build it|Re-grant> <ref> [<text>] [--fleet <repo>] [--esc] [--wait <row text>]: press an Inbox row's action in the Fleets page's queue, write the text (each `\\n` in it a new line, typed with Shift+Enter; Ctrl+Enter sends; --esc cancels with Escape), and read the row until it shows --wait (default `sent ·`; `not sent` for a refusal); the row as the `fleets` RPC stores it",
     valued: ["fleet", "wait"],
     async run({ page, url, capture, cli, args, flags }) {
       const [action, ref, text] = args;
       await openFleets(page, url);
-      // The row is found by its Ref cell, which stays when the action button turns into its state; the composer's row is left out.
-      let row = page.getByRole("main").last().getByRole("row").filter({ has: page.getByRole("cell", { name: new RegExp(`^${ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `) }) }).filter({ hasNotText: "Ctrl+Enter" });
+      // The row is the queue's list item that starts with its Ref; its composer opens inside the same item.
+      let row = queueRows(page).filter({ hasText: new RegExp(`^${escape(ref)}(\\s|$)`) });
       if (flags.fleet) row = row.filter({ hasText: flags.fleet });
       row = row.first();
       const before = lines(await row.innerText());
       await capture("before", `the row ${ref}`);
       await row.getByRole("button", { name: `${action} ${ref}`, exact: true }).click();
-      // The composer opens in a row of its own, straight after the row it answers.
-      const box = row.locator("xpath=following-sibling::*[1]").getByRole("textbox", { name: /^Your (answer|grant) for / });
+      const box = row.getByRole("textbox", { name: /^Your (answer|grant) for / });
       let composer = null;
-      if (action !== "Build it") {
+      if (action !== "Build it" && action !== "Re-grant") {
         await box.waitFor();
-        composer = { box: await box.getAttribute("aria-label"), open: await page.getByRole("textbox", { name: /^Your (answer|grant) for / }).count(), sendEnabledEmpty: await row.locator("xpath=following-sibling::*[1]").getByRole("button", { name: "Send" }).isEnabled() };
+        composer = { box: await box.getAttribute("aria-label"), open: await page.getByRole("textbox", { name: /^Your (answer|grant) for / }).count(), header: lines(await row.innerText()).find((l) => l.startsWith("Your ")) ?? null, sendEnabledEmpty: await row.getByRole("button", { name: "Send", exact: true }).isEnabled() };
         for (const [i, part] of (text ?? "").split("\\n").entries()) {
           if (i > 0) await box.press("Shift+Enter");
           await box.pressSequentially(part);
@@ -143,12 +215,13 @@ export const verbs = {
         }
         await box.press("Control+Enter");
       }
-      const want = flags.wait ?? "sent";
-      const cell = row.getByRole("cell").last();
+      const want = flags.wait ?? "sent ·";
+      // A refusal of words stays in the composer as an alert; one of Build it or Re-grant is the "not sent" beside the title.
       for (let i = 0; i < 40 && !(await row.innerText()).includes(want); i++) await sleep(500);
       const after = lines(await row.innerText());
-      await capture("after", `send; the Action cell reads ${want}`);
-      return { before, composer, after, actionCell: await cell.innerText(), stored: rpc(cli, "unattendish.actions/rpc", "fleets") };
+      await capture("after", `send; the row reads ${want}`);
+      const refusal = { composer: await row.getByRole("alert").allInnerTexts(), title: await row.locator("[aria-label^='not sent: ']").evaluateAll((es) => es.map((e) => e.getAttribute("aria-label"))) };
+      return { before, composer, after, action: after.find((l) => l.includes(want)) ?? null, refusal, stored: rpc(cli, "unattendish.actions/rpc", "fleets") };
     },
   },
 
@@ -226,14 +299,17 @@ export const verbs = {
   },
 
   connect: {
-    usage: "<button name> [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page), walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
-    valued: ["service", "host", "owner", "account", "token", "email", "from", "stop-at"],
+    usage: "<button name> [--fleet <repo>] [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page): by its accessible name, which on the board is the fleet's full sentence (`other-org/x needs a GitHub account that can read other-org`), or with --fleet by the text on that fleet's board line (`Connect…`, `Renew…`), walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
+    valued: ["fleet", "service", "host", "owner", "account", "token", "email", "from", "stop-at"],
     async run({ page, url, capture, cli, args, flags }) {
       if (flags.from === "settings") {
         await page.goto(url + "settings/plugins/unattendish-sdlc");
         await page.getByRole("region", { name: "Accounts" }).waitFor();
       } else await openFleets(page, url);
-      await page.getByRole("button", { name: args[0], exact: true }).first().click();
+      const pressed = flags.fleet
+        ? page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${flags.fleet}` }).getByRole("button").filter({ hasText: args[0] })
+        : page.getByRole("button", { name: args[0], exact: true });
+      await pressed.first().click();
       const dialog = page.getByRole("dialog");
       await dialog.waitFor();
       const steps = [];
@@ -253,7 +329,7 @@ export const verbs = {
         await step("setup", `${flags.service ?? ""} ${flags.host ?? ""} ${flags.owner ?? ""}, Continue`.trim());
       }
       if (flags.account) {
-        await dialog.getByRole("radio", { name: new RegExp(`^${flags.account.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).check();
+        await dialog.getByRole("radio", { name: new RegExp(`^${escape(flags.account)}`) }).check();
         await dialog.getByRole("button", { name: "Continue" }).click();
         await sleep(400);
         await step("token-step", `choose ${flags.account}, Continue`);
