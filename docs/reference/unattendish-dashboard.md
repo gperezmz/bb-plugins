@@ -168,16 +168,20 @@ An action sends the manager one message, a plain prompt in the operator's voice 
 
 | Action | On an Inbox row waiting for | The message | Done when a poll sees |
 |---|---|---|---|
-| Answer… | `answer` | `Answer to <Ref>: ` and the operator's text, or `Answer to message <n>: ` where Ref is `—` | The row gone from the Inbox |
-| Grant… | `grant` | `Grant: ` and the operator's text | The row gone from the Inbox |
-| Re-grant | `grant`, where the Link names a previous manager's message | `Grant: ` and the row's What | The row gone from the Inbox |
-| Build it | `ready` | `Build <Ref>` | The spec carrying the ready label, or the row gone from the Inbox |
+| Answer… | `answer` | `Answer to <Ref>: ` and the operator's text, or `Answer to message <n>: ` where Ref is `—` | The row gone from the Inbox, the Inbox [read whole](#an-inbox-row-that-cannot-be-read-holds-actions-back) |
+| Grant… | `grant` | `Grant: ` and the operator's text | The row gone from the Inbox, the Inbox [read whole](#an-inbox-row-that-cannot-be-read-holds-actions-back) |
+| Re-grant | `grant`, where the Link names a previous manager's message | `Grant: ` and the row's What | The row gone from the Inbox, the Inbox [read whole](#an-inbox-row-that-cannot-be-read-holds-actions-back) |
+| Build it | `ready` | `Build <Ref>` | The spec carrying the ready label, or the row gone from the Inbox, the Inbox [read whole](#an-inbox-row-that-cannot-be-read-holds-actions-back) |
 
 Answer… and Grant… open a composer under the row. Its header reads `Your answer for #7 Which cache to use · goes to org/dash's manager`, beside a link to the item or the park, and its hint `⌘↵ send · Esc cancel`. The text takes several lines, follows the prefix and runs to the end of the message; ⌘/Ctrl+Enter sends, Esc cancels, and nothing sends while it is empty. A compact viewport has no such keys and leaves the hint out. The message is queued behind a running turn.
 
 An action is *sent* once bb accepts the message, and *done* once a poll or a manager's turn ending sees its result. The plugin keeps it, so every window shows the row's action cell as `sent · 4m` and no action, after a reload too. While the call is in flight the cell reads `sending…`, while the words are being written `composing…`, and a Build it that a poll saw done while its row is still in the Inbox reads `done`. A sent action is never marked failed for waiting. A done action leaves the queue with its row and is listed under Sent for an hour, then dropped from the page, and the plugin deletes it after a day. If bb refuses the message, an Answer… or Grant… composer stays open with the draft and its footer reads `Not sent: <reason>`, such as `Not sent: HTTP 409: Thread is archived`; a refused Build it or Re-grant, which have no composer, shows a red `not sent` beside the row's title with the reason on hover. The row keeps its action. The reason is bb's message cut to 160 characters, with the text you sent and any configured token replaced; it reaches only the page, never the ledger or the log, where a refused wake is recorded as its status alone. If the call fails with no answer, the cell reads `checking…` until the page has fetched what the plugin recorded, and then shows that.
 
 Esc or Cancel discards what was typed; a refusal keeps it in the open composer.
+
+### An Inbox row that cannot be read holds actions back
+
+A row the manifest reader names unreadable is left out of the rows a poll compares an action against, so an action sent for it would look gone. While any Inbox row of a fleet cannot be read, no poll marks an action of that fleet done because its row is missing, whichever row the action was sent for. A Build it whose spec carries the ready label is still marked done, since that reads the tracker and not the Inbox. An answer, a grant or a Build it without the label then stays *sent* with no row to show it, and appears nowhere, not under Sent either, until the Inbox reads whole again; the fleet's problem with **Review** says why. Once it does, actions are judged as usual. A manifest that is missing or cannot be read marks nothing done, and an unreadable row in In flight, Blocked or Landed holds nothing back.
 
 A takeover drops the actions still *sent* on the fleet, since the new manager never received them, and the rows offer their actions again. A message sent while a takeover happens is refused with a reason, because it went to the manager the fleet no longer has.
 

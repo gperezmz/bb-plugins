@@ -130,7 +130,7 @@ Connect… and Renew… open it on the fleet board, in the Fleet tab and on a to
 A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.
 _Avoid_: Command, reply
 
-An action is **sent** from the moment bb accepts the message and is **done** once a poll sees its result, which is the row gone from the Inbox or, for Build it, the spec carrying the ready label. A sent action is never marked failed by waiting; bb refusing the message is *not sent*, and the row keeps its action.
+An action is **sent** from the moment bb accepts the message and is **done** once a poll sees its result, which is the row gone from an Inbox read whole (no row named unreadable) or, for Build it, the spec carrying the ready label. A sent action is never marked failed by waiting; bb refusing the message is *not sent*, and the row keeps its action.
 
 ### The agreement with run-fleet
 

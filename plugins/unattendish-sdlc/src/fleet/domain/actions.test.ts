@@ -84,23 +84,29 @@ describe("finishedActions", () => {
 
   it("finishes an answer or a grant when its row is gone from the Inbox, and not before", () => {
     const sent = [record({ id: "a" }), record({ id: "g", kind: "grant", rowId: "r2" })];
-    expect(finishedActions(sent, new Set(["r1", "r2"]), never)).toEqual([]);
-    expect(finishedActions(sent, new Set(["r2"]), never)).toEqual(["a"]);
-    expect(finishedActions(sent, new Set(), never)).toEqual(["a", "g"]);
+    expect(finishedActions(sent, new Set(["r1", "r2"]), true, never)).toEqual([]);
+    expect(finishedActions(sent, new Set(["r2"]), true, never)).toEqual(["a"]);
+    expect(finishedActions(sent, new Set(), true, never)).toEqual(["a", "g"]);
   });
 
   it("finishes a Build it when the spec carries the ready label, though its row is still in the Inbox", () => {
     const sent = [record({ id: "b", kind: "build", ref: "#9" })];
-    expect(finishedActions(sent, new Set(["r1"]), (ref) => ref === "#9")).toEqual(["b"]);
-    expect(finishedActions(sent, new Set(["r1"]), never)).toEqual([]);
+    expect(finishedActions(sent, new Set(["r1"]), true, (ref) => ref === "#9")).toEqual(["b"]);
+    expect(finishedActions(sent, new Set(["r1"]), true, never)).toEqual([]);
   });
 
   it("does not finish an answer by the ready label", () => {
-    expect(finishedActions([record()], new Set(["r1"]), () => true)).toEqual([]);
+    expect(finishedActions([record()], new Set(["r1"]), true, () => true)).toEqual([]);
+  });
+
+  it("finishes no action for a missing row when the Inbox was not read whole, but still finishes a Build it by the ready label", () => {
+    const sent = [record({ id: "a" }), record({ id: "g", kind: "grant", rowId: "r2" }), record({ id: "b", kind: "build", ref: "#9", rowId: "r3" })];
+    expect(finishedActions(sent, new Set(), false, never)).toEqual([]);
+    expect(finishedActions(sent, new Set(["r3"]), false, (ref) => ref === "#9")).toEqual(["b"]);
   });
 
   it("leaves a record already done alone", () => {
-    expect(finishedActions([record({ state: "done", doneAt: "2026-10-12T10:05:00.000Z" })], new Set(), never)).toEqual([]);
+    expect(finishedActions([record({ state: "done", doneAt: "2026-10-12T10:05:00.000Z" })], new Set(), true, never)).toEqual([]);
   });
 });
 
