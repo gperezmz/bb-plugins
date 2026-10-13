@@ -62,10 +62,17 @@ What a run holds:
 - with `unattendish-sdlc` started, a fake GitHub, GitLab, Linear and Jira
   and one Unattendish account on each ([Fake services](#fake-services)).
 
-A run never touches the user's bb: every command the harness runs has the
-variables naming a bb unset or pointed at the run, and `HOME` inside the
-run's scratch directory. Reach the run only through the harness's commands,
-since a bare `bb` in this shell talks to the user's own bb.
+A run never touches the user's bb and holds none of the caller's
+credentials: every process of the run starts from an empty environment
+holding the **passed list**, the variables named with why in
+`plugins/cache-keeper/harness/run-env.sh`, and what the harness sets for the
+run, its mark (`DBP_MARK`), its bb's address, `HOME` inside its scratch
+directory and `NOSYSBASHRC=1`, so no bash in the run reads the machine's
+profile, among them. A variable this machine's runs need goes on that list;
+a `start` that fails says where it is. Reach the run only through the
+harness's commands, since a bare `bb` in this shell talks to the user's own
+bb; a shell that sources the evidence's `env.sh` stops exporting whatever is
+not on the list, so what it sends the run carries the list alone.
 
 Any number of runs go side by side, from one checkout or several: each
 `start` takes three free ports of its own (seven with `unattendish-sdlc`)
@@ -86,7 +93,13 @@ with the cap `start` printed and holds its bb server, its fake API, bb server
 and host daemon are alive (and, with `unattendish-sdlc`, its fake services
 answer), the server on the run's port serves the
 run's own data directory, the machine is connected, and every plugin started
-runs from the run's copy. Run it before the first drive, after any drive that
+runs from the run's copy, and no process of the run holds a **leak**: a
+variable the caller held at `start`, same name and value, outside the passed
+list and the names `run-env.sh` lists as set by the run, or the one `start`
+planted under a random name. It names each leak's
+variable and process, never a value, and where the list is kept. It fails
+too when `gh auth token` run inside the run finds a GitHub token, which bb
+would hand every thread it starts. Run it before the first drive, after any drive that
 failed or surprised you, and whenever a command answers from a bb you did
 not expect. A run that fails it is stopped and started again, not driven; a
 scope reading `failed/oom-kill` passed its cap, and starts again with fewer
@@ -362,6 +375,12 @@ the evidence. Other runs, from this checkout or another, are left
 running. It exits 0 only
 when no process carrying the mark is left; otherwise it prints them and
 keeps the scratch.
+
+A run's processes are the ones whose environment holds its mark, tested as
+`stop` does, with `grep -qzxF "DBP_MARK=<scratch>" /proc/<pid>/environ`,
+whose answer is the exit status alone (`<scratch>` is `scratch=` in the
+evidence's `run.env`). Never print a process's environment,
+the run's or anyone's: the caller's own processes hold its credentials.
 
 Done when it exits 0, and this exits non-zero:
 
