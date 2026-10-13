@@ -19,6 +19,7 @@ These files under `icons/` are copied from icon sets, as single-colour drawings 
 | icons/hourglass.svg | Lucide (lucide-static): hourglass | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/key.svg | Lucide (lucide-static): key-round | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/lightbulb.svg | Lucide (lucide-static): lightbulb | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
+| icons/redo.svg | Lucide (lucide-static): redo | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/rocket.svg | Lucide (lucide-static): rocket | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/scale.svg | Lucide (lucide-static): scale | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |
 | icons/user-x.svg | Lucide (lucide-static): user-x | 1.55.0 | ISC | Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT) |

@@ -311,7 +311,9 @@ describe("Waits on you (#258 AC4)", () => {
     });
     const waits = section(/^Waits on you/);
     expect(within(waits).getByRole("button", { name: "Grant… #4" }).className).toContain("text-pr-merged");
-    expect(within(waits).getByRole("button", { name: "Re-grant #4" })).toBeTruthy();
+    const regrant = within(waits).getByRole("button", { name: "Re-grant #4" });
+    expect(regrant.className.split(" ")).toEqual(expect.arrayContaining(["border-pr-merged", "text-pr-merged", "font-medium"]));
+    expect(drawnIcons(regrant)).toEqual(["unattendish-sdlc/redo"]);
     expect(within(waits).getByRole("button", { name: "Build it #8" }).className).toContain("text-success");
     expect(within(waits).getByText("watch only")).toBeTruthy();
   });

@@ -107,6 +107,7 @@ const ICONS = [
   ["hourglass.svg", "hourglass", LUCIDE],
   ["key.svg", "key-round", LUCIDE],
   ["lightbulb.svg", "lightbulb", LUCIDE],
+  ["redo.svg", "redo", LUCIDE],
   ["rocket.svg", "rocket", LUCIDE],
   ["scale.svg", "scale", LUCIDE],
   ["user-x.svg", "user-x", LUCIDE],

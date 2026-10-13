@@ -20,6 +20,14 @@ describe("the plugin's icons", () => {
     expect(unresolvedIcons(["Zap", "Rocket", "unattendish-sdlc/fleet", "unattendish-sdlc/nope", "other-plugin/fleet"])).toEqual(["Rocket", "unattendish-sdlc/nope", "other-plugin/fleet"]);
   });
 
+  it("draw the redo icon for Re-grant and nothing else, a name no other role, kind, stage, outcome or logo shares", () => {
+    const names = [...Object.values(ICONS), ...Object.values(KIND_ICONS), ...Object.values(STAGE_ICONS), ...Object.values(OUTCOME_ICONS), ...Object.values(SERVICE_LOGOS)];
+    expect(ICONS.regrant).toBe("unattendish-sdlc/redo");
+    expect(ICONS.regrant).not.toBe(KIND_ICONS.grant);
+    expect(Object.entries(ICONS).filter(([, name]) => name === ICONS.regrant).map(([role]) => role)).toEqual(["regrant"]);
+    expect(names.filter((name) => name === ICONS.regrant)).toHaveLength(1);
+  });
+
   it("are declared in package.json, every one of them, each with its file", () => {
     expect(Object.keys(declared).sort()).toEqual([...DECLARED_ICONS].sort());
     for (const [name, path] of Object.entries(declared)) expect(path, name).toBe(`./icons/${name}.svg`);

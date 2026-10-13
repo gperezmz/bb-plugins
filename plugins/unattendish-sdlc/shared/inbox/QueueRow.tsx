@@ -294,23 +294,28 @@ function ActionState({ action, className }: { action: Exclude<RowAction, { kind:
   }
 }
 
-/** The offered action as an outlined button in the kind's colour, and Re-grant beside it for a grant carried over. */
+/**
+ * The offered action as an outlined button in the kind's colour, and Re-grant beside it for a grant carried over, drawn
+ * as it is: the same border, text colour and weight, with an icon of its own.
+ */
 function OfferButtons({ row, offer, state, className }: { row: InboxRowView; offer: ActionOffer; state: RowActionState; className: string }) {
   const kind = OFFER_KIND[offer.kind];
   const tone = KIND_TONES[kind];
+  const toned = cn(FOCUS, className, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone]);
   return (
     <>
       <button
         type="button"
         aria-label={actionName(offer.label, row)}
-        className={cn(FOCUS, className, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone])}
+        className={toned}
         onClick={() => (offer.kind === "build" ? void state.send("build") : state.compose(offer.kind))}
       >
         <Glyph name={KIND_ICONS[kind]} />
         {offer.label}
       </button>
       {offer.regrant ? (
-        <button type="button" aria-label={actionName("Re-grant", row)} className={cn(FOCUS, className, "border-border")} onClick={() => void state.send("grant", { regrant: true })}>
+        <button type="button" aria-label={actionName("Re-grant", row)} className={toned} onClick={() => void state.send("grant", { regrant: true })}>
+          <Glyph name={ICONS.regrant} />
           Re-grant
         </button>
       ) : null}
