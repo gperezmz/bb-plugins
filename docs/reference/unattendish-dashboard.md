@@ -8,7 +8,7 @@ flowchart LR
   state --> tab["Fleet tab:<br/>the fleet header over<br/>Work, Notes, Watching, Ledger"]
   chip -->|click| tab
   poll -->|a new Inbox row| toast["Toast in every window"]
-  poll -->|a fleet that newly needs an account| needs["Toast with Connect…"]
+  poll -->|a fleet that newly needs an account| needs["Toast with Connect…<br/>or Renew…"]
   needs --> connect["Connect popup"]
   page -->|Connect… Renew…| connect
   tab --> connect
@@ -56,10 +56,11 @@ A problem is red, a warning amber, and a fleet with either has a bar of that col
 | The manifest is missing or unreadable | Problem | **Review** | The Fleet tab |
 | Manifest rows the plugin cannot read | Problem | **Review** | The Fleet tab |
 | A half no account reads, or whose credential the service refuses or cannot read the repository with | Problem | **Connect…** | The [Connect popup](../how-to/unattendish-connect-a-fleet.md#connect-a-half) for that half |
+| A token whose expiry has passed: `token expired N days ago`, or `token expired today`, its days counted in your own calendar. Where the service also refuses it, or it counts as unable to read the repository, this is the half's only flag | Problem | **Renew…** | The Connect popup, to renew it |
 | The manager thread is archived or gone | Problem | A red ✕, whose sentence says to run `/run-fleet` in a new thread to take the fleet over | Nothing |
 | The manifest names another repository: the fleet is [left behind](#a-left-behind-fleet) | Problem | A red ✕, whose sentence names the repository the manifest names and the command that unregisters the fleet | Nothing |
 | Any other [`notWatched` reason](unattendish-fleet-contract.md), or an outage the poll found | Problem | A red ✕ | Nothing |
-| A credential that expires within 7 days, or has expired | Warning | **Renew…** | The Connect popup, to renew it |
+| A token that has not expired yet but expires within 7 days: `token expires in N days`, the days counted up | Warning | **Renew…** | The Connect popup, to renew it |
 | Polling is late or has never run | Warning | Nothing: the polling cell says it | Nothing |
 
 A credential sharing the agents' rate limit is a warning on the fleet's card and not on the board.
@@ -129,7 +130,7 @@ What the Fleet tab opens on and the Fleet chip shows on hover, in this order:
 | Manager | A turning icon in green while it works, with no duration, since the plugin cannot know how long it has worked; a cup in grey with how long it has been idle; a person with a cross in red when its thread is archived or gone. A thread bb did not answer for also shows no manager, without the problem a gone manager raises |
 | Status | The four counts, each an icon and a number in its colour, a zero left out: blocked grey, in flight blue, waits on you amber, landed in the last 7 days purple |
 | Spend | As the board's Spend, where there is one, followed by `shared with <their names>` where the manager's thread holds other fleets |
-| Problems and warnings | Each as one strip tinted red or amber, with the server's sentence and its verb, in the board's order: **Connect…** for a half with no account or a credential connecting another account fixes; **Review** for a missing or unreadable manifest or rows that cannot be read; **Renew…** for a token that expires within 7 days; none for a problem nothing on the page fixes, late or never-run polling, or a gone manager, whose sentence says to run `/run-fleet` in a new thread to take the fleet over |
+| Problems and warnings | Each as one strip tinted red or amber, with the server's sentence and its verb, in the board's order: **Connect…** for a half with no account or a credential connecting another account fixes; **Review** for a missing or unreadable manifest or rows that cannot be read; **Renew…** for a token that has expired, in red, or that expires within 7 days, in amber; none for a problem nothing on the page fixes, late or never-run polling, or a gone manager, whose sentence says to run `/run-fleet` in a new thread to take the fleet over |
 | Last action | The action seen done most recently in the last hour whose row has left the Inbox: `You answered #5 Which queue · done 40m ago`. Left out with none |
 
 ## The Fleet chip
@@ -197,7 +198,7 @@ In flight's icons, by stage:
 | Block | What |
 |---|---|
 | Watched set | Each item's short link and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
-| Credentials | A small card for each credential the fleet uses: the service's logo or name, the account, the half it reads (`reads the forge`), its kind, **can write** where it can, its expiry date or `no expiry reported`, `shares the agents' rate limit` in amber for a `gh` or `glab` login, and **Change account…**, which opens the Connect popup for that half |
+| Credentials | A small card for each credential the fleet uses: the service's logo or name, the account, the half it reads (`reads the forge`), its kind, **can write** where it can, its expiry date (`expires 18 Oct`, or `expired 12 Oct` in red once it has passed) or `no expiry reported`, `shares the agents' rate limit` in amber for a `gh` or `glab` login, and **Change account…**, which opens the Connect popup for that half |
 | Polling | `every <interval> · polled <age> ago · <n> requests this hour` |
 
 ### Ledger
@@ -208,7 +209,7 @@ A section shows at most 200 rows, and the queue at most 400 in all; the counts a
 
 ## Toasts
 
-A fleet that newly needs an account raises a toast in every open bb window, led by a red plug. Its title is `<fleet> can't be read`, the server's sentence for what it needs is under it, and its button **Connect…** opens the popup over the view that is open. There is one toast for each half of a fleet, so a signal delivered twice raises one. It appears when a fleet becomes not watched for want of an account, a credential the service refuses, or a credential that cannot read the repository, and not again while the reason stays.
+A fleet that newly needs an account raises a toast in every open bb window, led by a red plug. Its title is `<fleet> can't be read`, the server's sentence for what it needs is under it, and its button **Connect…** opens the popup over the view that is open. There is one toast for each half of a fleet, so a signal delivered twice raises one. It appears when a fleet becomes not watched for want of an account, a credential the service refuses, or a credential that cannot read the repository, and not again while the reason stays. Where the service refuses a token because it has expired, the line under the title says so instead, `<credential>: token expired N days ago`, and its button is **Renew…**, which opens the popup to renew that token. A token that expires before the service refuses it raises no toast: the fleet board says it.
 
 When a poll or a manager's turn ending shows an Inbox row never seen before for its repository, every open bb window shows a toast. Its title is the item, such as `#7 Which cache to use`, led by the icon of what the row waits for, and the line under it is the forge's logo and `<fleet> waits for <your answer | a grant to merge | your ready label | something else>`. Its button follows what the row waits for:
 

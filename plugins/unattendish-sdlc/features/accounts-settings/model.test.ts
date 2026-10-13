@@ -11,19 +11,25 @@ describe("an account", () => {
 
 describe("a credential", () => {
   it("shows its expiry, or that none was reported, or that the service refuses it", () => {
-    expect(expiryText({ refused: false, expiresAt: "2026-10-18T12:00:00Z" })).toBe("expires 18 Oct");
-    expect(expiryText({ refused: false, expiresAt: null })).toBe("no expiry reported");
-    expect(expiryText({ refused: true, expiresAt: "2026-10-18T12:00:00Z" })).toBe("refused by the service");
+    expect(expiryText({ refused: false, expired: false, expiresAt: "2026-10-18T12:00:00Z" })).toBe("expires 18 Oct");
+    expect(expiryText({ refused: false, expired: false, expiresAt: null })).toBe("no expiry reported");
+    expect(expiryText({ refused: true, expired: false, expiresAt: "2026-10-18T12:00:00Z" })).toBe("refused by the service");
   });
 
   it("colours its expiry by urgency: red where refused, amber within the window the cards warn in, else grey (AC7)", () => {
     const at = "2026-10-18T12:00:00Z";
-    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: null })).toEqual({ text: "expires 18 Oct", tone: "grey", icon: null });
-    expect(expiryShown({ refused: false, expiresAt: null, expiresInDays: null })).toEqual({ text: "no expiry reported", tone: "grey", icon: null });
-    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "expires in 3 days", tone: "amber", icon: "Clock" });
-    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 1 })).toEqual({ text: "expires in 1 day", tone: "amber", icon: "Clock" });
-    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 0 })).toEqual({ text: "expires today", tone: "amber", icon: "Clock" });
-    expect(expiryShown({ refused: true, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "refused by the service", tone: "red", icon: "CircleX" });
+    expect(expiryShown({ refused: false, expired: false, expiresAt: at, expiresInDays: null })).toEqual({ text: "expires 18 Oct", tone: "grey", icon: null });
+    expect(expiryShown({ refused: false, expired: false, expiresAt: null, expiresInDays: null })).toEqual({ text: "no expiry reported", tone: "grey", icon: null });
+    expect(expiryShown({ refused: false, expired: false, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "expires in 3 days", tone: "amber", icon: "Clock" });
+    expect(expiryShown({ refused: false, expired: false, expiresAt: at, expiresInDays: 1 })).toEqual({ text: "expires in 1 day", tone: "amber", icon: "Clock" });
+    expect(expiryShown({ refused: true, expired: false, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "refused by the service", tone: "red", icon: "CircleX" });
+  });
+
+  it("reads expired on its date in red with a cross once its expiry has passed, refused or not (#261 AC5)", () => {
+    const at = new Date(2026, 9, 12, 23, 0).toISOString();
+    const shown = { text: "expired 12 Oct", tone: "red", icon: "CircleX" };
+    expect(expiryShown({ refused: false, expired: true, expiresAt: at, expiresInDays: null })).toEqual(shown);
+    expect(expiryShown({ refused: true, expired: true, expiresAt: at, expiresInDays: null })).toEqual(shown);
   });
 
   it("names the fleets that read with it", () => {
@@ -50,6 +56,15 @@ describe("Renew", () => {
     const linear = accountSetting({ id: "acc_lin", service: "linear", place: "linear.app" });
     const key = credentialSetting({ id: "cred_key", refused: true, renew: { kind: "paste" } });
     expect(renewOffer(linear, key)).toEqual({ kind: "popup", request: { target: { service: "linear", place: "linear.app" }, account: "acc_lin", replaces: "cred_key" } });
+  });
+
+  it("is offered for a token that has expired (#261 AC5)", () => {
+    expect(renewOffer(account, credentialSetting({ expired: true }))).toMatchObject({ kind: "popup", request: { account: "acc_yuser", replaces: "cred_acme" } });
+  });
+
+  it("gives an expired login's command in place of Renew (#261 AC5)", () => {
+    const login = credentialSetting({ expired: true, renew: { kind: "login", command: "gh auth login --hostname github.com" } });
+    expect(renewOffer(account, login)).toEqual({ kind: "command", command: "gh auth login --hostname github.com" });
   });
 
   it("gives a login's command and no Renew", () => {

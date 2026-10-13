@@ -56,6 +56,25 @@ describe("the needs toasts", () => {
     expect(sdk.navigate.toPluginPanel).not.toHaveBeenCalled();
   });
 
+  it("offers Renew… for a token refused because it expired yesterday, saying it expired, and renews that token (#261 AC7)", () => {
+    render(<NeedsToasts />);
+    const expiresAt = new Date(Date.now() - 86_400_000).toISOString();
+    sdk.emit(FLEET_NEEDS, { ...signal, fleet: "org/dash", expired: { label: "GitHub · yuser for org", accountId: "acc_y", credentialId: "cred_y", expiresAt } });
+    expect(toast.mock.calls[0]![0]).toBe("org/dash can't be read");
+    const { description, action } = toast.mock.calls[0]![1] as { description: string; action: { label: string; onClick(): void } };
+    expect(description).toBe("GitHub · yuser for org: token expired 1 day ago");
+    expect(drawnIcons(render((toast.mock.calls[0]![1] as { icon: ReactElement }).icon).baseElement)).toEqual(["ElectricPlugs"]);
+    expect(action.label).toBe("Renew…");
+    action.onClick();
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "acc_y", replaces: "cred_y" });
+  });
+
+  it("keeps Connect… for a refused credential whose token has not expired (#261 AC7)", () => {
+    render(<NeedsToasts />);
+    sdk.emit(FLEET_NEEDS, { ...signal, expired: null });
+    expect((toast.mock.calls[0]![1] as { action: { label: string } }).action.label).toBe("Connect…");
+  });
+
   it("ignores a payload that is not the signal", () => {
     render(<NeedsToasts />);
     sdk.emit(FLEET_NEEDS, { nonsense: true });

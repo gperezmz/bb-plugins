@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ago, fleetCard, MINUTE, NOW } from "@/testing/fixtures";
 import type { ProblemView, WarningView } from "@/src/fleet/application/views";
-import { fixIcon, flagsOf, flagSummary, isQuiet, narrowFlagIcon, worstFlag } from "./fleet-flags";
+import { byFlagsThenWaiting, fixIcon, fleetMark, flagsOf, flagSummary, isQuiet, narrowFlagIcon, worstFlag } from "./fleet-flags";
 
 const missing: ProblemView = { code: "manifest-missing", text: "The manifest at /x/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
 const unreadable: ProblemView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
@@ -66,6 +66,40 @@ describe("a fleet's flags", () => {
     expect(worstFlag(flagsOf(fleetCard({ problems: [gone], warnings: [late] }), NOW))).toBe("problem");
     expect(worstFlag(flagsOf(fleetCard({ warnings: [late] }), NOW))).toBe("warning");
     expect(worstFlag([])).toBeNull();
+  });
+});
+
+describe("an expired token (#261)", () => {
+  const twoDaysAgo = new Date(new Date(NOW).getTime() - 2 * 86_400_000).toISOString();
+  const expired: ProblemView = {
+    code: "token-expired",
+    text: "GitHub · yuser for acme: token expired",
+    fix: { kind: "renew", role: "forge", accountId: "a1", credentialId: "c1" },
+    label: "GitHub · yuser for acme",
+    expiresAt: twoDaysAgo,
+  };
+
+  it("is a red problem whose verb is Renew…, saying how many days ago it expired (AC2)", () => {
+    const [flag] = flagsOf(fleetCard({ problems: [expired] }), NOW);
+    expect(flag).toEqual({ kind: "problem", sentence: "GitHub · yuser for acme: token expired 2 days ago", verb: "Renew…", fix: expired.fix, saidElsewhere: false });
+    expect(fixIcon(flag!)).toBe(fixIcon(flagsOf(fleetCard({ warnings: [expires] }), NOW)[0]!));
+  });
+
+  it("comes after a half Connect… fixes and before a gone manager (AC2)", () => {
+    const flags = flagsOf(fleetCard({ problems: [gone, expired, forge, other], warnings: [expires] }), NOW);
+    expect(flags.map((flag) => flag.sentence)).toEqual([forge.text, "GitHub · yuser for acme: token expired 2 days ago", gone.text, other.text, "GitHub · yuser for acme: token expires in 3 days"]);
+  });
+
+  it("lists its fleet among those with a problem, and marks it with a red dot and no count (AC2, AC4)", () => {
+    const withExpired = fleetCard({ repo: "org/dash", problems: [expired] });
+    const warned = fleetCard({ repo: "org/aaa", warnings: [expires] });
+    expect(worstFlag(flagsOf(withExpired, NOW))).toBe("problem");
+    expect([warned, withExpired].sort(byFlagsThenWaiting(NOW)).map((card) => card.repo)).toEqual(["org/dash", "org/aaa"]);
+    expect(fleetMark({ ...withExpired, waiting: 0 }, NOW)).toEqual({ count: null, dot: "problem" });
+  });
+
+  it("reads Renew… with no +1 once the server says only that it expired (AC3)", () => {
+    expect(flagSummary(flagsOf(fleetCard({ problems: [expired] }), NOW))).toBe("Renew…");
   });
 });
 

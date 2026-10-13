@@ -125,16 +125,33 @@ export type FixView =
   | { readonly kind: "fleet-tab" }
   | { readonly kind: "none" };
 
-/** A problem the server flags about a fleet. */
-export interface ProblemView {
-  /**
-   * The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, `manager-gone` for a
-   * manager thread archived or gone, or `left-behind` for a fleet whose manifest names another repository.
-   */
-  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
-  readonly text: string;
-  readonly fix: FixView;
+/** Renew… for a token: the credential it replaces, its account and the half it serves. */
+export interface RenewFixView {
+  readonly kind: "renew";
+  readonly role: SourceRole;
+  readonly accountId: string;
+  readonly credentialId: string;
 }
+
+/** A problem the server flags about a fleet. */
+export type ProblemView =
+  | {
+      /**
+       * The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, `manager-gone`
+       * for a manager thread archived or gone, or `left-behind` for a fleet whose manifest names another repository.
+       */
+      readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
+      readonly text: string;
+      readonly fix: FixView;
+    }
+  | {
+      /** A token whose expiry has passed; it carries what Renew… needs, and when it expired for a page to count the days. */
+      readonly code: "token-expired";
+      readonly text: string;
+      readonly fix: RenewFixView;
+      readonly label: string;
+      readonly expiresAt: string;
+    };
 
 /** An account as a page names it. */
 export interface AccountRefView {
@@ -171,6 +188,8 @@ export interface FleetCredentialView {
   readonly auth: AccountVia;
   /** Where the service reported the credential's expiry; null when it did not. */
   readonly expiresAt: string | null;
+  /** True once that expiry has passed. */
+  readonly expired: boolean;
   readonly canWrite: boolean;
   /** True for the gh or glab login, which the fleet's agents act through too. */
   readonly sharesAgentRateLimit: boolean;
@@ -211,11 +230,11 @@ export interface FleetCardView {
   readonly cost: CostView | null;
   readonly lastPolledAt: string | null;
   readonly intervalMs: number;
-  /** The fleet's problems: every reason it is not fully watched, and a manager that is gone. */
+  /** The fleet's problems: every reason it is not fully watched, its expired tokens, and a manager that is gone. */
   readonly problems: readonly ProblemView[];
   /** The forge, then the tracker where it is a service of its own. */
   readonly halves: readonly HalfView[];
-  /** What to warn of: credentials expiring within 7 days, those sharing the agents' rate limit, and polling that is late or has never run. */
+  /** What to warn of: credentials not expired yet that expire within 7 days, those sharing the agents' rate limit, and polling that is late or has never run. */
   readonly warnings: readonly WarningView[];
 }
 
@@ -374,7 +393,9 @@ export interface CredentialSettingView {
   readonly canWrite: boolean;
   /** Where the service reported an expiry; null shows as `no expiry reported`. */
   readonly expiresAt: string | null;
-  /** Days left where it expires within the window the cards warn in; null otherwise. */
+  /** True once the reported expiry has passed. */
+  readonly expired: boolean;
+  /** Days left where it has not expired yet and expires within the window the cards warn in; null otherwise. */
   readonly expiresInDays: number | null;
   /** The service refuses it now. */
   readonly refused: boolean;
@@ -537,6 +558,8 @@ export interface FleetNeedsSignal {
   readonly managerThreadId: string;
   readonly role: SourceRole;
   readonly text: string;
+  /** Where the half's credential was refused because its token has expired, what Renew… needs; null otherwise. */
+  readonly expired: { readonly label: string; readonly accountId: string; readonly credentialId: string; readonly expiresAt: string } | null;
 }
 
 // ---- results ----

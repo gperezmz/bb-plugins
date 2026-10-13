@@ -363,6 +363,19 @@ describe("a board line (AC2–AC6)", () => {
     expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "a1", replaces: "c1" });
   });
 
+  it("offers Renew… in red for a token that expired 2 days ago, says so on hover, and lists the fleet among those with a problem (#261 AC2)", async () => {
+    const expired: ProblemView = { code: "token-expired", text: "GitHub · yuser for org: token expired", fix: { kind: "renew", role: "forge", accountId: "a1", credentialId: "c1" }, label: "GitHub · yuser for org", expiresAt: ago(2 * 24 * HOUR) };
+    await show(fleetsView({ fleets: [fleet("org/aaa", { warnings: [{ kind: "expires", label: "GitHub · yuser for org", credentialId: "c2", accountId: "a1", role: "forge", expiresAt: ago(0), daysLeft: 3 }] }), fleet("org/dash", { problems: [expired] })] }));
+    const dash = line("org/dash");
+    expect(dash.querySelector(".bg-destructive")).not.toBeNull();
+    const renew = within(dash).getByRole("button", { name: "GitHub · yuser for org: token expired 2 days ago" });
+    expect(renew.textContent).toBe("Renew…");
+    expect(renew.className).toContain("text-destructive-text");
+    expect(dash.compareDocumentPosition(line("org/aaa")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(renew);
+    expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "a1", replaces: "c1" });
+  });
+
   it("shows a red ✕ for a gone manager, saying to run /run-fleet in a new thread", async () => {
     const gone: ProblemView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
     await show(fleetsView({ fleets: [fleet("org/dash", { problems: [gone] })] }));

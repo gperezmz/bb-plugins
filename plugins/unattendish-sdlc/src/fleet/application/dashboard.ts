@@ -116,7 +116,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         card: await cardOf(deps, g, now),
         manifest: manifestViewOf(g, inbox, now),
         watched: watchedOf(deps, g),
-        credentials: credentialsOf(deps, g),
+        credentials: credentialsOf(deps, g, now),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
         failedReads: deps.store.failedReadsSince(key, new Date(now.getTime() - 24 * 3_600_000).toISOString()),
         lastAction: lastActionOf(g, inbox.ids, now),

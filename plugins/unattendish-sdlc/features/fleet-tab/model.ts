@@ -186,9 +186,13 @@ export function credentialService(kind: FleetCredentialView["kind"]): ServiceKin
   }
 }
 
-/** A credential's quiet facts: the half it reads, its kind, and its expiry. */
-export function credentialFacts(credential: FleetCredentialView): string[] {
-  return [`reads the ${credential.role}`, credentialKind(credential.kind), expiryText(credential.expiresAt)];
+/** A credential's facts: the half it reads, its kind, and its expiry, red once it has expired and quiet otherwise. */
+export function credentialFacts(credential: FleetCredentialView): { readonly text: string; readonly red: boolean }[] {
+  return [
+    { text: `reads the ${credential.role}`, red: false },
+    { text: credentialKind(credential.kind), red: false },
+    { text: expiryText(credential.expiresAt, credential.expired), red: credential.expired },
+  ];
 }
 
 /** `every 2m · polled 40s ago · 188 requests this hour`. */

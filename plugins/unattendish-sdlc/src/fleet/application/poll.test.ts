@@ -719,6 +719,40 @@ describe("credentials (AC12)", () => {
   });
 });
 
+describe("a refused token that has expired (#261 AC3, AC7)", () => {
+  it("toasts Renew… for the token, and the card says only that it expired", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    // The fake's credential for github.com/org is kept under that key; its expiry is the one the service last reported.
+    w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "fine-grained", owner: "org", expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, null);
+    const expiresAt = new Date(w.clock.now().getTime() - 86_400_000).toISOString();
+    w.accounts.noteExpiry("github.com/org", expiresAt);
+    for (let i = 0; i < 3; i += 1) {
+      w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+      await poll(w);
+      w.clock.advance(120_000);
+    }
+    expect(w.events.needs).toEqual([
+      { fleet: "github.com/org/repo", managerThreadId: expect.any(String), role: "forge", text: expect.stringContaining("refused"), expired: { label: "github.com/org", accountId: "account:github.com/org", credentialId: "github.com/org", expiresAt } },
+    ]);
+    const card = (await createDashboard(w.dash).fleets()).fleets[0]!;
+    expect(card.problems.map((problem) => problem.code)).toEqual(["token-expired"]);
+    expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]!.credentials[0]).toMatchObject({ expiresAt, expired: true });
+  });
+
+  it("toasts Connect… for a refused token that has not expired", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) {
+      w.adapters.github.queue(new HttpError("auth", "GET /x answered 401", 401));
+      await poll(w);
+      w.clock.advance(120_000);
+    }
+    expect(w.events.needs).toMatchObject([{ role: "forge", expired: null }]);
+  });
+});
+
 describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
   const forbidden = outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "#7 answered 403", kind: "forbidden" }] });
   const unreachable = outcome({ failures: [{ ref: null, reason: "the listing got no answer", kind: "unreachable" }] });

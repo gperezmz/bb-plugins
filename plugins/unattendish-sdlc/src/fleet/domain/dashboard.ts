@@ -40,11 +40,31 @@ export const oldestFirst = <Row extends Pick<InboxRow, "since" | "ref">>(rows: r
 /** Where a problem is fixed: Connect… for the half a credential problem is about, or the Fleet tab for the manifest. */
 export type Fix = { readonly kind: "connect"; readonly role: SourceRole } | { readonly kind: "fleet-tab" } | { readonly kind: "none" };
 
-export interface Problem {
-  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
-  readonly text: string;
-  readonly fix: Fix;
+/** Renew… for an expired token: the credential it replaces, its account and the half it serves. */
+export interface RenewFix {
+  readonly kind: "renew";
+  readonly role: SourceRole;
+  readonly accountId: string;
+  readonly credentialId: string;
 }
+
+/** A token whose expiry has passed, which Renew… puts right. */
+export interface ExpiredProblem {
+  readonly code: "token-expired";
+  /** `GitHub · yuser: token expired`; a page counts the days in the operator's own calendar. */
+  readonly text: string;
+  readonly fix: RenewFix;
+  readonly label: string;
+  readonly expiresAt: string;
+}
+
+export type Problem =
+  | {
+      readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
+      readonly text: string;
+      readonly fix: Fix;
+    }
+  | ExpiredProblem;
 
 /** Where each reason is fixed: a credential through Connect… for its half, the manifest on the Fleet tab, which shows its state and why it cannot be read. */
 const fixOf = (line: NotWatched): Fix => {
@@ -74,12 +94,19 @@ export interface LeftBehind {
 }
 
 /**
- * The fleet's problems, each text once: that it is left behind (`leftBehind`), then what `notWatched` says, then the
- * unreadable rows, then a manager that is gone (`managerGone`).
+ * The fleet's problems, each text once: that it is left behind (`leftBehind`), then what `notWatched` says, then its
+ * expired tokens (`expired`), then the unreadable rows, then a manager that is gone (`managerGone`).
  */
-export const problemsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false, leftBehind: LeftBehind | null = null): Problem[] => {
+export const problemsOf = (
+  notWatched: readonly NotWatched[],
+  unreadable: readonly UnreadableRow[],
+  managerGone = false,
+  leftBehind: LeftBehind | null = null,
+  expired: readonly ExpiredProblem[] = [],
+): Problem[] => {
   const problems: Problem[] = leftBehind === null ? [] : [{ code: "left-behind", text: leftBehindText(leftBehind.fleet, leftBehind.names), fix: { kind: "none" } }];
   for (const line of notWatched) if (!problems.some((known) => known.text === line.text)) problems.push({ code: line.code, text: line.text, fix: fixOf(line) });
+  problems.push(...expired);
   const text = unreadableRowsText(unreadable);
   if (text !== null) problems.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
   if (managerGone) problems.push({ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } });
@@ -109,21 +136,61 @@ export const pollingWarning = (lastPolledAt: string | null, intervalMs: number, 
   return since > LATE_AFTER_INTERVALS * intervalMs ? { kind: "polling-late", lastPolledAt } : null;
 };
 
-/** Days left before an expiry, where it falls within the window cards warn in (one already passed counts as 0); null otherwise. */
+/** True where the service-reported expiry is `now` or before; false with none, or one that cannot be read. */
+export const isExpired = (expiresAt: string | null, now: Date): boolean => {
+  if (expiresAt === null) return false;
+  const at = Date.parse(expiresAt);
+  return !Number.isNaN(at) && at <= now.getTime();
+};
+
+/** Whole days left before an expiry, counted up, where it is still ahead and within the window cards warn in; null otherwise. */
 export const daysLeftToWarn = (expiresAt: string | null, now: Date): number | null => {
   if (expiresAt === null) return null;
   const left = Date.parse(expiresAt) - now.getTime();
-  return Number.isNaN(left) || left > EXPIRY_WARNING_DAYS * DAY_MS ? null : Math.max(0, Math.ceil(left / DAY_MS));
+  return Number.isNaN(left) || left <= 0 || left > EXPIRY_WARNING_DAYS * DAY_MS ? null : Math.ceil(left / DAY_MS);
 };
 
+/** A credential a fleet reads with, as its problems and warnings weigh it. */
+export interface WeighedCredential {
+  readonly role: SourceRole;
+  readonly label: string;
+  readonly credentialId: string;
+  readonly accountId: string;
+  readonly auth: "token" | "gh" | "glab";
+  readonly expiresAt: string | null;
+}
+
+/** A problem for each credential whose service-reported expiry has passed by `now`. */
+export const expiredProblems = (credentials: readonly WeighedCredential[], now: Date): ExpiredProblem[] =>
+  credentials.flatMap((credential) =>
+    credential.expiresAt !== null && isExpired(credential.expiresAt, now)
+      ? [
+          {
+            code: "token-expired" as const,
+            text: `${credential.label}: token expired`,
+            fix: { kind: "renew" as const, role: credential.role, accountId: credential.accountId, credentialId: credential.credentialId },
+            label: credential.label,
+            expiresAt: credential.expiresAt,
+          },
+        ]
+      : [],
+  );
+
 /**
- * What a card warns of for each credential the fleet uses: `expires` when the service-reported expiry is within seven
- * days of `now` (one already passed too, with 0 days left), and `shares-rate-limit` for a gh or glab login.
+ * The reasons in `notWatched` left to say once a half's expired token (`expired`) is: the service refusing that half's
+ * credential, or finding it cannot read the half, is not said too. An expired token answers 401, which a check of
+ * access counts as cannot read, so the expiry explains both; Renew… checks access again at once and says where the
+ * new token still cannot read the half.
  */
-export const credentialWarnings = (
-  credentials: readonly { readonly role: SourceRole; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly auth: "token" | "gh" | "glab"; readonly expiresAt: string | null }[],
-  now: Date,
-): Warning[] => {
+export const refusalsUnexplained = (notWatched: readonly NotWatched[], expired: readonly ExpiredProblem[]): NotWatched[] =>
+  notWatched.filter((line) => line.code !== "credential-refused" || line.role === undefined || !expired.some((problem) => problem.fix.role === line.role));
+
+/**
+ * What a card warns of for each credential the fleet uses: `expires` when the service-reported expiry is still ahead
+ * and within seven days of `now` (one already passed is a problem instead), and `shares-rate-limit` for a gh or glab
+ * login.
+ */
+export const credentialWarnings = (credentials: readonly WeighedCredential[], now: Date): Warning[] => {
   const warnings: Warning[] = [];
   for (const credential of credentials) {
     const daysLeft = daysLeftToWarn(credential.expiresAt, now);

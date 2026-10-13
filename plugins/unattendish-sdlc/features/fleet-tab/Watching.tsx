@@ -84,7 +84,9 @@ function Credential({ credential, fleet }: { credential: FleetCredentialView; fl
       </div>
       <div className="flex flex-wrap gap-x-2 text-muted-foreground">
         {credentialFacts(credential).map((fact) => (
-          <span key={fact}>{fact}</span>
+          <span key={fact.text} className={cn(fact.red && "text-destructive-text")}>
+            {fact.text}
+          </span>
         ))}
       </div>
       {credential.sharesAgentRateLimit ? <div className="text-warning-text">shares the agents' rate limit</div> : null}

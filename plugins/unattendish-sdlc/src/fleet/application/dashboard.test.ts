@@ -248,7 +248,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).problems).toEqual([]);
   });
 
-  it("warns of a credential expiring within 7 days, one passed, and a login that shares the agents' rate limit", async () => {
+  it("warns of a credential expiring within 7 days, flags one passed as a problem (#261 AC2), and a login that shares the agents' rate limit", async () => {
     const w = world();
     w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "gh" }]);
     await start(w, manifest());
@@ -264,9 +264,28 @@ describe("the card (AC3, AC4, AC14)", () => {
       { kind: "shares-rate-limit", label: "github.com/org" },
     ]);
     save(hoursAgo(w, 5));
-    expect((await cardOf(w)).warnings[0]).toMatchObject({ kind: "expires", daysLeft: 0 });
+    expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
+    expect((await cardOf(w)).problems).toEqual([
+      {
+        code: "token-expired",
+        text: "github.com/org: token expired",
+        fix: { kind: "renew", role: "forge", accountId: "account:github.com/org", credentialId: "github.com/org" },
+        label: "github.com/org",
+        expiresAt: hoursAgo(w, 5),
+      },
+    ]);
     save(new Date(w.clock.now().getTime() + 30 * 86_400_000).toISOString());
     expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
+  });
+
+  it("says only that the token expired where it also counts as cannot read, as a 401 at registration does (#261 AC3)", async () => {
+    const w = world();
+    w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "token" }]);
+    await start(w, manifest());
+    w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "fine-grained", owner: "org", expiresAt: hoursAgo(w, 5), addedAt: "2026-10-12T09:00:00.000Z" }, null);
+    w.accounts.setAccessProblem(REPO_KEY, "forge", { credentialId: "github.com/org", why: "forbidden", at: hoursAgo(w, 6) });
+    expect((await cardOf(w)).problems.map((problem) => problem.code)).toEqual(["token-expired"]);
   });
 
   it("does not warn of a token credential with no expiry", async () => {
@@ -397,8 +416,12 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
     const answer = await view(w).fleetDetail({ repo: "github.com/org/repo" });
     if (!answer.ok) throw new Error(answer.reason);
     expect(answer.detail.credentials).toEqual([
-      { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", canWrite: true, sharesAgentRateLimit: true },
+      { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", expired: false, canWrite: true, sharesAgentRateLimit: true },
     ]);
+    w.accounts.noteExpiry("github.com/org", hoursAgo(w, 1));
+    const later = await view(w).fleetDetail({ repo: "github.com/org/repo" });
+    if (!later.ok) throw new Error(later.reason);
+    expect(later.detail.credentials[0]).toMatchObject({ expiresAt: hoursAgo(w, 1), expired: true });
     expect(answer.detail.requestsThisHour).toBe(7);
     expect(answer.detail.failedReads).toBe(0);
     expect(answer.detail.lastAction).toBeNull();

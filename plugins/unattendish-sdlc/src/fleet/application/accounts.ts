@@ -34,7 +34,7 @@ import {
   type CredentialKind,
   type Half,
 } from "../domain/accounts";
-import { daysLeftToWarn } from "../domain/dashboard";
+import { daysLeftToWarn, isExpired } from "../domain/dashboard";
 import { defaultServiceOfHost, formatRepo, parsePrefix, parseRepo, repoId } from "../domain/identity";
 import type { Registration, ServiceKind, SourceRole } from "../domain/model";
 import { gather, halvesOf, type ViewDeps } from "./fleet-views";
@@ -204,6 +204,7 @@ export async function accountsView(deps: AccountsDeps): Promise<AccountSettingVi
           kind: credential.kind,
           canWrite: canWrite(credential.kind),
           expiresAt: credential.expiresAt,
+          expired: isExpired(credential.expiresAt, now),
           expiresInDays: daysLeftToWarn(credential.expiresAt, now),
           refused: refused.has(credential.id),
           sharesRateLimit: account.via !== "token",

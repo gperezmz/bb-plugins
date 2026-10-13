@@ -3,6 +3,7 @@ import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import type { NotWatched, OutsideLink, UnreadableRow } from "../domain/model";
 import { effectiveInterval } from "../domain/registration";
 import { canWrite, type CredentialKind } from "../domain/accounts";
+import { isExpired } from "../domain/dashboard";
 import type { AccountStore, Clock, Credentials, ManifestFiles, Store, ThreadDirectory } from "./ports";
 import { expiriesOf } from "./fleet-views";
 import { accessRolesOf, assessWatching, refusedNotWatched, refusedSince } from "./watching";
@@ -32,6 +33,8 @@ export interface FleetStatus {
     readonly kind: CredentialKind;
     readonly auth: "token" | "gh" | "glab";
     readonly expiresAt: string | null;
+    /** True once that expiry has passed. */
+    readonly expired: boolean;
     /** True for a classic token, or a gh or glab login. */
     readonly canWrite: boolean;
     /** True for a gh or glab login, which the fleet's agents act through too. */
@@ -84,6 +87,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
           kind: credential.kind,
           auth: credential.auth,
           expiresAt: expiries.get(credential.key) ?? null,
+          expired: isExpired(expiries.get(credential.key) ?? null, deps.clock.now()),
           canWrite: canWrite(credential.kind),
           sharesAgentRateLimit: credential.auth !== "token",
         },

@@ -117,11 +117,11 @@ The fleet board's column of a fleet's four counts, always in this order: Blocked
 _Avoid_: Counts column
 
 **Problem**:
-Something the server flags about a fleet that keeps it from being fully watched or run, such as a missing manifest, a half no account can read, or a manager that is gone; drawn red.
+Something the server flags about a fleet that keeps it from being fully watched or run, such as a missing manifest, a half no account can read, a token whose expiry has passed, or a manager that is gone; drawn red.
 _Avoid_: Error, reason
 
 **Warning**:
-Something the server flags about a fleet that needs the operator soon but stops nothing yet, such as a token expiring within 7 days or polling that is late; drawn amber.
+Something the server flags about a fleet that needs the operator soon but stops nothing yet, such as a token that has not expired yet but expires within 7 days, or polling that is late; drawn amber.
 _Avoid_: Alert
 
 **Quiet fleet**:

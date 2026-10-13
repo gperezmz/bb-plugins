@@ -55,6 +55,14 @@ describe("the Fleet chip (#258 AC10, AC11)", () => {
     expect(dotOf(button)).toBeNull();
   });
 
+  it("shows a red dot and no count given only a token that expired yesterday (#261 AC4)", async () => {
+    const expired: ProblemView = { code: "token-expired", text: "GitHub · yuser for acme: token expired", fix: { kind: "renew", role: "forge", accountId: "a", credentialId: "c" }, label: "GitHub · yuser for acme", expiresAt: ago(24 * 60 * MINUTE) };
+    await show(fleetCard({ problems: [expired] }));
+    const button = screen.getByRole("button", { name: "Fleet: nothing waits on you, and it has a problem" });
+    expect(button.textContent).toBe("");
+    expect(dotOf(button)!.className).toContain("bg-destructive");
+  });
+
   it("shows an amber dot and no count given only a token expiring in 3 days", async () => {
     await show(fleetCard({ warnings: [expiring] }));
     const button = screen.getByRole("button", { name: "Fleet: nothing waits on you, and it has a warning" });
