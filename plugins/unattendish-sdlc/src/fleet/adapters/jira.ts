@@ -26,7 +26,7 @@
 //   `updated` takes "yyyy/MM/dd HH:mm" or a relative "-Nm" ("w", "d", "h", "m"), never seconds, so it is minute
 //   precision, and an absolute time is read in the searching user's configured time zone, which the adapter cannot
 //   know. It sends a relative time, which no zone changes, a little wider than needed, and keeps only the items whose
-//   returned `updated` is at or after `since`. `labels = "x"`, `assignee is EMPTY`, `statusCategory = Done` ("a work
+//   returned `updated` is at or after `since`, but for a skipped listing (below), which keeps every item it listed. `labels = "x"`, `assignee is EMPTY`, `statusCategory = Done` ("a work
 //   item is resolved when statusCategory = Done") and `assignee`/`creator` by account id or email are documented.
 //
 // The updated listing is read `ORDER BY updated ASC` ("JQL keywords", https://support.atlassian.com/jira-core-cloud/docs/advanced-search-reference-jql-keywords/:

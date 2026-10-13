@@ -231,7 +231,7 @@ export interface ActivityEvent {
   readonly actorAliases?: readonly string[];
 }
 
-/** An item the service listed as updated since the cursor and that the source did not read further. */
+/** An item the service listed as updated since the cursor, or, from a skipped listing, any item it listed, and that the source did not read further. */
 export interface UpdatedItem {
   readonly role: SourceRole;
   readonly ref: string;

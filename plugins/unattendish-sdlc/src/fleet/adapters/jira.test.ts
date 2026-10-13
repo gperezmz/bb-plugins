@@ -487,6 +487,22 @@ describe("the Jira adapter's updated listing", () => {
       const out = await read({ since: iso(5) });
       expect(Date.parse(out.listingCutAt!)).toBeGreaterThan(Date.parse(iso(5)));
       expect(out.listingSkipped).toBeUndefined();
+      expect(out.updated.length).toBeGreaterThan(0);
+      expect(out.updated.every((u) => Date.parse(u.at) >= Date.parse(iso(5)))).toBe(true);
+    });
+
+    it("reports, where it is skipped, the issues before the cursor first and then those at it", async () => {
+      const mixed = [
+        ...Array.from({ length: 10 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) })),
+        ...Array.from({ length: 20 }, (_, i) => issue(`PROJ-${i + 11}`, { updated: at(5) })),
+      ];
+      const { read } = await world({ issues: mixed, settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ reached: iso(5) });
+      expect(out.updated).toHaveLength(20);
+      expect(out.updated.slice(0, 10).map((u) => u.ref)).toEqual(Array.from({ length: 10 }, (_, i) => `PROJ-${i + 1}`));
+      expect(out.updated.slice(10).map((u) => u.at)).toEqual(Array.from({ length: 10 }, () => iso(5)));
     });
 
     it("is a failure with no ref where the service did not list oldest first", async () => {
