@@ -605,7 +605,7 @@ export class SqliteStore implements Store {
         where.push("disposition = ?");
         params.push(DONE_DISPOSITION[query.done]);
       }
-      if (query.skippedListing === true) where.push("kind = 'skipped listing'");
+      if (query.skippedListing !== undefined) where.push(query.skippedListing ? "kind = 'skipped listing'" : "kind <> 'skipped listing'");
       const rows = this.db.prepare(`SELECT * FROM changes WHERE ${where.join(" AND ")} ORDER BY seen_at DESC, rowid DESC LIMIT ?`).all(...params, limit) as ChangeRow[];
       for (const row of rows) entries.push({ type: "change", row: toLedgerRow(row) });
     }

@@ -382,8 +382,7 @@ class Reading {
    * The listing is oldest first. One cut off at its page limit is no failure, provided the times it listed did run
    * oldest first: where the last is after `since` it is returned as `cutAt`; where every one is at or before `since`,
    * as when a bulk edit updated more issues within the window than the listing holds, the listing is `skipped`, with
-   * the window it covered (its start rounded down to the minute, as `updated` is precise to the minute) and the last
-   * time it reached. Otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip
+   * the window it covered and the last time it reached. Otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip
    * nothing.
    */
   private async listUpdated(): Promise<UpdatedListing> {
@@ -414,7 +413,10 @@ class Reading {
     if (!found.truncated) return {};
     if (ordered && last !== null) {
       if (last > this.sinceMs) return { cutAt: new Date(last).toISOString() };
-      return { skipped: { from: new Date(Math.floor((startedMs - minutes * 60_000) / 60_000) * 60_000).toISOString(), to: new Date(startedMs).toISOString(), reached: new Date(last).toISOString() } };
+      // Jira resolves `-Nm` against its own clock and to the minute, so the window starts at a minute, and no later than the
+      // update the listing reached whatever the clocks say.
+      const from = Math.floor(Math.min(startedMs - minutes * 60_000, last) / 60_000) * 60_000;
+      return { skipped: { from: new Date(from).toISOString(), to: new Date(startedMs).toISOString(), reached: new Date(last).toISOString() } };
     }
     this.failures.push({ ref: null, reason: `the updated listing runs to more than ${MAX_PAGES} pages of ${PAGE_SIZE}` });
     return {};

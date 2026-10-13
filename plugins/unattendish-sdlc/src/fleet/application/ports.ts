@@ -454,7 +454,7 @@ export interface LedgerQuery {
   /** A reference (`#163`) or an item URL. */
   readonly item?: string;
   readonly done?: "woke" | "echo" | "out-of-scope" | "held" | "failed read";
-  /** Only the entries skipped listings wrote. */
+  /** True: only the entries skipped listings wrote. False: none of them. */
   readonly skippedListing?: boolean;
   readonly limit?: number;
 }

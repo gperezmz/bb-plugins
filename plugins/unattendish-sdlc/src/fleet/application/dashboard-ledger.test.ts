@@ -139,13 +139,26 @@ describe("ledger", () => {
     recordCut(w, "2026-10-12T08:59:00.000Z", "2026-10-12T09:02:00.000Z");
     for (let n = 0; n < 1_100; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:03:00.${String(n).padStart(3, "0")}Z` });
     const { dropped } = await ledgerOf(w);
+    // The entries take no slot of the out-of-scope count, so 1,000 rows stay 1,000 with them in the ledger.
     expect(dropped.map((group) => [group.reason, group.count])).toEqual([
       ["out of scope", 1_000],
       ["out of scope: listing cut at its page limit", 2],
     ]);
-    // The entries take no slot of the out-of-scope count, so 1,000 rows stay 1,000 with them in the ledger.
     expect((await ledgerOf(w, { done: "out-of-scope" })).dropped.map((group) => group.reason)).toContain("out of scope: listing cut at its page limit");
     expect((await ledgerOf(w, { done: "woke" })).dropped).toEqual([]);
+  });
+
+  it("counts 1,000 out-of-scope rows beside the entries of skipped listings, whichever are newer, up to 1,000 of each (#263 AC2)", async () => {
+    const w = world();
+    await start(w);
+    for (let n = 0; n < 1_000; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:01:${String(n % 60).padStart(2, "0")}.${String(n).padStart(3, "0")}Z` });
+    for (let n = 0; n < 1_002; n += 1) recordCut(w, "2026-10-12T08:58:00.000Z", `2026-10-12T09:00:00.${String(n).padStart(3, "0")}Z`);
+    for (let n = 0; n < 5; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:30:00.${String(n).padStart(3, "0")}Z` });
+    const { dropped } = await ledgerOf(w);
+    expect(dropped.map((group) => [group.reason, group.count])).toEqual([
+      ["out of scope", 1_000],
+      ["out of scope: listing cut at its page limit", 1_000],
+    ]);
   });
 
   it("groups only what the filter lets through, and counts past the number of changes it lists", async () => {

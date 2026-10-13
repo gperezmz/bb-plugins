@@ -148,16 +148,11 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       .slice(0, limit);
 
     const dropsAsked: readonly ("echo" | "out-of-scope")[] = wanted.done === undefined || wanted.done === "echo" || wanted.done === "out-of-scope" ? ["echo", "out-of-scope"] : [];
-    // The entries skipped listings wrote are asked for apart and counted on top, so the out-of-scope rows of the same polls
-    // can neither push them out of the count nor lose rows of their own to them.
-    const cutEntries = dropsAsked.includes("out-of-scope") ? deps.store.ledger(key, { ...withItem, done: "out-of-scope", skippedListing: true, limit: DROPPED_COUNTED }) : [];
-    const dropEntries = dropsAsked.flatMap((done) =>
-      deps.store
-        .ledger(key, { ...withItem, done, limit: DROPPED_COUNTED + cutEntries.length })
-        .filter((entry) => !(entry.type === "change" && isSkippedListing(entry.row)))
-        .slice(0, DROPPED_COUNTED),
-    );
-    const dropped = [...dropEntries, ...cutEntries]
+    // The entries skipped listings wrote are asked for apart from the rows they sit among, so that neither pushes the other
+    // out of its 1,000: the rows are counted without them, the entries on top.
+    const skippedEntries = dropsAsked.includes("out-of-scope") ? deps.store.ledger(key, { ...withItem, done: "out-of-scope", skippedListing: true, limit: DROPPED_COUNTED }) : [];
+    const dropEntries = dropsAsked.flatMap((done) => deps.store.ledger(key, { ...withItem, done, skippedListing: false, limit: DROPPED_COUNTED }));
+    const dropped = [...dropEntries, ...skippedEntries]
       .flatMap((entry) => {
         if (entry.type !== "change") return [];
         const reason = droppedReason(entry.row);

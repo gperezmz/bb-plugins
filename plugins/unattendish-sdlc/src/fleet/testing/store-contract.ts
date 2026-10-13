@@ -469,6 +469,7 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         store.recordChange(REPO, cut);
         store.recordChange(REPO, row("other", { disposition: "out-of-scope", kind: "updated" }));
         expect(store.ledger(REPO, { done: "out-of-scope", skippedListing: true })).toEqual([{ type: "change", row: { ...cut, wakeId: null } }]);
+        expect(store.ledger(REPO, { done: "out-of-scope", skippedListing: false }).map((entry) => (entry.type === "change" ? entry.row.key : entry.type))).toEqual(["other"]);
         expect(store.ledger(REPO, { done: "out-of-scope" })).toHaveLength(2);
         expect(store.ledger(REPO, { item: "#1" }).map((entry) => (entry.type === "change" ? entry.row.key : entry.type))).toEqual(["other"]);
         expect(store.dispositions(REPO, ["cut"])).toEqual(new Map([["cut", "out-of-scope"]]));

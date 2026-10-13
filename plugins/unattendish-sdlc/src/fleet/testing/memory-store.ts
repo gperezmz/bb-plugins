@@ -247,7 +247,7 @@ export class InMemoryStore implements Store {
 
     if (done !== "failed read") {
       const rows = [...record.changes.values()].filter(
-        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]) && (skippedListing !== true || row.kind === "skipped listing"),
+        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]) && (skippedListing === undefined || (row.kind === "skipped listing") === skippedListing),
       );
       for (const row of byTimeDesc(rows, (r) => r.seenAt).slice(0, limit)) entries.push({ type: "change", row: structuredClone(row) });
     }
