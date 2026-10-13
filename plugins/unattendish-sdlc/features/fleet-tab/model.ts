@@ -110,6 +110,11 @@ export function doneText(change: Pick<LedgerChangeView, "done" | "rule">): strin
   return change.rule === null ? change.done : `${change.done} (${change.rule})`;
 }
 
+/** What a listing cut off at its page limit tells of itself in place of a ref, a kind and an actor: the window it listed and the last update it reached. */
+export function listingText(listing: NonNullable<LedgerChangeView["listing"]>): string {
+  return `listed ${dateTimeLabel(listing.from)} to ${dateTimeLabel(listing.to)}, reached ${dateTimeLabel(listing.reached)}`;
+}
+
 export function changeWhen(change: Pick<LedgerChangeView, "at">): string {
   return dateTimeLabel(change.at);
 }

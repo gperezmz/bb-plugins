@@ -257,6 +257,25 @@ describe("failures", () => {
     expect(derive({ prev: late, outcome: outcome({ updated, listingCutAt: "2026-10-12T09:59:50.000Z" }) }).nextCursor.since).toBe("2026-10-12T09:59:45.000Z");
   });
 
+  it("moves since as after a listing that fit where a cut-off listing got no further than the cursor (skipped), and reports it", () => {
+    const prev = cursor({});
+    const listingSkipped = { from: "2026-10-12T08:55:00.000Z", to: startedAt, reached: prev.since };
+    const skipped = derive({ prev, outcome: outcome({ listingSkipped }) });
+    expect(skipped.nextCursor.since).toBe(derive({ prev, outcome: outcome() }).nextCursor.since);
+    expect(skipped.nextCursor.since).toBe("2026-10-12T09:59:00.000Z");
+    expect(skipped.failures).toEqual([]);
+    expect(skipped.skipped).toEqual(listingSkipped);
+    expect(derive({ prev, outcome: outcome() }).skipped).toBeNull();
+    expect(derive({ prev, overlapMs: 10_000, outcome: outcome({ listingSkipped }) }).nextCursor.since).toBe("2026-10-12T09:59:50.000Z");
+  });
+
+  it("does not move since on a skipped listing while an item failure holds it, or on a turn-end read", () => {
+    const prev = cursor({});
+    const listingSkipped = { from: "2026-10-12T08:55:00.000Z", to: startedAt, reached: prev.since };
+    expect(derive({ prev, outcome: outcome({ listingSkipped, failures: [{ ref: "#8", reason: "server error" }] }) }).nextCursor.since).toBe(prev.since);
+    expect(derive({ prev, stateOnly: true, outcome: outcome({ listingSkipped }) }).nextCursor.since).toBe(prev.since);
+  });
+
   it("does not move since to a cut-off listing's last update while an item failure holds it, or on a turn-end read", () => {
     const prev = cursor({});
     const updated = [{ role: "forge" as const, ref: "#2", url: "u", at: "2026-10-12T09:30:00.000Z" }];
@@ -486,6 +505,8 @@ describe("outageKind", () => {
   it("is null where only items failed, or the listing was cut off at its page limit", () => {
     expect(outageKind(outcome({ snapshots: [snapshot()], failures: [{ ref: "#2", reason: "403", kind: "forbidden" }] }))).toBeNull();
     expect(outageKind(outcome({ snapshots: [snapshot()], listingCutAt: startedAt }))).toBeNull();
+    expect(outageKind(outcome({ snapshots: [snapshot()], listingSkipped: { from: firstSince, to: startedAt, reached: firstSince } }))).toBeNull();
+    expect(outageKind(outcome({ listingSkipped: { from: firstSince, to: startedAt, reached: firstSince } }))).toBeNull();
     expect(outageKind(outcome())).toBeNull();
   });
 });

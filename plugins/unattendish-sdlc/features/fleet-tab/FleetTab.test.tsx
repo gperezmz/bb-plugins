@@ -268,6 +268,19 @@ describe("the ledger", () => {
     expect(screen.queryByText(/round close/)).toBeNull();
   });
 
+  it("shows the entry a cut-off listing wrote with its window and the last update it reached, in place of a ref, kind and actor (#263)", async () => {
+    await showDetail();
+    const listing = { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z", reached: "2026-10-12T08:58:00.000Z" };
+    const cut = ledgerChange({ ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing });
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger: ledgerView({ dropped: [{ reason: "out of scope: listing cut at its page limit", count: 2, changes: [cut] }] }) });
+    fireEvent.click(screen.getByRole("button", { name: /Ledger/ }));
+    const heading = await screen.findByText("out of scope: listing cut at its page limit · 2");
+    const item = heading.closest("details")!.querySelector("li")!;
+    expect(item.textContent).toMatch(/listed .+ to .+, reached .+/);
+    expect(item.textContent).toContain("out-of-scope (listing cut at its page limit)");
+    expect(item.textContent).not.toContain("—");
+  });
+
   it("says when nothing matches", async () => {
     await showDetail();
     fake.api.ledger.mockResolvedValue({ ok: true, ledger: ledgerView() });
