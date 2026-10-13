@@ -5,10 +5,11 @@
 # none; the planted variable is one whatever its value; the report names
 # variables and never prints a value; run_env keeps a run off the system
 # bashrc, the D-Bus session bus and XDG_RUNTIME_DIR, and a bash started with it
-# holds no leak; the passed list, run_env_set_by_run and every name run-env.sh
-# adds to run_env outside the passed list hold no refused name, a credential or
-# a way to one, nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or
-# CREDENTIAL in any letter case unless the test excepts it with why, and the
+# holds no leak once it has reached sleep, and fails if it never does; the
+# passed list, run_env_set_by_run and every name run-env.sh adds to run_env
+# outside the passed list hold no refused name, a credential or a way to one,
+# nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or CREDENTIAL in any
+# letter case unless the test excepts it with why, and the
 # failure names each such name and where it was found, never a value; a shell
 # sourcing run_env_script stops exporting what is not on the list, and the
 # functions the shell exported before sourcing it;
@@ -33,18 +34,33 @@ source "$here/run-env.sh"
 run_env_record "$dir/caller-env"
 plant=$(awk '$1 == "plant" { print $2 }' "$dir/caller-env")
 
-# A process holding exactly the given environment; appends its PID to pids. env
-# execs sleep at once, but until it has, the process still holds the test's own
-# environment, so wait for the exec, bounded at about 5 seconds.
-holding() {
-  local pid
-  env -i "$@" sleep 60 &
-  pid=$!
-  pids+=("$pid")
+# wait_for_sleep <pid>: returns 0 once <pid> is running sleep, 1 if it is not
+# after 500 polls, which take about 6 seconds. Until a process started to exec
+# sleep has done so, it holds the environment of whatever ran before the exec:
+# the test's own, or what a bash read from its bashrc. Once exec has renamed
+# it, /proc/<pid>/environ still reads empty until the new image's environment
+# is placed, so the poll also waits for env_end, field 51 of /proc/<pid>/stat,
+# which is 0 until then; an empty environment is no sign of it.
+wait_for_sleep() {
+  local _ stat fields
   for _ in $(seq 500); do
-    [[ $(cat "/proc/$pid/comm" 2> /dev/null) == sleep ]] && break
+    if [[ $(< "/proc/$1/comm") == sleep ]] 2> /dev/null && stat=$(< "/proc/$1/stat") 2> /dev/null; then
+      # The fields after comm's closing parenthesis start at field 3.
+      read -ra fields <<< "${stat##*) }"
+      [[ ${fields[48]:-0} != 0 ]] && return 0
+    fi
     sleep 0.01
   done
+  return 1
+}
+
+# A process holding exactly the given environment; appends its PID to pids. env
+# execs sleep at once, so the wait is short; one that runs out is not reported
+# here.
+holding() {
+  env -i "$@" sleep 60 &
+  pids+=($!)
+  wait_for_sleep "${pids[-1]}"
 }
 
 # case_ <name> <expect leak|none> <leaked name or -> <env>...
@@ -311,8 +327,14 @@ else
   env -i "${run_env[@]}" bash -c 'exec sleep 60' &
 fi
 pids+=($!)
-sleep 0.3
-check "a bash started with run_env holds no leak" run_env_leaks "$dir/caller-env" "${pids[-1]}"
+# The bashrc is read before bash execs sleep, and only sleep's environment shows
+# what the bashrc exported, so a bash that has not got there is no result.
+if wait_for_sleep "${pids[-1]}"; then
+  check "a bash started with run_env holds no leak" run_env_leaks "$dir/caller-env" "${pids[-1]}"
+else
+  echo "FAIL a bash started with run_env holds no leak: the bash never reached sleep"
+  failed=1
+fi
 
 # A shell sourcing run_env_script exports none of what is not on the list.
 run_env_script > "$dir/env.sh"
