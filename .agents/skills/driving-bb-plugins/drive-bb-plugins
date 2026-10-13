@@ -303,9 +303,9 @@ ENV
   if [[ -n $unit ]]; then
     systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
       -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop -p Delegate=yes \
-      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
+      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   else
-    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
+    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed
   fi
   exec 7>&-
   # shellcheck source=/dev/null
