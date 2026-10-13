@@ -7,7 +7,10 @@
 # bashrc, the D-Bus session bus and XDG_RUNTIME_DIR, and a bash started with it
 # holds no leak; a shell sourcing run_env_script stops exporting what is not on
 # the list; run_env_start_check fails on a leak and on a gh that finds a
-# token. Prints PASS or FAIL per case and exits non-zero on any FAIL.
+# token; run_env_default_branch names the caller's init.defaultBranch, else the
+# branch git itself gives a new repository, ignores the repository the caller
+# stands in and fails on an empty setting. Prints PASS or FAIL per case and
+# exits non-zero on any FAIL.
 #
 #   plugins/cache-keeper/harness/run-env.test.sh
 # shellcheck disable=SC2016,SC2329 # the bash -c scripts expand their own arguments; check calls the helpers
@@ -112,4 +115,26 @@ if command -v gh > /dev/null; then
 else
   echo "SKIP run_env_start_check on a gh that finds a token: no gh on PATH"
 fi
+
+# run_env_default_branch, with git's own configuration reduced to what a case
+# sets, from a directory inside a repository whose config names another branch.
+git_home=$dir/git-home
+mkdir -p "$git_home" "$dir/stood-in"
+git -C "$dir/stood-in" init -q
+git -C "$dir/stood-in" config init.defaultBranch from-the-repository
+caller_branch() {
+  (cd "$dir/stood-in" && env HOME="$git_home" GIT_CONFIG_GLOBAL="$git_home/gitconfig" GIT_CONFIG_SYSTEM=/dev/null XDG_CONFIG_HOME="$git_home" \
+    bash -c 'source "$1"; run_env_default_branch' _ "$here/run-env.sh" 2> /dev/null)
+}
+git -C "$git_home" config --file "$git_home/gitconfig" init.defaultBranch trunk
+check "run_env_default_branch names the caller's init.defaultBranch, not the repository's" \
+  bash -c '[[ $1 == trunk ]]' _ "$(caller_branch)"
+: > "$git_home/gitconfig"
+fresh=$(env HOME="$git_home" GIT_CONFIG_GLOBAL="$git_home/gitconfig" GIT_CONFIG_SYSTEM=/dev/null XDG_CONFIG_HOME="$git_home" \
+  bash -c 'git init -q "$1" && git -C "$1" symbolic-ref --short HEAD' _ "$dir/fresh")
+check "run_env_default_branch names git's own default with no setting, ignoring the repository's" \
+  bash -c '[[ -n $1 && $1 != from-the-repository && $1 == $2 ]]' _ "$(caller_branch)" "$fresh"
+git -C "$git_home" config --file "$git_home/gitconfig" init.defaultBranch ""
+check "run_env_default_branch fails on an empty init.defaultBranch" \
+  bash -c '! caller=$(cd "$2" && env HOME="$3" GIT_CONFIG_GLOBAL="$3/gitconfig" GIT_CONFIG_SYSTEM=/dev/null XDG_CONFIG_HOME="$3" bash -c "source \"\$1\"; run_env_default_branch" _ "$1" 2> /dev/null)' _ "$here/run-env.sh" "$dir/stood-in" "$git_home"
 exit $failed

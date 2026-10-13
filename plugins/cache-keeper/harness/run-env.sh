@@ -72,6 +72,15 @@ run_env_note() {
   echo "a run passes only the variables named in $run_env_file (run_env_passed); one this machine needs goes there"
 }
 
+# The branch git names for a new repository from this caller's settings, which
+# a run's git, with the run's HOME, would not read: `git var GIT_DEFAULT_BRANCH`
+# in a git with no repository, so a repository the caller stands in does not
+# answer with its own init.defaultBranch. Fails, printing git's reason, on a
+# setting git refuses, such as an empty one.
+run_env_default_branch() {
+  GIT_DIR=/dev/null git var GIT_DEFAULT_BRANCH
+}
+
 # run_env_record <file>: records, in <file>, every variable of this process's
 # environment not on the passed list, by name and salted hash, then plants a
 # randomly named variable, exported, that counts as a leak wherever it turns

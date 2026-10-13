@@ -95,7 +95,8 @@ connected || fail "the host daemon did not connect to the bb server"
 # A project for the drives' threads, in a git checkout under the run directory.
 # On the branch your git starts a repository on, which git with the run's HOME
 # would not read.
-"${base[@]}" git -C "$run/work/demo" init -q -b "$(git config --get init.defaultBranch || echo master)"
+branch=$(run_env_default_branch) || fail "git names no default branch for a new repository (see its message above)"
+"${base[@]}" git -C "$run/work/demo" init -q -b "$branch"
 "${base[@]}" git -C "$run/work/demo" commit -q --allow-empty -m "harness"
 project=$(tb bb project create --name cache-keeper-drives --root "$run/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
 [[ $project == proj_* ]] || fail "could not create the drives' project"
