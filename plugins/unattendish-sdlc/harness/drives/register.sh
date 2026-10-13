@@ -15,6 +15,8 @@ manifest_file=$manifests/register.md
 t1=$(spawn_manager "drive: register 1")
 t2=$(spawn_manager "drive: register 2" "$t1")
 say "managers $t1 and $t2"
+# The repository exists on the fake GitHub: a read that found none would leave the fleet not watched, waiting on an account that can read it.
+gh_state org/register ""
 
 out=$(register "$t1" "$repo" forge-issues "$manifest_file")
 check "a fresh repository registers, its manifest not written yet" eq "$(jq -c '[.outcome, .watched, .notWatched[0].code]' <<< "$out")" '["registered",false,"manifest-missing"]'
