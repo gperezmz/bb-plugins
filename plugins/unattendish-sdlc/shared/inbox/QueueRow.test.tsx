@@ -210,6 +210,8 @@ describe("Grant…, Build it and Re-grant", () => {
       expect(button.className.split(" ")).toEqual(expect.arrayContaining(["border", "border-pr-merged", "text-pr-merged", "font-medium"]));
       expect(button.className).not.toContain("border-border");
     }
+    // Squeezed to the row's narrowest, a label stays on one line: "Re-grant" would break at its hyphen (AC3).
+    for (const button of [grant, regrant]) expect(button.className).toContain("whitespace-nowrap");
     expect(drawnIcons(grant)).toEqual(["GitMerge"]);
     expect(drawnIcons(regrant)).toEqual(["unattendish-sdlc/redo"]);
     expect(regrant.textContent).toBe("Re-grant");

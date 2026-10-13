@@ -222,8 +222,12 @@ export const OFFER_KIND: Readonly<Record<"answer" | "grant" | "build", InboxRowV
 
 const QUIET = "flex items-center gap-1 text-xs text-muted-foreground";
 
-/** The offered buttons: drawn at the header's height and as wide as their labels in every layout. */
-const BUTTON = "flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent";
+/**
+ * The offered buttons: drawn at the header's height and as wide as their labels in every layout, a label on one line
+ * even where the row is squeezed to its narrowest, since "Re-grant" and "Build it" would otherwise break at the hyphen
+ * and the space.
+ */
+const BUTTON = "flex h-7 items-center gap-1 whitespace-nowrap rounded-md border px-2 text-xs hover:bg-accent";
 
 /**
  * The action cell: the offered action as outlined buttons in the kind's colour, or the action's state. Both take the
