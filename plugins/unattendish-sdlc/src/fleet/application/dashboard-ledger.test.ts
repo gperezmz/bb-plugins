@@ -143,6 +143,7 @@ describe("ledger", () => {
       ["out of scope", 1_000],
       ["out of scope: listing cut at its page limit", 2],
     ]);
+    // The entries take no slot of the out-of-scope count, so 1,000 rows stay 1,000 with them in the ledger.
     expect((await ledgerOf(w, { done: "out-of-scope" })).dropped.map((group) => group.reason)).toContain("out of scope: listing cut at its page limit");
     expect((await ledgerOf(w, { done: "woke" })).dropped).toEqual([]);
   });

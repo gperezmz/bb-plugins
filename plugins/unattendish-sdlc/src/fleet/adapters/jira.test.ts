@@ -451,6 +451,7 @@ describe("the Jira adapter's updated listing", () => {
       expect(Date.parse(to)).toBeGreaterThanOrEqual(before);
       expect(Date.parse(to)).toBeLessThanOrEqual(after);
       expect(Date.parse(from)).toBeLessThanOrEqual(Date.parse(iso(5)));
+      expect(Date.parse(from) % 60_000).toBe(0);
       expect(out.updated).toHaveLength(20);
     });
 
