@@ -232,7 +232,7 @@ export const verbs = {
   },
 
   act: {
-    usage: "<Answer…|Grant…|Build it|Re-grant> <ref> [<text>] [--fleet <repo>] [--esc] [--wait <row text>]: press an Inbox row's action in the Fleets page's queue, write the text (each `\\n` in it a new line, typed with Shift+Enter; Ctrl+Enter sends; --esc cancels with Escape), and read the row until it shows --wait (default `sent ·`; `not sent` for a refusal); the row as the `fleets` RPC stores it",
+    usage: "<Answer…|Grant…|Build it|Re-grant> <ref> [<text>] [--fleet <repo>] [--esc] [--wait <row text>]: press an Inbox row's action in the Fleets page's queue, write the text (each `\\n` in it a new line, typed with Shift+Enter; Ctrl+Enter sends; --esc cancels with Escape), and read the row until it shows --wait (default `sent ·`; `not sent` for a refusal, `Not sent:` below 768 px, where it is spelled out under the buttons); the row as the `fleets` RPC stores it",
     valued: ["fleet", "wait"],
     async run({ page, url, capture, cli, args, flags }) {
       const [action, ref, text] = args;

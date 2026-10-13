@@ -61,7 +61,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   a ✕ with that name and no button. Quiet fleets, every count zero and nothing
   flagged, fold under `button "1 quiet fleet"` (`aria-expanded`), a filtered one
   stays listed. Below 768 px the board shows three lines, the rest under
-  `button "2 more fleets"`; a line holds the logo, the name, a touch-sized icon
+  `button "2 more fleets"`; a line holds the logo, the fleet's short name
+  (`dash` for `github.example/org/dash`; its toggle is named by the full name),
+  a touch-sized icon
   button named by the sentence in place of the verb, and the non-zero slots, and
   has no Fleet tab button.
 - `region "Queue"`: `tablist "Kind"` with `tab "All 4"`, `Answer`, `Grant`,
@@ -77,7 +79,13 @@ fleet with `bb unattendish fleet register`, from its own thread.
   says `Nothing waits on you` (Sent:
   `Nothing you sent was seen done in the last hour`); Sent lists
   `You answered #5 Which queue`, its age and `done`, for what was seen done in
-  the last hour.
+  the last hour. Below 768 px a row is three parts, its `listitem`'s first
+  three children: the title (wrapping to two lines), the details (the short
+  name, with the full name as screen-reader text, then the link, which is
+  `↗` alone named by its full text where it has no short form, and the age),
+  and the action line (buttons across the row, `Not sent: <reason>` and the
+  unconfirmed note under them). Sent lines and the filter chip also use the
+  short name; the chip's ✕ is 44 px.
 - A queue row's action: `button "Answer… #7"`, `"Grant… #8"` or `"Build it #9"`
   (and `"Re-grant #8"` beside Grant… for a grant a previous manager gave);
   `watch only` for a wait on something else. Answer and Grant open, in the same

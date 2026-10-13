@@ -23,6 +23,26 @@ export function staleText(generatedAt: string, error: string, nowMs: number): { 
   return { pill: `${age} old`, hover: `Couldn't refresh: ${error}. Showing what was loaded ${age} ago.` };
 }
 
+// ---- a fleet's name ----
+
+/**
+ * Each fleet's short name, by its full name `<host>/<path>`: the fewest segments from the end that no other fleet's
+ * full name also ends with, segment by segment. A fleet whose whole path ends another's keeps its host.
+ */
+export function shortNames(fleets: readonly string[]): ReadonlyMap<string, string> {
+  const split = fleets.map((fleet) => fleet.split("/"));
+  const endsWith = (segments: readonly string[], tail: readonly string[]) => tail.length <= segments.length && tail.every((segment, n) => segments[segments.length - tail.length + n] === segment);
+  return new Map(
+    split.map((segments, index) => {
+      for (let take = 1; take < segments.length; take++) {
+        const tail = segments.slice(-take);
+        if (!split.some((other, at) => at !== index && endsWith(other, tail))) return [fleets[index]!, tail.join("/")];
+      }
+      return [fleets[index]!, fleets[index]!];
+    }),
+  );
+}
+
 // ---- the fleet board ----
 
 /**

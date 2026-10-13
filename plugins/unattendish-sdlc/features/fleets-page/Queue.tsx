@@ -18,13 +18,15 @@ interface QueueProps {
   readonly filter: string | null;
   onClearFilter(): void;
   readonly compact: boolean;
+  /** How a fleet is named: its short name on a phone, its full name otherwise. */
+  nameOf(fleet: string): string;
   readonly refetch: () => Promise<void>;
 }
 
 const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /** Every Inbox row across fleets, or the filtered fleet's, oldest first, with tabs by kind and a Sent tab. */
-export function Queue({ queue, now, fleets, filter, onClearFilter, compact, refetch }: QueueProps) {
+export function Queue({ queue, now, fleets, filter, onClearFilter, compact, nameOf, refetch }: QueueProps) {
   const [picked, setPicked] = useState<Tab>("all");
   const stateOf = useRowActions(refetch);
   const counts = tabCounts(queue);
@@ -59,10 +61,10 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, refe
           ))}
         </div>
         {filter !== null ? (
-          <span className="ml-auto flex items-center gap-1 rounded-full border border-border py-0.5 pl-2 pr-1 text-xs">
+          <span className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border pl-2 text-xs", compact ? "pr-0" : "py-0.5 pr-1")}>
             {card !== undefined ? <ServiceLogo service={card.forge} decorative /> : null}
-            {filter}
-            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex size-5 items-center justify-center text-muted-foreground hover:text-foreground")} onClick={onClearFilter}>
+            <span className="truncate">{nameOf(filter)}</span>
+            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", compact ? "size-11" : "size-5")} onClick={onClearFilter}>
               <Glyph name={ICONS.clear} className="size-3" />
             </button>
           </span>
@@ -70,13 +72,13 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, refe
       </div>
       <div role="tabpanel" aria-label={TAB_NAMES[tab]}>
         {tab === "sent" ? (
-          <SentList actions={queue.sent} now={now} fleets={fleets} showFleet={showFleet} />
+          <SentList actions={queue.sent} now={now} fleets={fleets} showFleet={showFleet} nameOf={nameOf} />
         ) : rows.length === 0 && unreadable.length === 0 ? (
           <NothingWaits />
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} showFleet={showFleet} layout={compact ? "two-line" : "columns"} touch={compact} state={stateOf(row)} />
+              <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} section="Inbox" review={row} />
@@ -98,7 +100,7 @@ function NothingWaits() {
   );
 }
 
-function SentList({ actions, now, fleets, showFleet }: { actions: readonly ActionRecordView[]; now: string; fleets: ReadonlyMap<string, FleetCardView>; showFleet: boolean }) {
+function SentList({ actions, now, fleets, showFleet, nameOf }: { actions: readonly ActionRecordView[]; now: string; fleets: ReadonlyMap<string, FleetCardView>; showFleet: boolean; nameOf(fleet: string): string }) {
   if (actions.length === 0) return <p className="py-6 text-center text-xs text-muted-foreground">Nothing you sent was seen done in the last hour</p>;
   return (
     <ul className="flex flex-col divide-y divide-border">
@@ -109,7 +111,7 @@ function SentList({ actions, now, fleets, showFleet }: { actions: readonly Actio
             <Glyph name={KIND_ICONS[kind]} tone={KIND_TONES[kind]} />
             <span className="min-w-0 flex-1 truncate">{sentText(action)}</span>
             <span className="text-xs tabular-nums text-muted-foreground">{sentAgo(action, now)}</span>
-            {showFleet ? <FleetName fleet={fleets.get(action.fleet)} name={action.fleet} /> : null}
+            {showFleet ? <FleetName fleet={fleets.get(action.fleet)} name={action.fleet} short={nameOf(action.fleet)} /> : null}
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Glyph name={ICONS.done} tone="green" />
               done

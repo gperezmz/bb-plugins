@@ -190,15 +190,18 @@ function FixCell({ card, flags }: { card: FleetCardView; flags: readonly Flag[] 
   );
 }
 
-/** The board on a phone: one line per fleet with its fix as a touch-sized icon and its non-zero counts, three shown and the rest folded. */
-export function PhoneBoard({ cards, now, selected, onSelect }: BoardProps) {
+/**
+ * The board on a phone: one line per fleet with its short name, its fix as a touch-sized icon and its non-zero counts,
+ * three shown and the rest folded.
+ */
+export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProps & { nameOf(fleet: string): string }) {
   const [expanded, setExpanded] = useState(false);
   const { shown, more } = phoneBoard(cards, now, expanded);
   return (
     <section aria-label="Fleet board" className="flex flex-col text-sm">
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {shown.map((card) => (
-          <PhoneLine key={card.repo} card={card} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
+          <PhoneLine key={card.repo} card={card} shortName={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
         ))}
       </ul>
       {more > 0 ? (
@@ -210,7 +213,7 @@ export function PhoneBoard({ cards, now, selected, onSelect }: BoardProps) {
   );
 }
 
-function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now: string; selected: boolean; onToggle(): void }) {
+function PhoneLine({ card, shortName, now, selected, onToggle }: { card: FleetCardView; shortName: string; now: string; selected: boolean; onToggle(): void }) {
   const fixOf = useFix(card);
   const flags = flagsOf(card, now);
   const first = flags[0];
@@ -222,8 +225,8 @@ function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now
     <li aria-label={`Fleet ${card.repo}`} className={cn("relative flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
       {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
       <ServiceLogo service={card.forge} />
-      <button type="button" aria-pressed={selected} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
-        {card.repo}
+      <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
+        {shortName}
       </button>
       {worst !== null ? (
         run !== null ? (
