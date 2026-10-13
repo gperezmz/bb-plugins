@@ -1,10 +1,10 @@
 import { Fragment, type ReactNode } from "react";
 import { UrlLink } from "@get-bb/plugin-sdk/app";
-import type { FleetDetailView, LinkView } from "@/src/fleet/application/views";
+import type { FleetDetailView, InboxRowView, LinkView } from "@/src/fleet/application/views";
 import { dateTimeLabel } from "@/shared/format";
 import { QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
 import { shortLinkLabel } from "@/shared/inbox/row-model";
-import { useRowActions } from "@/shared/inbox/use-row-action";
+import { useRowActions, type RowActionState } from "@/shared/inbox/use-row-action";
 import { itemTitle } from "@/shared/item-title";
 import { ItemLink, LINK_CLASS, ThreadLink } from "@/shared/ItemLink";
 import { Glyph } from "@/shared/look/Glyph";
@@ -27,12 +27,14 @@ interface WorkProps {
 
 /** The Work tab: the manifest's rows in four folding sections, or why there are none to show. */
 export function Work({ detail, managerThreadId, open, onToggle, touch, refetch }: WorkProps) {
+  // Held here rather than in Waits on you, which unmounts when folded: a draft or a send in flight outlives the fold.
+  const stateOf = useRowActions(refetch);
   const problem = manifestProblemText(detail.manifest);
   if (problem !== null || detail.manifest.status !== "ok") return <Empty>{problem ?? ""}</Empty>;
   const manifest = detail.manifest;
   const props = { manifest, managerThreadId, now: detail.generatedAt };
   const body: Readonly<Record<WorkSection, ReactNode>> = {
-    inbox: <WaitsOnYou {...props} touch={touch} refetch={refetch} />,
+    inbox: <WaitsOnYou {...props} touch={touch} stateOf={stateOf} />,
     inFlight: <InFlight {...props} />,
     blocked: <Blocked {...props} links={refLinks(detail.watched)} />,
     landed: <Landed {...props} />,
@@ -56,8 +58,7 @@ interface SectionProps {
 
 const LIST = "flex flex-col divide-y divide-border";
 
-function WaitsOnYou({ manifest, now, touch, refetch }: SectionProps & { touch: boolean; refetch: () => Promise<void> }) {
-  const stateOf = useRowActions(refetch);
+function WaitsOnYou({ manifest, now, touch, stateOf }: SectionProps & { touch: boolean; stateOf: (row: InboxRowView) => RowActionState }) {
   if (manifest.inbox.length === 0 && manifest.unreadableInbox.length === 0) return <Empty>Nothing waits on you</Empty>;
   return (
     <ul className={LIST}>

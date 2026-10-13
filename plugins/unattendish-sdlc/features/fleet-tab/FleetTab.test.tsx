@@ -307,6 +307,17 @@ describe("Waits on you (#258 AC4)", () => {
     expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "acme/web", rowId: "row_1", kind: "answer", text: "Use Redis" });
   });
 
+  it("keeps a draft through folding the section and unfolding it", async () => {
+    await showDetail({ manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ ref: "#7", what: "Which cache" })] } });
+    fireEvent.click(within(section(/^Waits on you/)).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(section(/^Waits on you/)).getByRole("textbox"), { target: { value: "Use Redis" } });
+    const heading = within(panel("Work")).getByRole("button", { name: /^Waits on you/ });
+    fireEvent.click(heading);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(heading);
+    expect((within(section(/^Waits on you/)).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
+  });
+
   it("shows an unreadable row as a red line", async () => {
     await showDetail();
     const line = within(section(/^Waits on you/)).getByText('Unreadable row, line 9: the table has no "Waits for" column');
