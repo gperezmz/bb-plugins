@@ -4,6 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/testing/sdk";
 import { INBOX_NEW } from "@/shared/client";
+import { clearComposerRequests, useComposerRequest } from "@/shared/composer-request";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { InboxToasts } from "./index";
 
@@ -14,7 +15,19 @@ vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sd
 beforeEach(() => {
   sdk.reset();
   toast.mockClear();
+  clearComposerRequests();
 });
+
+/** The composer request waiting now, read the way the Fleets page reads it. */
+function waitingRequest() {
+  let seen: ReturnType<typeof useComposerRequest> = null;
+  function Probe() {
+    seen = useComposerRequest();
+    return null;
+  }
+  render(<Probe />);
+  return seen;
+}
 afterEach(cleanup);
 
 const signal = { fleet: "acme/web", ref: "ENG-212", what: "which locale wins?", rowId: "row_1", waitsFor: "answer", forge: "github" };
@@ -67,13 +80,32 @@ describe("the Inbox toasts", () => {
     expect(lines.some((line) => line?.includes("org/b"))).toBe(true);
   });
 
-  it("opens the Fleets page from the toast's action", () => {
+  it.each([
+    ["answer", "Answer…"],
+    ["grant", "Grant…"],
+    ["ready", "Open Fleets"],
+    ["other", "Open Fleets"],
+  ])("labels the button of a row waiting for %s %s, which opens the Fleets page (AC1)", (waitsFor, label) => {
     render(<InboxToasts />);
-    sdk.emit(INBOX_NEW, signal);
+    sdk.emit(INBOX_NEW, { ...signal, waitsFor });
     const { action } = toast.mock.calls[0]![1] as { action: { label: string; onClick(): void } };
-    expect(action.label).toBe("Open Fleets");
+    expect(action.label).toBe(label);
     action.onClick();
     expect(sdk.navigate.toPluginPanel).toHaveBeenCalledWith("fleets");
+  });
+
+  it.each(["answer", "grant"])("asks the Fleets page for the row's composer from the button of a row waiting for %s, naming its fleet and row (AC2)", (waitsFor) => {
+    render(<InboxToasts />);
+    sdk.emit(INBOX_NEW, { ...signal, waitsFor, fleet: "org/b", ref: "#7", what: "Which cache to use", rowId: "row_7" });
+    (toast.mock.calls[0]![1] as { action: { onClick(): void } }).action.onClick();
+    expect(waitingRequest()).toEqual(expect.objectContaining({ fleet: "org/b", rowId: "row_7", ref: "#7", what: "Which cache to use" }));
+  });
+
+  it("asks for no composer from Open Fleets", () => {
+    render(<InboxToasts />);
+    sdk.emit(INBOX_NEW, { ...signal, waitsFor: "ready" });
+    (toast.mock.calls[0]![1] as { action: { onClick(): void } }).action.onClick();
+    expect(waitingRequest()).toBeNull();
   });
 
   it("leads with the kind's icon, and says under the title which fleet waits for what, with its logo", () => {

@@ -1,14 +1,24 @@
-import { useState } from "react";
-import type { ActionRecordView, FleetCardView } from "@/src/fleet/application/views";
+import { useEffect, useState } from "react";
+import type { ActionRecordView, FleetCardView, InboxRowView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { sentAgo, sentText } from "@/shared/fleet-header/model";
 import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
-import { rowKey } from "@/shared/inbox/row-model";
-import { useRowActions } from "@/shared/inbox/use-row-action";
+import { rowAction, rowKey, sameRow } from "@/shared/inbox/row-model";
+import type { RowActionState } from "@/shared/inbox/use-row-action";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { ICONS, KIND_ICONS } from "@/shared/look/icons";
 import { KIND_TONES } from "@/shared/look/tones";
-import { NOTHING_WAITS, NOTHING_WAITS_LINE, TAB_NAMES, tabCounts, tabRows, tabsShown, type QueueView, type Tab } from "./model";
+import { composerFor, NOTHING_WAITS, NOTHING_WAITS_LINE, TAB_NAMES, tabCounts, tabRows, tabShowing, tabsShown, type QueueView, type Tab } from "./model";
+
+/** A row to show with its composer open, as a toast's request names it; `seq` tells two requests for the same row apart. */
+export interface OpenRow {
+  readonly fleet: string;
+  readonly rowId: string;
+  readonly seq: number;
+}
+
+/** The id of the row a toast opened, for scrolling it into view and focusing its composer. */
+const OPENED_ID = "fleets-queue-opened-row";
 
 interface QueueProps {
   readonly queue: QueueView;
@@ -21,15 +31,40 @@ interface QueueProps {
   readonly compact: boolean;
   /** How a fleet is named: its short name on a phone, its full name otherwise. */
   nameOf(fleet: string): string;
-  readonly refetch: () => Promise<void>;
+  /** The tab shown, kept above the page's loading state, as the rows' actions are, so a reload keeps it. */
+  readonly tab: Tab;
+  onTab(tab: Tab): void;
+  /** Each row's action state, from `useRowActions`. */
+  stateOf(row: InboxRowView): RowActionState;
+  /** The row a toast asked for: the queue shows it, opens its composer where it offers one, and focuses it. */
+  readonly opening?: OpenRow | null;
 }
 
 const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /** Every Inbox row across fleets, or the filtered fleet's, oldest first, with tabs by kind and a Sent tab. */
-export function Queue({ queue, now, fleets, filter, onClearFilter, compact, nameOf, refetch }: QueueProps) {
-  const [picked, setPicked] = useState<Tab>("all");
-  const stateOf = useRowActions(refetch);
+export function Queue({ queue, now, fleets, filter, onClearFilter, compact, nameOf, tab: picked, onTab: setPicked, stateOf, opening = null }: QueueProps) {
+  const [opened, setOpened] = useState<OpenRow | null>(null);
+  // Shows the row a toast asked for, on a tab that lists it, with the composer its own button opens; a composer already
+  // open keeps its draft, and a row whose action is under way, sent or done opens none.
+  useEffect(() => {
+    if (opening === null) return;
+    const row = queue.rows.find((shown) => sameRow(shown, { fleet: opening.fleet, id: opening.rowId }));
+    if (row === undefined) return;
+    setPicked(tabShowing(queue, picked, row));
+    const state = stateOf(row);
+    const verb = composerFor(rowAction(row, now, state));
+    if (verb !== null && state.composing !== verb) state.compose(verb);
+    setOpened(opening);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a request is acted on once, when it arrives.
+  }, [opening]);
+  // Once drawn, the row is scrolled into view and its composer, where open, focused.
+  useEffect(() => {
+    if (opened === null) return;
+    const row = document.getElementById(OPENED_ID);
+    row?.scrollIntoView?.({ block: "nearest" });
+    row?.querySelector("textarea")?.focus();
+  }, [opened]);
   const counts = tabCounts(queue);
   const tabs = tabsShown(counts);
   // A tab that stops being drawn (Unreadable once its last row reads) falls back to All.
@@ -79,7 +114,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={rowKey(row)} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
+              <QueueRow key={rowKey(row)} id={opened !== null && sameRow(row, { fleet: opened.fleet, id: opened.rowId }) ? OPENED_ID : undefined} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} section="Inbox" review={row} />

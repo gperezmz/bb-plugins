@@ -1,8 +1,10 @@
 // What the Fleets page says, decided from its view alone: the fleet board's order and cells, the queue's tabs and rows,
-// and the page's states in between.
+// the page's states in between, and how it shows the row a toast opens.
 import type { ActionRecordView, FleetCardView, FleetsView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { byFlagsThenWaiting, isQuiet } from "@/shared/fleet-flags";
 import { ageLabel } from "@/shared/format";
+import { sameRow, type RowAction } from "@/shared/inbox/row-model";
+import { itemTitle } from "@/shared/item-title";
 
 /** The header's count: the Inbox rows across fleets, and nothing at zero or before the view arrives. */
 export function headerCount(view: Pick<FleetsView, "waiting"> | null): string | null {
@@ -135,3 +137,31 @@ export const NO_FLEET_TITLE = "No fleet is registered";
 export const NO_FLEET_TEXT = "A fleet appears here once";
 export const NO_FLEET_COMMAND = "/run-fleet";
 export const NO_FLEET_TAIL = "from unattendish-sdlc runs with this plugin installed.";
+
+// ---- a row opened from a toast ----
+
+/** The row a toast's Answer… or Grant… names, in the view; null once it has left the Inbox. */
+export function requestedRow(view: Pick<FleetsView, "inbox">, target: { readonly fleet: string; readonly rowId: string }): InboxRowView | null {
+  return view.inbox.find((row) => sameRow(row, { fleet: target.fleet, id: target.rowId })) ?? null;
+}
+
+/** The filter that shows `row`: as it is where it already shows the row, every fleet otherwise. */
+export function filterShowing(filter: string | null, row: Pick<InboxRowView, "fleet">): string | null {
+  return filter === null || filter === row.fleet ? filter : null;
+}
+
+/** The tab that shows `row`: as it is where it already lists the row, All otherwise. */
+export function tabShowing(queue: QueueView, tab: Tab, row: Pick<InboxRowView, "fleet" | "id">): Tab {
+  return tabRows(queue, tab).rows.some((shown) => sameRow(shown, row)) ? tab : "all";
+}
+
+/** The composer a toast opens on a row: the one its own Answer… or Grant… opens, and none while its action is under way, sent or done. */
+export function composerFor(action: RowAction): "answer" | "grant" | null {
+  if (action.kind !== "offer") return null;
+  return action.offer.kind === "answer" || action.offer.kind === "grant" ? action.offer.kind : null;
+}
+
+/** The short toast for a row that left the Inbox before its toast was clicked: `#7 Which cache to use no longer waits on you`. */
+export function goneText(target: { readonly ref: string; readonly what: string }): string {
+  return `${itemTitle(target.ref, target.what)} no longer waits on you`;
+}

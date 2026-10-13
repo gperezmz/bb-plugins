@@ -1,28 +1,71 @@
-import type { FleetsView } from "@/src/fleet/application/views";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import type { FleetsView, InboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { useDashboardApi } from "@/shared/client";
+import { useRowActions, type RowActionState } from "@/shared/inbox/use-row-action";
+import {
+  composerRequestSeq,
+  failsRequest,
+  holdComposerRequest,
+  releaseComposerRequest,
+  requestOnView,
+  takeComposerRequest,
+  useComposerRequest,
+  useComposerRequestSeq,
+  type ComposerRequest,
+} from "@/shared/composer-request";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { FALLBACK_POLL_MS, refetchEveryView, screenState, useLive } from "@/shared/use-live";
 import { Board, PhoneBoard } from "./Board";
 import { rememberFilter, useQueueFilter } from "./filter";
-import { NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor, shortNames } from "./model";
-import { Queue } from "./Queue";
+import { filterShowing, goneText, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor, requestedRow, shortNames, type Tab } from "./model";
+import { Queue, type OpenRow } from "./Queue";
 
 /**
  * Every fleet's health on the fleet board, and below it the queue of everything that waits on the operator across
  * fleets. A refresh that fails over data already shown leaves the data as it is: the title bar says how old it is.
+ *
+ * A toast's Answer… or Grant… opens the page at its row's composer. The request is judged on a view fetched after it
+ * was made, so the page fetches again from its loading state; one that fails drops the request. The page holds the
+ * request while it is mounted, and lets it lapse when it goes first. The queue's tab and
+ * what its rows hold in this window, drafts among them, are kept here, above that state, so it leaves them as they were.
  */
 export function FleetsPage() {
   const api = useDashboardApi();
-  const live = useLive(() => api.fleets(), [api]);
+  const request = useComposerRequest();
+  // Each view carries the number of the latest request made when it was fetched, so a request is judged only on a
+  // view that came after it; a new request refetches from the loading state.
+  const requests = useComposerRequestSeq();
+  const failedAsOf = useRef(0);
+  const live = useLive(() => {
+    const asOf = composerRequestSeq();
+    return api.fleets().then(
+      (view) => ({ view, asOf }),
+      (error: unknown) => {
+        failedAsOf.current = asOf;
+        throw error;
+      },
+    );
+  }, [api, requests]);
   const state = screenState(live);
+  const [tab, setTab] = useState<Tab>("all");
+  const stateOf = useRowActions(live.refetch);
+  useEffect(() => {
+    if (request === null) return;
+    holdComposerRequest();
+    if (state === "failed" && failsRequest(request, failedAsOf.current)) takeComposerRequest(request.seq);
+  }, [request, state]);
+  // A page that goes before its view loads lets the request lapse, so a later visit does not act on an old click.
+  useEffect(() => releaseComposerRequest, []);
+  const fresh = requestOnView(request, live.data?.asOf ?? null);
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       {state === "loading" ? <Loading /> : null}
       {state === "failed" ? <CantLoad error={live.error ?? ""} retry={refetchEveryView} /> : null}
-      {state === "ready" ? <Ready view={live.data!} refetch={live.refetch} /> : null}
+      {state === "ready" ? <Ready view={live.data!.view} tab={tab} onTab={setTab} stateOf={stateOf} request={fresh} /> : null}
     </div>
   );
 }
@@ -75,13 +118,35 @@ function NoFleet() {
   );
 }
 
-function Ready({ view, refetch }: { view: FleetsView; refetch: () => Promise<void> }) {
+interface ReadyProps {
+  readonly view: FleetsView;
+  readonly tab: Tab;
+  onTab(tab: Tab): void;
+  stateOf(row: InboxRowView): RowActionState;
+  readonly request: ComposerRequest | null;
+}
+
+function Ready({ view, tab, onTab, stateOf, request }: ReadyProps) {
   const compact = useIsCompactViewport();
   // The fleet the queue is filtered to, by name; a fleet no longer registered filters nothing.
   const picked = useQueueFilter();
   const setPicked = rememberFilter;
-  if (view.fleets.length === 0) return <NoFleet />;
   const selected = picked !== null && view.fleets.some((card) => card.repo === picked) ? picked : null;
+  // The row a toast asked for, for the queue to show with its composer open.
+  const [opening, setOpening] = useState<OpenRow | null>(null);
+  useEffect(() => {
+    if (request === null) return;
+    takeComposerRequest(request.seq);
+    const row = requestedRow(view, request);
+    if (row === null) {
+      toast(goneText(request));
+      return;
+    }
+    if (filterShowing(selected, row) !== selected) setPicked(null);
+    setOpening({ fleet: row.fleet, rowId: row.id, seq: request.seq });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a request is taken once, on the view it was judged on.
+  }, [request]);
+  if (view.fleets.length === 0) return <NoFleet />;
   const fleets = new Map(view.fleets.map((card) => [card.repo, card]));
   // A phone names each fleet by its short name, told apart from every fleet registered as of this view.
   const short = compact ? shortNames(view.fleets.map((card) => card.repo)) : null;
@@ -89,7 +154,7 @@ function Ready({ view, refetch }: { view: FleetsView; refetch: () => Promise<voi
   return (
     <>
       {compact ? <PhoneBoard cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} nameOf={nameOf} /> : <Board cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} />}
-      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} compact={compact} nameOf={nameOf} refetch={refetch} />
+      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} compact={compact} nameOf={nameOf} tab={tab} onTab={onTab} stateOf={stateOf} opening={opening} />
     </>
   );
 }

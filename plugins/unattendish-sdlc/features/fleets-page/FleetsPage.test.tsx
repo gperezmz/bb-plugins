@@ -8,10 +8,14 @@ import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { BOARD_CHANGED } from "@/shared/client";
+import { clearComposerRequests, requestComposer } from "@/shared/composer-request";
+import { PENDING_OPEN_TTL_MS } from "@/shared/pending-open";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { rememberFilter } from "./filter";
 import { FleetsHeaderCount, FleetsPage } from "./index";
 
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast }));
 vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
 vi.mock("@/shared/client", async (original) => (await import("@/testing/api")).withFakeClient(await original()));
 
@@ -20,6 +24,8 @@ beforeEach(() => {
   resetFakeApi();
   rememberFilter(null);
   setCompactViewport(false);
+  clearComposerRequests();
+  toast.mockClear();
 });
 afterEach(() => {
   cleanup();
@@ -846,5 +852,185 @@ describe("a queue row at 768 px and wider (AC11)", () => {
     expect(within(row).getByText("github.example/org/dash")).toBeTruthy();
     expect(within(row).getByRole("button", { name: "thread thr_den6jrijzx, message 2 ↗" })).toBeTruthy();
     expect(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" })).toBeTruthy();
+  });
+});
+
+describe("opening a row from a toast's Answer… or Grant… (#262)", () => {
+  const cards = [fleet("org/dash", { waiting: 1 }), fleet("org/wake", { waiting: 1 })];
+  const dash = inboxRow({ fleet: "org/dash", id: "row_7", ref: "#7", what: "Which cache to use", waitsFor: "answer" });
+  const wake = inboxRow({ fleet: "org/wake", id: "row_4", ref: "#4", what: "Merge the cache", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false } });
+  const ask = (row = dash) => act(() => requestComposer({ fleet: row.fleet, rowId: row.id, ref: row.ref, what: row.what }));
+  const rowOf = (title: string) => queueRows().find((item) => item.textContent?.includes(title))!;
+  const scrolled = vi.fn();
+  const scrollIntoView = Element.prototype.scrollIntoView;
+  beforeEach(() => {
+    scrolled.mockClear();
+    Element.prototype.scrollIntoView = scrolled;
+  });
+  afterEach(() => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it("opens the Fleets page at the row's composer, scrolled into view, its text box focused, going to the row's fleet's manager (AC2)", async () => {
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    const row = rowOf("Which cache to use");
+    expect(await within(row).findByText("Your answer for #7 Which cache to use · goes to org/dash's manager")).toBeTruthy();
+    expect(document.activeElement).toBe(within(row).getByRole("textbox"));
+    expect(scrolled.mock.contexts).toContain(row);
+    expect(within(rowOf("Merge the cache")).queryByRole("textbox")).toBeNull();
+    fireEvent.change(within(row).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(row).getByRole("button", { name: "Send" }));
+    expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "org/dash", rowId: "row_7", kind: "answer", text: "Use Redis" });
+  });
+
+  it("opens Grant… the same way", async () => {
+    ask(wake);
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(await within(rowOf("Merge the cache")).findByText("Your grant for #4 Merge the cache · goes to org/wake's manager")).toBeTruthy();
+  });
+
+  it("opens the composer under the asked fleet's row only, where two fleets have a row with the same id (AC2)", async () => {
+    const same = { id: "#7|answer|t", ref: "#7", what: "Which cache to use", since: ago(5 * MINUTE) };
+    const a = inboxRow({ ...same, fleet: "org/a" });
+    const b = inboxRow({ ...same, fleet: "org/b" });
+    ask(b);
+    await show(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [a, b] }));
+    await waitFor(() => expect(within(queueRows()[1]!).getByRole("textbox")).toBeTruthy());
+    expect(within(queueRows()[1]!).getByText(/goes to org\/b's manager/)).toBeTruthy();
+    expect(within(queueRows()[0]!).queryByRole("textbox")).toBeNull();
+  });
+
+  it("clears a filter to another fleet, from the loading state of a view fetched after the click, on a page already open (AC3, AC4)", async () => {
+    rememberFilter("org/wake");
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(queueRows()).toHaveLength(1);
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    ask();
+    expect(screen.getByRole("status", { name: "Loading your fleets" })).toBeTruthy();
+    await act(async () => answer(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+    expect(within(queue()).queryByRole("button", { name: /^Show every fleet/ })).toBeNull();
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("shows All where the Grant tab would hide the row (AC3)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: /^Grant/ }));
+    ask();
+    await waitFor(() => expect(within(queue()).getByRole("tab", { name: /^All/ }).getAttribute("aria-selected")).toBe("true"));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("keeps a filter and a tab that already show the row (AC3)", async () => {
+    rememberFilter("org/dash");
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: /^Answer/ }));
+    ask();
+    await waitFor(() => expect(within(rowOf("Which cache to use")).getByRole("textbox")).toBeTruthy());
+    expect(within(queue()).getByRole("tab", { name: /^Answer/ }).getAttribute("aria-selected")).toBe("true");
+    expect(within(queue()).getByRole("button", { name: "Show every fleet, not only org/dash" })).toBeTruthy();
+  });
+
+  it("opens no composer on a row whose action reads sent · <age>, showing it so (AC4)", async () => {
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, { ...dash, action: actionRecord({ fleet: "org/dash", ref: "#7", sentAt: ago(2 * MINUTE) }) }] }));
+    await waitFor(() => expect(scrolled.mock.contexts).toContain(rowOf("Which cache to use")));
+    expect(within(rowOf("Which cache to use")).getByText(/^sent · /)).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+  });
+
+  it("opens no composer on a row reading sending…, and none once the send fails to checking… (AC4)", async () => {
+    let fail: (error: Error) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(rowOf("Which cache to use")).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Send" }));
+    expect(await within(rowOf("Which cache to use")).findByText("sending…")).toBeTruthy();
+    ask();
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    expect(within(rowOf("Which cache to use")).getByText("sending…")).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    let check: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValueOnce(new Promise((resolve) => (check = resolve)));
+    await act(async () => fail(new Error("network")));
+    expect(within(rowOf("Which cache to use")).getByText("checking…")).toBeTruthy();
+    scrolled.mockClear();
+    ask();
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    expect(within(rowOf("Which cache to use")).getByText("checking…")).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    await act(async () => check(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+  });
+
+  it("says in a short toast that a row gone from the Inbox no longer waits, judged on the view fetched after the click (AC4)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: cards, inbox: [wake] }));
+    ask();
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("#7 Which cache to use no longer waits on you"));
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+  });
+
+  it("shows Can't load, with no composer and no toast, when the view after the click fails, and opens none once it loads (AC4)", async () => {
+    fake.api.fleets.mockRejectedValue(new Error("the server is down"));
+    ask();
+    render(<FleetsPage />);
+    expect(await screen.findByText("Couldn't load your fleets")).toBeTruthy();
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("region", { name: "Queue" });
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the request while the page's view takes longer to load than a request lives", async () => {
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    ask();
+    render(<FleetsPage />);
+    const later = Date.now() + 3 * PENDING_OPEN_TTL_MS;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    await act(async () => answer(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("lets the request lapse when the page goes before its view loads, so a later visit opens no composer and no toast", async () => {
+    fake.api.fleets.mockReturnValue(new Promise(() => {}));
+    ask();
+    const first = render(<FleetsPage />);
+    first.unmount();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3 * PENDING_OPEN_TTL_MS);
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    expect(within(queue()).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("leaves another row's composer and its draft as they were (AC5)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Merge the cache")).getByRole("button", { name: "Grant… #4" }));
+    fireEvent.change(within(rowOf("Merge the cache")).getByRole("textbox"), { target: { value: "Go ahead" } });
+    ask();
+    await waitFor(() => expect(document.activeElement).toBe(within(rowOf("Which cache to use")).getByRole("textbox")));
+    expect((within(rowOf("Merge the cache")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Go ahead");
+  });
+
+  it("focuses the row's own composer already open, keeping its draft (AC5)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(rowOf("Which cache to use")).getByRole("textbox"), { target: { value: "Use Redis" } });
+    act(() => (document.activeElement as HTMLElement).blur());
+    ask();
+    await waitFor(() => expect(document.activeElement).toBe(within(rowOf("Which cache to use")).getByRole("textbox")));
+    expect((within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
+  });
+
+  it("opens the composer on a phone too", async () => {
+    setCompactViewport(true);
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
   });
 });

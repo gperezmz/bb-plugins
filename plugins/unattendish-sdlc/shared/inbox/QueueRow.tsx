@@ -54,10 +54,12 @@ interface QueueRowProps {
   /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `phone` layout always has them. */
   readonly touch?: boolean;
   readonly state: RowActionState;
+  /** The `<li>`'s DOM id, as `UnreadableRow` takes one: for scrolling to the row and finding its composer. */
+  readonly id?: string;
 }
 
 /** One Inbox row: the kind's icon and title, its link and age, its fleet where shown, and its action or the action's state, with the composer under it. */
-export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, layout, touch = false, state }: QueueRowProps) {
+export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, layout, touch = false, state, id }: QueueRowProps) {
   const action = rowAction(row, now, state);
   const age = rowAge(row, now);
   const kind = <Glyph name={KIND_ICONS[row.waitsFor]} tone={KIND_TONES[row.waitsFor]} />;
@@ -96,7 +98,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
     ) : null;
   if (layout === "two-line") {
     return (
-      <li className="flex flex-col gap-1 py-3">
+      <li id={id} className="flex flex-col gap-1 py-3">
         <span className="flex min-w-0 items-center gap-2">
           {kind}
           <span className="min-w-0 flex-1">{title}</span>
@@ -122,7 +124,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
   }
   if (layout === "phone") {
     return (
-      <li className="flex flex-col gap-2 py-3">
+      <li id={id} className="flex flex-col gap-2 py-3">
         {/* The title has the row's width beside the kind and wraps onto a second line before it is cut. */}
         <span className="flex items-start gap-2">
           <span className="flex h-5 shrink-0 items-center">{kind}</span>
@@ -145,7 +147,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
     );
   }
   return (
-    <li className="flex flex-col">
+    <li id={id} className="flex flex-col">
       <div className={cn(COLUMNS, "py-2", !showFleet && "grid-cols-[1rem_minmax(0,1fr)_auto_4.5rem_auto]")}>
         {kind}
         {title}

@@ -208,7 +208,17 @@ A section shows at most 200 rows, and the queue at most 400 in all; the counts a
 
 A fleet that newly needs an account raises a toast in every open bb window, led by a red plug. Its title is `<fleet> can't be read`, the server's sentence for what it needs is under it, and its button **Connect…** opens the popup over the view that is open. There is one toast for each half of a fleet, so a signal delivered twice raises one. It appears when a fleet becomes not watched for want of an account, a credential the service refuses, or a credential that cannot read the repository, and not again while the reason stays.
 
-When a poll or a manager's turn ending shows an Inbox row never seen before for its repository, every open bb window shows a toast. Its title is the item, such as `#7 Which cache to use`, led by the icon of what the row waits for, and the line under it is the forge's logo and `<fleet> waits for <your answer | a grant to merge | your ready label | something else>`. Its button **Open Fleets** opens the Fleets page. A row is told apart by its Ref, what it waits for, its Since and, for a row with no Ref, its Link.
+When a poll or a manager's turn ending shows an Inbox row never seen before for its repository, every open bb window shows a toast. Its title is the item, such as `#7 Which cache to use`, led by the icon of what the row waits for, and the line under it is the forge's logo and `<fleet> waits for <your answer | a grant to merge | your ready label | something else>`. Its button follows what the row waits for:
+
+| The row waits for | The toast's button |
+| --- | --- |
+| your answer | **Answer…** |
+| a grant to merge | **Grant…** |
+| your ready label, or something else | **Open Fleets**, which opens the Fleets page |
+
+**Answer…** and **Grant…** open the Fleets page at the row, scrolled into view, with the composer its own button opens under it and its text box focused. A fleet filter or a tab that would hide the row is cleared to every fleet and All; one that already shows it stays. The row is judged on a view fetched after the click, so the page shows its loading state until it arrives, and where it can't load, Can't load, with no composer. A row whose action reads `sending…`, `checking…` or `sent · <age>` is shown with no composer, and a row that left the Inbox opens none and raises a short toast, `#7 Which cache to use no longer waits on you`. Every other composer keeps its draft, and a composer already open on the row keeps its own and takes the focus.
+
+A row is told apart by its Ref, what it waits for, its Since and, for a row with no Ref, its Link.
 
 The plugin keeps which rows it has seen for each repository, so opening a window, reloading, restarting bb and taking a fleet over toast nothing. Registering a fleet whose manifest can be read records its rows without a toast; registering one whose manifest is missing records none, so the first rows the manager writes toast.
 
