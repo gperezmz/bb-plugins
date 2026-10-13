@@ -48,7 +48,10 @@ export function FleetName({ fleet, name, short = name, className }: { fleet: Fle
   );
 }
 
-/** A tap area at least 44 px square centred on a small link or button, reaching past what is drawn without moving what is beside it. */
+/**
+ * A tap area at least 44 px square centred on a small link or button, reaching past what is drawn without moving what
+ * is beside it.
+ */
 export const TAP_AREA = "relative before:absolute before:left-1/2 before:top-1/2 before:h-11 before:w-[max(100%,2.75rem)] before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
 
 interface QueueRowProps {
@@ -65,7 +68,9 @@ interface QueueRowProps {
    * the age on a second, for the Fleet tab's side panel.
    */
   readonly layout: "columns" | "stacked" | "two-line";
-  /** Tap areas of 44 px around the buttons in the `two-line` layout, for a phone; the `stacked` layout always has them. */
+  /**
+   * Tap areas of 44 px around the buttons in the `two-line` layout, for a phone; the `stacked` layout always has them.
+   */
   readonly touch?: boolean;
   readonly state: RowActionState;
   /** The `<li>`'s DOM id, as `UnreadableRow` takes one: for scrolling to the row and finding its composer. */
