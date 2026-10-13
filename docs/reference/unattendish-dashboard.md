@@ -44,10 +44,10 @@ One line for each fleet that is not quiet, in this order, left to right.
 | Name | The forge's logo (GitHub's; GitLab shows its name) and the fleet's name. Where the tracker is Linear or Jira, its name and key follow: Linear's team key, Jira's project key. A tracker that is the forge's issues adds nothing |
 | Manager | A turning icon while it works, with no time, since the plugin cannot know how long; a cup with how long it has been idle; a red person with a cross when its thread is archived or gone. The icon's accessible name and hover text say the state. How long is the thread's last update, which is approximate |
 | Status | Four fixed slots in this order: Blocked, In flight, Waits on you, Landed in the last 7 days. A count of zero leaves its slot empty and the others keep their places. Hovering a slot names its count, and the header lists the four |
-| Spend | The manager's thread tree's total from Thread Usage, "since this manager started". Empty, with no error, where Thread Usage is not installed or its answer cannot be read. Cached for 30 seconds |
+| Spend | The manager's thread tree's total from Thread Usage, "since this manager started". Where the manager's thread holds other fleets, `shared with <their names>` follows under it, since each of those fleets shows the same money. Empty, with no error, where Thread Usage is not installed or its answer cannot be read. Cached for 30 seconds |
 | Polling | Empty while polling is healthy. `not yet` where the fleet has never been polled; amber `9m late` where the last poll is more than twice the fleet's poll interval ago |
 | Fix | The first of the fleet's problems and warnings as a coloured verb, with the full sentence on hover, and `+N` when there are more, in which case the hover lists every sentence. See below |
-| Fleet tab | An icon that opens the manager's thread on its Fleet tab |
+| Fleet tab | An icon that opens the manager's thread on its Fleet tab, showing this fleet |
 
 A problem is red, a warning amber, and a fleet with either has a bar of that colour on the left edge of its line. A fleet with both is red. The fix verb is one of these, in the order a fleet's flags are ranked:
 
@@ -57,6 +57,7 @@ A problem is red, a warning amber, and a fleet with either has a bar of that col
 | Manifest rows the plugin cannot read | Problem | **Review** | The Fleet tab |
 | A half no account reads, or whose credential the service refuses or cannot read the repository with | Problem | **Connect…** | The [Connect popup](../how-to/unattendish-connect-a-fleet.md#connect-a-half) for that half |
 | The manager thread is archived or gone | Problem | A red ✕, whose sentence says to run `/run-fleet` in a new thread to take the fleet over | Nothing |
+| The manifest names another repository: the fleet is [left behind](#a-left-behind-fleet) | Problem | A red ✕, whose sentence names the repository the manifest names and the command that unregisters the fleet | Nothing |
 | Any other [`notWatched` reason](unattendish-fleet-contract.md), or an outage the poll found | Problem | A red ✕ | Nothing |
 | A credential that expires within 7 days, or has expired | Warning | **Renew…** | The Connect popup, to renew it |
 | Polling is late or has never run | Warning | Nothing: the polling cell says it | Nothing |
@@ -125,7 +126,7 @@ What the Fleet tab opens on and the Fleet chip shows on hover, in this order:
 | Fleet | The forge's logo, the fleet's name, and a tracker of its own as its name and key: Linear's team key or Jira's project key. GitHub shows its logo; GitLab, Linear and Jira show their names, since their trademark rules refuse third parties or forbid recolouring their logos |
 | Manager | A turning icon in green while it works, with no duration, since the plugin cannot know how long it has worked; a cup in grey with how long it has been idle; a person with a cross in red when its thread is archived or gone. A thread bb did not answer for also shows no manager, without the problem a gone manager raises |
 | Status | The four counts, each an icon and a number in its colour, a zero left out: blocked grey, in flight blue, waits on you amber, landed in the last 7 days purple |
-| Spend | As the board's Spend, where there is one |
+| Spend | As the board's Spend, where there is one, followed by `shared with <their names>` where the manager's thread holds other fleets |
 | Problems and warnings | Each as one strip tinted red or amber, with the server's sentence and its verb, in the board's order: **Connect…** for a half with no account or a credential connecting another account fixes; **Review** for a missing or unreadable manifest or rows that cannot be read; **Renew…** for a token that expires within 7 days; none for a problem nothing on the page fixes, late or never-run polling, or a gone manager, whose sentence says to run `/run-fleet` in a new thread to take the fleet over |
 | Last action | The action seen done most recently in the last hour whose row has left the Inbox: `You answered #5 Which queue · done 40m ago`. Left out with none |
 
@@ -133,11 +134,13 @@ What the Fleet tab opens on and the Fleet chip shows on hover, in this order:
 
 A button in a manager thread's header, shown only on a thread that holds a registration: the fleet icon, then, when at least one row waits on you, that count in amber. A small red dot on the icon marks a problem, an amber one a warning alone. With nothing waiting and no problem or warning it is the icon alone. Its accessible name gives the count and says when the fleet has a problem or a warning: `Fleet: 6 waiting on you, and it has a problem`.
 
-It is drawn like the controls beside it in bb's header, as tall as the header, with a border on desktop and none on a compact viewport, and never wraps. Hovering it shows the fleet header with `Click the chip to open the Fleet tab`; its **Review** opens the Fleet tab. Clicking or tapping the chip opens the Fleet tab. A compact viewport has no hover card. While its data loads, or when it failed to load, it draws nothing.
+A thread holding more than one fleet has one chip for all of them. Its count is the sum of their waiting rows, its dot is red when any of them has a problem, a left-behind fleet's included, and otherwise amber when any has a warning, and its accessible name says so: `2 fleets: 8 waiting on you, and a fleet has a problem`.
+
+It is drawn like the controls beside it in bb's header, as tall as the header, with a border on desktop and none on a compact viewport, and never wraps. Hovering it shows the fleet header with `Click the chip to open the Fleet tab`; its **Review** opens the Fleet tab. A thread holding more than one fleet stacks one fleet header per fleet, in the [Fleet tab's order](#which-fleet-the-tab-shows), each fleet's name a button that opens the Fleet tab on that fleet and its **Review** opening it on that fleet at what needs reviewing. Clicking or tapping the chip opens the Fleet tab with no fleet named. A compact viewport has no hover card. While its data loads, or when it failed to load, it draws nothing.
 
 ## The Fleet tab
 
-Opened from the chip, from the board's Fleet tab icon or **Review**, from a queue row's **Review**, or from **Fleet** in a thread panel's new-tab Actions list, on any thread. On a thread that holds no registration it reads `This thread runs no fleet.` and names the manager holding the thread's repository, where there is one, with a link to it. On a manager it shows the fleet header over four tabs, each with a count; the tab bar stays at the top while the tab scrolls, and the arrow keys move between tabs. Work opens first.
+Opened from the chip, from the board's Fleet tab icon or **Review**, from a queue row's **Review**, or from **Fleet** in a thread panel's new-tab Actions list, on any thread. On a thread that holds no registration it reads `This thread runs no fleet.` and names the manager holding the thread's repository, where there is one, with a link to it. On a manager it shows one of the thread's fleets, as [below](#which-fleet-the-tab-shows): its fleet header over four tabs, each with a count; the tab bar stays at the top while the tab scrolls, and the arrow keys move between tabs. Work opens first.
 
 | Tab | Its count | What |
 |---|---|---|
@@ -146,7 +149,23 @@ Opened from the chip, from the board's Fleet tab icon or **Review**, from a queu
 | Watching | The items in the watched set | The watched set, the credentials and polling, below |
 | Ledger | The reads that failed in the last 24 hours, in red; none when no read failed | The ledger, below. It loads when its tab first opens |
 
-**Review** in the header opens Work at what needs reviewing: the section holding the first row the plugin cannot read, in section order, unfolded, scrolled to that row. When the manifest is missing or cannot be read, Work and Notes show that in place of their content: `No manifest was found at the path the fleet registered.`, or `The manifest cannot be read: <reason>`.
+**Review** in the header opens Work at what needs reviewing: the section holding the first row the plugin cannot read, in section order, unfolded, scrolled to that row. When the manifest is missing, cannot be read or names another repository, Work and Notes show that in place of their content: `No manifest was found at the path the fleet registered.`, `The manifest cannot be read: <reason>`, or `The manifest now names <repository>, so nothing in it is this fleet's.`
+
+### Which fleet the tab shows
+
+A thread has one Fleet tab, which shows one of its fleets at a time. Where the thread holds more than one, the fleet's name in the header is a menu listing each, in the order below, with its waiting count in amber and a red dot for a problem or an amber one for a warning, the one shown checked. Picking one shows it in the header and in all four tabs. The menu opens with Enter, Space or the down arrow, the arrows, Home and End move in it, Enter or Space picks, and Escape closes it. A thread holding one fleet shows its name as plain text.
+
+The fleets are ordered with those [left behind](#a-left-behind-fleet) last; within each group a problem comes before a warning before neither, then the most waiting rows first, then the name.
+
+Every link that opens the Fleet tab for a fleet opens it on that fleet: the board's Fleet tab icon and **Review**, a queue row's **Review**, and the chip's fleet headers. Where the tab is already open, it switches to that fleet. Opened with no fleet named, from the chip or from the panel's Actions list, it shows the fleet it last showed for the thread, or the first in order where it has shown none since bb's window loaded. It stays on that fleet as the counts change, and when it is closed and opened again, until you pick another or a link names one; where the thread no longer holds it, the tab shows the thread's first fleet.
+
+### A left-behind fleet
+
+A fleet whose manifest's first line names another repository is **left behind**: run-fleet keeps one manifest per thread, so a thread that ran `/run-fleet` for one repository and later for another holds both registrations on the one file, which now names the second. A left-behind fleet shows none of that manifest's rows anywhere, none of the four Status counts, and no action; no new Inbox row raises a toast for it; and its watched set is its labelled items alone, as for a missing manifest. Its credential problems, and their **Connect…**, stay as for any fleet. It carries a problem saying what its manifest now names and how to unregister it, such as:
+
+> Its manifest now names github.com/org/wake, so nothing in it is this fleet's. Unregister it with `bb unattendish fleet unregister github.com/org/dash`.
+
+Once the manifest names the fleet again, it shows its rows at the next read.
 
 ### Work
 

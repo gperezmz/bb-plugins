@@ -112,7 +112,7 @@ describe("the chip's hover card (#258 AC12)", () => {
 
   it("shows the fleet header with the hint to click", async () => {
     fake.api.threadFleet.mockResolvedValue(
-      managerFleet(fleetCard({ repo: "acme/web", waiting: 6, inFlight: 2, blocked: 1, landed: 1, cost: { amount: 4.12, currency: "$", period: "since this manager started" }, problems: [unreadable] }), {
+      managerFleet(fleetCard({ repo: "acme/web", waiting: 6, inFlight: 2, blocked: 1, landed: 1, cost: { amount: 4.12, currency: "$", period: "since this manager started", sharedWith: [] }, problems: [unreadable] }), {
         lastAction: actionRecord({ kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) }),
       }),
     );
@@ -134,7 +134,7 @@ describe("the chip's hover card (#258 AC12)", () => {
     const header = await hover();
     fireEvent.click(within(header).getByRole("button", { name: /^Review/ }));
     expect(sdk.navigate.openThreadPanel).toHaveBeenCalledWith({ actionId: "fleet", params: { threadId: "thr_acme" } });
-    expect(takeReview("thr_acme")).toBe(true);
+    expect(takeReview("thr_acme", "acme/web")).toBe(true);
   });
 
   it("opens the Fleet tab when the chip is clicked", async () => {

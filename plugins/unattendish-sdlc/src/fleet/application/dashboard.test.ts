@@ -70,7 +70,7 @@ describe("the Inbox table (AC2)", () => {
   it("lists every row of every fleet, the oldest wait first, each with its fleet, link and what it offers", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(1), `| #2 | A grant | grant | 2026-10-12T07:00:00Z | ${issueUrl(2)} |`, inboxRow(3, "ready"), inboxRow(4, "other")] }));
-    await startOther(w, manifest({ inbox: [`| — | Merge it | grant | 2026-10-12T08:00:00Z | thread thr_old1, message 7, 2026-10-12T07:59:00Z |`] }));
+    await startOther(w, manifest({ repo: "github.com/org/other", inbox: [`| — | Merge it | grant | 2026-10-12T08:00:00Z | thread thr_old1, message 7, 2026-10-12T07:59:00Z |`] }));
     const { inbox } = await fleets(w);
     expect(inbox.map((row) => [row.fleet, row.ref, row.since])).toEqual([
       ["github.com/org/repo", "#2", "2026-10-12T07:00:00Z"],
@@ -126,7 +126,7 @@ describe("the Recently landed strip (AC5)", () => {
   it("lists specs landed in the last 7 days in any fleet, newest first, with their fleet, title and pull request", async () => {
     const w = world();
     await start(w, manifest({ landed: [landedRow(1, hoursAgo(w, 30)), landedRow(2, hoursAgo(w, 24 * 8)), landedRow(3, hoursAgo(w, 2))] }));
-    await startOther(w, manifest({ landed: [landedRow(4, hoursAgo(w, 10))] }));
+    await startOther(w, manifest({ repo: "github.com/org/other", landed: [landedRow(4, hoursAgo(w, 10))] }));
     const { landed } = await fleets(w);
     expect(landed.map((row) => [row.fleet, row.ref, row.spec])).toEqual([
       ["github.com/org/repo", "#3", "Spec 3"],
@@ -204,7 +204,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     await start(w, manifest());
     expect((await cardOf(w)).cost).toBeNull();
     w.cost.costs.set(MANAGER, { amount: 12.5, currency: "USD" });
-    expect((await cardOf(w)).cost).toEqual({ amount: 12.5, currency: "USD", period: "since this manager started" });
+    expect((await cardOf(w)).cost).toEqual({ amount: 12.5, currency: "USD", period: "since this manager started", sharedWith: [] });
   });
 
   it("gathers every reason the fleet is not fully watched, with where each is put right", async () => {
@@ -282,7 +282,7 @@ describe("what a thread is to the Fleet tab (AC9)", () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(1)] }));
     const answer = await view(w).threadFleet({ threadId: MANAGER });
-    expect(answer).toMatchObject({ kind: "manager", generatedAt: w.clock.now().toISOString(), card: { repo: "github.com/org/repo", waiting: 1 }, lastAction: null });
+    expect(answer).toMatchObject({ kind: "manager", generatedAt: w.clock.now().toISOString(), fleets: [{ card: { repo: "github.com/org/repo", waiting: 1 }, lastAction: null }] });
   });
 
   it("gives a manager the action seen done most recently in the last hour whose row left the Inbox", async () => {
@@ -293,7 +293,7 @@ describe("what a thread is to the Fleet tab (AC9)", () => {
     done("a", hoursAgo(w, 0.5));
     done("b", hoursAgo(w, 0.1));
     const answer = await view(w).threadFleet({ threadId: MANAGER });
-    expect(answer).toMatchObject({ kind: "manager", lastAction: { id: "b", kind: "answer", ref: "#5", what: "Which queue", state: "done" } });
+    expect(answer).toMatchObject({ kind: "manager", fleets: [{ lastAction: { id: "b", kind: "answer", ref: "#5", what: "Which queue", state: "done" } }] });
   });
 
   it("names the manager holding the thread's repository when the thread runs no fleet, matching without regard to case or .git", async () => {

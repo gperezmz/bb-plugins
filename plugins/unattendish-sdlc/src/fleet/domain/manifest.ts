@@ -2,8 +2,8 @@
 // four sections hold GitHub-flavoured pipe tables read by column name, and
 // every other section is shown as written and read by nobody here. A row that
 // breaks the contract is skipped and named; the rows around it still count.
-import { formatRepo, parseRepo } from "./identity";
-import type { BlockedRow, InboxRow, InFlightRow, LandedRow, Manifest, ManifestRead, Stage, UnreadableRow, WaitsFor, WrittenSection } from "./model";
+import { formatRepo, parseRepo, repoId } from "./identity";
+import type { BlockedRow, FleetManifestRead, InboxRow, InFlightRow, LandedRow, Manifest, ManifestRead, RepoRef, Stage, UnreadableRow, WaitsFor, WrittenSection } from "./model";
 
 const WAITS_FOR: readonly WaitsFor[] = ["answer", "grant", "ready", "other"];
 const STAGES: readonly Stage[] = ["building", "asking", "waiting on you", "under review", "at the bar", "round open", "brainstorming"];
@@ -252,6 +252,13 @@ const readTable = <Row extends { readonly line?: number }>(spec: SectionSpec<Row
     else rows.push({ ...read, line: line.no } as Row);
   }
 };
+
+/** The manifest as the fleet of `repo` reads it: `left-behind` where its first line names another repository, else as read. */
+export function ownManifest(repo: RepoRef, read: ManifestRead): FleetManifestRead {
+  if (read.status !== "ok") return read;
+  const named = parseRepo(read.manifest.repo);
+  return named !== null && repoId(named) !== repoId(repo) ? { status: "left-behind", names: read.manifest.repo } : read;
+}
 
 /** `unreadable` when the first line is not `# Fleet: <host>/<path>` naming a repository `parseRepo` reads; else `ok`. Never `missing` (the caller finds that out). */
 export function parseManifest(text: string): ManifestRead {

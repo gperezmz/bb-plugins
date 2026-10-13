@@ -28,7 +28,7 @@ The manifest path may name a file not written yet: until it can be read, the fle
 
 Without the plugin, `bb unattendish` does not exist, and run-fleet carries on without wakes.
 
-**The manifest, as the plugin reads it.** The first line is `# Fleet: <host>/<path>`. These sections are read by their columns; every other section is shown as written:
+**The manifest, as the plugin reads it.** The first line is `# Fleet: <host>/<path>`. A fleet whose manifest's first line names another repository is [left behind](unattendish-dashboard.md#a-left-behind-fleet): none of its rows count for the fleet, and `register` answers as it does without one. These sections are read by their columns; every other section is shown as written:
 
 | Section | Columns |
 | --- | --- |

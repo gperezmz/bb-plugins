@@ -115,7 +115,7 @@ describe("the header (#258 AC1)", () => {
     fake.api.threadFleet.mockResolvedValue(managerFleet(fleetCard({ repo: "org/dash" })));
     fake.api.fleetDetail.mockResolvedValue({
       ok: true,
-      detail: detailWith({ card: fleetCard({ repo: "org/dash", blocked: 1, inFlight: 2, waiting: 6, landed: 1, cost: { amount: 4.12, currency: "$", period: "since this manager started" }, problems: [unreadableInbox] }) }),
+      detail: detailWith({ card: fleetCard({ repo: "org/dash", blocked: 1, inFlight: 2, waiting: 6, landed: 1, cost: { amount: 4.12, currency: "$", period: "since this manager started", sharedWith: [] }, problems: [unreadableInbox] }) }),
     });
     render(<FleetTab threadId="thr_acme" />);
     const header = await screen.findByRole("banner", { name: "Fleet org/dash" });
@@ -260,7 +260,7 @@ describe("Review from the Fleet chip's card (#258 AC1, AC12)", () => {
   const landedRow = () => screen.getByText('Unreadable row, line 30: the table has no "Merged" column').closest("li")!;
 
   it("opens Work at the row when the tab opens on the request, unfolding Landed", async () => {
-    requestReview("thr_acme");
+    requestReview("thr_acme", "acme/web");
     await showDetail({ manifest: landedUnreadable });
     await waitFor(() => expect(scrolled).toContain(landedRow()));
     expect(within(panel("Work")).getByRole("button", { name: /^Landed/ }).getAttribute("aria-expanded")).toBe("true");
@@ -270,7 +270,7 @@ describe("Review from the Fleet chip's card (#258 AC1, AC12)", () => {
     await showDetail({ manifest: landedUnreadable });
     fake.api.ledger.mockResolvedValue({ ok: true, ledger: ledgerView() });
     fireEvent.click(tab(/^Ledger/));
-    act(() => requestReview("thr_acme"));
+    act(() => requestReview("thr_acme", "acme/web"));
     await waitFor(() => expect(tab(/^Work/).getAttribute("aria-selected")).toBe("true"));
     await waitFor(() => expect(scrolled).toContain(landedRow()));
   });

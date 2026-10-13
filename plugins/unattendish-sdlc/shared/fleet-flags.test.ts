@@ -26,6 +26,15 @@ describe("a fleet's flags", () => {
     ]);
   });
 
+  it("keeps a half's Connect… before a left-behind fleet's problem, so the board's fix column offers it (#270 AC6)", () => {
+    const left: ProblemView = { code: "left-behind", text: "Its manifest now names github.com/org/wake, so nothing in it is this fleet's.", fix: { kind: "none" } };
+    const flags = flagsOf(fleetCard({ problems: [left, forge] }), NOW);
+    expect(flags.map((flag) => [flag.verb, flag.sentence])).toEqual([
+      ["Connect…", forge.text],
+      [null, left.text],
+    ]);
+  });
+
   it("each carry where they are put right", () => {
     const [review, connect, renew, polling] = flagsOf(fleetCard({ problems: [missing, forge], warnings: [expires, late] }), NOW);
     expect(review!.fix).toEqual({ kind: "fleet-tab" });

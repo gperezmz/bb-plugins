@@ -6,7 +6,7 @@ import { inboxNews, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, repoId } from "../domain/identity";
 import { uniqueRowIds } from "../domain/inbox";
 import { CELL_MAX_CHARS, clip } from "../domain/text";
-import { itemId, type ItemState, type ManifestRead, type Registration } from "../domain/model";
+import { itemId, type ItemState, type FleetManifestRead, type Registration } from "../domain/model";
 import { itemOfReference } from "../domain/watched";
 import type { DashboardEvents, Store } from "./ports";
 
@@ -21,7 +21,7 @@ export interface Observed {
 /**
  * Marks as done the sent actions that `manifest` and `items` (what the poll read of each watched item, by item id,
  * before the cursors commit) show done, and announces each Inbox row never recorded for the repository once. The first
- * read since the fleet registered only records the rows. A manifest that is missing or unreadable shows neither. A row
+ * read since the fleet registered only records the rows. A manifest that is missing, unreadable or left behind shows neither. A row
  * that left the Inbox counts as done only from an Inbox read whole, with no row named unreadable; the ready label does
  * not depend on the Inbox, so a Build it is done by it whatever rows cannot be read.
  * An action sent after `at` is left to the next read: this one's manifest may be older than the row.
@@ -30,7 +30,7 @@ export function observeManifest(
   deps: Observed,
   registration: Registration,
   forge: "github" | "gitlab",
-  manifest: ManifestRead,
+  manifest: FleetManifestRead,
   items: Readonly<Record<string, ItemState>>,
   at: string,
 ): void {

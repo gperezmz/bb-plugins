@@ -217,7 +217,7 @@ describe("the page (AC1)", () => {
     const page = await show(
       fleetsView({
         fleets: [
-          fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p" } }),
+          fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p", sharedWith: [] } }),
           fleet("platform/infra", { tracker: "linear:PLAT", problems: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
           fleet("org/gone", { forge: "gitlab", problems: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
         ],
@@ -256,7 +256,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("leaves spend empty where it is unknown, and shows it where it is known", async () => {
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, cost: { amount: 4.2, currency: "$", period: "since this manager started" } }), fleet("org/wake", { waiting: 1, cost: null })] }));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, cost: { amount: 4.2, currency: "$", period: "since this manager started", sharedWith: [] } }), fleet("org/wake", { waiting: 1, cost: null })] }));
     expect(within(line("org/dash")).getByText("$4.20")).toBeTruthy();
     expect(within(line("org/wake")).queryByText(/\$/)).toBeNull();
   });

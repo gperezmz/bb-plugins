@@ -33,7 +33,7 @@ describe("refreshing the fleets of a manager whose turn ended", () => {
     await startBoth(w);
     const row = (repo: string) => `| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://${repo}/issues/7 |`;
     w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [row("github.com/org/repo")] }));
-    w.manifests.files.set(OTHER_MANIFEST, manifest({ inbox: [row(OTHER_REPO)] }));
+    w.manifests.files.set(OTHER_MANIFEST, manifest({ repo: OTHER_REPO, inbox: [row(OTHER_REPO)] }));
     await refreshFleetsOf(w.poll, new SerialQueue(), MANAGER);
     expect(w.adapters.github.reads.map((read) => read.source)).toEqual([{ role: "forge", service: "github", host: "github.com", path: "org/repo" }]);
   });
@@ -81,7 +81,7 @@ describe("refreshing the fleets of a manager whose turn ended", () => {
     const w = world();
     await startBoth(w);
     await registerFleet(w.register, MANAGER, args({ repo: "github.com/org/third", manifest: "/work/third/manifest.md" }));
-    w.manifests.files.set("/work/third/manifest.md", manifest({ inbox: ["| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/third/issues/7 |"] }));
+    w.manifests.files.set("/work/third/manifest.md", manifest({ repo: "github.com/org/third", inbox: ["| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/third/issues/7 |"] }));
     w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: ["| #7 | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/repo/issues/7 |"] }));
     w.store.setIntervalMs(REPO_KEY, 30_000);
     const original = w.store.getCursor.bind(w.store);

@@ -146,6 +146,12 @@ export type ManifestRead =
   | { readonly status: "unreadable"; readonly reason: string }
   | { readonly status: "ok"; readonly manifest: Manifest };
 
+/**
+ * A manifest as one fleet reads it: as read, or `left-behind` where it was read and its first line names another
+ * repository (`names`, as the first line spells it), so nothing in it is the fleet's.
+ */
+export type FleetManifestRead = ManifestRead | { readonly status: "left-behind"; readonly names: string };
+
 // ---- what is watched ----
 
 /**

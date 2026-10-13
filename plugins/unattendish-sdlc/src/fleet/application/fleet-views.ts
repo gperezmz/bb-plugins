@@ -166,11 +166,20 @@ const managerOf = (standing: ThreadStanding | null): ManagerView => (standing?.s
 
 export const COST_PERIOD = "since this manager started";
 
+/** The other fleets the fleet's manager thread holds, by name, whose spend is the same money. */
+const sharingOf = (deps: Pick<ViewDeps, "store">, g: Gathered): string[] =>
+  deps.store
+    .listFleets()
+    .filter((other) => other.registration.managerThreadId === g.fleet.registration.managerThreadId && repoId(other.registration.repo) !== g.repo)
+    .map((other) => formatRepo(other.registration.repo))
+    .sort();
+
 export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<FleetCardView> {
   const registration = g.fleet.registration;
   const manifest = g.watching.manifest;
   const unreadable = manifest.status === "ok" ? manifest.manifest.unreadable : [];
   const cost = await deps.cost.costOf(registration.managerThreadId).catch(() => null);
+  const sharedWith = sharingOf(deps, g);
   const intervalMs = effectiveInterval(registration);
   const polling = pollingWarning(g.fleet.lastPolledAt, intervalMs, now);
   return {
@@ -183,10 +192,15 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     inFlight: manifest.status === "ok" ? manifest.manifest.inFlight.length : 0,
     blocked: manifest.status === "ok" ? manifest.manifest.blocked.length : 0,
     landed: manifest.status === "ok" ? landedWithin(manifest.manifest.landed, now, LANDED_DAYS).length : 0,
-    cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD },
+    cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD, sharedWith },
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs,
-    problems: problemsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing !== null && g.standing.state !== "live"),
+    problems: problemsOf(
+      [...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))],
+      unreadable,
+      g.standing !== null && g.standing.state !== "live",
+      manifest.status === "left-behind" ? { fleet: g.name, names: manifest.names } : null,
+    ),
     halves: halvesOf(g),
     warnings: [...credentialWarnings(warnedOf(deps, g), now), ...(polling === null ? [] : [polling])],
   };
@@ -203,6 +217,7 @@ export function manifestViewOf(g: Gathered, inbox: InboxViews, now: Date): Manif
   const manifest = g.watching.manifest;
   if (manifest.status === "missing") return { status: "missing" };
   if (manifest.status === "unreadable") return { status: "unreadable", reason: manifest.reason };
+  if (manifest.status === "left-behind") return { status: "left-behind", names: manifest.names };
   const read = manifest.manifest;
   return {
     status: "ok",

@@ -23,7 +23,7 @@ describe("the fleet header", () => {
   });
 
   it("show spend only where it is known", () => {
-    expect(spendText(fleetCard({ cost: { amount: 4.2, currency: "$", period: "since this manager started" } }))).toBe("$4.20");
+    expect(spendText(fleetCard({ cost: { amount: 4.2, currency: "$", period: "since this manager started", sharedWith: [] } }))).toBe("$4.20");
     expect(spendText(fleetCard({ cost: null }))).toBeNull();
   });
 

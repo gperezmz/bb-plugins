@@ -16,7 +16,10 @@ const owns = (w: World, token: string, login: string, over: Partial<Extract<Iden
   w.probe.owners.set(token, { ok: true, login, name: login, expiresAt: null, classic: false, ...over });
 const register = async (w: World, repo: string, tracker = "forge-issues", manager = MANAGER) => {
   w.threads.states.set(manager, "live");
-  return registerFleet(w.register, manager, args({ repo, tracker, manifest: MANIFEST_PATH }));
+  // Each fleet its own manifest, naming its own repository, so none is left behind.
+  const path = `/work/${repo}/manifest.md`;
+  w.manifests.files.set(path, manifest({ repo }));
+  return registerFleet(w.register, manager, args({ repo, tracker, manifest: path }));
 };
 const saved = (result: ConnectResult) => {
   if (result.outcome !== "saved") throw new Error(`not saved: ${JSON.stringify(result)}`);

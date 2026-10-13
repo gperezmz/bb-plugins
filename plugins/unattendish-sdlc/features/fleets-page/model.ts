@@ -1,7 +1,7 @@
 // What the Fleets page says, decided from its view alone: the fleet board's order and cells, the queue's tabs and rows,
 // and the page's states in between.
 import type { ActionRecordView, FleetCardView, FleetsView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
-import { flagsOf, isQuiet, worstFlag } from "@/shared/fleet-flags";
+import { byFlagsThenWaiting, isQuiet } from "@/shared/fleet-flags";
 import { ageLabel } from "@/shared/format";
 
 /** The header's count: the Inbox rows across fleets, and nothing at zero or before the view arrives. */
@@ -50,11 +50,7 @@ export function shortNames(fleets: readonly string[]): ReadonlyMap<string, strin
  * order; problems and warnings among themselves the same way.
  */
 export function boardOrder(cards: readonly FleetCardView[], now: string): FleetCardView[] {
-  const rank = (card: FleetCardView): number => {
-    const worst = worstFlag(flagsOf(card, now));
-    return worst === "problem" ? 0 : worst === "warning" ? 1 : 2;
-  };
-  return [...cards].sort((a, b) => rank(a) - rank(b) || b.waiting - a.waiting || (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0));
+  return [...cards].sort(byFlagsThenWaiting(now));
 }
 
 /** The board's lines in order: those it lists, and the quiet fleets folded under one line; a selected fleet is always listed. */

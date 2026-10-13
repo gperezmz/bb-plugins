@@ -139,8 +139,8 @@ async function openThread(page, url, cli, thread, label) {
   await page.waitForLoadState("networkidle");
 }
 
-/** The Fleet chip in an open thread's header. */
-const chipOf = (page) => page.getByRole("button", { name: /^Fleet( idle$|: )/ });
+/** The Fleet chip in an open thread's header: `Fleet: …` for a thread holding one fleet, `2 fleets: …` for one holding more. */
+const chipOf = (page) => page.getByRole("button", { name: /^(Fleet( idle$|: )|\d+ fleets: )/ });
 
 /** The Fleet tab's tab bar, which shows once the tab has loaded its fleet. */
 const tabBar = (page) => page.getByRole("tablist", { name: "Fleet", exact: true });

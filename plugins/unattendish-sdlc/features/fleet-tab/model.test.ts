@@ -21,6 +21,8 @@ import {
   tabName,
   unreadableIn,
   whyText,
+  nextEntry,
+  switcherEntries,
 } from "./model";
 
 type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
@@ -182,5 +184,29 @@ describe("the ledger's filters", () => {
     const cut = ledgerChange({ ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing });
     const withCut = ledgerView({ dropped: [{ reason: "out of scope: listing cut at its page limit", count: 1, changes: [cut] }], changes: [cut] });
     expect(ledgerContent(withCut, "dropped", "").dropped).toHaveLength(1);
+  });
+});
+
+describe("the switcher's entries (#270 AC3)", () => {
+  it("lists each fleet with its amber count and its dot, in the order given", () => {
+    const unreadable = { code: "unreadable-rows" as const, text: "1 manifest row cannot be read: Inbox", fix: { kind: "fleet-tab" as const } };
+    expect(switcherEntries([fleetCard({ repo: "org/wake", waiting: 2, problems: [unreadable] }), fleetCard({ repo: "org/dash" })], NOW)).toEqual([
+      { repo: "org/wake", count: 2, dot: "problem", label: "org/wake, 2 waiting on you, has a problem" },
+      { repo: "org/dash", count: null, dot: null, label: "org/dash" },
+    ]);
+  });
+
+  it("moves with the arrows, Home and End, wrapping", () => {
+    expect(nextEntry(1, "ArrowDown", 2)).toBe(0);
+    expect(nextEntry(0, "ArrowUp", 2)).toBe(1);
+    expect(nextEntry(1, "Home", 3)).toBe(0);
+    expect(nextEntry(0, "End", 3)).toBe(2);
+    expect(nextEntry(0, "a", 3)).toBeNull();
+  });
+});
+
+describe("a left-behind manifest (#270 AC6)", () => {
+  it("says what the manifest names in place of its rows", () => {
+    expect(manifestProblemText({ status: "left-behind", names: "github.com/org/wake" })).toBe("The manifest now names github.com/org/wake, so nothing in it is this fleet's.");
   });
 });
