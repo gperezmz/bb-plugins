@@ -102,7 +102,7 @@ fleet with `bb unattendish fleet register`, from its own thread.
   and whose `outcome` is `confirm` (`This token belongs to buser. Add as GitHub · buser?`),
   `saved` or `refused`.
 - CLI: `bb unattendish fleet register --contract 1 --repo <host/owner/name> --tracker <forge-issues|linear:<team>|jira:<site>/<project>> --manifest <path> --operator <login> --label-spec <l> --label-ready <l> --label-in-progress <l> --label-needs-input <l> --marker <text> [--echo-actor <login>] [--json]`,
-  `fleet status [--json]`, `fleet ledger <repo> [--item <ref>] [--done woke|echo|out-of-scope|held|failed-read] [--limit <n>] [--json]`,
+  `fleet status [--json]`, `fleet ledger <repo> [--item <ref>] [--done woke|echo|out-of-scope|held|failed-read|skipped-listing] [--limit <n>] [--json]`,
   `fleet interval <repo> <30s|2m|default>` and `fleet unregister <repo>`.
 
 ## Driving it with drive-bb-plugins

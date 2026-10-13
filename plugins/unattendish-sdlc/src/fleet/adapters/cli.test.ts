@@ -145,6 +145,73 @@ describe("fleet ledger", () => {
     expect((await json(["fleet", "ledger", REPO, "--done", "failed-read", "--item", "#6"])).entries).toEqual([]);
   });
 
+  describe("--done skipped-listing", () => {
+    const WINDOW = { from: "2026-10-12T09:50:00.000Z", to: "2026-10-12T10:00:00.000Z" };
+    /** The entry a poll writes when a listing is cut at its page limit: no item, and the window it listed. */
+    const skipped = (key: string, seenAt: string): Omit<LedgerRow, "wakeId"> =>
+      row(key, "#0", "out-of-scope", { ref: null, url: null, kind: "skipped listing", actor: null, rule: "listing cut at its page limit", window: WINDOW, seenAt });
+    /** The `n`th plain out-of-scope change, seen a second after the one before it, from 10:00 on. */
+    const plain = (n: number) => row(`plain${n}`, `#${n + 10}`, "out-of-scope", { seenAt: new Date(Date.UTC(2026, 9, 12, 10, 0, n)).toISOString() });
+
+    it("prints only the Skipped listings, newest first, past any number of plain out-of-scope changes", async () => {
+      const { store, run, json } = await load();
+      await run(registerArgs(), MANAGER);
+      store.recordChange(REPO, skipped("older", "2026-10-12T09:20:00.000Z"));
+      store.recordChange(REPO, skipped("newer", "2026-10-12T09:30:00.000Z"));
+      for (let n = 0; n < 300; n += 1) store.recordChange(REPO, plain(n));
+      const { entries } = await json(["fleet", "ledger", REPO, "--done", "skipped-listing"]);
+      expect(entries.map((e: LedgerEntry) => (e.type === "change" ? e.row.key : e.type))).toEqual(["newer", "older"]);
+      expect(entries.every((e: LedgerEntry) => e.type === "change" && e.row.kind === "skipped listing")).toBe(true);
+    });
+
+    it("keeps the newest Skipped listings up to --limit", async () => {
+      const { store, run, json } = await load();
+      await run(registerArgs(), MANAGER);
+      store.recordChange(REPO, skipped("first", "2026-10-12T09:10:00.000Z"));
+      store.recordChange(REPO, skipped("second", "2026-10-12T09:20:00.000Z"));
+      store.recordChange(REPO, skipped("third", "2026-10-12T09:30:00.000Z"));
+      const { entries } = await json(["fleet", "ledger", REPO, "--done", "skipped-listing", "--limit", "2"]);
+      expect(entries.map((e: LedgerEntry) => (e.type === "change" ? e.row.key : e.type))).toEqual(["third", "second"]);
+    });
+
+    it("prints a Skipped listing as the text form names it", async () => {
+      const { store, run } = await load();
+      await run(registerArgs(), MANAGER);
+      store.recordChange(REPO, skipped("cut", "2026-10-12T09:30:00.000Z"));
+      const printed = await run(["fleet", "ledger", REPO, "--done", "skipped-listing"]);
+      expect(printed.exitCode).toBe(0);
+      expect(printed.stdout).toBe("2026-10-12T09:30:00.000Z  out of scope: listing cut at its page limit  listed 2026-10-12T09:50:00.000Z to 2026-10-12T10:00:00.000Z, reached 2026-10-12T09:00:00.000Z");
+    });
+
+    it("prints that the ledger holds nothing when no Skipped listing is held", async () => {
+      const { store, run, json } = await load();
+      await run(registerArgs(), MANAGER);
+      seed(store);
+      const printed = await run(["fleet", "ledger", REPO, "--done", "skipped-listing"]);
+      expect(printed.exitCode).toBe(0);
+      expect(printed.stdout).toBe("The ledger holds nothing for this.");
+      expect((await json(["fleet", "ledger", REPO, "--done", "skipped-listing"])).entries).toEqual([]);
+    });
+
+    it("prints nothing with --item, since a Skipped listing names no item", async () => {
+      const { store, run } = await load();
+      await run(registerArgs(), MANAGER);
+      store.recordChange(REPO, skipped("cut", "2026-10-12T09:30:00.000Z"));
+      const printed = await run(["fleet", "ledger", REPO, "--done", "skipped-listing", "--item", "#0"]);
+      expect(printed.exitCode).toBe(0);
+      expect(printed.stdout).toBe("The ledger holds nothing for this.");
+    });
+
+    it("leaves --done out-of-scope including Skipped listings beside the plain ones", async () => {
+      const { store, run, json } = await load();
+      await run(registerArgs(), MANAGER);
+      seed(store);
+      store.recordChange(REPO, skipped("cut", "2026-10-12T09:30:00.000Z"));
+      const { entries } = await json(["fleet", "ledger", REPO, "--done", "out-of-scope"]);
+      expect(entries.map((e: LedgerEntry) => (e.type === "change" ? e.row.kind : e.type)).sort()).toEqual(["commented", "skipped listing"]);
+    });
+  });
+
   it("--limit keeps the newest entries", async () => {
     const { store, run, json } = await load();
     await run(registerArgs(), MANAGER);
