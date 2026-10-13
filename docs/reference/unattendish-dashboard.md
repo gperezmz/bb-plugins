@@ -4,8 +4,9 @@
 flowchart LR
   poll["A poll or a manager's turn ending<br/>reads the manifest"] --> state[("Registration, cursors,<br/>ledger, sent actions,<br/>seen Inbox rows")]
   state --> page["Fleets page:<br/>fleet board and queue"]
-  state --> chip["Fleet chip"]
-  state --> tab["Fleet tab"]
+  state --> chip["Fleet chip:<br/>the fleet header on hover"]
+  state --> tab["Fleet tab:<br/>the fleet header over<br/>Work, Notes, Watching, Ledger"]
+  chip -->|click| tab
   poll -->|a new Inbox row| toast["Toast in every window"]
   poll -->|a fleet that newly needs an account| needs["Toast with Connect…"]
   needs --> connect["Connect popup"]
@@ -105,44 +106,74 @@ A row waiting for `other` has its link and no action: the cell reads `watch only
 
 Below 768 px the board shows three lines: each has the fleet's logo and name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does, since a phone has no hover; its accessible name is the full sentence. The tabs are pills.
 
-## The fleet card
+## The fleet header
 
-What the Fleet tab opens on and the Fleet chip shows on hover: the board's line in full.
+What the Fleet tab opens on and the Fleet chip shows on hover, in this order:
 
 | Line | What |
 |---|---|
-| Name | The repository, with a link that opens the manager's thread on its Fleet tab |
-| Manager | `working`; `idle` and for how long; or `no manager` when its thread is archived or gone. A thread bb did not answer for also reads `no manager`, without the problem a gone manager raises |
-| Counts | Waits on you, in flight, blocked and landed in 7d (the last 7 days), a count of zero left out |
-| Cost | As the board's Spend |
-| Polled | When the fleet was last polled |
-| Accounts | One line for the `forge` and one for a `tracker` of its own: what it reads (`acme/web`, `team ENG`, `OPS`), `reads as GitHub · yuser` or `no account yet`, **can write** where the credential can, and what it needs. A half that needs something offers **Connect…**; a half that is read offers **Change account…**. Both open the Connect popup for that half |
-| Reasons | The fleet's problems: the [`notWatched` reasons](unattendish-fleet-contract.md), an outage the poll found, how many manifest rows cannot be read and in which sections, and a manager whose thread is archived or gone. Each links to where it is put right: a credential reason to **Connect…**, a missing or unreadable manifest or unreadable rows to the Fleet tab; a gone manager has none |
-| Warnings | A credential the service says expires within 7 days, or has expired (`token expires in 3 days`, `token expires today`, `token expired 2 days ago`), with the credential and **Renew**; for a `gh` or `glab` login, that it shares the fleet's agents' rate limit; and polling that is late (`polling is late`, with when it was last polled) or has never run (`not polled yet`) |
+| Fleet | The forge's logo, the fleet's name, and a tracker of its own as its name and key: Linear's team key or Jira's project key. GitHub shows its logo; GitLab, Linear and Jira show their names, since their trademark rules refuse third parties or forbid recolouring their logos |
+| Manager | A turning icon in green while it works, with no duration, since the plugin cannot know how long it has worked; a cup in grey with how long it has been idle; a person with a cross in red when its thread is archived or gone. A thread bb did not answer for also shows no manager, without the problem a gone manager raises |
+| Status | The four counts, each an icon and a number in its colour, a zero left out: blocked grey, in flight blue, waits on you amber, landed in the last 7 days purple |
+| Spend | As the board's Spend, where there is one |
+| Problems and warnings | Each as one strip tinted red or amber, with the server's sentence and its verb, in the board's order: **Connect…** for a half with no account or a credential connecting another account fixes; **Review** for a missing or unreadable manifest or rows that cannot be read; **Renew…** for a token that expires within 7 days; none for a problem nothing on the page fixes, late or never-run polling, or a gone manager, whose sentence says to run `/run-fleet` in a new thread to take the fleet over |
+| Last action | The action seen done most recently in the last hour whose row has left the Inbox: `You answered #5 Which queue · done 40m ago`. Left out with none |
 
 ## The Fleet chip
 
-A button in a manager thread's header, shown only on a thread that holds a registration. It spells out the card's counts, leaving out any that is zero: `1 waits on you · 3 in flight · 1 blocked · 2 landed in 7d`, or `Fleet idle` when all are. Counts of up to 45 characters share one line; longer ones are set on two short lines inside the same header row. Its accessible name always carries every count. Hovering shows the card; clicking opens the Fleet tab. On a compact viewport it shows only the Waits on you count, or a dot with none, and tapping it opens the tab.
+A button in a manager thread's header, shown only on a thread that holds a registration: the fleet icon, then, when at least one row waits on you, that count in amber. A small red dot on the icon marks a problem, an amber one a warning alone. With nothing waiting and no problem or warning it is the icon alone. Its accessible name gives the count and says when the fleet has a problem or a warning: `Fleet: 6 waiting on you, and it has a problem`.
+
+It is drawn like the controls beside it in bb's header, as tall as the header, with a border on desktop and none on a compact viewport, and never wraps. Hovering it shows the fleet header with `Click the chip to open the Fleet tab`; its **Review** opens the Fleet tab. Clicking or tapping the chip opens the Fleet tab. A compact viewport has no hover card. While its data loads, or when it failed to load, it draws nothing.
 
 ## The Fleet tab
 
-Opened from the chip, from the board's Fleet tab icon or **Review**, from a card's link, or from **Fleet** in a thread panel's new-tab Actions list, on any thread. On a thread that holds no registration it says so and names the manager holding the thread's repository, where there is one. On a manager it shows:
+Opened from the chip, from the board's Fleet tab icon or **Review**, from a queue row's **Review**, or from **Fleet** in a thread panel's new-tab Actions list, on any thread. On a thread that holds no registration it reads `This thread runs no fleet.` and names the manager holding the thread's repository, where there is one, with a link to it. On a manager it shows the fleet header over four tabs, each with a count; the tab bar stays at the top while the tab scrolls, and the arrow keys move between tabs. Work opens first.
 
-| Section | What |
+| Tab | Its count | What |
+|---|---|---|
+| Work | The rows that wait on you, in amber | The manifest's rows, in four folding sections below |
+| Notes | The sections the manifest writes | Backlog, Set aside, Standing orders and any other section, each under its own heading, rendered as Markdown; `Nothing written.` under a blank one |
+| Watching | The items in the watched set | The watched set, the credentials and polling, below |
+| Ledger | The reads that failed in the last 24 hours, in red; none when no read failed | The ledger, below. It loads when its tab first opens |
+
+**Review** in the header opens Work at what needs reviewing: the section holding the first row the plugin cannot read, in section order, unfolded, scrolled to that row. When the manifest is missing or cannot be read, Work and Notes show that in place of their content: `No manifest was found at the path the fleet registered.`, or `The manifest cannot be read: <reason>`.
+
+### Work
+
+Each section is a heading with its icon, its name and how many lines it lists; clicking the heading folds or unfolds it. Waits on you, In flight and Blocked start open, Landed folded. Each section lists the rows the plugin cannot read in it as red lines, `Unreadable row, line N: <reason>`.
+
+| Section | Each row | When empty |
+|---|---|---|
+| Waits on you | Two lines: the icon of what it waits for and the title; then the item's short link with ↗ and its age, amber once it has waited 8 hours. The action sits at the right, with the queue's states and composer | `Nothing waits on you` |
+| In flight | Its stage's icon in blue, the title, the short link, `<stage> for <duration>`, and **builder** linking to its builder thread where it has one | `Nothing in flight` |
+| Blocked | The blocked icon, the Ref, its link, and `waits for <Ref>, <Ref>`, each Ref linking to its item where the watched set knows it | `Nothing blocked` |
+| Landed | The merged icon, the title, its pull request's link, and `merged <date and time>` | `Nothing landed in the last 7 days` |
+
+In flight's icons, by stage:
+
+| Stage | Icon |
 |---|---|
-| Card | The fleet's card |
-| Inbox | The rows in a table, with the same actions as the queue |
-| In flight | Each row's stage, how long it has been at it, a link to its builder thread and to its item |
-| Blocked | Each row and what it is blocked on |
-| Landed | The last 7 days, with links to the pull requests |
-| Backlog, Set aside, Standing orders and any other section | As the manifest writes them |
-| Unreadable rows | Each row the plugin cannot read, with its section, line and the column |
-| Watched set | Each item and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
-| Credentials | Each credential the fleet uses: the account it is read as beside it, its kind, **can write** where it can, its expiry date or `no expiry reported`, and whether it shares the agents' rate limit |
-| Polling | The poll interval, when the fleet was last polled and the requests spent this hour |
-| Ledger | The fleet's [ledger](unattendish-cli.md#bb-unattendish-fleet-ledger), filterable by item and by what was done, with dropped changes grouped by reason and a count for each, so a noisy echo source stands out; a Jira poll cut off at its page limit shows as `out of scope: listing cut at its page limit`, with the window it listed and the last update it reached where a change shows its ref, kind and actor. A change shows once: under All the list holds the changes that were not dropped, and the groups hold the dropped ones; an item filter hides the wakes, which name no item |
+| building | A hammer |
+| asking | A speech bubble |
+| waiting on you | A bell |
+| under review | An eye |
+| at the bar | Scales |
+| round open | Repeat arrows |
+| brainstorming | A light bulb |
 
-A table shows at most 200 rows, and the queue at most 400 in all; the counts are of every row. The ledger shows at most 250 changes, as the command does.
+### Watching
+
+| Block | What |
+|---|---|
+| Watched set | Each item's short link and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
+| Credentials | A small card for each credential the fleet uses: the service's logo or name, the account, the half it reads (`reads the forge`), its kind, **can write** where it can, its expiry date or `no expiry reported`, `shares the agents' rate limit` in amber for a `gh` or `glab` login, and **Change account…**, which opens the Connect popup for that half |
+| Polling | `every <interval> · polled <age> ago · <n> requests this hour` |
+
+### Ledger
+
+The fleet's [ledger](unattendish-cli.md#bb-unattendish-fleet-ledger). A row of pills filters it by what was done (All, Woke, Dropped, Held, Failed reads, Wakes) and a search box by item. The changes are a timeline, newest first: each shows its time, its Ref, kind and actor, and what was done with it, marked by an icon in the outcome's colour: woke amber, dropped as an echo or out of scope grey, held grey, a failed read red. **Dropped, by reason** groups the dropped changes with a count for each, so a noisy echo source stands out; a Jira poll cut off at its page limit shows as `out of scope: listing cut at its page limit`, with the window it listed and the last update it reached where a change shows its Ref, kind and actor. **Wakes** lists the wakes. A change shows once: under All the timeline holds the changes that were not dropped, and the groups hold the dropped ones; an item filter hides the wakes, which name no item.
+
+A section shows at most 200 rows, and the queue at most 400 in all; the counts are of every row. The ledger shows at most 250 changes, as the command does.
 
 ## Toasts
 

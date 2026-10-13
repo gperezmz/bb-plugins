@@ -41,7 +41,7 @@ A credential is one of:
 | API token (Jira) | The site | No |
 | `gh` login, `glab` login | Every owner or the host, as the login can | **Yes** |
 
-The plugin only reads. **can write** says the credential could write, wherever it is shown: Settings, the popup, the Fleet tab, the card and `bb unattendish fleet status`.
+The plugin only reads. **can write** says the credential could write, wherever it is shown: Settings, the popup, the Fleet tab's credential cards and `bb unattendish fleet status`.
 
 ### Expiry and refused credentials
 
@@ -78,7 +78,7 @@ An assignment says which account reads a host or an owner or group. A fleet's fo
 
 A scope matches only a whole host and whole path segments, without regard to case: `github.com/or` does not cover `github.com/org/repo`, and `gitlab.com` does not cover `gitlab.com.evil.net/x`. An assignment is never made for one repository, since a credential covers an owner.
 
-A fleet with no assignment covering a half, or whose account holds no credential reaching it, is not watched, and its card says `no account yet` or what it needs. Choosing an account in Connect assigns it the fleet's owner or group (the repository path without its last segment), or the fleet's Jira project or Linear team; choosing the default again removes that assignment.
+A fleet with no assignment covering a half, or whose account holds no credential reaching it, is not watched, and the fleet board and the fleet header say what it needs, with **Connect…**. Choosing an account in Connect assigns it the fleet's owner or group (the repository path without its last segment), or the fleet's Jira project or Linear team; choosing the default again removes that assignment.
 
 ## Where a token goes
 
