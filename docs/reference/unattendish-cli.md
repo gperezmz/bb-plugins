@@ -109,12 +109,15 @@ github.example/org/repo  tracker forge-issues
 | `accounts` | One entry for the forge and one for a separate tracker: `role` (`forge` or `tracker`), `account` (`GitHub · yuser`, or `null` where no account reads the half) and `needs` (what the half needs, or `null` while it reads) |
 | `credentials` | One entry for the forge and one for a separate tracker, where an account has a credential that reads it: `role`, `credential` (`GitHub · yuser for acme`), `account`, `service`, `kind` (`fine-grained`, `classic`, `gitlab-token`, `linear-key`, `jira-token`, `gh` or `glab`), `auth` (`token`, `gh` or `glab`), `expiresAt`, `canWrite` and `sharesAgentRateLimit` |
 | `requestsThisHour` | Requests the plugin made for the fleet in the last hour |
-| `watched` | True while `notWatched` is empty |
+| `watched` | True while `notWatched` is empty. A left-behind fleet is no `notWatched` reason, so it can be watched |
+| `leftBehind` | For a left-behind fleet, `{names}`, the repository its manifest's first line names; else `null`. Its `unreadableRows` and `outside` are then empty |
 | `notWatched` | Why the fleet is not watched, each as `{code, text}`; the codes are the contract's, and [how to read them](../how-to/unattendish-connect-a-fleet.md#read-why-a-fleet-is-not-watched) says what each asks of you |
 | `notWatchedSince` | While a credential is refused, forbidden, unanswered, finds nothing, reads only outside the fleet or its listing keeps failing, when the fleet stopped being watched: the time of the first unreadable poll of the streak, and for a 401 that poll; with an outage in both sources, the earlier; else `null` |
 | `unreadableRows` | Manifest rows the contract cannot read, each `{section, line, reason}`. They are skipped and the rest of the manifest still counts |
 | `outside` | References and links the manifest names that lie outside the fleet's repository and tracker, each `{text, section, line}`. They are never fetched |
 | `heldSince` | While changes are held because no manager holds the fleet, since when; else `null` |
+
+A [left-behind fleet](unattendish-dashboard.md#a-left-behind-fleet), whose manifest names another repository, prints none of the manifest's rows or the items it names, and where it would print `watched` prints `left behind: its manifest names github.com/org/wake, so only its labelled items are watched`; a left-behind fleet that is also not watched prints that line under its `not watched` line.
 
 In the text, `accounts` is one `{role} reads as {account}` line each, ending in `: {needs}` where the half needs something, and `credentials` is one `credential {credential} ({role}, {service}, {auth})` line each, with `, expires {date}` where the service reports one, `, can write` for a classic token or a `gh` or `glab` login, and `, shares the fleet's agents' rate limit` for a `gh` or `glab` login. `expiresAt` is reported for a GitHub token that expires and a GitLab personal access token with an expiry date, and is `null` for a service that reports none. Each `notWatched` reason is a `not watched: {code}: {text}` line, joined by `; `; the other fields print as `not watched since …`, `unreadable manifest row: …`, `outside the fleet, never fetched: …` and `changes held since …: no manager holds the fleet`.
 

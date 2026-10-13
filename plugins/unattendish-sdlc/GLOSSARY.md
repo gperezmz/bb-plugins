@@ -117,15 +117,15 @@ A fleet with every Status count at zero, no problem and no warning. The fleet bo
 _Avoid_: Idle fleet
 
 **Fleet tab**:
-The tab in a manager thread's right panel that shows that fleet in full: the fleet header over four tabs, Work for the manifest's rows, Notes for its written sections, Watching for the watched set, credentials and polling, and Ledger.
+The tab in a manager thread's right panel that shows one of the thread's fleets in full, a thread holding more than one switching between them by the fleet's name in the header: the fleet header over four tabs, Work for the manifest's rows, Notes for its written sections, Watching for the watched set, credentials and polling, and Ledger.
 _Avoid_: Fleet panel, Fleet detail
 
 **Fleet header**:
-The top of the Fleet tab: the fleet's forge and tracker, its manager, Status, spend, problems and warnings, and the last action seen done in the last hour. The Fleet chip's hover card shows the same header.
+The top of the Fleet tab: the fleet's forge and tracker, its manager, Status, spend, problems and warnings, and the last action seen done in the last hour. The Fleet chip's hover card shows the same header, one for each fleet the thread holds.
 _Avoid_: Fleet card, fleet summary
 
 **Fleet chip**:
-The control in a manager thread's header: the fleet icon with the count of rows that wait on the operator and a dot for a problem or a warning, which opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
+The control in a manager thread's header: the fleet icon with the count of rows that wait on the operator across the thread's fleets and a dot for the worst problem or warning among them, which opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
 _Avoid_: Header chip, Fleet badge
 
 **Connect popup**:
