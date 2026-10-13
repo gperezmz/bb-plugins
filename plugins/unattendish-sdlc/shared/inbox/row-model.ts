@@ -3,6 +3,14 @@ import type { ActionKind, ActionOffer, InboxRowView, UnreadableInboxRowView } fr
 import { ageLabel, elapsedMs, spanLabel } from "../format";
 import { hasRef } from "../item-title";
 
+/**
+ * What names an Inbox row or a sent action wherever rows of several fleets are listed together: the fleet and the
+ * row's id, since the id alone is the same for two fleets' rows that say the same.
+ */
+export function rowKey(row: { readonly fleet: string; readonly id: string }): string {
+  return JSON.stringify([row.fleet, row.id]);
+}
+
 /** What a row waits for, as the table says it. */
 export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
   switch (waitsFor) {

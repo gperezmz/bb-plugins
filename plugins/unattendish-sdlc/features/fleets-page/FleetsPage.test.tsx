@@ -538,6 +538,36 @@ describe("the queue (AC9–AC13)", () => {
     expect(within(refused).queryByText("⌘↵ send · Esc cancel")).toBeNull();
   });
 
+  it("keeps two fleets' rows with the same Ref, Waits for and Since apart: one composer, one sending state, no duplicate key (AC1)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const since = ago(5 * MINUTE);
+    const same = { id: "#7|answer|t", ref: "#7", what: "Which cache to use", since };
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ fleet: "org/a", ref: "#7", sentAt: ago(0) }) });
+    await show(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [inboxRow({ ...same, fleet: "org/a" }), inboxRow({ ...same, fleet: "org/b" })] }));
+    expect(queueRows()).toHaveLength(2);
+    fireEvent.click(within(queueRows()[0]!).getByRole("button", { name: "Answer… #7" }));
+    expect(within(queueRows()[0]!).getByRole("textbox")).toBeTruthy();
+    expect(within(queueRows()[1]!).queryByRole("textbox")).toBeNull();
+    expect(within(queueRows()[1]!).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    fireEvent.change(within(queueRows()[0]!).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [inboxRow({ ...same, fleet: "org/a", offer: null, action: actionRecord({ fleet: "org/a", ref: "#7", sentAt: ago(0) }) }), inboxRow({ ...same, fleet: "org/b" })] }));
+    fireEvent.click(within(queueRows()[0]!).getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(within(queueRows()[0]!).getByText(/^sent · /)).toBeTruthy());
+    expect(within(queueRows()[1]!).queryByText(/^sent · /)).toBeNull();
+    expect(within(queueRows()[1]!).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
+  });
+
+  it("lists under Sent a line for each fleet's action seen done together, with no duplicate key (AC3)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const doneAt = ago(MINUTE);
+    const same = { id: "2026-10-12T09:30:00Z|#7|answer|t", kind: "answer" as const, ref: "#7", what: "Which cache to use", state: "done" as const, doneAt };
+    await show(fleetsView({ fleets: [fleet("org/a"), fleet("org/b")], recentActions: [actionRecord({ ...same, fleet: "org/a" }), actionRecord({ ...same, fleet: "org/b" })] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Sent 2" }));
+    expect(within(within(queue()).getByRole("tabpanel")).getAllByRole("listitem")).toHaveLength(2);
+    expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
+  });
+
   it("says not sent beside the title when bb refuses Build it, the reason on hover, and keeps the button", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#8", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));

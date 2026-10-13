@@ -3,6 +3,7 @@ import type { ActionRecordView, FleetCardView } from "@/src/fleet/application/vi
 import { cn } from "@/lib/utils";
 import { sentAgo, sentText } from "@/shared/fleet-header/model";
 import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
+import { rowKey } from "@/shared/inbox/row-model";
 import { useRowActions } from "@/shared/inbox/use-row-action";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { ICONS, KIND_ICONS } from "@/shared/look/icons";
@@ -78,7 +79,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
+              <QueueRow key={rowKey(row)} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} section="Inbox" review={row} />
@@ -107,7 +108,7 @@ function SentList({ actions, now, fleets, showFleet, nameOf }: { actions: readon
       {actions.map((action) => {
         const kind = OFFER_KIND[action.kind];
         return (
-          <li key={action.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+          <li key={rowKey(action)} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
             <Glyph name={KIND_ICONS[kind]} tone={KIND_TONES[kind]} />
             <span className="min-w-0 flex-1 truncate">{sentText(action)}</span>
             <span className="text-xs tabular-nums text-muted-foreground">{sentAgo(action, now)}</span>

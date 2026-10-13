@@ -52,7 +52,19 @@ describe("the Inbox toasts", () => {
   it("identifies a toast by its row, so one row raises one toast", () => {
     render(<InboxToasts />);
     sdk.emit(INBOX_NEW, signal);
-    expect(toast.mock.calls[0]![1]).toMatchObject({ id: "row_1" });
+    sdk.emit(INBOX_NEW, signal);
+    expect(toast.mock.calls[1]![1]).toEqual(expect.objectContaining({ id: (toast.mock.calls[0]![1] as { id: string }).id }));
+  });
+
+  it("raises a toast for each fleet whose new row has the same id, each naming its fleet", () => {
+    render(<InboxToasts />);
+    sdk.emit(INBOX_NEW, { ...signal, fleet: "org/a", ref: "#7", rowId: "#7|answer|2026-10-12T09:30:00Z" });
+    sdk.emit(INBOX_NEW, { ...signal, fleet: "org/b", ref: "#7", rowId: "#7|answer|2026-10-12T09:30:00Z" });
+    const ids = toast.mock.calls.map((call) => (call[1] as { id: string }).id);
+    expect(new Set(ids).size).toBe(2);
+    const lines = toast.mock.calls.map((call) => render((call[1] as { description: ReactElement }).description).baseElement.textContent);
+    expect(lines.some((line) => line?.includes("org/a"))).toBe(true);
+    expect(lines.some((line) => line?.includes("org/b"))).toBe(true);
   });
 
   it("opens the Fleets page from the toast's action", () => {
