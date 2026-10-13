@@ -11,9 +11,7 @@ import { Glyph } from "@/shared/look/Glyph";
 import { ICONS, STAGE_ICONS } from "@/shared/look/icons";
 import { COUNT_TONES, type Tone } from "@/shared/look/tones";
 import { Empty, Fold } from "./Fold";
-import { manifestProblemText, refLinks, SECTION_TITLES, sectionCount, stageText, unreadableIn, unreadableRowId, WORK_SECTIONS, type WorkSection } from "./model";
-
-type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
+import { manifestProblemText, type OkManifest, refLinks, SECTION_TITLES, sectionCount, stageText, unreadableIn, unreadableRowId, WORK_SECTIONS, type WorkSection } from "./model";
 
 const SECTION_ICONS: Readonly<Record<WorkSection, string>> = { inbox: ICONS.waiting, inFlight: ICONS.inFlight, blocked: ICONS.blocked, landed: ICONS.merged };
 const SECTION_TONES: Readonly<Record<WorkSection, Tone>> = { inbox: COUNT_TONES.waiting, inFlight: COUNT_TONES.inFlight, blocked: COUNT_TONES.blocked, landed: COUNT_TONES.landed };

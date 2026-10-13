@@ -60,7 +60,6 @@ export const ICONS = {
   folded: "ChevronRight",
   unfolded: "ChevronDown",
   search: "Search",
-  credential: own("key"),
   wake: "Sent",
 } as const;
 

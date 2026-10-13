@@ -9,7 +9,7 @@ import { TONE_TEXT } from "@/shared/look/tones";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { useLive } from "@/shared/use-live";
 import { Ledger } from "./Ledger";
-import { FLEET_TABS, INITIALLY_OPEN, reviewTarget, tabCounts, tabName, type FleetTabName, type WorkSection } from "./model";
+import { FLEET_TABS, INITIALLY_OPEN, nextTab, reviewTarget, tabCounts, tabName, type FleetTabName, type WorkSection } from "./model";
 import { Notes } from "./Notes";
 import { Watching } from "./Watching";
 import { Work } from "./Work";
@@ -78,10 +78,8 @@ function Detail({ repo, managerThreadId }: { repo: string; managerThreadId: stri
           if (target.rowId !== null) setScrollTo({ id: target.rowId });
         };
         const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
-          const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-          if (step === 0) return;
-          const at = FLEET_TABS.findIndex((entry) => entry.id === tab);
-          const next = FLEET_TABS[(at + step + FLEET_TABS.length) % FLEET_TABS.length]!.id;
+          const next = nextTab(tab, event.key);
+          if (next === null) return;
           choose(next);
           document.getElementById(`fleet-tab-tab-${next}`)?.focus();
         };

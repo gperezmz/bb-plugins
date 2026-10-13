@@ -11,6 +11,7 @@ import {
   ledgerIsEmpty,
   listingText,
   manifestProblemText,
+  nextTab,
   pollingText,
   refLinks,
   reviewTarget,
@@ -45,6 +46,15 @@ describe("the tabs' counts (#258 AC2)", () => {
     expect(tabName("watching", { count: 2, tone: "grey" })).toBe("Watching, 2 items watched");
     expect(tabName("ledger", { count: 1, tone: "red" })).toBe("Ledger, 1 read failed in the last 24 hours");
     expect(tabName("ledger", { count: null, tone: "red" })).toBe("Ledger");
+  });
+});
+
+describe("moving between tabs", () => {
+  it("moves right and left with the arrow keys, wrapping at either end, and ignores any other key", () => {
+    expect(nextTab("work", "ArrowRight")).toBe("notes");
+    expect(nextTab("ledger", "ArrowRight")).toBe("work");
+    expect(nextTab("work", "ArrowLeft")).toBe("ledger");
+    expect(nextTab("work", "Enter")).toBeNull();
   });
 });
 

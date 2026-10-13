@@ -37,10 +37,10 @@ function rankOf(flag: Flag, code: string | null): number {
   return 6;
 }
 
-function problemOf(reason: ProblemView): Flag {
-  const fix: FlagFix = reason.fix.kind === "connect" ? { kind: "connect", role: reason.fix.role } : reason.fix.kind === "fleet-tab" ? { kind: "fleet-tab" } : { kind: "none" };
+function problemOf(problem: ProblemView): Flag {
+  const fix: FlagFix = problem.fix.kind === "connect" ? { kind: "connect", role: problem.fix.role } : problem.fix.kind === "fleet-tab" ? { kind: "fleet-tab" } : { kind: "none" };
   const verb = fix.kind === "connect" ? "Connect…" : fix.kind === "fleet-tab" ? "Review" : null;
-  return { kind: "problem", sentence: reason.text, verb, fix, saidElsewhere: false };
+  return { kind: "problem", sentence: problem.text, verb, fix, saidElsewhere: false };
 }
 
 /** A warning as a flag; null for one the board does not show (sharing the agents' rate limit, which the Fleet tab's credential card says). */
@@ -56,7 +56,7 @@ function warningOf(warning: WarningView, now: string): Flag | null {
 /** Every problem and warning of the fleet, in the order the board shows them. */
 export function flagsOf(card: Pick<FleetCardView, "problems" | "warnings">, now: string): Flag[] {
   const ranked = [
-    ...card.problems.map((reason) => ({ flag: problemOf(reason), code: reason.code as string | null })),
+    ...card.problems.map((problem) => ({ flag: problemOf(problem), code: problem.code as string | null })),
     ...card.warnings.flatMap((warning) => {
       const flag = warningOf(warning, now);
       return flag === null ? [] : [{ flag, code: null }];

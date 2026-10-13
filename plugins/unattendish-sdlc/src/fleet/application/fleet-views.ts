@@ -101,6 +101,9 @@ export function inboxOf(g: Gathered): InboxViews {
 /** Actions done in the last hour whose row has left the Inbox, newest first. */
 export const recentActionsOf = (g: Gathered, ids: ReadonlySet<string>, now: Date): ActionRecordView[] => recentOf(g.records, ids, now).slice(0, MAX_ROWS).map((record) => actionView(g, record));
 
+/** The fleet header's last action: the newest of `recentActionsOf`, or null with none. */
+export const lastActionOf = (g: Gathered, ids: ReadonlySet<string>, now: Date): ActionRecordView | null => recentActionsOf(g, ids, now)[0] ?? null;
+
 // ---- the card ----
 
 /** The expiry the service last reported for each credential, by its id. */

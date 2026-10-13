@@ -10,7 +10,7 @@ import { clip } from "../domain/text";
 import { effectiveInterval, validateInterval } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
 import { accountsView, checkAgain, connect, connectView, makeDefault, removeAccount, removeAssignment, removeCredential, tokenPage, type AccountsDeps } from "./accounts";
-import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
+import { cardOf, credentialsOf, gather, inboxOf, landedViews, lastActionOf, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
 import type { ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
 import { setFleetInterval } from "./schedule";
 import type { SerialQueue } from "./serial";
@@ -87,7 +87,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const own = stored.find((fleet) => fleet.registration.managerThreadId === threadId);
     if (own !== undefined) {
       const g = await gather(deps, own, false);
-      return { kind: "manager", generatedAt: now.toISOString(), card: await cardOf(deps, g, now), lastAction: recentActionsOf(g, inboxOf(g).ids, now)[0] ?? null };
+      return { kind: "manager", generatedAt: now.toISOString(), card: await cardOf(deps, g, now), lastAction: lastActionOf(g, inboxOf(g).ids, now) };
     }
     const remote = await deps.repositories.remoteOf(threadId).catch(() => null);
     const repo = remote === null ? null : repoFromRemote(remote);
@@ -112,7 +112,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         credentials: credentialsOf(deps, g),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
         failedReads: deps.store.failedReadsSince(key, new Date(now.getTime() - 24 * 3_600_000).toISOString()),
-        lastAction: recentActionsOf(g, inbox.ids, now)[0] ?? null,
+        lastAction: lastActionOf(g, inbox.ids, now),
       },
     };
   };

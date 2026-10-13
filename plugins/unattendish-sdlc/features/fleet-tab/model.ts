@@ -4,7 +4,8 @@ import { credentialKind } from "@/shared/credentials";
 import { ageLabel, dateTimeLabel, expiryText, intervalLabel, plural, polledLabel } from "@/shared/format";
 import type { Tone } from "@/shared/look/tones";
 
-type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
+/** A manifest the plugin read. */
+export type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
 
 // ---- the tabs ----
 
@@ -51,6 +52,14 @@ export function tabName(tab: FleetTabName, count: TabCount): string {
     case "ledger":
       return `${label}, ${count.count === 1 ? "1 read" : `${count.count} reads`} failed in the last 24 hours`;
   }
+}
+
+/** The tab an arrow key moves to from `tab`, wrapping at either end; null for any other key. */
+export function nextTab(tab: FleetTabName, key: string): FleetTabName | null {
+  const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+  if (step === 0) return null;
+  const at = FLEET_TABS.findIndex((entry) => entry.id === tab);
+  return FLEET_TABS[(at + step + FLEET_TABS.length) % FLEET_TABS.length]!.id;
 }
 
 /** What the tab says in place of the manifest's rows or sections when the manifest is missing or cannot be read. */
