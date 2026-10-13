@@ -97,15 +97,20 @@ describe("Work (#258 AC3)", () => {
 });
 
 describe("Watching (#258 AC8)", () => {
-  const credential = { role: "forge", label: "GitHub · yuser for acme", account: { id: "a", label: "GitHub · yuser" }, kind: "fine-grained", auth: "token", expiresAt: null, canWrite: false, sharesAgentRateLimit: false } as const;
+  const credential = { role: "forge", label: "GitHub · yuser for acme", account: { id: "a", label: "GitHub · yuser" }, kind: "fine-grained", auth: "token", expiresAt: null, expired: false, canWrite: false, sharesAgentRateLimit: false } as const;
 
   it("gives every reason an item is in the watched set", () => {
     expect(whyText({ why: ["named in Inbox", "blocked on #170"] })).toBe("named in Inbox · blocked on #170");
   });
 
   it("says the half a credential reads, its kind, and its expiry or that none was reported", () => {
-    expect(credentialFacts({ ...credential, expiresAt: "2026-10-18T12:00:00Z" })).toEqual(["reads the forge", "fine-grained token", "expires 18 Oct"]);
-    expect(credentialFacts({ ...credential, role: "tracker", kind: "jira-token" })).toEqual(["reads the tracker", "API token", "no expiry reported"]);
+    const quiet = (text: string) => ({ text, red: false });
+    expect(credentialFacts({ ...credential, expiresAt: "2026-10-18T12:00:00Z" })).toEqual([quiet("reads the forge"), quiet("fine-grained token"), quiet("expires 18 Oct")]);
+    expect(credentialFacts({ ...credential, role: "tracker", kind: "jira-token" })).toEqual([quiet("reads the tracker"), quiet("API token"), quiet("no expiry reported")]);
+  });
+
+  it("says an expired credential expired on its date, in red (#261 AC4)", () => {
+    expect(credentialFacts({ ...credential, expiresAt: new Date(2026, 9, 12, 23, 0).toISOString(), expired: true })[2]).toEqual({ text: "expired 12 Oct", red: true });
   });
 
   it("takes a credential's service from its kind, for its logo", () => {

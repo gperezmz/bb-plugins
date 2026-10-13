@@ -175,6 +175,16 @@ describe("the header (#258 AC1)", () => {
     expect(currentConnect()?.request).toMatchObject({ target: { fleet: "acme/web", role: "forge" }, account: "acc_1", replaces: "cred_1" });
   });
 
+  it("shows an expired token as a red strip with Renew…, saying it expired 1 day ago (#261 AC4)", async () => {
+    const expired: ProblemView = { code: "token-expired", text: "GitHub · yuser for acme: token expired", fix: { kind: "renew", role: "forge", accountId: "acc_1", credentialId: "cred_1" }, label: "GitHub · yuser for acme", expiresAt: ago(24 * HOUR) };
+    const header = await showDetail({ card: fleetCard({ problems: [expired] }) });
+    const [strip] = within(header).getAllByRole("listitem");
+    expect(strip!.textContent).toContain("GitHub · yuser for acme: token expired 1 day ago");
+    expect(strip!.className).toContain("text-destructive-text");
+    fireEvent.click(within(strip!).getByRole("button", { name: /^Renew…/ }));
+    expect(currentConnect()?.request).toMatchObject({ target: { fleet: "acme/web", role: "forge" }, account: "acc_1", replaces: "cred_1" });
+  });
+
   it("shows the last action seen done in the last hour, and leaves the line out with none", async () => {
     let header = await showDetail({ lastAction: actionRecord({ kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) }) });
     expect(within(header).getByText("You answered #5 Which queue · done 40m ago")).toBeTruthy();
@@ -444,6 +454,13 @@ describe("Watching (#258 AC8)", () => {
     expect(within(watched).getByRole("link", { name: "#163" }).getAttribute("href")).toBe("https://github.test/acme/web/issues/163");
   });
 
+  it("says an expired credential's expiry as expired on its date, in red (#261 AC4)", async () => {
+    await showDetail({ credentials: [fleetCredential({ label: "GitHub · yuser for acme", expiresAt: new Date(2026, 9, 11, 9, 0).toISOString(), expired: true })] });
+    fireEvent.click(tab(/^Watching/));
+    const token = screen.getByRole("listitem", { name: "Credential GitHub · yuser for acme" });
+    expect(within(token).getByText("expired 11 Oct").className).toContain("text-destructive-text");
+  });
+
   it("shows each credential as a card: logo, account, half, kind, can write, expiry, the rate limit warning and Change account…", async () => {
     await showDetail();
     fireEvent.click(tab(/^Watching/));
@@ -452,7 +469,7 @@ describe("Watching (#258 AC8)", () => {
     expect(within(token).getByText("GitHub · yuser")).toBeTruthy();
     expect(within(token).getByText("reads the forge")).toBeTruthy();
     expect(within(token).getByText("fine-grained token")).toBeTruthy();
-    expect(within(token).getByText("expires 18 Oct")).toBeTruthy();
+    expect(within(token).getByText("expires 18 Oct").className).not.toContain("text-destructive-text");
     expect(within(token).queryByText("can write")).toBeNull();
     const login = screen.getByRole("listitem", { name: "Credential GitHub · buser for every owner" });
     expect(within(login).getByText("gh login")).toBeTruthy();

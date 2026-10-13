@@ -248,7 +248,7 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).problems).toEqual([]);
   });
 
-  it("warns of a credential expiring within 7 days, one passed, and a login that shares the agents' rate limit", async () => {
+  it("warns of a credential expiring within 7 days, flags one passed as a problem (#261 AC2), and a login that shares the agents' rate limit", async () => {
     const w = world();
     w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "gh" }]);
     await start(w, manifest());
@@ -264,7 +264,16 @@ describe("the card (AC3, AC4, AC14)", () => {
       { kind: "shares-rate-limit", label: "github.com/org" },
     ]);
     save(hoursAgo(w, 5));
-    expect((await cardOf(w)).warnings[0]).toMatchObject({ kind: "expires", daysLeft: 0 });
+    expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
+    expect((await cardOf(w)).problems).toEqual([
+      {
+        code: "token-expired",
+        text: "github.com/org: token expired",
+        fix: { kind: "renew", role: "forge", accountId: "account:github.com/org", credentialId: "github.com/org" },
+        label: "github.com/org",
+        expiresAt: hoursAgo(w, 5),
+      },
+    ]);
     save(new Date(w.clock.now().getTime() + 30 * 86_400_000).toISOString());
     expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
   });
@@ -397,7 +406,7 @@ describe("the Fleet tab (AC8, AC10, AC11)", () => {
     const answer = await view(w).fleetDetail({ repo: "github.com/org/repo" });
     if (!answer.ok) throw new Error(answer.reason);
     expect(answer.detail.credentials).toEqual([
-      { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", canWrite: true, sharesAgentRateLimit: true },
+      { role: "forge", label: "github.com/org", account: { id: "account:github.com/org", label: "github.com/org" }, kind: "glab", auth: "glab", expiresAt: "2027-01-01T00:00:00.000Z", expired: false, canWrite: true, sharesAgentRateLimit: true },
     ]);
     expect(answer.detail.requestsThisHour).toBe(7);
     expect(answer.detail.failedReads).toBe(0);

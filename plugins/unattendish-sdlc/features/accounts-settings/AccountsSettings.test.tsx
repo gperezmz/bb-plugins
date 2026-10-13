@@ -297,6 +297,28 @@ describe("the section's look", () => {
     expect(expiry.nextElementSibling!.textContent).toBe("Renew…");
   });
 
+  it("reads 'expired 12 Oct' in red with a cross, beside Renew…, for a token that expired on 12 Oct, refused or not (#261 AC5)", async () => {
+    for (const refused of [false, true]) {
+      fake.api.settings.mockResolvedValue(settingsView({ accounts: [accountSetting({ credentials: [credentialSetting({ expired: true, refused, expiresAt: new Date(2026, 9, 12, 23, 0).toISOString() })] })] }));
+      await show();
+      const expiry = screen.getByText("expired 12 Oct");
+      expect(expiry.className).toContain("text-destructive-text");
+      expect(drawnIcons(expiry)).toEqual(["CircleX"]);
+      expect(expiry.nextElementSibling!.textContent).toBe("Renew…");
+      expect(screen.queryByText("refused by the service")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("keeps an expired gh login's sign-in command in place of Renew… (#261 AC5)", async () => {
+    const login = credentialSetting({ expired: true, expiresAt: new Date(2026, 9, 12, 23, 0).toISOString(), renew: { kind: "login", command: "gh auth login --hostname github.com" } });
+    fake.api.settings.mockResolvedValue(settingsView({ accounts: [accountSetting({ via: "gh", credentials: [login] })] }));
+    await show();
+    expect(screen.getByText("expired 12 Oct")).toBeTruthy();
+    expect(screen.getByText(/gh auth login --hostname github.com/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Renew/ })).toBeNull();
+  });
+
   it("shows a refused token in red with a cross, beside Renew… (AC7)", async () => {
     fake.api.settings.mockResolvedValue(settingsView({ accounts: [accountSetting({ credentials: [credentialSetting({ refused: true })] })] }));
     await show();

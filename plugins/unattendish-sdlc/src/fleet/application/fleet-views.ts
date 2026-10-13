@@ -2,7 +2,7 @@
 // the Inbox rows, the manifest and the watched set built from that.
 import type { ActionRecord } from "../domain/actions";
 import { heldBy, latestOn, recentActions as recentOf } from "../domain/actions";
-import { credentialWarnings, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, problemsOf, unreadableInbox } from "../domain/dashboard";
+import { credentialWarnings, expiredProblems, isExpired, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, problemsOf, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import { offerFor, parseLink, uniqueRowIds } from "../domain/inbox";
 import type { InboxRow, WrittenSection } from "../domain/model";
@@ -109,7 +109,7 @@ export const lastActionOf = (g: Gathered, ids: ReadonlySet<string>, now: Date): 
 /** The expiry the service last reported for each credential, by its id. */
 export const expiriesOf = (deps: Pick<ViewDeps, "accounts">): Map<string, string | null> => new Map(deps.accounts.credentials().map((credential) => [credential.id, credential.expiresAt]));
 
-export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered): FleetCredentialView[] => {
+export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered, now: Date): FleetCredentialView[] => {
   const expiries = expiriesOf(deps);
   return g.watching.halves.flatMap((half) => {
     if (!half.lookup.found) return [];
@@ -122,6 +122,7 @@ export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered): Fl
         kind: credential.kind,
         auth: credential.auth,
         expiresAt: expiries.get(credential.key) ?? null,
+        expired: isExpired(expiries.get(credential.key) ?? null, now),
         canWrite: canWrite(credential.kind),
         sharesAgentRateLimit: credential.auth !== "token",
       },
@@ -129,7 +130,7 @@ export const credentialsOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered): Fl
   });
 };
 
-/** The credentials the fleet reads with, as `credentialWarnings` weighs them. */
+/** The credentials the fleet reads with, as `expiredProblems` and `credentialWarnings` weigh them. */
 const warnedOf = (deps: Pick<ViewDeps, "accounts">, g: Gathered) => {
   const expiries = expiriesOf(deps);
   return g.watching.halves.flatMap((half) => {
@@ -182,6 +183,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
   const sharedWith = sharingOf(deps, g);
   const intervalMs = effectiveInterval(registration);
   const polling = pollingWarning(g.fleet.lastPolledAt, intervalMs, now);
+  const weighed = warnedOf(deps, g);
   return {
     repo: g.name,
     forge: forgeServiceOf(g.watching),
@@ -200,9 +202,10 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
       unreadable,
       g.standing !== null && g.standing.state !== "live",
       manifest.status === "left-behind" ? { fleet: g.name, names: manifest.names } : null,
+      expiredProblems(weighed, now),
     ),
     halves: halvesOf(g),
-    warnings: [...credentialWarnings(warnedOf(deps, g), now), ...(polling === null ? [] : [polling])],
+    warnings: [...credentialWarnings(weighed, now), ...(polling === null ? [] : [polling])],
   };
 }
 

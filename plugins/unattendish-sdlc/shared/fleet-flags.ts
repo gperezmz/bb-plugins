@@ -1,7 +1,7 @@
 // A fleet's problems and warnings, decided from its card alone: every problem the server flags is red and every warning
 // amber, each with the fix that puts it right, in the order the fleet board shows the first of them.
 import type { FleetCardView, HalfView, ProblemView, WarningView } from "@/src/fleet/application/views";
-import { warningLine } from "./card-model";
+import { expiredLine, warningLine } from "./card-model";
 import { ICONS } from "./look/icons";
 import { COUNTS } from "./look/tones";
 
@@ -26,18 +26,25 @@ export interface Flag {
   readonly saidElsewhere: boolean;
 }
 
-/** The order flags are shown in: the manifest, its unreadable rows, a half Connect… fixes, a gone manager, any other problem, an expiring token, polling. */
+/**
+ * The order flags are shown in: the manifest, its unreadable rows, a half Connect… fixes, an expired token, a gone
+ * manager, any other problem, an expiring token, polling.
+ */
 function rankOf(flag: Flag, code: string | null): number {
   if (code === "manifest-missing" || code === "manifest-unreadable") return 0;
   if (code === "unreadable-rows") return 1;
   if (flag.fix.kind === "connect") return 2;
-  if (code === "manager-gone") return 3;
-  if (flag.kind === "problem") return 4;
-  if (flag.fix.kind === "renew") return 5;
-  return 6;
+  if (code === "token-expired") return 3;
+  if (code === "manager-gone") return 4;
+  if (flag.kind === "problem") return 5;
+  if (flag.fix.kind === "renew") return 6;
+  return 7;
 }
 
-function problemOf(problem: ProblemView): Flag {
+function problemOf(problem: ProblemView, now: string): Flag {
+  if (problem.code === "token-expired") {
+    return { kind: "problem", sentence: `${problem.label}: ${expiredLine(problem.expiresAt, now)}`, verb: "Renew…", fix: problem.fix, saidElsewhere: false };
+  }
   const fix: FlagFix = problem.fix.kind === "connect" ? { kind: "connect", role: problem.fix.role } : problem.fix.kind === "fleet-tab" ? { kind: "fleet-tab" } : { kind: "none" };
   const verb = fix.kind === "connect" ? "Connect…" : fix.kind === "fleet-tab" ? "Review" : null;
   return { kind: "problem", sentence: problem.text, verb, fix, saidElsewhere: false };
@@ -56,7 +63,7 @@ function warningOf(warning: WarningView, now: string): Flag | null {
 /** Every problem and warning of the fleet, in the order the board shows them. */
 export function flagsOf(card: Pick<FleetCardView, "problems" | "warnings">, now: string): Flag[] {
   const ranked = [
-    ...card.problems.map((problem) => ({ flag: problemOf(problem), code: problem.code as string | null })),
+    ...card.problems.map((problem) => ({ flag: problemOf(problem, now), code: problem.code as string | null })),
     ...card.warnings.flatMap((warning) => {
       const flag = warningOf(warning, now);
       return flag === null ? [] : [{ flag, code: null }];

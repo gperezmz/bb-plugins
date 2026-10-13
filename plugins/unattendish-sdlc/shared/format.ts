@@ -67,9 +67,24 @@ export function dateLabel(iso: string): string {
   return format(DAY_MONTH, iso);
 }
 
-/** What a credential's expiry reads as: `expires 18 Oct`, or `no expiry reported` where the service reports none. */
-export function expiryText(expiresAt: string | null): string {
-  return expiresAt === null ? "no expiry reported" : `expires ${dateLabel(expiresAt)}`;
+/** What a credential's expiry reads as: `expires 18 Oct`, `expired 12 Oct` once it has passed, or `no expiry reported` where the service reports none. */
+export function expiryText(expiresAt: string | null, expired = false): string {
+  return expiresAt === null ? "no expiry reported" : `${expired ? "expired" : "expires"} ${dateLabel(expiresAt)}`;
+}
+
+/** The viewer's calendar day `iso` falls on, as midnight UTC of that day, so two of them are a whole number of days apart. */
+const localDay = (iso: string): number => {
+  const at = new Date(Date.parse(iso));
+  return Date.UTC(at.getFullYear(), at.getMonth(), at.getDate());
+};
+
+/**
+ * How long ago an expiry passed, in the viewer's calendar days, so it agrees with the date `expiryText` shows:
+ * `expired today` on the day it expired, `expired 1 day ago` the day after.
+ */
+export function expiredAgoText(expiresAt: string, now: string): string {
+  const days = Math.max(0, Math.round((localDay(now) - localDay(expiresAt)) / DAY));
+  return days === 0 ? "expired today" : `expired ${plural(days, "day")} ago`;
 }
 
 /** `12 Oct, 01:39`, in the viewer's time zone. */

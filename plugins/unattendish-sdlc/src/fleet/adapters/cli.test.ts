@@ -404,6 +404,16 @@ describe("the human output of every command", () => {
     expect(left).not.toMatch(/^  watched$/m);
   });
 
+  it("status says a credential whose expiry has passed expired, not that it expires (#261 AC1)", () => {
+    const credential = { role: "forge" as const, credential: "GitHub · yuser", account: "GitHub · yuser", service: "github", kind: "fine-grained" as const, auth: "token" as const, expiresAt: "2026-10-12T00:00:00.000Z", expired: true, canWrite: false, sharesAgentRateLimit: false };
+    const base: FleetStatus = {
+      repo: REPO, tracker: "forge-issues", manager: MANAGER, managerState: "live", manifest: "/m.md", lastPolledAt: null, intervalMs: 120_000, accounts: [], credentials: [credential],
+      requestsThisHour: 0, watched: true, leftBehind: null, notWatched: [], notWatchedSince: null, unreadableRows: [], outside: [], heldSince: null,
+    };
+    expect(statusLines([base])).toContain("  credential GitHub · yuser (forge, github, token), expired 2026-10-12T00:00:00.000Z");
+    expect(statusLines([{ ...base, credentials: [{ ...credential, expired: false }] }])).toContain(", expires 2026-10-12T00:00:00.000Z");
+  });
+
   it("ledger prints one line per entry with its item, what became of it and its link, and says when it holds nothing", async () => {
     const { store, run } = await load();
     await run(registerArgs(), MANAGER);

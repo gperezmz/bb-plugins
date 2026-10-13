@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { credentialWarnings, doneWith, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, problemsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
+import { credentialWarnings, doneWith, expiredProblems, isExpired, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, problemsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
 import type { SourceCursor } from "./model";
 import { watchedWithReasons } from "./watched";
 import type { Manifest } from "./model";
@@ -74,6 +74,36 @@ describe("problemsOf", () => {
   });
 });
 
+describe("an expired token (#261)", () => {
+  const day = 86_400_000;
+  const iso = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+  const credential = { role: "forge" as const, label: "GitHub · yuser", credentialId: "cred_y", accountId: "acc_y", auth: "token" as const };
+
+  it("is one whose expiry is now or before, and never one with no expiry or one that cannot be read", () => {
+    expect(isExpired(iso(-1000), NOW)).toBe(true);
+    expect(isExpired(iso(0), NOW)).toBe(true);
+    expect(isExpired(iso(1000), NOW)).toBe(false);
+    expect(isExpired(null, NOW)).toBe(false);
+    expect(isExpired("soon", NOW)).toBe(false);
+  });
+
+  it("is a problem Renew… fixes, carrying when it expired", () => {
+    expect(expiredProblems([{ ...credential, expiresAt: iso(-2 * day) }, { ...credential, credentialId: "cred_z", expiresAt: iso(day) }], NOW)).toEqual([
+      { code: "token-expired", text: "GitHub · yuser: token expired", fix: { kind: "renew", role: "forge", accountId: "acc_y", credentialId: "cred_y" }, label: "GitHub · yuser", expiresAt: iso(-2 * day) },
+    ]);
+  });
+
+  it("stands in for its half's refusal, which is not said too (AC3)", () => {
+    const expired = expiredProblems([{ ...credential, expiresAt: iso(-day) }], NOW);
+    const refused = [
+      { code: "credential-refused" as const, text: "The credential GitHub · yuser was refused", role: "forge" as const },
+      { code: "credential-refused" as const, text: "The credential for linear:ENG was refused", role: "tracker" as const },
+    ];
+    expect(problemsOf(refused, [], false, null, expired).map((problem) => problem.code)).toEqual(["credential-refused", "token-expired"]);
+    expect(problemsOf(refused, [], false, null, expired).find((problem) => problem.code === "credential-refused")?.text).toContain("linear:ENG");
+  });
+});
+
 describe("credentialWarnings", () => {
   const day = 86_400_000;
   const iso = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
@@ -89,8 +119,13 @@ describe("credentialWarnings", () => {
     expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(7 * day + 1000) }], NOW)).toEqual([]);
   });
 
-  it("warns of an expiry already passed, with 0 days left", () => {
-    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(-3 * day) }], NOW)).toMatchObject([{ kind: "expires", daysLeft: 0 }]);
+  it("does not warn of an expiry already passed, which is a problem instead (#261 AC1)", () => {
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(-3 * day) }], NOW)).toEqual([]);
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(0) }], NOW)).toEqual([]);
+  });
+
+  it("counts a token expiring in 20 hours as 1 day left (#261 AC6)", () => {
+    expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: iso(20 * 3_600_000) }], NOW)).toMatchObject([{ kind: "expires", daysLeft: 1 }]);
   });
 
   it("warns of a shared rate limit for a gh or glab login, and not for a token", () => {

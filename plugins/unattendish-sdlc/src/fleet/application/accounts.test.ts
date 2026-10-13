@@ -41,7 +41,7 @@ describe("a fleet that cannot be read (AC1)", () => {
     await addLogin(w, github("tok-yuser", "acme"));
     await register(w, "github.com/other-org/x");
     const text = "other-org/x needs a GitHub account that can read other-org";
-    expect(w.events.needs).toEqual([{ fleet: "github.com/other-org/x", managerThreadId: MANAGER, role: "forge", text }]);
+    expect(w.events.needs).toEqual([{ fleet: "github.com/other-org/x", managerThreadId: MANAGER, role: "forge", text, expired: null }]);
     const fleet = await card(w, "github.com/other-org/x");
     expect(fleet.halves).toEqual([{ role: "forge", what: "other-org/x", account: { id: expect.any(String), label: "GitHub · yuser" }, credential: null, canWrite: false, needs: text }]);
     expect(fleet.problems).toContainEqual({ code: "no-credential", text, fix: { kind: "connect", role: "forge" } });
@@ -89,7 +89,7 @@ describe("a fleet that cannot be read (AC1)", () => {
     await checkFleetAccess(w.register, "github.com/acme/ghost");
     const text = expect.stringContaining("GitHub · yuser for acme cannot read acme/ghost: the repository is not ticked on the token");
     expect((await card(w, "github.com/acme/ghost")).halves[0]).toMatchObject({ needs: text });
-    expect(w.events.needs).toEqual([{ fleet: "github.com/acme/ghost", managerThreadId: MANAGER, role: "forge", text }]);
+    expect(w.events.needs).toEqual([{ fleet: "github.com/acme/ghost", managerThreadId: MANAGER, role: "forge", text, expired: null }]);
     w.probe.unreadable.clear();
     await checkFleetAccess(w.register, "github.com/acme/ghost");
     expect((await card(w, "github.com/acme/ghost")).halves[0]!.needs).toBeNull();

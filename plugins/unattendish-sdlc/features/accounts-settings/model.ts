@@ -13,8 +13,12 @@ export function defaultText(account: Pick<AccountSettingView, "defaultFor">): st
   return account.defaultFor.length === 0 ? null : `default for ${account.defaultFor.join(", ")}`;
 }
 
-/** What a credential's expiry reads as: refused by the service, expiring on a date, or no expiry reported. */
-export function expiryText(credential: Pick<CredentialSettingView, "refused" | "expiresAt">): string {
+/**
+ * What a credential's expiry reads as: expired on a date, refused by the service, expiring on a date, or no expiry
+ * reported. An expired token the service refuses reads as expired, since the expiry is why it is refused.
+ */
+export function expiryText(credential: Pick<CredentialSettingView, "refused" | "expired" | "expiresAt">): string {
+  if (credential.expired) return expiresText(credential.expiresAt, true);
   if (credential.refused) return "refused by the service";
   return expiresText(credential.expiresAt);
 }
@@ -27,12 +31,12 @@ export interface ExpiryShown {
 }
 
 /**
- * Red with a cross for a credential the service refuses, amber with a clock within the window the cards warn in,
- * else plain grey: the date it expires, or that none was reported.
+ * Red with a cross for a credential that has expired or that the service refuses, amber with a clock within the
+ * window the cards warn in, else plain grey: the date it expires, or that none was reported.
  */
-export function expiryShown(credential: Pick<CredentialSettingView, "refused" | "expiresAt" | "expiresInDays">): ExpiryShown {
-  if (credential.refused) return { text: expiryText(credential), tone: "red", icon: ICONS.refused };
-  if (credential.expiresInDays !== null) return { text: credential.expiresInDays <= 0 ? "expires today" : `expires in ${plural(credential.expiresInDays, "day")}`, tone: "amber", icon: ICONS.expiring };
+export function expiryShown(credential: Pick<CredentialSettingView, "refused" | "expired" | "expiresAt" | "expiresInDays">): ExpiryShown {
+  if (credential.expired || credential.refused) return { text: expiryText(credential), tone: "red", icon: ICONS.refused };
+  if (credential.expiresInDays !== null) return { text: `expires in ${plural(credential.expiresInDays, "day")}`, tone: "amber", icon: ICONS.expiring };
   return { text: expiryText(credential), tone: "grey", icon: null };
 }
 
@@ -41,11 +45,11 @@ export function usedByText(credential: Pick<CredentialSettingView, "fleets">): s
   return credential.fleets.length === 0 ? "no fleet reads with it" : `read by ${credential.fleets.join(", ")}`;
 }
 
-/** What Renew does for a credential: open the popup for it, show the command a login needs, or nothing while it is neither expiring nor refused. */
+/** What Renew does for a credential: open the popup for it, show the command a login needs, or nothing while it is neither expiring, expired nor refused. */
 export type RenewOffer = { readonly kind: "popup"; readonly request: ConnectRequest } | { readonly kind: "command"; readonly command: string } | null;
 
 export function renewOffer(account: Pick<AccountSettingView, "id" | "service" | "place">, credential: CredentialSettingView): RenewOffer {
-  if (credential.expiresInDays === null && !credential.refused) return null;
+  if (credential.expiresInDays === null && !credential.expired && !credential.refused) return null;
   const { renew } = credential;
   if (renew.kind === "login") return { kind: "command", command: renew.command };
   const owner = renew.kind === "create" && renew.owner !== null ? { owner: renew.owner } : {};

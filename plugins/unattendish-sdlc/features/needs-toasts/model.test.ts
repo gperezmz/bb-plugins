@@ -5,7 +5,9 @@ const signal = { fleet: "other-org/x", managerThreadId: "thr_x", role: "forge", 
 
 describe("a fleet-needs signal", () => {
   it("is read as the signal the server publishes", () => {
-    expect(parseFleetNeeds(signal)).toEqual(signal);
+    expect(parseFleetNeeds(signal)).toEqual({ ...signal, expired: null });
+    const expired = { label: "GitHub · yuser for other-org", accountId: "acc_y", credentialId: "cred_y", expiresAt: "2026-10-12T09:00:00.000Z" };
+    expect(parseFleetNeeds({ ...signal, expired })).toEqual({ ...signal, expired });
   });
 
   it("is refused when it is not that", () => {

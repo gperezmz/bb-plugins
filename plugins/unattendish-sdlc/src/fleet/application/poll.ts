@@ -29,7 +29,7 @@ import {
 } from "./ports";
 import { observeManifest } from "./observe";
 import { accessProblemText, halfWhat } from "../domain/accounts";
-import { announceNeeds } from "./needs";
+import { announceNeeds, expiredTokenOf } from "./needs";
 import { assessWatching, forgeServiceOf, refusedNotWatched, type Watching } from "./watching";
 
 export interface PollDeps {
@@ -286,7 +286,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   const result = await runPoll(deps, repo, options);
   if (result.polled) {
     const after = deps.store.getFleet(repo);
-    if (after !== null) announceNeeds(deps.events, after.registration, before, after.notWatched);
+    if (after !== null) announceNeeds(deps.events, after.registration, before, after.notWatched, (role) => expiredTokenOf(deps, after.registration, role, deps.clock.now()));
     deps.events.boardChanged();
   }
   return result;
