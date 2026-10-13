@@ -50,10 +50,11 @@ A credential's line in Settings shows its expiry by urgency:
 | Expiry | Shows | Beside it |
 |---|---|---|
 | More than 7 days away, or none reported | `expires 18 Oct` or `no expiry reported`, in grey | Nothing |
-| Within 7 days, or passed | `expires in N days` or `expires today`, in amber with a clock | **Renew…** |
-| Refused by the service | `refused by the service`, in red with a ✕ | **Renew…** |
+| Within 7 days, not yet passed | `expires in N days`, the days counted up, in amber with a clock | **Renew…** |
+| Passed, whether or not the service also refuses it | `expired 12 Oct`, in red with a ✕ | **Renew…** |
+| Refused by the service, not expired | `refused by the service`, in red with a ✕ | **Renew…** |
 
-On the cards of the fleets it serves, a credential that expires within 7 days, or has expired, shows `token expires in N days`, `token expires today` or `token expired N days ago`, with **Renew**. `expiresAt` is what the service reports: a GitHub token that expires and a GitLab personal access token with an expiry date; none for a Linear or Jira key. A credential the service now refuses shows `refused by the service`, and its fleets show **Connect…**.
+On the [fleet board and the Fleet tab](unattendish-dashboard.md#the-fleet-board) of the fleets it serves, a credential that expires within 7 days is a warning, `token expires in N days`, with **Renew…**; one that has expired is a problem, `token expired N days ago` (or `token expired today`), with **Renew…**, its days counted in your own calendar so they agree with the date Settings shows. `expiresAt` is what the service reports: a GitHub token that expires and a GitLab personal access token with an expiry date; none for a Linear or Jira key. A credential the service now refuses, and that has not expired, shows `refused by the service`, and its fleets show **Connect…**.
 
 | Credential | **Renew…** |
 |---|---|

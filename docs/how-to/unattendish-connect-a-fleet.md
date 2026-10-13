@@ -19,7 +19,7 @@ You need a bb server with the plugin installed, and a registered fleet. Words: [
 **Connect…** appears wherever the plugin says a fleet is not watched for want of an account, and opens the popup over the view that is open:
 
 - the toast titled `other-org/x can't be read`, with what the fleet needs under it, such as "other-org/x needs a GitHub account that can read other-org";
-- the fleet's line on the fleet board of the Fleets page, where a red **Connect…** is its fix (a fleet that needs both halves shows `Connect… +1`, and its hover text lists each; a fleet whose token expires soon shows **Renew…**, which opens the same popup to renew it);
+- the fleet's line on the fleet board of the Fleets page, where a red **Connect…** is its fix (a fleet that needs both halves shows `Connect… +1`, and its hover text lists each; a fleet whose token expires soon shows an amber **Renew…**, and one whose token has expired a red **Renew…**, which opens the same popup to renew it);
 - the fleet header, at the top of the Fleet tab and in the Fleet chip's hover card, where a red strip says what the half needs, with **Connect…**.
 
 A fleet that is watched shows **Change account…** on each credential's card under the Fleet tab's **Watching**, which opens the same popup for that half. A fleet whose tracker is the forge's issues has only the forge's half.
@@ -95,7 +95,7 @@ Settings → Installed plugins → Unattendish shows the section **Fleets: accou
 | A credential gone | The 🗑 on the credential's line. Its fleets then need an account |
 | An account gone | **Remove account** in the account's ⋯ menu, with all its tokens. It is refused while a registered fleet reads as it, and the refusal names those fleets: connect them to another account first |
 
-A credential whose token expires within 7 days, or has expired, shows it in amber in Settings with **Renew…**, on the cards of the fleets it serves with **Renew**, and on their lines of the fleet board as **Renew…**. One the service now refuses shows `refused by the service`.
+A credential whose token expires within 7 days shows it in amber, and one whose token has expired shows `expired <date>` in red, in Settings with **Renew…**, and on the fleet board and the Fleet tab of the fleets it serves with **Renew…**. One the service now refuses, and that has not expired, shows `refused by the service`; where the service refuses a token because it has expired, its toast offers **Renew…** in place of **Connect…**. [The reference](../reference/unattendish-settings.md#expiry-and-refused-credentials) lists what each shows.
 
 ### Removing does not revoke
 
