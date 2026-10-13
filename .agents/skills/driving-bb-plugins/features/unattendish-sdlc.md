@@ -288,9 +288,9 @@ and every repository a fleet registers is in the fake's `repos`.
   `--click "Connect…"` opens the popup on it and prints its `dialog`.
 - **Connect** (`unattendish.connect/card`):
   `unattendish-sdlc connect "Connect…" --fleet github.example/other-org/x --account "GitHub · operator" --token ghp_connect_fake_token`
-  presses the Connect… on that fleet's board line (without `--fleet`, the
-  button whose accessible name is given, such as the sentence a phone's icon
-  button carries), prints each step, `createTokenUrl` and the result, and
+  presses the Connect… on that fleet's board line, or in the narrow layout,
+  which shows no text, the line's fix icon (without `--fleet`, the button
+  whose accessible name is given, such as the fleet's sentence), prints each step, `createTokenUrl` and the result, and
   `status` has the fleet `watched` once the fake GitHub's `repos` holds
   `other-org/x`. `--from settings` starts on the settings page:
   `connect "Add token for another owner to GitHub · operator" --from settings --owner third-org --token <token>`
@@ -337,6 +337,10 @@ and every repository a fleet registers is in the fake's `repos`.
 - Connect's `a new login` and Add account send no API address, so they reach
   the host typed into the popup, never a fake: type only a host under
   `.invalid`. A new account through a fake goes through the `connect` RPC.
+- On a phone bb's sidebar drawer is a `dialog "Sidebar"` that stays mounted
+  while closed, so `getByRole("dialog")` matches it beside any popup: name
+  the dialog, as `connect` names the popup by its title, or leave the drawer
+  out, as `toast --click` does.
 - `Use your gh login` is disabled (`gh holds no login for this host.`): a run
   has no logged-in `gh` or `glab`.
 - Make default moves every fleet that reads as the place's default, the ones

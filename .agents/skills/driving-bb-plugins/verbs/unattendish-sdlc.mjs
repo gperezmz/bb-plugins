@@ -369,7 +369,7 @@ export const verbs = {
   },
 
   toast: {
-    usage: "<trigger.sh> [--click <button>]: hold the Fleets page open, run the shell script (it gets DBP_HARNESS and DBP_RUN, and makes the change that should toast), and read the toasts that appear; --click presses that toast button and reports where it led",
+    usage: "<trigger.sh> [--click <button>]: hold the Fleets page open, run the shell script (it gets DBP_HARNESS and DBP_RUN, and makes the change that should toast), and read the toasts that appear; --click presses that toast button and reports where it led: the address and the dialog it opened, bb's sidebar drawer left out, or null",
     valued: ["click"],
     async run({ page, url, capture, args, flags }) {
       await openFleets(page, url);
@@ -382,7 +382,7 @@ export const verbs = {
       if (!flags.click) return { shown };
       await page.locator("[data-sonner-toast]").getByRole("button", { name: flags.click, exact: true }).first().click();
       await sleep(800);
-      const dialog = page.getByRole("dialog");
+      const dialog = notDrawer(page);
       const result = { shown, url: page.url(), dialog: (await dialog.count()) ? lines(await dialog.innerText()) : null };
       await capture("clicked", `click ${flags.click}`);
       return result;
@@ -390,17 +390,21 @@ export const verbs = {
   },
 
   connect: {
-    usage: "<button name> [--fleet <repo>] [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page, or an item of an account's ⋯ menu there): by its accessible name, which on the board is the fleet's full sentence (`other-org/x needs a GitHub account that can read other-org`), or with --fleet by the text on that fleet's board line (`Connect…`, `Renew…`), walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
+    usage: "<button name> [--fleet <repo>] [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page, or an item of an account's ⋯ menu there): by its accessible name, which on the board is the fleet's full sentence (`other-org/x needs a GitHub account that can read other-org`), or with --fleet by the text on that fleet's board line (`Connect…`, `Renew…`), or in the narrow layout, which shows no text, that line's fix icon, walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
     valued: ["fleet", "service", "host", "owner", "account", "token", "email", "from", "stop-at"],
     async run({ page, url, capture, cli, args, flags }) {
       if (flags.from === "settings") {
         await page.goto(url + "settings/plugins/unattendish-sdlc");
         await page.getByRole("region", { name: "Accounts" }).waitFor();
       } else await openFleets(page, url);
-      if (flags.fleet) await page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${flags.fleet}` }).getByRole("button").filter({ hasText: args[0] }).first().click();
-      else await press(page, args[0]);
-      const dialog = page.getByRole("dialog");
-      await dialog.waitFor();
+      const dialog = connectPopup(page);
+      try {
+        if (flags.fleet) await (await fixOn(page, flags.fleet, args[0])).click();
+        else await press(page, args[0]);
+        await dialog.waitFor();
+      } catch (error) {
+        throw new Error(`the Connect popup did not open on pressing ${args[0]}: ${error.message.split("\n")[0]}`);
+      }
       const steps = [];
       const step = async (name, action) => {
         await sleep(400);
@@ -409,6 +413,9 @@ export const verbs = {
       };
       await step("opened", `press ${args[0]}`);
       const result = { title: await dialog.getByRole("heading").first().innerText(), steps };
+      // A narrow line's icon runs its first flag's fix, whichever verb was asked for.
+      const asked = { "Connect…": /^Connect /, "Renew…": /^Renew a token$/ }[args[0]];
+      if (flags.fleet && asked && !asked.test(result.title)) throw new Error(`pressing ${args[0]} on ${flags.fleet} opened "${result.title}", another fix's popup`);
       const done = () => ({ ...result, status: JSON.parse(cli("unattendish.connect/status", "unattendish", "fleet", "status", "--json")), settings: rpc(cli, "unattendish.connect/rpc", "settings") });
       if (flags.service || flags.owner) {
         if (flags.service) await choose(dialog.getByRole("radio", { name: flags.service, exact: true }));
@@ -495,6 +502,31 @@ export const verbs = {
     },
   },
 };
+
+/**
+ * The open dialogs but bb's sidebar drawer, a dialog named "Sidebar" that stays mounted while closed in the phone
+ * layout.
+ */
+const notDrawer = (page) => page.getByRole("dialog", { name: /^(?!Sidebar$)/ });
+
+/**
+ * The Connect popup, by the titles `dialogTitle` gives it (plugins/unattendish-sdlc/shared/connect/model.ts), each
+ * after the service's logo where the title names one; a title added there is added here.
+ */
+const connectPopup = (page) => page.getByRole("dialog", { name: /(^|\s)(Connect .+|Add account|Add a token|Renew a token)$/ });
+
+/**
+ * A fleet's fix on its board line: the button showing that text (`Connect…`, `Renew…`), or in the narrow layout, where
+ * the fix is an icon named by the fleet's flag sentences, that icon button: the line's other buttons with no text are
+ * its filter toggle (`aria-pressed`) and the wide board's Open the Fleet tab.
+ */
+async function fixOn(page, repo, text) {
+  const line = page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${repo}` });
+  const button = line.getByRole("button").filter({ hasText: text });
+  const icon = line.locator("button:not([aria-pressed])").filter({ hasNotText: /\S/ }).and(line.getByRole("button", { name: /^(?!Open the Fleet tab of )/ }));
+  await button.or(icon).first().waitFor();
+  return (await button.count()) ? button.first() : icon.first();
+}
 
 /** Chooses a radio button by clicking its label, which takes the click where the radio itself is visually hidden, as on a service tile or the credential switch. */
 async function choose(radio) {
