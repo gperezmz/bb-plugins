@@ -321,7 +321,7 @@ check "a shell sourcing run_env_script stops exporting the caller's variables" \
 # The function is defined in the bash that sources env.sh, exported, then looked
 # for in a child bash it starts; the case prints neither the function nor its body.
 check "a shell sourcing run_env_script stops exporting the caller's functions" \
-  bash -c 'RUN_ENV_TEST_FUNCTION() { :; }; export -f RUN_ENV_TEST_FUNCTION; source "$1"; ! bash -c "declare -F RUN_ENV_TEST_FUNCTION > /dev/null"' _ "$dir/env.sh"
+  bash -c 'RUN_ENV_TEST_FUNCTION() { :; }; export -f RUN_ENV_TEST_FUNCTION; source "$1"; declare -F RUN_ENV_TEST_FUNCTION > /dev/null || exit 1; bash -c "declare -F RUN_ENV_TEST_FUNCTION > /dev/null"; [[ $? -eq 1 ]]' _ "$dir/env.sh"
 
 # run_env_start_check, in a subshell since it exits: <command> stands in for
 # the harness's env -i prefix, `false` a gh that finds no token, `true` one
