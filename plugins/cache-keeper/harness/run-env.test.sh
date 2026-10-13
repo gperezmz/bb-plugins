@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Checks run-env.sh's leak check against processes it starts itself, with no
-# bb: a caller's variable, same name and value, outside both lists is a leak;
-# the same name with another value, a name on run_env_set_by_run or one on the
-# passed list is none; the planted variable is one whatever its value; and the
-# report names variables and never prints a value. Prints PASS or FAIL per case
-# and exits non-zero on any FAIL.
+# Checks run-env.sh against processes it starts itself, with no bb: a caller's
+# variable, same name and value, outside both lists is a leak; the same name
+# with another value, a name on run_env_set_by_run or one on the passed list is
+# none; the planted variable is one whatever its value; the report names
+# variables and never prints a value; run_env keeps a run off the system
+# bashrc, the D-Bus session bus and XDG_RUNTIME_DIR, and a bash started with it
+# holds no leak; a shell sourcing run_env_script stops exporting what is not on
+# the list; run_env_start_check fails on a leak and on a gh that finds a
+# token. Prints PASS or FAIL per case and exits non-zero on any FAIL.
 #
 #   plugins/cache-keeper/harness/run-env.test.sh
+# shellcheck disable=SC2016,SC2329 # the bash -c scripts expand their own arguments; check calls the helpers
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 dir=$(mktemp -d)
@@ -14,20 +18,20 @@ trap 'kill "${pids[@]}" 2> /dev/null; rm -rf "$dir"' EXIT
 pids=()
 failed=0
 value=run-env-test-value-$RANDOM$RANDOM
-export RUN_ENV_TEST_SECRET=$value DISABLE_AUTOUPDATER=1 LANG=${LANG:-C.UTF-8}
-# shellcheck source=run-env.sh
+export RUN_ENV_TEST_SECRET=$value DISABLE_AUTOUPDATER=1 LANG=${LANG:-C.UTF-8} XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+# shellcheck source-path=SCRIPTDIR source=run-env.sh
 source "$here/run-env.sh"
 run_env_record "$dir/caller-env"
 plant=$(awk '$1 == "plant" { print $2 }' "$dir/caller-env")
 
-# A process holding exactly the given environment; prints its PID.
+# A process holding exactly the given environment; appends its PID to pids.
 holding() {
   env -i "$@" sleep 60 &
   pids+=($!)
   sleep 0.1
 }
 
-# case <name> <expect leak|none> <leaked name or -> <env>...
+# case_ <name> <expect leak|none> <leaked name or -> <env>...
 case_() {
   local name=$1 expect=$2 leaked=$3 out status
   shift 3
@@ -59,5 +63,53 @@ if grep -qF -- "$value" "$dir/caller-env"; then
   failed=1
 else
   echo "PASS the record holds no value"
+fi
+
+# check <name> <command>...: PASS when the command succeeds.
+check() {
+  local name=$1
+  shift
+  if "$@"; then echo "PASS $name"; else echo "FAIL $name"; failed=1; fi
+}
+holds() { [[ " ${run_env[*]} " == *" $1 "* ]]; }
+lacks_name() { [[ " ${run_env[*]} " != *" $1="* ]]; }
+check "run_env skips the system bashrc" holds NOSYSBASHRC=1
+check "run_env keeps a run off the D-Bus session bus" holds DBUS_SESSION_BUS_ADDRESS=disabled:
+check "run_env passes no XDG_RUNTIME_DIR" lacks_name XDG_RUNTIME_DIR
+
+# A bash started with run_env, reading the system bashrc where it honours
+# NOSYSBASHRC as NixOS's does, and the process it then starts.
+if grep -qs NOSYSBASHRC /etc/bashrc; then
+  env -i "${run_env[@]}" bash -c '. /etc/bashrc; exec sleep 60' &
+else
+  env -i "${run_env[@]}" bash -c 'exec sleep 60' &
+fi
+pids+=($!)
+sleep 0.3
+check "a bash started with run_env holds no leak" run_env_leaks "$dir/caller-env" "${pids[-1]}"
+
+# A shell sourcing run_env_script exports none of what is not on the list.
+run_env_script > "$dir/env.sh"
+check "a shell sourcing run_env_script stops exporting the caller's variables" \
+  bash -c 'source "$1"; ! env | grep -q "^RUN_ENV_TEST_SECRET="' _ "$dir/env.sh"
+
+# run_env_start_check, in a subshell since it exits: <command> stands in for
+# the harness's env -i prefix, `false` a gh that finds no token, `true` one
+# that finds one.
+holding
+clean=${pids[-1]}
+holding "RUN_ENV_TEST_SECRET=$value"
+leaking=${pids[-1]}
+check "run_env_start_check passes a run with no leak" \
+  bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$clean"
+out=$(bash -c 'source "$1"; run_env_start_check test "$2" false -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$leaking" 2>&1) && status=0 || status=$?
+check "run_env_start_check fails on a leak, each line headed by the script, naming the list" \
+  bash -c '[[ $1 -eq 1 && $2 == "test: leak: RUN_ENV_TEST_SECRET,"* && $2 == *"test: a run passes only"* && $2 != *"$3"* ]]' _ "$status" "$out" "$value"
+if command -v gh > /dev/null; then
+  out=$(bash -c 'source "$1"; run_env_start_check test "$2" true -- "$3"' _ "$here/run-env.sh" "$dir/caller-env" "$clean" 2>&1) && status=0 || status=$?
+  check "run_env_start_check fails when gh finds a token, naming the list" \
+    bash -c '[[ $1 -eq 1 && $2 == *"finds a GitHub token"* && $2 == *"a run passes only"* ]]' _ "$status" "$out"
+else
+  echo "SKIP run_env_start_check on a gh that finds a token: no gh on PATH"
 fi
 exit $failed

@@ -174,8 +174,8 @@ release_ports() {
 }
 
 # Runs a command as a process of the run, against the throwaway bb only: the
-# passed list, the run's mark, its HOME and TMPDIR, bb's telemetry off and its
-# bb's address, and nothing else.
+# passed list and what run-env.sh adds to it, the run's mark, its HOME and
+# TMPDIR, bb's telemetry off and its bb's address, and nothing else.
 tb() { env -i "${run_env[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="${server_url:-}" "$@"; }
 # What the harness's own commands inside a run need to find it, into $self.
 set_self() { self=("DBP_RUN=$run" "DBP_SCRATCH_ROOT=$scratch_root" "DBP_EVIDENCE_ROOT=$evidence_root"); }

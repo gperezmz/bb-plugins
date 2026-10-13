@@ -36,11 +36,12 @@ run_env_passed=(
 # Names the harness, bb or Claude Code set in a run's processes to a value that
 # can equal the caller's own, which are therefore no leak, each with why.
 run_env_set_by_run=(
+  SHELL                      # the harness sets bash, and Claude Code the bash it resolves, which may be the caller's
   DISABLE_AUTOUPDATER        # the harness sets 1 for Claude Code, as Claude Code's own caller often has
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC # likewise
   CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_AGENT_SDK_VERSION CLAUDE_CODE_EXECPATH COREPACK_ENABLE_AUTO_PIN
   AI_AGENT DISABLE_INSTALLATION_CHECKS DISABLE_NON_ESSENTIAL_MODEL_CALLS CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
-  SHELL CLAUDE_CODE_SHELL CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
+  CLAUDE_CODE_SHELL CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
   NoDefaultCurrentDirectoryInExePath CLAUDE_CODE_DISABLE_1M_CONTEXT
                              # bb sets these for Claude Code, or Claude Code for its commands, as for the caller's
   NODE_PATH                  # bb's launcher scripts set it to bb's own modules, as they did in the caller's bb
@@ -132,7 +133,7 @@ run_env_leaks() {
 
 # run_env_gh_token <command>...: whether gh, run as a process of the run by
 # <command> (a harness's env -i prefix), finds a GitHub token, which bb hands
-# every thread it starts; prints nothing either way. True when gh is absent.
+# every thread it starts; prints nothing either way. False when gh is absent.
 run_env_gh_token() {
   command -v gh > /dev/null || return 1
   "$@" gh auth token --hostname github.com > /dev/null 2>&1
@@ -141,7 +142,8 @@ run_env_gh_token() {
 # run_env_start_check <script> <file> <command> -- <pid>...: the check a
 # harness with no doctor runs at the end of its start. On a leak in those
 # processes it prints run_env_leaks' report, each line headed "<script>: ",
-# and when gh run by <command> finds a GitHub token it says so; then it exits 1.
+# and when gh run by <command> finds a GitHub token it says so, with where the
+# passed list is kept; then it exits 1.
 run_env_start_check() {
   local script=$1 file=$2 leaks bad=0
   local -a command=()
@@ -154,6 +156,7 @@ run_env_start_check() {
   fi
   if run_env_gh_token "${command[@]}"; then
     echo "$script: gh run inside the run finds a GitHub token, which bb would hand its threads" >&2
+    ((bad)) || echo "$script: $(run_env_note)" >&2
     bad=1
   fi
   ((bad)) || return 0
