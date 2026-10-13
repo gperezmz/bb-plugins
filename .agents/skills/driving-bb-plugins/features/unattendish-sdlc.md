@@ -149,7 +149,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `Wakes`, or `Nothing in the ledger matches.`.
 - Toasts, in every open window: title `#15 <What>` (the item), line
   `<repo> waits for your answer` (`a grant to merge`, `your ready label`,
-  `something else`) and `Open Fleets`; title `<repo> can't be read`, the
+  `something else`) and its button: `Answer…` for your answer, `Grant…` for a
+  grant, which open the Fleets page at the row's composer, and `Open Fleets`
+  otherwise; title `<repo> can't be read`, the
   server's sentence
   (`other-org/x needs a GitHub account that can read other-org`) as its
   description and `Connect…`, which opens the popup.
@@ -260,11 +262,12 @@ and every repository a fleet registers is in the fake's `repos`.
   `unattendish-sdlc ledger $A --filter Dropped --item '#8'` presses the Ledger
   tab and lists `echo: marker · 1`, with each entry's outcome colour, once a
   comment ending in the marker, on a line of its own, has been polled.
-- **Toasts** (`unattendish.toasts/ws`): `unattendish-sdlc toast <trigger.sh> --click "Open Fleets"`
+- **Toasts** (`unattendish.toasts/ws`): `unattendish-sdlc toast <trigger.sh> --click "Answer…"`
   holds the Fleets page open while the script adds an Inbox row to the
   manifest and runs `thread tell $A hi`, `thread wait $A --status idle` and
   `thread stop $A`, then prints each toast's `title`, `description` and
-  `buttons`: `#21 Which queue to use` over `<repo> waits for your answer`.
+  `buttons`: `#21 Which queue to use` over `<repo> waits for your answer`,
+  with `Answer…`; `--click "Answer…"` opens that row's composer.
   A trigger that registers a fleet on `github.example/other-org/x` raises
   `github.example/other-org/x can't be read` over
   `other-org/x needs a GitHub account that can read other-org`;
