@@ -26,10 +26,10 @@ export function hasResources(preview: PreviewCleanOutput): boolean {
   return preview.threads.length > 0;
 }
 
-/** "N terminals closed · M port shutdown requests sent", or "No resources were closed." */
+/** "N terminals closed · M port shutdown requests sent", each noun singular for one, or "No resources were closed." */
 export function cleanSummary(result: RunCleanOutput): string {
   if (result.closedTerminals === 0 && result.portRequests === 0) return "No resources were closed.";
-  return `${result.closedTerminals} terminals closed · ${result.portRequests} port shutdown requests sent`;
+  return `${terminalsText(result.closedTerminals)} closed · ${portRequestsText(result.portRequests)} sent`;
 }
 
 /** The line for ports that outlived the request, or null when none did. */
@@ -40,6 +40,11 @@ export function stillListeningText(result: RunCleanOutput): string | null {
 /** A thread's terminals as the dialog reads them. */
 export function terminalsText(count: number): string {
   return count === 1 ? "1 terminal" : `${count} terminals`;
+}
+
+/** The port shutdown requests a run sent, as the result line reads them. */
+export function portRequestsText(count: number): string {
+  return count === 1 ? "1 port shutdown request" : `${count} port shutdown requests`;
 }
 
 /** A thread's ports as the dialog lists them: `:port process`. */

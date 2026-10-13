@@ -47,8 +47,16 @@ describe("cleanView", () => {
 });
 
 describe("the result's texts", () => {
-  it("reads the counts, or that nothing was closed", () => {
-    expect(cleanSummary(result({ closedTerminals: 2, portRequests: 1 }))).toBe("2 terminals closed · 1 port shutdown requests sent");
+  it.each([
+    [1, 1, "1 terminal closed · 1 port shutdown request sent"],
+    [3, 1, "3 terminals closed · 1 port shutdown request sent"],
+    [1, 0, "1 terminal closed · 0 port shutdown requests sent"],
+    [2, 2, "2 terminals closed · 2 port shutdown requests sent"],
+  ])("reads %i closed and %i port requests as '%s'", (closedTerminals, portRequests, text) => {
+    expect(cleanSummary(result({ closedTerminals, portRequests }))).toBe(text);
+  });
+
+  it("reads that nothing was closed when neither count is above zero", () => {
     expect(cleanSummary(result())).toBe("No resources were closed.");
   });
 
