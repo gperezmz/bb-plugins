@@ -89,7 +89,7 @@ Each tab shows its count; with the queue filtered to one fleet the counts and th
 | Fleet | The forge's logo and the fleet's name |
 | Action | See [Actions](#actions) |
 
-A row waiting for `other` has its link and no action: the cell reads `watch only`. A row the plugin cannot read is a red line, `Unreadable Inbox row, line N: <reason>`, with **Review**, which opens that fleet's Fleet tab; it counts as waiting. On a compact viewport each row takes two lines: the title and action on the first, the fleet, link and age on the second.
+A row waiting for `other` has its link and no action: the cell reads `watch only`. A row the plugin cannot read is a red line, `Unreadable Inbox row, line N: <reason>`, with **Review**, which opens that fleet's Fleet tab; it counts as waiting.
 
 ### Around the board and queue
 
@@ -103,7 +103,17 @@ A row waiting for `other` has its link and no action: the cell reads `watch only
 
 ### On a compact viewport
 
-Below 768 px the board shows three lines: each has the fleet's logo and name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does, since a phone has no hover; its accessible name is the full sentence. The tabs are pills.
+Below 768 px a fleet is named by its [short name](../../plugins/unattendish-sdlc/GLOSSARY.md): the end of its name, with as many segments as tell it apart from every other registered fleet, so `github.example/org/dash` reads `dash` until another fleet ends in `dash`. The board's lines, the queue's rows, the Sent tab's lines and the filter chip use it, and each keeps the full name as its accessible name; the composer still names the full fleet. The filter chip's ✕ is touch-sized.
+
+The board shows three lines: each has the fleet's logo and short name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does, since a phone has no hover; its accessible name is the full sentence. The tabs are pills.
+
+Each queue row is three parts, one under the other:
+
+| Part | What |
+|---|---|
+| Title | The kind's icon, then the Ref and What across the row's width, wrapping onto a second line; only a title longer than two lines is cut with `…` |
+| Details | The fleet's logo and short name (left out while the queue is filtered to one fleet), the link and the age. The link shows its short form (`#7 ↗`, `!3 ↗`, `ENG-212 ↗`) or `↗` alone, its full text the accessible name, with a touch-sized tap area. A short name too wide to share the line takes it whole, and the link and the age go under it |
+| Action | The row's buttons across its width, each touch-sized, Grant… and Re-grant half each. Every other state is its text at the buttons' height, so the row keeps its height: `composing…`, `sending…`, `checking…`, `sent · 4m`, `done`; `watch only` takes a line of its own height. A refused Build it or Re-grant shows `Not sent: <reason>` in red under the buttons, and a send that could not be confirmed shows `could not confirm whether the last send went through` |
 
 ## The fleet card
 
