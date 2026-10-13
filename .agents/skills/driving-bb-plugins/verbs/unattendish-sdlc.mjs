@@ -397,12 +397,14 @@ export const verbs = {
         await page.goto(url + "settings/plugins/unattendish-sdlc");
         await page.getByRole("region", { name: "Accounts" }).waitFor();
       } else await openFleets(page, url);
-      if (flags.fleet) await (await fixOn(page, flags.fleet, args[0])).click();
-      else await press(page, args[0]);
       const dialog = connectPopup(page);
-      await dialog.waitFor({ timeout: 10000 }).catch(() => {
-        throw new Error(`the Connect popup did not open on pressing ${args[0]}: no dialog is titled Connect …, Add account, Add a token or Renew a token`);
-      });
+      try {
+        if (flags.fleet) await (await fixOn(page, flags.fleet, args[0])).click();
+        else await press(page, args[0]);
+        await dialog.waitFor();
+      } catch (error) {
+        throw new Error(`the Connect popup did not open on pressing ${args[0]}: ${error.message.split("\n")[0]}`);
+      }
       const steps = [];
       const step = async (name, action) => {
         await sleep(400);
@@ -411,6 +413,9 @@ export const verbs = {
       };
       await step("opened", `press ${args[0]}`);
       const result = { title: await dialog.getByRole("heading").first().innerText(), steps };
+      // A narrow line's icon runs its first flag's fix, whichever verb was asked for.
+      const asked = { "Connect…": /^Connect /, "Renew…": /^Renew a token$/ }[args[0]];
+      if (flags.fleet && asked && !asked.test(result.title)) throw new Error(`pressing ${args[0]} on ${flags.fleet} opened "${result.title}", another fix's popup`);
       const done = () => ({ ...result, status: JSON.parse(cli("unattendish.connect/status", "unattendish", "fleet", "status", "--json")), settings: rpc(cli, "unattendish.connect/rpc", "settings") });
       if (flags.service || flags.owner) {
         if (flags.service) await choose(dialog.getByRole("radio", { name: flags.service, exact: true }));
@@ -512,14 +517,15 @@ const connectPopup = (page) => page.getByRole("dialog", { name: /(^|\s)(Connect 
 
 /**
  * A fleet's fix on its board line: the button showing that text (`Connect…`, `Renew…`), or in the narrow layout, where
- * the fix is an icon named by the fleet's flag sentences, that icon button.
+ * the fix is an icon named by the fleet's flag sentences, that icon button: the line's other buttons with no text are
+ * its filter toggle (`aria-pressed`) and the wide board's Open the Fleet tab.
  */
 async function fixOn(page, repo, text) {
   const line = page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${repo}` });
-  await line.waitFor();
   const button = line.getByRole("button").filter({ hasText: text });
-  if (await button.count()) return button.first();
-  return line.locator("button:not([aria-pressed])").filter({ hasNotText: /\S/ }).and(line.getByRole("button", { name: /^(?!Open the Fleet tab of )/ })).first();
+  const icon = line.locator("button:not([aria-pressed])").filter({ hasNotText: /\S/ }).and(line.getByRole("button", { name: /^(?!Open the Fleet tab of )/ }));
+  await button.or(icon).first().waitFor();
+  return (await button.count()) ? button.first() : icon.first();
 }
 
 /** Chooses a radio button by clicking its label, which takes the click where the radio itself is visually hidden, as on a service tile or the credential switch. */
