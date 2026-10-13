@@ -221,10 +221,10 @@ const QUIET = "flex items-center gap-1 text-xs text-muted-foreground";
 const BUTTON = "flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent";
 
 /**
- * The action cell: the offered action as outlined buttons in the kind's colour, or the action's state, both at the
- * buttons' height, which with `touch` takes in the 44 px tap areas around them, so the cell keeps its height when a
- * button turns into its state and back, but watch only, which never turns into a button; `unconfirmed` shows an unconfirmed send as an icon beside the buttons, kept
- * on their line.
+ * The action cell: the offered action as outlined buttons in the kind's colour, or the action's state. Both take the
+ * buttons' height, which with `touch` includes the 44 px tap areas around them, so the cell keeps its height when a
+ * button turns into its state and back. Watch only is the exception, since it never turns into a button.
+ * `unconfirmed` shows an unconfirmed send as an icon beside the buttons, kept on their line.
  */
 function ActionCell({ row, action, state, touch, unconfirmed }: { row: InboxRowView; action: RowAction; state: RowActionState; touch: boolean; unconfirmed: boolean }) {
   const held = cn(QUIET, touch ? "h-11" : "h-7");
