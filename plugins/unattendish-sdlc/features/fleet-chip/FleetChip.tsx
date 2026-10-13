@@ -11,6 +11,7 @@ import { ICONS } from "@/shared/look/icons";
 import { FLAG_TONES, TONE_FILL, TONE_TEXT } from "@/shared/look/tones";
 import { FLEET_TAB_ACTION_ID } from "@/shared/open-fleet-tab";
 import { takeFleetTab } from "@/shared/pending-open";
+import { requestReview } from "@/shared/review-request";
 import { useLive } from "@/shared/use-live";
 import { chipFace } from "./model";
 
@@ -91,7 +92,12 @@ function ChipButton({ threadId, fleet, compact }: { threadId: string; fleet: Ext
     >
       <HoverCardTrigger asChild>{button}</HoverCardTrigger>
       <HoverCardContent align="end" className="w-80 p-0">
-        <FleetHeader card={fleet.card} lastAction={fleet.lastAction} now={fleet.generatedAt} onReview={openTab} className="p-3" />
+        <FleetHeader card={fleet.card} lastAction={fleet.lastAction} now={fleet.generatedAt} onReview={() => {
+            requestReview(threadId);
+            openTab();
+          }}
+          className="p-3"
+        />
         <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground">Click the chip to open the Fleet tab</p>
       </HoverCardContent>
     </HoverCard>

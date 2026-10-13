@@ -10,6 +10,7 @@ import { sdk } from "@/testing/sdk";
 import { ConnectOverlay } from "@/shared/connect/ConnectOverlay";
 import { closeConnect } from "@/shared/connect/requests";
 import { clearFleetTabWishes, requestFleetTab } from "@/shared/pending-open";
+import { clearReviewRequests, takeReview } from "@/shared/review-request";
 import { FleetChip } from "./index";
 
 vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
@@ -22,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   clearFleetTabWishes();
+  clearReviewRequests();
   closeConnect();
 });
 
@@ -127,11 +129,12 @@ describe("the chip's hover card (#258 AC12)", () => {
     expectIconsResolve(drawnIcons(document.body));
   });
 
-  it("opens the Fleet tab from Review in the card", async () => {
+  it("opens the Fleet tab from Review in the card, asking it to open at what needs reviewing", async () => {
     await show(fleetCard({ repo: "acme/web", problems: [unreadable] }));
     const header = await hover();
     fireEvent.click(within(header).getByRole("button", { name: /^Review/ }));
     expect(sdk.navigate.openThreadPanel).toHaveBeenCalledWith({ actionId: "fleet", params: { threadId: "thr_acme" } });
+    expect(takeReview("thr_acme")).toBe(true);
   });
 
   it("opens the Fleet tab when the chip is clicked", async () => {

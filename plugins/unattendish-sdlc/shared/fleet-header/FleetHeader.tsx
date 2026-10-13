@@ -16,7 +16,7 @@ interface FleetHeaderProps {
   /** The action seen done most recently in the last hour; null leaves its line out. */
   readonly lastAction: ActionRecordView | null;
   readonly now: string;
-  /** What Review does: the Fleet tab opens its Work tab at what needs reviewing, the chip's card opens the Fleet tab. */
+  /** What Review does: open the Fleet tab's Work tab at what needs reviewing. */
   onReview(): void;
   readonly className?: string;
 }

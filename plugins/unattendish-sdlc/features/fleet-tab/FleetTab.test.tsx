@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FleetDetailView, ProblemView, WarningView } from "@/src/fleet/application/views";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
+import { clearReviewRequests, requestReview } from "@/shared/review-request";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, managerFleet, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
@@ -29,6 +30,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   closeConnect();
+  clearReviewRequests();
 });
 
 type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
@@ -250,6 +252,27 @@ describe("Work (#258 AC3)", () => {
     expect(within(panel("Work")).getByRole("button", { name: /^In flight/ }).getAttribute("aria-expanded")).toBe("true");
     const row = screen.getByText('Unreadable row, line 14: the table has no "Stage" column').closest("li")!;
     await waitFor(() => expect(scrolled).toContain(row));
+  });
+});
+
+describe("Review from the Fleet chip's card (#258 AC1, AC12)", () => {
+  const landedUnreadable: OkManifest = { ...okManifest, unreadableInbox: [], unreadable: [{ section: "Landed", line: 30, reason: 'the table has no "Merged" column' }] };
+  const landedRow = () => screen.getByText('Unreadable row, line 30: the table has no "Merged" column').closest("li")!;
+
+  it("opens Work at the row when the tab opens on the request, unfolding Landed", async () => {
+    requestReview("thr_acme");
+    await showDetail({ manifest: landedUnreadable });
+    await waitFor(() => expect(scrolled).toContain(landedRow()));
+    expect(within(panel("Work")).getByRole("button", { name: /^Landed/ }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("switches an open tab back to Work at the row", async () => {
+    await showDetail({ manifest: landedUnreadable });
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger: ledgerView() });
+    fireEvent.click(tab(/^Ledger/));
+    act(() => requestReview("thr_acme"));
+    await waitFor(() => expect(tab(/^Work/).getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(scrolled).toContain(landedRow()));
   });
 });
 

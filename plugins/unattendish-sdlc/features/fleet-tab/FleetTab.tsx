@@ -5,6 +5,7 @@ import { useDashboardApi } from "@/shared/client";
 import { FleetHeader } from "@/shared/fleet-header/FleetHeader";
 import { ThreadLink } from "@/shared/ItemLink";
 import { LiveScreen } from "@/shared/LiveScreen";
+import { takeReview, useReviewRequested } from "@/shared/review-request";
 import { TONE_TEXT } from "@/shared/look/tones";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { useLive } from "@/shared/use-live";
@@ -58,25 +59,32 @@ function Detail({ repo, managerThreadId }: { repo: string; managerThreadId: stri
     [api, repo],
   );
 
-  useEffect(() => {
-    if (scrollTo !== null) document.getElementById(scrollTo.id)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-  }, [scrollTo]);
-
   const choose = (next: FleetTabName) => {
     setTab(next);
     if (next === "ledger") setLedgerOpened(true);
   };
+  const review = (detail: FleetDetailView) => {
+    const target = reviewTarget(detail.manifest);
+    choose("work");
+    if (target.section !== null) setOpen((now) => ({ ...now, [target.section!]: true }));
+    if (target.rowId !== null) setScrollTo({ id: target.rowId });
+  };
+
+  // Review pressed in the Fleet chip's hover card, taken once the fleet has loaded.
+  const reviewRequested = useReviewRequested(managerThreadId);
+  useEffect(() => {
+    if (reviewRequested && live.data !== null && takeReview(managerThreadId)) review(live.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a request is taken once, when it and the fleet are both there.
+  }, [reviewRequested, live.data, managerThreadId]);
+
+  useEffect(() => {
+    if (scrollTo !== null) document.getElementById(scrollTo.id)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [scrollTo]);
 
   return (
     <LiveScreen live={live} what="the fleet">
       {(detail) => {
         const counts = tabCounts(detail);
-        const review = () => {
-          const target = reviewTarget(detail.manifest);
-          choose("work");
-          if (target.section !== null) setOpen((now) => ({ ...now, [target.section!]: true }));
-          if (target.rowId !== null) setScrollTo({ id: target.rowId });
-        };
         const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
           const next = nextTab(tab, event.key);
           if (next === null) return;
@@ -85,7 +93,7 @@ function Detail({ repo, managerThreadId }: { repo: string; managerThreadId: stri
         };
         return (
           <>
-            <FleetHeader card={detail.card} lastAction={detail.lastAction} now={detail.generatedAt} onReview={review} />
+            <FleetHeader card={detail.card} lastAction={detail.lastAction} now={detail.generatedAt} onReview={() => review(detail)} />
             <div role="tablist" aria-label="Fleet" onKeyDown={onKey} className="sticky top-0 z-10 -mx-1 flex gap-1 border-b border-border bg-background px-1">
               {FLEET_TABS.map((entry) => {
                 const count = counts[entry.id];
