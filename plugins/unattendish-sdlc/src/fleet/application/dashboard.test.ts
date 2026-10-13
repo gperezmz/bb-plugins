@@ -161,6 +161,15 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).reasons.map((reason) => reason.code)).toEqual(["manager-gone"]);
   });
 
+  it("does not call a manager gone when bb fails to answer for its thread", async () => {
+    const w = world();
+    await start(w, manifest());
+    w.threads.unanswered.add(MANAGER);
+    const card = await cardOf(w);
+    expect(card.manager).toEqual({ state: "none", since: null });
+    expect(card.reasons).toEqual([]);
+  });
+
   it("names the service behind the forge", async () => {
     const w = world();
     await start(w, manifest());

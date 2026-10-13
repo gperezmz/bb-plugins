@@ -41,7 +41,8 @@ export interface Gathered {
   readonly watching: Watching;
   readonly written: readonly WrittenSection[];
   readonly records: readonly ActionRecord[];
-  readonly standing: ThreadStanding;
+  /** Null where bb did not answer for the thread, which says nothing of whether it is gone. */
+  readonly standing: ThreadStanding | null;
 }
 
 export async function gather(deps: ViewDeps, fleet: StoredFleetOf, withSections: boolean): Promise<Gathered> {
@@ -56,7 +57,7 @@ export async function gather(deps: ViewDeps, fleet: StoredFleetOf, withSections:
   const repo = repoId(registration.repo);
   const [watching, standing] = await Promise.all([
     assessWatching({ credentials: deps.credentials, accounts: deps.accounts, manifests }, registration, repo),
-    deps.threads.standing(registration.managerThreadId).catch((): ThreadStanding => ({ state: "gone" })),
+    deps.threads.standing(registration.managerThreadId).catch((): ThreadStanding | null => null),
   ]);
   return { fleet, repo, name: formatRepo(registration.repo), watching, written, records: heldBy(deps.store.actions(repo), registration.managerThreadId), standing };
 }
@@ -153,11 +154,12 @@ export const halvesOf = (g: Gathered): HalfView[] =>
     return { role: half.role, what, account: { id: credential.accountId, label: credential.accountLabel }, credential: credential.label, canWrite: canWrite(credential.kind), needs };
   });
 
-/** The halves that need an account or a credential that reads them, for the top of Waits on you. */
+/** The halves that need an account or a credential that reads them. */
 export const needsAccountOf = (g: Gathered): NeedsAccountView[] =>
   halvesOf(g).flatMap((half) => (half.needs === null ? [] : [{ fleet: g.name, managerThreadId: g.fleet.registration.managerThreadId, role: half.role, text: half.needs }]));
 
-const managerOf = (standing: ThreadStanding): ManagerView => (standing.state === "live" ? { state: standing.busy ? "working" : "idle", since: standing.since } : { state: "none", since: null });
+/** The manager as the card shows it; one bb did not answer for shows as none, without the problem a gone manager raises. */
+const managerOf = (standing: ThreadStanding | null): ManagerView => (standing?.state === "live" ? { state: standing.busy ? "working" : "idle", since: standing.since } : { state: "none", since: null });
 
 export const COST_PERIOD = "since this manager started";
 
@@ -181,7 +183,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     cost: cost === null ? null : { amount: cost.amount, currency: cost.currency, period: COST_PERIOD },
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs,
-    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing.state !== "live"),
+    reasons: reasonsOf([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], unreadable, g.standing !== null && g.standing.state !== "live"),
     halves: halvesOf(g),
     warnings: [...credentialWarnings(warnedOf(deps, g), now), ...(polling === null ? [] : [polling])],
   };

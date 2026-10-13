@@ -46,10 +46,13 @@ export class FakeThreads implements ThreadDirectory {
   readonly states = new Map<string, "live" | "archived" | "gone">();
   /** Of a live thread: at work or idle, and since when. A live thread not listed is idle since an unknown time. */
   readonly activity = new Map<string, { busy: boolean; since: string | null }>();
+  /** Threads whose standing bb fails to answer for, as a timeout or a 5xx would. */
+  readonly unanswered = new Set<string>();
   async state(threadId: string): Promise<"live" | "archived" | "gone"> {
     return this.states.get(threadId) ?? "gone";
   }
   async standing(threadId: string): Promise<ThreadStanding> {
+    if (this.unanswered.has(threadId)) throw new Error("bb did not answer");
     const state = await this.state(threadId);
     return state === "live" ? { state, ...(this.activity.get(threadId) ?? { busy: false, since: null }) } : { state };
   }
