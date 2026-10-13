@@ -1098,7 +1098,7 @@ describe("the layout follows the page's own width (#277)", () => {
     setPageWidth(SWITCH);
     await show(view());
     const row = rowOf("Which cache to use");
-    expect(within(row).getByText("#7 Which cache to use").className).toContain("min-w-[12rem]");
+    expect(within(row).getByText("#7 Which cache to use").parentElement!.className).toContain("grid-cols-[minmax(12rem,max-content)_auto]");
     expect(within(row).getByText(/^\d+[mhd]/).className).toContain("whitespace-nowrap");
   });
 

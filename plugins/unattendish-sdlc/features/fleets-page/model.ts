@@ -54,9 +54,10 @@ export type PageLayout = "wide" | "narrow";
  * The switch point, in rem: the narrowest page, padding included, at which the widest row the wide layout can hold
  * keeps each of its parts whole. That row names its fleet, links with no short form cut at 16rem, offers Grant… and
  * Re-grant with a refused Re-grant's "not sent" beside a 12rem title, has waited 99d 23h, and has an unconfirmed send.
- * Measured in bb, since the buttons' and "not sent"'s widths are their text's.
+ * Measured in bb at 1440 px, where that row's narrowest is 60.46rem and the page's padding 3rem, and rounded up to the
+ * next rem, since the buttons' and "not sent"'s widths are their text's.
  */
-export const SWITCH_POINT_REM = 65;
+export const SWITCH_POINT_REM = 64;
 
 /** The layout for a page `widthPx` wide, where a rem is `remPx`: wide from the switch point up, narrow below it. */
 export function pageLayout(widthPx: number, remPx: number): PageLayout {

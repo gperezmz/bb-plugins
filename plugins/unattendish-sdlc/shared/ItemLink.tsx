@@ -31,10 +31,11 @@ export function ItemLink({ link, managerThreadId, label, arrowOnly = false, tip 
       </button>
     );
   if (!tip || label !== undefined) return drawn;
-  // The tooltip hangs on a span around the link, which shows it as the link inside takes focus.
+  // The tooltip hangs on a span around the link, which shows it as the link inside takes focus. A block, not a flex
+  // box, so a link cut short still counts its cut width toward the narrowest the span can be.
   return (
     <Tip text={target.text}>
-      <span className="flex min-w-0">{drawn}</span>
+      <span className="block">{drawn}</span>
     </Tip>
   );
 }

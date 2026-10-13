@@ -83,12 +83,13 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
   const linkLabel = shortLinkLabel(row);
   const kind = <Glyph name={KIND_ICONS[row.waitsFor]} tone={KIND_TONES[row.waitsFor]} />;
   const title = (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className={cn("truncate", layout === "columns" && "min-w-[12rem]")}>{itemTitle(row.ref, row.what)}</span>
+    // In the columns the title keeps 12rem however long it is, so a long title never widens the row's narrowest width.
+    <span className={cn("min-w-0 items-baseline gap-2", layout === "columns" ? "grid grid-cols-[minmax(12rem,max-content)_auto]" : "flex")}>
+      <span className="min-w-0 truncate">{itemTitle(row.ref, row.what)}</span>
       {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}
       {action.kind === "offer" && action.refusal !== null && state.composing === null ? (
         <Tip text={action.refusal}>
-          <span tabIndex={0} aria-label={`not sent: ${action.refusal}`} className={cn(FOCUS, "shrink-0 text-xs font-medium text-destructive-text")}>
+          <span tabIndex={0} aria-label={`not sent: ${action.refusal}`} className={cn(FOCUS, "shrink-0 whitespace-nowrap text-xs font-medium text-destructive-text")}>
             not sent
           </span>
         </Tip>
@@ -165,7 +166,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
         {kind}
         {title}
         {/* A short form is shown whole; a link without one is cut at 16rem. */}
-        <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} tip className={cn("whitespace-nowrap text-xs", linkLabel === undefined && "block max-w-[16rem] truncate")} />
+        <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} tip className={cn("whitespace-nowrap text-xs", linkLabel === undefined && "block w-max max-w-[16rem] truncate")} />
         {ageCell}
         {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
         <ActionCell row={row} action={action} state={state} buttons={BUTTON} unconfirmed />
