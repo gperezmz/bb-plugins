@@ -2,7 +2,7 @@
 // the Inbox rows, the manifest and the watched set built from that.
 import type { ActionRecord } from "../domain/actions";
 import { heldBy, latestOn, recentActions as recentOf } from "../domain/actions";
-import { credentialWarnings, expiredProblems, isExpired, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, problemsOf, unreadableInbox } from "../domain/dashboard";
+import { credentialWarnings, expiredProblems, isExpired, LANDED_DAYS, landedWithin, listWatched, oldestFirst, pollingWarning, problemsOf, refusalsUnexplained, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, formatTracker, repoId } from "../domain/identity";
 import { offerFor, parseLink, uniqueRowIds } from "../domain/inbox";
 import type { InboxRow, WrittenSection } from "../domain/model";
@@ -184,6 +184,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
   const intervalMs = effectiveInterval(registration);
   const polling = pollingWarning(g.fleet.lastPolledAt, intervalMs, now);
   const weighed = warnedOf(deps, g);
+  const expired = expiredProblems(weighed, now);
   return {
     repo: g.name,
     forge: forgeServiceOf(g.watching),
@@ -198,11 +199,11 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs,
     problems: problemsOf(
-      [...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))],
+      [...g.watching.notWatched, ...refusalsUnexplained(refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching)), expired)],
       unreadable,
       g.standing !== null && g.standing.state !== "live",
       manifest.status === "left-behind" ? { fleet: g.name, names: manifest.names } : null,
-      expiredProblems(weighed, now),
+      expired,
     ),
     halves: halvesOf(g),
     warnings: [...credentialWarnings(weighed, now), ...(polling === null ? [] : [polling])],

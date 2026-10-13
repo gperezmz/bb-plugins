@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { credentialWarnings, doneWith, expiredProblems, isExpired, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, problemsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
+import { credentialWarnings, doneWith, expiredProblems, isExpired, refusalsUnexplained, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, problemsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
 import type { SourceCursor } from "./model";
 import { watchedWithReasons } from "./watched";
 import type { Manifest } from "./model";
@@ -95,12 +95,11 @@ describe("an expired token (#261)", () => {
 
   it("stands in for its half's refusal, which is not said too (AC3)", () => {
     const expired = expiredProblems([{ ...credential, expiresAt: iso(-day) }], NOW);
-    const refused = [
-      { code: "credential-refused" as const, text: "The credential GitHub · yuser was refused", role: "forge" as const },
-      { code: "credential-refused" as const, text: "The credential for linear:ENG was refused", role: "tracker" as const },
-    ];
-    expect(problemsOf(refused, [], false, null, expired).map((problem) => problem.code)).toEqual(["credential-refused", "token-expired"]);
-    expect(problemsOf(refused, [], false, null, expired).find((problem) => problem.code === "credential-refused")?.text).toContain("linear:ENG");
+    const forge = { code: "credential-refused" as const, text: "The credential GitHub · yuser was refused", role: "forge" as const };
+    const tracker = { code: "credential-refused" as const, text: "The credential for linear:ENG was refused", role: "tracker" as const };
+    const unanswered = { code: "credential-refused" as const, text: "The service did not answer reads with the credential GitHub · yuser" };
+    expect(refusalsUnexplained([forge, tracker, unanswered], expired)).toEqual([tracker, unanswered]);
+    expect(problemsOf(refusalsUnexplained([forge, tracker], expired), [], false, null, expired).map((problem) => problem.code)).toEqual(["credential-refused", "token-expired"]);
   });
 });
 

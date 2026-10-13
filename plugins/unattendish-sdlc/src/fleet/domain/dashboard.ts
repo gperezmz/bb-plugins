@@ -95,8 +95,7 @@ export interface LeftBehind {
 
 /**
  * The fleet's problems, each text once: that it is left behind (`leftBehind`), then what `notWatched` says, then its
- * expired tokens (`expired`), then the unreadable rows, then a manager that is gone (`managerGone`). A half whose
- * token has expired says only that: the expiry is why the service refuses it, so its refusal is not said too.
+ * expired tokens (`expired`), then the unreadable rows, then a manager that is gone (`managerGone`).
  */
 export const problemsOf = (
   notWatched: readonly NotWatched[],
@@ -106,11 +105,7 @@ export const problemsOf = (
   expired: readonly ExpiredProblem[] = [],
 ): Problem[] => {
   const problems: Problem[] = leftBehind === null ? [] : [{ code: "left-behind", text: leftBehindText(leftBehind.fleet, leftBehind.names), fix: { kind: "none" } }];
-  const expiredRoles = new Set(expired.map((problem) => problem.fix.role));
-  for (const line of notWatched) {
-    if (line.code === "credential-refused" && line.role !== undefined && expiredRoles.has(line.role)) continue;
-    if (!problems.some((known) => known.text === line.text)) problems.push({ code: line.code, text: line.text, fix: fixOf(line) });
-  }
+  for (const line of notWatched) if (!problems.some((known) => known.text === line.text)) problems.push({ code: line.code, text: line.text, fix: fixOf(line) });
   problems.push(...expired);
   const text = unreadableRowsText(unreadable);
   if (text !== null) problems.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
@@ -180,6 +175,14 @@ export const expiredProblems = (credentials: readonly WeighedCredential[], now: 
         ]
       : [],
   );
+
+/**
+ * The service's refusals (`refusals`, one per half) left to say once a half's expired token (`expired`) is: the expiry
+ * is why the service refuses it, and Renew… fixes both. A half whose credential cannot read it says so apart, since a
+ * renewed token with the same access would still not read it, so that is not passed here.
+ */
+export const refusalsUnexplained = (refusals: readonly NotWatched[], expired: readonly ExpiredProblem[]): NotWatched[] =>
+  refusals.filter((line) => line.role === undefined || !expired.some((problem) => problem.fix.role === line.role));
 
 /**
  * What a card warns of for each credential the fleet uses: `expires` when the service-reported expiry is still ahead
