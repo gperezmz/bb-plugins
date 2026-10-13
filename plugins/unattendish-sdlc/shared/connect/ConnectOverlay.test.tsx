@@ -359,6 +359,7 @@ describe("Add account", () => {
     fireEvent.change(field("Owner"), { target: { value: "zorg" } });
     click("Continue");
     await screen.findByRole("button", { name: "Verify and save" });
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     expect(fake.api.tokenPage).toHaveBeenCalledWith({ service: "github", place: "github.com", owner: "zorg", account: { id: "acc_yuser" } });
   });
 });
@@ -369,6 +370,7 @@ describe("Renew", () => {
     fake.api.connect.mockResolvedValue(savedResult());
     await open({ target: { service: "github", place: "github.com", owner: "acme" }, account: "acc_yuser", replaces: "cred_acme" });
     await screen.findByRole("button", { name: "Verify and save" });
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.change(field("Token"), { target: { value: "new-secret" } });
     click("Verify and save");
     await screen.findByText(/Saved/);
@@ -380,7 +382,6 @@ describe("Renew", () => {
       secret: { kind: "token", token: "new-secret" },
       replaces: "cred_acme",
     });
-    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
   });
 
   it("sends the fleet and role of the card it was opened from, with the account and the credential it replaces", async () => {
@@ -388,6 +389,8 @@ describe("Renew", () => {
     fake.api.connect.mockResolvedValue(savedResult());
     await open({ target: { fleet: "github.com/acme/web", role: "forge" }, account: "acc_yuser", replaces: "cred_acme" });
     await screen.findByRole("button", { name: "Verify and save" });
+    // A Renew keeps its account: there is no way back to choosing another, which would drop the token it replaces.
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.change(field("Token"), { target: { value: "new-secret" } });
     click("Verify and save");
     await screen.findByText(/Saved/);
