@@ -16,7 +16,10 @@ const owns = (w: World, token: string, login: string, over: Partial<Extract<Iden
   w.probe.owners.set(token, { ok: true, login, name: login, expiresAt: null, classic: false, ...over });
 const register = async (w: World, repo: string, tracker = "forge-issues", manager = MANAGER) => {
   w.threads.states.set(manager, "live");
-  return registerFleet(w.register, manager, args({ repo, tracker, manifest: MANIFEST_PATH }));
+  // Each fleet its own manifest, naming its own repository, so none is left behind.
+  const path = `/work/${repo}/manifest.md`;
+  w.manifests.files.set(path, manifest({ repo }));
+  return registerFleet(w.register, manager, args({ repo, tracker, manifest: path }));
 };
 const saved = (result: ConnectResult) => {
   if (result.outcome !== "saved") throw new Error(`not saved: ${JSON.stringify(result)}`);
@@ -41,7 +44,7 @@ describe("a fleet that cannot be read (AC1)", () => {
     expect(w.events.needs).toEqual([{ fleet: "github.com/other-org/x", managerThreadId: MANAGER, role: "forge", text }]);
     const fleet = await card(w, "github.com/other-org/x");
     expect(fleet.halves).toEqual([{ role: "forge", what: "other-org/x", account: { id: expect.any(String), label: "GitHub · yuser" }, credential: null, canWrite: false, needs: text }]);
-    expect(fleet.reasons).toContainEqual({ code: "no-credential", text, fix: { kind: "connect", role: "forge" } });
+    expect(fleet.problems).toContainEqual({ code: "no-credential", text, fix: { kind: "connect", role: "forge" } });
     const view = await api(w).fleets();
     expect(view.needsAccount).toEqual([{ fleet: "github.com/other-org/x", managerThreadId: MANAGER, role: "forge", text }]);
     // A half that needs an account is a Connect… on the board, not a row: it does not wait in the header's count.
@@ -71,7 +74,7 @@ describe("a fleet that cannot be read (AC1)", () => {
       await api(w).checkAgain({ fleet: "github.com/acme/api", role: "forge" });
     }
     const fleet = await card(w, "github.com/acme/api");
-    expect(fleet.reasons).toEqual([{ code: "credential-refused", text: expect.stringContaining("did not answer"), fix: { kind: "none" } }]);
+    expect(fleet.problems).toEqual([{ code: "credential-refused", text: expect.stringContaining("did not answer"), fix: { kind: "none" } }]);
     expect(fleet.halves[0]!.needs).toBeNull();
     expect(w.events.needs).toEqual([]);
     expect((await api(w).fleets()).needsAccount).toEqual([]);

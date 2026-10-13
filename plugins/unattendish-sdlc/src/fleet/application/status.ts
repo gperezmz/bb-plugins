@@ -39,6 +39,8 @@ export interface FleetStatus {
   }[];
   readonly requestsThisHour: number;
   readonly watched: boolean;
+  /** Set for a left-behind fleet: the repository its manifest names, whose rows and items are none of this fleet's. */
+  readonly leftBehind: { readonly names: string } | null;
   readonly notWatched: readonly NotWatched[];
   /** Set while a source's credential is refused: the earliest time the fleet stopped being watched. */
   readonly notWatchedSince: string | null;
@@ -100,6 +102,7 @@ export async function fleetStatus(deps: StatusDeps): Promise<FleetStatus[]> {
       credentials,
       requestsThisHour: deps.store.requestsSince(repo, hourAgo),
       watched: notWatched.length === 0,
+      leftBehind: watching.manifest.status === "left-behind" ? { names: watching.manifest.names } : null,
       notWatched,
       notWatchedSince: refusedSince(fleet.outages),
       unreadableRows: watching.unreadableRows,

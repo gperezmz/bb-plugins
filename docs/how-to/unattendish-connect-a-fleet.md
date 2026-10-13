@@ -20,9 +20,9 @@ You need a bb server with the plugin installed, and a registered fleet. Words: [
 
 - the toast titled `other-org/x can't be read`, with what the fleet needs under it, such as "other-org/x needs a GitHub account that can read other-org";
 - the fleet's line on the fleet board of the Fleets page, where a red **Connect…** is its fix (a fleet that needs both halves shows `Connect… +1`, and its hover text lists each; a fleet whose token expires soon shows **Renew…**, which opens the same popup to renew it);
-- the fleet's card on the Fleet tab and in the Fleet chip's card, where its **forge** and **tracker** lines each say which account the half reads as and what is missing.
+- the fleet header, at the top of the Fleet tab and in the Fleet chip's hover card, where a red strip says what the half needs, with **Connect…**.
 
-A fleet that is watched shows **Change account…** in place of **Connect…** on each half of its card, which opens the same popup for that half. A fleet whose tracker is the forge's issues has only the forge's half.
+A fleet that is watched shows **Change account…** on each credential's card under the Fleet tab's **Watching**, which opens the same popup for that half. A fleet whose tracker is the forge's issues has only the forge's half.
 
 ## Connect a half
 

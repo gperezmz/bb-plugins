@@ -58,7 +58,8 @@ const describeOutcome = (outcome: RegisterOutcome): string => {
   }
 };
 
-const statusLines = (fleets: readonly FleetStatus[]): string => {
+/** What `fleet status` prints for a person. */
+export const statusLines = (fleets: readonly FleetStatus[]): string => {
   if (fleets.length === 0) return "No fleet is registered.";
   return fleets
     .map((fleet) => {
@@ -68,7 +69,8 @@ const statusLines = (fleets: readonly FleetStatus[]): string => {
         `  last polled ${fleet.lastPolledAt ?? "never"}, every ${Math.round(fleet.intervalMs / 1000)} s, ${fleet.requestsThisHour} requests this hour`,
         ...fleet.accounts.map((a) => `  ${a.role} reads as ${a.account ?? "no account"}${a.needs === null ? "" : `: ${a.needs}`}`),
         ...fleet.credentials.map((c) => `  credential ${c.credential} (${c.role}, ${c.service}, ${c.auth})${c.expiresAt === null ? "" : `, expires ${c.expiresAt}`}${c.canWrite ? ", can write" : ""}${c.sharesAgentRateLimit ? ", shares the fleet's agents' rate limit" : ""}`),
-        fleet.watched ? "  watched" : `  not watched: ${fleet.notWatched.map((r) => `${r.code}: ${r.text}`).join("; ")}`,
+        ...(fleet.watched ? [] : [`  not watched: ${fleet.notWatched.map((r) => `${r.code}: ${r.text}`).join("; ")}`]),
+        ...(fleet.leftBehind !== null ? [`  left behind: its manifest names ${fleet.leftBehind.names}, so only its labelled items are watched`] : fleet.watched ? ["  watched"] : []),
         ...(fleet.notWatchedSince === null ? [] : [`  not watched since ${fleet.notWatchedSince}`]),
         ...fleet.unreadableRows.map((r) => `  unreadable manifest row: ${r.section}, line ${r.line}: ${r.reason}`),
         ...fleet.outside.map((o) => `  outside the fleet, never fetched: ${o.text} (${o.section}, line ${o.line})`),

@@ -1,39 +1,119 @@
 import { describe, expect, it } from "vitest";
-import { ago, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
-import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerContent, ledgerIsEmpty, listingText, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
+import type { FleetDetailView } from "@/src/fleet/application/views";
+import { ago, fleetCard, fleetDetail, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
+import {
+  credentialFacts,
+  credentialService,
+  droppedHeading,
+  doneText,
+  ledgerContent,
+  ledgerFilter,
+  ledgerIsEmpty,
+  listingText,
+  manifestProblemText,
+  nextTab,
+  pollingText,
+  refLinks,
+  reviewTarget,
+  sectionCount,
+  stageText,
+  tabCounts,
+  tabName,
+  unreadableIn,
+  whyText,
+  nextEntry,
+  switcherEntries,
+} from "./model";
 
-describe("the manifest's rows", () => {
+type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
+const manifest = (over: Partial<OkManifest> = {}): OkManifest => ({ status: "ok", inbox: [], unreadableInbox: [], inFlight: [], blocked: [], landed: [], unreadable: [], written: [], ...over });
+const unreadableInbox = { fleet: "acme/web", managerThreadId: "thr_acme", line: 9, reason: "the table has no Ref column" };
+
+describe("the tabs' counts (#258 AC2)", () => {
+  it("counts the rows that wait in amber, the written sections and the watched items", () => {
+    const counts = tabCounts(fleetDetail({ card: fleetCard({ waiting: 6 }), manifest: manifest({ written: [{ heading: "Backlog", markdown: "" }, { heading: "Set aside", markdown: "x" }] }), watched: [{ ref: "#1", url: null, why: [] }] }));
+    expect(counts.work).toEqual({ count: 6, tone: "amber" });
+    expect(counts.notes.count).toBe(2);
+    expect(counts.watching.count).toBe(1);
+  });
+
+  it("shows no Ledger number given no read failed in the last 24 hours, and a red 1 given one did", () => {
+    expect(tabCounts(fleetDetail({ failedReads: 0 })).ledger).toEqual({ count: null, tone: "red" });
+    expect(tabCounts(fleetDetail({ failedReads: 1 })).ledger).toEqual({ count: 1, tone: "red" });
+  });
+
+  it("names each tab with what its count counts", () => {
+    expect(tabName("work", { count: 6, tone: "amber" })).toBe("Work, 6 waiting on you");
+    expect(tabName("notes", { count: 1, tone: "grey" })).toBe("Notes, 1 section");
+    expect(tabName("watching", { count: 2, tone: "grey" })).toBe("Watching, 2 items watched");
+    expect(tabName("ledger", { count: 1, tone: "red" })).toBe("Ledger, 1 read failed in the last 24 hours");
+    expect(tabName("ledger", { count: null, tone: "red" })).toBe("Ledger");
+  });
+});
+
+describe("moving between tabs", () => {
+  it("moves right and left with the arrow keys, wrapping at either end, and ignores any other key", () => {
+    expect(nextTab("work", "ArrowRight")).toBe("notes");
+    expect(nextTab("ledger", "ArrowRight")).toBe("work");
+    expect(nextTab("work", "ArrowLeft")).toBe("ledger");
+    expect(nextTab("work", "Enter")).toBeNull();
+  });
+});
+
+describe("Work (#258 AC3)", () => {
+  it("says a missing or unreadable manifest in today's words", () => {
+    expect(manifestProblemText({ status: "missing" })).toBe("No manifest was found at the path the fleet registered.");
+    expect(manifestProblemText({ status: "unreadable", reason: "no heading" })).toBe("The manifest cannot be read: no heading");
+    expect(manifestProblemText(manifest())).toBeNull();
+  });
+
+  it("gives each section its own unreadable rows, and counts them with its rows", () => {
+    const shown = manifest({ unreadableInbox: [unreadableInbox], unreadable: [{ section: "Inbox", line: 9, reason: "x" }, { section: "In flight", line: 14, reason: "y" }] });
+    expect(unreadableIn(shown, "inFlight").map((row) => row.line)).toEqual([14]);
+    expect(unreadableIn(shown, "blocked")).toEqual([]);
+    expect(sectionCount(shown, "inbox")).toBe(1);
+    expect(sectionCount(shown, "inFlight")).toBe(1);
+  });
+
+  it("opens Review at the first row that cannot be read, in section order", () => {
+    expect(reviewTarget(manifest({ unreadable: [{ section: "Blocked", line: 22, reason: "x" }, { section: "In flight", line: 14, reason: "y" }] }))).toEqual({ section: "inFlight", rowId: "fleet-tab-unreadable-inFlight-14" });
+    expect(reviewTarget(manifest({ unreadableInbox: [unreadableInbox], unreadable: [{ section: "In flight", line: 14, reason: "y" }] }))).toEqual({ section: "inbox", rowId: "fleet-tab-unreadable-inbox-9" });
+  });
+
+  it("opens Review at nothing in particular for a missing manifest, whose sentence Work shows, or with nothing to review", () => {
+    expect(reviewTarget({ status: "missing" })).toEqual({ section: null, rowId: null });
+    expect(reviewTarget(manifest())).toEqual({ section: null, rowId: null });
+  });
+
   it("says how long an In flight row has been at its stage", () => {
     expect(stageText({ stage: "at the bar", since: ago(25 * MINUTE) }, NOW)).toBe("at the bar for 25m");
   });
 
-  it("says what a row is blocked on", () => {
-    expect(blockedText(["#170", "#171"])).toBe("blocked on #170, #171");
-  });
-
-  it("names the section, line and column of a row it cannot read", () => {
-    expect(unreadableRowText({ section: "In flight", line: 14, reason: 'the table has no "Stage" column' })).toBe('unreadable in In flight, line 14: the table has no "Stage" column');
+  it("links a Blocked row's Refs to the items the watched set knows", () => {
+    const links = refLinks([{ ref: "#170", url: "https://github.test/issues/170" }, { ref: "#171", url: null }]);
+    expect(links.get("#170")).toBe("https://github.test/issues/170");
+    expect(links.has("#171")).toBe(false);
   });
 });
 
-describe("the watched set", () => {
-  it("gives every reason an item is in it", () => {
-    expect(whyText({ why: ["named in Inbox", "blocked on #170"] })).toBe("named in Inbox · blocked on #170");
-    expect(watchedHeading(1)).toBe("Watched set (1 item)");
-  });
-});
-
-describe("a credential", () => {
+describe("Watching (#258 AC8)", () => {
   const credential = { role: "forge", label: "GitHub · yuser for acme", account: { id: "a", label: "GitHub · yuser" }, kind: "fine-grained", auth: "token", expiresAt: null, canWrite: false, sharesAgentRateLimit: false } as const;
 
-  it("names its account and kind, and its expiry date where the service reports one", () => {
-    expect(credentialParts({ ...credential, expiresAt: "2026-10-18T12:00:00Z" })).toEqual(["GitHub · yuser", "fine-grained token", "expires 18 Oct"]);
-    expect(credentialParts(credential)).toEqual(["GitHub · yuser", "fine-grained token", "no expiry reported"]);
+  it("gives every reason an item is in the watched set", () => {
+    expect(whyText({ why: ["named in Inbox", "blocked on #170"] })).toBe("named in Inbox · blocked on #170");
   });
 
-  it("says when it can write and when it shares the agents' rate limit", () => {
-    expect(credentialParts({ ...credential, kind: "gh", auth: "gh", canWrite: true, sharesAgentRateLimit: true })).toEqual(["GitHub · yuser", "gh login", "can write", "no expiry reported", "shares the agents' rate limit"]);
-    expect(credentialParts({ ...credential, kind: "classic", canWrite: true })).toContain("classic token");
+  it("says the half a credential reads, its kind, and its expiry or that none was reported", () => {
+    expect(credentialFacts({ ...credential, expiresAt: "2026-10-18T12:00:00Z" })).toEqual(["reads the forge", "fine-grained token", "expires 18 Oct"]);
+    expect(credentialFacts({ ...credential, role: "tracker", kind: "jira-token" })).toEqual(["reads the tracker", "API token", "no expiry reported"]);
+  });
+
+  it("takes a credential's service from its kind, for its logo", () => {
+    expect(["fine-grained", "classic", "gh", "gitlab-token", "glab", "linear-key", "jira-token"].map((kind) => credentialService(kind as "gh"))).toEqual(["github", "github", "github", "gitlab", "gitlab", "linear", "jira"]);
+  });
+
+  it("says the interval, the last poll and the requests this hour", () => {
+    expect(pollingText(fleetDetail({ card: fleetCard({ intervalMs: 120_000, lastPolledAt: ago(40_000) }), requestsThisHour: 188 }))).toBe("every 2m · polled 40s ago · 188 requests this hour");
   });
 });
 
@@ -104,5 +184,29 @@ describe("the ledger's filters", () => {
     const cut = ledgerChange({ ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing });
     const withCut = ledgerView({ dropped: [{ reason: "out of scope: listing cut at its page limit", count: 1, changes: [cut] }], changes: [cut] });
     expect(ledgerContent(withCut, "dropped", "").dropped).toHaveLength(1);
+  });
+});
+
+describe("the switcher's entries (#270 AC3)", () => {
+  it("lists each fleet with its amber count and its dot, in the order given", () => {
+    const unreadable = { code: "unreadable-rows" as const, text: "1 manifest row cannot be read: Inbox", fix: { kind: "fleet-tab" as const } };
+    expect(switcherEntries([fleetCard({ repo: "org/wake", waiting: 2, problems: [unreadable] }), fleetCard({ repo: "org/dash" })], NOW)).toEqual([
+      { repo: "org/wake", count: 2, dot: "problem", label: "org/wake, 2 waiting on you, has a problem" },
+      { repo: "org/dash", count: null, dot: null, label: "org/dash" },
+    ]);
+  });
+
+  it("moves with the arrows, Home and End, wrapping", () => {
+    expect(nextEntry(1, "ArrowDown", 2)).toBe(0);
+    expect(nextEntry(0, "ArrowUp", 2)).toBe(1);
+    expect(nextEntry(1, "Home", 3)).toBe(0);
+    expect(nextEntry(0, "End", 3)).toBe(2);
+    expect(nextEntry(0, "a", 3)).toBeNull();
+  });
+});
+
+describe("a left-behind manifest (#270 AC6)", () => {
+  it("says what the manifest names in place of its rows", () => {
+    expect(manifestProblemText({ status: "left-behind", names: "github.com/org/wake" })).toBe("The manifest now names github.com/org/wake, so nothing in it is this fleet's.");
   });
 });

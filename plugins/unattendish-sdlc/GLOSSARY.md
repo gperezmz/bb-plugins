@@ -11,7 +11,7 @@ One repository's specs being built by a manager and its builders, as run-fleet r
 _Avoid_: Swarm, campaign
 
 **Manager**:
-The thread that runs run-fleet for one repository and is registered with the plugin. At most one live thread holds a repository.
+The thread that runs run-fleet and is registered with the plugin for a repository. A manager may hold more than one repository's registration, each its own fleet, and at most one live thread holds a repository.
 _Avoid_: Orchestrator, coordinator, supervisor
 
 **Builder**:
@@ -21,6 +21,10 @@ _Avoid_: Implementer
 **Manifest**:
 The manager's file that holds the fleet in one place; its Inbox, In flight and Blocked rows say what the plugin watches.
 _Avoid_: Fleet file, state file
+
+**Left-behind fleet**:
+A fleet whose manifest's first line names another repository. It shows none of that manifest's rows, watches only its labelled items, and carries a problem saying how to unregister it.
+_Avoid_: Stale fleet, orphaned fleet
 
 ### What the plugin keeps
 
@@ -86,6 +90,12 @@ _Avoid_: Dashboard page, Fleet dashboard
 The top of the Fleets page: one line per fleet with its manager, Status, spend, polling and fix, problems first and quiet fleets folded. Clicking a line filters the queue to that fleet.
 _Avoid_: Fleet cards, fleet list
 
+**Short name**:
+How the Fleets page names a fleet on a phone: the end of its full name, its host followed by its path, with as many segments as it takes so that no other registered fleet's full name ends the same way. It reaches the host only where its whole path is also the end of another registered fleet's full name.
+_Avoid_: Nickname, display name
+
+A short name changes as fleets are registered and unregistered. The full name stays the accessible name wherever a short name is shown.
+
 **Queue**:
 The Fleets page's list of every Inbox row across fleets, oldest first, with tabs by what each row waits for and a Sent tab of the actions seen done in the last hour.
 _Avoid_: Waits on you table, inbox table
@@ -107,11 +117,15 @@ A fleet with every Status count at zero, no problem and no warning. The fleet bo
 _Avoid_: Idle fleet
 
 **Fleet tab**:
-The tab in a manager thread's right panel that shows that fleet in full: its manifest, watched set, credentials, spend and ledger.
+The tab in a manager thread's right panel that shows one of the thread's fleets in full, a thread holding more than one switching between them by the fleet's name in the header: the fleet header over four tabs, Work for the manifest's rows, Notes for its written sections, Watching for the watched set, credentials and polling, and Ledger.
 _Avoid_: Fleet panel, Fleet detail
 
+**Fleet header**:
+The top of the Fleet tab: the fleet's forge and tracker, its manager, Status, spend, problems and warnings, and the last action seen done in the last hour. The Fleet chip's hover card shows the same header, one for each fleet the thread holds.
+_Avoid_: Fleet card, fleet summary
+
 **Fleet chip**:
-The control in a manager thread's header that spells out the fleet's counts and opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
+The control in a manager thread's header: the fleet icon with the count of rows that wait on the operator across the thread's fleets and a dot for the worst problem or warning among them, which opens the Fleet tab. Thread Usage calls its own control in the same row the Header chip.
 _Avoid_: Header chip, Fleet badge
 
 **Connect popup**:
@@ -124,7 +138,7 @@ Connect… and Renew… open it on the fleet board, in the Fleet tab and on a to
 A message the plugin sends a manager for an Inbox row at the operator's word: Answer…, Grant…, Build it, or Re-grant for a grant carried over from a previous manager. The plugin only sends it; the manager acts on the tracker.
 _Avoid_: Command, reply
 
-An action is **sent** from the moment bb accepts the message and is **done** once a poll sees its result, which is the row gone from the Inbox or, for Build it, the spec carrying the ready label. A sent action is never marked failed by waiting; bb refusing the message is *not sent*, and the row keeps its action.
+An action is **sent** from the moment bb accepts the message and is **done** once a poll sees its result, which is the row gone from an Inbox read whole (no row named unreadable) or, for Build it, the spec carrying the ready label. A sent action is never marked failed by waiting; bb refusing the message is *not sent*, and the row keeps its action.
 
 ### The agreement with run-fleet
 

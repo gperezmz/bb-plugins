@@ -45,7 +45,7 @@ Registered, but not yet watched: the manifest does not exist, and no account rea
 
 ## 3. Connect it to your GitHub login
 
-A toast in bb titled `acme/widgets can't be read` says `acme/widgets needs a GitHub account that can read acme`, with **Connect…**. If you missed it, open **Fleets** in bb's navigation: the fleet's line on the fleet board is marked red and reads **Review +1**, since the missing manifest comes first, and its Fleet tab's card says `forge acme/widgets · no account yet` with **Connect…** beside it. Press **Connect…**.
+A toast in bb titled `acme/widgets can't be read` says `acme/widgets needs a GitHub account that can read acme`, with **Connect…**. If you missed it, open **Fleets** in bb's navigation: the fleet's line on the fleet board is marked red and reads **Review +1**, since the missing manifest comes first, and its Fleet tab opens on a red strip saying what the fleet needs, with **Connect…** beside it. Press **Connect…**.
 
 1. The popup asks `Which account reads github.com/acme?`. You have no account yet, so the only choice is **a new login**. Choose it and press **Continue**.
 2. Press **Create token**. GitHub opens in your browser on a new fine-grained token, filled in for the owner `acme` with Issues, Pull requests and Metadata set to read, 90 days, and nothing else. Make sure the browser is signed in as your login, tick `acme/widgets` under repository access, create the token and copy it. Paste it into **Token** and press **Verify and save**.

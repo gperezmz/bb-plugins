@@ -1,31 +1,29 @@
 import { describe, expect, it } from "vitest";
-import type { ReasonView } from "@/src/fleet/application/views";
+import type { ProblemView } from "@/src/fleet/application/views";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, NOW, unreadableInboxRow } from "@/testing/fixtures";
 import {
   boardLines,
+  composerFor,
+  filterShowing,
+  goneText,
+  requestedRow,
+  tabShowing,
   boardOrder,
   headerCount,
   headerCountLabel,
-  managerCell,
   moreLabel,
   phoneBoard,
   pollingCell,
   queueFor,
   quietLabel,
-  rowAge,
-  sentAgo,
-  sentText,
-  shortLinkLabel,
-  spendText,
+  shortNames,
   staleText,
-  statusSlots,
   tabCounts,
   tabRows,
   tabsShown,
-  unreadableLine,
 } from "./model";
 
-const missing: ReasonView = { code: "manifest-missing", text: "The manifest does not exist yet", fix: { kind: "fleet-tab" } };
+const missing: ProblemView = { code: "manifest-missing", text: "The manifest does not exist yet", fix: { kind: "fleet-tab" } };
 
 describe("the header", () => {
   it("counts the Inbox rows across fleets, and nothing at zero or before the view arrives", () => {
@@ -49,7 +47,7 @@ describe("the fleet board's order", () => {
       fleetCard({ repo: "b/quiet" }),
       fleetCard({ repo: "a/two", waiting: 2 }),
       fleetCard({ repo: "c/late", warnings: [{ kind: "never-polled" }] }),
-      fleetCard({ repo: "z/gone", reasons: [missing] }),
+      fleetCard({ repo: "z/gone", problems: [missing] }),
       fleetCard({ repo: "a/six", waiting: 6 }),
       fleetCard({ repo: "b/two", waiting: 2 }),
     ];
@@ -57,7 +55,7 @@ describe("the fleet board's order", () => {
   });
 
   it("folds quiet fleets, but never one with a problem, nor the selected one", () => {
-    const cards = [fleetCard({ repo: "acme/web" }), fleetCard({ repo: "org/gone", reasons: [missing] }), fleetCard({ repo: "org/dash", waiting: 1 })];
+    const cards = [fleetCard({ repo: "acme/web" }), fleetCard({ repo: "org/gone", problems: [missing] }), fleetCard({ repo: "org/dash", waiting: 1 })];
     const lines = boardLines(cards, NOW, null);
     expect(lines.listed.map((card) => card.repo)).toEqual(["org/gone", "org/dash"]);
     expect(lines.quiet.map((card) => card.repo)).toEqual(["acme/web"]);
@@ -76,30 +74,6 @@ describe("the fleet board's order", () => {
 });
 
 describe("a board line's cells", () => {
-  it("say a working manager works, with no duration", () => {
-    expect(managerCell({ state: "working", since: ago(HOUR) }, NOW)).toEqual({ state: "working", duration: null, words: "Manager working" });
-  });
-
-  it("say how long an idle manager has been idle", () => {
-    expect(managerCell({ state: "idle", since: ago(10 * MINUTE) }, NOW)).toEqual({ state: "idle", duration: "10m", words: "Manager idle for 10m" });
-  });
-
-  it("say a fleet has no manager, with no duration", () => {
-    expect(managerCell({ state: "none", since: null }, NOW)).toMatchObject({ state: "none", duration: null });
-  });
-
-  it("keep four Status slots in order, a zero left empty in its place", () => {
-    expect(statusSlots(fleetCard({ blocked: 1, inFlight: 2, waiting: 6, landed: 1 })).map((slot) => slot.count)).toEqual([1, 2, 6, 1]);
-    const wake = statusSlots(fleetCard({ waiting: 1 }));
-    expect(wake.map((slot) => slot.count)).toEqual([null, null, 1, null]);
-    expect(statusSlots(fleetCard({ waiting: 6 }))[2]!.label).toBe("6 waiting on you");
-  });
-
-  it("show spend only where it is known", () => {
-    expect(spendText(fleetCard({ cost: { amount: 4.2, currency: "$", period: "since this manager started" } }))).toBe("$4.20");
-    expect(spendText(fleetCard({ cost: null }))).toBeNull();
-  });
-
   it("leave polling empty while healthy, and say when it has never run or is late", () => {
     expect(pollingCell(fleetCard(), NOW)).toBeNull();
     expect(pollingCell(fleetCard({ warnings: [{ kind: "never-polled" }] }), NOW)).toEqual({ kind: "never", text: "not yet" });
@@ -139,33 +113,71 @@ describe("the queue", () => {
     expect(tabsShown(tabCounts(queueFor(view, null)))).toContain("unreadable");
     expect(tabsShown(tabCounts(queueFor(view, "org/wake")))).toEqual(["all", "answer", "grant", "ready", "other", "sent"]);
   });
+});
 
-  it("turns a row's age amber once it has waited 8 hours", () => {
-    expect(rowAge({ since: ago(20_000) }, NOW)).toEqual({ text: "20s", long: false });
-    expect(rowAge({ since: ago(11 * HOUR + 36 * MINUTE) }, NOW)).toEqual({ text: "11h 36m", long: true });
-    expect(rowAge({ since: ago(8 * HOUR) }, NOW).long).toBe(true);
+describe("a fleet's short name (AC3)", () => {
+  const short = (...fleets: string[]) => [...shortNames(fleets).values()];
+
+  it("is the last segment where no other fleet ends the same way", () => {
+    expect(short("github.example/org/dash", "github.example/org/wake")).toEqual(["dash", "wake"]);
+    expect(short("gitlab.example/group/sub/proj", "github.example/org/dash")).toEqual(["proj", "dash"]);
   });
 
-  it("labels a row's link by what its URL opens, whatever the row's Ref", () => {
-    const url = (href: string) => ({ link: { kind: "url", url: href, text: href.replace("https://", "") } }) as const;
-    expect(shortLinkLabel(url("https://github.example/org/dash/issues/8"))).toBe("#8");
-    expect(shortLinkLabel(url("https://github.example/org/dash/pull/12"))).toBe("#12");
-    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/merge_requests/45"))).toBe("!45");
-    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/issues/3"))).toBe("#3");
-    expect(shortLinkLabel(url("https://linear.app/acme/issue/ENG-212/which-locale"))).toBe("ENG-212");
-    expect(shortLinkLabel(url("https://acme.atlassian.net/browse/OPS-7"))).toBe("OPS-7");
-    expect(shortLinkLabel(url("https://example.test/somewhere"))).toBeUndefined();
-    expect(shortLinkLabel({ link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
+  it("takes one more segment at a time until it tells the fleets apart", () => {
+    expect(short("github.example/org/dash", "github.example/other/dash")).toEqual(["org/dash", "other/dash"]);
   });
 
-  it("says what an unreadable row is and why", () => {
-    expect(unreadableLine({ line: 9, reason: "the table has no \"Waits for\" column" })).toBe("Unreadable Inbox row, line 9: the table has no \"Waits for\" column");
+  it("keeps the host only where the whole path ends another fleet's name", () => {
+    expect(short("github.example/org/dash", "gitlab.example/org/dash")).toEqual(["github.example/org/dash", "gitlab.example/org/dash"]);
+    expect(short("gitlab.example/b/dash", "gitlab.example/a/b/dash")).toEqual(["gitlab.example/b/dash", "a/b/dash"]);
   });
 
-  it("says what the operator did, and how long ago it was seen done", () => {
-    const action = actionRecord({ kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) });
-    expect(`${sentText(action)} · ${sentAgo(action, NOW)}`).toBe("You answered #5 Which queue · 40m ago");
-    expect(sentText(actionRecord({ kind: "grant", ref: "#6", what: "Merge it" }))).toBe("You granted #6 Merge it");
-    expect(sentText(actionRecord({ kind: "build", ref: "#7", what: "Dark mode" }))).toBe("You asked to build #7 Dark mode");
+  it("matches whole segments, not the end of one", () => {
+    expect(short("github.example/org/dash", "github.example/org/mydash")).toEqual(["dash", "mydash"]);
+  });
+
+  it("shortens again once the fleet it was told apart from is gone", () => {
+    expect(short("github.example/org/dash")).toEqual(["dash"]);
+  });
+});
+
+describe("the row a toast opens", () => {
+  const dash = inboxRow({ fleet: "org/dash", id: "row_7", ref: "#7", what: "Which cache to use", waitsFor: "answer" });
+  const wake = inboxRow({ fleet: "org/wake", id: "row_7", waitsFor: "grant" });
+
+  it("is found by its fleet and its id, so two fleets' rows with the same id stay apart; a row gone finds nothing", () => {
+    const view = fleetsView({ inbox: [wake, dash] });
+    expect(requestedRow(view, { fleet: "org/dash", rowId: "row_7" })).toBe(dash);
+    expect(requestedRow(view, { fleet: "org/dash", rowId: "row_8" })).toBeNull();
+  });
+
+  it("clears a filter to another fleet, and keeps one that already shows it (AC3)", () => {
+    expect(filterShowing("org/wake", dash)).toBeNull();
+    expect(filterShowing("org/dash", dash)).toBe("org/dash");
+    expect(filterShowing(null, dash)).toBeNull();
+  });
+
+  it("shows All for a tab that hides it, and keeps one that lists it (AC3)", () => {
+    const queue = queueFor(fleetsView({ inbox: [wake, dash] }), null);
+    expect(tabShowing(queue, "grant", dash)).toBe("all");
+    expect(tabShowing(queue, "sent", dash)).toBe("all");
+    expect(tabShowing(queue, "answer", dash)).toBe("answer");
+    expect(tabShowing(queue, "all", dash)).toBe("all");
+  });
+
+  it("opens the composer its own button opens, and none while its action is under way, sent or done (AC4)", () => {
+    const offer = (kind: "answer" | "grant" | "build") => ({ kind: "offer" as const, offer: { kind, label: "x", regrant: false }, refusal: null, unconfirmed: false });
+    expect(composerFor(offer("answer"))).toBe("answer");
+    expect(composerFor(offer("grant"))).toBe("grant");
+    expect(composerFor(offer("build"))).toBeNull();
+    expect(composerFor({ kind: "sending", text: "sending…" })).toBeNull();
+    expect(composerFor({ kind: "unknown", text: "checking…" })).toBeNull();
+    expect(composerFor({ kind: "sent", text: "sent · 2m" })).toBeNull();
+    expect(composerFor({ kind: "done", text: "done" })).toBeNull();
+    expect(composerFor({ kind: "none" })).toBeNull();
+  });
+
+  it("says a row gone from the Inbox no longer waits on you (AC4)", () => {
+    expect(goneText({ ref: "#7", what: "Which cache to use" })).toBe("#7 Which cache to use no longer waits on you");
   });
 });

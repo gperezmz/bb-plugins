@@ -1,7 +1,7 @@
 // The command line through the SDK's fake host, over the real composition and
 // a SQLite store: what each command does to the fleet it names, and what it
 // prints for a person.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -10,7 +10,8 @@ import { compose } from "../../compose";
 import type { LedgerEntry, LedgerRow } from "../application/ports";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
 import { LEDGER_LIMIT } from "../application/dashboard";
-import { createFleetCli } from "./cli";
+import { createFleetCli, statusLines } from "./cli";
+import type { FleetStatus } from "../application/status";
 import { SqliteStore } from "./store";
 
 const REPO = "github.example/org/repo";
@@ -378,6 +379,29 @@ describe("the human output of every command", () => {
     expect(text).toContain("every 120 s");
     expect(text).toContain("last polled never");
     expect(text).toContain("not watched:");
+  });
+
+  it("status says a fleet whose manifest names another repository is left behind, and prints none of its rows (#270 AC6)", async () => {
+    const { run, json } = await load();
+    writeFileSync(join(dir, "manifest.md"), `# Fleet: ${OTHER}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n| nope | x | answer | 2026-10-12T09:00:00Z | x |\n`);
+    await run(registerArgs(), MANAGER);
+    const text = (await run(["fleet", "status"])).stdout;
+    expect(text).toContain(`left behind: its manifest names ${OTHER}, so only its labelled items are watched`);
+    expect(text).not.toContain("unreadable manifest row");
+    expect(text).not.toMatch(/^  watched$/m);
+    const [fleet] = (await json(["fleet", "status"])).fleets;
+    expect(fleet).toMatchObject({ leftBehind: { names: OTHER }, unreadableRows: [], outside: [] });
+  });
+
+  it("status prints a watched left-behind fleet's left-behind line in place of `watched` (#270 AC6)", () => {
+    const base: FleetStatus = {
+      repo: REPO, tracker: "forge-issues", manager: MANAGER, managerState: "live", manifest: "/m.md", lastPolledAt: null, intervalMs: 120_000, accounts: [], credentials: [],
+      requestsThisHour: 0, watched: true, leftBehind: null, notWatched: [], notWatchedSince: null, unreadableRows: [], outside: [], heldSince: null,
+    };
+    expect(statusLines([base])).toMatch(/^  watched$/m);
+    const left = statusLines([{ ...base, leftBehind: { names: OTHER } }]);
+    expect(left).toContain(`  left behind: its manifest names ${OTHER}, so only its labelled items are watched`);
+    expect(left).not.toMatch(/^  watched$/m);
   });
 
   it("ledger prints one line per entry with its item, what became of it and its link, and says when it holds nothing", async () => {

@@ -1,17 +1,21 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FleetCardView, ReasonView } from "@/src/fleet/application/views";
+import type { FleetCardView, ProblemView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { BOARD_CHANGED } from "@/shared/client";
+import { clearComposerRequests, requestComposer } from "@/shared/composer-request";
+import { PENDING_OPEN_TTL_MS } from "@/shared/pending-open";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { rememberFilter } from "./filter";
 import { FleetsHeaderCount, FleetsPage } from "./index";
 
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("sonner", () => ({ toast }));
 vi.mock("@get-bb/plugin-sdk/app", async () => (await import("@/testing/sdk")).sdkModule());
 vi.mock("@/shared/client", async (original) => (await import("@/testing/api")).withFakeClient(await original()));
 
@@ -20,6 +24,8 @@ beforeEach(() => {
   resetFakeApi();
   rememberFilter(null);
   setCompactViewport(false);
+  clearComposerRequests();
+  toast.mockClear();
 });
 afterEach(() => {
   cleanup();
@@ -28,10 +34,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const missing: ReasonView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
-const unreadableRows: ReasonView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
-const noForge: ReasonView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
-const noTracker: ReasonView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
+const missing: ProblemView = { code: "manifest-missing", text: "The manifest at /w/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
+const unreadableRows: ProblemView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
+const noForge: ProblemView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
+const noTracker: ProblemView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
 
 const fleet = (repo: string, over: Partial<FleetCardView> = {}) => fleetCard({ repo, managerThreadId: `thr_${repo}`, tracker: "forge-issues", ...over });
 
@@ -198,7 +204,7 @@ describe("the page (AC1)", () => {
     const fleets = [
       fleet("org/dash", { waiting: 3 }),
       fleet("org/wake", { waiting: 3 }),
-      fleet("other-org/x", { waiting: 2, reasons: [noForge] }),
+      fleet("other-org/x", { waiting: 2, problems: [noForge] }),
       fleet("acme/web"),
       fleet("acme/api"),
       fleet("acme/docs", { inFlight: 1 }),
@@ -217,9 +223,9 @@ describe("the page (AC1)", () => {
     const page = await show(
       fleetsView({
         fleets: [
-          fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p" } }),
-          fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
-          fleet("org/gone", { forge: "gitlab", reasons: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
+          fleet("org/dash", { blocked: 1, inFlight: 2, waiting: 3, landed: 1, manager: { state: "working", since: null }, cost: { amount: 1, currency: "$", period: "p", sharedWith: [] } }),
+          fleet("platform/infra", { tracker: "linear:PLAT", problems: [noTracker], warnings: [{ kind: "never-polled" }], manager: { state: "none", since: null } }),
+          fleet("org/gone", { forge: "gitlab", problems: [missing, { code: "manager-gone", text: "gone", fix: { kind: "none" } }], warnings: [{ kind: "expires", label: "t", credentialId: "c", accountId: "a", role: "forge", expiresAt: ago(0), daysLeft: 1 }] }),
         ],
         inbox: [
           inboxRow({ id: "a", fleet: "org/dash", waitsFor: "answer" }),
@@ -256,7 +262,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("leaves spend empty where it is unknown, and shows it where it is known", async () => {
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, cost: { amount: 4.2, currency: "$", period: "since this manager started" } }), fleet("org/wake", { waiting: 1, cost: null })] }));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1, cost: { amount: 4.2, currency: "$", period: "since this manager started", sharedWith: [] } }), fleet("org/wake", { waiting: 1, cost: null })] }));
     expect(within(line("org/dash")).getByText("$4.20")).toBeTruthy();
     expect(within(line("org/wake")).queryByText(/\$/)).toBeNull();
   });
@@ -316,7 +322,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("marks a fleet with a missing manifest with a red bar and Review, which opens its Fleet tab", async () => {
-    await show(fleetsView({ fleets: [fleet("org/gone", { reasons: [missing] })] }));
+    await show(fleetsView({ fleets: [fleet("org/gone", { problems: [missing] })] }));
     const gone = line("org/gone");
     expect(gone.querySelector(".bg-destructive")).not.toBeNull();
     const review = within(gone).getByRole("button", { name: missing.text });
@@ -326,7 +332,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("shows the first of several flags with how many more, every sentence on hover", async () => {
-    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", reasons: [noForge, noTracker, unreadableRows] })] }));
+    await show(fleetsView({ fleets: [fleet("platform/infra", { tracker: "linear:PLAT", problems: [noForge, noTracker, unreadableRows] })] }));
     const fix = within(line("platform/infra")).getByRole("button", { name: /2 manifest rows/ });
     expect(fix.textContent).toBe("Review +2");
     const text = await hoverText(fix);
@@ -334,7 +340,7 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("offers Connect… in red where an account fixes it, which opens the Connect popup over the page", async () => {
-    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    await show(fleetsView({ fleets: [fleet("other-org/x", { problems: [noForge] })] }));
     const x = line("other-org/x");
     expect(x.querySelector(".bg-destructive")).not.toBeNull();
     const connect = within(x).getByRole("button", { name: "no GitHub account can read other-org" });
@@ -354,8 +360,8 @@ describe("a board line (AC2–AC6)", () => {
   });
 
   it("shows a red ✕ for a gone manager, saying to run /run-fleet in a new thread", async () => {
-    const gone: ReasonView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
-    await show(fleetsView({ fleets: [fleet("org/dash", { reasons: [gone] })] }));
+    const gone: ProblemView = { code: "manager-gone", text: "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over", fix: { kind: "none" } };
+    await show(fleetsView({ fleets: [fleet("org/dash", { problems: [gone] })] }));
     const mark = within(line("org/dash")).getByLabelText(gone.text);
     expect(mark.tagName).not.toBe("BUTTON");
     expect(drawnIcons(mark)).toEqual(["CircleX"]);
@@ -394,7 +400,7 @@ describe("the board's order and quiet fleets (AC7)", () => {
   });
 
   it("lists a fleet with a missing manifest and every count at zero first", async () => {
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 9 }), fleet("org/gone", { reasons: [missing] })] }));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 9 }), fleet("org/gone", { problems: [missing] })] }));
     expect(boardRepos()).toEqual(["org/gone", "org/dash"]);
   });
 
@@ -538,6 +544,36 @@ describe("the queue (AC9–AC13)", () => {
     expect(within(refused).queryByText("⌘↵ send · Esc cancel")).toBeNull();
   });
 
+  it("keeps two fleets' rows with the same Ref, Waits for and Since apart: one composer, one sending state, no duplicate key (AC1)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const since = ago(5 * MINUTE);
+    const same = { id: "#7|answer|t", ref: "#7", what: "Which cache to use", since };
+    fake.api.sendAction.mockResolvedValue({ ok: true, action: actionRecord({ fleet: "org/a", ref: "#7", sentAt: ago(0) }) });
+    await show(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [inboxRow({ ...same, fleet: "org/a" }), inboxRow({ ...same, fleet: "org/b" })] }));
+    expect(queueRows()).toHaveLength(2);
+    fireEvent.click(within(queueRows()[0]!).getByRole("button", { name: "Answer… #7" }));
+    expect(within(queueRows()[0]!).getByRole("textbox")).toBeTruthy();
+    expect(within(queueRows()[1]!).queryByRole("textbox")).toBeNull();
+    expect(within(queueRows()[1]!).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    fireEvent.change(within(queueRows()[0]!).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [inboxRow({ ...same, fleet: "org/a", offer: null, action: actionRecord({ fleet: "org/a", ref: "#7", sentAt: ago(0) }) }), inboxRow({ ...same, fleet: "org/b" })] }));
+    fireEvent.click(within(queueRows()[0]!).getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(within(queueRows()[0]!).getByText(/^sent · /)).toBeTruthy());
+    expect(within(queueRows()[1]!).queryByText(/^sent · /)).toBeNull();
+    expect(within(queueRows()[1]!).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
+  });
+
+  it("lists under Sent a line for each fleet's action seen done together, with no duplicate key (AC3)", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const doneAt = ago(MINUTE);
+    const same = { id: "2026-10-12T09:30:00Z|#7|answer|t", kind: "answer" as const, ref: "#7", what: "Which cache to use", state: "done" as const, doneAt };
+    await show(fleetsView({ fleets: [fleet("org/a"), fleet("org/b")], recentActions: [actionRecord({ ...same, fleet: "org/a" }), actionRecord({ ...same, fleet: "org/b" })] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Sent 2" }));
+    expect(within(within(queue()).getByRole("tabpanel")).getAllByRole("listitem")).toHaveLength(2);
+    expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
+  });
+
   it("says not sent beside the title when bb refuses Build it, the reason on hover, and keeps the button", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#8", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
@@ -595,7 +631,7 @@ describe("on a phone (AC15)", () => {
   });
 
   it("makes a fleet's fix a touch-sized button named by its sentence, doing what the verb does", async () => {
-    await show(fleetsView({ fleets: [fleet("other-org/x", { reasons: [noForge] })] }));
+    await show(fleetsView({ fleets: [fleet("other-org/x", { problems: [noForge] })] }));
     const fix = within(line("other-org/x")).getByRole("button", { name: "no GitHub account can read other-org" });
     expect(fix.className).toContain("size-11");
     fireEvent.click(fix);
@@ -608,24 +644,393 @@ describe("on a phone (AC15)", () => {
     expect(within(line("org/dash")).queryByLabelText(/blocked/)).toBeNull();
   });
 
-  it("makes the kind tabs pills and each row two lines with a touch-sized button", async () => {
+  it("makes the kind tabs pills", async () => {
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
     expect(within(queue()).getByRole("tab", { name: "All 1" }).className).toContain("rounded-full");
-    const row = queueRows()[0]!;
-    expect(row.children[0]!.textContent).toContain("#7");
-    expect(row.children[1]!.textContent).toContain("org/dash");
-    // The action sits beside the title on the first line, so the second keeps the fleet, the link and the age.
-    expect(within(row.children[0] as HTMLElement).getByRole("button", { name: "Answer… #7" }).className).toContain("min-h-11");
+  });
+});
+
+describe("a queue row on a phone (#273)", () => {
+  beforeEach(() => setCompactViewport(true));
+
+  const gh = (path: string, over: Partial<FleetCardView> = {}) => fleet(`github.example/${path}`, { waiting: 1, ...over });
+  const threadLink = (threadId: string, message: number) => ({ kind: "message" as const, message: { threadId, message, at: ago(MINUTE) } });
+  /** A row's three parts: the title, the details and the action. */
+  const parts = (row: HTMLElement) => [...row.children].slice(0, 3) as HTMLElement[];
+
+  it("stacks the title, the details and the action, each on a line of its own (AC1)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/orphan"), gh("org/dash")],
+        inbox: [inboxRow({ fleet: "github.example/org/orphan", ref: "—", what: "Merge the cache layer rewrite", waitsFor: "grant", since: ago(9 * HOUR + 4 * MINUTE), link: threadLink("thr_den6jrijzx", 2), offer: { kind: "grant", label: "Grant…", regrant: true } })],
+      }),
+    );
+    const [title, details, action] = parts(queueRows()[0]!);
+    expect(title!.textContent).toBe("Merge the cache layer rewrite");
+    expect(details!.textContent).toBe("orphangithub.example/org/orphan↗9h 4m");
+    const buttons = within(action!).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Grant…", "Re-grant"]);
+    // Side by side, each taking half the line.
+    for (const button of buttons) expect(button.className).toContain("flex-1");
   });
 
-  it("keeps a row whose last send could not be confirmed to two lines, the note an icon with its words on the second", async () => {
-    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+  it("lets the title wrap onto a second line, cut only past it, with nothing beside it (AC2)", async () => {
+    await show(fleetsView({ fleets: [gh("org/wake")], inbox: [inboxRow({ fleet: "github.example/org/wake", ref: "—", what: "Decide whether the very long retry budget should also apply to webhook deliveries" })] }));
+    const [title] = parts(queueRows()[0]!);
+    const text = within(title!).getByText("Decide whether the very long retry budget should also apply to webhook deliveries");
+    expect(text.className).toContain("line-clamp-2");
+    expect(text.className).not.toContain("truncate");
+    expect(within(title!).queryByRole("button")).toBeNull();
+  });
+
+  it("names each fleet by its short name, its full name its accessible name (AC3, AC4)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/dash"), gh("other/dash"), gh("org/wake")],
+        inbox: [
+          inboxRow({ id: "1", fleet: "github.example/org/dash" }),
+          inboxRow({ id: "2", fleet: "github.example/other/dash" }),
+          inboxRow({ id: "3", fleet: "github.example/org/wake", ref: "#7", since: ago(11 * HOUR + 40 * MINUTE), link: { kind: "url", url: "https://github.example/org/wake/issues/7", text: "github.example/org/wake/issues/7" } }),
+        ],
+      }),
+    );
+    const shown = queueRows().map((row) => parts(row)[1]!.querySelector("span[aria-hidden].truncate")?.textContent);
+    expect(shown).toEqual(["org/dash", "other/dash", "wake"]);
+    const wake = parts(queueRows()[2]!)[1]!;
+    expect(within(wake).getByText("github.example/org/wake").className).toContain("sr-only");
+    expect(wake.textContent).toBe("wakegithub.example/org/wake#7 ↗11h 40m");
+  });
+
+  it("lets a short name too long to share the line take it whole, the link and the age kept together (AC4)", async () => {
+    const long = "github.example/platform-engineering/internal-developer-portal-observability";
+    await show(fleetsView({ fleets: [fleet(long, { waiting: 1 })], inbox: [inboxRow({ fleet: long, ref: "#9" })] }));
+    const details = parts(queueRows()[0]!)[1]!;
+    const [name, rest] = [...details.children] as HTMLElement[];
+    // The name never shrinks to share the line; the link and the age wrap under it as one.
+    expect(name!.className).toContain("shrink-0");
+    expect(name!.className).toContain("max-w-full");
+    expect(details.className).toContain("flex-wrap");
+    expect(rest!.textContent).toBe("↗5m");
+    expect(rest!.querySelector(".whitespace-nowrap")?.textContent).toBe("5m");
+  });
+
+  it("leaves the fleet out of the details while the queue is filtered to it (AC4)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")], inbox: [inboxRow({ id: "1", fleet: "github.example/org/dash", ref: "#7", link: { kind: "url", url: "https://github.example/org/dash/pull/7", text: "github.example/org/dash/pull/7" } }), inboxRow({ id: "2", fleet: "github.example/org/wake" })] }));
+    fireEvent.click(line("github.example/org/dash"));
+    expect(parts(queueRows()[0]!)[1]!.textContent).toBe("#7 ↗5m");
+  });
+
+  it("shows a link with no short form as the arrow alone, its text the accessible name, with a 44 px tap area (AC5)", async () => {
+    await show(fleetsView({ fleets: [gh("org/orphan")], inbox: [inboxRow({ fleet: "github.example/org/orphan", link: threadLink("thr_den6jrijzx", 2) })] }));
+    const link = within(queue()).getByRole("button", { name: "thread thr_den6jrijzx, message 2" });
+    expect(link.textContent).toBe("↗");
+    expect(link.className).toContain("before:h-11");
+    expect(link.className).toContain("before:w-[max(100%,2.75rem)]");
+    fireEvent.click(link);
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_den6jrijzx");
+  });
+
+  it("shows a URL with no short form as the arrow alone, its text the accessible name (AC5)", async () => {
+    await show(fleetsView({ fleets: [gh("org/orphan")], inbox: [inboxRow({ fleet: "github.example/org/orphan", link: { kind: "url", url: "https://github.example/org/orphan/wiki/Home", text: "github.example/org/orphan/wiki/Home" } })] }));
+    const link = within(queue()).getByRole("link", { name: "github.example/org/orphan/wiki/Home" });
+    expect(link.textContent).toBe("↗");
+    expect(link.getAttribute("href")).toBe("https://github.example/org/orphan/wiki/Home");
+  });
+
+  it("shows a link's short form where its URL has one (AC5)", async () => {
+    await show(fleetsView({ fleets: [fleet("gitlab.example/group/proj", { waiting: 1 })], inbox: [inboxRow({ fleet: "gitlab.example/group/proj", link: { kind: "url", url: "https://gitlab.example/group/proj/-/merge_requests/3", text: "gitlab.example/group/proj/-/merge_requests/3" } })] }));
+    expect(within(queue()).getByRole("link", { name: "!3 ↗" }).className).toContain("before:h-11");
+  });
+
+  it("keeps the action line at the buttons' height in every state but watch only (AC6)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/dash")],
+        inbox: [
+          inboxRow({ id: "o", fleet: "github.example/org/dash", ref: "#1" }),
+          inboxRow({ id: "s", fleet: "github.example/org/dash", ref: "#2", offer: null, action: actionRecord({ sentAt: ago(4 * MINUTE) }) }),
+          inboxRow({ id: "d", fleet: "github.example/org/dash", ref: "#3", waitsFor: "ready", offer: null, action: actionRecord({ kind: "build", state: "done", doneAt: ago(MINUTE) }) }),
+          inboxRow({ id: "w", fleet: "github.example/org/dash", ref: "#4", waitsFor: "other", offer: null }),
+        ],
+      }),
+    );
+    const actions = queueRows().map((row) => parts(row)[2]!.firstElementChild as HTMLElement);
+    expect(within(actions[0]!).getByRole("button", { name: "Answer… #1" }).className).toContain("h-11");
+    expect(actions[1]!.textContent).toBe("sent · 4m");
+    expect(actions[1]!.className).toContain("h-11");
+    expect(actions[2]!.textContent).toBe("done");
+    expect(actions[2]!.className).toContain("h-11");
+    expect(actions[3]!.textContent).toBe("watch only");
+    expect(actions[3]!.className).not.toContain("h-11");
+  });
+
+  it("keeps the action line at the buttons' height while a send is in flight and while its result is checked (AC6)", async () => {
+    let fail: (error: Error) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((_resolve, reject) => (fail = reject)));
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    const view = fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] });
+    await show(view);
+    const line = () => parts(queueRows()[0]!)[2]!.firstElementChild as HTMLElement;
     fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
-    const note = await within(queue()).findByLabelText("could not confirm whether the last send went through");
+    await waitFor(() => expect(line().textContent).toBe("sending…"));
+    expect(line().className).toContain("h-11");
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    act(() => fail(new Error("the connection dropped")));
+    await waitFor(() => expect(line().textContent).toBe("checking…"));
+    expect(line().className).toContain("h-11");
+    await act(async () => answer(view));
+  });
+
+  it("says composing… in the action line with the composer under the row (AC6)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#1" })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #1" }));
     const row = queueRows()[0]!;
-    expect(row.children).toHaveLength(2);
-    expect(row.children[1]!.contains(note)).toBe(true);
-    expect(await hoverText(note)).toBe("could not confirm whether the last send went through");
+    expect(parts(row)[2]!.textContent).toBe("composing…");
+    expect(parts(row)[2]!.firstElementChild!.className).toContain("h-11");
+    expect(within(row).getByRole("textbox")).toBeTruthy();
+  });
+
+  it("spells out a refused Build it under the button, which stays (AC7)", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: false, reason: "HTTP 409: Thread is archived" });
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    await within(queue()).findByText("Not sent: HTTP 409: Thread is archived");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(within(action).getByText("Not sent: HTTP 409: Thread is archived").className).toContain("text-destructive-text");
+    expect(within(action).getByRole("button", { name: "Build it #9" })).toBeTruthy();
+  });
+
+  it("spells out a send that could not be confirmed under the button (AC7)", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    await within(queue()).findByText("could not confirm whether the last send went through");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(within(action).getByText("could not confirm whether the last send went through")).toBeTruthy();
+    expect(within(action).getByRole("button", { name: "Build it #9" })).toBeTruthy();
+  });
+
+  it("spells out an unconfirmed Answer… under composing…, its composer open again (AC7)", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#1" })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #1" }));
+    fireEvent.change(within(queue()).getByRole("textbox"), { target: { value: "Redis" } });
+    fireEvent.click(within(queue()).getByRole("button", { name: /^Send/ }));
+    await within(queue()).findByText("could not confirm whether the last send went through");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(action.textContent).toBe("composing…could not confirm whether the last send went through");
+    expect(within(queueRows()[0]!).getByRole("textbox")).toBeTruthy();
+  });
+
+  it("names a Sent line's fleet by its short name (AC8)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")], recentActions: [actionRecord({ fleet: "github.example/org/dash", kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) })] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Sent 1" }));
+    expect(queueRows()[0]!.querySelector("span[aria-hidden].truncate")?.textContent).toBe("dash");
+  });
+
+  it("names each board line's fleet by its short name, its toggle by the full name (AC9)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash", { problems: [missing] }), gh("org/orphan", { problems: [missing] }), gh("org/wake", { problems: [missing] })] }));
+    for (const name of ["dash", "orphan", "wake"]) {
+      const toggle = within(line(`github.example/org/${name}`)).getByRole("button", { name: `github.example/org/${name}` });
+      expect(toggle.textContent).toBe(name);
+    }
+  });
+
+  it("names the filter chip's fleet by its short name, its ✕ touch-sized and naming the full fleet (AC12)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")] }));
+    fireEvent.click(line("github.example/org/dash"));
+    const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
+    expect(clear.className).toContain("size-11");
+    expect(clear.parentElement!.textContent).toBe("dash");
+  });
+});
+
+describe("a queue row at 768 px and wider (AC11)", () => {
+  it("keeps the full fleet name and the link's own text", async () => {
+    await show(fleetsView({ fleets: [fleet("github.example/org/dash", { waiting: 1 }), fleet("github.example/org/wake")], inbox: [inboxRow({ fleet: "github.example/org/dash", link: { kind: "message", message: { threadId: "thr_den6jrijzx", message: 2, at: ago(MINUTE) } } })] }));
+    const row = queueRows()[0]!;
+    expect(within(row).getByText("github.example/org/dash")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "thread thr_den6jrijzx, message 2 ↗" })).toBeTruthy();
+    expect(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" })).toBeTruthy();
+  });
+});
+
+describe("opening a row from a toast's Answer… or Grant… (#262)", () => {
+  const cards = [fleet("org/dash", { waiting: 1 }), fleet("org/wake", { waiting: 1 })];
+  const dash = inboxRow({ fleet: "org/dash", id: "row_7", ref: "#7", what: "Which cache to use", waitsFor: "answer" });
+  const wake = inboxRow({ fleet: "org/wake", id: "row_4", ref: "#4", what: "Merge the cache", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false } });
+  const ask = (row = dash) => act(() => requestComposer({ fleet: row.fleet, rowId: row.id, ref: row.ref, what: row.what }));
+  const rowOf = (title: string) => queueRows().find((item) => item.textContent?.includes(title))!;
+  const scrolled = vi.fn();
+  const scrollIntoView = Element.prototype.scrollIntoView;
+  beforeEach(() => {
+    scrolled.mockClear();
+    Element.prototype.scrollIntoView = scrolled;
+  });
+  afterEach(() => {
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  it("opens the Fleets page at the row's composer, scrolled into view, its text box focused, going to the row's fleet's manager (AC2)", async () => {
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    const row = rowOf("Which cache to use");
+    expect(await within(row).findByText("Your answer for #7 Which cache to use · goes to org/dash's manager")).toBeTruthy();
+    expect(document.activeElement).toBe(within(row).getByRole("textbox"));
+    expect(scrolled.mock.contexts).toContain(row);
+    expect(within(rowOf("Merge the cache")).queryByRole("textbox")).toBeNull();
+    fireEvent.change(within(row).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(row).getByRole("button", { name: "Send" }));
+    expect(fake.api.sendAction).toHaveBeenCalledWith({ fleet: "org/dash", rowId: "row_7", kind: "answer", text: "Use Redis" });
+  });
+
+  it("opens Grant… the same way", async () => {
+    ask(wake);
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(await within(rowOf("Merge the cache")).findByText("Your grant for #4 Merge the cache · goes to org/wake's manager")).toBeTruthy();
+  });
+
+  it("opens the composer under the asked fleet's row only, where two fleets have a row with the same id (AC2)", async () => {
+    const same = { id: "#7|answer|t", ref: "#7", what: "Which cache to use", since: ago(5 * MINUTE) };
+    const a = inboxRow({ ...same, fleet: "org/a" });
+    const b = inboxRow({ ...same, fleet: "org/b" });
+    ask(b);
+    await show(fleetsView({ fleets: [fleet("org/a", { waiting: 1 }), fleet("org/b", { waiting: 1 })], inbox: [a, b] }));
+    await waitFor(() => expect(within(queueRows()[1]!).getByRole("textbox")).toBeTruthy());
+    expect(within(queueRows()[1]!).getByText(/goes to org\/b's manager/)).toBeTruthy();
+    expect(within(queueRows()[0]!).queryByRole("textbox")).toBeNull();
+  });
+
+  it("clears a filter to another fleet, from the loading state of a view fetched after the click, on a page already open (AC3, AC4)", async () => {
+    rememberFilter("org/wake");
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(queueRows()).toHaveLength(1);
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    ask();
+    expect(screen.getByRole("status", { name: "Loading your fleets" })).toBeTruthy();
+    await act(async () => answer(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+    expect(within(queue()).queryByRole("button", { name: /^Show every fleet/ })).toBeNull();
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("shows All where the Grant tab would hide the row (AC3)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: /^Grant/ }));
+    ask();
+    await waitFor(() => expect(within(queue()).getByRole("tab", { name: /^All/ }).getAttribute("aria-selected")).toBe("true"));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("keeps a filter and a tab that already show the row (AC3)", async () => {
+    rememberFilter("org/dash");
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: /^Answer/ }));
+    ask();
+    await waitFor(() => expect(within(rowOf("Which cache to use")).getByRole("textbox")).toBeTruthy());
+    expect(within(queue()).getByRole("tab", { name: /^Answer/ }).getAttribute("aria-selected")).toBe("true");
+    expect(within(queue()).getByRole("button", { name: "Show every fleet, not only org/dash" })).toBeTruthy();
+  });
+
+  it("opens no composer on a row whose action reads sent · <age>, showing it so (AC4)", async () => {
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, { ...dash, action: actionRecord({ fleet: "org/dash", ref: "#7", sentAt: ago(2 * MINUTE) }) }] }));
+    await waitFor(() => expect(scrolled.mock.contexts).toContain(rowOf("Which cache to use")));
+    expect(within(rowOf("Which cache to use")).getByText(/^sent · /)).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+  });
+
+  it("opens no composer on a row reading sending…, and none once the send fails to checking… (AC4)", async () => {
+    let fail: (error: Error) => void = () => {};
+    fake.api.sendAction.mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(rowOf("Which cache to use")).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Send" }));
+    expect(await within(rowOf("Which cache to use")).findByText("sending…")).toBeTruthy();
+    ask();
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    expect(within(rowOf("Which cache to use")).getByText("sending…")).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    let check: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValueOnce(new Promise((resolve) => (check = resolve)));
+    await act(async () => fail(new Error("network")));
+    expect(within(rowOf("Which cache to use")).getByText("checking…")).toBeTruthy();
+    scrolled.mockClear();
+    ask();
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    expect(within(rowOf("Which cache to use")).getByText("checking…")).toBeTruthy();
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    await act(async () => check(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+  });
+
+  it("says in a short toast that a row gone from the Inbox no longer waits, judged on the view fetched after the click (AC4)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: cards, inbox: [wake] }));
+    ask();
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("#7 Which cache to use no longer waits on you"));
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+  });
+
+  it("shows Can't load, with no composer and no toast, when the view after the click fails, and opens none once it loads (AC4)", async () => {
+    fake.api.fleets.mockRejectedValue(new Error("the server is down"));
+    ask();
+    render(<FleetsPage />);
+    expect(await screen.findByText("Couldn't load your fleets")).toBeTruthy();
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("region", { name: "Queue" });
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the request while the page's view takes longer to load than a request lives", async () => {
+    let answer: (view: ReturnType<typeof fleetsView>) => void = () => {};
+    fake.api.fleets.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    ask();
+    render(<FleetsPage />);
+    const later = Date.now() + 3 * PENDING_OPEN_TTL_MS;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    await act(async () => answer(fleetsView({ fleets: cards, inbox: [wake, dash] })));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
+  });
+
+  it("lets the request lapse when the page goes before its view loads, so a later visit opens no composer and no toast", async () => {
+    fake.api.fleets.mockReturnValue(new Promise(() => {}));
+    ask();
+    const first = render(<FleetsPage />);
+    first.unmount();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3 * PENDING_OPEN_TTL_MS);
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(within(queue()).queryByRole("textbox")).toBeNull();
+    expect(within(queue()).getByRole("button", { name: "Answer… #7" })).toBeTruthy();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("leaves another row's composer and its draft as they were (AC5)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Merge the cache")).getByRole("button", { name: "Grant… #4" }));
+    fireEvent.change(within(rowOf("Merge the cache")).getByRole("textbox"), { target: { value: "Go ahead" } });
+    ask();
+    await waitFor(() => expect(document.activeElement).toBe(within(rowOf("Which cache to use")).getByRole("textbox")));
+    expect((within(rowOf("Merge the cache")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Go ahead");
+  });
+
+  it("focuses the row's own composer already open, keeping its draft (AC5)", async () => {
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(rowOf("Which cache to use")).getByRole("textbox"), { target: { value: "Use Redis" } });
+    act(() => (document.activeElement as HTMLElement).blur());
+    ask();
+    await waitFor(() => expect(document.activeElement).toBe(within(rowOf("Which cache to use")).getByRole("textbox")));
+    expect((within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
+  });
+
+  it("opens the composer on a phone too", async () => {
+    setCompactViewport(true);
+    ask();
+    await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
+    expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
   });
 });

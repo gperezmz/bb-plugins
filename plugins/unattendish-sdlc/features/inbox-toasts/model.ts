@@ -1,6 +1,6 @@
 // What a toast for a new Inbox row says, decided from the realtime signal alone.
 import type { InboxNewSignal } from "@/src/fleet/application/views";
-import { waitsForText } from "@/shared/inbox/row-model";
+import { rowKey, waitsForText } from "@/shared/inbox/row-model";
 import { itemTitle } from "@/shared/item-title";
 
 type WaitsFor = InboxNewSignal["waitsFor"];
@@ -17,6 +17,11 @@ export function parseInboxNew(payload: unknown): InboxNewSignal | null {
   return { fleet, ref, what, rowId, waitsFor: waitsFor as WaitsFor, forge: forge as Forge };
 }
 
+/** The toast's id: the fleet and the row, so one row raises one toast and two fleets' rows that say the same raise two. */
+export function toastId(signal: Pick<InboxNewSignal, "fleet" | "rowId">): string {
+  return rowKey({ fleet: signal.fleet, id: signal.rowId });
+}
+
 /** The toast's title: the item's ref and title, `#7 Which cache to use`; a Ref of `—` is left out. */
 export function toastTitle(signal: Pick<InboxNewSignal, "ref" | "what">): string {
   return itemTitle(signal.ref, signal.what);
@@ -25,4 +30,11 @@ export function toastTitle(signal: Pick<InboxNewSignal, "ref" | "what">): string
 /** The line under the title: `org/dash waits for your answer`. */
 export function toastLine(signal: Pick<InboxNewSignal, "fleet" | "waitsFor">): string {
   return `${signal.fleet} waits for ${waitsForText(signal.waitsFor)}`;
+}
+
+/** The toast's button: the row's own Answer… or Grant…, which opens its composer on the Fleets page, and Open Fleets for anything else. */
+export function toastAction(signal: Pick<InboxNewSignal, "waitsFor">): { readonly label: "Answer…" | "Grant…" | "Open Fleets"; readonly opensComposer: boolean } {
+  if (signal.waitsFor === "answer") return { label: "Answer…", opensComposer: true };
+  if (signal.waitsFor === "grant") return { label: "Grant…", opensComposer: true };
+  return { label: "Open Fleets", opensComposer: false };
 }

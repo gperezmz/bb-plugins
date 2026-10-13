@@ -1,7 +1,7 @@
 // Registering a fleet: a manager thread says which repository it runs, and
 // what the plugin should treat as the fleet's own.
 import { repoId } from "../domain/identity";
-import type { ManifestRead, NotWatched, Registration } from "../domain/model";
+import type { FleetManifestRead, NotWatched, Registration } from "../domain/model";
 import { decideHolder, validateRegistration, type RegisterArgs } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
 import type { AccountStore, Clock, Credentials, DashboardEvents, ManifestFiles, ServiceProbe, Store, ThreadDirectory } from "./ports";
@@ -109,10 +109,11 @@ const checkAccess = async (deps: RegisterDeps, repo: string, registration: Regis
 
 /**
  * The registration's first look at the Inbox: the rows of a manifest that is there are recorded without a signal, and
- * a manifest that is not there yet baselines the empty Inbox, so the first rows the manager writes are new. A manifest
+ * a manifest that is not there yet, or that names another repository, baselines the empty Inbox, so the first rows the
+ * fleet's own manifest holds are new. A manifest
  * that exists but cannot be read baselines nothing: the first read that can is the baseline.
  */
-const baselineInbox = (deps: RegisterDeps, repo: string, manifest: ManifestRead, at: string): void => {
+const baselineInbox = (deps: RegisterDeps, repo: string, manifest: FleetManifestRead, at: string): void => {
   if (manifest.status === "ok") deps.store.touchInboxSeen(repo, uniqueRowIds(manifest.manifest.inbox), at);
   if (manifest.status !== "unreadable") deps.store.setInboxBaselined(repo);
 };

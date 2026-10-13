@@ -9,8 +9,9 @@ import { messageOf } from "../domain/redact";
 import { clip } from "../domain/text";
 import { effectiveInterval, validateInterval } from "../domain/registration";
 import { uniqueRowIds } from "../domain/inbox";
+import { ownManifest } from "../domain/manifest";
 import { accountsView, checkAgain, connect, connectView, makeDefault, removeAccount, removeAssignment, removeCredential, tokenPage, type AccountsDeps } from "./accounts";
-import { cardOf, credentialsOf, gather, inboxOf, landedViews, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
+import { cardOf, credentialsOf, gather, inboxOf, landedViews, lastActionOf, MAX_ROWS, manifestViewOf, needsAccountOf, recentActionsOf, watchedOf } from "./fleet-views";
 import type { ManagerChannel, ThreadRepositories, LedgerEntry } from "./ports";
 import { forgeServiceFor } from "./watching";
 import { setFleetInterval } from "./schedule";
@@ -85,8 +86,16 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
   const threadFleet: DashboardApi["threadFleet"] = async ({ threadId }) => {
     const now = deps.clock.now();
     const stored = deps.store.listFleets();
-    const own = stored.find((fleet) => fleet.registration.managerThreadId === threadId);
-    if (own !== undefined) return { kind: "manager", card: await cardOf(deps, await gather(deps, own, false), now) };
+    const own = stored.filter((fleet) => fleet.registration.managerThreadId === threadId);
+    if (own.length > 0) {
+      const fleets = await Promise.all(
+        own.map(async (fleet) => {
+          const g = await gather(deps, fleet, false);
+          return { card: await cardOf(deps, g, now), lastAction: lastActionOf(g, inboxOf(g).ids, now) };
+        }),
+      );
+      return { kind: "manager", generatedAt: now.toISOString(), fleets };
+    }
     const remote = await deps.repositories.remoteOf(threadId).catch(() => null);
     const repo = remote === null ? null : repoFromRemote(remote);
     const holder = repo === null ? undefined : stored.find((fleet) => sameRepo(fleet.registration.repo, repo));
@@ -109,7 +118,8 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
         watched: watchedOf(deps, g),
         credentials: credentialsOf(deps, g),
         requestsThisHour: deps.store.requestsSince(key, new Date(now.getTime() - 3_600_000).toISOString()),
-        recentActions: recentActionsOf(g, inbox.ids, now),
+        failedReads: deps.store.failedReadsSince(key, new Date(now.getTime() - 24 * 3_600_000).toISOString()),
+        lastAction: lastActionOf(g, inbox.ids, now),
       },
     };
   };
@@ -184,7 +194,8 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     sending.add(lock);
     try {
       const registration = fleet.registration;
-      const manifest = await deps.manifests.read(registration.manifestPath);
+      // A left-behind fleet's manifest holds no row of its own, so no action is sent on one.
+      const manifest = ownManifest(registration.repo, await deps.manifests.read(registration.manifestPath));
       const read = manifest.status === "ok" ? manifest.manifest.inbox : [];
       const at = uniqueRowIds(read).indexOf(input.rowId);
       const taken = latestOn(heldBy(deps.store.actions(key), registration.managerThreadId), input.rowId) !== null;

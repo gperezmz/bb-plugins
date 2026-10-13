@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expectIconsResolve, unresolvedIcons } from "@/testing/icons";
-import { DECLARED_ICONS, ICONS, KIND_ICONS, SERVICE_LOGOS } from "./icons";
+import { DECLARED_ICONS, ICONS, KIND_ICONS, OUTCOME_ICONS, SERVICE_LOGOS, STAGE_ICONS } from "./icons";
 
 const root = join(import.meta.dirname, "..", "..");
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { bb: { branding: { experimental_icons: Record<string, string> } } };
@@ -13,7 +13,7 @@ const declared = manifest.bb.branding.experimental_icons;
 
 describe("the plugin's icons", () => {
   it("are each a bb 0.46 built-in or a declared icon", () => {
-    expectIconsResolve([...Object.values(ICONS), ...Object.values(KIND_ICONS), ...Object.values(SERVICE_LOGOS)]);
+    expectIconsResolve([...Object.values(ICONS), ...Object.values(KIND_ICONS), ...Object.values(STAGE_ICONS), ...Object.values(OUTCOME_ICONS), ...Object.values(SERVICE_LOGOS)]);
   });
 
   it("refuse a name that is neither, and an undeclared name in the plugin's namespace", () => {

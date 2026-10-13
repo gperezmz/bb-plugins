@@ -94,14 +94,14 @@ export const world = (options: { readonly accounts?: boolean } = {}) => {
 
 export type World = ReturnType<typeof world>;
 
-/** A manifest with the rows given as already-formatted table lines. */
-export const manifest = (rows: { inbox?: string[]; inFlight?: string[]; blocked?: string[]; landed?: string[] } = {}): string => {
+/** A manifest whose first line names `repo`, `REPO` by default, with the rows given. */
+export const manifest = (rows: { repo?: string; inbox?: string[]; inFlight?: string[]; blocked?: string[]; landed?: string[] } = {}): string => {
   const table = (head: string, columns: string[], lines: string[] | undefined) =>
     lines === undefined || lines.length === 0
       ? `## ${head}\n\nNothing here.\n`
       : `## ${head}\n\n| ${columns.join(" | ")} |\n|${columns.map(() => " --- |").join("")}\n${lines.join("\n")}\n`;
   return [
-    `# Fleet: ${REPO}`,
+    `# Fleet: ${rows.repo ?? REPO}`,
     "",
     table("Inbox", ["Ref", "What", "Waits for", "Since", "Link"], rows.inbox),
     table("In flight", ["Ref", "Work", "Stage", "Since", "Builder", "Link"], rows.inFlight),

@@ -2,14 +2,14 @@
 // built-in icon name or one of the plugin's own, declared under bb.branding.experimental_icons in package.json and
 // named `unattendish-sdlc/<name>`; bb paints a declared icon in the current text colour. A name that is neither draws
 // bb's fallback, which `icons.test.ts` refuses.
-import type { InboxRowView, ServiceKind } from "@/src/fleet/application/views";
+import type { InFlightRowView, InboxRowView, LedgerChangeView, ServiceKind } from "@/src/fleet/application/views";
 
 type WaitsFor = InboxRowView["waitsFor"];
 
 /** A declared icon's name as bb resolves it. */
 export const own = (name: string): string => `unattendish-sdlc/${name}`;
 
-/** The plugin's own icons, by their key under bb.branding.experimental_icons; the light bulb and scales are for the Fleet tab's stages. */
+/** The plugin's own icons, by their key under bb.branding.experimental_icons. */
 export const DECLARED_ICONS = ["circle-dashed", "fleet", "hammer", "hourglass", "key", "lightbulb", "rocket", "scale", "user-x"] as const;
 
 export const ICONS = {
@@ -68,12 +68,39 @@ export const ICONS = {
   refused: "CircleX",
   removeToken: "Trash2",
   more: "MoreHorizontal",
+
+  // The Fleet tab.
+  merged: "GitMerge",
+  folded: "ChevronRight",
+  unfolded: "ChevronDown",
+  search: "Search",
+  wake: "Sent",
 } as const;
 
 export type IconRole = keyof typeof ICONS;
 
 /** The icon of each kind of wait. */
 export const KIND_ICONS: Readonly<Record<WaitsFor, string>> = { answer: ICONS.answer, grant: ICONS.grant, ready: ICONS.ready, other: ICONS.other };
+
+/** The icon of each In flight stage the fleet contract defines. */
+export const STAGE_ICONS: Readonly<Record<InFlightRowView["stage"], string>> = {
+  building: own("hammer"),
+  asking: "MessageSquare",
+  "waiting on you": "BellDot",
+  "under review": "Eye",
+  "at the bar": own("scale"),
+  "round open": "Repeat",
+  brainstorming: own("lightbulb"),
+};
+
+/** The icon of each Ledger outcome: woke, dropped as an echo or out of scope, held, or a failed read. */
+export const OUTCOME_ICONS: Readonly<Record<LedgerChangeView["done"], string>> = {
+  woke: "Zap",
+  echo: "ArrowTurnBackward",
+  "out-of-scope": "EyeOff",
+  held: "Pause",
+  "failed read": "AlertTriangle",
+};
 
 /** The services a fleet's forge or tracker can be. */
 export type Service = ServiceKind;

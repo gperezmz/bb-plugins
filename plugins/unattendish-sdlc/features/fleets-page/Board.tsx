@@ -9,7 +9,9 @@ import { ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
 import { COUNT_TONES, FLAG_TONES, MANAGER_TONES, TONE_FILL, TONE_TEXT } from "@/shared/look/tones";
 import { useOpenFleetTab } from "@/shared/open-fleet-tab";
-import { boardLines, managerCell, moreLabel, phoneBoard, pollingCell, quietLabel, spendText, STATUS_HEADER_TEXT, statusSlots } from "./model";
+import { sharedText } from "@/shared/thread-fleets";
+import { managerCell, spendText, statusSlots } from "@/shared/fleet-header/model";
+import { boardLines, moreLabel, phoneBoard, pollingCell, quietLabel, STATUS_HEADER_TEXT } from "./model";
 
 interface BoardProps {
   readonly cards: readonly FleetCardView[];
@@ -28,7 +30,7 @@ function useFix(card: FleetCardView): (flag: Flag) => (() => void) | null {
   const openFleetTab = useOpenFleetTab();
   return (flag) => {
     const fix = flag.fix;
-    if (fix.kind === "fleet-tab") return () => openFleetTab(card.managerThreadId);
+    if (fix.kind === "fleet-tab") return () => openFleetTab({ managerThreadId: card.managerThreadId, fleet: card.repo, review: true });
     if (fix.kind === "connect") return () => openConnect({ target: { fleet: card.repo, role: fix.role } });
     if (fix.kind === "renew") return () => openConnect({ target: { fleet: card.repo, role: fix.role }, account: fix.accountId, replaces: fix.credentialId });
     return null;
@@ -100,13 +102,27 @@ function BoardLine({ card, now, selected, onToggle }: { card: FleetCardView; now
       </span>
       <ManagerCellView card={card} now={now} />
       <StatusCell card={card} />
-      <span className="text-xs tabular-nums text-muted-foreground">{spend}</span>
+      <SpendCell card={card} spend={spend} />
       <PollingCellView card={card} now={now} />
       <FixCell card={card} flags={flags} />
-      <button type="button" aria-label={`Open the Fleet tab of ${card.repo}`} className={cn(FOCUS, "flex size-8 items-center justify-center text-muted-foreground hover:text-foreground")} onClick={() => openFleetTab(card.managerThreadId)}>
+      <button type="button" aria-label={`Open the Fleet tab of ${card.repo}`} className={cn(FOCUS, "flex size-8 items-center justify-center text-muted-foreground hover:text-foreground")} onClick={() => openFleetTab({ managerThreadId: card.managerThreadId, fleet: card.repo })}>
         <Glyph name={ICONS.fleetTab} className="size-4" />
       </button>
     </li>
+  );
+}
+
+/** The manager's spend, and under it the other fleets its thread holds, whose spend it is too. */
+function SpendCell({ card, spend }: { card: FleetCardView; spend: string | null }) {
+  const shared = sharedText(card);
+  if (spend === null || shared === null) return <span className="text-xs tabular-nums text-muted-foreground">{spend}</span>;
+  return (
+    <Tip text={`${spend} ${shared}`}>
+      <span tabIndex={0} aria-label={`${spend} ${shared}`} className={cn(FOCUS, "flex min-w-0 flex-col text-xs text-muted-foreground")}>
+        <span className="tabular-nums">{spend}</span>
+        <span className="truncate text-[11px]">{shared}</span>
+      </span>
+    </Tip>
   );
 }
 
@@ -189,15 +205,18 @@ function FixCell({ card, flags }: { card: FleetCardView; flags: readonly Flag[] 
   );
 }
 
-/** The board on a phone: one line per fleet with its fix as a touch-sized icon and its non-zero counts, three shown and the rest folded. */
-export function PhoneBoard({ cards, now, selected, onSelect }: BoardProps) {
+/**
+ * The board on a phone: one line per fleet with its short name, its fix as a touch-sized icon and its non-zero counts,
+ * three shown and the rest folded.
+ */
+export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProps & { nameOf(fleet: string): string }) {
   const [expanded, setExpanded] = useState(false);
   const { shown, more } = phoneBoard(cards, now, expanded);
   return (
     <section aria-label="Fleet board" className="flex flex-col text-sm">
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {shown.map((card) => (
-          <PhoneLine key={card.repo} card={card} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
+          <PhoneLine key={card.repo} card={card} shortName={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
         ))}
       </ul>
       {more > 0 ? (
@@ -209,7 +228,7 @@ export function PhoneBoard({ cards, now, selected, onSelect }: BoardProps) {
   );
 }
 
-function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now: string; selected: boolean; onToggle(): void }) {
+function PhoneLine({ card, shortName, now, selected, onToggle }: { card: FleetCardView; shortName: string; now: string; selected: boolean; onToggle(): void }) {
   const fixOf = useFix(card);
   const flags = flagsOf(card, now);
   const first = flags[0];
@@ -221,8 +240,8 @@ function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now
     <li aria-label={`Fleet ${card.repo}`} className={cn("relative flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
       {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
       <ServiceLogo service={card.forge} />
-      <button type="button" aria-pressed={selected} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
-        {card.repo}
+      <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
+        {shortName}
       </button>
       {worst !== null ? (
         run !== null ? (

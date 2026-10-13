@@ -607,6 +607,17 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(store.requestsSince(OTHER, "2026-10-12T00:00:00.000Z")).toBe(9);
       });
 
+      it("counts the failed reads at or after a time, of the repository asked about", () => {
+        store.saveRegistration(registration(OTHER), []);
+        store.recordFailedRead(REPO, { at: "2026-10-12T09:00:00.000Z", role: "forge", ref: "#9", reason: "state missing" });
+        store.recordFailedRead(REPO, { at: "2026-10-12T10:00:00.000Z", role: "tracker", ref: null, reason: "listing returned 500" });
+        store.recordFailedRead(OTHER, { at: "2026-10-12T10:00:00.000Z", role: "forge", ref: null, reason: "listing returned 500" });
+        expect(store.failedReadsSince(REPO, "2026-10-12T09:00:00.000Z")).toBe(2);
+        expect(store.failedReadsSince(REPO, "2026-10-12T09:00:00.001Z")).toBe(1);
+        expect(store.failedReadsSince(REPO, "2026-10-12T10:00:00.001Z")).toBe(0);
+        expect(store.failedReadsSince(OTHER, "2026-10-12T00:00:00.000Z")).toBe(1);
+      });
+
       it("returns a poll with its requests", () => {
         const recorded = poll({
           requests: [

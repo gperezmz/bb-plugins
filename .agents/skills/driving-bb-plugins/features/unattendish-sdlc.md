@@ -15,14 +15,15 @@ fleet with `bb unattendish fleet register`, from its own thread.
 - `page`: the Fleets page: the title bar's count, the fleet board (a line per
   fleet, its filter, its fix, the quiet fleets folded) and the queue (tabs by
   kind, Sent, the filter chip), and its states in between.
-- `card`: a fleet's card, as the chip's hover and the Fleet tab show it:
-  tracker, manager, counts, cost, last poll, the account each half reads as,
-  and what stops it being watched.
+- `header`: the fleet header, as the Fleet tab opens on it and the chip's
+  hover card shows it: forge and tracker, manager, Status counts, spend, each
+  problem and warning as a strip with its verb, and the last action.
 - `actions`: Answer…, Grant… and Build it on a queue row, then `sent`, `done`
   or `not sent`.
-- `chip`: the Fleet chip in a manager's header, and the card it opens on
-  hover.
-- `tab`: the Fleet tab, and its Ledger.
+- `chip`: the Fleet chip in a manager's header, and the fleet header it shows
+  on hover.
+- `tab`: the Fleet tab: the fleet header over the Work, Notes, Watching and
+  Ledger tabs.
 - `toasts`: the new-Inbox-row toast and the needs-an-account toast.
 - `connect`: the Connect… popup: Connect, Add a token, Renew a token, Add
   account.
@@ -60,7 +61,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   a ✕ with that name and no button. Quiet fleets, every count zero and nothing
   flagged, fold under `button "1 quiet fleet"` (`aria-expanded`), a filtered one
   stays listed. Below 768 px the board shows three lines, the rest under
-  `button "2 more fleets"`; a line holds the logo, the name, a touch-sized icon
+  `button "2 more fleets"`; a line holds the logo, the fleet's short name
+  (`dash` for `github.example/org/dash`; its toggle is named by the full name),
+  a touch-sized icon
   button named by the sentence in place of the verb, and the non-zero slots, and
   has no Fleet tab button.
 - `region "Queue"`: `tablist "Kind"` with `tab "All 4"`, `Answer`, `Grant`,
@@ -76,7 +79,13 @@ fleet with `bb unattendish fleet register`, from its own thread.
   says `Nothing waits on you` (Sent:
   `Nothing you sent was seen done in the last hour`); Sent lists
   `You answered #5 Which queue`, its age and `done`, for what was seen done in
-  the last hour.
+  the last hour. Below 768 px a row is three parts, its `listitem`'s first
+  three children: the title (wrapping to two lines), the details (the short
+  name, with the full name as screen-reader text, then the link, which is
+  `↗` alone named by its full text where it has no short form, and the age),
+  and the action line (buttons across the row, `Not sent: <reason>` and the
+  unconfirmed note under them). Sent lines and the filter chip also use the
+  short name; the chip's ✕ is 44 px.
 - A queue row's action: `button "Answer… #7"`, `"Grant… #8"` or `"Build it #9"`
   (and `"Re-grant #8"` beside Grant… for a grant a previous manager gave);
   `watch only` for a wait on something else. Answer and Grant open, in the same
@@ -89,34 +98,60 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `alert "Not sent: HTTP 409: Thread is archived"` in the composer, which stays
   open with the draft; one of Build it or Re-grant is `not sent` beside the
   title, named `not sent: HTTP 409: Thread is archived`, and the button stays.
-- The fleet's card, in the chip's hover and above the Fleet tab, is an
-  `article "Fleet <repo>"`: `button "Open the Fleet tab of <repo>"`
-  (`manager ↗`), `forge-issues · manager idle 12s` (or `no manager`),
-  `5 waits on you · 1 in flight · 1 blocked · 1 landed in 7d`, with Thread
-  Usage installed `$0.17 since this manager started`, `polled 8s ago`,
-  `list "Accounts of <repo>"` (`org/dash · reads as GitHub · operator` and
-  `button "Change account…"`, or the need and `button "Connect…"`), and what
-  stops it being watched (`1 manifest row cannot be read`).
+- The fleet header, at the top of the Fleet tab and in the chip's hover card,
+  is a `header` labelled `Fleet <repo>` (a `banner` in the hover card only,
+  since bb's panel holds the tab inside a landmark of its own): the forge's logo (`img "GitHub"`; GitLab,
+  Linear and Jira as their names), `<repo>`, a Linear or Jira tracker's name
+  and key; the manager (`img "Manager idle for 12s"`, `Manager working`,
+  `No manager: its thread is archived or gone`); each non-zero Status count
+  named as on the board (`4 waiting on you`); the spend (`$0.17`, named
+  `$0.17 spent since this manager started`) with Thread Usage installed;
+  `list "Problems and warnings of <repo>"`, a `listitem` strip per flag with
+  the server's sentence and its verb, a button named `<verb> <sentence>`
+  (`Review 1 manifest row cannot be read: Inbox`, `Connect… …`, `Renew… …`;
+  none for late polling or a gone manager); and
+  `You answered #5 Which queue · done 40m ago` for an action seen done in the
+  last hour.
 - A title-bar pill, while a refresh fails over data shown: a name starting
   `Couldn't refresh:`
   (`Couldn't refresh: <error>. Showing what was loaded 3m ago.`), text `3m old`
   and `button "Reload now"`; the board and queue stay.
-- A manager's thread, at `/projects/<project>/threads/<thread>`:
-  `button "Fleet: 5 waits on you · 1 in flight · 1 blocked · 1 landed in 7d"` in the
-  header (`Fleet idle` with nothing), whose hover opens the card and whose
-  click opens the `Fleet` tab. On a phone the chip's text is the count alone.
-- The Fleet tab: the card, then `region`s `Waits on you` (the table, without
-  the Fleet column), `In flight`, `Blocked`, `Landed last 7 days`, one for
-  each other section the manifest writes (`Backlog`),
-  `Unreadable rows in <repo>'s manifest`, `Watched set (N items)`,
-  `Credentials`, `Polling` (`every 30s · polled 12s ago · 24 requests this hour`)
-  and `button "Ledger ▸"`, which opens `group "What was done"` (`All`,
-  `Woke`, `Dropped`, `Held`, `Failed reads`, `Wakes`),
-  `textbox "Filter by item"`, and the entries (`Dropped, by reason`,
-  `echo: marker · 1`; `Nothing in the ledger matches.`).
+- A manager's thread, at `/projects/<project>/threads/<thread>`: the chip in
+  the header, `button "Fleet: 5 waiting on you, and it has a problem"`
+  (`Fleet: nothing waits on you`, `…, and it has a warning`): the fleet icon,
+  a small dot on it (red for a problem, amber for a warning alone) and the
+  count in amber, the icon alone with nothing waiting and nothing flagged.
+  Bordered on desktop, bare on a phone. Its hover shows the fleet header over
+  `Click the chip to open the Fleet tab` (none on a phone); its click opens the
+  `Fleet` tab; Review in the card opens the tab's Work at what needs it.
+- The Fleet tab: the fleet header, then `tablist "Fleet"` (sticky) with
+  `tab`s named `Work, 5 waiting on you`, `Notes, 3 sections`,
+  `Watching, 4 items watched` and `Ledger` (`Ledger, 1 read failed in the last
+  24 hours`, its count red), each showing its label and count; Work selected
+  first, arrow keys move. Each `tabpanel` stays mounted once shown.
+  Work: four `region`s, each headed by a button (`aria-expanded`) reading its
+  name and count, `Waits on you 5`, `In flight 2`, `Blocked 1`, `Landed 1`
+  (folded); rows in two lines (`#7 Which cache`, then `#7 ↗` and its age, the
+  action at the right; In flight `at the bar for 25m` and `builder ↗`; Blocked
+  `waits for #170, #172`; Landed `merged 12 Oct, 01:39`); unreadable rows
+  `Unreadable row, line 9: <why>` at a section's top; a missing manifest
+  `No manifest was found at the path the fleet registered.` in place of the
+  sections. Notes: a `region` per written section (`Backlog`), `Nothing
+  written.` under a blank one. Watching: `region`s `Watched set`,
+  `Credentials` (a `listitem "Credential <label>"` card each, with
+  `reads the forge`, its kind, expiry, `can write`, `shares the agents' rate
+  limit` and `button "Change account… for the forge of <repo>"`) and
+  `Polling` (`every 30s · polled 12s ago · 24 requests this hour`). Ledger,
+  fetched once its tab is first pressed: `group "What was done"` (`All`,
+  `Woke`, `Dropped`, `Held`, `Failed reads`, `Wakes`, pills),
+  `searchbox "Filter by item"`, the changes as a timeline (`ol`), each with an
+  icon in its outcome's colour, `Dropped, by reason` (`echo: marker · 1`),
+  `Wakes`, or `Nothing in the ledger matches.`.
 - Toasts, in every open window: title `#15 <What>` (the item), line
   `<repo> waits for your answer` (`a grant to merge`, `your ready label`,
-  `something else`) and `Open Fleets`; title `<repo> can't be read`, the
+  `something else`) and its button: `Answer…` for your answer, `Grant…` for a
+  grant, which open the Fleets page at the row's composer, and `Open Fleets`
+  otherwise; title `<repo> can't be read`, the
   server's sentence
   (`other-org/x needs a GitHub account that can read other-org`) as its
   description and `Connect…`, which opens the popup.
@@ -164,7 +199,7 @@ fleet with `bb unattendish fleet register`, from its own thread.
 
 Preconditions: `drive-bb-plugins start unattendish-sdlc`, or
 `start unattendish-sdlc thread-usage` with Thread Usage's own preconditions
-for the card's cost. `start` runs the fake GitHub, GitLab, Linear and Jira
+for the header's spend. `start` runs the fake GitHub, GitLab, Linear and Jira
 and connects one account to each (the skill's
 [Fake services](../SKILL.md#fake-services)). A fleet's manifest is a file
 in the run's evidence, `<evidence>/manifests/<name>.md`, in the Fleet
@@ -221,18 +256,25 @@ and every repository a fleet registers is in the fake's `repos`.
   `act "Build it" '#9' --wait "not sent"` reads
   `not sent: HTTP 409: Thread is archived` beside the title (`refusal.title`).
 - **Chip** (`unattendish.chip/header`): `unattendish-sdlc chip $A --hover`
-  prints the chip's `name` and the card its hover opens; `--open` reads the
-  tab; `--mobile` reads `text` as the count alone.
-- **Tab and ledger** (`unattendish.tab/panel`):
-  `unattendish-sdlc fleets-page --open-tab <repo>` prints every section;
-  `unattendish-sdlc ledger $A --filter Dropped --item '#8'` opens the Ledger
-  and lists `echo: marker · 1` once a comment ending in the marker, on a line
-  of its own, has been polled.
-- **Toasts** (`unattendish.toasts/ws`): `unattendish-sdlc toast <trigger.sh> --click "Open Fleets"`
+  prints the chip's `name`, `text`, `look` (its height, border width, the
+  header row's height and its dot's colour class) and the fleet header its
+  hover shows; `--review` then presses Review in that card and reads the tab
+  it opens; `--open` clicks the chip and reads the tab; `--mobile` reads it on
+  a phone, with no hover card.
+- **Tab and ledger** (`unattendish.tab/panel`): `unattendish-sdlc tab $A`
+  prints the header, its strips, the tabs and the shown panel's sections;
+  `--tab Notes`, `--fold "In flight"` and `--review` act and read `after`,
+  with `scrolledTo`, where each unreadable row sits in the viewport;
+  `unattendish-sdlc fleets-page --open-tab <repo>` reads the tab it lands on;
+  `unattendish-sdlc ledger $A --filter Dropped --item '#8'` presses the Ledger
+  tab and lists `echo: marker · 1`, with each entry's outcome colour, once a
+  comment ending in the marker, on a line of its own, has been polled.
+- **Toasts** (`unattendish.toasts/ws`): `unattendish-sdlc toast <trigger.sh> --click "Answer…"`
   holds the Fleets page open while the script adds an Inbox row to the
   manifest and runs `thread tell $A hi`, `thread wait $A --status idle` and
   `thread stop $A`, then prints each toast's `title`, `description` and
-  `buttons`: `#21 Which queue to use` over `<repo> waits for your answer`.
+  `buttons`: `#21 Which queue to use` over `<repo> waits for your answer`,
+  with `Answer…`; `--click "Answer…"` opens that row's composer.
   A trigger that registers a fleet on `github.example/other-org/x` raises
   `github.example/other-org/x can't be read` over
   `other-org/x needs a GitHub account that can read other-org`;

@@ -769,7 +769,7 @@ describe("a source no read of which succeeds (AC8, AC12, AC13)", () => {
     // Another account would not make the service answer: no toast offers Connect…, and the card's problem has no fix.
     expect(w.events.needs).toEqual([]);
     const card = (await createDashboard(w.dash).fleets()).fleets[0]!;
-    expect(card.reasons).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org", fix: { kind: "none" } }]);
+    expect(card.problems).toEqual([{ code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org", fix: { kind: "none" } }]);
   });
 
   it("counts a poll the deadline cut off as no answer", async () => {

@@ -14,7 +14,9 @@ import type {
   LedgerChangeView,
   LedgerView,
   HalfView,
+  HeldFleetView,
   SettingsView,
+  ThreadFleetView,
   TokenPageView,
   UnreadableInboxRowView,
 } from "@/src/fleet/application/views";
@@ -41,7 +43,7 @@ export function fleetCard(over: Partial<FleetCardView> = {}): FleetCardView {
     cost: null,
     lastPolledAt: ago(40_000),
     intervalMs: 120_000,
-    reasons: [],
+    problems: [],
     halves: [],
     warnings: [],
     ...over,
@@ -80,6 +82,16 @@ export function fleetsView(over: Partial<FleetsView> = {}): FleetsView {
   return { generatedAt: NOW, waiting: 0, needsAccount: [], fleets: [], inbox: [], unreadableInbox: [], recentActions: [], landed: [], ...over };
 }
 
+/** A manager thread's view of its one fleet, as the Fleet chip and the Fleet tab load it. */
+export function managerFleet(card: FleetCardView = fleetCard(), over: Partial<HeldFleetView> = {}): ThreadFleetView {
+  return managerFleets([{ card, lastAction: null, ...over }]);
+}
+
+/** A manager thread's view of every fleet it holds. */
+export function managerFleets(fleets: readonly (FleetCardView | HeldFleetView)[]): ThreadFleetView {
+  return { kind: "manager", generatedAt: NOW, fleets: fleets.map((fleet) => ("card" in fleet ? fleet : { card: fleet, lastAction: null })) };
+}
+
 export function fleetDetail(over: Partial<FleetDetailView> = {}): FleetDetailView {
   return {
     generatedAt: NOW,
@@ -88,7 +100,8 @@ export function fleetDetail(over: Partial<FleetDetailView> = {}): FleetDetailVie
     watched: [],
     credentials: [],
     requestsThisHour: 0,
-    recentActions: [],
+    failedReads: 0,
+    lastAction: null,
     ...over,
   };
 }

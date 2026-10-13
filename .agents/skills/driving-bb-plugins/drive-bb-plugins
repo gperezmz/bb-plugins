@@ -3,8 +3,11 @@
 # daemon on a data directory of their own, the chosen plugins installed from a
 # copy of the checkout, Claude Code threads answered by Cache Keeper's fake
 # Anthropic API, and the bb web UI in headless Chromium. Never touches the
-# user's own bb: every command runs with the variables that name a bb unset or
-# pointed at the throwaway, and HOME inside the run's scratch directory.
+# user's own bb and hands the run no credential: every process of the run,
+# and every command sent to it, starts from an empty environment holding the
+# passed list in plugins/cache-keeper/harness/run-env.sh and what the harness
+# sets, the throwaway's address and HOME inside the run's scratch directory
+# among them; doctor fails on a leak, a variable of the caller's found there.
 # Never exhausts the machine: everything a run starts, Claude Code included,
 # runs in a systemd user scope capped at DBP_MEMORY_MAX with no swap, so a run
 # past its cap loses its own processes and nothing else, and `spawn` holds at
@@ -73,24 +76,30 @@ set -euo pipefail
 
 skill_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 repo=$(git -C "$skill_dir" rev-parse --show-toplevel)
-evidence_root=${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins
+# DBP_EVIDENCE_ROOT and DBP_SCRATCH_ROOT carry the roots into the harness's
+# own commands inside a run, whose TMPDIR is the run's.
+evidence_root=${DBP_EVIDENCE_ROOT:-${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins}
 # The default run is per checkout: every checkout shares the evidence root.
 latest=$evidence_root/latest-$(printf '%s' "$repo" | sha256sum | cut -c1-12)
 scratch_root=${DBP_SCRATCH_ROOT:-${TMPDIR:-/tmp}/drive-bb-plugins}
 claims=$scratch_root/ports
-snapshot_root=${DBP_SNAPSHOT_ROOT:-${XDG_CACHE_HOME:-$HOME/.cache}/drive-bb-plugins/snapshots}
-unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI -u BB_HOST_DAEMON_PORT
-  -u BB_THREAD_STORAGE -u BB_DATA_DIR -u CLAUDE_CONFIG_DIR -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN
-  -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
+snapshot_root=${DBP_SNAPSHOT_ROOT:-${XDG_CACHE_HOME:-~/.cache}/drive-bb-plugins/snapshots}
 
 die() { echo "drive-bb-plugins: $*" >&2; exit 1; }
 # A size such as 6G, 512M or a byte count, in bytes.
 to_bytes() { numfmt --from=iec "${1%[Bb]}" 2> /dev/null || die "'$1' is not a size such as 6G or 512M"; }
 iec() { numfmt --to=iec "$1"; }
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+# The passed list, run_env, and the leak check every process of a run is
+# started and checked with, shared with Cache Keeper's and Unattendish's harnesses.
+# shellcheck source-path=SCRIPTDIR source=../../../plugins/cache-keeper/harness/run-env.sh
+source "$repo/plugins/cache-keeper/harness/run-env.sh"
 sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
-bb_version() { env "${unset_bb[@]}" bb --version; }
+bb_version() { env -i "${run_env[@]}" bb --version; }
+# The branch the caller's git starts a repository on, which a run's git, with
+# the run's HOME, would not read.
+default_branch() { git config --get init.defaultBranch || echo master; }
 # One value from a saved snapshot's snapshot.env.
 # shellcheck source=/dev/null
 snapshot_value() { (source "$1/snapshot.env" && printf '%s' "${!2}"); }
@@ -101,6 +110,7 @@ load_run() {
   run=${DBP_RUN:-$(readlink "$latest" 2> /dev/null || true)}
   [[ -n $run && -f $evidence_root/$run/run.env ]] || die "no run found; start one with: drive-bb-plugins start <plugin>..."
   ev=$evidence_root/$run
+  set_self
   # shellcheck source=/dev/null
   source "$ev/run.env"
   [[ ${scratch:-} == "$scratch_root"/run.?????? && $scratch != *..* ]] ||
@@ -145,7 +155,7 @@ claim_port() {
   local port owner
   mkdir -p "$claims"
   for _ in $(seq 50); do
-    port=$(node -e 'const s = require("net").createServer(); s.listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); })')
+    port=$(env -i "${run_env[@]}" node -e 'const s = require("net").createServer(); s.listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); })')
     if mkdir "$claims/$port" 2> /dev/null; then
       echo "$scratch" > "$claims/$port/owner"
       echo "$port"
@@ -166,8 +176,12 @@ release_ports() {
   return 0
 }
 
-# Runs a command against the throwaway bb only.
-tb() { env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" "$@"; }
+# Runs a command as a process of the run, against the throwaway bb only: the
+# passed list and what run-env.sh adds to it, the run's mark, its HOME and
+# TMPDIR, bb's telemetry off and its bb's address, and nothing else.
+tb() { env -i "${run_env[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="${server_url:-}" "$@"; }
+# What the harness's own commands inside a run need to find it, into $self.
+set_self() { self=("DBP_RUN=$run" "DBP_SCRATCH_ROOT=$scratch_root" "DBP_EVIDENCE_ROOT=$evidence_root"); }
 
 cmd_start() {
   local snapshot="" snapshot_dir="" p
@@ -224,8 +238,11 @@ cmd_start() {
   done
 
   scratch=$(mktemp -d "$scratch_root/run.XXXXXX")
+  # What the caller holds, by name and salted hash, so doctor knows a leak.
+  run_env_record "$scratch/caller-env"
   run=$(date +%Y%m%d-%H%M%S)-$(printf '%s' "$*" | tr ' ' '+')-${scratch##*.}
   ev=$evidence_root/$run
+  set_self
   server_port=${DBP_SERVER_PORT:-$(claim_port)}
   daemon_port=${DBP_DAEMON_PORT:-$(claim_port)}
   api_port=${DBP_API_PORT:-$(claim_port)}
@@ -243,6 +260,15 @@ cmd_start() {
   # The evidence root and every directory up to it are the user's alone.
   (umask 077 && mkdir -p "$ev")
   mkdir -p "$scratch/home" "$scratch/tmp" "$scratch/plugins" "$scratch/work/demo"
+  # Chromium renders with the caller's own fonts, though its HOME is the run's.
+  local fonts at
+  while read -r fonts at; do
+    [[ -d $fonts ]] || continue
+    mkdir -p "$(dirname "$scratch/home/$at")"
+    ln -s "$fonts" "$scratch/home/$at"
+  done <<< "${XDG_CONFIG_HOME:-$HOME/.config}/fontconfig .config/fontconfig
+$HOME/.local/share/fonts .local/share/fonts
+$HOME/.fonts .fonts"
   ln -sfn "$run" "$latest"
   cat > "$ev/run.env" << ENV
 scratch=$scratch
@@ -275,9 +301,9 @@ ENV
   if [[ -n $unit ]]; then
     systemd-run --user --scope --quiet --unit "$unit" --description "drive-bb-plugins run $run" \
       -p MemoryMax="$memory_max" -p MemorySwapMax=0 -p OOMPolicy=stop -p Delegate=yes \
-      -- env DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+      -- env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
   else
-    DBP_RUN="$run" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || exit 1
+    env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" bash "$skill_dir/drive-bb-plugins" _launch 7>&- || launch_failed $?
   fi
   exec 7>&-
   # shellcheck source=/dev/null
@@ -298,8 +324,8 @@ ENV
   done
 
   if [[ -z $snapshot ]]; then
-    GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
-      bash -c 'git -C "$1" init -q && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo"
+    tb env GIT_AUTHOR_NAME=drive GIT_AUTHOR_EMAIL=drive@example.invalid GIT_COMMITTER_NAME=drive GIT_COMMITTER_EMAIL=drive@example.invalid \
+      bash -c 'git -C "$1" init -q -b "$2" && git -C "$1" commit -q --allow-empty -m drive' _ "$scratch/work/demo" "$(default_branch)"
     project=$(tb bb project create --name drives --root "$scratch/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
     [[ $project == proj_* ]] || fail "could not create the drives' project"
     echo "project=$project" >> "$ev/run.env"
@@ -315,7 +341,7 @@ ENV
     # A copy as the checkout has it, so bb builds what is checked out and
     # writes nothing into the checkout. On a snapshot this reinstalls the
     # plugin over the one the snapshot saved.
-    rsync -a --exclude node_modules --exclude dist --exclude harness "$repo/plugins/$p/" "$scratch/plugins/$p/"
+    tb rsync -a --exclude node_modules --exclude dist --exclude harness "$repo/plugins/$p/" "$scratch/plugins/$p/"
     [[ -d $repo/plugins/$p/node_modules ]] && ln -s "$repo/plugins/$p/node_modules" "$scratch/plugins/$p/node_modules"
     tb bb plugin install "path:$scratch/plugins/$p" --yes > "$scratch/install-$p.log" 2>&1 || { cat "$scratch/install-$p.log" >&2; fail "could not install $p"; }
     status=$(tb bb plugin list --json | jq -r --arg id "$p" '.plugins[] | select(.id == $id) | .status')
@@ -325,8 +351,11 @@ ENV
   marked_procs | cut -f1 >> "$ev/pids"
   sort -u "$ev/pids" -o "$ev/pids"
 
-  cat > "$ev/env.sh" << ENV
-# Points bb at run $run and nothing else. Source it in a subshell.
+  {
+    echo "# Points bb at run $run and nothing else. Source it in a subshell."
+    run_env_script
+  } > "$ev/env.sh"
+  cat >> "$ev/env.sh" << ENV
 unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
 export BB_SERVER_URL=$server_url HOME=$scratch/home TMPDIR=$scratch/tmp DBP_MARK=$scratch
 export DBP_PROJECT=$project DBP_HOST=$host_id DBP_API=http://127.0.0.1:$api_port
@@ -355,6 +384,16 @@ fail() {
   for log in "$scratch/fake-anthropic.log" "$scratch/fake-services.log" "$scratch/server.log" "$scratch/bb/logs/server-stdio.log" "$scratch/host-daemon.log"; do
     [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
   done
+  echo "drive-bb-plugins: $(run_env_note)" >&2
+  echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
+  exit "${fail_status:-1}"
+}
+
+# Reports a launch that ended before it reported itself (any status but
+# fail's 3), and exits.
+launch_failed() {
+  (($1 == 3)) && exit 1
+  echo "drive-bb-plugins: the run's launch failed; $(run_env_note)" >&2
   echo "drive-bb-plugins: run 'drive-bb-plugins stop --run $run' to stop what started" >&2
   exit 1
 }
@@ -363,8 +402,10 @@ fail() {
 # scope. Records the host in run.env.
 cmd__launch() {
   load_run
+  # A failure reported here is not reported again by start's launch_failed.
+  fail_status=3
   wait_for() {
-    for _ in $(seq 60); do curl -fs -o /dev/null "$2" && return 0; sleep 1; done
+    for _ in $(seq 60); do tb curl -fs -o /dev/null "$2" && return 0; sleep 1; done
     fail "$1 did not answer at $2"
   }
 
@@ -383,7 +424,7 @@ cmd__launch() {
     # A restored snapshot's daemon signs in with the credentials it saved.
     start_daemon &
   else
-    enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
+    enroll=$(tb curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
     host_id=$(jq -r .hostId <<< "$enroll")
     echo "host_id=$host_id" >> "$ev/run.env"
     start_daemon BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" &
@@ -439,10 +480,10 @@ restore_snapshot() {
   # Shared with other starts, exclusive against a save replacing the snapshot.
   (
     flock -s 6
-    cp -a "$from/bb" "$from/work" "$scratch/" && cp -a "$from/home/." "$scratch/home/"
+    tb cp -a "$from/bb" "$from/work" "$scratch/" && tb cp -a "$from/home/." "$scratch/home/"
   ) 6> "${from%/*}/.lock" || fail "could not copy snapshot $from"
   # shellcheck disable=SC2016 # the script is JavaScript
-  node --no-warnings -e '
+  tb node --no-warnings -e '
     const { DatabaseSync } = require("node:sqlite");
     const [file, ...pairs] = process.argv.slice(1);
     const db = new DatabaseSync(file);
@@ -464,17 +505,17 @@ restore_snapshot() {
     db.close();
   ' "$scratch/bb/bb.db" "$old" "$scratch" "$old_dashed" "$new_dashed" || fail "could not point the snapshot's bb.db at $scratch"
   for dir in "$scratch/home/.claude/projects/$old_dashed"*; do
-    [[ -e $dir ]] && mv "$dir" "$scratch/home/.claude/projects/$new_dashed${dir#"$scratch/home/.claude/projects/$old_dashed"}"
+    [[ -e $dir ]] && tb mv "$dir" "$scratch/home/.claude/projects/$new_dashed${dir#"$scratch/home/.claude/projects/$old_dashed"}"
   done
-  { grep -rlIZF -e "$old" -e "$old_dashed" --exclude='bb.db*' "$scratch/bb" "$scratch/home" || true; } |
-    xargs -0 -r sed -i -e "s|$old|$scratch|g" -e "s|$old_dashed|$new_dashed|g"
+  { tb grep -rlIZF -e "$old" -e "$old_dashed" --exclude='bb.db*' "$scratch/bb" "$scratch/home" || true; } |
+    tb xargs -0 -r sed -i -e "s|$old|$scratch|g" -e "s|$old_dashed|$new_dashed|g"
   return 0
 }
 
 # Execs the run's host daemon, as machine $host_id, with any extra environment
 # given. Run it in a subshell: it replaces the shell.
 start_daemon() {
-  exec env "${unset_bb[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" \
+  exec env -i "${run_env[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" \
     CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_HOST_ID="$host_id" "$@" \
     ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
@@ -523,7 +564,7 @@ cmd_doctor() {
   load_run
   local bad=0 p row
   check() { if eval "$2" 2> /dev/null; then echo "ok   $1"; else echo "FAIL $1"; bad=1; fi; }
-  check "run $run points at $server_url, not the user's bb (${BB_SERVER_URL:-unset})" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
+  check "run $run points at $server_url, not the user's bb (BB_SERVER_URL $([[ -n ${BB_SERVER_URL+x} ]] && echo set || echo unset))" '[[ $server_url != "${BB_SERVER_URL:-}" ]]'
   if [[ -n ${unit:-} ]]; then
     local state
     state=$(sysu show "$unit" -p ActiveState -p Result --value 2> /dev/null | paste -sd/ -)
@@ -538,16 +579,31 @@ cmd_doctor() {
   check "the fake API, bb server, host daemon${github_port:+ and fake services} launched for the run are alive" '[[ $(ps -p "$(paste -sd, - < "$ev/launch-pids")" -o pid= | wc -l) -eq $(grep -c . "$ev/launch-pids") ]]'
   if [[ -n ${github_port:-} ]]; then
     for p in "$github_port" "$gitlab_port" "$linear_port" "$jira_port"; do
-      check "the fake service on $p answers" 'curl -fs -o /dev/null "http://127.0.0.1:$p/__admin/state"'
+      check "the fake service on $p answers" 'tb curl -fs -o /dev/null "http://127.0.0.1:$p/__admin/state"'
     done
   fi
-  check "the bb server answers /health" 'curl -fs -o /dev/null "$server_url/health"'
+  check "the bb server answers /health" 'tb curl -fs -o /dev/null "$server_url/health"'
   check "the server on $server_port serves the run's data dir" 'grep -qzxF "DBP_MARK=$scratch" /proc/$(ss -ltnpH "sport = :$server_port" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2)/environ'
   check "machine $host_id is connected" '[[ $(tb bb machine list --json | jq --arg id "$host_id" "[.[] | select(.id == \$id and .status == \"connected\")] | length") -gt 0 ]]'
   for p in $plugins; do
     row=$(tb bb plugin list --json | jq -c --arg id "$p" '.plugins[] | select(.id == $id)')
     check "$p runs from the run's copy" '[[ $(jq -r .status <<< "$row") == running && $(jq -r .rootDir <<< "$row") == "$scratch/plugins/$p"* ]]'
   done
+  local pids leaks
+  if [[ -f $scratch/caller-env ]]; then
+    pids=$(marked_procs | cut -f1)
+    # shellcheck disable=SC2086 # one PID per word
+    if leaks=$(run_env_leaks "$scratch/caller-env" $pids); then
+      echo "ok   no process of the run holds a variable of the caller's outside the passed list in $run_env_file"
+    else
+      echo "FAIL a process of the run holds a variable of the caller's outside the passed list:"
+      printf '%s\n' "$leaks" | sed 's/^/     /'
+      bad=1
+    fi
+  else
+    echo "warn run $run was started before runs recorded the caller's variables, so nothing checks it for a leak"
+  fi
+  check "gh run inside the run finds no GitHub token for bb to hand its threads" '! run_env_gh_token tb'
   return $bad
 }
 
@@ -656,7 +712,7 @@ cmd_spawn() {
   if [[ $mode == background ]] && ((idle)); then
     # The runtime stays loaded to keep the command running, so the session
     # slot stays held, by a process that inherits it, until release.
-    (exec -a "dbp-slot-$id" env "DBP_MARK=$scratch" sleep infinity 8>&- < /dev/null > /dev/null 2>&1) &
+    (exec -a "dbp-slot-$id" env -i "${run_env[@]}" "DBP_MARK=$scratch" sleep infinity 8>&- < /dev/null > /dev/null 2>&1) &
     echo "$id $!" >> "$ev/kept"
     echo "$!" >> "$ev/pids"
     echo "$id"
@@ -700,7 +756,7 @@ cmd_seed() {
   local nf nw nb nd nu
   nf=$(next failed) nw=$(next working) nb=$(next background) nd=$(next finished) nu=$(next unread)
 
-  quiet=$(env "${unset_bb[@]}" DBP_URL="$server_url/" DBP_PROJECT="$project" DBP_HOST="$host_id" DBP_EXISTING="$ev/seed-existing.json" node "$skill_dir/seed.mjs" "$(realpath "$shape")") ||
+  quiet=$(tb env DBP_URL="$server_url/" DBP_PROJECT="$project" DBP_HOST="$host_id" DBP_EXISTING="$ev/seed-existing.json" node "$skill_dir/seed.mjs" "$(realpath "$shape")") ||
     { rm -f "$made" "$ev/seed-existing.json"; die "seeding the quiet threads failed; any it made before failing are in the run, still pending with a message due in 2099"; }
   echo "quiet      $(jq -r '"\(.created) threads, \(.archived) of them archived, in \(.ms / 1000) s"' <<< "$quiet")"
 
@@ -740,7 +796,8 @@ cmd_seed() {
     {
       for i in $(seq 2 "$finished"); do printf 'finished %s\nfinished\n' "$((nd + i))"; done
       for i in $(seq "$((finished > 0 ? 1 : 2))" "$unread"); do printf 'unread %s\nunread\n' "$((nu + i))"; done
-    } | xargs -d '\n' -r -n 2 -P "$width" bash "$skill_dir/drive-bb-plugins" _fork --run "$run" "$src" >> "$made" || bad=1
+    } | xargs -d '\n' -r -n 2 -P "$width" env -i "${run_env[@]}" "${self[@]}" "DBP_MARK=$scratch" \
+      bash "$skill_dir/drive-bb-plugins" _fork --run "$run" "$src" >> "$made" || bad=1
   fi
   for i in $(seq "$background"); do start_state background "background $((nb + i))" --background; done
   for i in $(seq "$working"); do start_state working "working $((nw + i))" --hold "$hold"; done
@@ -803,9 +860,9 @@ save_snapshot() {
   local tmp old=""
   tmp=$(mktemp -d "${save_to%/*}/.saving.XXXXXX")
   (
-    rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
-      rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
-    for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
+    tb rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
+      tb rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
+    for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || tb cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
     printf '%s\n' "$save_env" > "$tmp/snapshot.env"
   ) || {
     rm -rf "$tmp"
@@ -866,16 +923,26 @@ cmd_fake() {
   case $what in
     state) if [[ -n $file ]]; then
       [[ -f $file ]] || die "no state file $file"
-      out=$(curl -fsS -X POST -H 'Content-Type: application/json' --data-binary "@$file" "http://127.0.0.1:$port/__admin/state") || code=$?
-    else out=$(curl -fsS "http://127.0.0.1:$port/__admin/state") || code=$?; fi ;;
-    requests) out=$(curl -fsS "http://127.0.0.1:$port/__admin/requests") || code=$? ;;
-    reset) out=$(curl -fsS -X POST "http://127.0.0.1:$port/__admin/reset") || code=$? ;;
+      out=$(tb curl -fsS -X POST -H 'Content-Type: application/json' --data-binary "@$file" "http://127.0.0.1:$port/__admin/state") || code=$?
+    else out=$(tb curl -fsS "http://127.0.0.1:$port/__admin/state") || code=$?; fi ;;
+    requests) out=$(tb curl -fsS "http://127.0.0.1:$port/__admin/requests") || code=$? ;;
+    reset) out=$(tb curl -fsS -X POST "http://127.0.0.1:$port/__admin/reset") || code=$? ;;
     *) die "$usage" ;;
   esac
   printf '%s\n' "$out"
   printf '### %s  %s\n$ fake %s %s %s\nexit %s\n--- body\n%s\n--- answer\n%s\n\n' "$label" "$(date -Iseconds)" "$service" "$what" "$file" "$code" \
     "$([[ -n $file ]] && cat "$file")" "$out" >> "$ev/cli.md"
   return $code
+}
+
+# The Chromium Playwright launches: the caller's CHROMIUM_PATH, else the
+# chromium on PATH; and where Playwright's own browsers are, which the run's
+# HOME would otherwise hide.
+browser_env() {
+  case $1 in
+    CHROMIUM_PATH) echo "CHROMIUM_PATH=${CHROMIUM_PATH:-$(command -v chromium || true)}" ;;
+    PLAYWRIGHT_BROWSERS_PATH) echo "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/ms-playwright}" ;;
+  esac
 }
 
 cmd_ui() {
@@ -886,8 +953,8 @@ cmd_ui() {
   [[ -d $playwright ]] || die "Playwright is missing: run 'npm install' in plugins/thread-glance"
   mkdir -p "$ev/ui/$label"
   cp "$steps" "$ev/ui/$label/steps.mjs"
-  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_RUN="$run" DBP_URL="$server_url/" DBP_OUT="$ev/ui/$label" DBP_PLAYWRIGHT="$playwright" DBP_MOBILE="${mobile:+1}" \
-    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" steps "$(realpath "$steps")"
+  tb env "${self[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_URL="$server_url/" DBP_OUT="$ev/ui/$label" DBP_PLAYWRIGHT="$playwright" DBP_MOBILE="${mobile:+1}" \
+    "$(browser_env CHROMIUM_PATH)" "$(browser_env PLAYWRIGHT_BROWSERS_PATH)" node "$skill_dir/browser.mjs" steps "$(realpath "$steps")"
 }
 
 # Runs one of a plugin's feature verbs from verbs/<plugin>.mjs; the verb picks
@@ -898,15 +965,15 @@ cmd_verb() {
   shift
   local playwright=$repo/plugins/thread-glance/node_modules/playwright
   [[ -d $playwright ]] || die "Playwright is missing: run 'npm install' in plugins/thread-glance"
-  env "${unset_bb[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_RUN="$run" DBP_URL="$server_url/" DBP_UI="$ev/ui" DBP_PLAYWRIGHT="$playwright" \
-    CHROMIUM_PATH="${CHROMIUM_PATH:-$(command -v chromium || true)}" node "$skill_dir/browser.mjs" verb "$skill_dir/verbs/$plugin.mjs" "$@"
+  tb env "${self[@]}" DBP_HARNESS="$skill_dir/drive-bb-plugins" DBP_SKILL="$skill_dir" DBP_URL="$server_url/" DBP_UI="$ev/ui" DBP_PLAYWRIGHT="$playwright" \
+    "$(browser_env CHROMIUM_PATH)" "$(browser_env PLAYWRIGHT_BROWSERS_PATH)" node "$skill_dir/browser.mjs" verb "$skill_dir/verbs/$plugin.mjs" "$@"
 }
 
 cmd_stop() {
   load_run
   local pid cmd left
   # Keep bb's own logs with the evidence before the scratch goes.
-  if curl -fs -o /dev/null "$server_url/health"; then
+  if tb curl -fs -o /dev/null "$server_url/health"; then
     for p in $plugins; do tb bb plugin logs "$p" -n 100000 > "$ev/plugin-$p.log" 2>&1 || true; done
   fi
   for log in server.log host-daemon.log fake-anthropic.log fake-services.log requests.jsonl; do

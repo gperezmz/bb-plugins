@@ -2,7 +2,7 @@
 // dark setting. A token class follows bb's `.dark` class; Tailwind's `dark:` variant follows the operating system
 // instead, so the plugin never uses it. Coloured text takes the text variants of the error and warning tones, which
 // stay readable in both modes.
-import type { InboxRowView } from "@/src/fleet/application/views";
+import type { InboxRowView, LedgerChangeView } from "@/src/fleet/application/views";
 
 type WaitsFor = InboxRowView["waitsFor"];
 
@@ -26,6 +26,16 @@ export const TONE_FILL: Readonly<Record<Tone, string>> = {
   amber: "bg-warning",
   red: "bg-destructive",
   grey: "bg-muted-foreground",
+};
+
+/** A faint fill of each tone, for a strip tinted in it behind text in the tone's own colour. */
+export const TONE_TINT: Readonly<Record<Tone, string>> = {
+  blue: "bg-timeline-accent/10",
+  purple: "bg-pr-merged/10",
+  green: "bg-success/10",
+  amber: "bg-warning/10",
+  red: "bg-destructive/10",
+  grey: "bg-muted",
 };
 
 /** The border of each tone, for an outlined control. */
@@ -53,3 +63,6 @@ export const MANAGER_TONES: Readonly<Record<"working" | "idle" | "none", Tone>> 
 
 /** The tone of a fleet's problem and of its warning. */
 export const FLAG_TONES: Readonly<Record<"problem" | "warning", Tone>> = { problem: "red", warning: "amber" };
+
+/** The tone of each Ledger outcome: a wake amber, a failed read red, a drop or a hold grey. */
+export const OUTCOME_TONES: Readonly<Record<LedgerChangeView["done"], Tone>> = { woke: "amber", echo: "grey", "out-of-scope": "grey", held: "grey", "failed read": "red" };

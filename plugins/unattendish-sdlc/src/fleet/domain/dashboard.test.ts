@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { credentialWarnings, doneWith, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, reasonsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
+import { credentialWarnings, doneWith, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, problemsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
 import type { SourceCursor } from "./model";
 import { watchedWithReasons } from "./watched";
 import type { Manifest } from "./model";
@@ -37,7 +37,7 @@ describe("Inbox rows", () => {
   });
 });
 
-describe("reasonsOf", () => {
+describe("problemsOf", () => {
   it("says how many manifest rows cannot be read and in which sections, sorted", () => {
     const rows = [
       { section: "Inbox", line: 3, reason: "x" },
@@ -50,7 +50,7 @@ describe("reasonsOf", () => {
   });
 
   it("gathers every reason with where it is put right", () => {
-    const reasons = reasonsOf(
+    const problems = problemsOf(
       [
         { code: "no-credential", text: "No credential is chosen for github.com/org/repo", role: "forge" },
         { code: "credential-refused", text: "The credential for linear:ENG was refused", role: "tracker" },
@@ -59,7 +59,7 @@ describe("reasonsOf", () => {
       ],
       [{ section: "Landed", line: 2, reason: "x" }],
     );
-    expect(reasons.map((reason) => [reason.code, reason.fix])).toEqual([
+    expect(problems.map((reason) => [reason.code, reason.fix])).toEqual([
       ["no-credential", { kind: "connect", role: "forge" }],
       ["credential-refused", { kind: "connect", role: "tracker" }],
       ["manifest-missing", { kind: "fleet-tab" }],
@@ -68,9 +68,9 @@ describe("reasonsOf", () => {
   });
 
   it("ends with a manager that is gone, which nothing on the page fixes", () => {
-    expect(reasonsOf([], [], true)).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
+    expect(problemsOf([], [], true)).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
     expect(MANAGER_GONE_TEXT).toContain("run /run-fleet in a new thread");
-    expect(reasonsOf([], [])).toEqual([]);
+    expect(problemsOf([], [])).toEqual([]);
   });
 });
 
