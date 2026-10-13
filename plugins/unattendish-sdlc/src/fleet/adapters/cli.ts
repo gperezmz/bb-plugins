@@ -20,9 +20,21 @@ export interface FleetCliApp {
   setInterval(repo: string, intervalMs: number | null): boolean;
 }
 
-const DONE = ["woke", "echo", "out-of-scope", "held", "failed-read"] as const;
+const DONE = ["woke", "echo", "out-of-scope", "held", "failed-read", "skipped-listing"] as const;
 
 const json = (value: unknown) => JSON.stringify(value, null, 2);
+
+/** The ledger query a `--done` value names. A skipped listing is an out-of-scope entry, so its value narrows that one. */
+const doneQuery = (done: (typeof DONE)[number]): Pick<LedgerQuery, "done" | "skippedListing"> => {
+  switch (done) {
+    case "failed-read":
+      return { done: "failed read" };
+    case "skipped-listing":
+      return { done: "out-of-scope", skippedListing: true };
+    default:
+      return { done };
+  }
+};
 
 const parseDuration = (text: string): number | null => {
   const match = /^(\d+)(ms|s|m|h)$/.exec(text.trim());
@@ -181,14 +193,14 @@ export function createFleetCli(app: FleetCliApp): PluginCliRegistration {
         positionals: [{ name: "repo", description: "The repository: host/path.", required: true }],
         options: {
           item: { type: "string", description: "Only this item: its reference (#163, ENG-212) or URL." },
-          done: { type: "enum", values: DONE, description: "Only what was done: woke, echo, out-of-scope, held or failed-read." },
+          done: { type: "enum", values: DONE, description: "Only what was done: woke, echo, out-of-scope, held, failed-read, or skipped-listing (the out-of-scope entries a cut listing wrote)." },
           limit: { type: "integer", min: 1, max: LEDGER_LIMIT, default: 200, description: `At most this many entries, newest first; no more than ${LEDGER_LIMIT}, which fit bb's output limit. A string is cut to ${FIELD_MAX} characters and a poll lists its first ${REQUESTS_SHOWN} requests (its count is whole).` },
           ...printJson,
         },
         run({ options, positionals }) {
           const entries = app.ledger(positionals.repo, {
             ...(options.item === undefined ? {} : { item: options.item }),
-            ...(options.done === undefined ? {} : { done: options.done === "failed-read" ? "failed read" : options.done }),
+            ...(options.done === undefined ? {} : doneQuery(options.done)),
             limit: options.limit,
           });
           const printed = entries.map(boundEntry);
