@@ -106,7 +106,7 @@ function NothingWaits() {
 
 function FleetName({ fleet, name, grow = false }: { fleet: FleetCardView | undefined; name: string; grow?: boolean }) {
   return (
-    <span className={cn("flex min-w-0 items-center gap-1 text-xs text-muted-foreground", grow && "flex-1")}>
+    <span className={cn("flex min-w-0 items-center gap-1 text-xs text-muted-foreground", grow && "min-w-24 flex-1")}>
       {fleet !== undefined ? <ServiceLogo service={fleet.forge} decorative /> : null}
       <span className="truncate">{name}</span>
     </span>
@@ -154,7 +154,7 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
     return (
       <li className="flex flex-col gap-1 py-3">
         {/* Two lines that never wrap: the title gives its room to the action, and on the second line the fleet and
-            the link truncate, so every control stays on screen. */}
+            the link truncate, the fleet keeping room for its name, so every control stays on screen. */}
         <span className="flex min-w-0 items-center gap-2">
           {kind}
           <span className="min-w-0 flex-1">{title}</span>
@@ -167,7 +167,7 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
           <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="min-w-0 truncate text-xs" />
           <span className="ml-auto shrink-0">{ageCell}</span>
         </span>
-        {action.kind === "offer" && action.unconfirmed ? <span className="pl-6 text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
+        {action.kind === "offer" && action.unconfirmed ? <span className="truncate pl-6 text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
         {composer}
       </li>
     );
