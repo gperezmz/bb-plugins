@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# A run's shell, which Claude Code runs its commands in: bash with no profile
+# and no rc file, whatever login or interactive flags it is given, so nothing a
+# machine's profile exports enters a run. The bash it runs is the first on PATH,
+# which this directory is never on.
+args=()
+while (($#)); do
+  case $1 in
+    --login) ;;
+    --*) args+=("$1") ;;
+    [-+]*)
+      # A cluster such as -lc: every flag kept but -l.
+      [[ ${1//l/} == [-+] ]] || args+=("${1//l/}")
+      # -o and -O take the next word.
+      if [[ $1 == *[oO] ]]; then
+        shift
+        args+=("$1")
+      fi
+      ;;
+    *) break ;;
+  esac
+  shift
+done
+exec bash --noprofile --norc "${args[@]}" "$@"

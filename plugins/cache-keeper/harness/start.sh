@@ -10,9 +10,10 @@
 # running. Touches no other bb and hands the run no credential: every process
 # of the run starts from an empty environment holding the passed list in
 # run-env.sh and what this script sets, and start fails, naming the variable
-# and never its value, when a process it started holds any other variable of
-# yours. Needs node, jq, curl, git, rsync and bb-app's `bb`, `bb-server` and
-# `bb-host-daemon` on PATH. See config.sh for the ports.
+# and never its value, when a process it started holds a leak: a variable of
+# yours, same name and value, outside the passed list and the names run-env.sh
+# lists as set by the run. Needs node, jq, curl, git, rsync and bb-app's `bb`,
+# `bb-server` and `bb-host-daemon` on PATH. See config.sh for the ports.
 #
 #   harness/start.sh
 #   source "$CK_HARNESS_DIR/env.sh"   # or /tmp/ck-harness/env.sh; then bb talks to the throwaway
@@ -105,22 +106,18 @@ printf '%s' '{"fetchPrices":false}' > "$run/tmp/prices.json"
 tb bb plugin rpc call cache-keeper setSettings --input-file "$run/tmp/prices.json" > /dev/null || fail "could not switch off fetching prices"
 tb bb cache-keeper drive now > /dev/null || fail "the plugin has no drive commands: CACHE_KEEPER_DRIVE_CLOCK did not reach it"
 
-# Every process the run holds now, checked for any variable of yours not on the
-# passed list.
+# Every process the run holds now, checked for a leak.
 # shellcheck disable=SC2046 # one PID per word
-leaks=$(run_env_leaks "$run/caller-env" $(harness_procs | cut -f1)) || {
-  printf '%s\n' "$leaks" | sed 's/^/start.sh: /' >&2
-  echo "start.sh: stop what started with harness/stop.sh" >&2
-  exit 1
-}
+run_env_start_check start.sh "$run/caller-env" $(harness_procs | cut -f1)
 
 {
-  echo "# Points bb at the harness's throwaway bb and nothing else, and keeps every"
-  echo "# command this shell runs to the passed list and what follows. Source it."
+  echo "# Points bb at the harness's throwaway bb and nothing else. Source it."
   run_env_script
 } > "$run/env.sh"
 cat >> "$run/env.sh" <<ENV
 unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
+# The run's mark, so stop.sh finds what this shell starts.
+export $mark
 export BB_SERVER_URL=$server_url
 export HOME=$run/home TMPDIR=$run/tmp
 export CK_HARNESS_DIR=$run CK_HARNESS_PROJECT=$project CK_HARNESS_HOST=$host_id CK_HARNESS_API=http://127.0.0.1:$api_port

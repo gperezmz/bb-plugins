@@ -13,9 +13,10 @@
 # of the run starts from an empty environment holding the passed list in
 # ../../cache-keeper/harness/run-env.sh and what this script sets, and start
 # fails, naming the variable and never its value, when a process it started
-# holds any other variable of yours. Writes nothing inside the checkout. Needs
-# node 24, jq, curl, git, rsync and bb-app's `bb`, `bb-server` and
-# `bb-host-daemon` on PATH. See config.sh for the ports.
+# holds a leak: a variable of yours, same name and value, outside the passed
+# list and the names run-env.sh lists as set by the run. Writes nothing inside
+# the checkout. Needs node 24, jq, curl, git, rsync and bb-app's `bb`,
+# `bb-server` and `bb-host-daemon` on PATH. See config.sh for the ports.
 #
 #   harness/start.sh
 #   source "$UD_HARNESS_DIR/env.sh"   # or /tmp/ud-harness/env.sh; then bb talks to the throwaway
@@ -140,22 +141,18 @@ rm -f "$run/tmp/connect.json"
 [[ $(tb bb plugin rpc call unattendish-sdlc settings --json | jq -c '[(.result // .).accounts[] | .service] | sort') == '["github","gitlab","jira","linear"]' ]] || fail "the plugin does not list the four accounts"
 [[ $(tb bb unattendish fleet status --json | jq -c .) == '{"fleets":[]}' ]] || fail "the plugin's fleet status is not empty on a fresh install"
 
-# Every process the run holds now, checked for any variable of yours not on the
-# passed list.
+# Every process the run holds now, checked for a leak.
 # shellcheck disable=SC2046 # one PID per word
-leaks=$(run_env_leaks "$run/caller-env" $(harness_procs | cut -f1)) || {
-  printf '%s\n' "$leaks" | sed 's/^/start.sh: /' >&2
-  echo "start.sh: stop what started with harness/stop.sh" >&2
-  exit 1
-}
+run_env_start_check start.sh "$run/caller-env" $(harness_procs | cut -f1)
 
 {
-  echo "# Points bb at the harness's throwaway bb and nothing else, and keeps every"
-  echo "# command this shell runs to the passed list and what follows. Source it."
+  echo "# Points bb at the harness's throwaway bb and nothing else. Source it."
   run_env_script
 } > "$run/env.sh"
 cat >> "$run/env.sh" <<ENV
 unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
+# The run's mark, so stop.sh finds what this shell starts.
+export $mark
 export BB_SERVER_URL=$server_url
 export HOME=$run/home TMPDIR=$run/tmp
 export UD_HARNESS_DIR=$run UD_HARNESS_PROJECT=$project UD_HARNESS_HOST=$host_id UD_HARNESS_API=http://127.0.0.1:$api_port

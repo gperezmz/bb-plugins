@@ -7,14 +7,13 @@
 # later. A variable a machine needs in its runs goes on the passed list here.
 #
 # A leak is a variable the caller held at start, same name and value, found in
-# a process of the run, its name on neither list below and its value not the
-# one a login shell takes from the machine's profile (Claude Code runs its
-# commands in one); the variable run_env_record plants under a random name is
-# a leak wherever it turns up. The record keeps each variable's name and a
-# salted SHA-256 of its value, never the value, and the check prints names
-# alone.
+# a process of the run, its name on neither list below; the variable
+# run_env_record plants under a random name is a leak wherever it turns up. The
+# record keeps each variable's name and a salted SHA-256 of its value, never
+# the value, and the check prints names alone.
 
-run_env_file=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/run-env.sh
+run_env_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+run_env_file=$run_env_dir/run-env.sh
 
 # The passed list: each variable passed from the caller to a run, and why.
 run_env_passed=(
@@ -37,13 +36,12 @@ run_env_passed=(
 
 # Names the harness, bb or Claude Code set in a run's processes to a value that
 # can equal the caller's own, which are therefore no leak, each with why.
-run_env_own=(
-  SHELL                      # the harness sets bash as Claude Code's shell, which may be the caller's
+run_env_set_by_run=(
   DISABLE_AUTOUPDATER        # the harness sets 1 for Claude Code, as Claude Code's own caller often has
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC # likewise
   CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_AGENT_SDK_VERSION CLAUDE_CODE_EXECPATH COREPACK_ENABLE_AUTO_PIN
   AI_AGENT DISABLE_INSTALLATION_CHECKS DISABLE_NON_ESSENTIAL_MODEL_CALLS CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION
-  CLAUDE_CODE_SHELL CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
+  CLAUDE_EFFORT CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED GIT_EDITOR
   NoDefaultCurrentDirectoryInExePath CLAUDE_CODE_DISABLE_1M_CONTEXT
                              # bb sets these for Claude Code, or Claude Code for its commands, as for the caller's
   NODE_PATH                  # bb's launcher scripts set it to bb's own modules, as they did in the caller's bb
@@ -62,8 +60,9 @@ for _name in "${run_env_passed[@]}"; do
   [[ -n ${!_name+x} ]] && run_env+=("$_name=${!_name}")
 done
 unset _name
-# Claude Code's shell is the harness's bash, whatever shell the caller logs in with.
-run_env+=("SHELL=$(command -v bash)")
+# Claude Code's shell is run-shell/bash, bash with no profile, whatever shell
+# the caller logs in with.
+run_env+=("SHELL=$run_env_dir/run-shell/bash")
 
 # The line a failed start ends with, so a variable a machine needs can be added.
 run_env_note() {
@@ -71,48 +70,41 @@ run_env_note() {
 }
 
 # run_env_record <file>: records, in <file>, every variable of this process's
-# environment not on the passed list, and every one a login shell started with
-# the passed list alone sets, by name and salted hash, then plants a randomly
-# named variable, exported, that counts as a leak wherever it turns up. Call it
-# from start, before anything of the run is started.
+# environment not on the passed list, by name and salted hash, then plants a
+# randomly named variable, exported, that counts as a leak wherever it turns
+# up. Call it from start, before anything of the run is started.
 run_env_record() {
-  local file=$1 salt kv name hash plant home
+  local file=$1 salt kv name hash plant
   salt=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
   plant=RUN_ENV_PLANT_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
-  home=$(mktemp -d)
-  # Each NAME=value on stdin, as "<kind> NAME <salted hash>".
-  run_env_hashed() {
-    while IFS= read -r -d '' kv; do
-      name=${kv%%=*}
-      [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
-      hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
-      printf '%s %s %s\n' "$1" "$name" "$hash"
-    done
-  }
   (
     umask 077
     {
       printf 'salt %s\nplant %s\n' "$salt" "$plant"
-      env -0 | run_env_hashed var
-      env -i "${run_env[@]}" HOME="$home" bash -lc 'env -0' < /dev/null 2> /dev/null | run_env_hashed profile
+      while IFS= read -r -d '' kv; do
+        name=${kv%%=*}
+        [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
+        hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
+        printf 'var %s %s\n' "$name" "$hash"
+      done < <(env -0)
     } > "$file"
   )
-  rm -rf "$home"
   export "$plant=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 }
 
 # run_env_leaks <file> <pid>...: prints one line per leak in those processes,
-# naming the variable and the process, never a value, and returns 1 when any.
+# naming the variable and the process, never a value, then where the passed
+# list is kept, and returns 1 when there is any; prints nothing and returns 0
+# when there is none.
 run_env_leaks() {
   local file=$1 salt="" plant="" kind name hash pid comm kv found=0
   shift
-  local -A recorded=() profile=()
+  local -A recorded=()
   while read -r kind name hash; do
     case $kind in
       salt) salt=$name ;;
       plant) plant=$name ;;
       var) recorded[$name]=$hash ;;
-      profile) profile[$name]=$hash ;;
     esac
   done < "$file"
   for pid in "$@"; do
@@ -123,9 +115,9 @@ run_env_leaks() {
       if [[ $name == "$plant" ]]; then
         echo "leak: $name, planted by start, is in process $pid ($comm)"
         found=1
-      elif [[ -n ${recorded[$name]:-} && " ${run_env_passed[*]} ${run_env_own[*]} " != *" $name "* ]]; then
+      elif [[ -n ${recorded[$name]:-} && " ${run_env_passed[*]} ${run_env_set_by_run[*]} " != *" $name "* ]]; then
         hash=$(printf '%s%s' "$salt" "${kv#*=}" | sha256sum | cut -c1-64)
-        [[ $hash == "${recorded[$name]}" && $hash != "${profile[$name]:-}" ]] && { echo "leak: $name, the caller's own, is in process $pid ($comm)"; found=1; }
+        [[ $hash == "${recorded[$name]}" ]] && { echo "leak: $name, the caller's own, is in process $pid ($comm)"; found=1; }
       fi
     done < "/proc/$pid/environ" 2> /dev/null
   done
@@ -136,11 +128,26 @@ run_env_leaks() {
   return 0
 }
 
-# The body of a run's env.sh, which a shell sources to reach the run: every
-# variable it exports that is not on the passed list stops being exported, so
-# a command it sends the run carries only that list and what env.sh sets.
+# run_env_start_check <script> <file> <pid>...: the check a harness with no
+# doctor runs at the end of its start: on a leak in those processes, prints
+# run_env_leaks' report, each line headed "<script>: ", and exits 1.
+run_env_start_check() {
+  local script=$1 leaks
+  shift
+  leaks=$(run_env_leaks "$@") && return 0
+  printf '%s\n' "$leaks" | sed "s/^/$script: /" >&2
+  echo "$script: stop what started with harness/stop.sh" >&2
+  exit 1
+}
+
+# The start of a run's env.sh, which a shell sources to reach the run: every
+# variable the shell exports that is not on the passed list stops being
+# exported, so a command it sends the run carries only that list and what
+# env.sh goes on to set.
 run_env_script() {
   cat << ENV
+# Keeps every command this shell runs to the passed list in $run_env_file
+# and what follows.
 _passed=" ${run_env_passed[*]} "
 for _v in \$(compgen -e); do [[ \$_passed == *" \$_v "* ]] || export -n "\$_v"; done
 while read -r _ _ _v; do export -fn "\$_v"; done < <(declare -Fx)

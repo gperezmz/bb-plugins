@@ -174,7 +174,8 @@ release_ports() {
 }
 
 # Runs a command as a process of the run, against the throwaway bb only: the
-# passed list, the run's mark, its HOME and its bb, and nothing else.
+# passed list, the run's mark, its HOME and TMPDIR, bb's telemetry off and its
+# bb's address, and nothing else.
 tb() { env -i "${run_env[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="${server_url:-}" "$@"; }
 # What the harness's own commands inside a run need to find it, into $self.
 set_self() { self=("DBP_RUN=$run" "DBP_SCRATCH_ROOT=$scratch_root" "DBP_EVIDENCE_ROOT=$evidence_root"); }
@@ -348,8 +349,7 @@ ENV
   sort -u "$ev/pids" -o "$ev/pids"
 
   {
-    echo "# Points bb at run $run and nothing else, and keeps every command this shell"
-    echo "# runs to the passed list and what follows. Source it in a subshell."
+    echo "# Points bb at run $run and nothing else. Source it in a subshell."
     run_env_script
   } > "$ev/env.sh"
   cat >> "$ev/env.sh" << ENV
@@ -852,9 +852,9 @@ save_snapshot() {
   local tmp old=""
   tmp=$(mktemp -d "${save_to%/*}/.saving.XXXXXX")
   (
-    rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
-      rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
-    for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
+    tb rsync -a --exclude /logs --exclude '/daemon.lock*' --exclude /desktop-browser-broker.json "$scratch/bb/" "$tmp/bb/" &&
+      tb rsync -a "$scratch/work/" "$tmp/work/" && mkdir "$tmp/home" || exit 1
+    for f in .claude .claude.json; do [[ ! -e $scratch/home/$f ]] || tb cp -a "$scratch/home/$f" "$tmp/home/" || exit 1; done
     printf '%s\n' "$save_env" > "$tmp/snapshot.env"
   ) || {
     rm -rf "$tmp"
