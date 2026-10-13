@@ -5,16 +5,16 @@ import { cn } from "@/lib/utils";
 import { CanWrite } from "@/shared/connect/Field";
 import { openConnect } from "@/shared/connect/requests";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
-import { ICONS, SERVICE_LOGOS } from "@/shared/look/icons";
+import { ICONS } from "@/shared/look/icons";
 import { Pill } from "@/shared/look/Pill";
 import { Tip } from "@/shared/look/Tip";
 import { TONE_TEXT } from "@/shared/look/tones";
-import { addTokenRequest, defaultText, expiryShown, renewOffer, sharesRateLimit, usedByText } from "./model";
+import { addTokenRequest, defaultText, expiryShown, renewOffer, usedByText } from "./model";
 import type { AccountActions } from "./use-account-actions";
 
 /**
  * One account as a card: a header with its logo, label, place and default, and a ⋯ menu for what is done to it
- * rarely; a line per token; and the chips of what it is assigned to read.
+ * rarely; a line per credential; and the chips of what it is assigned to read.
  */
 export function AccountItem({ account, actions }: { account: AccountSettingView; actions: AccountActions }) {
   const standsDefault = defaultText(account);
@@ -22,7 +22,7 @@ export function AccountItem({ account, actions }: { account: AccountSettingView;
   return (
     <li aria-label={account.label} className="flex flex-col gap-2.5 rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        {SERVICE_LOGOS[account.service] !== undefined ? <ServiceLogo service={account.service} decorative className="size-4" /> : null}
+        <ServiceLogo service={account.service} decorative logoOnly className="size-4" />
         <span className="font-medium">{account.label}</span>
         <span className="text-xs text-muted-foreground">{account.place}</span>
         {account.canWrite ? <CanWrite /> : null}
@@ -97,7 +97,7 @@ export function AccountItem({ account, actions }: { account: AccountSettingView;
   );
 }
 
-/** One token as a line: what it reaches, its kind, who reads with it, its expiry by urgency, Renew… where due, and 🗑. */
+/** One credential, a token or a login, as a line: what it reaches, its kind, who reads with it, its expiry by urgency, Renew… where due, and 🗑. */
 function Credential({ account, credential, actions }: { account: AccountSettingView; credential: CredentialSettingView; actions: AccountActions }) {
   const expiry = expiryShown(credential);
   const offer = renewOffer(account, credential);
@@ -110,7 +110,7 @@ function Credential({ account, credential, actions }: { account: AccountSettingV
         <span className="text-muted-foreground">{credential.kindLabel}</span>
         {credential.canWrite ? <CanWrite /> : null}
         <span className="text-muted-foreground">{usedByText(credential)}</span>
-        {sharesRateLimit(credential) ? <span className={TONE_TEXT.amber}>shares the agents' rate limit</span> : null}
+        {credential.sharesRateLimit ? <span className={TONE_TEXT.amber}>shares the agents' rate limit</span> : null}
         <span className="ml-auto flex items-center gap-2">
           <span className={cn("flex items-center gap-1", TONE_TEXT[expiry.tone])}>
             {expiry.icon !== null ? <Glyph name={expiry.icon} /> : null}

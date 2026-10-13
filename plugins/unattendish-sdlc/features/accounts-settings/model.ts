@@ -36,9 +36,6 @@ export function expiryShown(credential: Pick<CredentialSettingView, "refused" | 
   return { text: expiryText(credential), tone: "grey", icon: null };
 }
 
-/** A `gh` or `glab` login reads with the token the agents use, and so shares their rate limit. */
-export const sharesRateLimit = (credential: Pick<CredentialSettingView, "kind">): boolean => credential.kind === "gh" || credential.kind === "glab";
-
 /** The fleets that read with a credential, or that none does. */
 export function usedByText(credential: Pick<CredentialSettingView, "fleets">): string {
   return credential.fleets.length === 0 ? "no fleet reads with it" : `read by ${credential.fleets.join(", ")}`;

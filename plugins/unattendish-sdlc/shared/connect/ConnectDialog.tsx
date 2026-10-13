@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { AccountStep } from "./AccountStep";
 import { ServiceLogo } from "../look/Glyph";
 import { SERVICE_LOGOS } from "../look/icons";
-import { dialogTitle, newLoginService, popupService, stepMarks, type ResultAction } from "./model";
+import { canGoBack, connectingService, dialogTitle, popupService, stepMarks, type ResultAction } from "./model";
 import type { ConnectRequest } from "./requests";
 import { ResultStep } from "./ResultStep";
 import { SetupStep } from "./SetupStep";
@@ -14,10 +14,9 @@ import { useConnectFlow } from "./use-connect";
 export function ConnectDialog({ request, onClose }: { request: ConnectRequest; onClose(): void }) {
   const flow = useConnectFlow(request);
   const { state } = flow;
-  const service = state.choice?.kind === "new" ? state.choice.service : state.view !== null ? newLoginService(state.view, state.chosenService) : null;
+  const service = connectingService(state);
   const titled = popupService(request, state);
-  // Back to the account step, where the popup chose an account for a fleet rather than being opened for one.
-  const back = request.account === undefined && state.view?.fleet != null ? () => flow.back("account") : undefined;
+  const back = canGoBack(request, state.view) ? () => flow.back("account") : undefined;
   const act = (action: ResultAction) => {
     if (action === "confirm") flow.confirm();
     else if (action === "check-again") flow.checkAgain();

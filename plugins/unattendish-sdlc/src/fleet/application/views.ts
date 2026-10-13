@@ -356,6 +356,8 @@ export interface CredentialSettingView {
   readonly expiresInDays: number | null;
   /** The service refuses it now. */
   readonly refused: boolean;
+  /** A `gh` or `glab` login, which reads with the agents' token and so shares their rate limit. */
+  readonly sharesRateLimit: boolean;
   /** The fleets that read with it. */
   readonly fleets: readonly string[];
   readonly renew: RenewView;

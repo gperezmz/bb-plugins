@@ -308,7 +308,7 @@ describe("the section's look", () => {
 
   it("says a gh login shares the agents' rate limit, in amber, and keeps its sign-in command in place of Renew… (AC7)", async () => {
     fake.api.settings.mockResolvedValue(
-      settingsView({ accounts: [accountSetting({ via: "gh", credentials: [credentialSetting({ reaches: "every owner on github.com", kind: "gh", kindLabel: "gh login", canWrite: true, refused: true, renew: { kind: "login", command: "gh auth login --hostname github.com" } })] })] }),
+      settingsView({ accounts: [accountSetting({ via: "gh", credentials: [credentialSetting({ reaches: "every owner on github.com", kind: "gh", kindLabel: "gh login", canWrite: true, refused: true, sharesRateLimit: true, renew: { kind: "login", command: "gh auth login --hostname github.com" } })] })] }),
     );
     await show();
     expect(screen.getByText("shares the agents' rate limit").className).toContain("text-warning-text");

@@ -1,5 +1,5 @@
 import { Glyph, ServiceLogo } from "../look/Glyph";
-import { ICONS, SERVICE_LOGOS, SERVICE_NAMES, type Service } from "../look/icons";
+import { ICONS, SERVICE_NAMES, type Service } from "../look/icons";
 
 /**
  * A choice of service as tiles, each with its logo and name, the chosen one marked. Each tile is a radio button, so
@@ -16,7 +16,7 @@ export function ServiceTiles({ legend, name, services, chosen, onChoose }: { leg
             className="relative flex min-h-16 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-border p-3 hover:bg-state-hover has-[:checked]:border-foreground has-[:checked]:bg-state-active has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring"
           >
             <input type="radio" name={name} value={service} checked={chosen === service} onChange={() => onChoose(service)} className="sr-only" />
-            {SERVICE_LOGOS[service] !== undefined ? <ServiceLogo service={service} decorative className="size-6" /> : null}
+            <ServiceLogo service={service} decorative logoOnly className="size-6" />
             <span className="font-medium">{SERVICE_NAMES[service]}</span>
             {chosen === service ? <Glyph name={ICONS.done} className="absolute right-1.5 top-1.5" /> : null}
           </label>

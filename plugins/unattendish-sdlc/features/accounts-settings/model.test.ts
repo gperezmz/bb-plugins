@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountSetting, credentialSetting } from "@/testing/fixtures";
-import { addTokenRequest, defaultText, expiryText, expiryShown, intervalProblem, parseSeconds, renewOffer, secondsText, sharesRateLimit, usedByText } from "./model";
+import { addTokenRequest, defaultText, expiryText, expiryShown, intervalProblem, parseSeconds, renewOffer, secondsText, usedByText } from "./model";
 
 describe("an account", () => {
   it("says the places it is the default for, or nothing", () => {
@@ -24,10 +24,6 @@ describe("a credential", () => {
     expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 1 })).toEqual({ text: "expires in 1 day", tone: "amber", icon: "Clock" });
     expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 0 })).toEqual({ text: "expires today", tone: "amber", icon: "Clock" });
     expect(expiryShown({ refused: true, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "refused by the service", tone: "red", icon: "CircleX" });
-  });
-
-  it("shares the agents' rate limit where it is a gh or glab login (AC7)", () => {
-    expect(["gh", "glab", "fine-grained", "classic", "gitlab-token", "linear-key", "jira-token"].filter((kind) => sharesRateLimit({ kind: kind as never }))).toEqual(["gh", "glab"]);
   });
 
   it("names the fleets that read with it", () => {

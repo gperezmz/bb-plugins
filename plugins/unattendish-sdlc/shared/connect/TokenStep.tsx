@@ -4,7 +4,7 @@ import type { ConnectSecret, TokenPageView } from "@/src/fleet/application/views
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Glyph, ServiceLogo } from "../look/Glyph";
-import { ICONS, SERVICE_LOGOS } from "../look/icons";
+import { ICONS } from "../look/icons";
 import { Field } from "./Field";
 import { defaultLogin, loginTool, secretFor, secretLabel, secretNoun, secretProblem, sentToText, SERVICE_NAMES, signInText, type AccountChoice, type Method, type Service } from "./model";
 
@@ -64,7 +64,7 @@ export function TokenStep({
         <Part number={1} title={`Create a ${noun}`}>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" size="sm" variant="outline" onClick={() => navigate.openUrl(page.url as string)}>
-              {SERVICE_LOGOS[service] !== undefined ? <ServiceLogo service={service} decorative /> : null}
+              <ServiceLogo service={service} decorative logoOnly />
               Create token
               <Glyph name={ICONS.openPage} />
             </Button>

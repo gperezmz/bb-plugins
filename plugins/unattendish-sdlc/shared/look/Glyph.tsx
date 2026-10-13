@@ -21,11 +21,12 @@ export function Glyph({ name, tone, label, spin = false, className }: { name: st
 }
 
 /**
- * A service's logo, whose accessible name is the service's name unless `decorative`; the service's name in small muted
- * type for a service with no logo to show.
+ * A service's logo, whose accessible name is the service's name unless `decorative`; for a service with no logo to
+ * show, the service's name in small muted type, or nothing with `logoOnly`, where the words beside it already name it.
  */
-export function ServiceLogo({ service, decorative = false, className }: { service: Service; decorative?: boolean; className?: string }) {
+export function ServiceLogo({ service, decorative = false, logoOnly = false, className }: { service: Service; decorative?: boolean; logoOnly?: boolean; className?: string }) {
   const logo = SERVICE_LOGOS[service];
+  if (logo === undefined && logoOnly) return null;
   if (logo === undefined) return <span className={cn("shrink-0 text-xs text-muted-foreground", className)}>{SERVICE_NAMES[service]}</span>;
   return <Glyph name={logo} label={decorative ? undefined : SERVICE_NAMES[service]} className={className} />;
 }

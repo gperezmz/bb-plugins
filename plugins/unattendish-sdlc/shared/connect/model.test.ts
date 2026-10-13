@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { accountOption, connectView } from "@/testing/fixtures";
 import {
   actionLabel,
+  canGoBack,
   asksService,
   choiceFor,
   connectInput,
@@ -286,3 +287,11 @@ describe("the service in the title (AC1)", () => {
   });
 });
 
+describe("Back on the token step", () => {
+  it("is offered only where the popup chose the account for a fleet", () => {
+    expect(canGoBack(fleetRequest, connectView())).toBe(true);
+    expect(canGoBack({ ...fleetRequest, account: "acc_yuser", replaces: "c" }, connectView())).toBe(false);
+    expect(canGoBack(addAccount, connectView({ fleet: null }))).toBe(false);
+    expect(canGoBack(fleetRequest, null)).toBe(false);
+  });
+});

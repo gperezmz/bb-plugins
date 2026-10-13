@@ -206,6 +206,7 @@ export async function accountsView(deps: AccountsDeps): Promise<AccountSettingVi
           expiresAt: credential.expiresAt,
           expiresInDays: daysLeftToWarn(credential.expiresAt, now),
           refused: refused.has(credential.id),
+          sharesRateLimit: account.via !== "token",
           fleets: usedBy.get(credential.id) ?? [],
           renew: renewOf(account, credential, now),
         })),

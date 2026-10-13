@@ -140,9 +140,18 @@ export function asksService(view: ConnectView, chosen: Service | null): boolean 
  * operator chose, else the one Add account was given or typed; null while none is known.
  */
 export function popupService(request: ConnectRequest, state: Pick<ConnectState, "choice" | "view" | "chosenService" | "setup">): Service | null {
+  return connectingService(state) ?? request.target.service ?? (state.setup.service === "" ? null : state.setup.service);
+}
+
+/** The service the token step asks a credential for: the new login's, else the one the place names or the operator chose. */
+export function connectingService(state: Pick<ConnectState, "choice" | "view" | "chosenService">): Service | null {
   if (state.choice?.kind === "new") return state.choice.service;
-  if (state.view !== null) return newLoginService(state.view, state.chosenService);
-  return request.target.service ?? (state.setup.service === "" ? null : state.setup.service);
+  return state.view !== null ? newLoginService(state.view, state.chosenService) : null;
+}
+
+/** Whether the token step offers Back: only where the popup chose the account for a fleet, rather than being opened for one. */
+export function canGoBack(request: ConnectRequest, view: Pick<ConnectView, "fleet"> | null): boolean {
+  return request.account === undefined && view !== null && view.fleet !== null;
 }
 
 export function dialogTitle(request: ConnectRequest, view: ConnectView | null): string {
