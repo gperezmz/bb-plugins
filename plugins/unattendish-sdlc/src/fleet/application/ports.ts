@@ -499,6 +499,8 @@ export interface Store {
   recordFailedRead(repo: string, entry: { readonly at: string; readonly role: SourceRole; readonly ref: string | null; readonly reason: string }): void;
   recordPoll(repo: string, poll: PollRecord): void;
   requestsSince(repo: string, since: string): number;
+  /** How many reads failed at or after a time. */
+  failedReadsSince(repo: string, since: string): number;
 
   /** `dispatchedAt` is set for a wake bb sent at once, and left out for one waiting in bb's queue. */
   createWake(repo: string, wake: Omit<StoredWake, "id" | "repo" | "dispatchedAt"> & { readonly dispatchedAt?: string | null }): StoredWake;

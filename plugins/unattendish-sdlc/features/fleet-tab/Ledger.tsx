@@ -1,38 +1,22 @@
 import { useState } from "react";
+import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { LedgerChangeView } from "@/src/fleet/application/views";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useDashboardApi } from "@/shared/client";
+import { LINK_CLASS } from "@/shared/ItemLink";
 import { LiveScreen } from "@/shared/LiveScreen";
+import { Glyph } from "@/shared/look/Glyph";
+import { ICONS, OUTCOME_ICONS } from "@/shared/look/icons";
+import { OUTCOME_TONES, TONE_TEXT } from "@/shared/look/tones";
 import { useLive } from "@/shared/use-live";
 import { changeWhen, doneText, droppedHeading, LEDGER_FILTERS, ledgerContent, ledgerFilter, ledgerIsEmpty, listingText, wakeText, type LedgerShow } from "./model";
 import { useDebounced } from "./use-debounced";
 
 const TYPING_PAUSE_MS = 250;
 
-/**
- * The fleet's ledger, filterable by item and by what was done. It is mounted, and so fetched, only
- * once its section is opened.
- */
-export function LedgerSection({ repo }: { repo: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <section aria-labelledby="tab-ledger" className="flex flex-col gap-2">
-      <h3 id="tab-ledger" className="text-sm font-semibold">
-        <button type="button" aria-expanded={open} aria-controls="tab-ledger-body" onClick={() => setOpen(!open)} className="rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-          Ledger {open ? "▾" : "▸"}
-        </button>
-      </h3>
-      {open ? (
-        <div id="tab-ledger-body">
-          <Ledger repo={repo} />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function Ledger({ repo }: { repo: string }) {
+/** The Ledger tab: the fleet's ledger, filterable by what was done and by item. It is mounted, and so fetched, only once its tab opens. */
+export function Ledger({ repo }: { repo: string }) {
   const api = useDashboardApi();
   const [show, setShow] = useState<LedgerShow>("all");
   const [item, setItem] = useState("");
@@ -47,7 +31,7 @@ function Ledger({ repo }: { repo: string }) {
   );
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2">
         <div role="group" aria-label="What was done" className="flex flex-wrap gap-1">
           {LEDGER_FILTERS.map((filter) => (
             <button
@@ -55,13 +39,19 @@ function Ledger({ repo }: { repo: string }) {
               type="button"
               aria-pressed={show === filter.id}
               onClick={() => setShow(filter.id)}
-              className={cn("rounded-md border border-border px-2 py-0.5 text-xs", show === filter.id ? "bg-foreground text-background" : "text-muted-foreground hover:bg-state-hover")}
+              className={cn(
+                "rounded-full border px-2.5 py-0.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                show === filter.id ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:bg-state-hover hover:text-foreground",
+              )}
             >
               {filter.label}
             </button>
           ))}
         </div>
-        <Input aria-label="Filter by item" placeholder="Filter by item, e.g. #163" value={item} onChange={(event) => setItem(event.target.value)} className="h-8 min-w-40 flex-1" />
+        <div className="relative">
+          <Glyph name={ICONS.search} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" aria-label="Filter by item" placeholder="Filter by item, e.g. #163" value={item} onChange={(event) => setItem(event.target.value)} className="h-8 pl-7" />
+        </div>
       </div>
       <LiveScreen live={live} what="the ledger">
         {(ledger) => {
@@ -75,10 +65,10 @@ function Ledger({ repo }: { repo: string }) {
                   <div className="font-medium">Dropped, by reason</div>
                   {content.dropped.map((group) => (
                     <details key={group.reason}>
-                      <summary className="cursor-pointer">
+                      <summary className="cursor-pointer text-xs">
                         {droppedHeading(group)}
                       </summary>
-                      <div className="pl-4">
+                      <div className="pt-1">
                         <ChangeList changes={group.changes} />
                       </div>
                     </details>
@@ -90,7 +80,8 @@ function Ledger({ repo }: { repo: string }) {
                   <div className="font-medium">Wakes</div>
                   <ul>
                     {content.wakes.map((wake) => (
-                      <li key={`${wake.queuedAt}:${wake.kind}`} className="text-muted-foreground">
+                      <li key={`${wake.queuedAt}:${wake.kind}`} className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Glyph name={ICONS.wake} />
                         {wakeText(wake)}
                       </li>
                     ))}
@@ -105,24 +96,39 @@ function Ledger({ repo }: { repo: string }) {
   );
 }
 
+/** Changes as a timeline, newest first: each with its time, its Ref, kind and actor, and its outcome, marked by an icon in the outcome's colour. */
 function ChangeList({ changes }: { changes: readonly LedgerChangeView[] }) {
   return (
-    <ul className="flex flex-col gap-0.5">
-      {changes.map((change, at) => (
-        <li key={`${change.at}:${change.ref}:${at}`} className="flex flex-wrap gap-x-3 text-xs">
-          <span className="tabular-nums text-muted-foreground">{changeWhen(change)}</span>
-          {change.listing === undefined ? (
-            <>
-              <span>{change.ref}</span>
-              <span>{change.kind}</span>
-              <span className="text-muted-foreground">{change.actor ?? "—"}</span>
-            </>
-          ) : (
-            <span>{listingText(change.listing)}</span>
-          )}
-          <span>{doneText(change)}</span>
-        </li>
-      ))}
-    </ul>
+    <ol className="ml-2 flex flex-col border-l border-border">
+      {changes.map((change, at) => {
+        const tone = OUTCOME_TONES[change.done];
+        return (
+          <li key={`${change.at}:${change.ref}:${at}`} className="relative flex flex-col py-1 pl-4 text-xs">
+            <span aria-hidden className="absolute -left-2 top-1.5 flex size-4 items-center justify-center rounded-full bg-background">
+              <Glyph name={OUTCOME_ICONS[change.done]} tone={tone} className="size-3" />
+            </span>
+            <span className="flex flex-wrap items-baseline gap-x-2">
+              <span className="tabular-nums text-muted-foreground">{changeWhen(change)}</span>
+              {change.listing === undefined ? (
+                <>
+                  {change.url !== "" ? (
+                    <UrlLink href={change.url} className={LINK_CLASS}>
+                      {change.ref}
+                    </UrlLink>
+                  ) : (
+                    <span>{change.ref}</span>
+                  )}
+                  <span>{change.kind}</span>
+                  <span className="text-muted-foreground">{change.actor ?? "—"}</span>
+                </>
+              ) : (
+                <span>{listingText(change.listing)}</span>
+              )}
+            </span>
+            <span className={TONE_TEXT[tone]}>{doneText(change)}</span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TONE_BORDER, TONE_FILL, TONE_TEXT } from "./tones";
+import { TONE_BORDER, TONE_FILL, TONE_TEXT, TONE_TINT } from "./tones";
 
 const root = join(import.meta.dirname, "..", "..");
 const filesUnder = (dir: string): string[] => readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? filesUnder(join(dir, name)) : [join(dir, name)]));
@@ -49,6 +49,10 @@ describe("the plugin's colours", () => {
   it("give coloured text the text variants of the error and warning tones", () => {
     expect(TONE_TEXT.red).toBe("text-destructive-text");
     expect(TONE_TEXT.amber).toBe("text-warning-text");
-    for (const classes of [TONE_TEXT, TONE_FILL, TONE_BORDER]) for (const name of Object.values(classes)) expect(foreignColours(name), name).toEqual([]);
+    // The Fleet tab, the fleet header and the Fleet chip (#258 AC14).
+    const surfaces = ["features/fleet-tab", "features/fleet-chip", "shared/fleet-header"].flatMap((folder) => filesUnder(join(root, folder))).filter((file) => !/\.test\./.test(file));
+    const plain = surfaces.flatMap((file) => [...readFileSync(file, "utf8").matchAll(/\btext-(?:destructive|warning)\b(?!-text)/g)].map((hit) => `${relative(root, file)}: ${hit[0]}`));
+    expect(plain).toEqual([]);
+    for (const classes of [TONE_TEXT, TONE_FILL, TONE_BORDER, TONE_TINT]) for (const name of Object.values(classes)) expect(foreignColours(name), name).toEqual([]);
   });
 });

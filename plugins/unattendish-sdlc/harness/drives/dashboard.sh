@@ -25,7 +25,7 @@ bb unattendish fleet interval "$repo" 30s > /dev/null
 page=$(rpc fleets)
 check "the page counts the one Inbox row waiting" eq "$(jq -c '[.waiting, (.inbox | length), .fleets[0].repo, .fleets[0].managerThreadId]' <<< "$page")" "[1,1,\"$repo\",\"$t\"]"
 check "the row offers Answer…" eq "$(jq -c '.inbox[0] | [.ref, .waitsFor, .offer.label, .action]' <<< "$page")" '["#7","answer","Answer…",null]'
-check "the card has no cost without Thread Usage, and no reason it is not fully watched" eq "$(jq -c '.fleets[0] | [.cost, (.reasons | length)]' <<< "$page")" '[null,0]'
+check "the card has no cost without Thread Usage, and no problem" eq "$(jq -c '.fleets[0] | [.cost, (.problems | length)]' <<< "$page")" '[null,0]'
 row_id=$(jq -r '.inbox[0].id' <<< "$page")
 
 sent=$(rpc sendAction "$(jq -nc --arg fleet "$repo" --arg row "$row_id" '{fleet: $fleet, rowId: $row, kind: "answer", text: "Go with B.\nIt is simpler."}')")

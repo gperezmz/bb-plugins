@@ -1,22 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
+import { actionRecord, ago, HOUR, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { type LocalAction, actionName, recentActionText, rowAction, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
+import { type LocalAction, actionName, rowAge, rowAction, sendInput, shortLinkLabel, takesText, unreadableLine, waitsForText } from "./row-model";
 
 const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
 describe("what a row says", () => {
   it("says what each row waits for", () => {
     expect(["answer", "grant", "ready", "other"].map((w) => waitsForText(w as "answer"))).toEqual(["your answer", "a grant to merge", "your ready label", "something else"]);
-  });
-
-  it("ages the wait by the view's clock", () => {
-    expect(waitedText({ since: ago(5 * MINUTE) }, NOW)).toBe("5m");
-  });
-
-  it("says an unreadable row is unreadable, naming the column", () => {
-    expect(unreadableText({ reason: 'the table has no "Waits for" column' })).toBe('unreadable: the table has no "Waits for" column');
-    expect(unreadableText({ reason: "unreadable: Waits for" })).toBe("unreadable: Waits for");
   });
 });
 
@@ -97,14 +88,6 @@ describe("the call an action makes", () => {
   });
 });
 
-describe("recent actions", () => {
-  it("reads as a line", () => {
-    expect(recentActionText({ kind: "answer", ref: "#163", state: "done" })).toBe("answered #163 · done");
-    expect(recentActionText({ kind: "grant", ref: "!41", state: "sent" })).toBe("granted !41 · sent");
-    expect(recentActionText({ kind: "build", ref: "#167", state: "done" })).toBe("asked to build #167 · done");
-  });
-});
-
 describe("the composer", () => {
   const key = (k: string, mods: { metaKey?: boolean; ctrlKey?: boolean } = {}) => ({ key: k, metaKey: false, ctrlKey: false, ...mods });
 
@@ -125,5 +108,30 @@ describe("the composer", () => {
 
   it("cancels on Esc, even with text", () => {
     expect(keyIntent(key("Escape"), "yes")).toBe("cancel");
+  });
+});
+
+describe("a queue row", () => {
+  it("turns a row's age amber once it has waited 8 hours", () => {
+    expect(rowAge({ since: ago(20_000) }, NOW)).toEqual({ text: "20s", long: false });
+    expect(rowAge({ since: ago(11 * HOUR + 36 * MINUTE) }, NOW)).toEqual({ text: "11h 36m", long: true });
+    expect(rowAge({ since: ago(8 * HOUR) }, NOW).long).toBe(true);
+  });
+
+  it("labels a row's link by what its URL opens, whatever the row's Ref", () => {
+    const url = (href: string) => ({ link: { kind: "url", url: href, text: href.replace("https://", "") } }) as const;
+    expect(shortLinkLabel(url("https://github.example/org/dash/issues/8"))).toBe("#8");
+    expect(shortLinkLabel(url("https://github.example/org/dash/pull/12"))).toBe("#12");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/merge_requests/45"))).toBe("!45");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/issues/3"))).toBe("#3");
+    expect(shortLinkLabel(url("https://linear.app/acme/issue/ENG-212/which-locale"))).toBe("ENG-212");
+    expect(shortLinkLabel(url("https://acme.atlassian.net/browse/OPS-7"))).toBe("OPS-7");
+    expect(shortLinkLabel(url("https://example.test/somewhere"))).toBeUndefined();
+    expect(shortLinkLabel({ link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
+  });
+
+  it("says what an unreadable row is and why", () => {
+    expect(unreadableLine({ line: 9, reason: "the table has no \"Waits for\" column" }, "Inbox")).toBe("Unreadable Inbox row, line 9: the table has no \"Waits for\" column");
+    expect(unreadableLine({ line: 22, reason: "the table has no \"Blocked on\" column" })).toBe("Unreadable row, line 22: the table has no \"Blocked on\" column");
   });
 });

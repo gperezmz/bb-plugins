@@ -5,11 +5,11 @@ import { screenState, type Live } from "./use-live";
 export function LiveScreen<T>({ live, what, children }: { live: Pick<Live<T>, "data" | "error">; what: string; children(data: T): ReactNode }) {
   const state = screenState(live);
   if (state === "loading") return <p className="text-sm text-muted-foreground">Loading {what}…</p>;
-  if (state === "failed") return <p role="alert" className="text-sm text-destructive">Could not load {what}: {live.error}</p>;
+  if (state === "failed") return <p role="alert" className="text-sm text-destructive-text">Could not load {what}: {live.error}</p>;
   return (
     <>
       {live.error !== null ? (
-        <p role="alert" className="mb-3 text-xs text-warning">
+        <p role="alert" className="mb-3 text-xs text-warning-text">
           Could not refresh {what}: {live.error}
         </p>
       ) : null}

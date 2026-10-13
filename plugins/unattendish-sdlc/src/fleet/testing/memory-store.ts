@@ -185,6 +185,10 @@ export class InMemoryStore implements Store {
     return (this.records.get(repo)?.polls ?? []).filter((poll) => poll.at >= since).reduce((total, poll) => total + poll.counted, 0);
   }
 
+  failedReadsSince(repo: string, since: string): number {
+    return (this.records.get(repo)?.failedReads ?? []).filter((read) => read.at >= since).length;
+  }
+
   createWake(repo: string, wake: Parameters<Store["createWake"]>[1]): StoredWake {
     const stored: StoredWake = {
       id: ++this.lastWakeId,

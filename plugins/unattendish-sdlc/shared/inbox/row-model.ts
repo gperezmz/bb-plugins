@@ -1,6 +1,6 @@
 // What an Inbox row shows and offers, decided from the row the server sent and what this window has in flight.
-import type { ActionKind, ActionOffer, ActionRecordView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
-import { ageLabel } from "../format";
+import type { ActionKind, ActionOffer, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
+import { ageLabel, elapsedMs, spanLabel } from "../format";
 import { hasRef } from "../item-title";
 
 /** What a row waits for, as the table says it. */
@@ -15,11 +15,6 @@ export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
     case "other":
       return "something else";
   }
-}
-
-/** How long a row has waited, as of the view's clock. */
-export function waitedText(row: Pick<InboxRowView, "since">, now: string): string {
-  return ageLabel(row.since, now);
 }
 
 /** What this window knows of the action it sent on a row, until the server's view says it. */
@@ -87,13 +82,39 @@ export function sendInput(row: Pick<InboxRowView, "fleet" | "id">, kind: ActionK
   return base;
 }
 
-/** `unreadable: <column>`, whether the server's reason already says it or only names the column. */
-export function unreadableText(row: Pick<UnreadableInboxRowView, "reason">): string {
-  return /^unreadable\b/i.test(row.reason) ? row.reason : `unreadable: ${row.reason}`;
+/** How long a row may wait before its age turns amber. A placeholder: changing it is this constant. */
+export const AGE_AMBER_MS = 8 * 3_600_000;
+
+/** A row's age, and whether it has waited long enough to turn amber. */
+export function rowAge(row: Pick<InboxRowView, "since">, now: string): { readonly text: string; readonly long: boolean } {
+  const waited = elapsedMs(row.since, now);
+  return { text: spanLabel(waited), long: waited >= AGE_AMBER_MS };
 }
 
-/** A recently finished action in a line: `answered #163 · done`. */
-export function recentActionText(action: Pick<ActionRecordView, "kind" | "ref" | "state">): string {
-  const verb = action.kind === "answer" ? "answered" : action.kind === "grant" ? "granted" : "asked to build";
-  return `${verb} ${action.ref} · ${action.state}`;
+/** What a link's URL opens, as its service names it, by the URL's own path: an issue or a pull request `#12`, a merge request `!12`, a Linear or Jira key. */
+const SHORT_LINKS: readonly [RegExp, (match: RegExpExecArray) => string][] = [
+  [/\/-\/merge_requests\/(\d+)(?:[/?#]|$)/, (m) => `!${m[1]}`],
+  [/\/(?:-\/)?(?:issues|pull)\/(\d+)(?:[/?#]|$)/, (m) => `#${m[1]}`],
+  [/\/(?:issue|browse)\/([A-Z][A-Z0-9_]*-\d+)(?:[/?#]|$)/, (m) => m[1]!],
+];
+
+/**
+ * The queue's short text for a row's link: what the URL opens, `#12` or `ENG-212`, read off the URL itself, since a
+ * row's Link is its pull request where one is open and so need not be its Ref's item; the link's own text otherwise.
+ */
+export function shortLinkLabel(row: Pick<InboxRowView, "link">): string | undefined {
+  if (row.link.kind !== "url") return undefined;
+  for (const [pattern, label] of SHORT_LINKS) {
+    const match = pattern.exec(row.link.url);
+    if (match !== null) return label(match);
+  }
+  return undefined;
+}
+
+/**
+ * An unreadable row in a line, naming its section where the list it sits in holds more than one:
+ * `Unreadable Inbox row, line 9: the table has no "Waits for" column`, or `Unreadable row, line 9: …` without one.
+ */
+export function unreadableLine(row: Pick<UnreadableInboxRowView, "line" | "reason">, section?: string): string {
+  return `Unreadable ${section === undefined ? "" : `${section} `}row, line ${row.line}: ${row.reason}`;
 }
