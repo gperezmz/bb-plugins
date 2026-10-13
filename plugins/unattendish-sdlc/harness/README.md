@@ -2,7 +2,7 @@
 
 A throwaway bb with Unattendish installed from this checkout, real Claude Code manager threads that talk to a fake Anthropic API, a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, and drives that register fleets, script the fakes over HTTP and read what reached the managers, the ledger and the status. Every poll interval is set to the 30-second floor, so a drive waits at most about 35 seconds for a poll.
 
-The harness never touches your own bb. Every command it runs has the variables that name a bb (`BB_SERVER_URL`, `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_CLI` and the like) unset or pointed at the throwaway, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Nothing it writes goes inside the checkout, and no drive calls a real service: the accounts it adds have loopback API addresses and fake tokens.
+The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](../../cache-keeper/harness/run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Every bash in the run, the one Claude Code runs its commands in included, skips the system bashrc (`NOSYSBASHRC=1`), which on NixOS sources the machine's profile, so nothing that profile exports enters the run either. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is. Nothing it writes goes inside the checkout, and no drive calls a real service: the accounts it adds have loopback API addresses and fake tokens.
 
 ## Requirements
 
@@ -36,7 +36,9 @@ It refuses to start, and changes nothing, when any of its ports answers, when it
 
 The fakes' item URLs are on those hosts (`https://github.example/org/repo/issues/7`, `https://gitlab.example/group/proj/-/issues/3`, `https://linear.app/acme/issue/ENG-12`, `https://acme.atlassian.net/browse/PROJ-5`), which are never reached: only the API addresses are.
 
-It prints what to source to point `bb` at the throwaway, and only at it:
+Before it reports the run up, `start.sh` reads every process the run holds for a **leak**, a variable you held when you ran it, same name and value, outside the passed list and the names `run-env.sh` lists as set by the run, or one it planted under a random name; on one it exits non-zero, naming the variable, the process and where the list is kept, never a value. It fails too when `gh auth token` run inside the run finds a GitHub token, which bb would hand every thread it starts; no run process reaches your D-Bus session bus, where a keyring could give one. It keeps what it needs for the leak check in `caller-env` in the run directory: each variable's name and a salted hash of its value.
+
+It prints what to source to point `bb` at the throwaway, and only at it. A shell that sources it stops exporting every variable not on the passed list, so what it sends the run carries the list and the run's own variables alone:
 
 ```sh
 source /tmp/ud-harness/env.sh
@@ -105,9 +107,11 @@ plugins/unattendish-sdlc/harness/stop.sh --keep   # keeps it, logs and bb's data
 
 It finds every process the harness started by a mark in its environment (`UD_HARNESS=<run directory>`) or the throwaway bb's data directory, so it finds the bb server's detached child and Claude Code too. It prints each one's command line before stopping it, kills any still running after 10 seconds, then checks again that none carries the mark and that none of its ports answers. It removes the run directory only when both hold, and exits non-zero otherwise.
 
+To find a run's processes yourself, test each one's environment for the mark, as `stop.sh` does, with `grep -qzxE "UD_HARNESS=<run directory>" /proc/<pid>/environ`, whose answer is the exit status alone. Never print a process's environment, the run's or anyone's: your own processes hold your credentials.
+
 ## Guarantees
 
-- **Never your bb.** Every command runs with bb's variables unset or pointed at the throwaway, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones, Cache Keeper's harness's and the npm-install check's.
+- **Never your bb, none of your credentials.** Every process of the run holds the passed list and what the harness sets, nothing else of yours, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones, Cache Keeper's harness's and the npm-install check's.
 - **Nothing real is called.** The fakes answer on loopback, the accounts' tokens are fake, and the fake Anthropic API answers every Claude Code turn.
 - **Refuses busy ports and directories.** `start.sh` starts nothing when a port answers, the run directory exists, or a process of an earlier start runs.
 - **Stop leaves nothing.** `stop.sh` exits 0 only when no process carries the harness's mark and no harness port answers.
@@ -115,8 +119,9 @@ It finds every process the harness started by a mark in its environment (`UD_HAR
 ## Files
 
 - `start.sh`, `stop.sh`, `config.sh`: the throwaway bb; `config.sh` holds the ports, the run directory and the process search both use.
+- `../../cache-keeper/harness/run-env.sh`: the passed list, and the leak check, shared with Cache Keeper's harness and the driving-bb-plugins skill's.
 - `fake-services.ts`: the four fakes of `test/fakes/` on their ports. `age-last-poll.mjs`: moves a fleet's stored last-poll time back, for the restart drive.
 - `drives/lib.sh`: what every drive shares. `drives/*.sh`: the drives, and `run-all.sh`.
-- In the run directory: `env.sh`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `fake-services.log`, `requests.jsonl` (the fake Anthropic API's), `manifests/` (each drive's manifest files), `drive-threads` and `drive-repos` (what every drive made), and bb's data under `bb/` (its own logs in `bb/logs/`, the plugin's database in `bb/plugins/unattendish-sdlc/data.db`).
+- In the run directory: `env.sh`, `caller-env`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `fake-services.log`, `requests.jsonl` (the fake Anthropic API's), `manifests/` (each drive's manifest files), `drive-threads` and `drive-repos` (what every drive made), and bb's data under `bb/` (its own logs in `bb/logs/`, the plugin's database in `bb/plugins/unattendish-sdlc/data.db`).
 
 The scripts pass `shellcheck -x -P SCRIPTDIR`.

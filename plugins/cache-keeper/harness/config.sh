@@ -17,9 +17,10 @@ ports=("$api_port" "$server_port" "$daemon_port")
 # finds the bb server's detached child, Claude Code and its background
 # commands too.
 mark="CK_HARNESS=$run"
-# Every variable that would point a command at another bb, the user's own.
-unset_bb=(-u BB_SERVER_URL -u BB_THREAD_ID -u BB_PROJECT_ID -u BB_ENVIRONMENT_ID -u BB_CLI -u BB_HOST_DAEMON_PORT -u BB_THREAD_STORAGE -u BB_DATA_DIR
-  -u CLAUDE_CONFIG_DIR -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL -u CLAUDE_CODE_OAUTH_TOKEN)
+# The passed list, run_env, and the leak check every process of a run is
+# started and checked with.
+# shellcheck source-path=SCRIPTDIR source=run-env.sh
+source "$harness/run-env.sh"
 
 # Whether something listens on 127.0.0.1:$1.
 port_busy() {
