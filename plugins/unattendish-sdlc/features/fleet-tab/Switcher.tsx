@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject } from "react";
 import { cn } from "@/lib/utils";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
@@ -10,15 +10,22 @@ const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-
 /**
  * The fleet's name in the Fleet tab's header as a menu of every fleet the thread holds, each with its waiting count and
  * its dot, the one shown checked. Enter, Space or an arrow opens it on the fleet shown; the arrows, Home and End move,
- * Enter or Space picks, and Escape or Tab closes it.
+ * Enter or Space picks, and Escape or Tab closes it. The switcher drawn for the fleet picked takes the focus where
+ * `takeFocus` is set, and clears it.
  */
-export function Switcher({ entries, shown, onPick }: { entries: readonly SwitcherEntry[]; shown: string; onPick(repo: string): void }) {
+export function Switcher({ entries, shown, takeFocus, onPick }: { entries: readonly SwitcherEntry[]; shown: string; takeFocus: MutableRefObject<boolean>; onPick(repo: string): void }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const trigger = useRef<HTMLButtonElement>(null);
   const items = useRef<(HTMLButtonElement | null)[]>([]);
   const root = useRef<HTMLDivElement>(null);
   const shownAt = Math.max(0, entries.findIndex((entry) => entry.repo === shown));
+
+  useEffect(() => {
+    if (!takeFocus.current) return;
+    takeFocus.current = false;
+    trigger.current?.focus();
+  }, [takeFocus]);
 
   useEffect(() => {
     if (open) items.current[active]?.focus();

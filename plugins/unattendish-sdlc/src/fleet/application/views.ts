@@ -549,7 +549,7 @@ export interface DashboardApi {
   fleets(): Promise<FleetsView>;
   /** What the Fleet chip and the Fleet tab know of a thread. */
   threadFleet(input: { threadId: string }): Promise<ThreadFleetView>;
-  /** The whole Fleet tab for the fleet a manager holds. */
+  /** The whole Fleet tab for one fleet a manager holds. */
   fleetDetail(input: { repo: string }): Promise<Result<{ detail: FleetDetailView }>>;
   ledger(input: { repo: string; filter?: LedgerFilter }): Promise<Result<{ ledger: LedgerView }>>;
   /**

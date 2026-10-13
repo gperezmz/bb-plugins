@@ -3,7 +3,7 @@ import type { FleetCardView, FleetCredentialView, FleetDetailView, InFlightRowVi
 import { credentialKind } from "@/shared/credentials";
 import { ageLabel, dateTimeLabel, expiryText, intervalLabel, plural, polledLabel } from "@/shared/format";
 import type { Tone } from "@/shared/look/tones";
-import { flagsOf, worstFlag } from "@/shared/fleet-flags";
+import { fleetMark } from "@/shared/fleet-flags";
 
 /** A manifest the plugin read. */
 export type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
@@ -24,8 +24,7 @@ export interface SwitcherEntry {
 /** The switcher's entries, one per fleet the thread holds, in the order given. */
 export function switcherEntries(cards: readonly Pick<FleetCardView, "repo" | "waiting" | "problems" | "warnings">[], now: string): SwitcherEntry[] {
   return cards.map((card) => {
-    const count = card.waiting > 0 ? card.waiting : null;
-    const dot = worstFlag(flagsOf(card, now));
+    const { count, dot } = fleetMark(card, now);
     const parts = [card.repo, ...(count === null ? [] : [`${count} waiting on you`]), ...(dot === null ? [] : [dot === "problem" ? "has a problem" : "has a warning"])];
     return { repo: card.repo, count, dot, label: parts.join(", ") };
   });

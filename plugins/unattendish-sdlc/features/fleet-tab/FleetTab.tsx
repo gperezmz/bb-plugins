@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MutableRefObject, type ReactNode } from "react";
 import type { FleetDetailView, HeldFleetView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { useDashboardApi } from "@/shared/client";
@@ -54,6 +54,8 @@ export function FleetTab({ threadId }: { threadId: string; params?: unknown }) {
 function Shown({ fleets, now, managerThreadId }: { fleets: readonly HeldFleetView[]; now: string; managerThreadId: string }) {
   const wanted = useShownFleet(managerThreadId);
   const [tab, setTab] = useState<FleetTabName>("work");
+  // Set by a pick in the switcher, so the switcher drawn for the fleet picked takes the focus back.
+  const picked = useRef(false);
   const ordered = threadFleetOrder(fleets, now);
   const repo = shownFleet(ordered, wanted)!.card.repo;
   useEffect(() => {
@@ -61,10 +63,20 @@ function Shown({ fleets, now, managerThreadId }: { fleets: readonly HeldFleetVie
   }, [wanted, repo, managerThreadId]);
   const entries = ordered.length > 1 ? switcherEntries(ordered.map((held) => held.card), now) : null;
   // Keyed by the fleet, so the folds, the scroll target and the Ledger start afresh for each; the tab chosen carries over.
-  return <Detail key={repo} repo={repo} managerThreadId={managerThreadId} entries={entries} tab={tab} setTab={setTab} />;
+  return <Detail key={repo} repo={repo} managerThreadId={managerThreadId} entries={entries} tab={tab} setTab={setTab} picked={picked} />;
 }
 
-function Detail({ repo, managerThreadId, entries, tab, setTab }: { repo: string; managerThreadId: string; entries: readonly SwitcherEntry[] | null; tab: FleetTabName; setTab(tab: FleetTabName): void }) {
+interface DetailProps {
+  readonly repo: string;
+  readonly managerThreadId: string;
+  /** The switcher's entries; null for a thread holding one fleet. */
+  readonly entries: readonly SwitcherEntry[] | null;
+  readonly tab: FleetTabName;
+  setTab(tab: FleetTabName): void;
+  readonly picked: MutableRefObject<boolean>;
+}
+
+function Detail({ repo, managerThreadId, entries, tab, setTab, picked }: DetailProps) {
   const api = useDashboardApi();
   const touch = useIsCompactViewport();
   const [open, setOpen] = useState<Readonly<Record<WorkSection, boolean>>>(INITIALLY_OPEN);
@@ -120,7 +132,15 @@ function Detail({ repo, managerThreadId, entries, tab, setTab }: { repo: string;
               lastAction={detail.lastAction}
               now={detail.generatedAt}
               onReview={() => review(detail)}
-              name={entries !== null ? <Switcher entries={entries} shown={repo} onPick={(next) => showFleet(managerThreadId, next)} /> : undefined}
+              name={entries !== null ? <Switcher
+                    entries={entries}
+                    shown={repo}
+                    takeFocus={picked}
+                    onPick={(next) => {
+                      picked.current = next !== repo;
+                      showFleet(managerThreadId, next);
+                    }}
+                  /> : undefined}
             />
             <div role="tablist" aria-label="Fleet" onKeyDown={onKey} className="sticky top-0 z-10 -mx-1 flex gap-1 border-b border-border bg-background px-1">
               {FLEET_TABS.map((entry) => {

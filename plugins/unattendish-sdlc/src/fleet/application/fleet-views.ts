@@ -167,7 +167,7 @@ const managerOf = (standing: ThreadStanding | null): ManagerView => (standing?.s
 export const COST_PERIOD = "since this manager started";
 
 /** The other fleets the fleet's manager thread holds, by name, whose spend is the same money. */
-export const sharingOf = (deps: Pick<ViewDeps, "store">, g: Gathered): string[] =>
+const sharingOf = (deps: Pick<ViewDeps, "store">, g: Gathered): string[] =>
   deps.store
     .listFleets()
     .filter((other) => other.registration.managerThreadId === g.fleet.registration.managerThreadId && repoId(other.registration.repo) !== g.repo)

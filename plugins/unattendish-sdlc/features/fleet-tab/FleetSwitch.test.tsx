@@ -7,7 +7,7 @@ import { clearReviewRequests, requestReview } from "@/shared/review-request";
 import { clearShownFleets, showFleet } from "@/shared/shown-fleet";
 import { refetchEveryView } from "@/shared/use-live";
 import { fake, resetFakeApi } from "@/testing/api";
-import { fleetCard, fleetDetail, managerFleet, managerFleets, unreadableInboxRow } from "@/testing/fixtures";
+import { fleetCard, fleetDetail, ledgerView, managerFleet, managerFleets, unreadableInboxRow } from "@/testing/fixtures";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
 import { FleetTab } from "./index";
@@ -159,6 +159,8 @@ describe("the switcher (#270 AC3)", () => {
     expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: /^org\/dash/ }));
     fireEvent.click(document.activeElement!);
     expect(await header("org/dash")).toBeTruthy();
+    expect(document.activeElement).toBe(switcher());
+    expect(switcher().getAttribute("aria-label")).toBe("Fleet org/dash, one of 2: switch fleet");
   });
 
   it("is the fleet's name as plain text for a thread with one fleet (#270 AC3, AC7)", async () => {
@@ -168,6 +170,28 @@ describe("the switcher (#270 AC3)", () => {
     const banner = await header("org/dash");
     expect(within(banner).getByText("org/dash").tagName).toBe("SPAN");
     expect(screen.queryByRole("button", { name: /switch fleet$/ })).toBeNull();
+  });
+});
+
+describe("switching fleet in the tab (#270 AC3)", () => {
+  it("keeps the tab chosen, and loads the Ledger of the fleet picked while the Ledger is open", async () => {
+    fake.api.ledger.mockResolvedValue({ ok: true, ledger: ledgerView() });
+    await open();
+    await header("org/wake");
+    fireEvent.click(screen.getByRole("tab", { name: /^Ledger/ }));
+    act(() => showFleet("thr_a", "org/dash"));
+    await header("org/dash");
+    expect(screen.getByRole("tab", { name: /^Ledger/ }).getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(fake.api.ledger).toHaveBeenLastCalledWith(expect.objectContaining({ repo: "org/dash" })));
+  });
+
+  it("keeps Notes chosen across a switch", async () => {
+    await open();
+    await header("org/wake");
+    fireEvent.click(screen.getByRole("tab", { name: /^Notes/ }));
+    act(() => showFleet("thr_a", "org/dash"));
+    await header("org/dash");
+    expect(screen.getByRole("tab", { name: /^Notes/ }).getAttribute("aria-selected")).toBe("true");
   });
 });
 

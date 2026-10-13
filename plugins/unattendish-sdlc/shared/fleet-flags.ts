@@ -26,9 +26,9 @@ export interface Flag {
   readonly saidElsewhere: boolean;
 }
 
-/** The order flags are shown in: the manifest, its unreadable rows, a half Connect… fixes, a gone manager, any other problem, an expiring token, polling. */
+/** The order flags are shown in: the manifest (missing, unreadable, or naming another repository), its unreadable rows, a half Connect… fixes, a gone manager, any other problem, an expiring token, polling. */
 function rankOf(flag: Flag, code: string | null): number {
-  if (code === "manifest-missing" || code === "manifest-unreadable") return 0;
+  if (code === "manifest-missing" || code === "manifest-unreadable" || code === "left-behind") return 0;
   if (code === "unreadable-rows") return 1;
   if (flag.fix.kind === "connect") return 2;
   if (code === "manager-gone") return 3;
@@ -103,4 +103,28 @@ export function flagSummary(flags: readonly Flag[]): string | null {
 /** A quiet fleet: every Status count at zero, no problem and no warning. */
 export function isQuiet(card: Pick<FleetCardView, "blocked" | "inFlight" | "waiting" | "landed" | "problems" | "warnings">, now: string): boolean {
   return COUNTS.every((count) => card[count] === 0) && flagsOf(card, now).length === 0;
+}
+
+/** A fleet's mark beside its name: the rows that wait on the operator, drawn in amber, and the dot for its worst flag. */
+export interface FleetMark {
+  /** Null when no row waits. */
+  readonly count: number | null;
+  /** Red for a problem, amber for a warning alone; null with neither. */
+  readonly dot: "problem" | "warning" | null;
+}
+
+export function fleetMark(card: Pick<FleetCardView, "waiting" | "problems" | "warnings">, now: string): FleetMark {
+  return { count: card.waiting > 0 ? card.waiting : null, dot: worstFlag(flagsOf(card, now)) };
+}
+
+/**
+ * The order fleets are listed in: a problem, then a warning, then neither; most waiting first among each; ties in name
+ * order. A comparator for `Array.sort`.
+ */
+export function byFlagsThenWaiting(now: string): (a: Pick<FleetCardView, "repo" | "waiting" | "problems" | "warnings">, b: Pick<FleetCardView, "repo" | "waiting" | "problems" | "warnings">) => number {
+  const rank = (card: Pick<FleetCardView, "problems" | "warnings">): number => {
+    const worst = worstFlag(flagsOf(card, now));
+    return worst === "problem" ? 0 : worst === "warning" ? 1 : 2;
+  };
+  return (a, b) => rank(a) - rank(b) || b.waiting - a.waiting || (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0);
 }

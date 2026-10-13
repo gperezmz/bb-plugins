@@ -58,7 +58,8 @@ const describeOutcome = (outcome: RegisterOutcome): string => {
   }
 };
 
-const statusLines = (fleets: readonly FleetStatus[]): string => {
+/** What `fleet status` prints for a person. */
+export const statusLines = (fleets: readonly FleetStatus[]): string => {
   if (fleets.length === 0) return "No fleet is registered.";
   return fleets
     .map((fleet) => {

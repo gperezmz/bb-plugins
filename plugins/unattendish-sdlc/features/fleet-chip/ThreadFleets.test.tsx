@@ -69,6 +69,16 @@ describe("the chip of a thread holding two fleets (#270 AC4)", () => {
   });
 });
 
+describe("the spend in the chip's fleet headers (#270 AC5)", () => {
+  it("follows each fleet's spend with the others it is shared with", async () => {
+    const cost = (sharedWith: string[]) => ({ amount: 4.12, currency: "$", period: "since this manager started", sharedWith });
+    await show(onA("org/dash", { waiting: 6, cost: cost(["org/wake"]) }), onA("org/wake", { waiting: 2, cost: cost(["org/dash"]) }));
+    const [dash, wake] = await hover();
+    expect(within(dash!).getByLabelText("$4.12 spent since this manager started, shared with org/wake")).toBeTruthy();
+    expect(within(wake!).getByText("shared with org/dash", { exact: false })).toBeTruthy();
+  });
+});
+
 describe("opening the Fleet tab from the chip's card (#270 AC1)", () => {
   it("opens the thread's one Fleet tab on org/wake at the row from Review on org/wake's header", async () => {
     await show(onA("org/dash", { waiting: 6 }), onA("org/wake", { waiting: 2, problems: [unreadable] }));

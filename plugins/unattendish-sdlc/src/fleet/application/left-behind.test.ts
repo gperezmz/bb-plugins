@@ -80,6 +80,19 @@ describe("a fleet whose manifest names another repository (#270 AC6)", () => {
     expect(wake.leftBehind).toBeNull();
   });
 
+  it("raises a toast for each row of its own manifest's first read when it registered while left behind", async () => {
+    const w = world();
+    w.manifests.files.set(MANIFEST_PATH, manifest({ repo: WAKE, inbox: [inboxRow(1)] }));
+    await registerFleet(w.register, MANAGER, args());
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(1), inboxRow(2)] }));
+    w.adapters.github.queue(outcome());
+    await pollFleet(w.poll, REPO_KEY);
+    expect(w.events.inboxNews.map((news) => [news.fleet, news.ref])).toEqual([
+      [REPO, "#1"],
+      [REPO, "#2"],
+    ]);
+  });
+
   it("shows its rows again, without the problem, once the manifest names it again", async () => {
     const w = world();
     await holdBoth(w, [inboxRow(1)]);

@@ -1,7 +1,7 @@
 // The fleets one manager thread holds, as the Fleet chip and the Fleet tab order them and choose the one to show,
 // decided from their cards alone.
 import type { FleetCardView, HeldFleetView } from "@/src/fleet/application/views";
-import { flagsOf, worstFlag } from "./fleet-flags";
+import { byFlagsThenWaiting } from "./fleet-flags";
 
 /** A left-behind fleet: its manifest names another repository, so it shows none of that manifest's rows. */
 export function isLeftBehind(card: Pick<FleetCardView, "problems">): boolean {
@@ -13,12 +13,8 @@ export function isLeftBehind(card: Pick<FleetCardView, "problems">): boolean {
  * warning before neither, then most waiting first, then by name.
  */
 export function threadFleetOrder<Held extends Pick<HeldFleetView, "card">>(fleets: readonly Held[], now: string): Held[] {
-  const flagRank = (card: FleetCardView): number => {
-    const worst = worstFlag(flagsOf(card, now));
-    return worst === "problem" ? 0 : worst === "warning" ? 1 : 2;
-  };
-  const rank = (card: FleetCardView): number => (isLeftBehind(card) ? 3 : 0) + flagRank(card);
-  return [...fleets].sort((a, b) => rank(a.card) - rank(b.card) || b.card.waiting - a.card.waiting || (a.card.repo < b.card.repo ? -1 : a.card.repo > b.card.repo ? 1 : 0));
+  const within = byFlagsThenWaiting(now);
+  return [...fleets].sort((a, b) => Number(isLeftBehind(a.card)) - Number(isLeftBehind(b.card)) || within(a.card, b.card));
 }
 
 /** The fleet to show: `wanted` where the thread holds it, else the first in `ordered`; null where the thread holds none. */
