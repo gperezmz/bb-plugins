@@ -81,6 +81,15 @@ export function Board({ cards, now, selected, onSelect, showQuiet, onShowQuiet }
   );
 }
 
+/**
+ * The dot before a line's forge logo, in the tone of the fleet's worst flag. A line with no flag keeps the dot's space
+ * empty so every logo and name starts in one column. Hidden from assistive technology: the line's ⚠, fix verb or polling
+ * cell names the flag.
+ */
+function FlagDot({ worst }: { worst: "problem" | "warning" | null }) {
+  return <span aria-hidden className={cn("size-2 shrink-0", worst !== null && ["rounded-full", TONE_FILL[FLAG_TONES[worst]]])} />;
+}
+
 function BoardLine({ card, now, selected, onToggle }: { card: FleetCardView; now: string; selected: boolean; onToggle(): void }) {
   const openFleetTab = useOpenFleetTab();
   const flags = flagsOf(card, now);
@@ -88,9 +97,9 @@ function BoardLine({ card, now, selected, onToggle }: { card: FleetCardView; now
   const tracker = trackerOf(card.tracker);
   const spend = spendText(card);
   return (
-    <li aria-label={`Fleet ${card.repo}`} className={cn(COLUMNS, "relative cursor-pointer px-3 py-2 hover:bg-accent", selected && "bg-accent")} onClick={lineClick(onToggle)}>
-      {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
+    <li aria-label={`Fleet ${card.repo}`} className={cn(COLUMNS, "cursor-pointer px-3 py-2 hover:bg-accent", selected && "bg-accent")} onClick={lineClick(onToggle)}>
       <span className="flex min-w-0 items-center gap-2">
+        <FlagDot worst={worst} />
         <ServiceLogo service={card.forge} />
         <button type="button" aria-pressed={selected} className={cn(FOCUS, "truncate font-medium")} onClick={onToggle}>
           {card.repo}
@@ -240,8 +249,8 @@ function NarrowLine({ card, shortName, now, selected, onToggle }: { card: FleetC
   const run = first === undefined ? null : fixOf(first);
   const icon = narrowFlagIcon(flags) ?? ICONS.review;
   return (
-    <li aria-label={`Fleet ${card.repo}`} className={cn("relative flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
-      {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
+    <li aria-label={`Fleet ${card.repo}`} className={cn("flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
+      <FlagDot worst={worst} />
       <ServiceLogo service={card.forge} />
       <Tip text={card.repo}>
         <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
