@@ -299,17 +299,15 @@ export const verbs = {
   },
 
   connect: {
-    usage: "<button name> [--fleet <repo>] [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page): by its accessible name, which on the board is the fleet's full sentence (`other-org/x needs a GitHub account that can read other-org`), or with --fleet by the text on that fleet's board line (`Connect…`, `Renew…`), walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
+    usage: "<button name> [--fleet <repo>] [--service <GitHub|GitLab|Linear|Jira>] [--host <host>] [--owner <owner>] [--account <label>] [--token <token>] [--email <email>] [--from page|settings] [--stop-at account|token]: press a Connect…-type button on the Fleets page (or the settings page, or an item of an account's ⋯ menu there): by its accessible name, which on the board is the fleet's full sentence (`other-org/x needs a GitHub account that can read other-org`), or with --fleet by the text on that fleet's board line (`Connect…`, `Renew…`), walk the popup (Add account's service and host, an owner, choose the account radio, Continue, record the page Create token opens, paste the token, Verify and save) and read each step; `fleet status --json` and `settings` after",
     valued: ["fleet", "service", "host", "owner", "account", "token", "email", "from", "stop-at"],
     async run({ page, url, capture, cli, args, flags }) {
       if (flags.from === "settings") {
         await page.goto(url + "settings/plugins/unattendish-sdlc");
         await page.getByRole("region", { name: "Accounts" }).waitFor();
       } else await openFleets(page, url);
-      const pressed = flags.fleet
-        ? page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${flags.fleet}` }).getByRole("button").filter({ hasText: args[0] })
-        : page.getByRole("button", { name: args[0], exact: true });
-      await pressed.first().click();
+      if (flags.fleet) await page.getByRole("region", { name: "Fleet board" }).getByRole("listitem", { name: `Fleet ${flags.fleet}` }).getByRole("button").filter({ hasText: args[0] }).first().click();
+      else await press(page, args[0]);
       const dialog = page.getByRole("dialog");
       await dialog.waitFor();
       const steps = [];
@@ -322,14 +320,14 @@ export const verbs = {
       const result = { title: await dialog.getByRole("heading").first().innerText(), steps };
       const done = () => ({ ...result, status: JSON.parse(cli("unattendish.connect/status", "unattendish", "fleet", "status", "--json")), settings: rpc(cli, "unattendish.connect/rpc", "settings") });
       if (flags.service || flags.owner) {
-        if (flags.service) await dialog.getByRole("radio", { name: flags.service, exact: true }).check();
+        if (flags.service) await choose(dialog.getByRole("radio", { name: flags.service, exact: true }));
         if (flags.host) await dialog.getByRole("textbox", { name: /^(Host|Jira site)$/ }).fill(flags.host);
         if (flags.owner) await dialog.getByLabel("Owner", { exact: true }).fill(flags.owner);
         await dialog.getByRole("button", { name: "Continue" }).click();
         await step("setup", `${flags.service ?? ""} ${flags.host ?? ""} ${flags.owner ?? ""}, Continue`.trim());
       }
       if (flags.account) {
-        await dialog.getByRole("radio", { name: new RegExp(`^${escape(flags.account)}`) }).check();
+        await choose(dialog.getByRole("radio", { name: new RegExp(`^${escape(flags.account)}`) }));
         await dialog.getByRole("button", { name: "Continue" }).click();
         await sleep(400);
         await step("token-step", `choose ${flags.account}, Continue`);
@@ -344,7 +342,7 @@ export const verbs = {
         if (opened) await opened.close();
       }
       const paste = dialog.getByRole("radio", { name: /^Paste/ });
-      if (await paste.count()) await paste.check();
+      if (await paste.count()) await choose(paste);
       if (flags.email) await dialog.getByLabel("Email", { exact: true }).fill(flags.email);
       await dialog.getByLabel(/^(Token|API key|API token)$/).fill(flags.token ?? "");
       await dialog.getByRole("button", { name: "Verify and save" }).click();
@@ -357,7 +355,7 @@ export const verbs = {
   },
 
   settings: {
-    usage: "[--interval <repo> <seconds|default>] [--remove <button name>] [--keep] [--default <account label>]: open Settings → Unattendish and read Accounts and Poll interval; --interval sets one fleet's interval (default: the Default button), --remove presses a Remove button and confirms it (--keep keeps it), --default presses Make <label> the default; the `settings` RPC and `fleet status --json` after",
+    usage: "[--interval <repo> <seconds|default>] [--remove <button name>] [--keep] [--default <account label>]: open Settings → Unattendish and read Accounts and Poll interval; --interval sets one fleet's interval (default: the Default button), --remove presses a Remove button or ⋯ menu item and confirms it (--keep keeps it), --default presses Make <label> the default; the `settings` RPC and `fleet status --json` after",
     valued: ["interval", "remove", "default"],
     async run({ page, url, capture, cli, args, flags }) {
       await page.goto(url + "settings/plugins/unattendish-sdlc");
@@ -390,7 +388,7 @@ export const verbs = {
         did = { action: `make ${flags.default} the default` };
       }
       if (flags.remove) {
-        await page.getByRole("button", { name: flags.remove, exact: true }).click();
+        await press(page, flags.remove);
         await sleep(300);
         const confirm = page.getByRole("button", { name: /^Confirm removing / });
         did = { action: flags.remove, confirmAsked: (await confirm.count()) ? await confirm.first().getAttribute("aria-label") ?? await confirm.first().innerText() : null };
@@ -406,6 +404,27 @@ export const verbs = {
     },
   },
 };
+
+/** Chooses a radio button by clicking its label, which takes the click where the radio itself is visually hidden, as on a service tile or the credential switch. */
+async function choose(radio) {
+  await radio.locator("xpath=ancestor::label[1]").click();
+}
+
+/**
+ * Presses a control by its accessible name: a button on the page, else an item of an account's ⋯ menu on the
+ * settings page, where Remove account and Add token for another owner live, opening each menu in turn.
+ */
+async function press(page, name) {
+  const button = page.getByRole("button", { name, exact: true });
+  if (await button.count()) return button.first().click();
+  for (const more of await page.getByRole("button", { name: /^More for / }).all()) {
+    await more.click();
+    const item = page.getByRole("menuitem", { name, exact: true });
+    if (await item.count()) return item.first().click();
+    await page.keyboard.press("Escape");
+  }
+  throw new Error(`no button or menu item is named ${name}`);
+}
 
 /** Writes an RPC input to a file beside the run's UI evidence and returns its path. */
 function writeInput(value) {
