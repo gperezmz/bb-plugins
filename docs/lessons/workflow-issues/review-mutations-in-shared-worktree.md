@@ -1,6 +1,7 @@
 ---
 title: A review that mutates code must not run in a checkout another session edits
 date: 2026-10-13
+last_updated: 2026-10-13
 category: workflow-issues
 module: reviewing-code
 problem_type: workflow_issue
@@ -38,6 +39,11 @@ been told to stop producing; the loop outlived the thread's run until the parent
   rewrites the file from the index, so it drops any unstaged edit the parent made.
 - Spawn a review thread that mutates code with its own worktree (`--new-environment worktree`),
   not with the shared-checkout environment flag (`--environment`).
+- Name the worktree to mutate in by its path, from `pwd` or `git rev-parse --show-toplevel`
+  of the checkout the brief names. Picking one out of `git worktree list` (`| tail -1`) took
+  another session's detached worktree under `/tmp` on #297 (per that reviewer's own report): it edited tracked
+  files and ran `git checkout -q -- .` in it five times, which would throw away any
+  uncommitted change its owner held.
 - Bound every wait the reviewer runs. A `timeout` on the wait, and a failure path when it
   expires. Never an open `until` loop on a file that only the reviewer could produce.
 
@@ -75,4 +81,5 @@ timeout 120 sh -c 'until grep -q "M5" "$out"; do sleep 3; done' || echo "no M5 r
 
 ## Related
 
+- #297 (a review thread mutated another session's worktree, found with `git worktree list`)
 - #271 (the issue whose change this review covered), and #272 (its pull request, merged).
