@@ -5,6 +5,7 @@ import type { FleetCardView, ProblemView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { setPageWidth } from "@/testing/page-width";
 import { BOARD_CHANGED } from "@/shared/client";
@@ -545,7 +546,7 @@ describe("the queue (AC9–AC13)", () => {
     expect(within(grant!).getByRole("button", { name: "Re-grant #4" })).toBeTruthy();
     // Re-grant is drawn as Grant… is, with a redo icon of its own (AC1).
     const [grantButton, regrantButton] = [within(grant!).getByRole("button", { name: "Grant… #4" }), within(grant!).getByRole("button", { name: "Re-grant #4" })];
-    for (const button of [grantButton, regrantButton]) expect(button.className.split(" ")).toEqual(expect.arrayContaining(["border-pr-merged", "text-pr-merged", "font-medium"]));
+    for (const button of [grantButton, regrantButton]) expectGrantLook(button);
     expect([drawnIcons(grantButton), drawnIcons(regrantButton)]).toEqual([["GitMerge"], ["unattendish-sdlc/redo"]]);
   });
 
@@ -801,7 +802,7 @@ describe("a queue row in the narrow layout (#273)", () => {
     const buttons = within(action!).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Grant…", "Re-grant"]);
     expect(buttons.map((button) => drawnIcons(button))).toEqual([["GitMerge"], ["unattendish-sdlc/redo"]]);
-    for (const button of buttons) expect(button.className.split(" ")).toEqual(expect.arrayContaining(["border-pr-merged", "text-pr-merged", "font-medium"]));
+    for (const button of buttons) expectGrantLook(button);
     // Side by side at the end of the line, each as wide as its label and 28 px tall, with a 44 px tap area.
     expect(buttons[0]!.parentElement!.className).toContain("justify-end");
     for (const button of buttons) {

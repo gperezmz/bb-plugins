@@ -20,8 +20,6 @@ export const ICONS = {
   // What a row waits for.
   answer: "MessageSquare",
   grant: "GitMerge",
-  /** Re-grant: a redo mark, drawn nowhere else, since bb's two repeat marks mean an In flight row's round open and the page's reload. */
-  regrant: own("redo"),
   ready: own("rocket"),
   other: own("circle-dashed"),
 
@@ -51,6 +49,8 @@ export const ICONS = {
   unconfirmed: "CircleQuestion",
   unreadable: "AlertTriangle",
   clear: "X",
+  /** Re-grant: a redo mark, drawn nowhere else, since bb's two repeat marks mean an In flight row's round open and the page's reload. */
+  regrant: own("redo"),
 
   // The page's states.
   cantLoad: "CloudOff",

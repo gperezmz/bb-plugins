@@ -305,20 +305,20 @@ function ActionState({ action, className }: { action: Exclude<RowAction, { kind:
 function OfferButtons({ row, offer, state, className }: { row: InboxRowView; offer: ActionOffer; state: RowActionState; className: string }) {
   const kind = OFFER_KIND[offer.kind];
   const tone = KIND_TONES[kind];
-  const toned = cn(FOCUS, className, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone]);
+  const toneClasses = cn(FOCUS, className, "font-medium", TONE_BORDER[tone], TONE_TEXT[tone]);
   return (
     <>
       <button
         type="button"
         aria-label={actionName(offer.label, row)}
-        className={toned}
+        className={toneClasses}
         onClick={() => (offer.kind === "build" ? void state.send("build") : state.compose(offer.kind))}
       >
         <Glyph name={KIND_ICONS[kind]} />
         {offer.label}
       </button>
       {offer.regrant ? (
-        <button type="button" aria-label={actionName("Re-grant", row)} className={toned} onClick={() => void state.send("grant", { regrant: true })}>
+        <button type="button" aria-label={actionName("Re-grant", row)} className={toneClasses} onClick={() => void state.send("grant", { regrant: true })}>
           <Glyph name={ICONS.regrant} />
           Re-grant
         </button>

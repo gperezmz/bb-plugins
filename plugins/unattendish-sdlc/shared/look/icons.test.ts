@@ -20,10 +20,9 @@ describe("the plugin's icons", () => {
     expect(unresolvedIcons(["Zap", "Rocket", "unattendish-sdlc/fleet", "unattendish-sdlc/nope", "other-plugin/fleet"])).toEqual(["Rocket", "unattendish-sdlc/nope", "other-plugin/fleet"]);
   });
 
-  it("draw the redo icon for Re-grant and nothing else, a name no other role, kind, stage, outcome or logo shares", () => {
+  it("name the redo icon for Re-grant alone, in the role table and in every kind, stage, outcome and logo table", () => {
     const names = [...Object.values(ICONS), ...Object.values(KIND_ICONS), ...Object.values(STAGE_ICONS), ...Object.values(OUTCOME_ICONS), ...Object.values(SERVICE_LOGOS)];
     expect(ICONS.regrant).toBe("unattendish-sdlc/redo");
-    expect(ICONS.regrant).not.toBe(KIND_ICONS.grant);
     expect(Object.entries(ICONS).filter(([, name]) => name === ICONS.regrant).map(([role]) => role)).toEqual(["regrant"]);
     expect(names.filter((name) => name === ICONS.regrant)).toHaveLength(1);
   });

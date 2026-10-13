@@ -5,6 +5,7 @@ import type { InboxRowView } from "@/src/fleet/application/views";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { drawnIcons } from "@/testing/icons";
+import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { QueueRow } from "./QueueRow";
 import { useRowActions } from "./use-row-action";
@@ -206,10 +207,7 @@ describe("Grant…, Build it and Re-grant", () => {
     show([grantRow(true)], layout);
     const grant = screen.getByRole("button", { name: "Grant… ENG-212" });
     const regrant = screen.getByRole("button", { name: "Re-grant ENG-212" });
-    for (const button of [grant, regrant]) {
-      expect(button.className.split(" ")).toEqual(expect.arrayContaining(["border", "border-pr-merged", "text-pr-merged", "font-medium"]));
-      expect(button.className).not.toContain("border-border");
-    }
+    for (const button of [grant, regrant]) expectGrantLook(button);
     // Squeezed to the row's narrowest, a label stays on one line: "Re-grant" would break at its hyphen (AC3).
     for (const button of [grant, regrant]) expect(button.className).toContain("whitespace-nowrap");
     expect(drawnIcons(grant)).toEqual(["GitMerge"]);
