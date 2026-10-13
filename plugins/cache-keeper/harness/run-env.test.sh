@@ -10,7 +10,8 @@
 # a way to one, nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or
 # CREDENTIAL in any letter case unless the test excepts it with why, and the
 # failure names each such name and where it was found, never a value; a shell
-# sourcing run_env_script stops exporting what is not on the list;
+# sourcing run_env_script stops exporting what is not on the list, and the
+# functions the shell exported before sourcing it;
 # run_env_start_check fails on a leak and on a gh that finds a
 # token; run_env_default_branch names the caller's init.defaultBranch, else the
 # branch git itself gives a new repository, ignores the repository the caller
@@ -317,6 +318,10 @@ check "a bash started with run_env holds no leak" run_env_leaks "$dir/caller-env
 run_env_script > "$dir/env.sh"
 check "a shell sourcing run_env_script stops exporting the caller's variables" \
   bash -c 'source "$1"; ! env | grep -q "^RUN_ENV_TEST_SECRET="' _ "$dir/env.sh"
+# The function is defined in the bash that sources env.sh, exported, then looked
+# for in a child bash it starts; the case prints neither the function nor its body.
+check "a shell sourcing run_env_script stops exporting the caller's functions" \
+  bash -c 'RUN_ENV_TEST_FUNCTION() { :; }; export -f RUN_ENV_TEST_FUNCTION; source "$1"; declare -F RUN_ENV_TEST_FUNCTION > /dev/null || exit 1; bash -c "declare -F RUN_ENV_TEST_FUNCTION > /dev/null"; [[ $? -eq 1 ]]' _ "$dir/env.sh"
 
 # run_env_start_check, in a subshell since it exits: <command> stands in for
 # the harness's env -i prefix, `false` a gh that finds no token, `true` one
