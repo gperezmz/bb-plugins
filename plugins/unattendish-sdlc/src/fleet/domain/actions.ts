@@ -95,11 +95,19 @@ export const latestOn = (records: readonly ActionRecord[], rowId: string): Actio
   records.filter((record) => record.rowId === rowId).sort(newestFirst((record) => record.sentAt))[0] ?? null;
 
 /**
- * The ids of the sent actions a manifest read shows done: Answer… and Grant… when the row is gone from the Inbox
- * (no row has its id), Build it when `ready` says the spec carries the ready label, or when the row is gone.
+ * The ids of the sent actions a manifest read shows done: Build it when `ready` says the spec carries the ready label,
+ * and Answer…, Grant… and Build it when the row is gone from the Inbox (no row has its id). A row is gone only as an
+ * Inbox read `whole` shows it: with a row named unreadable, a missing id may be that row, so no action is done for it.
  */
-export const finishedActions = (sent: readonly ActionRecord[], inboxIds: ReadonlySet<string>, ready: (ref: string) => boolean): string[] =>
-  sent.filter((record) => record.state === "sent" && (!inboxIds.has(record.rowId) || (record.kind === "build" && ready(record.ref)))).map((record) => record.id);
+export const finishedActions = (
+  sent: readonly ActionRecord[],
+  inboxIds: ReadonlySet<string>,
+  inboxWhole: boolean,
+  ready: (ref: string) => boolean,
+): string[] =>
+  sent
+    .filter((record) => record.state === "sent" && ((inboxWhole && !inboxIds.has(record.rowId)) || (record.kind === "build" && ready(record.ref))))
+    .map((record) => record.id);
 
 /** Done actions whose row has left the Inbox and that finished within the last hour, newest first. */
 export const recentActions = (records: readonly ActionRecord[], inboxIds: ReadonlySet<string>, now: Date): ActionRecord[] => {

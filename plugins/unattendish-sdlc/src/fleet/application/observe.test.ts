@@ -239,6 +239,94 @@ describe("an action is done once a poll sees its result (AC13)", () => {
   });
 });
 
+describe("an Inbox row that cannot be read marks no action done (AC1 to AC5)", () => {
+  const LOST_CELL = (n: number) => `| #${n} | A parked question |  | 2026-10-12T09:00:00Z | https://github.com/org/repo/issues/${n} |`;
+  const BAD_ROW = (n: number) => `| nope | A parked question | answer | 2026-10-12T09:00:00Z | https://github.com/org/repo/issues/${n} |`;
+  const BAD_BLOCKED = "| nope | stuck | https://github.com/org/repo/issues/9 |";
+  const rowOf = (n: number, waitsFor: string) => `#${n}|${waitsFor}|2026-10-12T09:00:00Z`;
+  const sentOn = (w: World, n: number, kind: ActionRecord["kind"] = "answer", waitsFor = "answer") =>
+    sentAction(w, { rowId: rowOf(n, waitsFor), kind, ref: `#${n}`, id: actionId(rowOf(n, waitsFor), "2026-10-12T09:59:00.000Z") });
+  const sentTab = async (w: World) => (await createDashboard(w.dash).fleets()).recentActions.map((action) => action.ref);
+  const stateOf = (w: World) => w.store.actions(REPO_KEY).map((action) => action.state);
+
+  it("keeps an answer sent while its row loses a cell, and shows it sent, not done, once the row is fixed (AC1)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(5)] }));
+    sentOn(w, 5);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [LOST_CELL(5)] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+    expect(await sentTab(w)).toEqual([]);
+
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(5)] }));
+    w.clock.advance(120_000);
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+    expect((await createDashboard(w.dash).fleets()).inbox[0]).toMatchObject({ action: { state: "sent" } });
+  });
+
+  it("keeps a Build it sent while its row cannot be read and its spec lacks the ready label (AC1)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(12, "ready")] }));
+    sentOn(w, 12, "build", "ready");
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [BAD_ROW(12)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"] })] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(12, "ready")] }));
+    w.clock.advance(120_000);
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec"] })] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+  });
+
+  it("keeps an answer sent whose row has left the Inbox while another row cannot be read, and marks it done at the poll that reads the Inbox whole (AC1, AC5)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(6), inboxRow(8)] }));
+    sentOn(w, 6);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [LOST_CELL(8)] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+    expect(await sentTab(w)).toEqual([]);
+
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(8)] }));
+    w.clock.advance(120_000);
+    await poll(w);
+    expect(w.store.actions(REPO_KEY)).toMatchObject([{ state: "done", doneAt: w.clock.now().toISOString() }]);
+    expect(await sentTab(w)).toEqual(["#6"]);
+  });
+
+  it("marks a Build it done by the ready label while another Inbox row cannot be read (AC2)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(12, "ready"), inboxRow(8)] }));
+    sentOn(w, 12, "build", "ready");
+    w.manifests.files.set(MANIFEST_PATH, manifest({ inbox: [inboxRow(12, "ready"), LOST_CELL(8)] }));
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(12, { fleetLabels: ["spec", "status:ready"] })] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["done"]);
+  });
+
+  it("holds back nothing for an unreadable row outside the Inbox (AC4)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(5)] }));
+    sentOn(w, 5);
+    w.manifests.files.set(MANIFEST_PATH, manifest({ blocked: [BAD_BLOCKED] }));
+    await poll(w);
+    expect(stateOf(w)).toEqual(["done"]);
+    expect(await sentTab(w)).toEqual(["#5"]);
+  });
+
+  it("marks nothing done while the manifest goes missing, as before (AC3)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(5)] }));
+    sentOn(w, 5);
+    w.manifests.files.delete(MANIFEST_PATH);
+    await poll(w);
+    expect(stateOf(w)).toEqual(["sent"]);
+  });
+});
+
 describe("an action on a GitLab fleet", () => {
   const GITLAB = "gitlab.com/group/proj";
   const GITLAB_MANIFEST = "/work/gitlab/manifest.md";

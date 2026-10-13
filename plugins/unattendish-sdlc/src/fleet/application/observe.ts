@@ -2,7 +2,7 @@
 // actions are done, and which Inbox rows are new to the repository. Runs after
 // each poll's and each turn-end read's reading, whatever the poll does next.
 import { finishedActions, heldBy } from "../domain/actions";
-import { inboxNews } from "../domain/dashboard";
+import { inboxNews, unreadableInbox } from "../domain/dashboard";
 import { formatRepo, repoId } from "../domain/identity";
 import { uniqueRowIds } from "../domain/inbox";
 import { CELL_MAX_CHARS, clip } from "../domain/text";
@@ -21,7 +21,9 @@ export interface Observed {
 /**
  * Marks as done the sent actions that `manifest` and `items` (what the poll read of each watched item, by item id,
  * before the cursors commit) show done, and announces each Inbox row never recorded for the repository once. The first
- * read since the fleet registered only records the rows. A manifest that is missing or unreadable shows neither.
+ * read since the fleet registered only records the rows. A manifest that is missing or unreadable shows neither. A row
+ * that left the Inbox counts as done only from an Inbox read whole, with no row named unreadable; the ready label does
+ * not depend on the Inbox, so a Build it is done by it whatever rows cannot be read.
  * An action sent after `at` is left to the next read: this one's manifest may be older than the row.
  */
 export function observeManifest(
@@ -43,7 +45,7 @@ export function observeManifest(
   };
   // An action sent to a manager since replaced never reached the one that holds the fleet now.
   const sent = heldBy(deps.store.actions(repo), registration.managerThreadId).filter((action) => action.state === "sent" && action.sentAt <= at);
-  const finished = finishedActions(sent, new Set(ids), ready);
+  const finished = finishedActions(sent, new Set(ids), unreadableInbox(manifest.manifest.unreadable).length === 0, ready);
   if (finished.length > 0) deps.store.markActionsDone(repo, finished, at);
 
   const baselined = deps.store.inboxBaselined(repo);

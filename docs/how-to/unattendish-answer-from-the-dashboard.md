@@ -8,7 +8,7 @@ Use this when a fleet's Inbox holds a row waiting on you and you would rather ac
 2. In the queue, on a row waiting for `answer` (the **Answer** tab lists them), choose **Answer…**. A composer opens under the row, saying which item it answers and which fleet's manager it goes to, with a link to the park.
 3. Write your answer, over as many lines as you need, and press ⌘/Ctrl+Enter. Esc cancels, and nothing sends while the text is empty.
 
-The row's action cell reads `sent · 4m`, in every window. The row leaves the queue once a poll sees it gone from the Inbox, which is when the manager has acted on it, and the **Sent** tab lists the action as done for an hour. If the manager has not acted after several polls the row stays *sent*: the plugin never marks it failed, so open the manager's thread to see what it is doing.
+The row's action cell reads `sent · 4m`, in every window. The row leaves the queue once a poll sees it gone from the Inbox, which is when the manager has acted on it, and the **Sent** tab lists the action as done for an hour. A row that the plugin cannot read in the same fleet's Inbox holds this back: [the action stays *sent*](../reference/unattendish-dashboard.md#an-inbox-row-that-cannot-be-read-holds-actions-back) until the Inbox reads whole. If the manager has not acted after several polls the row stays *sent*: the plugin never marks it failed, so open the manager's thread to see what it is doing.
 
 ## Grant a merge or another change that cannot be undone
 
