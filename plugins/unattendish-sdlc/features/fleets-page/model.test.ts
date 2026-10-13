@@ -16,6 +16,7 @@ import {
   sentAgo,
   sentText,
   shortLinkLabel,
+  shortNames,
   spendText,
   staleText,
   statusSlots,
@@ -167,5 +168,31 @@ describe("the queue", () => {
     expect(`${sentText(action)} · ${sentAgo(action, NOW)}`).toBe("You answered #5 Which queue · 40m ago");
     expect(sentText(actionRecord({ kind: "grant", ref: "#6", what: "Merge it" }))).toBe("You granted #6 Merge it");
     expect(sentText(actionRecord({ kind: "build", ref: "#7", what: "Dark mode" }))).toBe("You asked to build #7 Dark mode");
+  });
+});
+
+describe("a fleet's short name (AC3)", () => {
+  const short = (...fleets: string[]) => [...shortNames(fleets).values()];
+
+  it("is the last segment where no other fleet ends the same way", () => {
+    expect(short("github.example/org/dash", "github.example/org/wake")).toEqual(["dash", "wake"]);
+    expect(short("gitlab.example/group/sub/proj", "github.example/org/dash")).toEqual(["proj", "dash"]);
+  });
+
+  it("takes one more segment at a time until it tells the fleets apart", () => {
+    expect(short("github.example/org/dash", "github.example/other/dash")).toEqual(["org/dash", "other/dash"]);
+  });
+
+  it("keeps the host only where the whole path ends another fleet's name", () => {
+    expect(short("github.example/org/dash", "gitlab.example/org/dash")).toEqual(["github.example/org/dash", "gitlab.example/org/dash"]);
+    expect(short("gitlab.example/b/dash", "gitlab.example/a/b/dash")).toEqual(["gitlab.example/b/dash", "a/b/dash"]);
+  });
+
+  it("matches whole segments, not the end of one", () => {
+    expect(short("github.example/org/dash", "github.example/org/mydash")).toEqual(["dash", "mydash"]);
+  });
+
+  it("shortens again once the fleet it was told apart from is gone", () => {
+    expect(short("github.example/org/dash")).toEqual(["dash"]);
   });
 });

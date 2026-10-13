@@ -7,7 +7,7 @@ import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { FALLBACK_POLL_MS, refetchEveryView, screenState, useLive } from "@/shared/use-live";
 import { Board, PhoneBoard } from "./Board";
 import { rememberFilter, useQueueFilter } from "./filter";
-import { NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor } from "./model";
+import { NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor, shortNames } from "./model";
 import { Queue } from "./Queue";
 
 /**
@@ -83,11 +83,13 @@ function Ready({ view, refetch }: { view: FleetsView; refetch: () => Promise<voi
   if (view.fleets.length === 0) return <NoFleet />;
   const selected = picked !== null && view.fleets.some((card) => card.repo === picked) ? picked : null;
   const fleets = new Map(view.fleets.map((card) => [card.repo, card]));
-  const BoardView = compact ? PhoneBoard : Board;
+  // A phone names each fleet by its short name, told apart from every fleet registered as of this view.
+  const short = compact ? shortNames(view.fleets.map((card) => card.repo)) : null;
+  const nameOf = (fleet: string) => short?.get(fleet) ?? fleet;
   return (
     <>
-      <BoardView cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} />
-      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} compact={compact} refetch={refetch} />
+      {compact ? <PhoneBoard cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} nameOf={nameOf} /> : <Board cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} />}
+      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} compact={compact} nameOf={nameOf} refetch={refetch} />
     </>
   );
 }

@@ -608,24 +608,177 @@ describe("on a phone (AC15)", () => {
     expect(within(line("org/dash")).queryByLabelText(/blocked/)).toBeNull();
   });
 
-  it("makes the kind tabs pills and each row two lines with a touch-sized button", async () => {
+  it("makes the kind tabs pills", async () => {
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
     expect(within(queue()).getByRole("tab", { name: "All 1" }).className).toContain("rounded-full");
-    const row = queueRows()[0]!;
-    expect(row.children[0]!.textContent).toContain("#7");
-    expect(row.children[1]!.textContent).toContain("org/dash");
-    // The action sits beside the title on the first line, so the second keeps the fleet, the link and the age.
-    expect(within(row.children[0] as HTMLElement).getByRole("button", { name: "Answer… #7" }).className).toContain("min-h-11");
+  });
+});
+
+describe("a queue row on a phone (#273)", () => {
+  beforeEach(() => setCompactViewport(true));
+
+  const gh = (path: string, over: Partial<FleetCardView> = {}) => fleet(`github.example/${path}`, { waiting: 1, ...over });
+  const threadLink = (threadId: string, message: number) => ({ kind: "message" as const, message: { threadId, message, at: ago(MINUTE) } });
+  /** A row's three parts: the title, the details and the action. */
+  const parts = (row: HTMLElement) => [...row.children].slice(0, 3) as HTMLElement[];
+
+  it("stacks the title, the details and the action, each on a line of its own (AC1)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/orphan"), gh("org/dash")],
+        inbox: [inboxRow({ fleet: "github.example/org/orphan", ref: "—", what: "Merge the cache layer rewrite", waitsFor: "grant", since: ago(9 * HOUR + 4 * MINUTE), link: threadLink("thr_den6jrijzx", 2), offer: { kind: "grant", label: "Grant…", regrant: true } })],
+      }),
+    );
+    const [title, details, action] = parts(queueRows()[0]!);
+    expect(title!.textContent).toBe("Merge the cache layer rewrite");
+    expect(details!.textContent).toBe("orphangithub.example/org/orphan↗9h 4m");
+    const buttons = within(action!).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Grant…", "Re-grant"]);
+    // Side by side, each taking half the line.
+    for (const button of buttons) expect(button.className).toContain("flex-1");
   });
 
-  it("keeps a row whose last send could not be confirmed to two lines, the note an icon with its words on the second", async () => {
-    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
-    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
-    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
-    const note = await within(queue()).findByLabelText("could not confirm whether the last send went through");
+  it("lets the title wrap onto a second line, cut only past it, with nothing beside it (AC2)", async () => {
+    await show(fleetsView({ fleets: [gh("org/wake")], inbox: [inboxRow({ fleet: "github.example/org/wake", ref: "—", what: "Decide whether the very long retry budget should also apply to webhook deliveries" })] }));
+    const [title] = parts(queueRows()[0]!);
+    const text = within(title!).getByText("Decide whether the very long retry budget should also apply to webhook deliveries");
+    expect(text.className).toContain("line-clamp-2");
+    expect(text.className).not.toContain("truncate");
+    expect(within(title!).queryByRole("button")).toBeNull();
+  });
+
+  it("names each fleet by its short name, its full name its accessible name (AC3, AC4)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/dash"), gh("other/dash"), gh("org/wake")],
+        inbox: [
+          inboxRow({ id: "1", fleet: "github.example/org/dash" }),
+          inboxRow({ id: "2", fleet: "github.example/other/dash" }),
+          inboxRow({ id: "3", fleet: "github.example/org/wake", ref: "#7", since: ago(11 * HOUR + 40 * MINUTE), link: { kind: "url", url: "https://github.example/org/wake/issues/7", text: "github.example/org/wake/issues/7" } }),
+        ],
+      }),
+    );
+    const shown = queueRows().map((row) => parts(row)[1]!.querySelector("span[aria-hidden].truncate")?.textContent);
+    expect(shown).toEqual(["org/dash", "other/dash", "wake"]);
+    const wake = parts(queueRows()[2]!)[1]!;
+    expect(within(wake).getByText("github.example/org/wake").className).toContain("sr-only");
+    expect(wake.textContent).toBe("wakegithub.example/org/wake#7 ↗11h 40m");
+  });
+
+  it("lets a short name too long to share the line take it whole, the link and the age kept together (AC4)", async () => {
+    const long = "github.example/platform-engineering/internal-developer-portal-observability";
+    await show(fleetsView({ fleets: [fleet(long, { waiting: 1 })], inbox: [inboxRow({ fleet: long, ref: "#9" })] }));
+    const details = parts(queueRows()[0]!)[1]!;
+    const [name, rest] = [...details.children] as HTMLElement[];
+    // The name never shrinks to share the line; the link and the age wrap under it as one.
+    expect(name!.className).toContain("shrink-0");
+    expect(name!.className).toContain("max-w-full");
+    expect(details.className).toContain("flex-wrap");
+    expect(rest!.textContent).toBe("↗5m");
+    expect(rest!.querySelector(".whitespace-nowrap")?.textContent).toBe("5m");
+  });
+
+  it("leaves the fleet out of the details while the queue is filtered to it (AC4)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")], inbox: [inboxRow({ id: "1", fleet: "github.example/org/dash", ref: "#7", link: { kind: "url", url: "https://github.example/org/dash/pull/7", text: "github.example/org/dash/pull/7" } }), inboxRow({ id: "2", fleet: "github.example/org/wake" })] }));
+    fireEvent.click(line("github.example/org/dash"));
+    expect(parts(queueRows()[0]!)[1]!.textContent).toBe("#7 ↗5m");
+  });
+
+  it("shows a link with no short form as the arrow alone, its text the accessible name, with a 44 px tap area (AC5)", async () => {
+    await show(fleetsView({ fleets: [gh("org/orphan")], inbox: [inboxRow({ fleet: "github.example/org/orphan", link: threadLink("thr_den6jrijzx", 2) })] }));
+    const link = within(queue()).getByRole("button", { name: "thread thr_den6jrijzx, message 2" });
+    expect(link.textContent).toBe("↗");
+    expect(link.className).toContain("before:h-11");
+    expect(link.className).toContain("before:w-[max(100%,2.75rem)]");
+    fireEvent.click(link);
+    expect(sdk.navigate.toThread).toHaveBeenCalledWith("thr_den6jrijzx");
+  });
+
+  it("shows a link's short form where its URL has one (AC5)", async () => {
+    await show(fleetsView({ fleets: [fleet("gitlab.example/group/proj", { waiting: 1 })], inbox: [inboxRow({ fleet: "gitlab.example/group/proj", link: { kind: "url", url: "https://gitlab.example/group/proj/-/merge_requests/3", text: "gitlab.example/group/proj/-/merge_requests/3" } })] }));
+    expect(within(queue()).getByRole("link", { name: "!3 ↗" }).className).toContain("before:h-11");
+  });
+
+  it("keeps the action line at the buttons' height in every state but watch only (AC6)", async () => {
+    await show(
+      fleetsView({
+        fleets: [gh("org/dash")],
+        inbox: [
+          inboxRow({ id: "o", fleet: "github.example/org/dash", ref: "#1" }),
+          inboxRow({ id: "s", fleet: "github.example/org/dash", ref: "#2", offer: null, action: actionRecord({ sentAt: ago(4 * MINUTE) }) }),
+          inboxRow({ id: "d", fleet: "github.example/org/dash", ref: "#3", waitsFor: "ready", offer: null, action: actionRecord({ kind: "build", state: "done", doneAt: ago(MINUTE) }) }),
+          inboxRow({ id: "w", fleet: "github.example/org/dash", ref: "#4", waitsFor: "other", offer: null }),
+        ],
+      }),
+    );
+    const actions = queueRows().map((row) => parts(row)[2]!);
+    expect(within(actions[0]!).getByRole("button", { name: "Answer… #1" }).className).toContain("h-11");
+    expect(actions[1]!.textContent).toBe("sent · 4m");
+    expect(actions[1]!.className).toContain("h-11");
+    expect(actions[2]!.textContent).toBe("done");
+    expect(actions[2]!.className).toContain("h-11");
+    expect(actions[3]!.textContent).toBe("watch only");
+    expect(actions[3]!.className).not.toContain("h-11");
+  });
+
+  it("says composing… in the action line with the composer under the row (AC6)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#1" })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #1" }));
     const row = queueRows()[0]!;
-    expect(row.children).toHaveLength(2);
-    expect(row.children[1]!.contains(note)).toBe(true);
-    expect(await hoverText(note)).toBe("could not confirm whether the last send went through");
+    expect(parts(row)[2]!.textContent).toBe("composing…");
+    expect(parts(row)[2]!.className).toContain("h-11");
+    expect(within(row).getByRole("textbox")).toBeTruthy();
+  });
+
+  it("spells out a refused Build it under the button, which stays (AC7)", async () => {
+    fake.api.sendAction.mockResolvedValue({ ok: false, reason: "HTTP 409: Thread is archived" });
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    await within(queue()).findByText("Not sent: HTTP 409: Thread is archived");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(within(action).getByText("Not sent: HTTP 409: Thread is archived").className).toContain("text-destructive-text");
+    expect(within(action).getByRole("button", { name: "Build it #9" })).toBeTruthy();
+  });
+
+  it("spells out a send that could not be confirmed under the button (AC7)", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [gh("org/dash")], inbox: [inboxRow({ fleet: "github.example/org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    await within(queue()).findByText("could not confirm whether the last send went through");
+    const action = parts(queueRows()[0]!)[2]!;
+    expect(within(action).getByText("could not confirm whether the last send went through")).toBeTruthy();
+    expect(within(action).getByRole("button", { name: "Build it #9" })).toBeTruthy();
+  });
+
+  it("names a Sent line's fleet by its short name (AC8)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")], recentActions: [actionRecord({ fleet: "github.example/org/dash", kind: "answer", ref: "#5", what: "Which queue", state: "done", doneAt: ago(40 * MINUTE) })] }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Sent 1" }));
+    expect(queueRows()[0]!.querySelector("span[aria-hidden].truncate")?.textContent).toBe("dash");
+  });
+
+  it("names each board line's fleet by its short name, its toggle by the full name (AC9)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash", { reasons: [missing] }), gh("org/orphan", { reasons: [missing] }), gh("org/wake", { reasons: [missing] })] }));
+    for (const name of ["dash", "orphan", "wake"]) {
+      const toggle = within(line(`github.example/org/${name}`)).getByRole("button", { name: `github.example/org/${name}` });
+      expect(toggle.textContent).toBe(name);
+    }
+  });
+
+  it("names the filter chip's fleet by its short name, its ✕ touch-sized and naming the full fleet (AC12)", async () => {
+    await show(fleetsView({ fleets: [gh("org/dash"), gh("org/wake")] }));
+    fireEvent.click(line("github.example/org/dash"));
+    const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
+    expect(clear.className).toContain("size-11");
+    expect(clear.parentElement!.textContent).toBe("dash");
+  });
+});
+
+describe("a queue row at 768 px and wider (AC11)", () => {
+  it("keeps the full fleet name and the link's own text", async () => {
+    await show(fleetsView({ fleets: [fleet("github.example/org/dash", { waiting: 1 }), fleet("github.example/org/wake")], inbox: [inboxRow({ fleet: "github.example/org/dash", link: { kind: "message", message: { threadId: "thr_den6jrijzx", message: 2, at: ago(MINUTE) } } })] }));
+    const row = queueRows()[0]!;
+    expect(within(row).getByText("github.example/org/dash")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "thread thr_den6jrijzx, message 2 ↗" })).toBeTruthy();
+    expect(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" })).toBeTruthy();
   });
 });

@@ -86,6 +86,12 @@ _Avoid_: Dashboard page, Fleet dashboard
 The top of the Fleets page: one line per fleet with its manager, Status, spend, polling and fix, problems first and quiet fleets folded. Clicking a line filters the queue to that fleet.
 _Avoid_: Fleet cards, fleet list
 
+**Short name**:
+How the Fleets page names a fleet on a phone: the end of its full name, its host followed by its path, with as many segments as it takes so that no other registered fleet's full name ends the same way. It reaches the host only where its whole path is also the end of another registered fleet's full name.
+_Avoid_: Nickname, display name
+
+A short name changes as fleets are registered and unregistered. The full name stays the accessible name wherever a short name is shown.
+
 **Queue**:
 The Fleets page's list of every Inbox row across fleets, oldest first, with tabs by what each row waits for and a Sent tab of the actions seen done in the last hour.
 _Avoid_: Waits on you table, inbox table
