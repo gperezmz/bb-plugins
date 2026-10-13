@@ -24,7 +24,7 @@ It refuses to start, and changes nothing, when any of its ports answers, when it
 - a project for the drives' threads, in a git checkout in the run directory;
 - Cache Keeper, installed with `bb plugin install path:` from a copy of `plugins/cache-keeper` as the checkout has it, without `dist/`, `node_modules/` and `harness/`. bb builds the copy, so nothing is written into the checkout. "Fetch current prices daily" is switched off, so the plugin uses its bundled prices.
 
-Before it reports the run up, `start.sh` reads every process the run holds for a **leak**, a variable you held when you ran it, same name and value, outside the passed list, or one it planted under a random name; on one it exits non-zero, naming the variable, the process and where the list is kept, never a value. It keeps what it needs for that in `caller-env` in the run directory: each variable's name and a salted hash of its value.
+Before it reports the run up, `start.sh` reads every process the run holds for a **leak**, a variable you held when you ran it, same name and value, outside the passed list and not what a login shell takes from the machine's profile, or one it planted under a random name; on one it exits non-zero, naming the variable, the process and where the list is kept, never a value. It keeps what it needs for that in `caller-env` in the run directory: each variable's name and a salted hash of its value.
 
 It prints what to source to point `bb` at the throwaway, and only at it. A shell that sources it stops exporting every variable not on the passed list, so what it sends the run carries the list and the run's own variables alone:
 

@@ -37,5 +37,5 @@ The variables a run of a drive harness takes from whoever started it, each named
 _Avoid_: Allowlist, inherited environment
 
 **Leak**:
-A variable the caller of a drive harness held at `start`, with the same name and value, found in a process of the run while its name is not on the passed list; the variable `start` plants under a random name is a leak wherever it turns up. Names the harness, bb or Claude Code set in a run's processes to a value that can equal the caller's are listed beside the passed list, and are no leak.
+A variable the caller of a drive harness held at `start`, with the same name and value, found in a process of the run while its name is not on the passed list; the variable `start` plants under a random name is a leak wherever it turns up. Names the harness, bb or Claude Code set in a run's processes to a value that can equal the caller's are listed beside the passed list, and they, like a value a login shell takes from the machine's profile, are no leak.
 _Avoid_: Credential leak, exposed variable

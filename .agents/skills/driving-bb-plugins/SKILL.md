@@ -94,7 +94,8 @@ answer), the server on the run's port serves the
 run's own data directory, the machine is connected, and every plugin started
 runs from the run's copy, and no process of the run holds a **leak**: a
 variable the caller held at `start`, same name and value, outside the passed
-list, or the one `start` planted under a random name. It names each leak's
+list and not what a login shell takes from the machine's profile, or the one
+`start` planted under a random name. It names each leak's
 variable and process, never a value, and where the list is kept. Run it before the first drive, after any drive that
 failed or surprised you, and whenever a command answers from a bb you did
 not expect. A run that fails it is stopped and started again, not driven; a
