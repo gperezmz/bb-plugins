@@ -596,6 +596,7 @@ cmd_doctor() {
   else
     echo "warn run $run was started before runs recorded the caller's variables, so nothing checks it for a leak"
   fi
+  check "gh run inside the run finds no GitHub token for bb to hand its threads" '! run_env_gh_token tb'
   return $bad
 }
 

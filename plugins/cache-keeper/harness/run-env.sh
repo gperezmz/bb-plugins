@@ -23,7 +23,6 @@ run_env_passed=(
   LOCALE_ARCHIVE             # where NixOS's glibc finds the locales LANG names
   TZ TZDIR                   # the time zone dates render in, and where its rules are
   XDG_DATA_DIRS XDG_CONFIG_DIRS # where fontconfig and Chromium find fonts and icons on NixOS
-  XDG_RUNTIME_DIR            # the user's runtime directory, which Chromium and systemd look for
   USER LOGNAME               # who runs it, which git and Node's os.userInfo read
   CHROMIUM_PATH              # the Chromium a ui step or verb launches
   PLAYWRIGHT_BROWSERS_PATH   # where Playwright finds its own browsers when CHROMIUM_PATH names none
@@ -61,8 +60,9 @@ for _name in "${run_env_passed[@]}"; do
 done
 unset _name
 # Claude Code's shell is run-shell/bash, bash with no profile, whatever shell
-# the caller logs in with.
-run_env+=("SHELL=$run_env_dir/run-shell/bash")
+# the caller logs in with. No process of a run reaches the user's D-Bus session
+# bus, where a keyring would hand gh, and through it bb, the user's token.
+run_env+=("SHELL=$run_env_dir/run-shell/bash" "DBUS_SESSION_BUS_ADDRESS=disabled:")
 
 # The line a failed start ends with, so a variable a machine needs can be added.
 run_env_note() {
@@ -128,14 +128,33 @@ run_env_leaks() {
   return 0
 }
 
-# run_env_start_check <script> <file> <pid>...: the check a harness with no
-# doctor runs at the end of its start: on a leak in those processes, prints
-# run_env_leaks' report, each line headed "<script>: ", and exits 1.
+# run_env_gh_token <command>...: whether gh, run as a process of the run by
+# <command> (a harness's env -i prefix), finds a GitHub token, which bb hands
+# every thread it starts; prints nothing either way. True when gh is absent.
+run_env_gh_token() {
+  command -v gh > /dev/null || return 1
+  "$@" gh auth token --hostname github.com > /dev/null 2>&1
+}
+
+# run_env_start_check <script> <file> <command> -- <pid>...: the check a
+# harness with no doctor runs at the end of its start. On a leak in those
+# processes it prints run_env_leaks' report, each line headed "<script>: ",
+# and when gh run by <command> finds a GitHub token it says so; then it exits 1.
 run_env_start_check() {
-  local script=$1 leaks
+  local script=$1 file=$2 leaks bad=0
+  local -a command=()
+  shift 2
+  while [[ $1 != -- ]]; do command+=("$1"); shift; done
   shift
-  leaks=$(run_env_leaks "$@") && return 0
-  printf '%s\n' "$leaks" | sed "s/^/$script: /" >&2
+  if ! leaks=$(run_env_leaks "$file" "$@"); then
+    printf '%s\n' "$leaks" | sed "s/^/$script: /" >&2
+    bad=1
+  fi
+  if run_env_gh_token "${command[@]}"; then
+    echo "$script: gh run inside the run finds a GitHub token, which bb would hand its threads" >&2
+    bad=1
+  fi
+  ((bad)) || return 0
   echo "$script: stop what started with harness/stop.sh" >&2
   exit 1
 }

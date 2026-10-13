@@ -141,9 +141,10 @@ rm -f "$run/tmp/connect.json"
 [[ $(tb bb plugin rpc call unattendish-sdlc settings --json | jq -c '[(.result // .).accounts[] | .service] | sort') == '["github","gitlab","jira","linear"]' ]] || fail "the plugin does not list the four accounts"
 [[ $(tb bb unattendish fleet status --json | jq -c .) == '{"fleets":[]}' ]] || fail "the plugin's fleet status is not empty on a fresh install"
 
-# Every process the run holds now, checked for a leak.
+# Every process the run holds now, checked for a leak, and gh inside the run
+# for a token bb would hand its threads.
 # shellcheck disable=SC2046 # one PID per word
-run_env_start_check start.sh "$run/caller-env" $(harness_procs | cut -f1)
+run_env_start_check start.sh "$run/caller-env" "${base[@]}" -- $(harness_procs | cut -f1)
 
 {
   echo "# Points bb at the harness's throwaway bb and nothing else. Source it."

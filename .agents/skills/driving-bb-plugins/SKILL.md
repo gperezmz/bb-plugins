@@ -96,7 +96,9 @@ runs from the run's copy, and no process of the run holds a **leak**: a
 variable the caller held at `start`, same name and value, outside the passed
 list and the names `run-env.sh` lists as set by the run, or the one `start`
 planted under a random name. It names each leak's
-variable and process, never a value, and where the list is kept. Run it before the first drive, after any drive that
+variable and process, never a value, and where the list is kept. It fails
+too when `gh auth token` run inside the run finds a GitHub token, which bb
+would hand every thread it starts. Run it before the first drive, after any drive that
 failed or surprised you, and whenever a command answers from a bb you did
 not expect. A run that fails it is stopped and started again, not driven; a
 scope reading `failed/oom-kill` passed its cap, and starts again with fewer

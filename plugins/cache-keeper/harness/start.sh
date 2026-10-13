@@ -106,9 +106,10 @@ printf '%s' '{"fetchPrices":false}' > "$run/tmp/prices.json"
 tb bb plugin rpc call cache-keeper setSettings --input-file "$run/tmp/prices.json" > /dev/null || fail "could not switch off fetching prices"
 tb bb cache-keeper drive now > /dev/null || fail "the plugin has no drive commands: CACHE_KEEPER_DRIVE_CLOCK did not reach it"
 
-# Every process the run holds now, checked for a leak.
+# Every process the run holds now, checked for a leak, and gh inside the run
+# for a token bb would hand its threads.
 # shellcheck disable=SC2046 # one PID per word
-run_env_start_check start.sh "$run/caller-env" $(harness_procs | cut -f1)
+run_env_start_check start.sh "$run/caller-env" "${base[@]}" -- $(harness_procs | cut -f1)
 
 {
   echo "# Points bb at the harness's throwaway bb and nothing else. Source it."
