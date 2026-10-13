@@ -83,8 +83,8 @@ export function Board({ cards, now, selected, onSelect, showQuiet, onShowQuiet }
 
 /**
  * The dot before a line's forge logo, in the tone of the fleet's worst flag. A line with no flag keeps the dot's space
- * empty so every logo and name starts in one column. Hidden from assistive technology: the line's ⚠ or fix verb names
- * the flag.
+ * empty so every logo and name starts in one column. Hidden from assistive technology: the line's ⚠, fix verb or polling
+ * cell names the flag.
  */
 function FlagDot({ worst }: { worst: "problem" | "warning" | null }) {
   return <span aria-hidden className={cn("size-2 shrink-0", worst !== null && ["rounded-full", TONE_FILL[FLAG_TONES[worst]]])} />;

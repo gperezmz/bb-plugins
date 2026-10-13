@@ -49,7 +49,7 @@ One line for each fleet that is not quiet, in this order, left to right.
 | Fix | The first of the fleet's problems and warnings as a coloured verb, with the full sentence on hover, and `+N` when there are more, in which case the hover lists every sentence. See below |
 | Fleet tab | An icon that opens the manager's thread on its Fleet tab, showing this fleet |
 
-A problem is red, a warning amber, and a fleet with either starts its line with a small round dot of that colour, before the forge's logo; the dot is hidden from assistive technology, since the fix verb already names the flag. A fleet with both is red. A line with neither draws no dot but keeps its space, so every name starts in one column. The fix verb is one of these, in the order a fleet's flags are ranked:
+A problem is red, a warning amber, and a fleet with either starts its line with a small round dot of that colour, before the forge's logo; the dot is hidden from assistive technology, since the line's fix or polling column already names the flag. A fleet with both is red. A line with neither draws no dot but keeps its space, so every name starts in one column. The fix verb is one of these, in the order a fleet's flags are ranked:
 
 | Flag | Kind | Shown as | Opens |
 |---|---|---|---|

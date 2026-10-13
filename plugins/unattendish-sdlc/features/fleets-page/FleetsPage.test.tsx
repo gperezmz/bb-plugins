@@ -667,10 +667,10 @@ describe("the dot that marks a flagged line (#308)", () => {
       const item = line(repo);
       const mark = markOf(item);
       const lead = mark.parentElement!.children;
-      return [mark.className.match(/size-\d+/)?.[0], mark.parentElement === item.firstElementChild, [...lead].indexOf(mark), [...lead].indexOf(within(item).getByLabelText("GitHub"))];
+      return [mark.className.match(/size-\d+/)?.[0], mark.className.includes("shrink-0"), mark.parentElement === item.firstElementChild, [...lead].indexOf(mark), [...lead].indexOf(within(item).getByLabelText("GitHub"))];
     });
     expect(new Set(widths.map((width) => JSON.stringify(width))).size).toBe(1);
-    expect(widths[0]).toEqual(["size-2", true, 0, 1]);
+    expect(widths[0]).toEqual(["size-2", true, true, 0, 1]);
   });
 
   it("hides the dot from assistive technology, the line's fix verb naming the problem (AC4)", async () => {
@@ -692,6 +692,7 @@ describe("the dot that marks a flagged line (#308)", () => {
     const ok = markOf(line("org/ok"));
     expect(isDot(ok)).toBe(false);
     expect(ok.className).toContain("size-2");
+    expect(ok.className).toContain("shrink-0");
     expect(ok.parentElement!.firstElementChild).toBe(ok);
     expect(dash.querySelectorAll(".bg-destructive")).toHaveLength(1);
     expect(line("org/wake").querySelectorAll(".bg-warning")).toHaveLength(1);
