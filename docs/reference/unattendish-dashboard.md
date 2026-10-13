@@ -56,7 +56,7 @@ A problem is red, a warning amber, and a fleet with either has a bar of that col
 | The manifest is missing or unreadable | Problem | **Review** | The Fleet tab |
 | Manifest rows the plugin cannot read | Problem | **Review** | The Fleet tab |
 | A half no account reads, or whose credential the service refuses or cannot read the repository with | Problem | **Connect…** | The [Connect popup](../how-to/unattendish-connect-a-fleet.md#connect-a-half) for that half |
-| A token whose expiry has passed: `token expired N days ago`, or `token expired today`, its days counted in your own calendar. Where the service also refuses it, this is the half's only flag | Problem | **Renew…** | The Connect popup, to renew it |
+| A token whose expiry has passed: `token expired N days ago`, or `token expired today`, its days counted in your own calendar. Where the service also refuses it, or it counts as unable to read the repository, this is the half's only flag | Problem | **Renew…** | The Connect popup, to renew it |
 | The manager thread is archived or gone | Problem | A red ✕, whose sentence says to run `/run-fleet` in a new thread to take the fleet over | Nothing |
 | The manifest names another repository: the fleet is [left behind](#a-left-behind-fleet) | Problem | A red ✕, whose sentence names the repository the manifest names and the command that unregisters the fleet | Nothing |
 | Any other [`notWatched` reason](unattendish-fleet-contract.md), or an outage the poll found | Problem | A red ✕ | Nothing |
