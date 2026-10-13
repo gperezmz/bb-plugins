@@ -28,7 +28,7 @@ export const toastTitle = (signal: Pick<FleetNeedsSignal, "fleet">): string => `
 
 /** The line under the title: what the half needs, or, for a token refused because it has expired, that it expired. */
 export const toastDescription = (signal: Pick<FleetNeedsSignal, "text" | "expired">, now: string): string =>
-  signal.expired === null ? signal.text : `${signal.expired.label}: ${expiredLine(signal.expired.expiresAt, now)}`;
+  signal.expired === null ? signal.text : expiredLine(signal.expired.label, signal.expired.expiresAt, now);
 
 /** The toast's button: Renew… for a token refused because it has expired, which renews that token; Connect… for the half otherwise. */
 export const toastAction = (signal: Pick<FleetNeedsSignal, "fleet" | "role" | "expired">): { readonly label: "Connect…" | "Renew…"; readonly request: ConnectRequest } => {

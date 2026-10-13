@@ -63,6 +63,7 @@ describe("the needs toasts", () => {
     expect(toast.mock.calls[0]![0]).toBe("org/dash can't be read");
     const { description, action } = toast.mock.calls[0]![1] as { description: string; action: { label: string; onClick(): void } };
     expect(description).toBe("GitHub · yuser for org: token expired 1 day ago");
+    expect(drawnIcons(render((toast.mock.calls[0]![1] as { icon: ReactElement }).icon).baseElement)).toEqual(["ElectricPlugs"]);
     expect(action.label).toBe("Renew…");
     action.onClick();
     expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "acc_y", replaces: "cred_y" });

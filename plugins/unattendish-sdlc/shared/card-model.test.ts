@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { expiredLine, trackerOf, warningLine } from "./card-model";
 
 const NOW = "2026-10-12T12:00:00Z";
@@ -17,12 +17,22 @@ describe("an expired token (#261 AC6)", () => {
   const local = (day: number, hour: number) => new Date(2026, 9, day, hour, 0).toISOString();
 
   it("reads expired today on the day it expired, never 0 days ago or expires today", () => {
-    expect(expiredLine(local(13, 9), local(13, 14))).toBe("token expired today");
+    expect(expiredLine("GitHub · yuser", local(13, 9), local(13, 14))).toBe("GitHub · yuser: token expired today");
   });
 
   it("counts the operator's calendar days since the day it expired", () => {
-    expect(expiredLine(local(12, 23), local(13, 10))).toBe("token expired 1 day ago");
-    expect(expiredLine(local(11, 8), local(13, 10))).toBe("token expired 2 days ago");
+    expect(expiredLine("GitHub · yuser", local(12, 23), local(13, 10))).toBe("GitHub · yuser: token expired 1 day ago");
+    expect(expiredLine("GitHub · yuser", local(11, 8), local(13, 10))).toBe("GitHub · yuser: token expired 2 days ago");
+  });
+
+  it("counts local days, not UTC days, for an operator ahead of UTC", () => {
+    vi.stubEnv("TZ", "Europe/Madrid");
+    try {
+      // 23:30 on 12 Oct and 00:30 on 13 Oct in Madrid both fall on 12 Oct in UTC.
+      expect(expiredLine("GitHub · yuser", "2026-10-12T21:30:00.000Z", "2026-10-12T22:30:00.000Z")).toBe("GitHub · yuser: token expired 1 day ago");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("says a gh or glab login shares the agents' rate limit", () => {

@@ -431,6 +431,19 @@ describe("Settings (AC8, AC10, AC11)", () => {
     expect(made).toMatchObject({ ok: true, settings: { accounts: [{ defaultFor: [] }, { defaultFor: ["github.com"] }] } });
   });
 
+  it("says a token whose expiry has passed expired, with no days left, and the card flags it as a problem with Renew… (#261 AC2, AC5)", async () => {
+    const w = accountsWorld();
+    owns(w, "tok-old", "yuser", { expiresAt: "2026-10-15T10:00:00.000Z" });
+    await addLogin(w, github("tok-old", "acme"));
+    await register(w, "github.com/acme/api");
+    w.clock.advance(4 * 86_400_000);
+    const credential = (await api(w).settings()).accounts[0]!.credentials[0]!;
+    expect(credential).toMatchObject({ expiresAt: "2026-10-15T10:00:00.000Z", expired: true, expiresInDays: null });
+    const fleet = await card(w, "github.com/acme/api");
+    expect(fleet.warnings.filter((warning) => warning.kind === "expires")).toEqual([]);
+    expect(fleet.problems).toContainEqual(expect.objectContaining({ code: "token-expired", fix: expect.objectContaining({ kind: "renew", credentialId: credential.id }) }));
+  });
+
   it("warns of a token expiring within the window, with Renew opening the same pre-filled page, and a token saved through it replaces the old one", async () => {
     const w = accountsWorld();
     owns(w, "tok-old", "yuser", { expiresAt: "2026-10-15T10:00:00.000Z" });

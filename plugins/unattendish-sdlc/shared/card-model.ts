@@ -21,9 +21,9 @@ export function warningLine(warning: WarningView, now: string): WarningLine {
   }
 }
 
-/** What an expired token says: `token expired 2 days ago`, counted in the viewer's calendar days. */
-export function expiredLine(expiresAt: string, now: string): string {
-  return `token ${expiredAgoText(expiresAt, now)}`;
+/** What an expired token says: `GitHub · yuser for acme: token expired 2 days ago`, counted in the viewer's calendar days. */
+export function expiredLine(label: string, expiresAt: string, now: string): string {
+  return `${label}: token ${expiredAgoText(expiresAt, now)}`;
 }
 
 /** The tracker where it is a service of its own, with the key the board names it by: Linear's team key or Jira's project key. */

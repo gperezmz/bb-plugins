@@ -125,6 +125,14 @@ export type FixView =
   | { readonly kind: "fleet-tab" }
   | { readonly kind: "none" };
 
+/** Renew… for a token: the credential it replaces, its account and the half it serves. */
+export interface RenewFixView {
+  readonly kind: "renew";
+  readonly role: SourceRole;
+  readonly accountId: string;
+  readonly credentialId: string;
+}
+
 /** A problem the server flags about a fleet. */
 export type ProblemView =
   | {
@@ -140,7 +148,7 @@ export type ProblemView =
       /** A token whose expiry has passed; it carries what Renew… needs, and when it expired for a page to count the days. */
       readonly code: "token-expired";
       readonly text: string;
-      readonly fix: { readonly kind: "renew"; readonly role: SourceRole; readonly accountId: string; readonly credentialId: string };
+      readonly fix: RenewFixView;
       readonly label: string;
       readonly expiresAt: string;
     };
@@ -222,7 +230,7 @@ export interface FleetCardView {
   readonly cost: CostView | null;
   readonly lastPolledAt: string | null;
   readonly intervalMs: number;
-  /** The fleet's problems: every reason it is not fully watched, and a manager that is gone. */
+  /** The fleet's problems: every reason it is not fully watched, its expired tokens, and a manager that is gone. */
   readonly problems: readonly ProblemView[];
   /** The forge, then the tracker where it is a service of its own. */
   readonly halves: readonly HalfView[];

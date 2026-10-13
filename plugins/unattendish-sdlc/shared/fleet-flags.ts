@@ -43,7 +43,7 @@ function rankOf(flag: Flag, code: string | null): number {
 
 function problemOf(problem: ProblemView, now: string): Flag {
   if (problem.code === "token-expired") {
-    return { kind: "problem", sentence: `${problem.label}: ${expiredLine(problem.expiresAt, now)}`, verb: "Renew…", fix: problem.fix, saidElsewhere: false };
+    return { kind: "problem", sentence: expiredLine(problem.label, problem.expiresAt, now), verb: "Renew…", fix: problem.fix, saidElsewhere: false };
   }
   const fix: FlagFix = problem.fix.kind === "connect" ? { kind: "connect", role: problem.fix.role } : problem.fix.kind === "fleet-tab" ? { kind: "fleet-tab" } : { kind: "none" };
   const verb = fix.kind === "connect" ? "Connect…" : fix.kind === "fleet-tab" ? "Review" : null;
