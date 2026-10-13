@@ -39,3 +39,7 @@ _Avoid_: Allowlist, inherited environment
 **Leak**:
 A variable the caller of a drive harness held at `start`, with the same name and value, found in a process of the run while its name is not on the passed list; the variable `start` plants under a random name is a leak wherever it turns up. Names the harness, bb or Claude Code set in a run's processes to a value that can equal the caller's are listed beside the passed list, and are no leak.
 _Avoid_: Credential leak, exposed variable
+
+**Refused name**:
+A name a drive harness's environment never holds, on the passed list, beside it or among what the harness adds to a run: a credential, a variable pointing at where one is kept, or any name containing TOKEN, SECRET, PASS, KEY, AUTH or CREDENTIAL in any letter case. A name that matches a pattern but has to be there is excepted from the patterns alone, with why.
+_Avoid_: Blocklist, forbidden variable
