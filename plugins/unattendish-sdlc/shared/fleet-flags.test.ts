@@ -35,6 +35,13 @@ describe("a fleet's flags", () => {
     expect(polling).toMatchObject({ fix: { kind: "none" }, saidElsewhere: true });
   });
 
+  it("offer no Connect… for a refusal another account would not fix, such as a service that does not answer", () => {
+    const silent: ReasonView = { code: "credential-refused", text: "The service did not answer reads with the credential for github.com/org", fix: { kind: "none" } };
+    const [flag] = flagsOf(fleetCard({ reasons: [silent] }), NOW);
+    expect(flag).toMatchObject({ kind: "problem", verb: null, fix: { kind: "none" } });
+    expect(fixIcon(flag!)).toBe("CircleX");
+  });
+
   it("leave out sharing the agents' rate limit, which only the Fleet tab says", () => {
     expect(flagsOf(fleetCard({ warnings: [{ kind: "shares-rate-limit", label: "GitHub · yuser" }] }), NOW)).toEqual([]);
   });
