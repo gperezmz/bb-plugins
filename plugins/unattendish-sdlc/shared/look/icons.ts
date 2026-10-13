@@ -107,12 +107,8 @@ export const OUTCOME_ICONS: Readonly<Record<LedgerChangeView["done"], string>> =
 /** The services a fleet's forge or tracker can be. */
 export type Service = ServiceKind;
 
-/**
- * The logo of each service that has one to show: GitHub's, which bb draws itself. GitLab's and Atlassian's trademark
- * rules refuse their logos to third parties, and Linear's forbids altering its files, which drawing them in the text
- * colour does, so those services show their names instead.
- */
-export const SERVICE_LOGOS: Readonly<Partial<Record<Service, string>>> = { github: "GithubLogo" };
+/** GitHub's logo, which bb draws in the text colour. The other services' logos are their brands' own artwork in their own colours, which `brand-logos.tsx` draws. */
+export const GITHUB_LOGO = "GithubLogo";
 
 /** Each service's name, which a logo's accessible name reads as. */
 export const SERVICE_NAMES: Readonly<Record<Service, string>> = { github: "GitHub", gitlab: "GitLab", linear: "Linear", jira: "Jira" };

@@ -64,7 +64,7 @@ export function TokenStep({
         <Part number={1} title={`Create a ${noun}`}>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" size="sm" variant="outline" onClick={() => navigate.openUrl(page.url as string)}>
-              <ServiceLogo service={service} decorative logoOnly />
+              <ServiceLogo service={service} decorative />
               Create token
               <Glyph name={ICONS.openPage} />
             </Button>

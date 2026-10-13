@@ -34,7 +34,7 @@ export function AccountStep({ view, chosenService, busy, onService, onChoose }: 
           {view.accounts.map((account) => (
             <Card key={account.id} value={account.id} checked={option === account.id} onChange={() => setOption(account.id)}>
               <span className="flex flex-wrap items-center gap-1.5">
-                {service !== null ? <ServiceLogo service={service} decorative logoOnly /> : null}
+                {service !== null ? <ServiceLogo service={service} decorative /> : null}
                 <span className="font-medium">{account.label}</span>
                 {account.isDefault ? <Pill>default</Pill> : null}
                 {account.canWrite ? <CanWrite /> : null}

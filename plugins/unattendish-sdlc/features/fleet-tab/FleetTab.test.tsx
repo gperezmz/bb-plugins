@@ -6,7 +6,7 @@ import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { clearReviewRequests, requestReview } from "@/shared/review-request";
 import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetCredential, fleetDetail, HOUR, inboxRow, landedRow, ledgerChange, ledgerView, managerFleet, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
-import { drawnIcons, expectIconsResolve } from "@/testing/icons";
+import { drawnIcons, drawnLogos, expectIconsResolve } from "@/testing/icons";
 import { expectGrantLook } from "@/testing/look";
 import { sdk } from "@/testing/sdk";
 import { setCompactViewport } from "@/testing/viewport";
@@ -128,11 +128,12 @@ describe("the header (#258 AC1)", () => {
     expect(within(strip).getByRole("button", { name: /^Review/ }).textContent).toBe("Review");
   });
 
-  it("shows the forge's logo, the fleet's name, and a tracker of its own as its name and key", async () => {
+  it("shows the forge's logo, the fleet's name, and a tracker of its own as its logo and key", async () => {
     const header = await showDetail();
     expect(within(header).getByRole("img", { name: "GitHub" })).toBeTruthy();
     expect(within(header).getByText("acme/web")).toBeTruthy();
-    expect(within(header).getByText("Linear")).toBeTruthy();
+    expect(within(header).getByRole("img", { name: "Linear" })).toBeTruthy();
+    expect(within(header).queryByText("Linear")).toBeNull();
     expect(within(header).getByText("ENG")).toBeTruthy();
   });
 
@@ -480,6 +481,22 @@ describe("Watching (#258 AC8)", () => {
     expect(within(watched).getByText("named in In flight")).toBeTruthy();
     expect(within(watched).getByText("named in Inbox · blocked on #170")).toBeTruthy();
     expect(within(watched).getByRole("link", { name: "#163" }).getAttribute("href")).toBe("https://github.test/acme/web/issues/163");
+  });
+
+  it("draws a GitLab or Linear credential's service as its logo, not its name", async () => {
+    await showDetail({
+      credentials: [
+        fleetCredential({ label: "GitLab · yuser for group", account: { id: "acc_gl", label: "GitLab · yuser" }, kind: "gitlab-token" }),
+        fleetCredential({ role: "tracker", label: "Linear · yuser for ENG", account: { id: "acc_li", label: "Linear · yuser" }, kind: "linear-key" }),
+      ],
+    });
+    fireEvent.click(tab(/^Watching/));
+    const gitlab = screen.getByRole("listitem", { name: "Credential GitLab · yuser for group" });
+    const linear = screen.getByRole("listitem", { name: "Credential Linear · yuser for ENG" });
+    expect(within(gitlab).getByRole("img", { name: "GitLab" })).toBeTruthy();
+    expect(within(linear).getByRole("img", { name: "Linear" })).toBeTruthy();
+    expect(drawnLogos(gitlab)).toEqual(["gitlab"]);
+    expect(drawnLogos(linear)).toEqual(["linear"]);
   });
 
   it("says an expired credential's expiry as expired on its date, in red (#261 AC4)", async () => {

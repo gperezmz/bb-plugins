@@ -113,6 +113,15 @@ const ICONS = [
   ["user-x.svg", "user-x", LUCIDE],
 ];
 
+// The brand logos `shared/look/brand-logos.tsx` draws, each its owner's trademark and published artwork. Retrieved on
+// the date given; the shapes and colours are the file's, and the only change is GitLab's viewBox cropped to the mark.
+const RETRIEVED = "2026-10-14";
+const LOGOS = [
+  ["GitLab", "GitLab Inc.", "gitlab-logo-500-rgb.svg (Logomark), https://about.gitlab.com/images/press/gitlab-logo-500-rgb.svg, from the press kit at https://about.gitlab.com/press/press-kit/", "viewBox cropped to the mark"],
+  ["Jira", "Atlassian", "Jira_icon.svg, in https://atlassian.design/assets/700bfde52eb7/logos/jira_app.zip, from the logo library at https://atlassian.design/foundations/logos", "the id of its clip path, made unique to each drawing"],
+  ["Linear", "Linear Orbit, Inc.", "logo-dark.svg (light pages) and logo-light.svg (dark pages), in https://static.linear.app/design-assets/Linear-Brand-Assets.zip?v=3, from https://linear.app/brand", "none"],
+];
+
 const lines = [
   "# Third-party notices",
   "",
@@ -128,6 +137,14 @@ const lines = [
   "| File | Copied from | Version | Licence | Copyright |",
   "|---|---|---|---|---|",
   ...ICONS.map(([file, name, set]) => `| icons/${file} | ${set.source}: ${name} | ${set.version} | ${set.licence} | ${set.copyright} |`),
+  "",
+  "## Brand logos",
+  "",
+  "GitLab's, Jira's and Linear's logos, drawn in `shared/look/brand-logos.tsx`, are trademarks of the companies below and their artwork, which this plugin's licence does not cover. They are shown only to refer to those services, in the owners' own colours and unmodified except in size. Unattendish is not made by, endorsed by or affiliated with any of them.",
+  "",
+  "| Logo | Trademark of | Published as, and from | Changed | Retrieved |",
+  "|---|---|---|---|---|",
+  ...LOGOS.map(([logo, owner, source, changed]) => `| ${logo} | ${owner} | ${source} | ${changed} | ${RETRIEVED} |`),
   "",
 ];
 writeFileSync(join(root, "THIRD_PARTY_NOTICES.md"), lines.join("\n"));

@@ -22,7 +22,7 @@ export function AccountItem({ account, actions }: { account: AccountSettingView;
   return (
     <li aria-label={account.label} className="flex flex-col gap-2.5 rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <ServiceLogo service={account.service} decorative logoOnly className="size-4" />
+        <ServiceLogo service={account.service} decorative className="size-4" />
         <span className="font-medium">{account.label}</span>
         <span className="text-xs text-muted-foreground">{account.place}</span>
         {account.canWrite ? <CanWrite /> : null}

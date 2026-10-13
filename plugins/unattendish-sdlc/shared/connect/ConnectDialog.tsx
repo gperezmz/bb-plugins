@@ -1,7 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { AccountStep } from "./AccountStep";
 import { ServiceLogo } from "../look/Glyph";
-import { SERVICE_LOGOS } from "../look/icons";
 import { canGoBack, connectingService, dialogTitle, popupService, stepMarks, type ResultAction } from "./model";
 import type { ConnectRequest } from "./requests";
 import { ResultStep } from "./ResultStep";
@@ -28,7 +27,7 @@ export function ConnectDialog({ request, onClose }: { request: ConnectRequest; o
       <DialogContent>
         <div className="flex flex-col gap-2">
           <DialogTitle className="flex items-center gap-2">
-            {titled !== null ? <ServiceLogo service={titled} className={SERVICE_LOGOS[titled] !== undefined ? "size-5" : undefined} /> : null}{" "}
+            {titled !== null ? <ServiceLogo service={titled} className="size-5" /> : null}{" "}
             {dialogTitle(request, state.view)}
           </DialogTitle>
           <StepMarker marks={stepMarks(state)} />
