@@ -107,9 +107,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   title, named `not sent: HTTP 409: Thread is archived`, and the button stays.
 - The fleet header, at the top of the Fleet tab and in the chip's hover card,
   is a `header` labelled `Fleet <repo>` (a `banner` in the hover card only,
-  since bb's panel holds the tab inside a landmark of its own): the forge's logo (`img "GitHub"`; GitLab,
-  Linear and Jira as their names), `<repo>`, a Linear or Jira tracker's name
-  and key; the manager (`img "Manager idle for 12s"`, `Manager working`,
+  since bb's panel holds the tab inside a landmark of its own): the forge's logo (`img "GitHub"`, `img "GitLab"`),
+  `<repo>`, a Linear or Jira tracker's logo (`img "Linear"`, `img "Jira"`) and
+  key; the manager (`img "Manager idle for 12s"`, `Manager working`,
   `No manager: its thread is archived or gone`); each non-zero Status count
   named as on the board (`4 waiting on you`); the spend (`$0.17`, named
   `$0.17 spent since this manager started`) with Thread Usage installed;
@@ -178,7 +178,8 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `Renew…`, which opens the popup renewing that token. A token 7 days or less
   from expiry is a warning strip, `token expires in 3 days`, with `Renew…`.
 - The popup, a `dialog` titled `Connect <owner/name>` (`Connect other-org/x`), `Add a token`,
-  `Renew a token` or `Add account`, after the service's logo (`img "GitHub"`),
+  `Renew a token` or `Add account`, after the service's logo (`img "GitHub"`; GitLab, Linear and Jira
+  likewise, each `img` named for the service),
   with `list "Steps"` (`Account › Token › Done`, the current step
   `aria-current="step"`) under it. A Renew or Add a token draws the account
   step for a moment, `Working…`, before its token step. Connect asks

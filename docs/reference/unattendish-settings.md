@@ -15,7 +15,7 @@ The plugin has no `bb plugin config` key. It keeps its accounts, their credentia
 |---|---|
 | **Accounts** | One card for each [account](#accounts); see below. With none, it says `No account is connected.` |
 | **Add account** | Opens the Connect popup without a fleet. It asks for the service and its host or Jira site, and for GitHub the owner the token is for, and lists that owner's registered fleets to tick on the token. It then asks for a credential and verifies it as Connect does. The first account on a host or site becomes its default |
-| **Poll interval** | A table with a row for each registered fleet: its forge's logo (GitHub's; GitLab's name) and the fleet, a field in seconds, marked `seconds (default)` while it is the default, **Set**, and **Default** back to the default. Under 30 seconds is refused |
+| **Poll interval** | A table with a row for each registered fleet: its forge's logo and the fleet, a field in seconds, marked `seconds (default)` while it is the default, **Set**, and **Default** back to the default. Under 30 seconds is refused |
 
 ## Accounts
 
@@ -23,7 +23,7 @@ An account is one login on one host or service: `GitHub · yuser` and `GitHub ·
 
 | Part | What |
 |---|---|
-| Header | The service's logo (GitHub's; GitLab, Linear and Jira are named in the label, since their trademark rules leave no logo to show), the account as `GitHub · yuser`, its host (for Linear `linear.app`, for Jira its site), **can write** where the account uses a `gh` or `glab` login, a `default` pill where it is that place's default (its hover text says `default for <host>`), and **Make default** on the other accounts of a place |
+| Header | The service's logo, the account as `GitHub · yuser`, its host (for Linear `linear.app`, for Jira its site), **can write** where the account uses a `gh` or `glab` login, a `default` pill where it is that place's default (its hover text says `default for <host>`), and **Make default** on the other accounts of a place |
 | ⋯ menu | **Add token for another owner**, on a GitHub account that uses tokens, which opens the popup at its token step; and **Remove account**, which asks first |
 | Credentials | A line for each token or login the account holds, led by a key: what it reaches (an owner on GitHub, the host on GitLab, every team the key reaches on Linear, the site on Jira), its kind, **can write** where it can, `read by <fleets>` or `no fleet reads with it`, and for a `gh` or `glab` login `shares the agents' rate limit` in amber. Its [expiry](#expiry-and-refused-credentials) is at the end, with **Renew…** where one is given and a 🗑 that removes it, asking first |
 | Reads | The owners, groups, Linear teams and Jira projects assigned to the account, a chip each, whose ✕ returns it to the default |

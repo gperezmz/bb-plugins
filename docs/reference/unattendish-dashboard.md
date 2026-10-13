@@ -41,7 +41,7 @@ One line for each fleet that is not quiet, in this order, left to right.
 
 | Part | What it shows |
 |---|---|
-| Name | The forge's logo (GitHub's; GitLab shows its name) and the fleet's name. Where the tracker is Linear or Jira, its name and key follow: Linear's team key, Jira's project key. A tracker that is the forge's issues adds nothing |
+| Name | The forge's logo and the fleet's name. Where the tracker is Linear or Jira, its logo and key follow: Linear's team key, Jira's project key. A tracker that is the forge's issues adds nothing |
 | Manager | A turning icon while it works, with no time, since the plugin cannot know how long; a cup with how long it has been idle; a red person with a cross when its thread is archived or gone. The icon's accessible name and hover text say the state. How long is the thread's last update, which is approximate |
 | Status | Four fixed slots in this order: Blocked, In flight, Waits on you, Landed in the last 7 days. A count of zero leaves its slot empty and the others keep their places. Hovering a slot names its count, and the header lists the four |
 | Spend | The manager's thread tree's total from Thread Usage, "since this manager started". Where the manager's thread holds other fleets, `shared with <their names>` follows under it, since each of those fleets shows the same money. Empty, with no error, where Thread Usage is not installed or its answer cannot be read. Cached for 30 seconds |
@@ -104,6 +104,19 @@ A row waiting for `other` has its link and no action: the cell reads `watch only
 | No fleet registered | `No fleet is registered`, and that a fleet appears once `/run-fleet` from unattendish-sdlc runs with this plugin installed |
 | Empty Inbox | `Nothing waits on you`. The tabs stay, and Sent still lists what was done in the last hour |
 
+### Service logos
+
+Wherever the plugin shows a fleet's forge, a tracker, an account or a service to connect (the board, queue rows, the filter chip, the Fleet header and tab, toasts, the Connect popup and Settings), it shows the service's logo, about 14 px high unless a place sizes it. Its accessible name is the service's name, and it is hidden from assistive technology where the name is written beside it.
+
+| Service | The logo |
+|---|---|
+| GitHub | bb's own, drawn in the text colour |
+| GitLab | GitLab's tanuki in its own colours, in both themes |
+| Jira | Atlassian's blue Jira icon, in both themes |
+| Linear | Linear's mark, dark on a light page and white in the dark theme |
+
+GitLab's, Jira's and Linear's are the owners' published artwork, changed in nothing but size (GitLab's file is also cropped to the mark), and are the only colours on these pages that are not bb's theme tokens. [`THIRD_PARTY_NOTICES.md`](../../plugins/unattendish-sdlc/THIRD_PARTY_NOTICES.md) names each as its owner's trademark, with where it came from.
+
 ### The wide and narrow layouts
 
 The page draws its **wide layout**, the board and one line per queue row as above, wherever the page itself is at least 66rem wide, and its **narrow layout**, below, anywhere narrower: on a phone, and in a desktop window that bb's sidebar leaves narrow, such as a 1024 px window with the sidebar open. The width counted is the page's own, beside bb's sidebar, with a scrollbar drawn whether one shows or not, so the page goes wide up to one scrollbar's width later where nothing scrolls. 66rem is where the widest row the wide layout can hold still shows every part whole. The page switches as it is resized, with no reload, keeping an open composer with its draft, focus and caret, the queue's tab, its filter, every action's state, and whether each layout's board is unfolded.
@@ -126,7 +139,7 @@ What the Fleet tab opens on and the Fleet chip shows on hover, in this order:
 
 | Line | What |
 |---|---|
-| Fleet | The forge's logo, the fleet's name, and a tracker of its own as its name and key: Linear's team key or Jira's project key. GitHub shows its logo; GitLab, Linear and Jira show their names, since their trademark rules refuse third parties or forbid recolouring their logos |
+| Fleet | The forge's logo, the fleet's name, and a tracker of its own as its logo and key: Linear's team key or Jira's project key |
 | Manager | A turning icon in green while it works, with no duration, since the plugin cannot know how long it has worked; a cup in grey with how long it has been idle; a person with a cross in red when its thread is archived or gone. A thread bb did not answer for also shows no manager, without the problem a gone manager raises |
 | Status | The four counts, each an icon and a number in its colour, a zero left out: blocked grey, in flight blue, waits on you amber, landed in the last 7 days purple |
 | Spend | As the board's Spend, where there is one, followed by `shared with <their names>` where the manager's thread holds other fleets |
@@ -198,7 +211,7 @@ In flight's icons, by stage:
 | Block | What |
 |---|---|
 | Watched set | Each item's short link and why it is in it: `named in In flight`, `named in Inbox`, `named in Blocked`, `blocked on <Ref>`, or `carries the spec label` or `carries the ready label` |
-| Credentials | A small card for each credential the fleet uses: the service's logo or name, the account, the half it reads (`reads the forge`), its kind, **can write** where it can, its expiry date (`expires 18 Oct`, or `expired 12 Oct` in red once it has passed) or `no expiry reported`, `shares the agents' rate limit` in amber for a `gh` or `glab` login, and **Change account…**, which opens the Connect popup for that half |
+| Credentials | A small card for each credential the fleet uses: the service's logo, the account, the half it reads (`reads the forge`), its kind, **can write** where it can, its expiry date (`expires 18 Oct`, or `expired 12 Oct` in red once it has passed) or `no expiry reported`, `shares the agents' rate limit` in amber for a `gh` or `glab` login, and **Change account…**, which opens the Connect popup for that half |
 | Polling | `every <interval> · polled <age> ago · <n> requests this hour` |
 
 ### Ledger
