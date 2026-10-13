@@ -41,7 +41,7 @@ export const oldestFirst = <Row extends Pick<InboxRow, "since" | "ref">>(rows: r
 export type Fix = { readonly kind: "connect"; readonly role: SourceRole } | { readonly kind: "fleet-tab" } | { readonly kind: "none" };
 
 export interface Problem {
-  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
+  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
   readonly text: string;
   readonly fix: Fix;
 }
@@ -63,12 +63,22 @@ export const unreadableRowsText = (unreadable: readonly UnreadableRow[]): string
 /** What a fleet whose manager thread is archived or gone says: nothing on the page fixes it, a new manager does. */
 export const MANAGER_GONE_TEXT = "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over";
 
+/** What a left-behind fleet says: what its manifest names now, and how to unregister it. Nothing on the page fixes it. */
+export const leftBehindText = (fleet: string, names: string): string =>
+  `Its manifest now names ${names}, so nothing in it is this fleet's. Unregister it with \`bb unattendish fleet unregister ${fleet}\`.`;
+
+/** A left-behind fleet: the fleet's own name, and the repository its manifest names. */
+export interface LeftBehind {
+  readonly fleet: string;
+  readonly names: string;
+}
+
 /**
- * The fleet's problems, each text once: what `notWatched` says, then the unreadable rows, then a manager that is gone
- * (`managerGone`).
+ * The fleet's problems, each text once: that it is left behind (`leftBehind`), then what `notWatched` says, then the
+ * unreadable rows, then a manager that is gone (`managerGone`).
  */
-export const problemsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false): Problem[] => {
-  const problems: Problem[] = [];
+export const problemsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false, leftBehind: LeftBehind | null = null): Problem[] => {
+  const problems: Problem[] = leftBehind === null ? [] : [{ code: "left-behind", text: leftBehindText(leftBehind.fleet, leftBehind.names), fix: { kind: "none" } }];
   for (const line of notWatched) if (!problems.some((known) => known.text === line.text)) problems.push({ code: line.code, text: line.text, fix: fixOf(line) });
   const text = unreadableRowsText(unreadable);
   if (text !== null) problems.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });

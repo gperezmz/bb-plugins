@@ -1,7 +1,7 @@
 // The command line through the SDK's fake host, over the real composition and
 // a SQLite store: what each command does to the fleet it names, and what it
 // prints for a person.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -378,6 +378,17 @@ describe("the human output of every command", () => {
     expect(text).toContain("every 120 s");
     expect(text).toContain("last polled never");
     expect(text).toContain("not watched:");
+  });
+
+  it("status says a fleet whose manifest names another repository is left behind, and prints none of its rows (#270 AC6)", async () => {
+    const { run, json } = await load();
+    writeFileSync(join(dir, "manifest.md"), `# Fleet: ${OTHER}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n| nope | x | answer | 2026-10-12T09:00:00Z | x |\n`);
+    await run(registerArgs(), MANAGER);
+    const text = (await run(["fleet", "status"])).stdout;
+    expect(text).toContain(`left behind: its manifest names ${OTHER}, so only its labelled items are watched`);
+    expect(text).not.toContain("unreadable manifest row");
+    const [fleet] = (await json(["fleet", "status"])).fleets;
+    expect(fleet).toMatchObject({ leftBehind: { names: OTHER }, unreadableRows: [], outside: [] });
   });
 
   it("ledger prints one line per entry with its item, what became of it and its link, and says when it holds nothing", async () => {

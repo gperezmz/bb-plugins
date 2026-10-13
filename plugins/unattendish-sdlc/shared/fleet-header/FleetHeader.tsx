@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ActionRecordView, FleetCardView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { trackerOf } from "../card-model";
@@ -6,6 +7,7 @@ import { fixIcon, flagsOf, type Flag } from "../fleet-flags";
 import { Glyph, ServiceLogo } from "../look/Glyph";
 import { ICONS } from "../look/icons";
 import { Tip } from "../look/Tip";
+import { sharedText } from "../thread-fleets";
 import { COUNT_TONES, FLAG_TONES, MANAGER_TONES, TONE_TEXT, TONE_TINT } from "../look/tones";
 import { lastActionText, managerCell, spendText, statusSlots } from "./model";
 
@@ -18,6 +20,8 @@ interface FleetHeaderProps {
   readonly now: string;
   /** What Review does: open the Fleet tab's Work tab at what needs reviewing. */
   onReview(): void;
+  /** What stands for the fleet's name, such as the Fleet tab's switcher; absent, the name as plain text. */
+  readonly name?: ReactNode;
   readonly className?: string;
 }
 
@@ -25,15 +29,16 @@ interface FleetHeaderProps {
  * The fleet header: the forge's logo, the fleet's name and its tracker; the manager; the four Status counts and the
  * spend; each problem and warning as a strip in its tone with its verb; and the last action seen done in the last hour.
  */
-export function FleetHeader({ card, lastAction, now, onReview, className }: FleetHeaderProps) {
+export function FleetHeader({ card, lastAction, now, onReview, name, className }: FleetHeaderProps) {
   const tracker = trackerOf(card.tracker);
   const spend = spendText(card);
+  const shared = sharedText(card);
   const flags = flagsOf(card, now);
   return (
     <header aria-label={`Fleet ${card.repo}`} className={cn("flex flex-col gap-2 text-sm", className)}>
       <div className="flex min-w-0 items-center gap-2">
         <ServiceLogo service={card.forge} />
-        <span className="min-w-0 truncate font-medium">{card.repo}</span>
+        {name ?? <span className="min-w-0 truncate font-medium">{card.repo}</span>}
         {tracker !== null ? (
           <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
             <ServiceLogo service={tracker.service} />
@@ -56,9 +61,10 @@ export function FleetHeader({ card, lastAction, now, onReview, className }: Flee
               ],
         )}
         {spend !== null && card.cost !== null ? (
-          <Tip text={`Spent ${card.cost.period}`}>
-            <span tabIndex={0} aria-label={`${spend} spent ${card.cost.period}`} className={cn(FOCUS, "tabular-nums text-muted-foreground")}>
-              {spend}
+          <Tip text={`Spent ${card.cost.period}${shared === null ? "" : `, ${shared}`}`}>
+            <span tabIndex={0} aria-label={`${spend} spent ${card.cost.period}${shared === null ? "" : `, ${shared}`}`} className={cn(FOCUS, "min-w-0 text-muted-foreground")}>
+              <span className="tabular-nums">{spend}</span>
+              {shared !== null ? <span> {shared}</span> : null}
             </span>
           </Tip>
         ) : null}

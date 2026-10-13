@@ -111,7 +111,7 @@ describe("the dashboard's RPC", () => {
       repo: REPO,
       manager: { state: "working", since: "2026-10-12T09:30:00.000Z" },
       waiting: 1,
-      cost: { amount: 1.75, currency: "USD", period: "since this manager started" },
+      cost: { amount: 1.75, currency: "USD", period: "since this manager started", sharedWith: [] },
     });
 
     const detail = await call<Result<{ detail: { manifest: { status: string; written: unknown[] } } }>>("fleetDetail", { repo: REPO });
@@ -135,7 +135,7 @@ describe("the dashboard's RPC", () => {
     writeFileSync(manifest, manifestText(row(7)));
     const { harness, call } = await load();
     await register(harness, manifest);
-    expect(await call<ThreadFleetView>("threadFleet", { threadId: MANAGER })).toMatchObject({ kind: "manager", card: { repo: REPO } });
+    expect(await call<ThreadFleetView>("threadFleet", { threadId: MANAGER })).toMatchObject({ kind: "manager", fleets: [{ card: { repo: REPO } }] });
     expect(await call<ThreadFleetView>("threadFleet", { threadId: "thr_other" })).toEqual({ kind: "none", holder: { repo: REPO, managerThreadId: MANAGER } });
   });
 

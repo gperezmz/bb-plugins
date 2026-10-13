@@ -170,7 +170,7 @@ export function UnreadableRow({ row, section, review = null, id }: { row: Pick<U
       <Glyph name={ICONS.unreadable} tone="red" />
       <span className="min-w-0 flex-1 text-destructive-text">{unreadableLine(row, section)}</span>
       {review !== null ? (
-        <button type="button" aria-label={`Review the manifest of ${review.fleet} in its Fleet tab`} className={cn(FOCUS, "text-xs font-medium text-destructive-text")} onClick={() => open(review.managerThreadId)}>
+        <button type="button" aria-label={`Review the manifest of ${review.fleet} in its Fleet tab`} className={cn(FOCUS, "text-xs font-medium text-destructive-text")} onClick={() => open({ managerThreadId: review.managerThreadId, fleet: review.fleet, review: true })}>
           Review
         </button>
       ) : null}

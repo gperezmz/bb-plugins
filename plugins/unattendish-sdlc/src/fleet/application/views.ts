@@ -127,8 +127,11 @@ export type FixView =
 
 /** A problem the server flags about a fleet. */
 export interface ProblemView {
-  /** The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, or `manager-gone` for a manager thread archived or gone. */
-  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
+  /**
+   * The contract's `notWatched` codes, `unreadable-rows` for manifest rows the plugin cannot read, `manager-gone` for a
+   * manager thread archived or gone, or `left-behind` for a fleet whose manifest names another repository.
+   */
+  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone" | "left-behind";
   readonly text: string;
   readonly fix: FixView;
 }
@@ -186,6 +189,8 @@ export interface CostView {
   readonly currency: string;
   /** The period the amount covers: `since this manager started`. */
   readonly period: string;
+  /** The other fleets the same manager thread holds, by name and sorted, whose spend this same amount is; empty for a fleet alone on its thread. */
+  readonly sharedWith: readonly string[];
 }
 
 export interface FleetCardView {
@@ -262,6 +267,8 @@ export interface WatchedItemView {
 export type ManifestView =
   | { readonly status: "missing" }
   | { readonly status: "unreadable"; readonly reason: string }
+  /** The manifest names another repository, `names`, so nothing in it is this fleet's. */
+  | { readonly status: "left-behind"; readonly names: string }
   | {
       readonly status: "ok";
       readonly inbox: readonly InboxRowView[];
@@ -288,14 +295,20 @@ export interface FleetDetailView {
   readonly lastAction: ActionRecordView | null;
 }
 
+/** One fleet a manager thread holds, as the Fleet chip's hover card and the Fleet tab's switcher show it. */
+export interface HeldFleetView {
+  readonly card: FleetCardView;
+  /** The action seen done most recently in the last hour whose row has left the Inbox; null when none was. */
+  readonly lastAction: ActionRecordView | null;
+}
+
 /** What a thread is to the Fleet tab and the chip. */
 export type ThreadFleetView =
   | {
       readonly kind: "manager";
       readonly generatedAt: string;
-      readonly card: FleetCardView;
-      /** The action seen done most recently in the last hour whose row has left the Inbox; null when none was. */
-      readonly lastAction: ActionRecordView | null;
+      /** Every fleet the thread holds, in the order the store lists them. */
+      readonly fleets: readonly HeldFleetView[];
     }
   | {
       readonly kind: "none";

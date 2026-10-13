@@ -1,11 +1,45 @@
 // What the Fleet tab says, decided from its views alone.
-import type { FleetCredentialView, FleetDetailView, InFlightRowView, LedgerChangeView, LedgerFilter, LedgerView, ServiceKind, UnreadableRowView, WatchedItemView } from "@/src/fleet/application/views";
+import type { FleetCardView, FleetCredentialView, FleetDetailView, InFlightRowView, LedgerChangeView, LedgerFilter, LedgerView, ServiceKind, UnreadableRowView, WatchedItemView } from "@/src/fleet/application/views";
 import { credentialKind } from "@/shared/credentials";
 import { ageLabel, dateTimeLabel, expiryText, intervalLabel, plural, polledLabel } from "@/shared/format";
 import type { Tone } from "@/shared/look/tones";
+import { flagsOf, worstFlag } from "@/shared/fleet-flags";
 
 /** A manifest the plugin read. */
 export type OkManifest = Extract<FleetDetailView["manifest"], { status: "ok" }>;
+
+// ---- the switcher ----
+
+/** One fleet as the switcher lists it. */
+export interface SwitcherEntry {
+  readonly repo: string;
+  /** The rows that wait on the operator, drawn in amber; null when none does. */
+  readonly count: number | null;
+  /** Red for a problem, amber for a warning alone; null with neither. */
+  readonly dot: "problem" | "warning" | null;
+  /** `org/wake, 2 waiting on you, has a problem`. */
+  readonly label: string;
+}
+
+/** The switcher's entries, one per fleet the thread holds, in the order given. */
+export function switcherEntries(cards: readonly Pick<FleetCardView, "repo" | "waiting" | "problems" | "warnings">[], now: string): SwitcherEntry[] {
+  return cards.map((card) => {
+    const count = card.waiting > 0 ? card.waiting : null;
+    const dot = worstFlag(flagsOf(card, now));
+    const parts = [card.repo, ...(count === null ? [] : [`${count} waiting on you`]), ...(dot === null ? [] : [dot === "problem" ? "has a problem" : "has a warning"])];
+    return { repo: card.repo, count, dot, label: parts.join(", ") };
+  });
+}
+
+/** The entry a key moves to from `at` in a menu of `length` entries, wrapping; null for a key that moves nothing. */
+export function nextEntry(at: number, key: string, length: number): number | null {
+  if (length === 0) return null;
+  if (key === "ArrowDown") return (at + 1) % length;
+  if (key === "ArrowUp") return (at - 1 + length) % length;
+  if (key === "Home") return 0;
+  if (key === "End") return length - 1;
+  return null;
+}
 
 // ---- the tabs ----
 
@@ -62,10 +96,11 @@ export function nextTab(tab: FleetTabName, key: string): FleetTabName | null {
   return FLEET_TABS[(at + step + FLEET_TABS.length) % FLEET_TABS.length]!.id;
 }
 
-/** What the tab says in place of the manifest's rows or sections when the manifest is missing or cannot be read. */
+/** What the tab says in place of the manifest's rows or sections when the manifest is missing, cannot be read, or names another repository. */
 export function manifestProblemText(manifest: FleetDetailView["manifest"]): string | null {
   if (manifest.status === "missing") return "No manifest was found at the path the fleet registered.";
   if (manifest.status === "unreadable") return `The manifest cannot be read: ${manifest.reason}`;
+  if (manifest.status === "left-behind") return `The manifest now names ${manifest.names}, so nothing in it is this fleet's.`;
   return null;
 }
 

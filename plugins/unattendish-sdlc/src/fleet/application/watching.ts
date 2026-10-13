@@ -1,7 +1,8 @@
 // What a fleet can be watched with right now: who reads each of its halves,
 // its manifest, and from those its sources and its watched set.
 import { defaultServiceOfHost, forgeSource, trackerSource } from "../domain/identity";
-import type { ManifestRead, NotWatched, RefusedWhy, Registration, SourceRole, UnreadableRow, WatchedSet } from "../domain/model";
+import type { FleetManifestRead, NotWatched, RefusedWhy, Registration, SourceRole, UnreadableRow, WatchedSet } from "../domain/model";
+import { ownManifest } from "../domain/manifest";
 import { watchedSet } from "../domain/watched";
 import { credentialRefused } from "../domain/registration";
 import { accessProblemText, halfWhat } from "../domain/accounts";
@@ -18,7 +19,8 @@ export interface HalfStanding {
 }
 
 export interface Watching {
-  readonly manifest: ManifestRead;
+  /** The manifest as this fleet reads it: `left-behind` where it names another repository, so none of its rows are the fleet's. */
+  readonly manifest: FleetManifestRead;
   readonly watched: WatchedSet;
   readonly unreadableRows: readonly UnreadableRow[];
   /** The fleet's forge, where an account with a credential is chosen for it. */
@@ -42,7 +44,8 @@ export interface WatchingDeps {
 
 export const assessWatching = async (deps: WatchingDeps, registration: Registration, repo: string): Promise<Watching> => {
   const notWatched: NotWatched[] = [];
-  const manifest = await deps.manifests.read(registration.manifestPath);
+  // A left-behind manifest is no `notWatched` reason: the fleet is watched, through its labelled items alone.
+  const manifest = ownManifest(registration.repo, await deps.manifests.read(registration.manifestPath));
   if (manifest.status === "missing") notWatched.push({ code: "manifest-missing", text: `The manifest at ${registration.manifestPath} does not exist yet` });
   if (manifest.status === "unreadable") notWatched.push({ code: "manifest-unreadable", text: `The manifest at ${registration.manifestPath} cannot be read: ${manifest.reason}` });
 

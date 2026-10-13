@@ -11,7 +11,7 @@ One repository's specs being built by a manager and its builders, as run-fleet r
 _Avoid_: Swarm, campaign
 
 **Manager**:
-The thread that runs run-fleet for one repository and is registered with the plugin. At most one live thread holds a repository.
+The thread that runs run-fleet and is registered with the plugin for a repository. A manager may hold more than one repository's registration, each its own fleet, and at most one live thread holds a repository.
 _Avoid_: Orchestrator, coordinator, supervisor
 
 **Builder**:
@@ -21,6 +21,10 @@ _Avoid_: Implementer
 **Manifest**:
 The manager's file that holds the fleet in one place; its Inbox, In flight and Blocked rows say what the plugin watches.
 _Avoid_: Fleet file, state file
+
+**Left-behind fleet**:
+A fleet whose manifest's first line names another repository. It shows none of that manifest's rows, watches only its labelled items, and carries a problem saying how to unregister it.
+_Avoid_: Stale fleet, orphaned fleet
 
 ### What the plugin keeps
 

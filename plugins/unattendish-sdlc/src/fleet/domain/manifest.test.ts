@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Manifest } from "./model";
-import { MAX_WRITTEN_CHARS, parseManifest, parseMessageLink, writtenSections } from "./manifest";
+import { MAX_WRITTEN_CHARS, ownManifest, parseManifest, parseMessageLink, writtenSections } from "./manifest";
+import { parseRepo } from "./identity";
 
 const FULL = `# Fleet: GitHub.com/org/repo
 
@@ -416,5 +417,18 @@ Not part of any section.
 
   it("changes nothing in how the read sections are read", () => {
     expect(parseManifest(FILE)).toMatchObject({ status: "ok", manifest: { inbox: [], inFlight: [] } });
+  });
+});
+
+describe("a manifest as one fleet reads it (#270 AC6)", () => {
+  const read = parseManifest("# Fleet: github.com/org/wake\n");
+  it("is left behind where its first line names another repository", () => {
+    expect(ownManifest(parseRepo("github.com/org/dash")!, read)).toEqual({ status: "left-behind", names: "github.com/org/wake" });
+  });
+  it("is as read where it names the fleet's own repository, however spelled", () => {
+    expect(ownManifest(parseRepo("GitHub.com/org/wake.git")!, read)).toBe(read);
+  });
+  it("is as read where it is missing or cannot be read", () => {
+    expect(ownManifest(parseRepo("github.com/org/dash")!, { status: "missing" })).toEqual({ status: "missing" });
   });
 });
