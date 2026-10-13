@@ -130,7 +130,7 @@ Prints the [ledger](../explanation/unattendish-polling.md) of a fleet, newest fi
 | Option | Keeps |
 |---|---|
 | `--item` | Changes of this item, by its reference (`#163`, `ENG-212`) or its URL, written exactly as the ledger shows it, and failed reads of that reference |
-| `--done` | Changes by what was done with them: `woke` (sent to the manager), `echo`, `out-of-scope` or `held`; or only failed reads, with `failed-read`; or only the Skipped listings a cut listing wrote, with `skipped-listing`, which `out-of-scope` keeps too. With `skipped-listing` and `--item` the ledger holds nothing, since a Skipped listing names no item |
+| `--done` | Changes by what was done with them: `woke` (sent to the manager), `echo`, `out-of-scope` or `held`; or only failed reads, with `failed-read`; or only the Dropped entries that Skipped listings wrote, with `skipped-listing`, which `out-of-scope` keeps too. With `skipped-listing` and `--item` the ledger holds nothing, since a Skipped listing names no item |
 
 With `--item` or `--done`, wakes and polls are left out. `--json` prints `{"entries": [...]}`; each entry has a `type`:
 
