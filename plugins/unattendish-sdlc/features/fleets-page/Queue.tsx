@@ -11,7 +11,7 @@ import { ICONS, KIND_ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
 import { KIND_TONES, TONE_BORDER, TONE_TEXT } from "@/shared/look/tones";
 import { useOpenFleetTab } from "@/shared/open-fleet-tab";
-import { NOTHING_WAITS, NOTHING_WAITS_LINE, rowAge, sentAgo, sentText, TAB_NAMES, tabCounts, tabRows, tabsShown, unreadableLine, type QueueView, type Tab } from "./model";
+import { NOTHING_WAITS, NOTHING_WAITS_LINE, rowAge, shortLinkLabel, sentAgo, sentText, TAB_NAMES, tabCounts, tabRows, tabsShown, unreadableLine, type QueueView, type Tab } from "./model";
 
 interface QueueProps {
   readonly queue: QueueView;
@@ -159,7 +159,7 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
         </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6">
           {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
-          <ItemLink link={row.link} managerThreadId={row.managerThreadId} className="text-xs" />
+          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="text-xs" />
           {ageCell}
           <span className="ml-auto">
             <ActionCell row={row} action={action} state={state} compact />
@@ -174,7 +174,7 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
       <div className={cn(COLUMNS, "py-2", !showFleet && "grid-cols-[1rem_minmax(0,1fr)_auto_4.5rem_auto]")}>
         {kind}
         {title}
-        <ItemLink link={row.link} managerThreadId={row.managerThreadId} className="text-xs" />
+        <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="text-xs" />
         {ageCell}
         {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
         <ActionCell row={row} action={action} state={state} compact={false} />

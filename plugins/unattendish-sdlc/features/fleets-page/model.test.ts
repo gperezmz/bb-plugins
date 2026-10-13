@@ -15,6 +15,7 @@ import {
   rowAge,
   sentAgo,
   sentText,
+  shortLinkLabel,
   spendText,
   staleText,
   statusSlots,
@@ -143,6 +144,13 @@ describe("the queue", () => {
     expect(rowAge({ since: ago(20_000) }, NOW)).toEqual({ text: "20s", long: false });
     expect(rowAge({ since: ago(11 * HOUR + 36 * MINUTE) }, NOW)).toEqual({ text: "11h 36m", long: true });
     expect(rowAge({ since: ago(8 * HOUR) }, NOW).long).toBe(true);
+  });
+
+  it("labels a row's link to its item by its Ref, and leaves a link with no Ref, or to a message, as it reads", () => {
+    const url = { kind: "url", url: "https://github.example/org/dash/issues/8", text: "github.example/org/dash/issues/8" } as const;
+    expect(shortLinkLabel({ ref: "#8", link: url })).toBe("#8");
+    expect(shortLinkLabel({ ref: "—", link: url })).toBeUndefined();
+    expect(shortLinkLabel({ ref: "#8", link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
   });
 
   it("says what an unreadable row is and why", () => {

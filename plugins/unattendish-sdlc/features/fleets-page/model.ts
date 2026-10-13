@@ -3,7 +3,7 @@
 import type { ActionRecordView, FleetCardView, FleetsView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { flagsOf, isQuiet, worstFlag } from "@/shared/fleet-flags";
 import { ageLabel, elapsedMs, formatMoney, spanLabel } from "@/shared/format";
-import { itemTitle } from "@/shared/item-title";
+import { hasRef, itemTitle } from "@/shared/item-title";
 import { COUNTS, type CountKey } from "@/shared/look/tones";
 
 const HOUR = 3_600_000;
@@ -17,6 +17,9 @@ export function headerCount(view: Pick<FleetsView, "waiting"> | null): string | 
 export function headerCountLabel(waiting: number): string {
   return `${waiting} waiting on you`;
 }
+
+/** How often the stale pill is redrawn, so its age keeps up with the clock. */
+export const STALE_TICK_MS = 15_000;
 
 /** The pill a failed refresh shows over the data still on screen: `3m old`, and its hover text. */
 export function staleText(generatedAt: string, error: string, nowMs: number): { readonly pill: string; readonly hover: string } {
@@ -158,6 +161,11 @@ export const AGE_AMBER_MS = 8 * HOUR;
 export function rowAge(row: Pick<InboxRowView, "since">, now: string): { readonly text: string; readonly long: boolean } {
   const waited = elapsedMs(row.since, now);
   return { text: spanLabel(waited), long: waited >= AGE_AMBER_MS };
+}
+
+/** The queue's short text for a row's link to its item: its Ref, `#7`, where it has one; the link's own text otherwise. */
+export function shortLinkLabel(row: Pick<InboxRowView, "ref" | "link">): string | undefined {
+  return row.link.kind === "url" && hasRef(row.ref) ? row.ref : undefined;
 }
 
 /** An unreadable row in a line: `Unreadable Inbox row, line 9: the table has no "Waits for" column`. */
