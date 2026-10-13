@@ -252,7 +252,7 @@ describe("the signals the pages listen for", () => {
     writeFileSync(manifest, manifestText(`${row(7)}\n${row(8, "grant")}`));
     await idle(harness);
     await idle(harness);
-    expect(signals("inbox-new")).toEqual([{ channel: "inbox-new", payload: { fleet: REPO, ref: "#8", what: "A parked question", rowId: "#8|grant|2026-10-12T09:00:00Z" } }]);
+    expect(signals("inbox-new")).toEqual([{ channel: "inbox-new", payload: { fleet: REPO, ref: "#8", what: "A parked question", rowId: "#8|grant|2026-10-12T09:00:00Z", waitsFor: "grant", forge: "github" } }]);
   });
 
   it("shows an action done once a poll sees the row gone", async () => {

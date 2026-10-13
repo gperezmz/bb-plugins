@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { credentialWarnings, doneWith, droppedReason, groupDropped, inboxNews, landedToday, landedWithin, listWatched, localDay, oldestFirst, reasonsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
+import { credentialWarnings, doneWith, droppedReason, groupDropped, inboxNews, landedWithin, listWatched, MANAGER_GONE_TEXT, oldestFirst, pollingWarning, reasonsOf, repoFromRemote, sameRepo, unreadableInbox, unreadableRowsText } from "./dashboard";
 import type { SourceCursor } from "./model";
 import { watchedWithReasons } from "./watched";
 import type { Manifest } from "./model";
@@ -8,16 +8,13 @@ const NOW = new Date(2026, 9, 12, 15, 0, 0);
 const at = (hoursAgo: number): string => new Date(NOW.getTime() - hoursAgo * 3_600_000).toISOString();
 
 describe("landed counts", () => {
-  it("counts the rows merged on the local date of now, whatever the time of day", () => {
-    const morning = new Date(2026, 9, 12, 0, 5).toISOString();
-    const lateYesterday = new Date(2026, 9, 11, 23, 55).toISOString();
-    expect(landedToday([{ merged: morning }, { merged: at(1) }, { merged: lateYesterday }, { merged: "not a time" }], NOW)).toBe(2);
-    expect(localDay(NOW)).toBe("2026-10-12");
-  });
-
   it("keeps the last seven days, newest first", () => {
     const rows = [{ merged: at(24 * 8) }, { merged: at(5) }, { merged: at(24 * 6) }, { merged: at(1) }];
     expect(landedWithin(rows, NOW, 7).map((row) => row.merged)).toEqual([at(1), at(5), at(24 * 6)]);
+  });
+
+  it("leaves out a row whose time cannot be read", () => {
+    expect(landedWithin([{ merged: "not a time" }, { merged: at(24 * 3) }], NOW, 7)).toEqual([{ merged: at(24 * 3) }]);
   });
 });
 
@@ -69,6 +66,12 @@ describe("reasonsOf", () => {
       ["unreadable-rows", { kind: "fleet-tab" }],
     ]);
   });
+
+  it("ends with a manager that is gone, which nothing on the page fixes", () => {
+    expect(reasonsOf([], [], true)).toEqual([{ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } }]);
+    expect(MANAGER_GONE_TEXT).toContain("run /run-fleet in a new thread");
+    expect(reasonsOf([], [])).toEqual([]);
+  });
 });
 
 describe("credentialWarnings", () => {
@@ -99,11 +102,29 @@ describe("credentialWarnings", () => {
       ],
       NOW,
     );
-    expect(warnings.map((warning) => `${warning.kind}:${warning.label}`)).toEqual(["shares-rate-limit:a", "expires:b", "shares-rate-limit:b"]);
+    expect(warnings.map((warning) => `${warning.kind}:${"label" in warning ? warning.label : ""}`)).toEqual(["shares-rate-limit:a", "expires:b", "shares-rate-limit:b"]);
   });
 
   it("ignores an expiry that cannot be read", () => {
     expect(credentialWarnings([{ ...credential("p", "token"), expiresAt: "soon" }], NOW)).toEqual([]);
+  });
+});
+
+describe("pollingWarning", () => {
+  const MINUTE = 60_000;
+  const ago = (ms: number): string => new Date(NOW.getTime() - ms).toISOString();
+
+  it("warns of a fleet never polled", () => {
+    expect(pollingWarning(null, 2 * MINUTE, NOW)).toEqual({ kind: "never-polled" });
+  });
+
+  it("says nothing while the last poll is within two intervals", () => {
+    expect(pollingWarning(ago(3 * MINUTE), 2 * MINUTE, NOW)).toBeNull();
+    expect(pollingWarning(ago(4 * MINUTE), 2 * MINUTE, NOW)).toBeNull();
+  });
+
+  it("warns once the last poll is more than two intervals ago", () => {
+    expect(pollingWarning(ago(9 * MINUTE), 2 * MINUTE, NOW)).toEqual({ kind: "polling-late", lastPolledAt: ago(9 * MINUTE) });
   });
 });
 

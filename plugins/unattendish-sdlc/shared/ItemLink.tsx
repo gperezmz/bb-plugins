@@ -6,10 +6,11 @@ import { linkTarget } from "./links";
 /** How a link in the dashboard is drawn, for a link or a button that acts as one. */
 export const LINK_CLASS = "text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm";
 
-/** A row's Link: the item or pull request on its service, or the bb thread whose message the row points at. */
-export function ItemLink({ link, managerThreadId, className }: { link: LinkView; managerThreadId: string; className?: string }) {
+/** A row's Link: the item or pull request on its service, or the bb thread whose message the row points at; `label` replaces its text. */
+export function ItemLink({ link, managerThreadId, label, className }: { link: LinkView; managerThreadId: string; label?: string; className?: string }) {
   const navigate = useBbNavigate();
-  const target = linkTarget(link, managerThreadId);
+  const found = linkTarget(link, managerThreadId);
+  const target = label === undefined ? found : { ...found, text: label };
   if (target.kind === "url") {
     return (
       <UrlLink href={target.url} className={cn(LINK_CLASS, className)}>

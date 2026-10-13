@@ -99,6 +99,19 @@ const rows = [...packages.keys()].sort().map((name) => {
   return { name, version: pkg.version, licence, copyright, bundles: [...packages.get(name)].sort().join(", ") };
 });
 
+// The declared icons under icons/ copied from icon sets, with where each came from. fleet.svg is the plugin's own.
+const LUCIDE = { source: "Lucide (lucide-static)", version: "1.55.0", licence: "ISC", copyright: "Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT)" };
+const ICONS = [
+  ["circle-dashed.svg", "circle-dashed", LUCIDE],
+  ["hammer.svg", "hammer", LUCIDE],
+  ["hourglass.svg", "hourglass", LUCIDE],
+  ["key.svg", "key-round", LUCIDE],
+  ["lightbulb.svg", "lightbulb", LUCIDE],
+  ["rocket.svg", "rocket", LUCIDE],
+  ["scale.svg", "scale", LUCIDE],
+  ["user-x.svg", "user-x", LUCIDE],
+];
+
 const lines = [
   "# Third-party notices",
   "",
@@ -107,6 +120,13 @@ const lines = [
   "| Package | Version | Licence | Copyright | In |",
   "|---|---|---|---|---|",
   ...rows.map((row) => `| ${row.name} | ${row.version} | ${row.licence} | ${row.copyright.replace(/\|/g, "\\|")} | ${row.bundles} |`),
+  "",  "## Icons",
+  "",
+  "These files under `icons/` are copied from icon sets, as single-colour drawings bb paints in the text colour.",
+  "",
+  "| File | Copied from | Version | Licence | Copyright |",
+  "|---|---|---|---|---|",
+  ...ICONS.map(([file, name, set]) => `| icons/${file} | ${set.source}: ${name} | ${set.version} | ${set.licence} | ${set.copyright} |`),
   "",
 ];
 writeFileSync(join(root, "THIRD_PARTY_NOTICES.md"), lines.join("\n"));

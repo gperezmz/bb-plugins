@@ -9,19 +9,10 @@ export const DAY_MS = 86_400_000;
 
 // ---- counts ----
 
-/** The calendar day of an instant on the server's clock, as `YYYY-MM-DD`. */
-export const localDay = (at: Date): string => `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+/** How many days back the Landed count and list reach. */
+export const LANDED_DAYS = 7;
 
-/** Landed rows merged on `now`'s local date. A row whose time cannot be read does not count. */
-export const landedToday = (landed: readonly Pick<LandedRow, "merged">[], now: Date): number => {
-  const today = localDay(now);
-  return landed.filter((row) => {
-    const merged = new Date(row.merged);
-    return !Number.isNaN(merged.getTime()) && localDay(merged) === today;
-  }).length;
-};
-
-/** Landed rows merged in the `days` days before `now`, newest first. */
+/** Landed rows merged in the `days` days before `now`, newest first. A row whose time cannot be read is left out. */
 export const landedWithin = <Row extends Pick<LandedRow, "merged">>(landed: readonly Row[], now: Date, days: number): Row[] => {
   const from = now.getTime() - days * DAY_MS;
   return landed
@@ -50,7 +41,7 @@ export const oldestFirst = <Row extends Pick<InboxRow, "since" | "ref">>(rows: r
 export type Fix = { readonly kind: "connect"; readonly role: SourceRole } | { readonly kind: "fleet-tab" } | { readonly kind: "none" };
 
 export interface Reason {
-  readonly code: NotWatchedCode | "unreadable-rows";
+  readonly code: NotWatchedCode | "unreadable-rows" | "manager-gone";
   readonly text: string;
   readonly fix: Fix;
 }
@@ -69,12 +60,19 @@ export const unreadableRowsText = (unreadable: readonly UnreadableRow[]): string
   return `${n} manifest ${n === 1 ? "row cannot" : "rows cannot"} be read: ${sections.join(", ")}`;
 };
 
-/** Every reason the fleet is not fully watched, each text once: what `notWatched` says, then the unreadable rows. */
-export const reasonsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[]): Reason[] => {
+/** What a fleet whose manager thread is archived or gone says: nothing on the page fixes it, a new manager does. */
+export const MANAGER_GONE_TEXT = "The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over";
+
+/**
+ * The fleet's problems, each text once: what `notWatched` says, then the unreadable rows, then a manager that is gone
+ * (`managerGone`).
+ */
+export const reasonsOf = (notWatched: readonly NotWatched[], unreadable: readonly UnreadableRow[], managerGone = false): Reason[] => {
   const reasons: Reason[] = [];
   for (const line of notWatched) if (!reasons.some((known) => known.text === line.text)) reasons.push({ code: line.code, text: line.text, fix: fixOf(line) });
   const text = unreadableRowsText(unreadable);
   if (text !== null) reasons.push({ code: "unreadable-rows", text, fix: { kind: "fleet-tab" } });
+  if (managerGone) reasons.push({ code: "manager-gone", text: MANAGER_GONE_TEXT, fix: { kind: "none" } });
   return reasons;
 };
 
@@ -84,7 +82,22 @@ export const EXPIRY_WARNING_DAYS = 7;
 
 export type Warning =
   | { readonly kind: "expires"; readonly label: string; readonly credentialId: string; readonly accountId: string; readonly role: SourceRole; readonly expiresAt: string; readonly daysLeft: number }
-  | { readonly kind: "shares-rate-limit"; readonly label: string };
+  | { readonly kind: "shares-rate-limit"; readonly label: string }
+  | { readonly kind: "polling-late"; readonly lastPolledAt: string }
+  | { readonly kind: "never-polled" };
+
+/** How many poll intervals may pass since the last poll before polling counts as late: one missed poll is normal, two are not. */
+export const LATE_AFTER_INTERVALS = 2;
+
+/**
+ * What a fleet's polling warns of: `never-polled` before its first poll, `polling-late` once the last poll is more
+ * than `LATE_AFTER_INTERVALS` intervals before `now`, and nothing otherwise, a time that cannot be read included.
+ */
+export const pollingWarning = (lastPolledAt: string | null, intervalMs: number, now: Date): Warning | null => {
+  if (lastPolledAt === null) return { kind: "never-polled" };
+  const since = now.getTime() - Date.parse(lastPolledAt);
+  return since > LATE_AFTER_INTERVALS * intervalMs ? { kind: "polling-late", lastPolledAt } : null;
+};
 
 /** Days left before an expiry, where it falls within the window cards warn in (one already passed counts as 0); null otherwise. */
 export const daysLeftToWarn = (expiresAt: string | null, now: Date): number | null => {

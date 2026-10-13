@@ -48,14 +48,14 @@ export type RowAction =
  * The action cell of a row. The server's view wins: a row whose view carries an action shows it sent or done,
  * whichever window sent it. Before that, a call in flight reads `sending…`, never `sent`; `sent` is shown once
  * bb has accepted the message. A sent action is never shown as failed: only bb's refusal of the message is, and the
- * row then keeps its action. A call that failed reads `result unknown` until the view is fetched, and the row
+ * row then keeps its action. A call that failed reads `checking…` until the view is fetched, and the row
  * then shows what the server recorded.
  */
 export function rowAction(row: Pick<InboxRowView, "offer" | "action">, now: string, local: LocalAction): RowAction {
   if (row.action?.state === "done") return { kind: "done", text: "done" };
   if (row.action?.state === "sent") return { kind: "sent", text: `sent · ${ageLabel(row.action.sentAt, now)}` };
   if (local.phase === "sending") return { kind: "sending", text: "sending…" };
-  if (local.phase === "unknown") return { kind: "unknown", text: "result unknown, checking…" };
+  if (local.phase === "unknown") return { kind: "unknown", text: "checking…" };
   if (local.phase === "accepted" && local.acceptedAt !== null) return { kind: "sent", text: `sent · ${ageLabel(local.acceptedAt, now)}` };
   if (row.offer === null) return { kind: "none" };
   return { kind: "offer", offer: row.offer, refusal: local.refusal, unconfirmed: local.unconfirmed };

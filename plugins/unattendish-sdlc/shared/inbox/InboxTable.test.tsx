@@ -140,11 +140,11 @@ describe("Answer…", () => {
     return screen.getByRole("textbox", { name: "Your answer for ENG-212" }) as HTMLTextAreaElement;
   };
 
-  it("opens a composer showing the row's What and a link to the park", () => {
+  it("opens a composer saying which item it answers and which manager it goes to, with a link to the park", () => {
     show();
     open();
     const composer = screen.getByRole("textbox").closest("div")!.parentElement!;
-    expect(within(composer).getByText("ENG-212 which locale wins?")).toBeTruthy();
+    expect(within(composer).getByText("Your answer for ENG-212 which locale wins? · goes to acme/web's manager")).toBeTruthy();
     expect(within(composer).getByRole("link", { name: /ENG-212/ }).getAttribute("href")).toBe("https://linear.test/ENG-212");
   });
 

@@ -12,3 +12,6 @@ export function parseFleetNeeds(payload: unknown): FleetNeedsSignal | null {
 
 /** One toast per fleet half, so a signal delivered twice raises one. */
 export const toastId = (signal: Pick<FleetNeedsSignal, "fleet" | "role">): string => `needs:${signal.fleet}:${signal.role}`;
+
+/** The toast's title: `other-org/x can't be read`. */
+export const toastTitle = (signal: Pick<FleetNeedsSignal, "fleet">): string => `${signal.fleet} can't be read`;

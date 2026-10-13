@@ -67,7 +67,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const needsAccount = parts.flatMap(({ g }) => needsAccountOf(g)).slice(0, MAX_ROWS);
     return {
       generatedAt: now.toISOString(),
-      waiting: cards.reduce((total, card) => total + card.waiting, 0) + needsAccount.length,
+      waiting: cards.reduce((total, card) => total + card.waiting, 0),
       needsAccount,
       fleets: cards,
       inbox: oldestFirst(parts.flatMap(({ inbox }) => inbox.rows)).slice(0, MAX_ROWS * 2),

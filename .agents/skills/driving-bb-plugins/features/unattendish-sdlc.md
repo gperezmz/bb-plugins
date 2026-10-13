@@ -2,8 +2,8 @@
 
 Wakes the manager thread of an Unattendish fleet when the tracker or forge it
 waits on changes, and shows the operator their fleets: a Fleets page with
-everything that waits on them, a card per fleet and what landed this week; a
-Fleet chip and a Fleet tab on each manager thread; a toast for a new Inbox
+a fleet board with one line per fleet and, under it, one queue of
+everything that waits on them; a Fleet chip and a Fleet tab on each manager thread; a toast for a new Inbox
 row and for a fleet no account can read; a Connect… popup that verifies a
 read-only token before storing it; and a settings section for accounts and
 poll intervals. Answer…, Grant… and Build it send the manager one plain
@@ -12,12 +12,14 @@ fleet with `bb unattendish fleet register`, from its own thread.
 
 ## Sub-features
 
-- `page`: the Fleets page: its count, Waits on you, Needs an account,
-  Recently sent, the cards and Recently landed.
-- `card`: a fleet's card: tracker, manager, counts, cost, last poll, the
-  account each half reads as, and what stops it being watched.
-- `actions`: Answer…, Grant… and Build it on an Inbox row, then `sent`,
-  `done` or `not sent`.
+- `page`: the Fleets page: the title bar's count, the fleet board (a line per
+  fleet, its filter, its fix, the quiet fleets folded) and the queue (tabs by
+  kind, Sent, the filter chip), and its states in between.
+- `card`: a fleet's card, as the chip's hover and the Fleet tab show it:
+  tracker, manager, counts, cost, last poll, the account each half reads as,
+  and what stops it being watched.
+- `actions`: Answer…, Grant… and Build it on a queue row, then `sent`, `done`
+  or `not sent`.
 - `chip`: the Fleet chip in a manager's header, and the card it opens on
   hover.
 - `tab`: the Fleet tab, and its Ledger.
@@ -32,32 +34,75 @@ fleet with `bb unattendish fleet register`, from its own thread.
 ## How to get to it (user POV)
 
 - `navigation "Primary navigation"` → `button "Fleets"`: the page, at
-  `/plugins/unattendish-sdlc/fleets`, its header count `N waiting on you`.
-  `region "Waits on you N"` holds a `table` (columns `Fleet`, `What`,
-  `Waits for`, `Waiting`, `Item`, `Action`; Waits for reads `your answer`,
-  `a grant to merge`, `your ready label` or `something else`), one row per
-  Inbox row and one per unreadable row (`unreadable: <why> (line N)`,
-  `button "Open the Fleet tab of <repo>"`); on a phone a stacked list
-  (`waits for your answer · 11h 56m`). Then `list "Needs an account"`,
-  `list "Recently sent"` (`<repo> answered #7 · done`), `region "Fleets"`
-  with an `article "Fleet <repo>"` each, and
-  `region "Recently landed last 7 days, all fleets"`.
-- A card: `button "Open the Fleet tab of <repo>"` (`manager ↗`),
-  `forge-issues · manager idle 12s` (or `no manager`),
-  `5 waits on you · 1 in flight · 1 landed today`, with Thread Usage
-  installed `$0.17 since this manager started`, `polled 8s ago`,
-  `list "Accounts of <repo>"` (`forge org/dash · reads as GitHub · operator`
-  and `button "Change account… forge of <repo>"`, or the need and
-  `button "Connect… forge of <repo>"`), and `1 manifest row cannot be read`
-  with `button "Open the Fleet tab"`.
-- An Inbox row's action: `button "Answer… #7"`, `"Grant… #8"` or
-  `"Build it #9"`; Answer and Grant open, in a row of their own under it,
-  `textbox "Your answer for #7"` (`Your grant for`), `button "Send"`
-  (disabled while empty) and `button "Cancel"`; Control+Enter sends, Escape
-  cancels. The Action cell then reads `sent · 0s`, or `not sent` with bb's
-  refusal (`HTTP 409: Thread is archived`).
+  `/plugins/unattendish-sdlc/fleets`. The title bar's count is
+  `N waiting on you`, the Inbox rows across fleets (the board's Status slots
+  carry the same words per fleet), absent at zero. While the first load runs the
+  page is `status "Loading your fleets"`; when it fails with nothing shown it is
+  `alert "Couldn't load your fleets"` with the error and `button "Try again"`;
+  with no fleet it says `No fleet is registered` and `/run-fleet`.
+- `region "Fleet board"`: a `listitem "Fleet <repo>"` per fleet (`<repo>` as
+  registered, `github.example/org/dash`), in the order problems, warnings, then
+  most waiting. A line holds, in order, the forge's logo, `button "<repo>"`
+  (`aria-pressed`: the fleet the queue is filtered to; clicking the line
+  anywhere but a button does the same), the tracker's logo and key when the
+  tracker is Linear or Jira, the manager (an icon named `Manager working`,
+  `Manager idle for 12s` or `No manager: its thread is archived or gone`), the
+  four Status slots, spend (with Thread Usage installed), the polling cell
+  (`not yet`, or `9m late`; empty while polling is healthy), the fix and
+  `button "Open the Fleet tab of <repo>"`. A slot is named for its count
+  (`1 blocked`, `2 in flight`, `4 waiting on you`,
+  `1 landed in the last 7 days`) and a count of zero draws nothing. The fix, for
+  a fleet with a problem or warning, is a coloured verb (`Review`, `Connect…`,
+  `Renew…`, then `+N` for the rest) whose accessible name is every sentence
+  (`other-org/x needs a GitHub account that can read other-org`), or, where
+  nothing on the page fixes it (a gone manager:
+  `The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over`),
+  a ✕ with that name and no button. Quiet fleets, every count zero and nothing
+  flagged, fold under `button "1 quiet fleet"` (`aria-expanded`), a filtered one
+  stays listed. Below 768 px the board shows three lines, the rest under
+  `button "2 more fleets"`; a line holds the logo, the name, a touch-sized icon
+  button named by the sentence in place of the verb, and the non-zero slots, and
+  has no Fleet tab button.
+- `region "Queue"`: `tablist "Kind"` with `tab "All 4"`, `Answer`, `Grant`,
+  `Build`, `Other`, `Unreadable` (only while a row is unreadable) and `Sent`,
+  each followed by its count, then `tabpanel "<tab>"` with a `listitem` per row,
+  oldest first. A row reads `#7 Which cache to use`, `link "#7 ↗"` (the item),
+  its age (`11h 1m`, amber from 8 hours), the fleet (left out while the queue is
+  filtered to one) and its action. A filter adds, at the right of the tabs, the
+  fleet's name and `button "Show every fleet, not only <repo>"`; each tab counts
+  that fleet's rows alone. An unreadable row is
+  `Unreadable Inbox row, line 9: <why>` with
+  `button "Review the manifest of <repo> in its Fleet tab"`. A tab with no row
+  says `Nothing waits on you` (Sent:
+  `Nothing you sent was seen done in the last hour`); Sent lists
+  `You answered #5 Which queue`, its age and `done`, for what was seen done in
+  the last hour.
+- A queue row's action: `button "Answer… #7"`, `"Grant… #8"` or `"Build it #9"`
+  (and `"Re-grant #8"` beside Grant… for a grant a previous manager gave);
+  `watch only` for a wait on something else. Answer and Grant open, in the same
+  list item under the row, `textbox "Your answer for #7"` (`Your grant for`)
+  headed `Your answer for #7 Which cache to use · goes to <repo>'s manager`,
+  `button "Send"` (disabled while empty) and `button "Cancel"`; Control+Enter
+  sends, Escape cancels, and the row's action reads `composing…` meanwhile. The
+  action then reads `sending…`, `sent · 0s` (the row stays until a poll sees it
+  leave), `checking…` or `done`. A refusal of words is
+  `alert "Not sent: HTTP 409: Thread is archived"` in the composer, which stays
+  open with the draft; one of Build it or Re-grant is `not sent` beside the
+  title, named `not sent: HTTP 409: Thread is archived`, and the button stays.
+- The fleet's card, in the chip's hover and above the Fleet tab, is an
+  `article "Fleet <repo>"`: `button "Open the Fleet tab of <repo>"`
+  (`manager ↗`), `forge-issues · manager idle 12s` (or `no manager`),
+  `5 waits on you · 1 in flight · 1 blocked · 1 landed in 7d`, with Thread
+  Usage installed `$0.17 since this manager started`, `polled 8s ago`,
+  `list "Accounts of <repo>"` (`org/dash · reads as GitHub · operator` and
+  `button "Change account…"`, or the need and `button "Connect…"`), and what
+  stops it being watched (`1 manifest row cannot be read`).
+- A title-bar pill, while a refresh fails over data shown: a name starting
+  `Couldn't refresh:`
+  (`Couldn't refresh: <error>. Showing what was loaded 3m ago.`), text `3m old`
+  and `button "Reload now"`; the board and queue stay.
 - A manager's thread, at `/projects/<project>/threads/<thread>`:
-  `button "Fleet: 5 waits on you · 1 in flight · 1 landed today"` in the
+  `button "Fleet: 5 waits on you · 1 in flight · 1 blocked · 1 landed in 7d"` in the
   header (`Fleet idle` with nothing), whose hover opens the card and whose
   click opens the `Fleet` tab. On a phone the chip's text is the count alone.
 - The Fleet tab: the card, then `region`s `Waits on you` (the table, without
@@ -69,9 +114,12 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `Woke`, `Dropped`, `Held`, `Failed reads`, `Wakes`),
   `textbox "Filter by item"`, and the entries (`Dropped, by reason`,
   `echo: marker · 1`; `Nothing in the ledger matches.`).
-- Toasts, in every open window: `<repo> waits on you — #15 <What>` with
-  `Open Fleets`; `<repo> needs a GitHub account that can read <owner>` with
-  `Connect…`, which opens the popup.
+- Toasts, in every open window: title `#15 <What>` (the item), line
+  `<repo> waits for your answer` (`a grant to merge`, `your ready label`,
+  `something else`) and `Open Fleets`; title `<repo> can't be read`, the
+  server's sentence
+  (`other-org/x needs a GitHub account that can read other-org`) as its
+  description and `Connect…`, which opens the popup.
 - The popup, a `dialog` titled `Connect <repo>`, `Add a token`,
   `Renew a token` or `Add account`. Connect asks
   `Which account reads <host>/<owner>?` (radios `<account> default` and
@@ -145,19 +193,26 @@ and every repository a fleet registers is in the fake's `repos`.
   half reads as, and every fake's `requests` holds only reads (`GET`, and
   `POST` queries for Linear).
 - **Page** (`unattendish.page/nav`): `drive-bb-plugins unattendish-sdlc fleets-page`
-  prints `shown` (`count`, `sections`, `rows`, `needsAnAccount`,
-  `recentlySent`, `cards`, `landed`) and `stored`, the `fleets` RPC;
-  `--open-tab <repo>` presses the card's `manager ↗` and prints the Fleet tab
-  it lands on; `--mobile` reads the stacked list.
+  prints `shown` (`state` `ready|loading|cant-load|no-fleet`, `count`,
+  `refreshPill`, `board.lines` with each line's `name`, `filter`, `manager`,
+  `status`, `fix` and `text`, `board.fold`, and `queue` with `tabs`, `filter`,
+  `panel`, `rows`, `empty`) and `stored`, the `fleets` RPC. `--unfold`
+  presses the fold, `--filter <repo>` the fleet's name and `--tab Answer` a
+  queue tab, and `after` reads the page once they have; `--open-tab <repo>`
+  presses the line's Fleet tab icon and prints the Fleet tab it lands on;
+  `--mobile` reads the condensed board (no `--open-tab`).
 - **Actions** (`unattendish.actions/page`):
-  `unattendish-sdlc act "Answer…" '#7' 'Go with B.\nIt is simpler.'`
-  prints the composer (`sendEnabledEmpty` false) and the row after
-  (`sent · 0s`), and `$A` receives `Answer to #7: Go with B.` and
-  `It is simpler.`; `act "Grant…" '#8' 'Merge it.'` sends
-  `Grant: Merge it.`, and `act "Build it" '#9'` sends `Build #9`. `--esc`
-  cancels, sending nothing. Once the manifest no longer holds the row, the
-  next poll reads it `done` in `recentlySent`. With the manager archived,
-  `act … --wait "not sent"` reads `not sent` and `HTTP 409: Thread is archived`.
+  `unattendish-sdlc act "Answer…" '#7' 'Go with B.\nIt is simpler.'` prints the
+  composer (`header`, `sendEnabledEmpty` false) and the row after (`sent · 0s`),
+  and `$A` receives `Answer to #7: Go with B.` and `It is simpler.`;
+  `act "Grant…" '#8' 'Merge it.'` sends `Grant: Merge it.`, and
+  `act "Build it" '#9'` sends `Build #9`. `--esc` cancels, sending nothing. Once
+  the manifest no longer holds the row, the next poll takes it off the queue and
+  lists the action under `Sent` (`You answered #7 …`, `done`). With the manager
+  archived, `act "Grant…" '#8' 'x' --wait "Not sent:"` reads the composer's
+  `Not sent: HTTP 409: Thread is archived` (`refusal.composer`) and
+  `act "Build it" '#9' --wait "not sent"` reads
+  `not sent: HTTP 409: Thread is archived` beside the title (`refusal.title`).
 - **Chip** (`unattendish.chip/header`): `unattendish-sdlc chip $A --hover`
   prints the chip's `name` and the card its hover opens; `--open` reads the
   tab; `--mobile` reads `text` as the count alone.
@@ -169,14 +224,19 @@ and every repository a fleet registers is in the fake's `repos`.
 - **Toasts** (`unattendish.toasts/ws`): `unattendish-sdlc toast <trigger.sh> --click "Open Fleets"`
   holds the Fleets page open while the script adds an Inbox row to the
   manifest and runs `thread tell $A hi`, `thread wait $A --status idle` and
-  `thread stop $A`, then prints the toast. A trigger that registers a fleet
-  on `github.example/other-org/x` raises
+  `thread stop $A`, then prints each toast's `title`, `description` and
+  `buttons`: `#21 Which queue to use` over `<repo> waits for your answer`.
+  A trigger that registers a fleet on `github.example/other-org/x` raises
+  `github.example/other-org/x can't be read` over
   `other-org/x needs a GitHub account that can read other-org`;
-  `--click "Connect…"` opens the popup on it.
+  `--click "Connect…"` opens the popup on it and prints its `dialog`.
 - **Connect** (`unattendish.connect/card`):
-  `unattendish-sdlc connect "Connect… forge of github.example/other-org/x" --account "GitHub · operator" --token ghp_connect_fake_token`
-  prints each step, `createTokenUrl` and the result, and `status` has the
-  fleet `watched`. `--from settings` starts on the settings page:
+  `unattendish-sdlc connect "Connect…" --fleet github.example/other-org/x --account "GitHub · operator" --token ghp_connect_fake_token`
+  presses the Connect… on that fleet's board line (without `--fleet`, the
+  button whose accessible name is given, such as the sentence a phone's icon
+  button carries), prints each step, `createTokenUrl` and the result, and
+  `status` has the fleet `watched` once the fake GitHub's `repos` holds
+  `other-org/x`. `--from settings` starts on the settings page:
   `connect "Add token for another owner to GitHub · operator" --from settings --owner third-org --token <token>`
   adds a token, and `connect "Renew the token for <owner> of GitHub · operator" --from settings --token <token>`
   renews one. `connect "Add account" --from settings --service GitHub --host ghe.example.invalid --owner org --token <token>`
@@ -215,6 +275,9 @@ and every repository a fleet registers is in the fake's `repos`.
   no toast; only a row added later does.
 - Every Answer, Grant or Build it starts a turn on the manager, which holds a
   session: `thread stop` it after.
+- The queue's filter lives in the page and is dropped with it: every verb
+  opens the page unfiltered. On a phone the board folds only past three
+  fleets, so `--unfold` needs a fourth.
 - Connect's `a new login` and Add account send no API address, so they reach
   the host typed into the popup, never a fake: type only a host under
   `.invalid`. A new account through a fake goes through the `connect` RPC.

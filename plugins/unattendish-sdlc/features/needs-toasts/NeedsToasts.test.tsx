@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import type { ReactElement } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FLEET_NEEDS } from "@/shared/client";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { sdk } from "@/testing/sdk";
+import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { NeedsToasts } from "./index";
 
 const toast = vi.hoisted(() => vi.fn());
@@ -27,11 +29,21 @@ describe("the needs toasts", () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it("says what the fleet needs, once per fleet half", () => {
+  it("says the fleet can't be read, and what it needs under that, once per fleet half", () => {
     render(<NeedsToasts />);
     sdk.emit(FLEET_NEEDS, signal);
-    expect(toast.mock.calls[0]![0]).toBe("other-org/x needs a GitHub account that can read other-org");
-    expect(toast.mock.calls[0]![1]).toMatchObject({ id: "needs:other-org/x:forge" });
+    expect(toast.mock.calls[0]![0]).toBe("other-org/x can't be read");
+    expect(toast.mock.calls[0]![1]).toMatchObject({ id: "needs:other-org/x:forge", description: "other-org/x needs a GitHub account that can read other-org" });
+  });
+
+  it("leads with a red plug", () => {
+    render(<NeedsToasts />);
+    sdk.emit(FLEET_NEEDS, signal);
+    const { icon } = toast.mock.calls[0]![1] as { icon: ReactElement };
+    const drawn = render(icon).baseElement;
+    expect(drawnIcons(drawn)).toEqual(["ElectricPlugs"]);
+    expect(drawn.querySelector(".text-destructive-text")).not.toBeNull();
+    expectIconsResolve(drawnIcons(drawn));
   });
 
   it("opens Connect… for the half from the toast's action, over the current view", () => {

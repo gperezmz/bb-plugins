@@ -32,13 +32,18 @@ async function show(card: ReturnType<typeof fleetCard> | null, compact = false) 
 
 describe("the Fleet chip", () => {
   it("spells out the labelled counts of a manager's fleet", async () => {
-    await show(fleetCard({ waiting: 1, inFlight: 3, landedToday: 2 }));
-    expect(screen.getByRole("button", { name: "Fleet: 1 waits on you · 3 in flight · 2 landed today" }).textContent).toBe("1 waits on you · 3 in flight · 2 landed today");
+    await show(fleetCard({ waiting: 1, inFlight: 3, landed: 2 }));
+    expect(screen.getByRole("button", { name: "Fleet: 1 waits on you · 3 in flight · 2 landed in 7d" }).textContent).toBe("1 waits on you · 3 in flight · 2 landed in 7d");
   });
 
   it("leaves out a count of zero", async () => {
-    await show(fleetCard({ waiting: 0, inFlight: 3, landedToday: 0 }));
+    await show(fleetCard({ waiting: 0, inFlight: 3, landed: 0 }));
     expect(screen.getByRole("button").textContent).toBe("3 in flight");
+  });
+
+  it("counts a fleet whose only rows are blocked, as the fleet board does", async () => {
+    await show(fleetCard({ blocked: 2 }));
+    expect(screen.getByRole("button").textContent).toBe("2 blocked");
   });
 
   it("reads Fleet idle with none", async () => {
@@ -47,7 +52,7 @@ describe("the Fleet chip", () => {
   });
 
   it("is named Fleet idle when idle, and keeps its text on one line", async () => {
-    await show(fleetCard({ waiting: 1, inFlight: 3, landedToday: 2 }));
+    await show(fleetCard({ waiting: 1, inFlight: 3, landed: 2 }));
     const button = screen.getByRole("button");
     expect(button.className).toContain("whitespace-nowrap");
     // Never cut, never shrunk, one line of text where it fits.
@@ -59,10 +64,10 @@ describe("the Fleet chip", () => {
   });
 
   it("shows counts of three digits whole, on two lines of the chip, and is named by all of them", async () => {
-    await show(fleetCard({ waiting: 987, inFlight: 654, landedToday: 321 }));
-    const button = screen.getByRole("button", { name: "Fleet: 987 waits on you · 654 in flight · 321 landed today" });
+    await show(fleetCard({ waiting: 987, inFlight: 654, landed: 321 }));
+    const button = screen.getByRole("button", { name: "Fleet: 987 waits on you · 654 in flight · 321 landed in 7d" });
     const lines = [...button.querySelectorAll("span.tabular-nums > span")].map((line) => line.textContent);
-    expect(lines).toEqual(["987 waits on you · 654 in flight", "321 landed today"]);
+    expect(lines).toEqual(["987 waits on you · 654 in flight", "321 landed in 7d"]);
     expect(button.className).toContain("shrink-0");
   });
 
@@ -123,7 +128,7 @@ describe("Connect… from the card", () => {
 
 describe("on a compact viewport", () => {
   it("shows only the count waiting on the operator", async () => {
-    await show(fleetCard({ waiting: 2, inFlight: 3, landedToday: 1 }), true);
+    await show(fleetCard({ waiting: 2, inFlight: 3, landed: 1 }), true);
     expect(screen.getByRole("button").textContent).toBe("2");
   });
 

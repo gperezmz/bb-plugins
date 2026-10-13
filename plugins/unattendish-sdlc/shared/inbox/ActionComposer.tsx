@@ -7,8 +7,9 @@ import { ItemLink } from "../ItemLink";
 import { canSend, keyIntent } from "./composer-model";
 
 /**
- * The composer under an Inbox row: the row's What, a link to the park, and a text area for the
- * operator's words. ⌘/Ctrl+Enter sends, Esc cancels, nothing sends while it is empty.
+ * The composer under an Inbox row: which item the words are for and which fleet's manager they go to, a link to the
+ * park, and a text area for the operator's words. ⌘/Ctrl+Enter sends, Esc cancels, nothing sends while it is empty. A
+ * refusal from bb shows in the footer in place of the hint, and the draft stays.
  */
 export function ActionComposer({
   row,
@@ -17,6 +18,7 @@ export function ActionComposer({
   onText,
   onSend,
   onCancel,
+  refusal = null,
 }: {
   row: InboxRowView;
   /** What the words are: `answer` or `grant`. */
@@ -25,13 +27,17 @@ export function ActionComposer({
   onText(text: string): void;
   onSend(): void;
   onCancel(): void;
+  /** Why bb refused the last send of these words. */
+  refusal?: string | null;
 }) {
   const field = useRef<HTMLTextAreaElement>(null);
   useEffect(() => field.current?.focus(), []);
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">{itemTitle(row.ref, row.what)}</span>
+        <span className="text-muted-foreground">
+          Your {verb} for {itemTitle(row.ref, row.what)} · goes to {row.fleet}'s manager
+        </span>
         <ItemLink link={row.link} managerThreadId={row.managerThreadId} />
       </div>
       <Textarea
@@ -48,8 +54,14 @@ export function ActionComposer({
         }}
       />
       <div className="flex items-center justify-end gap-2">
-        {/* A phone has no such keys. */}
-        <span className="mr-auto hidden text-xs text-muted-foreground md:inline">⌘/Ctrl+Enter sends · Esc cancels</span>
+        {refusal !== null ? (
+          <span role="alert" className="mr-auto text-xs text-destructive-text">
+            Not sent: {refusal}
+          </span>
+        ) : (
+          // A phone has no such keys.
+          <span className="mr-auto hidden text-xs text-muted-foreground md:inline">⌘↵ send · Esc cancel</span>
+        )}
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>

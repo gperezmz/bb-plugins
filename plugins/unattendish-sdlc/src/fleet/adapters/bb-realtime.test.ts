@@ -16,17 +16,17 @@ describe("BbDashboardEvents", () => {
   it("publishes board-changed with no payload and inbox-new with the signal", () => {
     const { host, events } = setup();
     events.boardChanged();
-    events.inboxNew({ fleet: "github.com/org/repo", ref: "#7", what: "A parked question", rowId: "#7|answer|2026-10-12T09:00:00Z" });
+    events.inboxNew({ fleet: "github.com/org/repo", ref: "#7", what: "A parked question", rowId: "#7|answer|2026-10-12T09:00:00Z", waitsFor: "answer", forge: "github" });
     expect(host.harness.realtimeSignals).toEqual([
       { channel: "board-changed", payload: null },
-      { channel: "inbox-new", payload: { fleet: "github.com/org/repo", ref: "#7", what: "A parked question", rowId: "#7|answer|2026-10-12T09:00:00Z" } },
+      { channel: "inbox-new", payload: { fleet: "github.com/org/repo", ref: "#7", what: "A parked question", rowId: "#7|answer|2026-10-12T09:00:00Z", waitsFor: "answer", forge: "github" } },
     ]);
   });
 
   it("swallows a publish that throws and says so without the payload", () => {
     const warnings: string[] = [];
     const events = new BbDashboardEvents({ publish: () => { throw new Error("socket closed"); } }, { warn: (m) => warnings.push(m) }, new FakeClock());
-    expect(() => events.inboxNew({ fleet: "f", ref: "r", what: "secret words", rowId: "id" })).not.toThrow();
+    expect(() => events.inboxNew({ fleet: "f", ref: "r", what: "secret words", rowId: "id", waitsFor: "answer", forge: "github" })).not.toThrow();
     expect(warnings).toEqual(["could not publish on inbox-new"]);
   });
 });
@@ -77,7 +77,7 @@ describe("board-changed coalescing", () => {
 
   it("does not coalesce inbox-new: each new row is announced", () => {
     const { host, events } = setup();
-    for (let n = 0; n < 3; n += 1) events.inboxNew({ fleet: "f", ref: `#${n}`, what: "w", rowId: `r${n}` });
+    for (let n = 0; n < 3; n += 1) events.inboxNew({ fleet: "f", ref: `#${n}`, what: "w", rowId: `r${n}`, waitsFor: "answer", forge: "github" });
     expect(host.harness.realtimeSignals.filter((signal) => signal.channel === "inbox-new")).toHaveLength(3);
   });
 });
