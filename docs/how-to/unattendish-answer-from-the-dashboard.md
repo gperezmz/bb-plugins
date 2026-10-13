@@ -16,7 +16,7 @@ On a row waiting for `grant`, choose **Grant…**, write what you grant and send
 
 ## Build a spec
 
-On a row waiting for `ready`, choose **Build it**. It sends `Build <Ref>` with no composer, and reads `done` once the spec carries the ready label, or the row leaves the queue.
+On a row waiting for `ready`, choose **Build it**. It sends `Build <Ref>` with no composer, and reads `done` once the spec carries the ready label, or the row leaves the queue while the Inbox [reads whole](../reference/unattendish-dashboard.md#an-inbox-row-that-cannot-be-read-holds-actions-back).
 
 ## When bb refuses the message
 
