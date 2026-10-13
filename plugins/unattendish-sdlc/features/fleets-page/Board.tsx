@@ -1,9 +1,9 @@
-import { useState, type MouseEvent } from "react";
+import type { MouseEvent } from "react";
 import type { FleetCardView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { trackerOf } from "@/shared/card-model";
 import { openConnect } from "@/shared/connect/requests";
-import { fixIcon, flagsOf, flagSummary, phoneFlagIcon, worstFlag, type Flag } from "@/shared/fleet-flags";
+import { fixIcon, flagsOf, flagSummary, narrowFlagIcon, worstFlag, type Flag } from "@/shared/fleet-flags";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
@@ -11,7 +11,7 @@ import { COUNT_TONES, FLAG_TONES, MANAGER_TONES, TONE_FILL, TONE_TEXT } from "@/
 import { useOpenFleetTab } from "@/shared/open-fleet-tab";
 import { sharedText } from "@/shared/thread-fleets";
 import { managerCell, spendText, statusSlots } from "@/shared/fleet-header/model";
-import { boardLines, moreLabel, phoneBoard, pollingCell, quietLabel, STATUS_HEADER_TEXT } from "./model";
+import { boardLines, moreLabel, narrowBoard, pollingCell, quietLabel, STATUS_HEADER_TEXT } from "./model";
 
 interface BoardProps {
   readonly cards: readonly FleetCardView[];
@@ -21,8 +21,11 @@ interface BoardProps {
   onSelect(fleet: string | null): void;
 }
 
-/** The columns every line shares, so each cell sits under its header: fleet, manager, Status, spend, polling, fix, Fleet tab. */
-const COLUMNS = "grid grid-cols-[minmax(10rem,1fr)_4.5rem_auto_4.5rem_5rem_minmax(5rem,auto)_2rem] items-center gap-x-3";
+/**
+ * The columns every line shares, so each cell sits under its header: fleet, manager, Status, spend, polling, fix, Fleet
+ * tab. Spend has room for "shared with" and a fleet name, which it cuts past that.
+ */
+const COLUMNS = "grid grid-cols-[minmax(10rem,1fr)_4.5rem_auto_8rem_5rem_minmax(5rem,auto)_2rem] items-center gap-x-3";
 const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /** What a flag's fix does: opens the Fleet tab or the Connect popup; nothing for a flag the page cannot fix. */
@@ -45,9 +48,8 @@ function lineClick(onToggle: () => void) {
   };
 }
 
-/** One line per fleet that isn't quiet, the quiet ones folded under one line; problems first. */
-export function Board({ cards, now, selected, onSelect }: BoardProps) {
-  const [showQuiet, setShowQuiet] = useState(false);
+/** One line per fleet that isn't quiet, the quiet ones folded under one line, unfolded while `showQuiet`; problems first. */
+export function Board({ cards, now, selected, onSelect, showQuiet, onShowQuiet }: BoardProps & { readonly showQuiet: boolean; onShowQuiet(shown: boolean): void }) {
   const { listed, quiet } = boardLines(cards, now, selected);
   const toggle = (repo: string) => onSelect(selected === repo ? null : repo);
   return (
@@ -71,7 +73,7 @@ export function Board({ cards, now, selected, onSelect }: BoardProps) {
         ))}
       </ul>
       {quiet.length > 0 ? (
-        <button type="button" aria-expanded={showQuiet} className={cn(FOCUS, "self-start px-3 pt-2 text-xs text-muted-foreground hover:text-foreground")} onClick={() => setShowQuiet(!showQuiet)}>
+        <button type="button" aria-expanded={showQuiet} className={cn(FOCUS, "self-start px-3 pt-2 text-xs text-muted-foreground hover:text-foreground")} onClick={() => onShowQuiet(!showQuiet)}>
           {quietLabel(quiet.length)}
         </button>
       ) : null}
@@ -206,21 +208,21 @@ function FixCell({ card, flags }: { card: FleetCardView; flags: readonly Flag[] 
 }
 
 /**
- * The board on a phone: one line per fleet with its short name, its fix as a touch-sized icon and its non-zero counts,
- * three shown and the rest folded.
+ * The board in the narrow layout: one line per fleet with its short name, its fix as a touch-sized icon and its
+ * non-zero counts, three shown and the rest folded until `expanded`. Each name, icon and count says its words on hover
+ * and on keyboard focus, as the wide board's do.
  */
-export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProps & { nameOf(fleet: string): string }) {
-  const [expanded, setExpanded] = useState(false);
-  const { shown, more } = phoneBoard(cards, now, expanded);
+export function NarrowBoard({ cards, now, selected, onSelect, nameOf, expanded, onExpand }: BoardProps & { nameOf(fleet: string): string; readonly expanded: boolean; onExpand(): void }) {
+  const { shown, more } = narrowBoard(cards, now, expanded);
   return (
     <section aria-label="Fleet board" className="flex flex-col text-sm">
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {shown.map((card) => (
-          <PhoneLine key={card.repo} card={card} shortName={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
+          <NarrowLine key={card.repo} card={card} shortName={nameOf(card.repo)} now={now} selected={selected === card.repo} onToggle={() => onSelect(selected === card.repo ? null : card.repo)} />
         ))}
       </ul>
       {more > 0 ? (
-        <button type="button" className={cn(FOCUS, "self-start px-3 py-3 text-xs text-muted-foreground")} onClick={() => setExpanded(true)}>
+        <button type="button" className={cn(FOCUS, "self-start px-3 py-3 text-xs text-muted-foreground")} onClick={onExpand}>
           {moreLabel(more)}
         </button>
       ) : null}
@@ -228,40 +230,47 @@ export function PhoneBoard({ cards, now, selected, onSelect, nameOf }: BoardProp
   );
 }
 
-function PhoneLine({ card, shortName, now, selected, onToggle }: { card: FleetCardView; shortName: string; now: string; selected: boolean; onToggle(): void }) {
+function NarrowLine({ card, shortName, now, selected, onToggle }: { card: FleetCardView; shortName: string; now: string; selected: boolean; onToggle(): void }) {
   const fixOf = useFix(card);
   const flags = flagsOf(card, now);
   const first = flags[0];
   const worst = worstFlag(flags);
   const sentence = flags.map((flag) => flag.sentence).join("; ");
+  const hover = <span className="whitespace-pre-line">{flags.map((flag) => flag.sentence).join("\n")}</span>;
   const run = first === undefined ? null : fixOf(first);
-  const icon = phoneFlagIcon(flags) ?? ICONS.review;
+  const icon = narrowFlagIcon(flags) ?? ICONS.review;
   return (
     <li aria-label={`Fleet ${card.repo}`} className={cn("relative flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
       {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
       <ServiceLogo service={card.forge} />
-      <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
-        {shortName}
-      </button>
+      <Tip text={card.repo}>
+        <button type="button" aria-pressed={selected} aria-label={card.repo} className={cn(FOCUS, "min-w-0 truncate py-3 text-left font-medium")} onClick={onToggle}>
+          {shortName}
+        </button>
+      </Tip>
       {worst !== null ? (
-        run !== null ? (
-          <button type="button" aria-label={sentence} className={cn(FOCUS, "flex size-11 shrink-0 items-center justify-center", TONE_TEXT[FLAG_TONES[worst]])} onClick={run}>
-            <Glyph name={icon} className="size-4" />
-          </button>
-        ) : (
-          <span className={cn("flex size-11 shrink-0 items-center justify-center", TONE_TEXT[FLAG_TONES[worst]])}>
-            <Glyph name={icon} label={sentence} className="size-4" />
-          </span>
-        )
+        <Tip text={hover}>
+          {run !== null ? (
+            <button type="button" aria-label={sentence} className={cn(FOCUS, "flex size-11 shrink-0 items-center justify-center", TONE_TEXT[FLAG_TONES[worst]])} onClick={run}>
+              <Glyph name={icon} className="size-4" />
+            </button>
+          ) : (
+            <span tabIndex={0} aria-label={sentence} className={cn(FOCUS, "flex size-11 shrink-0 items-center justify-center", TONE_TEXT[FLAG_TONES[worst]])}>
+              <Glyph name={icon} className="size-4" />
+            </span>
+          )}
+        </Tip>
       ) : null}
       <span className="ml-auto flex items-center gap-2">
         {statusSlots(card)
           .filter((slot) => slot.count !== null)
           .map((slot) => (
-            <span key={slot.key} aria-label={slot.label} className={cn("inline-flex items-center gap-1 text-xs tabular-nums", TONE_TEXT[COUNT_TONES[slot.key]], slot.key === "waiting" && "font-semibold")}>
-              <Glyph name={ICONS[slot.key]} />
-              {slot.count}
-            </span>
+            <Tip key={slot.key} text={slot.label}>
+              <span tabIndex={0} aria-label={slot.label} className={cn(FOCUS, "inline-flex items-center gap-1 text-xs tabular-nums", TONE_TEXT[COUNT_TONES[slot.key]], slot.key === "waiting" && "font-semibold")}>
+                <Glyph name={ICONS[slot.key]} />
+                {slot.count}
+              </span>
+            </Tip>
           ))}
       </span>
     </li>

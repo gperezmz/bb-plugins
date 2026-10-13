@@ -6,12 +6,13 @@ import { fake, resetFakeApi } from "@/testing/api";
 import { actionRecord, ago, fleetCard, fleetsView, HOUR, inboxRow, MINUTE, unreadableInboxRow } from "@/testing/fixtures";
 import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
-import { setCompactViewport } from "@/testing/viewport";
+import { setPageWidth } from "@/testing/page-width";
 import { BOARD_CHANGED } from "@/shared/client";
 import { clearComposerRequests, requestComposer } from "@/shared/composer-request";
 import { PENDING_OPEN_TTL_MS } from "@/shared/pending-open";
 import { closeConnect, currentConnect } from "@/shared/connect/requests";
 import { rememberFilter } from "./filter";
+import { SWITCH_POINT_REM } from "./model";
 import { FleetsHeaderCount, FleetsPage } from "./index";
 
 const toast = vi.hoisted(() => vi.fn());
@@ -23,7 +24,7 @@ beforeEach(() => {
   sdk.reset();
   resetFakeApi();
   rememberFilter(null);
-  setCompactViewport(false);
+  setPageWidth(null);
   clearComposerRequests();
   toast.mockClear();
 });
@@ -38,6 +39,9 @@ const missing: ProblemView = { code: "manifest-missing", text: "The manifest at 
 const unreadableRows: ProblemView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
 const noForge: ProblemView = { code: "no-credential", text: "no GitHub account can read other-org", fix: { kind: "connect", role: "forge" } };
 const noTracker: ProblemView = { code: "no-credential", text: "no Linear account can read team PLAT", fix: { kind: "connect", role: "tracker" } };
+
+/** A page width, in px, at which the narrow layout shows: a 390 px phone's. */
+const NARROW = 390;
 
 const fleet = (repo: string, over: Partial<FleetCardView> = {}) => fleetCard({ repo, managerThreadId: `thr_${repo}`, tracker: "forge-issues", ...over });
 
@@ -584,12 +588,14 @@ describe("the queue (AC9–AC13)", () => {
     expect(within(queue()).getByRole("button", { name: "Build it #8" })).toBeTruthy();
   });
 
-  it("says beside the action when the last send could not be confirmed", async () => {
+  it("shows beside the action, as an icon with its words on hover, a send that could not be confirmed (#277 AC4)", async () => {
     fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
     fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
-    const note = await within(queue()).findByText("could not confirm whether the last send went through");
+    const note = await within(queue()).findByLabelText("could not confirm whether the last send went through");
+    expect(note.textContent).toBe("");
     expect(note.parentElement!.contains(within(queue()).getByRole("button", { name: "Build it #9" }))).toBe(true);
+    expect(await hoverText(note)).toBe("could not confirm whether the last send went through");
   });
 
   it("labels a link to the row's pull request by the pull request, not the row's Ref", async () => {
@@ -614,8 +620,8 @@ describe("the queue (AC9–AC13)", () => {
   });
 });
 
-describe("on a phone (AC15)", () => {
-  beforeEach(() => setCompactViewport(true));
+describe("in the narrow layout (AC15)", () => {
+  beforeEach(() => setPageWidth(NARROW));
 
   it("condenses the board to three fleets, the rest folded", async () => {
     await show(fleetsView({ fleets: ["a", "b", "c", "d", "e"].map((name, n) => fleet(`org/${name}`, { waiting: 5 - n })) }));
@@ -650,8 +656,8 @@ describe("on a phone (AC15)", () => {
   });
 });
 
-describe("a queue row on a phone (#273)", () => {
-  beforeEach(() => setCompactViewport(true));
+describe("a queue row in the narrow layout (#273)", () => {
+  beforeEach(() => setPageWidth(NARROW));
 
   const gh = (path: string, over: Partial<FleetCardView> = {}) => fleet(`github.example/${path}`, { waiting: 1, ...over });
   const threadLink = (threadId: string, message: number) => ({ kind: "message" as const, message: { threadId, message, at: ago(MINUTE) } });
@@ -841,11 +847,11 @@ describe("a queue row on a phone (#273)", () => {
     fireEvent.click(line("github.example/org/dash"));
     const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
     expect(clear.className).toContain("size-11");
-    expect(clear.parentElement!.textContent).toBe("dash");
+    expect(within(clear.parentElement!).getByText("dash")).toBeTruthy();
   });
 });
 
-describe("a queue row at 768 px and wider (AC11)", () => {
+describe("a queue row in the wide layout (#277 AC7)", () => {
   it("keeps the full fleet name and the link's own text", async () => {
     await show(fleetsView({ fleets: [fleet("github.example/org/dash", { waiting: 1 }), fleet("github.example/org/wake")], inbox: [inboxRow({ fleet: "github.example/org/dash", link: { kind: "message", message: { threadId: "thr_den6jrijzx", message: 2, at: ago(MINUTE) } } })] }));
     const row = queueRows()[0]!;
@@ -1027,10 +1033,159 @@ describe("opening a row from a toast's Answer… or Grant… (#262)", () => {
     expect((within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
   });
 
-  it("opens the composer on a phone too", async () => {
-    setCompactViewport(true);
+  it("opens the composer in the narrow layout too", async () => {
+    setPageWidth(NARROW);
     ask();
     await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
     expect(await within(rowOf("Which cache to use")).findByRole("textbox")).toBeTruthy();
   });
 });
+
+describe("the layout follows the page's own width (#277)", () => {
+  /** The switch point in px, at jsdom's 16 px rem. */
+  const SWITCH = SWITCH_POINT_REM * 16;
+  const cards = [fleet("github.example/org/dash", { waiting: 1 }), fleet("github.example/org/wake", { waiting: 1 }), fleet("github.example/org/quiet")];
+  const dash = inboxRow({ fleet: "github.example/org/dash", id: "row_7", ref: "#7", what: "Which cache to use", waitsFor: "answer" });
+  const longLink = { kind: "url" as const, url: "https://github.example/org/dash/wiki/Release-checklist-for-the-cache-layer-rewrite", text: "github.example/org/dash/wiki/Release-checklist-for-the-cache-layer-rewrite" };
+  const wake = inboxRow({ fleet: "github.example/org/wake", id: "row_4", ref: "—", what: "Merge the cache", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false }, link: longLink });
+  const view = () => fleetsView({ fleets: cards, inbox: [wake, dash] });
+  const rowOf = (title: string) => queueRows().find((item) => item.textContent?.includes(title))!;
+  const narrow = () => within(board()).queryByRole("button", { name: /quiet fleet/ }) === null && within(rowOf("Which cache to use")).queryByText("dash") !== null;
+
+  it("draws the narrow layout below the switch point and the wide one from it, as the page is resized, with no reload (AC1)", async () => {
+    setPageWidth(SWITCH - 1);
+    await show(view());
+    expect(narrow()).toBe(true);
+    const fetches = fake.api.fleets.mock.calls.length;
+    setPageWidth(SWITCH);
+    expect(within(rowOf("Which cache to use")).getByText("github.example/org/dash")).toBeTruthy();
+    expect(within(board()).getByRole("button", { name: "1 quiet fleet" })).toBeTruthy();
+    expect(fake.api.fleets.mock.calls.length).toBe(fetches);
+    setPageWidth(SWITCH - 1);
+    expect(narrow()).toBe(true);
+  });
+
+  // That no row the wide layout holds is wider than the switch point is measured in bb: jsdom has no layout.
+  it("keeps the layout as it is when the queue is filtered to one fleet or a poll brings a row with a long link (AC1)", async () => {
+    setPageWidth(SWITCH);
+    await show(view());
+    fireEvent.click(line("github.example/org/dash"));
+    expect(within(board()).getByRole("button", { name: "1 quiet fleet" })).toBeTruthy();
+    fireEvent.click(line("github.example/org/dash"));
+    fake.api.fleets.mockResolvedValue(fleetsView({ fleets: cards, inbox: [wake, dash, inboxRow({ fleet: "github.example/org/dash", id: "row_9", ref: "—", what: "A new one", link: longLink })] }));
+    sdk.emit(BOARD_CHANGED);
+    await waitFor(() => expect(rowOf("A new one")).toBeTruthy());
+    expect(within(board()).getByRole("button", { name: "1 quiet fleet" })).toBeTruthy();
+  });
+
+  it("cuts a link with no short form at 16rem on one line, its full text its accessible name and hover text, and shows a short form whole (AC3)", async () => {
+    setPageWidth(SWITCH);
+    await show(view());
+    const link = within(rowOf("Merge the cache")).getByRole("link", { name: `${longLink.text} ↗` });
+    expect(link.className).toContain("max-w-[16rem]");
+    expect(link.className).toContain("truncate");
+    expect(await hoverText(link)).toBe(longLink.text);
+    cleanupTooltip();
+    const issue = { kind: "url" as const, url: "https://github.example/org/dash/issues/7", text: "github.example/org/dash/issues/7" };
+    cleanup();
+    await show(fleetsView({ fleets: cards, inbox: [{ ...dash, link: issue }] }));
+    const whole = within(rowOf("Which cache to use")).getByRole("link", { name: "#7 ↗" });
+    expect(whole.className).not.toContain("max-w-[16rem]");
+  });
+
+  it("keeps the title at least 12rem wide and the age on one line in the wide layout (AC2)", async () => {
+    setPageWidth(SWITCH);
+    await show(view());
+    const row = rowOf("Which cache to use");
+    expect(within(row).getByText("#7 Which cache to use").parentElement!.className).toContain("grid-cols-[minmax(12rem,max-content)_auto]");
+    expect(within(row).getByText(/^\d+[mhd]/).className).toContain("whitespace-nowrap");
+  });
+
+  it("keeps the composer open under its row with its draft, its focus and its caret, so typing goes on into it (AC8)", async () => {
+    setPageWidth(SWITCH);
+    await show(view());
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #7" }));
+    const field = within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "Use Redis" } });
+    act(() => field.setSelectionRange(3, 3));
+    setPageWidth(SWITCH - 1);
+    expect(narrow()).toBe(true);
+    const after = within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement;
+    expect(after).toBe(field);
+    expect(document.activeElement).toBe(after);
+    expect([after.value, after.selectionStart]).toEqual(["Use Redis", 3]);
+    setPageWidth(SWITCH);
+    expect(document.activeElement).toBe(field);
+    fireEvent.change(field, { target: { value: "Use Redis now" } });
+    expect(field.value).toBe("Use Redis now");
+  });
+
+  it("keeps a composer a toast opened, and leaves a composer that had no focus without it (AC8)", async () => {
+    setPageWidth(SWITCH);
+    act(() => requestComposer({ fleet: dash.fleet, rowId: dash.id, ref: dash.ref, what: dash.what }));
+    await show(view());
+    const field = await within(rowOf("Which cache to use")).findByRole("textbox");
+    expect(document.activeElement).toBe(field);
+    setPageWidth(SWITCH - 1);
+    expect(within(rowOf("Which cache to use")).getByRole("textbox")).toBe(field);
+    expect(document.activeElement).toBe(field);
+    act(() => field.blur());
+    setPageWidth(SWITCH);
+    expect(within(rowOf("Which cache to use")).getByRole("textbox")).toBe(field);
+    expect(document.activeElement).not.toBe(field);
+  });
+
+  it("keeps the tab, the filter, an action's state and each board's fold across a switch (AC8)", async () => {
+    fake.api.sendAction.mockReturnValue(new Promise(() => {}));
+    setPageWidth(SWITCH);
+    await show(fleetsView({ fleets: [...cards, fleet("github.example/org/a", { waiting: 1 }), fleet("github.example/org/b", { waiting: 1 })], inbox: [wake, dash] }));
+    fireEvent.click(within(board()).getByRole("button", { name: "1 quiet fleet" }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #7" }));
+    fireEvent.change(within(rowOf("Which cache to use")).getByRole("textbox"), { target: { value: "Use Redis" } });
+    fireEvent.click(within(rowOf("Which cache to use")).getByRole("button", { name: "Send" }));
+    fireEvent.click(within(queue()).getByRole("tab", { name: "Answer 1" }));
+    setPageWidth(SWITCH - 1);
+    expect(within(queue()).getByRole("tab", { name: "Answer 1" }).getAttribute("aria-selected")).toBe("true");
+    expect(within(rowOf("Which cache to use")).getByText("sending…")).toBeTruthy();
+    fireEvent.click(within(board()).getByRole("button", { name: "2 more fleets" }));
+    fireEvent.click(within(board()).getByRole("button", { name: "github.example/org/dash" }));
+    expect(queueRows()).toHaveLength(1);
+    setPageWidth(SWITCH);
+    expect(boardRepos()).toContain("github.example/org/quiet");
+    expect(within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" })).toBeTruthy();
+    expect(within(rowOf("Which cache to use")).getByText("sending…")).toBeTruthy();
+    setPageWidth(SWITCH - 1);
+    expect(boardRepos()).toHaveLength(5);
+  });
+
+  it("shows each icon's and short name's words on hover and on keyboard focus in the narrow layout (AC9)", async () => {
+    setPageWidth(SWITCH - 1);
+    await show(
+      fleetsView({
+        fleets: [fleet("github.example/org/dash", { waiting: 1, problems: [missing] }), fleet("github.example/org/wake", { waiting: 1, problems: [{ ...missing, fix: { kind: "none" } }] })],
+        inbox: [{ ...dash, link: longLink }],
+      }),
+    );
+    const row = rowOf("Which cache to use");
+    expect(await hoverText(within(row).getByText("dash").parentElement!)).toBe("github.example/org/dash");
+    cleanupTooltip();
+    expect(await hoverText(within(row).getByRole("link", { name: longLink.text }))).toBe(longLink.text);
+    cleanupTooltip();
+    expect(await hoverText(within(line("github.example/org/dash")).getByRole("button", { name: missing.text }))).toBe(missing.text);
+    cleanupTooltip();
+    expect(await hoverText(within(line("github.example/org/wake")).getByLabelText(missing.text))).toBe(missing.text);
+    cleanupTooltip();
+    expect(await hoverText(within(line("github.example/org/dash")).getByLabelText("1 waiting on you"))).toBe("1 waiting on you");
+    cleanupTooltip();
+    expect(await hoverText(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" }))).toBe("github.example/org/dash");
+    cleanupTooltip();
+    fireEvent.click(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" }));
+    const chip = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" }).parentElement!;
+    expect(await hoverText(within(chip).getByText("dash").parentElement!)).toBe("github.example/org/dash");
+  });
+});
+
+/** Takes focus off whatever holds it, so the next tooltip is the only one. */
+function cleanupTooltip(): void {
+  act(() => (document.activeElement as HTMLElement | null)?.blur());
+}

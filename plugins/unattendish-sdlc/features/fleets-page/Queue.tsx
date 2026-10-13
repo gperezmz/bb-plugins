@@ -5,7 +5,7 @@ import { sentAgo, sentText } from "@/shared/fleet-header/model";
 import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
 import { rowAction, rowKey, sameRow } from "@/shared/inbox/row-model";
 import type { RowActionState } from "@/shared/inbox/use-row-action";
-import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
+import { Glyph } from "@/shared/look/Glyph";
 import { ICONS, KIND_ICONS } from "@/shared/look/icons";
 import { KIND_TONES } from "@/shared/look/tones";
 import { composerFor, NOTHING_WAITS, NOTHING_WAITS_LINE, TAB_NAMES, tabCounts, tabRows, tabShowing, tabsShown, type QueueView, type Tab } from "./model";
@@ -28,8 +28,9 @@ interface QueueProps {
   /** The fleet the queue is filtered to; its rows then leave the fleet out. */
   readonly filter: string | null;
   onClearFilter(): void;
-  readonly compact: boolean;
-  /** How a fleet is named: its short name on a phone, its full name otherwise. */
+  /** Whether the page shows its narrow layout. */
+  readonly narrow: boolean;
+  /** How a fleet is named: its short name in the narrow layout, its full name otherwise. */
   nameOf(fleet: string): string;
   /** The tab shown, kept above the page's loading state, as the rows' actions are, so a reload keeps it. */
   readonly tab: Tab;
@@ -43,7 +44,7 @@ interface QueueProps {
 const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
 /** Every Inbox row across fleets, or the filtered fleet's, oldest first, with tabs by kind and a Sent tab. */
-export function Queue({ queue, now, fleets, filter, onClearFilter, compact, nameOf, tab: picked, onTab: setPicked, stateOf, opening = null }: QueueProps) {
+export function Queue({ queue, now, fleets, filter, onClearFilter, narrow, nameOf, tab: picked, onTab: setPicked, stateOf, opening = null }: QueueProps) {
   const [opened, setOpened] = useState<OpenRow | null>(null);
   // Shows the row a toast asked for, on a tab that lists it, with the composer its own button opens; a composer already
   // open keeps its draft, and a row whose action is under way, sent or done opens none.
@@ -86,7 +87,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
                 FOCUS,
                 "flex items-center gap-1 px-2 py-1 text-xs",
                 name === "sent" && "ml-2 border-l border-border pl-3",
-                compact ? "min-h-9 rounded-full border border-border" : "rounded-md",
+                narrow ? "min-h-9 rounded-full border border-border" : "rounded-md",
                 tab === name ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => setPicked(name)}
@@ -97,10 +98,9 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
           ))}
         </div>
         {filter !== null ? (
-          <span className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border pl-2 text-xs", compact ? "pr-0" : "py-0.5 pr-1")}>
-            {card !== undefined ? <ServiceLogo service={card.forge} decorative /> : null}
-            <span className="truncate">{nameOf(filter)}</span>
-            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", compact ? "size-11" : "size-5")} onClick={onClearFilter}>
+          <span className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border pl-2 text-xs", narrow ? "pr-0" : "py-0.5 pr-1")}>
+            <FleetName fleet={card} name={filter} short={nameOf(filter)} className="text-foreground" />
+            <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", narrow ? "size-11" : "size-5")} onClick={onClearFilter}>
               <Glyph name={ICONS.clear} className="size-3" />
             </button>
           </span>
@@ -114,7 +114,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={rowKey(row)} id={opened !== null && sameRow(row, { fleet: opened.fleet, id: opened.rowId }) ? OPENED_ID : undefined} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
+              <QueueRow key={rowKey(row)} id={opened !== null && sameRow(row, { fleet: opened.fleet, id: opened.rowId }) ? OPENED_ID : undefined} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={narrow ? "stacked" : "columns"} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} section="Inbox" review={row} />

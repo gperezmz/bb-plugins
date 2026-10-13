@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { FleetsView, InboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useDashboardApi } from "@/shared/client";
 import { useRowActions, type RowActionState } from "@/shared/inbox/use-row-action";
 import {
@@ -17,12 +18,12 @@ import {
 } from "@/shared/composer-request";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
-import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { FALLBACK_POLL_MS, refetchEveryView, screenState, useLive } from "@/shared/use-live";
-import { Board, PhoneBoard } from "./Board";
+import { Board, NarrowBoard } from "./Board";
 import { rememberFilter, useQueueFilter } from "./filter";
-import { filterShowing, goneText, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor, requestedRow, shortNames, type Tab } from "./model";
+import { filterShowing, goneText, NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor, requestedRow, shortNames, type PageLayout, type Tab } from "./model";
 import { Queue, type OpenRow } from "./Queue";
+import { usePageLayout } from "./use-page-layout";
 
 /**
  * Every fleet's health on the fleet board, and below it the queue of everything that waits on the operator across
@@ -32,6 +33,8 @@ import { Queue, type OpenRow } from "./Queue";
  * was made, so the page fetches again from its loading state; one that fails drops the request. The page holds the
  * request while it is mounted, and lets it lapse when it goes first. The queue's tab and
  * what its rows hold in this window, drafts among them, are kept here, above that state, so it leaves them as they were.
+ *
+ * The page draws its wide or narrow layout by its own width, which bb's sidebar narrows, and redraws as it is resized.
  */
 export function FleetsPage() {
   const api = useDashboardApi();
@@ -61,11 +64,13 @@ export function FleetsPage() {
   // A page that goes before its view loads lets the request lapse, so a later visit does not act on an old click.
   useEffect(() => releaseComposerRequest, []);
   const fresh = requestOnView(request, live.data?.asOf ?? null);
+  const page = useRef<HTMLDivElement>(null);
+  const layout = usePageLayout(page);
   return (
-    <div className="flex flex-col gap-6 p-4 md:p-6">
+    <div ref={page} className={cn("flex flex-col gap-6", layout === "wide" ? "p-6" : "p-4")}>
       {state === "loading" ? <Loading /> : null}
       {state === "failed" ? <CantLoad error={live.error ?? ""} retry={refetchEveryView} /> : null}
-      {state === "ready" ? <Ready view={live.data!.view} tab={tab} onTab={setTab} stateOf={stateOf} request={fresh} /> : null}
+      {state === "ready" ? <Ready view={live.data!.view} layout={layout} tab={tab} onTab={setTab} stateOf={stateOf} request={fresh} /> : null}
     </div>
   );
 }
@@ -120,14 +125,18 @@ function NoFleet() {
 
 interface ReadyProps {
   readonly view: FleetsView;
+  readonly layout: PageLayout;
   readonly tab: Tab;
   onTab(tab: Tab): void;
   stateOf(row: InboxRowView): RowActionState;
   readonly request: ComposerRequest | null;
 }
 
-function Ready({ view, tab, onTab, stateOf, request }: ReadyProps) {
-  const compact = useIsCompactViewport();
+function Ready({ view, layout, tab, onTab, stateOf, request }: ReadyProps) {
+  const narrow = layout === "narrow";
+  // Each board's fold, kept here so a switch of layout finds it as it was left.
+  const [quietShown, setQuietShown] = useState(false);
+  const [moreShown, setMoreShown] = useState(false);
   // The fleet the queue is filtered to, by name; a fleet no longer registered filters nothing.
   const picked = useQueueFilter();
   const setPicked = rememberFilter;
@@ -148,13 +157,17 @@ function Ready({ view, tab, onTab, stateOf, request }: ReadyProps) {
   }, [request]);
   if (view.fleets.length === 0) return <NoFleet />;
   const fleets = new Map(view.fleets.map((card) => [card.repo, card]));
-  // A phone names each fleet by its short name, told apart from every fleet registered as of this view.
-  const short = compact ? shortNames(view.fleets.map((card) => card.repo)) : null;
+  // The narrow layout names each fleet by its short name, told apart from every fleet registered as of this view.
+  const short = narrow ? shortNames(view.fleets.map((card) => card.repo)) : null;
   const nameOf = (fleet: string) => short?.get(fleet) ?? fleet;
   return (
     <>
-      {compact ? <PhoneBoard cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} nameOf={nameOf} /> : <Board cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} />}
-      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} compact={compact} nameOf={nameOf} tab={tab} onTab={onTab} stateOf={stateOf} opening={opening} />
+      {narrow ? (
+        <NarrowBoard cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} nameOf={nameOf} expanded={moreShown} onExpand={() => setMoreShown(true)} />
+      ) : (
+        <Board cards={view.fleets} now={view.generatedAt} selected={selected} onSelect={setPicked} showQuiet={quietShown} onShowQuiet={setQuietShown} />
+      )}
+      <Queue queue={queueFor(view, selected)} now={view.generatedAt} fleets={fleets} filter={selected} onClearFilter={() => setPicked(null)} narrow={narrow} nameOf={nameOf} tab={tab} onTab={onTab} stateOf={stateOf} opening={opening} />
     </>
   );
 }

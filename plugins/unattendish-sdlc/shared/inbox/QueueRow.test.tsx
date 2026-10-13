@@ -147,7 +147,7 @@ describe("Answer…", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Answer… ENG-212" })).toBeTruthy();
-    expect(screen.getByText("could not confirm whether the last send went through")).toBeTruthy();
+    expect(screen.getByLabelText("could not confirm whether the last send went through")).toBeTruthy();
   });
 
   it("keeps the composer, its text and sending… when the row changes layout", async () => {

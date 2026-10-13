@@ -12,25 +12,39 @@ import { actionName, rowAction, rowAge, shortLinkLabel, unreadableLine, type Row
 import type { RowActionState } from "./use-row-action";
 
 const FOCUS = "rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
-/** The columns of a queue row: kind, title, link, age, fleet, action. */
-const COLUMNS = "grid grid-cols-[1rem_minmax(0,1fr)_auto_4.5rem_minmax(0,10rem)_auto] items-center gap-x-3";
+/**
+ * The columns of a queue row: kind, title, link, age, fleet, action. None shrinks below what it holds whole: the title
+ * keeps 12rem, the link is cut at 16rem, the age fits 99d 23h, so the row has a width the Fleets page's switch point is
+ * sized to.
+ */
+const COLUMNS = "grid grid-cols-[1rem_minmax(min-content,1fr)_auto_4.5rem_10rem_auto] items-center gap-x-3";
+const COLUMNS_NO_FLEET = "grid-cols-[1rem_minmax(min-content,1fr)_auto_4.5rem_auto]";
 
-/** A fleet's logo and name; a short name shown in place of the full one leaves the full one to assistive technology. */
+/**
+ * A fleet's logo and name; a short name shown in place of the full one leaves the full one to assistive technology,
+ * and shows it on hover and on keyboard focus.
+ */
 export function FleetName({ fleet, name, short = name, className }: { fleet: FleetCardView | undefined; name: string; short?: string; className?: string }) {
-  return (
-    <span className={cn("flex min-w-0 items-center gap-1 text-xs text-muted-foreground", className)}>
-      {fleet !== undefined ? <ServiceLogo service={fleet.forge} decorative /> : null}
-      {short === name ? (
+  const logo = fleet !== undefined ? <ServiceLogo service={fleet.forge} decorative /> : null;
+  const box = cn("flex min-w-0 items-center gap-1 text-xs text-muted-foreground", className);
+  if (short === name) {
+    return (
+      <span className={box}>
+        {logo}
         <span className="truncate">{name}</span>
-      ) : (
-        <>
-          <span aria-hidden className="truncate">
-            {short}
-          </span>
-          <span className="sr-only">{name}</span>
-        </>
-      )}
-    </span>
+      </span>
+    );
+  }
+  return (
+    <Tip text={name}>
+      <span tabIndex={0} className={cn(FOCUS, box)}>
+        {logo}
+        <span aria-hidden className="truncate">
+          {short}
+        </span>
+        <span className="sr-only">{name}</span>
+      </span>
+    </Tip>
   );
 }
 
@@ -42,34 +56,40 @@ interface QueueRowProps {
   readonly now: string;
   /** The row's fleet, for its logo where the row names its fleet. */
   readonly fleet: FleetCardView | undefined;
-  /** How the row names its fleet where it does: its short name on a phone. */
+  /** How the row names its fleet where it does: its short name in the `stacked` layout. */
   readonly shortName?: string;
   readonly showFleet: boolean;
   /**
-   * `columns` lines the row up under the queue's columns; `phone` gives the title, the details and the action a line
-   * each, for a phone's queue; `two-line` puts the kind's icon, the title and the action on one line and the link and
-   * the age on a second, for the Fleet tab's narrow panel.
+   * `columns` lines the row up under the queue's columns, for the Fleets page's wide layout; `stacked` gives the
+   * title, the details and the action a line each, for its narrow layout; `two-line` puts the kind's icon, the title and the action on one line and the link and
+   * the age on a second, for the Fleet tab's side panel.
    */
-  readonly layout: "columns" | "phone" | "two-line";
-  /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `phone` layout always has them. */
+  readonly layout: "columns" | "stacked" | "two-line";
+  /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `stacked` layout always has them. */
   readonly touch?: boolean;
   readonly state: RowActionState;
   /** The `<li>`'s DOM id, as `UnreadableRow` takes one: for scrolling to the row and finding its composer. */
   readonly id?: string;
 }
 
-/** One Inbox row: the kind's icon and title, its link and age, its fleet where shown, and its action or the action's state, with the composer under it. */
+/**
+ * One Inbox row: the kind's icon and title, its link and age, its fleet where shown, and its action or the action's
+ * state, with the composer under it. The composer is the row's last child, keyed, in every layout, so a change of
+ * layout keeps its text box, and with it the focus and the caret.
+ */
 export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, layout, touch = false, state, id }: QueueRowProps) {
   const action = rowAction(row, now, state);
   const age = rowAge(row, now);
+  const linkLabel = shortLinkLabel(row);
   const kind = <Glyph name={KIND_ICONS[row.waitsFor]} tone={KIND_TONES[row.waitsFor]} />;
   const title = (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className="truncate">{itemTitle(row.ref, row.what)}</span>
+    // In the columns the title keeps 12rem however long it is, so a long title never widens the row's narrowest width.
+    <span className={cn("min-w-0 items-baseline gap-2", layout === "columns" ? "grid grid-cols-[minmax(12rem,max-content)_auto]" : "flex")}>
+      <span className="min-w-0 truncate">{itemTitle(row.ref, row.what)}</span>
       {/* A refusal of words shows in their composer; one of Build it or Re-grant, which have none, shows here. */}
       {action.kind === "offer" && action.refusal !== null && state.composing === null ? (
         <Tip text={action.refusal}>
-          <span tabIndex={0} aria-label={`not sent: ${action.refusal}`} className={cn(FOCUS, "shrink-0 text-xs font-medium text-destructive-text")}>
+          <span tabIndex={0} aria-label={`not sent: ${action.refusal}`} className={cn(FOCUS, "shrink-0 whitespace-nowrap text-xs font-medium text-destructive-text")}>
             not sent
           </span>
         </Tip>
@@ -77,14 +97,14 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
     </span>
   );
   const ageCell = (
-    <span className={cn("flex items-center gap-1 text-xs tabular-nums", layout === "phone" && "whitespace-nowrap", age.long ? "text-warning-text" : "text-muted-foreground")}>
+    <span className={cn("flex items-center gap-1 text-xs tabular-nums", layout !== "two-line" && "whitespace-nowrap", age.long ? "text-warning-text" : "text-muted-foreground")}>
       <Glyph name={ICONS.age} />
       {age.text}
     </span>
   );
   const composer =
     state.composing !== null && (state.composing === "answer" || state.composing === "grant") ? (
-      <div className="pb-3">
+      <div key="composer" className="pb-3">
         <ActionComposer
           row={row}
           verb={state.composing}
@@ -103,26 +123,20 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
           {kind}
           <span className="min-w-0 flex-1">{title}</span>
           <span className="shrink-0">
-            <ActionCell row={row} action={action} state={state} buttons={touch ? TOUCH_BUTTON : BUTTON} note={false} />
+            <ActionCell row={row} action={action} state={state} buttons={touch ? TOUCH_BUTTON : BUTTON} unconfirmed={false} />
           </span>
         </span>
         <span className="flex min-w-0 items-center gap-x-3 pl-6">
-          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="min-w-0 truncate text-xs" />
+          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} className="min-w-0 truncate text-xs" />
           {/* The row keeps to two lines, so the unconfirmed note is an icon here, its words on hover and to assistive technology. */}
-          {action.kind === "offer" && action.unconfirmed ? (
-            <Tip text={UNCONFIRMED}>
-              <span tabIndex={0} aria-label={UNCONFIRMED} className={cn(FOCUS, "shrink-0 text-muted-foreground")}>
-                <Glyph name={ICONS.unconfirmed} />
-              </span>
-            </Tip>
-          ) : null}
+          {action.kind === "offer" && action.unconfirmed ? <UnconfirmedIcon /> : null}
           <span className="ml-auto shrink-0">{ageCell}</span>
         </span>
         {composer}
       </li>
     );
   }
-  if (layout === "phone") {
+  if (layout === "stacked") {
     return (
       <li id={id} className="flex flex-col gap-2 py-3">
         {/* The title has the row's width beside the kind and wraps onto a second line before it is cut. */}
@@ -137,7 +151,7 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
         <span className="my-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           {showFleet ? <FleetName fleet={fleet} name={row.fleet} short={shortName} className="max-w-full shrink-0" /> : null}
           <span className="flex shrink-0 grow items-center gap-3">
-            <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} arrowOnly className={cn("text-xs", TAP_AREA)} />
+            <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} arrowOnly tip className={cn("text-xs", TAP_AREA)} />
             <span className="ml-auto">{ageCell}</span>
           </span>
         </span>
@@ -148,13 +162,14 @@ export function QueueRow({ row, now, fleet, shortName = row.fleet, showFleet, la
   }
   return (
     <li id={id} className="flex flex-col">
-      <div className={cn(COLUMNS, "py-2", !showFleet && "grid-cols-[1rem_minmax(0,1fr)_auto_4.5rem_auto]")}>
+      <div className={cn(COLUMNS, "py-2", !showFleet && COLUMNS_NO_FLEET)}>
         {kind}
         {title}
-        <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="text-xs" />
+        {/* A short form is shown whole; a link without one is cut at 16rem. */}
+        <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={linkLabel} tip className={cn("whitespace-nowrap text-xs", linkLabel === undefined && "block w-max max-w-[16rem] truncate")} />
         {ageCell}
         {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
-        <ActionCell row={row} action={action} state={state} buttons={BUTTON} note />
+        <ActionCell row={row} action={action} state={state} buttons={BUTTON} unconfirmed />
       </div>
       {composer}
     </li>
@@ -180,8 +195,22 @@ export function UnreadableRow({ row, section, review = null, id }: { row: Pick<U
   );
 }
 
-/** Said beside an action, or under it on a phone, whose last send failed with its result unknown, once the server's view showed it not sent. */
+/**
+ * Said of an action whose last send failed with its result unknown, once the server's view showed it not sent: spelled
+ * out under it in the `stacked` layout, an icon beside it otherwise.
+ */
 const UNCONFIRMED = "could not confirm whether the last send went through";
+
+/** An unconfirmed send as an icon, its words on hover, on keyboard focus and to assistive technology. */
+function UnconfirmedIcon() {
+  return (
+    <Tip text={UNCONFIRMED}>
+      <span tabIndex={0} aria-label={UNCONFIRMED} className={cn(FOCUS, "shrink-0 text-muted-foreground")}>
+        <Glyph name={ICONS.unconfirmed} />
+      </span>
+    </Tip>
+  );
+}
 
 /** The kind of wait each action answers, for its icon and tone. */
 export const OFFER_KIND: Readonly<Record<"answer" | "grant" | "build", InboxRowView["waitsFor"]>> = { answer: "answer", grant: "grant", build: "ready" };
@@ -194,21 +223,21 @@ const TOUCH_BUTTON = "flex min-h-11 items-center gap-1 rounded-md border px-3 te
 
 /**
  * The action cell: the offered action as outlined buttons in the kind's colour, `buttons` sizing them, or the action's
- * state; `note` spells out an unconfirmed send beside the buttons.
+ * state; `unconfirmed` shows an unconfirmed send as an icon beside the buttons, kept on their line.
  */
-function ActionCell({ row, action, state, buttons, note }: { row: InboxRowView; action: RowAction; state: RowActionState; buttons: string; note: boolean }) {
+function ActionCell({ row, action, state, buttons, unconfirmed }: { row: InboxRowView; action: RowAction; state: RowActionState; buttons: string; unconfirmed: boolean }) {
   if (state.composing !== null && action.kind === "offer") return <span className={QUIET}>composing…</span>;
   if (action.kind !== "offer") return <ActionState action={action} className={QUIET} />;
   return (
-    <span className="flex flex-wrap items-center justify-end gap-2">
+    <span className={cn("flex items-center justify-end gap-2", unconfirmed ? "flex-nowrap" : "flex-wrap")}>
       <OfferButtons row={row} offer={action.offer} state={state} className={buttons} />
-      {note && action.unconfirmed ? <span className="text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
+      {unconfirmed && action.unconfirmed ? <UnconfirmedIcon /> : null}
     </span>
   );
 }
 
 /**
- * The action line of a row on a phone: the offered buttons across the row, Grant… and Re-grant at half each, a refusal
+ * The action line of a row in the `stacked` layout: the offered buttons across the row, Grant… and Re-grant at half each, a refusal
  * and an unconfirmed send spelled out under them; every other state as text at the buttons' height, so the row keeps
  * its height, but watch only, which never turns into a button.
  */

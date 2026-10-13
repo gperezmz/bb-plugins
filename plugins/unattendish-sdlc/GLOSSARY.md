@@ -90,8 +90,20 @@ _Avoid_: Dashboard page, Fleet dashboard
 The top of the Fleets page: one line per fleet with its manager, Status, spend, polling and fix, problems first and quiet fleets folded. Clicking a line filters the queue to that fleet.
 _Avoid_: Fleet cards, fleet list
 
+**Wide layout**:
+The Fleets page as it is drawn where it is at least as wide as the switch point: the full fleet board, and one line per queue row with the full fleet name.
+_Avoid_: Desktop layout
+
+**Narrow layout**:
+The Fleets page as it is drawn where it is narrower than the switch point, on a phone or in a narrow desktop window: a condensed fleet board, stacked queue rows, short names and touch-sized controls.
+_Avoid_: Phone layout, compact layout, mobile layout
+
+**Switch point**:
+The one page width at which the Fleets page goes between its narrow and wide layouts: the narrowest at which the widest row the wide layout can hold still shows each of its parts whole. It is the page's own width, not the window's, and nothing on the page moves it.
+_Avoid_: Breakpoint
+
 **Short name**:
-How the Fleets page names a fleet on a phone: the end of its full name, its host followed by its path, with as many segments as it takes so that no other registered fleet's full name ends the same way. It reaches the host only where its whole path is also the end of another registered fleet's full name.
+How the Fleets page names a fleet in its narrow layout: the end of its full name, its host followed by its path, with as many segments as it takes so that no other registered fleet's full name ends the same way. It reaches the host only where its whole path is also the end of another registered fleet's full name.
 _Avoid_: Nickname, display name
 
 A short name changes as fleets are registered and unregistered. The full name stays the accessible name wherever a short name is shown.
