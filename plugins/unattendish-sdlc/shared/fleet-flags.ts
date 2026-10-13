@@ -26,9 +26,9 @@ export interface Flag {
   readonly saidElsewhere: boolean;
 }
 
-/** The order flags are shown in: the manifest (missing, unreadable, or naming another repository), its unreadable rows, a half Connect… fixes, a gone manager, any other problem, an expiring token, polling. */
+/** The order flags are shown in: the manifest, its unreadable rows, a half Connect… fixes, a gone manager, any other problem, an expiring token, polling. */
 function rankOf(flag: Flag, code: string | null): number {
-  if (code === "manifest-missing" || code === "manifest-unreadable" || code === "left-behind") return 0;
+  if (code === "manifest-missing" || code === "manifest-unreadable") return 0;
   if (code === "unreadable-rows") return 1;
   if (flag.fix.kind === "connect") return 2;
   if (code === "manager-gone") return 3;

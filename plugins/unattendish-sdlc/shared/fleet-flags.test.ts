@@ -26,12 +26,12 @@ describe("a fleet's flags", () => {
     ]);
   });
 
-  it("ranks a left-behind fleet's problem with the manifest's, before a half Connect… fixes (#270 AC6)", () => {
+  it("keeps a half's Connect… before a left-behind fleet's problem, so the board's fix column offers it (#270 AC6)", () => {
     const left: ProblemView = { code: "left-behind", text: "Its manifest now names github.com/org/wake, so nothing in it is this fleet's.", fix: { kind: "none" } };
-    const flags = flagsOf(fleetCard({ problems: [forge, left] }), NOW);
+    const flags = flagsOf(fleetCard({ problems: [left, forge] }), NOW);
     expect(flags.map((flag) => [flag.verb, flag.sentence])).toEqual([
-      [null, left.text],
       ["Connect…", forge.text],
+      [null, left.text],
     ]);
   });
 
