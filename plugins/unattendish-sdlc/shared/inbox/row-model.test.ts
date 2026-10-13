@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { actionRecord, ago, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
+import { actionRecord, ago, HOUR, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { type LocalAction, actionName, recentActionText, rowAction, sendInput, takesText, unreadableText, waitedText, waitsForText } from "./row-model";
+import { type LocalAction, actionName, recentActionText, rowAge, rowAction, sendInput, shortLinkLabel, takesText, unreadableLine, unreadableText, waitedText, waitsForText } from "./row-model";
 
 const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
@@ -125,5 +125,30 @@ describe("the composer", () => {
 
   it("cancels on Esc, even with text", () => {
     expect(keyIntent(key("Escape"), "yes")).toBe("cancel");
+  });
+});
+
+describe("a queue row", () => {
+  it("turns a row's age amber once it has waited 8 hours", () => {
+    expect(rowAge({ since: ago(20_000) }, NOW)).toEqual({ text: "20s", long: false });
+    expect(rowAge({ since: ago(11 * HOUR + 36 * MINUTE) }, NOW)).toEqual({ text: "11h 36m", long: true });
+    expect(rowAge({ since: ago(8 * HOUR) }, NOW).long).toBe(true);
+  });
+
+  it("labels a row's link by what its URL opens, whatever the row's Ref", () => {
+    const url = (href: string) => ({ link: { kind: "url", url: href, text: href.replace("https://", "") } }) as const;
+    expect(shortLinkLabel(url("https://github.example/org/dash/issues/8"))).toBe("#8");
+    expect(shortLinkLabel(url("https://github.example/org/dash/pull/12"))).toBe("#12");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/merge_requests/45"))).toBe("!45");
+    expect(shortLinkLabel(url("https://gitlab.example/group/proj/-/issues/3"))).toBe("#3");
+    expect(shortLinkLabel(url("https://linear.app/acme/issue/ENG-212/which-locale"))).toBe("ENG-212");
+    expect(shortLinkLabel(url("https://acme.atlassian.net/browse/OPS-7"))).toBe("OPS-7");
+    expect(shortLinkLabel(url("https://example.test/somewhere"))).toBeUndefined();
+    expect(shortLinkLabel({ link: { kind: "message", message: { threadId: null, message: 3, at: NOW } } })).toBeUndefined();
+  });
+
+  it("says what an unreadable row is and why", () => {
+    expect(unreadableLine({ line: 9, reason: "the table has no \"Waits for\" column" }, "Inbox")).toBe("Unreadable Inbox row, line 9: the table has no \"Waits for\" column");
+    expect(unreadableLine({ line: 22, reason: "the table has no \"Blocked on\" column" })).toBe("Unreadable row, line 22: the table has no \"Blocked on\" column");
   });
 });

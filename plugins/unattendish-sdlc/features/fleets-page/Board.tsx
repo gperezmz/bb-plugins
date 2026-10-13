@@ -9,7 +9,8 @@ import { ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
 import { COUNT_TONES, FLAG_TONES, MANAGER_TONES, TONE_FILL, TONE_TEXT } from "@/shared/look/tones";
 import { useOpenFleetTab } from "@/shared/open-fleet-tab";
-import { boardLines, managerCell, moreLabel, phoneBoard, pollingCell, quietLabel, spendText, STATUS_HEADER_TEXT, statusSlots } from "./model";
+import { managerCell, spendText, statusSlots } from "@/shared/fleet-header/model";
+import { boardLines, moreLabel, phoneBoard, pollingCell, quietLabel, STATUS_HEADER_TEXT } from "./model";
 
 interface BoardProps {
   readonly cards: readonly FleetCardView[];
