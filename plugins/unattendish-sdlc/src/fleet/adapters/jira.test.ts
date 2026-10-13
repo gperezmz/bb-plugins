@@ -455,6 +455,14 @@ describe("the Jira adapter's updated listing", () => {
       expect(out.updated).toHaveLength(20);
     });
 
+    it("starts the window it skipped at a minute no later than the update it reached, though Jira's clock runs behind ours", async () => {
+      const early = Array.from({ length: 25 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(0, 30) }));
+      const { read } = await world({ issues: early, settings: paged, now: jiraTime(new Date(Date.now() - 5 * 60_000)) });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ from: iso(0), reached: iso(0, 30) });
+    });
+
     it("is skipped where the issues it listed are all before the cursor, and records none of them as updated", async () => {
       const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
       const { read } = await world({ issues: early, settings: paged });

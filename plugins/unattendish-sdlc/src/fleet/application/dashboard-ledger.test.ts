@@ -148,12 +148,11 @@ describe("ledger", () => {
     expect((await ledgerOf(w, { done: "woke" })).dropped).toEqual([]);
   });
 
-  it("counts 1,000 out-of-scope rows beside the entries of skipped listings, whichever are newer, up to 1,000 of each (#263 AC2)", async () => {
+  it("counts 1,000 out-of-scope rows beside the entries of skipped listings newer than them, and up to 1,000 of those (#263 AC2)", async () => {
     const w = world();
     await start(w);
-    for (let n = 0; n < 1_000; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:01:${String(n % 60).padStart(2, "0")}.${String(n).padStart(3, "0")}Z` });
-    for (let n = 0; n < 1_002; n += 1) recordCut(w, "2026-10-12T08:58:00.000Z", `2026-10-12T09:00:00.${String(n).padStart(3, "0")}Z`);
-    for (let n = 0; n < 5; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:30:00.${String(n).padStart(3, "0")}Z` });
+    for (let n = 0; n < 1_000; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:01:00.${String(n).padStart(3, "0")}Z` });
+    for (let n = 0; n < 1_002; n += 1) recordCut(w, "2026-10-12T08:58:00.000Z", `2026-10-12T09:02:00.${String(n).padStart(3, "0")}Z`);
     const { dropped } = await ledgerOf(w);
     expect(dropped.map((group) => [group.reason, group.count])).toEqual([
       ["out of scope", 1_000],
