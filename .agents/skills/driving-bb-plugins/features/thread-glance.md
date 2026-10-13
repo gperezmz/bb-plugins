@@ -330,7 +330,7 @@ the pointer, so those verbs run on the desktop viewport.
   `Open`), `preview.lines` (both warnings) and presses Cancel; with nothing to
   close it reads `No live terminals or thread-owned listening ports found.` and
   the button is `Close`. `clean --run` presses `Clean resources` and prints
-  `result.lines` (`0 terminals closed · 1 port shutdown requests sent`),
+  `result.lines` (`0 terminals closed · 1 port shutdown request sent`),
   `toasts`, and `after` (the thread still on Settled); the port stops
   listening. `clean --run --wait 125` holds past the preview's 120 s: the
   dialog reads `Cleanup preview expired. Review the resources again.`, and
