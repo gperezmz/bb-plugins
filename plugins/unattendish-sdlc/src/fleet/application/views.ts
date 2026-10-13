@@ -298,9 +298,9 @@ export interface LedgerChangeView {
   readonly kind: string;
   readonly actor: string | null;
   readonly done: "woke" | "echo" | "out-of-scope" | "held" | "failed read";
-  /** The echo rule or the hold reason. */
+  /** The echo rule, the hold reason, or what made an out-of-scope entry a drop of its own. */
   readonly rule: string | null;
-  /** On the entry a listing cut off at its page limit wrote, which has no ref, kind or actor: the window it listed and the last update time it reached. */
+  /** On the entry a skipped listing wrote, which has no ref, kind or actor: the window it listed and the last update time it reached. */
   readonly listing?: { readonly from: string; readonly to: string; readonly reached: string };
 }
 

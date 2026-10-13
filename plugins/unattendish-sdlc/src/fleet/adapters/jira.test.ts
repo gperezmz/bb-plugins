@@ -462,6 +462,15 @@ describe("the Jira adapter's updated listing", () => {
       expect(out.updated).toEqual([]);
     });
 
+    it("is a failure, not skipped, where the service did not list oldest first and every issue it listed is at or before the cursor", async () => {
+      const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
+      const { read } = await world({ issues: early, settings: { ...paged, unordered: true } });
+      const out = await read({ since: iso(5) });
+      expect(out.listingSkipped).toBeUndefined();
+      expect(out.listingCutAt).toBeUndefined();
+      expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+    });
+
     it("moves the cursor and skips nothing where the last issue it listed is after the cursor", async () => {
       const { read } = await world({ issues: thirty(), settings: paged });
       const out = await read({ since: iso(5) });

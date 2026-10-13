@@ -372,16 +372,18 @@ async function runPoll(deps: PollDeps, repo: string, options: PollOptions): Prom
     });
     outOfScope += 1;
   }
-  // A listing cut off before it got past the cursor recorded none of the out-of-scope rows past its page limit, and says so once.
+  // A skipped listing recorded none of the out-of-scope rows past its page limit, and says so. The entry is keyed by the
+  // cursor it was read from and the update it reached, so a poll that reads the same cut again from a cursor that held
+  // (no manager, or a refused wake) adds no second one.
   for (const read of reading.reads) {
     const skipped = read.derived.skipped;
     if (skipped === null) continue;
     deps.store.recordChange(repo, {
-      key: `listing cut:${read.role}@${now}`,
+      key: `skipped listing:${read.role}@${read.since}:${skipped.reached}`,
       role: read.role,
       ref: null,
       url: null,
-      kind: "listing cut",
+      kind: "skipped listing",
       label: null,
       actor: null,
       at: skipped.reached,

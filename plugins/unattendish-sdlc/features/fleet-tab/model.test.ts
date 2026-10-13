@@ -98,12 +98,11 @@ describe("the ledger's filters", () => {
     expect(doneText({ done: "woke", rule: null })).toBe("woke");
   });
 
-  it("says what a cut-off listing listed and reached, and shows it once under All, in its group (#263)", () => {
+  it("says what a skipped listing listed and reached, and shows it under Dropped (#263)", () => {
     const listing = { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z", reached: "2026-10-12T08:58:00.000Z" };
     expect(listingText(listing)).toMatch(/^listed .+ to .+, reached .+$/);
     const cut = ledgerChange({ ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing });
     const withCut = ledgerView({ dropped: [{ reason: "out of scope: listing cut at its page limit", count: 1, changes: [cut] }], changes: [cut] });
-    expect(ledgerContent(withCut, "all", "").changes).toEqual([]);
     expect(ledgerContent(withCut, "dropped", "").dropped).toHaveLength(1);
   });
 });

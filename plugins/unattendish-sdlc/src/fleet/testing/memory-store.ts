@@ -239,7 +239,7 @@ export class InMemoryStore implements Store {
   ledger(repo: string, query: LedgerQuery): LedgerEntry[] {
     const record = this.data(repo);
     const limit = Math.max(0, query.limit ?? DEFAULT_LEDGER_LIMIT);
-    const { item, done, listingCut } = query;
+    const { item, done, skippedListing } = query;
     const entries: LedgerEntry[] = [];
 
     const newestFirst = <T>(items: T[]): T[] => [...items].reverse();
@@ -247,7 +247,7 @@ export class InMemoryStore implements Store {
 
     if (done !== "failed read") {
       const rows = [...record.changes.values()].filter(
-        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]) && (listingCut !== true || row.kind === "listing cut"),
+        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]) && (skippedListing !== true || row.kind === "skipped listing"),
       );
       for (const row of byTimeDesc(rows, (r) => r.seenAt).slice(0, limit)) entries.push({ type: "change", row: structuredClone(row) });
     }

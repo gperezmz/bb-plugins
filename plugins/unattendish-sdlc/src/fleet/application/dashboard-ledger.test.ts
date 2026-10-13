@@ -115,7 +115,7 @@ describe("ledger", () => {
   });
 
   const recordCut = (w: World, reached: string, seenAt: string) =>
-    record(w, { ref: null, url: null, kind: "listing cut", actor: null, at: reached, seenAt, disposition: "out-of-scope", rule: "listing cut at its page limit", window: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z" } });
+    record(w, { ref: null, url: null, kind: "skipped listing", actor: null, at: reached, seenAt, disposition: "out-of-scope", rule: "listing cut at its page limit", window: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z" } });
 
   it("shows the entry a cut-off listing wrote with its time, reason, window and the time it reached, in place of a ref, kind and actor (#263 AC2)", async () => {
     const w = world();

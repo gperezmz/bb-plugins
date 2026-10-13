@@ -209,7 +209,7 @@ interface ChangeRow {
   /** Empty on the entry a skipped listing writes: the column is NOT NULL and a table cannot lose that. */
   ref: string;
   url: string;
-  kind: ChangeKind | "updated" | "listing cut";
+  kind: ChangeKind | "updated" | "skipped listing";
   label: string | null;
   actor: string | null;
   at: string;
@@ -605,7 +605,7 @@ export class SqliteStore implements Store {
         where.push("disposition = ?");
         params.push(DONE_DISPOSITION[query.done]);
       }
-      if (query.listingCut === true) where.push("kind = 'listing cut'");
+      if (query.skippedListing === true) where.push("kind = 'skipped listing'");
       const rows = this.db.prepare(`SELECT * FROM changes WHERE ${where.join(" AND ")} ORDER BY seen_at DESC, rowid DESC LIMIT ?`).all(...params, limit) as ChangeRow[];
       for (const row of rows) entries.push({ type: "change", row: toLedgerRow(row) });
     }

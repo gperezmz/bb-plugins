@@ -2,7 +2,7 @@
 // and tab, the ledger, the actions sent to a manager, and the settings section.
 // Every method answers from the store, the manifests and bb as they are now.
 import { actionId, heldBy, latestOn, planAction } from "../domain/actions";
-import { doneWith, droppedReason, groupDropped, oldestFirst, repoFromRemote, sameRepo } from "../domain/dashboard";
+import { doneWith, droppedReason, groupDropped, isSkippedListing, oldestFirst, repoFromRemote, sameRepo } from "../domain/dashboard";
 import { formatRepo, parseRepo, repoId } from "../domain/identity";
 import { newestFirst } from "../domain/order";
 import { messageOf } from "../domain/redact";
@@ -119,7 +119,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     if (entry.type === "change") {
       const row = entry.row;
       const rule = row.rule === null ? null : clip(row.rule, FIELD_MAX);
-      if (row.kind === "listing cut" && row.window != null) {
+      if (isSkippedListing(row)) {
         return { at: row.seenAt, ref: "", url: "", kind: "", actor: null, done: doneWith(row.disposition), rule, listing: { from: row.window.from, to: row.window.to, reached: row.at } };
       }
       return { at: row.seenAt, ref: clip(row.ref ?? "", FIELD_MAX), url: clip(row.url ?? "", FIELD_MAX), kind: clip(row.label === null ? row.kind : `${row.kind} ${row.label}`, FIELD_MAX), actor: row.actor === null ? null : clip(row.actor, FIELD_MAX), done: doneWith(row.disposition), rule };
@@ -150,7 +150,7 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
     const dropsAsked: readonly ("echo" | "out-of-scope")[] = wanted.done === undefined || wanted.done === "echo" || wanted.done === "out-of-scope" ? ["echo", "out-of-scope"] : [];
     // The entries listings cut off at their page limit are asked for apart, so the out-of-scope rows of the same polls cannot push them out of the count.
     const dropEntries = dropsAsked.flatMap((done) => deps.store.ledger(key, { ...withItem, done, limit: DROPPED_COUNTED }));
-    const cutEntries = dropsAsked.includes("out-of-scope") ? deps.store.ledger(key, { ...withItem, done: "out-of-scope", listingCut: true, limit: DROPPED_COUNTED }) : [];
+    const cutEntries = dropsAsked.includes("out-of-scope") ? deps.store.ledger(key, { ...withItem, done: "out-of-scope", skippedListing: true, limit: DROPPED_COUNTED }) : [];
     const dropped = [...dropEntries, ...cutEntries.filter((cut) => !dropEntries.some((entry) => entry.type === "change" && cut.type === "change" && entry.row.key === cut.row.key))]
       .flatMap((entry) => {
         if (entry.type !== "change") return [];

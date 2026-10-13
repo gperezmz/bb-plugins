@@ -7,7 +7,7 @@ import { FIELD_MAX, LEDGER_LIMIT } from "../application/dashboard";
 import type { FleetStatus } from "../application/status";
 import type { RegisterOutcome } from "../application/register";
 import type { LedgerEntry, LedgerQuery } from "../application/ports";
-import { droppedReason } from "../domain/dashboard";
+import { droppedReason, isSkippedListing } from "../domain/dashboard";
 import { MIN_INTERVAL_MS, validateInterval, type RegisterArgs } from "../domain/registration";
 
 /** What the command line asks of the application. */
@@ -101,7 +101,7 @@ const ledgerLines = (entries: readonly PrintedEntry[]): string => {
       switch (entry.type) {
         case "change": {
           const row = entry.row;
-          if (row.kind === "listing cut" && row.window != null) return `${row.seenAt}  ${droppedReason(row) ?? "out of scope"}  listed ${row.window.from} to ${row.window.to}, reached ${row.at}`;
+          if (isSkippedListing(row)) return `${row.seenAt}  ${droppedReason(row) ?? "out of scope"}  listed ${row.window.from} to ${row.window.to}, reached ${row.at}`;
           const label = row.label === null ? "" : ` ${row.label}`;
           const rule = row.rule === null ? "" : ` (${row.rule})`;
           return `${row.seenAt}  ${row.ref} ${row.kind}${label} by ${row.actor ?? "unknown"}: ${row.disposition === "wake" ? "woke the manager" : row.disposition}${rule}  ${row.url}`;

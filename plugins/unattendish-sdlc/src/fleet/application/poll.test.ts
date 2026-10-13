@@ -1032,7 +1032,7 @@ describe("a listing cut off at its page limit without getting past the cursor (#
     w.clock.advance(120_000);
     return result;
   };
-  const entries = (w: World) => rows(w, { done: "out-of-scope", listingCut: true });
+  const entries = (w: World) => rows(w, { done: "out-of-scope", skippedListing: true });
 
   it("moves the cursor as a listing that fit does, poll after poll (AC1)", async () => {
     const fit = world();
@@ -1057,8 +1057,8 @@ describe("a listing cut off at its page limit without getting past the cursor (#
     await cutPoll(w, { listingSkipped: skipped("2026-10-12T10:01:00.000Z") });
     expect(entries(w)).toHaveLength(2);
     expect(entries(w)).toMatchObject([
-      { ref: null, url: null, kind: "listing cut", actor: null, disposition: "out-of-scope", rule: "listing cut at its page limit", seenAt: "2026-10-12T10:02:00.000Z", at: "2026-10-12T10:01:00.000Z", window: { from: "2026-10-12T09:55:00.000Z", to: "2026-10-12T10:00:00.000Z" } },
-      { ref: null, url: null, kind: "listing cut", seenAt: "2026-10-12T10:00:00.000Z", at: "2026-10-12T09:58:00.000Z" },
+      { ref: null, url: null, kind: "skipped listing", actor: null, disposition: "out-of-scope", rule: "listing cut at its page limit", seenAt: "2026-10-12T10:02:00.000Z", at: "2026-10-12T10:01:00.000Z", window: { from: "2026-10-12T09:55:00.000Z", to: "2026-10-12T10:00:00.000Z" } },
+      { ref: null, url: null, kind: "skipped listing", seenAt: "2026-10-12T10:00:00.000Z", at: "2026-10-12T09:58:00.000Z" },
     ]);
   });
 
@@ -1106,12 +1106,18 @@ describe("a listing cut off at its page limit without getting past the cursor (#
     expect(entries(w)).toHaveLength(1);
   });
 
-  it("records its entry while no manager holds the fleet", async () => {
+  it("records its entry while no manager holds the fleet, once for a cut the held cursor reads again", async () => {
     const w = world();
     await start(w, manifest({ inbox: [inboxRow(7)] }));
     w.threads.states.set(MANAGER, "gone");
     await cutPoll(w);
+    await cutPoll(w);
     expect(entries(w)).toHaveLength(1);
+    w.threads.states.set(MANAGER, "live");
+    await cutPoll(w);
+    expect(entries(w)).toHaveLength(1);
+    await cutPoll(w, { listingSkipped: skipped("2026-10-12T10:30:00.000Z") });
+    expect(entries(w)).toHaveLength(2);
   });
 });
 
