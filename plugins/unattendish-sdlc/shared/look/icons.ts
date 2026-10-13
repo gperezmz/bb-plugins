@@ -2,12 +2,12 @@
 // built-in icon name or one of the plugin's own, declared under bb.branding.experimental_icons in package.json and
 // named `unattendish-sdlc/<name>`; bb paints a declared icon in the current text colour. A name that is neither draws
 // bb's fallback, which `icons.test.ts` refuses.
-import type { InboxRowView } from "@/src/fleet/application/views";
+import type { InboxRowView, ServiceKind } from "@/src/fleet/application/views";
 
 type WaitsFor = InboxRowView["waitsFor"];
 
 /** A declared icon's name as bb resolves it. */
-const own = (name: string): string => `unattendish-sdlc/${name}`;
+export const own = (name: string): string => `unattendish-sdlc/${name}`;
 
 /** The plugin's own icons, by their key under bb.branding.experimental_icons; the light bulb and scales are for the Fleet tab's stages. */
 export const DECLARED_ICONS = ["circle-dashed", "fleet", "hammer", "hourglass", "key", "lightbulb", "rocket", "scale", "user-x"] as const;
@@ -61,7 +61,7 @@ export type IconRole = keyof typeof ICONS;
 export const KIND_ICONS: Readonly<Record<WaitsFor, string>> = { answer: ICONS.answer, grant: ICONS.grant, ready: ICONS.ready, other: ICONS.other };
 
 /** The services a fleet's forge or tracker can be. */
-export type Service = "github" | "gitlab" | "linear" | "jira";
+export type Service = ServiceKind;
 
 /**
  * The logo of each service that has one to show: GitHub's, which bb draws itself. GitLab's and Atlassian's trademark

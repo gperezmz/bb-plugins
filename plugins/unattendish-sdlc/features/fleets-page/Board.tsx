@@ -3,7 +3,7 @@ import type { FleetCardView } from "@/src/fleet/application/views";
 import { cn } from "@/lib/utils";
 import { trackerOf } from "@/shared/card-model";
 import { openConnect } from "@/shared/connect/requests";
-import { flagsOf, flagSummary, worstFlag, type Flag } from "@/shared/fleet-flags";
+import { fixIcon, flagsOf, flagSummary, phoneFlagIcon, worstFlag, type Flag } from "@/shared/fleet-flags";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { Tip } from "@/shared/look/Tip";
@@ -123,7 +123,6 @@ function ManagerCellView({ card, now }: { card: FleetCardView; now: string }) {
   );
 }
 
-const SLOT_ICONS = { blocked: ICONS.blocked, inFlight: ICONS.inFlight, waiting: ICONS.waiting, landed: ICONS.landed } as const;
 
 /** The four Status slots, each a fixed width so a count sits under the same count on every line. */
 export function StatusCell({ card }: { card: FleetCardView }) {
@@ -134,7 +133,7 @@ export function StatusCell({ card }: { card: FleetCardView }) {
           {slot.count !== null ? (
             <Tip text={slot.label}>
               <span tabIndex={0} aria-label={slot.label} className={cn(FOCUS, "inline-flex items-center gap-1 text-xs tabular-nums", TONE_TEXT[COUNT_TONES[slot.key]], slot.key === "waiting" && "font-semibold")}>
-                <Glyph name={SLOT_ICONS[slot.key]} />
+                <Glyph name={ICONS[slot.key]} />
                 {slot.count}
               </span>
             </Tip>
@@ -163,14 +162,14 @@ function PollingCellView({ card, now }: { card: FleetCardView; now: string }) {
 function FixCell({ card, flags }: { card: FleetCardView; flags: readonly Flag[] }) {
   const fixOf = useFix(card);
   const first = flags[0];
-  if (first === undefined || (first.saidElsewhere && flags.length === 1)) return <span />;
+  const icon = first === undefined ? null : fixIcon(first);
+  if (first === undefined || icon === null) return <span />;
   const sentences = flags.map((flag) => flag.sentence).join("\n");
   const tone = TONE_TEXT[FLAG_TONES[first.kind]];
   const summary = flagSummary(flags) ?? "";
   const run = fixOf(first);
   const hover = <span className="whitespace-pre-line">{sentences}</span>;
   if (first.verb !== null && run !== null) {
-    const icon = first.fix.kind === "renew" ? ICONS.renew : first.fix.kind === "connect" ? ICONS.connect : ICONS.review;
     return (
       <Tip text={hover}>
         <button type="button" aria-label={flags.map((flag) => flag.sentence).join("; ")} className={cn(FOCUS, "flex items-center gap-1 text-xs font-medium", tone)} onClick={run}>
@@ -183,7 +182,7 @@ function FixCell({ card, flags }: { card: FleetCardView; flags: readonly Flag[] 
   return (
     <Tip text={hover}>
       <span tabIndex={0} aria-label={flags.map((flag) => flag.sentence).join("; ")} className={cn(FOCUS, "flex items-center gap-1 text-xs font-medium", tone)}>
-        <Glyph name={ICONS.noFix} />
+        <Glyph name={icon} />
         {summary}
       </span>
     </Tip>
@@ -217,7 +216,7 @@ function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now
   const worst = worstFlag(flags);
   const sentence = flags.map((flag) => flag.sentence).join("; ");
   const run = first === undefined ? null : fixOf(first);
-  const icon = worst === "problem" ? ICONS.review : ICONS.renew;
+  const icon = phoneFlagIcon(flags) ?? ICONS.review;
   return (
     <li aria-label={`Fleet ${card.repo}`} className={cn("relative flex min-h-11 items-center gap-2 px-3", selected && "bg-accent")} onClick={lineClick(onToggle)}>
       {worst !== null ? <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1 rounded-l-md", TONE_FILL[FLAG_TONES[worst]])} /> : null}
@@ -241,7 +240,7 @@ function PhoneLine({ card, now, selected, onToggle }: { card: FleetCardView; now
           .filter((slot) => slot.count !== null)
           .map((slot) => (
             <span key={slot.key} aria-label={slot.label} className={cn("inline-flex items-center gap-1 text-xs tabular-nums", TONE_TEXT[COUNT_TONES[slot.key]], slot.key === "waiting" && "font-semibold")}>
-              <Glyph name={SLOT_ICONS[slot.key]} />
+              <Glyph name={ICONS[slot.key]} />
               {slot.count}
             </span>
           ))}

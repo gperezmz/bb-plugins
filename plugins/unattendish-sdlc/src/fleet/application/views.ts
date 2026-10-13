@@ -6,6 +6,11 @@
 import type { AccountVia, CredentialKind } from "../domain/accounts";
 import type { NotWatchedCode, ServiceKind, SourceRole, Stage, WaitsFor } from "../domain/model";
 
+export type { ServiceKind };
+
+/** The services a forge can be. */
+export type ForgeService = Extract<ServiceKind, "github" | "gitlab">;
+
 // ---- actions ----
 
 /** The three actions the dashboard sends a manager: Answer…, Grant… and Build it. */
@@ -187,7 +192,7 @@ export interface FleetCardView {
   /** `host/path`, as the manifest's first line spells it. */
   readonly repo: string;
   /** The service behind the forge: what reads it, else what its host is known as, else GitHub. */
-  readonly forge: "github" | "gitlab";
+  readonly forge: ForgeService;
   /** The registration's tracker: `forge-issues`, `linear:<team key>` or `jira:<site>/<project key>`. */
   readonly tracker: string;
   readonly managerThreadId: string;
@@ -219,7 +224,7 @@ export type WarningView =
   | { readonly kind: "polling-late"; readonly lastPolledAt: string }
   | { readonly kind: "never-polled" };
 
-/** A fleet half that cannot be read, listed at the top of Waits on you with Connect…. */
+/** A fleet half that cannot be read, for want of an account or a credential that reads it. */
 export interface NeedsAccountView {
   readonly fleet: string;
   readonly managerThreadId: string;
@@ -567,5 +572,5 @@ export interface InboxNewSignal {
   readonly rowId: string;
   readonly waitsFor: WaitsFor;
   /** The service behind the fleet's forge, for the toast's logo. */
-  readonly forge: "github" | "gitlab";
+  readonly forge: ForgeService;
 }

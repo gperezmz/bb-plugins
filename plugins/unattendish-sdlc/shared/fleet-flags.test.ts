@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ago, fleetCard, MINUTE, NOW } from "@/testing/fixtures";
 import type { ReasonView, WarningView } from "@/src/fleet/application/views";
-import { flagsOf, flagSummary, isQuiet, worstFlag } from "./fleet-flags";
+import { fixIcon, flagsOf, flagSummary, isQuiet, phoneFlagIcon, worstFlag } from "./fleet-flags";
 
 const missing: ReasonView = { code: "manifest-missing", text: "The manifest at /x/manifest.md does not exist yet", fix: { kind: "fleet-tab" } };
 const unreadable: ReasonView = { code: "unreadable-rows", text: "2 manifest rows cannot be read: Inbox", fix: { kind: "fleet-tab" } };
@@ -63,5 +63,19 @@ describe("a quiet fleet", () => {
   it("is never one with a missing manifest, even with every count at zero", () => {
     expect(isQuiet(fleetCard({ reasons: [missing] }), NOW)).toBe(false);
     expect(isQuiet(fleetCard({ warnings: [late] }), NOW)).toBe(false);
+  });
+});
+
+describe("a flag's icon", () => {
+  it("is its verb's icon, a ✕ for a problem nothing fixes, and nothing for polling the polling cell says", () => {
+    const flags = flagsOf(fleetCard({ reasons: [missing, forge, gone], warnings: [expires, late] }), NOW);
+    expect(flags.map(fixIcon)).toEqual(["AlertTriangle", "ElectricPlugs", "CircleX", "unattendish-sdlc/key", null]);
+  });
+
+  it("is ⚠ on a phone for a problem or a polling warning, and a key for a token to renew", () => {
+    expect(phoneFlagIcon(flagsOf(fleetCard({ reasons: [gone] }), NOW))).toBe("AlertTriangle");
+    expect(phoneFlagIcon(flagsOf(fleetCard({ warnings: [late] }), NOW))).toBe("AlertTriangle");
+    expect(phoneFlagIcon(flagsOf(fleetCard({ warnings: [expires] }), NOW))).toBe("unattendish-sdlc/key");
+    expect(phoneFlagIcon([])).toBeNull();
   });
 });

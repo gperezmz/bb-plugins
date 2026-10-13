@@ -2,6 +2,7 @@
 // amber, each with the fix that puts it right, in the order the fleet board shows the first of them.
 import type { FleetCardView, HalfView, ReasonView, WarningView } from "@/src/fleet/application/views";
 import { warningLine } from "./card-model";
+import { ICONS } from "./look/icons";
 import { COUNTS } from "./look/tones";
 
 /** Where a flag is put right: the Fleet tab, the Connect popup for a half, the Connect popup renewing a credential, or nowhere on the page. */
@@ -62,6 +63,28 @@ export function flagsOf(card: Pick<FleetCardView, "reasons" | "warnings">, now: 
     }),
   ].map((entry, at) => ({ ...entry, at, rank: rankOf(entry.flag, entry.code) }));
   return ranked.sort((a, b) => a.rank - b.rank || a.at - b.at).map((entry) => entry.flag);
+}
+
+/**
+ * What the fix column draws for the first flag: its verb's icon, a ✕ for a problem nothing on the page fixes, and
+ * nothing for a flag the polling cell already says.
+ */
+export function fixIcon(flag: Flag): string | null {
+  if (flag.saidElsewhere) return null;
+  if (flag.fix.kind === "renew") return ICONS.renew;
+  if (flag.fix.kind === "connect") return ICONS.connect;
+  if (flag.fix.kind === "fleet-tab") return ICONS.review;
+  return ICONS.noFix;
+}
+
+/**
+ * The icon a phone shows for a fleet's flags, where there is no hover: ⚠ for a problem, a key for a warning a renewal
+ * fixes, ⚠ for any other warning; null with no flag.
+ */
+export function phoneFlagIcon(flags: readonly Flag[]): string | null {
+  const first = flags[0];
+  if (first === undefined) return null;
+  return first.kind === "warning" && first.fix.kind === "renew" ? ICONS.renew : ICONS.review;
 }
 
 /** The fleet's worst flag: `problem` where it has one, `warning` where it has only warnings, null with neither. */

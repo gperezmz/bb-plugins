@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { actionId, type ActionRecord } from "../domain/actions";
 import { args, event, inboxRow, manifest, MANAGER, MANIFEST_PATH, outcome, REPO_KEY, snapshot, world, type World } from "../testing/kit";
+import { createDashboard } from "./dashboard";
 import { pollFleet } from "./poll";
 import { registerFleet } from "./register";
 
@@ -261,6 +262,25 @@ describe("an action on a GitLab fleet", () => {
     w.adapters.gitlab.queue(merge(["spec", "status:ready"]));
     await pollFleet(w.poll, GITLAB);
     expect(w.store.actions(GITLAB)[0]).toMatchObject({ state: "done", doneAt: w.clock.now().toISOString() });
+  });
+});
+
+describe("a new Inbox row on a GitLab fleet", () => {
+  it("names GitLab as the forge in its signal, and on the fleet's card", async () => {
+    const GITLAB = "gitlab.com/group/proj";
+    const GITLAB_MANIFEST = "/work/gitlab/manifest.md";
+    const table = (rows: string[]) => `# Fleet: ${GITLAB}\n\n## Inbox\n\n| Ref | What | Waits for | Since | Link |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}\n`;
+    const row = (n: number) => `| !${n} | Ready the merge request | ready | 2026-10-12T09:00:00Z | https://gitlab.com/group/proj/-/merge_requests/${n} |`;
+    const w = world();
+    w.credentials.set([{ prefix: "gitlab.com/group", service: "gitlab" }]);
+    w.manifests.files.set(GITLAB_MANIFEST, table([row(45)]));
+    await registerFleet(w.register, MANAGER, args({ repo: GITLAB, manifest: GITLAB_MANIFEST }));
+    await pollFleet(w.poll, GITLAB);
+    w.manifests.files.set(GITLAB_MANIFEST, table([row(45), row(46)]));
+    w.clock.advance(120_000);
+    await pollFleet(w.poll, GITLAB);
+    expect(w.events.inboxNews).toEqual([expect.objectContaining({ ref: "!46", waitsFor: "ready", forge: "gitlab" })]);
+    expect((await createDashboard(w.dash).fleets()).fleets[0]).toMatchObject({ repo: GITLAB, forge: "gitlab" });
   });
 });
 

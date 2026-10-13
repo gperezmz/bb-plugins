@@ -1,10 +1,10 @@
 // Whether icon names resolve in bb 0.46: a built-in name, or a name the plugin declares under
 // bb.branding.experimental_icons, spelled `unattendish-sdlc/<name>`.
 import { expect } from "vitest";
-import { DECLARED_ICONS } from "@/shared/look/icons";
+import { DECLARED_ICONS, own } from "@/shared/look/icons";
 import { BB_0_46_ICON_NAMES } from "./bb-icons";
 
-const DECLARED = new Set<string>(DECLARED_ICONS.map((name) => `unattendish-sdlc/${name}`));
+const DECLARED = new Set<string>(DECLARED_ICONS.map(own));
 
 /** The names among `names` bb 0.46 would draw its fallback for. */
 export function unresolvedIcons(names: Iterable<string>): string[] {
