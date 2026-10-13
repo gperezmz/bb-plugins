@@ -2,7 +2,7 @@
 
 A throwaway bb with Cache Keeper installed from this checkout, real Claude Code threads that talk to a fake Anthropic API, and drives that move the plugin's clock forward, so behaviour that waits minutes or hours in real use is reached and checked in seconds.
 
-The harness never touches your own bb. Every command it runs has the variables that name a bb (`BB_SERVER_URL`, `BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_CLI` and the like) unset or pointed at the throwaway, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens.
+The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is.
 
 ## Requirements
 
@@ -24,7 +24,9 @@ It refuses to start, and changes nothing, when any of its ports answers, when it
 - a project for the drives' threads, in a git checkout in the run directory;
 - Cache Keeper, installed with `bb plugin install path:` from a copy of `plugins/cache-keeper` as the checkout has it, without `dist/`, `node_modules/` and `harness/`. bb builds the copy, so nothing is written into the checkout. "Fetch current prices daily" is switched off, so the plugin uses its bundled prices.
 
-It prints what to source to point `bb` at the throwaway, and only at it:
+Before it reports the run up, `start.sh` reads every process the run holds for a **leak**, a variable you held when you ran it, same name and value, outside the passed list, or one it planted under a random name; on one it exits non-zero, naming the variable, the process and where the list is kept, never a value. It keeps what it needs for that in `caller-env` in the run directory: each variable's name and a salted hash of its value.
+
+It prints what to source to point `bb` at the throwaway, and only at it. A shell that sources it stops exporting every variable not on the passed list, so what it sends the run carries the list and the run's own variables alone:
 
 ```sh
 source /tmp/ck-harness/env.sh
@@ -107,15 +109,18 @@ plugins/cache-keeper/harness/stop.sh --keep   # keeps it, logs and bb's data inc
 
 It finds every process the harness started by a mark in its environment (`CK_HARNESS=<run directory>`) or the throwaway bb's data directory, so it finds the bb server's detached child, Claude Code, and the background commands the drives started too. It prints each one's command line before stopping it, kills any still running after 10 seconds, then checks again that none carries the mark and that none of its ports answers. It removes the run directory only when both hold, and exits non-zero otherwise.
 
+To find a run's processes yourself, test each one's environment for the mark, as `stop.sh` does, with `grep -qzxE "CK_HARNESS=<run directory>" /proc/<pid>/environ`, whose answer is the exit status alone. Never print a process's environment, the run's or anyone's: your own processes hold your credentials.
+
 ## Guarantees
 
-- **Never your bb.** Every command runs with bb's variables unset or pointed at the throwaway, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones and the npm-install check's 39886/39887.
+- **Never your bb, none of your credentials.** Every process of the run holds the passed list and what the harness sets, nothing else of yours, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones and the npm-install check's 39886/39887.
 - **Refuses busy ports and directories.** `start.sh` starts nothing when a port answers, the run directory exists, or a process of an earlier start runs.
 - **Stop leaves nothing.** `stop.sh` exits 0 only when no process carries the harness's mark and no harness port answers.
 
 ## Files
 
 - `start.sh`, `stop.sh`, `config.sh`: the throwaway bb; `config.sh` holds the ports, the run directory and the process search both use.
+- `run-env.sh`: the passed list, and the leak check, for this harness, Unattendish's and the driving-bb-plugins skill's.
 - `fake-anthropic.mjs`: the fake Anthropic API.
 - `drives/lib.sh`: what every drive shares. `drives/*.sh`: the drives, and `run-all.sh`.
-- In the run directory: `env.sh`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `requests.jsonl`, `drive-threads` (every drive's threads), and bb's data under `bb/` (its own logs in `bb/logs/`).
+- In the run directory: `env.sh`, `caller-env`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `requests.jsonl`, `drive-threads` (every drive's threads), and bb's data under `bb/` (its own logs in `bb/logs/`).

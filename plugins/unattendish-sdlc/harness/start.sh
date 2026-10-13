@@ -9,10 +9,13 @@
 #
 # Refuses to start, changing nothing, when any of its ports answers, when the
 # run directory exists, or when a process of an earlier start is still
-# running. Touches no other bb: every variable that names one is unset for
-# every command, and nothing is written inside the checkout. Needs node 24, jq,
-# curl, git, rsync and bb-app's `bb`, `bb-server` and `bb-host-daemon` on PATH.
-# See config.sh for the ports.
+# running. Touches no other bb and hands the run no credential: every process
+# of the run starts from an empty environment holding the passed list in
+# ../../cache-keeper/harness/run-env.sh and what this script sets, and start
+# fails, naming the variable and never its value, when a process it started
+# holds any other variable of yours. Writes nothing inside the checkout. Needs
+# node 24, jq, curl, git, rsync and bb-app's `bb`, `bb-server` and
+# `bb-host-daemon` on PATH. See config.sh for the ports.
 #
 #   harness/start.sh
 #   source "$UD_HARNESS_DIR/env.sh"   # or /tmp/ud-harness/env.sh; then bb talks to the throwaway
@@ -39,35 +42,39 @@ if [[ ${#refuse[@]} -gt 0 ]]; then
 fi
 
 mkdir -p "$run/home" "$run/tmp" "$run/plugin" "$run/work/demo" "$run/manifests"
+# What you hold, by name and salted hash, so the check below knows a leak.
+run_env_record "$run/caller-env"
 started=$SECONDS
 fail() {
   echo "start.sh: $1" >&2
   for log in "$run/fake-anthropic.log" "$run/fake-services.log" "$run/server.log" "$run/bb/logs/server-stdio.log" "$run/host-daemon.log"; do
     [[ -f $log ]] && { echo "--- $log" >&2; tail -30 "$log" >&2; }
   done
+  echo "start.sh: $(run_env_note)" >&2
   echo "start.sh: stop what started with harness/stop.sh" >&2
   exit 1
 }
 wait_for() {
   local what=$1 url=$2
   for _ in $(seq 60); do
-    if curl -fs -o /dev/null "$url"; then return 0; fi
+    if "${base[@]}" curl -fs -o /dev/null "$url"; then return 0; fi
     sleep 1
   done
   fail "$what did not answer at $url"
 }
 
-# Every command from here runs with the run directory's HOME and none of the
-# user's bb variables.
-base=(env "${unset_bb[@]}" "$mark" HOME="$run/home" TMPDIR="$run/tmp" BB_TELEMETRY=0
+# Every command from here that starts a process of the run, or reaches one,
+# runs with the passed list, the mark and the run directory's HOME, and
+# nothing else of the caller's environment.
+base=(env -i "${run_env[@]}" "$mark" HOME="$run/home" TMPDIR="$run/tmp" BB_TELEMETRY=0
   GIT_AUTHOR_NAME=harness GIT_AUTHOR_EMAIL=harness@example.invalid GIT_COMMITTER_NAME=harness GIT_COMMITTER_EMAIL=harness@example.invalid)
 server_url=http://127.0.0.1:$server_port
 tb() { "${base[@]}" BB_SERVER_URL="$server_url" "$@"; }
 
 # A copy of the plugin as the checkout has it now, without its build output,
 # so bb builds what is checked out and writes nothing into the checkout.
-rsync -a --exclude node_modules --exclude dist --exclude harness "$plugin_src/" "$run/plugin/unattendish-sdlc/"
-ln -s "$plugin_src/node_modules" "$run/plugin/unattendish-sdlc/node_modules"
+"${base[@]}" rsync -a --exclude node_modules --exclude dist --exclude harness "$plugin_src/" "$run/plugin/unattendish-sdlc/"
+"${base[@]}" ln -s "$plugin_src/node_modules" "$run/plugin/unattendish-sdlc/node_modules"
 
 "${base[@]}" PORT="$api_port" REQUEST_LOG="$run/requests.jsonl" node "$fake_anthropic" > "$run/fake-anthropic.log" 2>&1 &
 wait_for "the fake Anthropic API" "http://127.0.0.1:$api_port/_control"
@@ -82,7 +89,7 @@ done
   bb-server --data-dir "$run/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" > "$run/server.log" 2>&1 &
 wait_for "the bb server" "$server_url/health"
 
-enroll=$(curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
+enroll=$("${base[@]}" curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$server_url/internal/hosts/enroll-key") || fail "the bb server gave no host enroll key"
 host_id=$(jq -r .hostId <<< "$enroll")
 "${base[@]}" BB_DATA_DIR="$run/bb" BB_HOST_DAEMON_PORT="$daemon_port" \
   BB_HOST_ENROLL_KEY="$(jq -r .enrollKey <<< "$enroll")" BB_HOST_ID="$host_id" \
@@ -97,7 +104,7 @@ done
 connected || fail "the host daemon did not connect to the bb server"
 
 # A project for the drives' threads, in a git checkout under the run directory.
-git -C "$run/work/demo" init -q
+"${base[@]}" git -C "$run/work/demo" init -q
 "${base[@]}" git -C "$run/work/demo" commit -q --allow-empty -m "harness"
 project=$(tb bb project create --name unattendish-drives --root "$run/work/demo" --machine "$host_id" --json | jq -r '.id // .project.id')
 [[ $project == proj_* ]] || fail "could not create the drives' project"
@@ -133,8 +140,21 @@ rm -f "$run/tmp/connect.json"
 [[ $(tb bb plugin rpc call unattendish-sdlc settings --json | jq -c '[(.result // .).accounts[] | .service] | sort') == '["github","gitlab","jira","linear"]' ]] || fail "the plugin does not list the four accounts"
 [[ $(tb bb unattendish fleet status --json | jq -c .) == '{"fleets":[]}' ]] || fail "the plugin's fleet status is not empty on a fresh install"
 
-cat > "$run/env.sh" <<ENV
-# Points bb at the harness's throwaway bb and nothing else. Source it.
+# Every process the run holds now, checked for any variable of yours not on the
+# passed list.
+# shellcheck disable=SC2046 # one PID per word
+leaks=$(run_env_leaks "$run/caller-env" $(harness_procs | cut -f1)) || {
+  printf '%s\n' "$leaks" | sed 's/^/start.sh: /' >&2
+  echo "start.sh: stop what started with harness/stop.sh" >&2
+  exit 1
+}
+
+{
+  echo "# Points bb at the harness's throwaway bb and nothing else, and keeps every"
+  echo "# command this shell runs to the passed list and what follows. Source it."
+  run_env_script
+} > "$run/env.sh"
+cat >> "$run/env.sh" <<ENV
 unset BB_THREAD_ID BB_PROJECT_ID BB_ENVIRONMENT_ID BB_CLI BB_HOST_DAEMON_PORT BB_THREAD_STORAGE BB_DATA_DIR
 export BB_SERVER_URL=$server_url
 export HOME=$run/home TMPDIR=$run/tmp
