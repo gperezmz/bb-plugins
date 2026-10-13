@@ -199,7 +199,7 @@ export async function cardOf(deps: ViewDeps, g: Gathered, now: Date): Promise<Fl
     lastPolledAt: g.fleet.lastPolledAt,
     intervalMs,
     problems: problemsOf(
-      [...g.watching.notWatched, ...refusalsUnexplained(refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching)), expired)],
+      refusalsUnexplained([...g.watching.notWatched, ...refusedNotWatched(g.fleet.outages, accessRolesOf(g.watching))], expired),
       unreadable,
       g.standing !== null && g.standing.state !== "live",
       manifest.status === "left-behind" ? { fleet: g.name, names: manifest.names } : null,

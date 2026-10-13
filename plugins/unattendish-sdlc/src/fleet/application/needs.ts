@@ -21,8 +21,7 @@ export const expiredTokenOf = (deps: { readonly credentials: Credentials; readon
 
 /**
  * Publishes a `fleet-needs` signal for each credential reason in `after` that `before` did not hold. A line
- * `expiredOf` names an expired token for (the service refusing it, as the caller decides) carries that token, so the
- * toast offers Renew… for it.
+ * `expiredOf` names an expired token for carries that token, so the toast offers Renew… for it.
  */
 export const announceNeeds = (
   events: DashboardEvents,

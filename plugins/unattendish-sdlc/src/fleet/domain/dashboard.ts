@@ -177,12 +177,13 @@ export const expiredProblems = (credentials: readonly WeighedCredential[], now: 
   );
 
 /**
- * The service's refusals (`refusals`, one per half) left to say once a half's expired token (`expired`) is: the expiry
- * is why the service refuses it, and Renew… fixes both. A half whose credential cannot read it says so apart, since a
- * renewed token with the same access would still not read it, so that is not passed here.
+ * The reasons in `notWatched` left to say once a half's expired token (`expired`) is: the service refusing that half's
+ * credential, or finding it cannot read the half, is not said too. An expired token answers 401, which a check of
+ * access counts as cannot read, so the expiry explains both; Renew… checks access again at once and says where the
+ * new token still cannot read the half.
  */
-export const refusalsUnexplained = (refusals: readonly NotWatched[], expired: readonly ExpiredProblem[]): NotWatched[] =>
-  refusals.filter((line) => line.role === undefined || !expired.some((problem) => problem.fix.role === line.role));
+export const refusalsUnexplained = (notWatched: readonly NotWatched[], expired: readonly ExpiredProblem[]): NotWatched[] =>
+  notWatched.filter((line) => line.code !== "credential-refused" || line.role === undefined || !expired.some((problem) => problem.fix.role === line.role));
 
 /**
  * What a card warns of for each credential the fleet uses: `expires` when the service-reported expiry is still ahead

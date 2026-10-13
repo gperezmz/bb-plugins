@@ -93,12 +93,14 @@ describe("an expired token (#261)", () => {
     ]);
   });
 
-  it("stands in for its half's refusal, which is not said too (AC3)", () => {
+  it("stands in for its half's refusal, or its finding it cannot read, which are not said too (AC3)", () => {
     const expired = expiredProblems([{ ...credential, expiresAt: iso(-day) }], NOW);
     const forge = { code: "credential-refused" as const, text: "The credential GitHub · yuser was refused", role: "forge" as const };
+    const cannotRead = { code: "credential-refused" as const, text: "GitHub · yuser cannot read org/repo", role: "forge" as const };
+    const noToken = { code: "no-credential" as const, text: "gh is signed in as buser, not yuser", role: "forge" as const };
     const tracker = { code: "credential-refused" as const, text: "The credential for linear:ENG was refused", role: "tracker" as const };
     const unanswered = { code: "credential-refused" as const, text: "The service did not answer reads with the credential GitHub · yuser" };
-    expect(refusalsUnexplained([forge, tracker, unanswered], expired)).toEqual([tracker, unanswered]);
+    expect(refusalsUnexplained([forge, cannotRead, noToken, tracker, unanswered], expired)).toEqual([noToken, tracker, unanswered]);
     expect(problemsOf(refusalsUnexplained([forge, tracker], expired), [], false, null, expired).map((problem) => problem.code)).toEqual(["credential-refused", "token-expired"]);
   });
 });

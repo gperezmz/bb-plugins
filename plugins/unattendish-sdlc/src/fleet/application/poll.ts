@@ -287,9 +287,7 @@ export async function pollFleet(deps: PollDeps, repo: string, options: PollOptio
   if (result.polled) {
     const after = deps.store.getFleet(repo);
     if (after !== null) {
-      // Only the service's refusal is explained by an expired token; a credential that cannot read the half says so apart.
-      const refusals = new Set(refusedNotWatched(after.outages).map((line) => line.text));
-      const expiredOf = (line: NotWatched) => (line.role !== undefined && refusals.has(line.text) ? expiredTokenOf(deps, after.registration, line.role, deps.clock.now()) : null);
+      const expiredOf = (line: NotWatched) => (line.code === "credential-refused" && line.role !== undefined ? expiredTokenOf(deps, after.registration, line.role, deps.clock.now()) : null);
       announceNeeds(deps.events, after.registration, before, after.notWatched, expiredOf);
     }
     deps.events.boardChanged();

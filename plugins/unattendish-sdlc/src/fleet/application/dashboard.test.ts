@@ -278,14 +278,14 @@ describe("the card (AC3, AC4, AC14)", () => {
     expect((await cardOf(w)).warnings).toEqual([{ kind: "shares-rate-limit", label: "github.com/org" }]);
   });
 
-  it("keeps a credential that cannot read its half beside its expired token, since renewing alone would not fix it (#261 AC3)", async () => {
+  it("says only that the token expired where it also counts as cannot read, as a 401 at registration does (#261 AC3)", async () => {
     const w = world();
     w.credentials.set([{ prefix: "github.com/org", service: "github", auth: "token" }]);
     await start(w, manifest());
     w.accounts.addAccount({ id: "account:github.com/org", service: "github", place: "github.com", login: "olivia", name: "olivia", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
     w.accounts.saveCredential({ id: "github.com/org", accountId: "account:github.com/org", kind: "fine-grained", owner: "org", expiresAt: hoursAgo(w, 5), addedAt: "2026-10-12T09:00:00.000Z" }, null);
     w.accounts.setAccessProblem(REPO_KEY, "forge", { credentialId: "github.com/org", why: "forbidden", at: hoursAgo(w, 6) });
-    expect((await cardOf(w)).problems.map((problem) => problem.code)).toEqual(["credential-refused", "token-expired"]);
+    expect((await cardOf(w)).problems.map((problem) => problem.code)).toEqual(["token-expired"]);
   });
 
   it("does not warn of a token credential with no expiry", async () => {
