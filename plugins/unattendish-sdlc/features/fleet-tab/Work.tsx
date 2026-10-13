@@ -40,7 +40,7 @@ export function Work({ detail, managerThreadId, open, onToggle, touch, refetch }
     landed: <Landed {...props} />,
   };
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col text-sm">
       {WORK_SECTIONS.map((section) => (
         <Fold key={section} id={`fleet-tab-${section}`} icon={SECTION_ICONS[section]} tone={SECTION_TONES[section]} title={SECTION_TITLES[section]} count={sectionCount(manifest, section)} open={open[section]} onToggle={() => onToggle(section)}>
           {body[section]}

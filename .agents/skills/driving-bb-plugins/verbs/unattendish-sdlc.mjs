@@ -148,6 +148,16 @@ const tabBar = (page) => page.getByRole("tablist", { name: "Fleet", exact: true 
 /** The fleet header in the open Fleet tab, or in the chip's hover card. */
 const headerOf = (scope) => scope.getByRole("banner", { name: /^Fleet / });
 
+/** The fleet header at the top of the Fleet tab, not the one in the chip's hover card. */
+const tabHeader = (page) => tabBar(page).locator("xpath=preceding-sibling::header[1]");
+
+/** Clicks the chip, then moves the pointer off it so its hover card closes and covers nothing. */
+async function clickChip(page) {
+  await chipOf(page).click();
+  await page.mouse.move(400, 600);
+  await sleep(400);
+}
+
 /**
  * What the Fleet tab draws: the fleet header's lines and strips; each tab's name, text and whether it is selected;
  * and the shown panel's sections, each heading with whether it is unfolded, then its lines.
@@ -155,7 +165,7 @@ const headerOf = (scope) => scope.getByRole("banner", { name: /^Fleet / });
 export async function readTab(page) {
   await sleep(300);
   const bar = tabBar(page);
-  const header = headerOf(page).last();
+  const header = tabHeader(page);
   const tabs = await bar.getByRole("tab").evaluateAll((ts) =>
     ts.map((t) => ({ name: t.getAttribute("aria-label"), text: t.innerText.replace(/\s+/g, " ").trim(), selected: t.getAttribute("aria-selected") === "true" })),
   );
@@ -274,6 +284,8 @@ export const verbs = {
         await chip.hover();
         const header = headerOf(page).last();
         await header.waitFor({ timeout: 3000 }).catch(() => {});
+        // The card fades in; a capture taken before it settles shows the page through it.
+        await sleep(400);
         result.hover = (await header.count()) ? lines(await header.locator("xpath=..").innerText()) : null;
         await capture("hover", "hover the chip");
         if (flags.review) {
@@ -285,7 +297,7 @@ export const verbs = {
         }
       }
       if (flags.open) {
-        await chip.click();
+        await clickChip(page);
         await tabBar(page).waitFor();
         result.tab = await readTab(page);
         await capture("tab", "click the chip");
@@ -301,14 +313,14 @@ export const verbs = {
     valued: ["tab", "fold"],
     async run({ page, url, capture, cli, args, flags }) {
       await openThread(page, url, cli, args[0], "unattendish.tab/show");
-      await chipOf(page).click();
+      await clickChip(page);
       await tabBar(page).waitFor();
       const result = { shown: await readTab(page) };
       await capture("tab", "click the chip");
       if (flags.tab || flags.fold || flags.review) {
         if (flags.tab) await tabBar(page).getByRole("tab", { name: new RegExp(`^${escape(flags.tab)}`) }).click();
         if (flags.fold) await page.locator("[role=tabpanel]:not([hidden])").last().getByRole("button", { name: new RegExp(`^${escape(flags.fold)}`) }).click();
-        if (flags.review) await headerOf(page).last().getByRole("button", { name: /^Review/ }).click();
+        if (flags.review) await tabHeader(page).getByRole("button", { name: /^Review/ }).click();
         await sleep(800);
         result.after = await readTab(page);
         result.scrolledTo = await page.evaluate(() => {
@@ -330,7 +342,7 @@ export const verbs = {
     valued: ["filter", "item"],
     async run({ page, url, capture, cli, args, flags }) {
       await openThread(page, url, cli, args[0], "unattendish.tab/show");
-      await chipOf(page).click();
+      await clickChip(page);
       const open = tabBar(page).getByRole("tab", { name: /^Ledger/ });
       const tabName = await open.getAttribute("aria-label");
       await open.click();
