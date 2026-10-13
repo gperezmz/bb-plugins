@@ -35,13 +35,13 @@ run_env_record "$dir/caller-env"
 plant=$(awk '$1 == "plant" { print $2 }' "$dir/caller-env")
 
 # wait_for_sleep <pid>: returns 0 once <pid> is running sleep, 1 if it is not
-# after about 5 seconds. Until a process started to exec sleep has done so, it
-# holds the environment of whatever ran before the exec: the test's own, or
-# what a bash read from its bashrc.
+# after 500 polls, which take 5 to 6 seconds. Until a process started to exec
+# sleep has done so, it holds the environment of whatever ran before the exec:
+# the test's own, or what a bash read from its bashrc.
 wait_for_sleep() {
   local _
   for _ in $(seq 500); do
-    [[ $(cat "/proc/$1/comm" 2> /dev/null) == sleep ]] && return 0
+    [[ $(< "/proc/$1/comm") == sleep ]] 2> /dev/null && return 0
     sleep 0.01
   done
   return 1
