@@ -463,13 +463,14 @@ describe("the Jira adapter's updated listing", () => {
       expect(out.listingSkipped).toMatchObject({ from: iso(0), reached: iso(0, 30) });
     });
 
-    it("is skipped where the issues it listed are all before the cursor, and records none of them as updated", async () => {
+    it("is skipped where the issues it listed are all before the cursor, and reports every one of them as updated", async () => {
       const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
       const { read } = await world({ issues: early, settings: paged });
       const out = await read({ since: iso(5) });
       expect(out.failures).toEqual([]);
       expect(out.listingSkipped).toMatchObject({ reached: iso(4, 19) });
-      expect(out.updated).toEqual([]);
+      expect(out.updated.map((u) => u.ref)).toEqual(Array.from({ length: 20 }, (_, i) => `PROJ-${i + 1}`));
+      expect(out.updated[19]).toMatchObject({ role: "tracker", url: `https://${SITE}/browse/PROJ-20`, at: iso(4, 19) });
     });
 
     it("is a failure, not skipped, where the service did not list oldest first and every issue it listed is at or before the cursor", async () => {

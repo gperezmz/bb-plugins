@@ -382,7 +382,8 @@ class Reading {
    * The listing is oldest first. One cut off at its page limit is no failure, provided the times it listed did run
    * oldest first: where the last is after `since` it is returned as `cutAt`; where every one is at or before `since`,
    * as when a bulk edit updated more issues within the window than the listing holds, the listing is `skipped`, with
-   * the window it covered and the last time it reached. Otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip
+   * the window it covered and the last time it reached, and every issue it listed is reported as updated, those before `since` too.
+   * Otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip
    * nothing.
    */
   private async listUpdated(): Promise<UpdatedListing> {
@@ -397,6 +398,7 @@ class Reading {
     }
     let last: number | null = null;
     let ordered = true;
+    const before: UpdatedItem[] = [];
     for (const raw of found.issues) {
       const hit = listed.safeParse(raw);
       const at = hit.success ? toIso(hit.data.fields.updated) : null;
@@ -408,7 +410,9 @@ class Reading {
       if (last !== null && time < last) ordered = false;
       last = time;
       if (this.refuseListed(hit.data.key)) continue;
-      if (time >= this.sinceMs) this.updated.push({ role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at });
+      const item: UpdatedItem = { role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at };
+      if (time >= this.sinceMs) this.updated.push(item);
+      else before.push(item);
     }
     if (!found.truncated) return {};
     if (ordered && last !== null) {
@@ -416,6 +420,8 @@ class Reading {
       // Jira resolves `-Nm` against its own clock and to the minute, so the window starts at a minute, and no later than the
       // update the listing reached whatever the clocks say.
       const from = Math.floor(Math.min(startedMs - minutes * 60_000, last) / 60_000) * 60_000;
+      // The cursor moves past all of these and no later poll lists them again, so each is reported now, though it is older than `since`.
+      this.updated.unshift(...before);
       return { skipped: { from: new Date(from).toISOString(), to: new Date(startedMs).toISOString(), reached: new Date(last).toISOString() } };
     }
     this.failures.push({ ref: null, reason: `the updated listing runs to more than ${MAX_PAGES} pages of ${PAGE_SIZE}` });
