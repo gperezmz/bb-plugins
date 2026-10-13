@@ -56,6 +56,9 @@ const board = () => screen.getByRole("region", { name: "Fleet board" });
 const queue = () => screen.getByRole("region", { name: "Queue" });
 const line = (repo: string) => within(board()).getByRole("listitem", { name: `Fleet ${repo}` });
 const boardRepos = () => within(board()).getAllByRole("listitem").map((item) => item.getAttribute("aria-label")!.replace("Fleet ", ""));
+/** The mark that starts a board line: a round dot in a flagged fleet's tone, else an empty space of the same size. */
+const markOf = (item: HTMLElement) => item.querySelector("span[aria-hidden]")!;
+const isDot = (mark: Element) => mark.classList.contains("rounded-full");
 const queueRows = () => within(within(queue()).getByRole("tabpanel")).queryAllByRole("listitem");
 
 /** Focuses `element` and reads the tooltip its hover text shows. */
@@ -325,10 +328,10 @@ describe("a board line (AC2–AC6)", () => {
     expect(within(line("org/late")).getByText("9m late").className).toContain("text-warning-text");
   });
 
-  it("marks a fleet with a missing manifest with a red bar and Review, which opens its Fleet tab", async () => {
+  it("marks a fleet with a missing manifest with a red dot and Review, which opens its Fleet tab", async () => {
     await show(fleetsView({ fleets: [fleet("org/gone", { problems: [missing] })] }));
     const gone = line("org/gone");
-    expect(gone.querySelector(".bg-destructive")).not.toBeNull();
+    expect(markOf(gone).className).toContain("bg-destructive");
     const review = within(gone).getByRole("button", { name: missing.text });
     expect(review.textContent).toBe("Review");
     fireEvent.click(review);
@@ -346,7 +349,7 @@ describe("a board line (AC2–AC6)", () => {
   it("offers Connect… in red where an account fixes it, which opens the Connect popup over the page", async () => {
     await show(fleetsView({ fleets: [fleet("other-org/x", { problems: [noForge] })] }));
     const x = line("other-org/x");
-    expect(x.querySelector(".bg-destructive")).not.toBeNull();
+    expect(markOf(x).className).toContain("bg-destructive");
     const connect = within(x).getByRole("button", { name: "no GitHub account can read other-org" });
     expect(connect.textContent).toBe("Connect…");
     expect(connect.className).toContain("text-destructive-text");
@@ -358,7 +361,7 @@ describe("a board line (AC2–AC6)", () => {
   it("offers Renew… in amber for a token expiring soon, which opens the Connect popup to renew it", async () => {
     await show(fleetsView({ fleets: [fleet("org/dash", { warnings: [{ kind: "expires", label: "GitHub · yuser for org", credentialId: "c1", accountId: "a1", role: "forge", expiresAt: ago(0), daysLeft: 3 }] })] }));
     const dash = line("org/dash");
-    expect(dash.querySelector(".bg-warning")).not.toBeNull();
+    expect(markOf(dash).className).toContain("bg-warning");
     fireEvent.click(within(dash).getByRole("button", { name: "GitHub · yuser for org: token expires in 3 days" }));
     expect(currentConnect()?.request).toEqual({ target: { fleet: "org/dash", role: "forge" }, account: "a1", replaces: "c1" });
   });
@@ -367,7 +370,7 @@ describe("a board line (AC2–AC6)", () => {
     const expired: ProblemView = { code: "token-expired", text: "GitHub · yuser for org: token expired", fix: { kind: "renew", role: "forge", accountId: "a1", credentialId: "c1" }, label: "GitHub · yuser for org", expiresAt: ago(2 * 24 * HOUR) };
     await show(fleetsView({ fleets: [fleet("org/aaa", { warnings: [{ kind: "expires", label: "GitHub · yuser for org", credentialId: "c2", accountId: "a1", role: "forge", expiresAt: ago(0), daysLeft: 3 }] }), fleet("org/dash", { problems: [expired] })] }));
     const dash = line("org/dash");
-    expect(dash.querySelector(".bg-destructive")).not.toBeNull();
+    expect(markOf(dash).className).toContain("bg-destructive");
     const renew = within(dash).getByRole("button", { name: "GitHub · yuser for org: token expired 2 days ago" });
     expect(renew.textContent).toBe("Renew…");
     expect(renew.className).toContain("text-destructive-text");
@@ -393,7 +396,7 @@ describe("a board line (AC2–AC6)", () => {
 
   it("leaves late polling to the polling cell, with no verb", async () => {
     await show(fleetsView({ fleets: [fleet("org/late", { waiting: 1, warnings: [{ kind: "polling-late", lastPolledAt: ago(9 * MINUTE) }] })] }));
-    expect(line("org/late").querySelector(".bg-warning")).not.toBeNull();
+    expect(markOf(line("org/late")).className).toContain("bg-warning");
     expect(within(line("org/late")).getAllByRole("button")).toHaveLength(2);
   });
 });
@@ -630,6 +633,68 @@ describe("the queue (AC9–AC13)", () => {
     const sent = queueRows()[0]!;
     expect(sent.textContent).toBe("You answered #5 Which queue40m agoorg/dashdone");
     expect(drawnIcons(sent)).toEqual(["MessageSquare", "GithubLogo", "Check"]);
+  });
+});
+
+describe("the dot that marks a flagged line (#308)", () => {
+  const flagged = () => [fleet("org/dash", { problems: [missing] }), fleet("org/wake", { warnings: [{ kind: "polling-late", lastPolledAt: ago(9 * MINUTE) }] }), fleet("org/ok", { waiting: 1 })];
+
+  it("starts a line with a red dot for a problem and an amber dot for warnings alone, the chip's size and shape, before the forge's logo, and draws no bar (AC1, AC2)", async () => {
+    await show(fleetsView({ fleets: flagged() }));
+    for (const [repo, fill, other] of [["org/dash", "bg-destructive", "bg-warning"], ["org/wake", "bg-warning", "bg-destructive"]] as const) {
+      const item = line(repo);
+      const dot = markOf(item);
+      expect(dot.className).toContain(fill);
+      expect(dot.className).not.toContain(other);
+      expect(dot.className).toContain("size-2");
+      expect(dot.className).toContain("rounded-full");
+      expect(dot.compareDocumentPosition(within(item).getByLabelText("GitHub")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(item.querySelectorAll(`.${fill}`)).toHaveLength(1);
+    }
+    expect(within(line("org/dash")).getByRole("button", { name: missing.text }).textContent).toBe("Review");
+  });
+
+  it("draws a red dot for a problem beside a warning (AC1)", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { problems: [missing], warnings: [{ kind: "never-polled" }] })] }));
+    expect(markOf(line("org/dash")).className).toContain("bg-destructive");
+  });
+
+  it("draws no dot on a line with neither, and keeps its space so its logo and name start where a flagged line's do (AC3)", async () => {
+    await show(fleetsView({ fleets: [...flagged(), fleet("org/quiet")] }));
+    fireEvent.click(within(board()).getByRole("button", { name: "1 quiet fleet" }));
+    for (const repo of ["org/ok", "org/quiet"]) expect(isDot(markOf(line(repo)))).toBe(false);
+    const widths = ["org/dash", "org/wake", "org/ok", "org/quiet"].map((repo) => {
+      const item = line(repo);
+      const mark = markOf(item);
+      const lead = mark.parentElement!.children;
+      return [mark.className.match(/size-\d+/)?.[0], mark.parentElement === item.firstElementChild, [...lead].indexOf(mark), [...lead].indexOf(within(item).getByLabelText("GitHub"))];
+    });
+    expect(new Set(widths.map((width) => JSON.stringify(width))).size).toBe(1);
+    expect(widths[0]).toEqual(["size-2", true, 0, 1]);
+  });
+
+  it("hides the dot from assistive technology, the line's fix verb naming the problem (AC4)", async () => {
+    await show(fleetsView({ fleets: flagged() }));
+    for (const repo of ["org/dash", "org/wake"]) expect(markOf(line(repo)).getAttribute("aria-hidden")).toBe("true");
+    expect(within(line("org/dash")).getByRole("button", { name: missing.text })).toBeTruthy();
+  });
+
+  it("draws the same dot in the narrow layout, the red ⚠ staying (AC1, AC2, AC3, AC4)", async () => {
+    setPageWidth(NARROW);
+    await show(fleetsView({ fleets: flagged() }));
+    const dash = line("org/dash");
+    expect(markOf(dash).className).toContain("bg-destructive");
+    expect(markOf(dash).className).toContain("rounded-full");
+    expect(markOf(dash).getAttribute("aria-hidden")).toBe("true");
+    expect(markOf(dash).parentElement).toBe(dash);
+    expect(within(dash).getByRole("button", { name: missing.text })).toBeTruthy();
+    expect(markOf(line("org/wake")).className).toContain("bg-warning");
+    const ok = markOf(line("org/ok"));
+    expect(isDot(ok)).toBe(false);
+    expect(ok.className).toContain("size-2");
+    expect(ok.parentElement!.firstElementChild).toBe(ok);
+    expect(dash.querySelectorAll(".bg-destructive")).toHaveLength(1);
+    expect(line("org/wake").querySelectorAll(".bg-warning")).toHaveLength(1);
   });
 });
 
