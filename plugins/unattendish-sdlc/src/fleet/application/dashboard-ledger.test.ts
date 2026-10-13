@@ -114,6 +114,39 @@ describe("ledger", () => {
     ]);
   });
 
+  const recordCut = (w: World, reached: string, seenAt: string) =>
+    record(w, { ref: null, url: null, kind: "listing cut", actor: null, at: reached, seenAt, disposition: "out-of-scope", rule: "listing cut at its page limit", window: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z" } });
+
+  it("shows the entry a cut-off listing wrote with its time, reason, window and the time it reached, in place of a ref, kind and actor (#263 AC2)", async () => {
+    const w = world();
+    await start(w);
+    recordCut(w, "2026-10-12T08:58:00.000Z", "2026-10-12T09:01:00.000Z");
+    const { dropped, changes } = await ledgerOf(w);
+    expect(changes).toEqual([]);
+    expect(dropped).toEqual([
+      {
+        reason: "out of scope: listing cut at its page limit",
+        count: 1,
+        changes: [{ at: "2026-10-12T09:01:00.000Z", ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z", reached: "2026-10-12T08:58:00.000Z" } }],
+      },
+    ]);
+  });
+
+  it("groups two cut-off listings under their reason, apart from the out-of-scope rows, and counts them past the rows recorded after (#263 AC2)", async () => {
+    const w = world();
+    await start(w);
+    recordCut(w, "2026-10-12T08:58:00.000Z", "2026-10-12T09:01:00.000Z");
+    recordCut(w, "2026-10-12T08:59:00.000Z", "2026-10-12T09:02:00.000Z");
+    for (let n = 0; n < 1_100; n += 1) record(w, { disposition: "out-of-scope", kind: "updated", seenAt: `2026-10-12T09:03:00.${String(n).padStart(3, "0")}Z` });
+    const { dropped } = await ledgerOf(w);
+    expect(dropped.map((group) => [group.reason, group.count])).toEqual([
+      ["out of scope", 1_000],
+      ["out of scope: listing cut at its page limit", 2],
+    ]);
+    expect((await ledgerOf(w, { done: "out-of-scope" })).dropped.map((group) => group.reason)).toContain("out of scope: listing cut at its page limit");
+    expect((await ledgerOf(w, { done: "woke" })).dropped).toEqual([]);
+  });
+
   it("groups only what the filter lets through, and counts past the number of changes it lists", async () => {
     const w = world();
     await start(w);

@@ -173,6 +173,8 @@ export const MIGRATIONS: string[] = [
      at TEXT NOT NULL,
      PRIMARY KEY (repo_id, role)
    )`,
+  `ALTER TABLE changes ADD COLUMN window_from TEXT`,
+  `ALTER TABLE changes ADD COLUMN window_to TEXT`,
 ];
 
 interface FleetRow {
@@ -204,15 +206,18 @@ interface FleetRow {
 interface ChangeRow {
   change_key: string;
   role: SourceRole;
+  /** Empty on the entry a skipped listing writes: the column is NOT NULL and a table cannot lose that. */
   ref: string;
   url: string;
-  kind: ChangeKind | "updated";
+  kind: ChangeKind | "updated" | "listing cut";
   label: string | null;
   actor: string | null;
   at: string;
   seen_at: string;
   disposition: Disposition["kind"];
   rule: string | null;
+  window_from: string | null;
+  window_to: string | null;
   wake_id: number | null;
 }
 
@@ -307,8 +312,8 @@ const legacyOutages = (row: FleetRow): StoredFleet["outages"] => {
 const toLedgerRow = (row: ChangeRow): LedgerRow => ({
   key: row.change_key,
   role: row.role,
-  ref: row.ref,
-  url: row.url,
+  ref: row.ref === "" ? null : row.ref,
+  url: row.url === "" ? null : row.url,
   kind: row.kind,
   label: row.label,
   actor: row.actor,
@@ -316,6 +321,7 @@ const toLedgerRow = (row: ChangeRow): LedgerRow => ({
   seenAt: row.seen_at,
   disposition: row.disposition,
   rule: row.rule,
+  ...(row.window_from === null || row.window_to === null ? {} : { window: { from: row.window_from, to: row.window_to } }),
   wakeId: row.wake_id,
 });
 
@@ -483,12 +489,12 @@ export class SqliteStore implements Store {
     // A row stays as first recorded, except that a held one takes the disposition it is recorded with next.
     this.db
       .prepare(
-        `INSERT INTO changes (repo_id, change_key, role, ref, url, kind, label, actor, at, seen_at, disposition, rule)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO changes (repo_id, change_key, role, ref, url, kind, label, actor, at, seen_at, disposition, rule, window_from, window_to)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (repo_id, change_key) DO UPDATE SET disposition = excluded.disposition, rule = excluded.rule
          WHERE changes.disposition = 'held' AND excluded.disposition <> 'held'`,
       )
-      .run(repo, row.key, row.role, row.ref, row.url, row.kind, row.label, row.actor, row.at, row.seenAt, row.disposition, row.rule);
+      .run(repo, row.key, row.role, row.ref ?? "", row.url ?? "", row.kind, row.label, row.actor, row.at, row.seenAt, row.disposition, row.rule, row.window?.from ?? null, row.window?.to ?? null);
   }
 
   heldChanges(repo: string): Change[] {
@@ -599,6 +605,7 @@ export class SqliteStore implements Store {
         where.push("disposition = ?");
         params.push(DONE_DISPOSITION[query.done]);
       }
+      if (query.listingCut === true) where.push("kind = 'listing cut'");
       const rows = this.db.prepare(`SELECT * FROM changes WHERE ${where.join(" AND ")} ORDER BY seen_at DESC, rowid DESC LIMIT ?`).all(...params, limit) as ChangeRow[];
       for (const row of rows) entries.push({ type: "change", row: toLedgerRow(row) });
     }

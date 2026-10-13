@@ -35,8 +35,8 @@ const sameRef = (a: string | null, b: string): boolean => a !== null && a.toLowe
 const toChange = (row: LedgerRow): Change => ({
   key: row.key,
   role: row.role,
-  ref: row.ref,
-  url: row.url,
+  ref: row.ref ?? "",
+  url: row.url ?? "",
   kind: row.kind as ChangeKind,
   label: row.label,
   actor: row.actor,
@@ -239,7 +239,7 @@ export class InMemoryStore implements Store {
   ledger(repo: string, query: LedgerQuery): LedgerEntry[] {
     const record = this.data(repo);
     const limit = Math.max(0, query.limit ?? DEFAULT_LEDGER_LIMIT);
-    const { item, done } = query;
+    const { item, done, listingCut } = query;
     const entries: LedgerEntry[] = [];
 
     const newestFirst = <T>(items: T[]): T[] => [...items].reverse();
@@ -247,7 +247,7 @@ export class InMemoryStore implements Store {
 
     if (done !== "failed read") {
       const rows = [...record.changes.values()].filter(
-        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]),
+        (row) => (item === undefined || sameRef(row.ref, item) || row.url === item) && (done === undefined || row.disposition === DONE_DISPOSITION[done]) && (listingCut !== true || row.kind === "listing cut"),
       );
       for (const row of byTimeDesc(rows, (r) => r.seenAt).slice(0, limit)) entries.push({ type: "change", row: structuredClone(row) });
     }

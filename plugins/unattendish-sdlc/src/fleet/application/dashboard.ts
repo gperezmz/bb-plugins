@@ -118,7 +118,11 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
   const changeView = (entry: LedgerEntry): LedgerChangeView | null => {
     if (entry.type === "change") {
       const row = entry.row;
-      return { at: row.seenAt, ref: clip(row.ref, FIELD_MAX), url: clip(row.url, FIELD_MAX), kind: clip(row.label === null ? row.kind : `${row.kind} ${row.label}`, FIELD_MAX), actor: row.actor === null ? null : clip(row.actor, FIELD_MAX), done: doneWith(row.disposition), rule: row.rule === null ? null : clip(row.rule, FIELD_MAX) };
+      const rule = row.rule === null ? null : clip(row.rule, FIELD_MAX);
+      if (row.kind === "listing cut" && row.window != null) {
+        return { at: row.seenAt, ref: "", url: "", kind: "", actor: null, done: doneWith(row.disposition), rule, listing: { from: row.window.from, to: row.window.to, reached: row.at } };
+      }
+      return { at: row.seenAt, ref: clip(row.ref ?? "", FIELD_MAX), url: clip(row.url ?? "", FIELD_MAX), kind: clip(row.label === null ? row.kind : `${row.kind} ${row.label}`, FIELD_MAX), actor: row.actor === null ? null : clip(row.actor, FIELD_MAX), done: doneWith(row.disposition), rule };
     }
     if (entry.type === "failed read") {
       return { at: entry.at, ref: entry.ref === null ? "" : clip(entry.ref, FIELD_MAX), url: "", kind: `failed read of the ${entry.role}`, actor: null, done: "failed read", rule: clip(entry.reason, FIELD_MAX) };
@@ -143,9 +147,11 @@ export function createDashboard(deps: DashboardDeps): DashboardApi {
       .sort(newestFirst((change) => change.at))
       .slice(0, limit);
 
-    const dropsAsked = wanted.done === undefined || wanted.done === "echo" || wanted.done === "out-of-scope" ? (["echo", "out-of-scope"] as const) : [];
-    const dropped = dropsAsked
-      .flatMap((done) => deps.store.ledger(key, { ...withItem, done, limit: DROPPED_COUNTED }))
+    const dropsAsked: readonly ("echo" | "out-of-scope")[] = wanted.done === undefined || wanted.done === "echo" || wanted.done === "out-of-scope" ? ["echo", "out-of-scope"] : [];
+    // The entries listings cut off at their page limit are asked for apart, so the out-of-scope rows of the same polls cannot push them out of the count.
+    const dropEntries = dropsAsked.flatMap((done) => deps.store.ledger(key, { ...withItem, done, limit: DROPPED_COUNTED }));
+    const cutEntries = dropsAsked.includes("out-of-scope") ? deps.store.ledger(key, { ...withItem, done: "out-of-scope", listingCut: true, limit: DROPPED_COUNTED }) : [];
+    const dropped = [...dropEntries, ...cutEntries.filter((cut) => !dropEntries.some((entry) => entry.type === "change" && cut.type === "change" && entry.row.key === cut.row.key))]
       .flatMap((entry) => {
         if (entry.type !== "change") return [];
         const reason = droppedReason(entry.row);

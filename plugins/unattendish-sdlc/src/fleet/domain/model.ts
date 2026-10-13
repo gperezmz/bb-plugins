@@ -264,6 +264,22 @@ export interface ReadOutcome {
    * the last item it listed. Everything older was listed, so the cursor may move to it; the rest is listed next poll.
    */
   readonly listingCutAt?: string;
+  /**
+   * Set when the listing of updated items was cut off at its page limit without getting past the cursor: every item it
+   * listed is at or before it, so the cursor cannot move to where it stopped. The cut-off is no failure and the cursor
+   * moves as it does after a listing that fit; the rows of the issues past the page limit are not recorded.
+   */
+  readonly listingSkipped?: ListingSkipped;
+}
+
+/** A listing of updated items cut off at its page limit before it got past the cursor. */
+export interface ListingSkipped {
+  /** The start of the window the listing covered (ISO 8601 UTC). */
+  readonly from: string;
+  /** The end of the window: when the listing ran. */
+  readonly to: string;
+  /** The `updated` time of the last item the listing reached. */
+  readonly reached: string;
 }
 
 /** The state a source keeps for one item between polls. */

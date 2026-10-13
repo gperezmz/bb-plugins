@@ -327,6 +327,16 @@ describe("the human output of every command", () => {
     expect(text).toContain("poll of the forge: 1 requests, 1 counted against the rate limit");
   });
 
+  it("ledger prints the entry a cut-off listing wrote by its time, reason, window and the time it reached, and its JSON keeps no ref or link (#263)", async () => {
+    const { store, run, json } = await load();
+    await run(registerArgs(), MANAGER);
+    store.recordChange(REPO, row("cut", "", "out-of-scope", { ref: null, url: null, kind: "listing cut", actor: null, at: "2026-10-12T08:58:00.000Z", seenAt: "2026-10-12T09:01:00.000Z", rule: "listing cut at its page limit", window: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z" } }));
+    expect((await run(["fleet", "ledger", REPO])).stdout).toBe("2026-10-12T09:01:00.000Z  out of scope: listing cut at its page limit  listed 2026-10-12T08:55:00.000Z to 2026-10-12T09:00:00.000Z, reached 2026-10-12T08:58:00.000Z");
+    const { entries } = await json(["fleet", "ledger", REPO, "--done", "out-of-scope"]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].row).toMatchObject({ ref: null, url: null, kind: "listing cut", at: "2026-10-12T08:58:00.000Z", window: { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z" } });
+  });
+
   it("interval says what it set", async () => {
     const { run } = await load();
     await run(registerArgs(), MANAGER);

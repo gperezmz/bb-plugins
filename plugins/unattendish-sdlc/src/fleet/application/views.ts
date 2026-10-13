@@ -300,10 +300,12 @@ export interface LedgerChangeView {
   readonly done: "woke" | "echo" | "out-of-scope" | "held" | "failed read";
   /** The echo rule or the hold reason. */
   readonly rule: string | null;
+  /** On the entry a listing cut off at its page limit wrote, which has no ref, kind or actor: the window it listed and the last update time it reached. */
+  readonly listing?: { readonly from: string; readonly to: string; readonly reached: string };
 }
 
 export interface DroppedGroupView {
-  /** `echo: marker`, `echo: label`, `echo: echo actor` or `out of scope`. */
+  /** `echo: marker`, `echo: label`, `echo: echo actor`, `out of scope` or `out of scope: listing cut at its page limit`. */
   readonly reason: string;
   readonly count: number;
   readonly changes: readonly LedgerChangeView[];

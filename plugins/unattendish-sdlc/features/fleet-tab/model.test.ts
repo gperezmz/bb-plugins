@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ago, ledgerChange, ledgerView, MINUTE, NOW } from "@/testing/fixtures";
-import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerContent, ledgerIsEmpty, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
+import { blockedText, credentialParts, droppedHeading, doneText, ledgerFilter, ledgerContent, ledgerIsEmpty, listingText, stageText, unreadableRowText, watchedHeading, whyText } from "./model";
 
 describe("the manifest's rows", () => {
   it("says how long an In flight row has been at its stage", () => {
@@ -96,5 +96,14 @@ describe("the ledger's filters", () => {
     expect(droppedHeading({ reason: "echo: marker", count: 31 })).toBe("echo: marker · 31");
     expect(doneText({ done: "echo", rule: "marker" })).toBe("echo (marker)");
     expect(doneText({ done: "woke", rule: null })).toBe("woke");
+  });
+
+  it("says what a cut-off listing listed and reached, and shows it once under All, in its group (#263)", () => {
+    const listing = { from: "2026-10-12T08:55:00.000Z", to: "2026-10-12T09:00:00.000Z", reached: "2026-10-12T08:58:00.000Z" };
+    expect(listingText(listing)).toMatch(/^listed .+ to .+, reached .+$/);
+    const cut = ledgerChange({ ref: "", url: "", kind: "", actor: null, done: "out-of-scope", rule: "listing cut at its page limit", listing });
+    const withCut = ledgerView({ dropped: [{ reason: "out of scope: listing cut at its page limit", count: 1, changes: [cut] }], changes: [cut] });
+    expect(ledgerContent(withCut, "all", "").changes).toEqual([]);
+    expect(ledgerContent(withCut, "dropped", "").dropped).toHaveLength(1);
   });
 });

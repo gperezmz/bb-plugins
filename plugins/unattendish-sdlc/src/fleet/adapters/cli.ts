@@ -7,6 +7,7 @@ import { FIELD_MAX, LEDGER_LIMIT } from "../application/dashboard";
 import type { FleetStatus } from "../application/status";
 import type { RegisterOutcome } from "../application/register";
 import type { LedgerEntry, LedgerQuery } from "../application/ports";
+import { droppedReason } from "../domain/dashboard";
 import { MIN_INTERVAL_MS, validateInterval, type RegisterArgs } from "../domain/registration";
 
 /** What the command line asks of the application. */
@@ -77,7 +78,7 @@ export const boundEntry = (entry: LedgerEntry): LedgerEntry & { readonly request
   switch (entry.type) {
     case "change": {
       const { row } = entry;
-      return { type: "change", row: { ...row, ref: clip(row.ref), url: clip(row.url), label: clipOrNull(row.label), actor: clipOrNull(row.actor), rule: clipOrNull(row.rule), key: clip(row.key) } };
+      return { type: "change", row: { ...row, ref: clipOrNull(row.ref), url: clipOrNull(row.url), label: clipOrNull(row.label), actor: clipOrNull(row.actor), rule: clipOrNull(row.rule), key: clip(row.key) } };
     }
     case "wake":
       return { type: "wake", wake: { ...entry.wake, threadId: clip(entry.wake.threadId), queuedMessageId: clipOrNull(entry.wake.queuedMessageId) } };
@@ -100,6 +101,7 @@ const ledgerLines = (entries: readonly PrintedEntry[]): string => {
       switch (entry.type) {
         case "change": {
           const row = entry.row;
+          if (row.kind === "listing cut" && row.window != null) return `${row.seenAt}  ${droppedReason(row) ?? "out of scope"}  listed ${row.window.from} to ${row.window.to}, reached ${row.at}`;
           const label = row.label === null ? "" : ` ${row.label}`;
           const rule = row.rule === null ? "" : ` (${row.rule})`;
           return `${row.seenAt}  ${row.ref} ${row.kind}${label} by ${row.actor ?? "unknown"}: ${row.disposition === "wake" ? "woke the manager" : row.disposition}${rule}  ${row.url}`;

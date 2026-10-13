@@ -32,8 +32,9 @@
 // The updated listing is read `ORDER BY updated ASC` ("JQL keywords", https://support.atlassian.com/jira-core-cloud/docs/advanced-search-reference-jql-keywords/:
 //   ORDER BY sorts "by the values" of a field, `ASC` overriding the field's own order, and goes at the end of the query).
 //   The search/jql reference, which pages by token, says nothing on whether the order holds across pages (its page
-//   would not load in full when read), so a listing cut off at its page limit moves the cursor only if the times it
-//   listed did run oldest first, and is a failure otherwise.
+//   would not load in full when read), so a listing cut off at its page limit is trusted only if the times it listed
+//   did run oldest first: it then moves the cursor to the last time it reached, or, where that is not after the cursor
+//   (a bulk edit put more than a listing holds inside the window), is skipped and noted. Any other cut-off is a failure.
 //
 // Not confirmed by Atlassian's documentation, so taken at the cheapest fallback:
 //   - a `status` changelog item's `from`/`to` being status ids and `fromString`/`toString` names: the status list
@@ -45,7 +46,7 @@
 //     earlier answer carried an ETag, and nothing else depends on it.
 import { z } from "zod";
 import { HttpError, type ServiceAdapter, type ReadRequest } from "../application/ports";
-import type { ActivityEvent, FleetLabels, ItemSnapshot, ReadFailure, ReadOutcome, Transition, UpdatedItem, WatchedItem } from "../domain/model";
+import type { ActivityEvent, FleetLabels, ItemSnapshot, ListingSkipped, ReadFailure, ReadOutcome, Transition, UpdatedItem, WatchedItem } from "../domain/model";
 import { lastLine } from "../domain/text";
 import { documentText, isDocument } from "./jira-adf";
 import { failureOf, isFatal, ReadProblem } from "./service-support";
@@ -127,6 +128,12 @@ const reasonOf = (error: unknown): string => {
   return "unexpected failure while reading";
 };
 
+/** How the updated listing ended, when it was cut off at its page limit and the cut-off is no failure. */
+interface UpdatedListing {
+  readonly cutAt?: string;
+  readonly skipped?: ListingSkipped;
+}
+
 type StatusCategories = { readonly byId: Map<string, string>; readonly byName: Map<string, string> };
 
 class Reading {
@@ -156,12 +163,19 @@ class Reading {
       seen.add(item.ref.toUpperCase());
       await this.item(item);
     }
-    let listingCutAt: string | undefined;
+    let listing: UpdatedListing = {};
     if (!this.request.stateOnly) {
       if (this.request.scanPartition) await this.scan(seen);
-      listingCutAt = await this.listUpdated();
+      listing = await this.listUpdated();
     }
-    return { snapshots: this.snapshots, events: this.events, updated: this.updated, failures: this.failures, ...(listingCutAt === undefined ? {} : { listingCutAt }) };
+    return {
+      snapshots: this.snapshots,
+      events: this.events,
+      updated: this.updated,
+      failures: this.failures,
+      ...(listing.cutAt === undefined ? {} : { listingCutAt: listing.cutAt }),
+      ...(listing.skipped === undefined ? {} : { listingSkipped: listing.skipped }),
+    };
   }
 
   // ---- shared ----
@@ -365,18 +379,21 @@ class Reading {
 
   /**
    * The issues the site lists as updated since `since`, to the minute and a little wider, then cut exactly at `since`.
-   * The listing is oldest first. One cut off at its page limit returns the `updated` of the last issue it listed as
-   * `listingCutAt`, and is no failure, provided the times it listed did run oldest first and the last is after `since`;
-   * otherwise the cut-off is a failure with no ref, as the order is then not to be trusted to skip nothing.
+   * The listing is oldest first. One cut off at its page limit is no failure, provided the times it listed did run
+   * oldest first: where the last is after `since` it is returned as `cutAt`; where every one is at or before `since`,
+   * as when a bulk edit updated more issues within the window than the listing holds, the listing is `skipped`, with
+   * the window it covered and the last time it reached. Otherwise the cut-off is a failure with no ref, as the order is
+   * then not to be trusted to skip nothing.
    */
-  private async listUpdated(): Promise<string | undefined> {
-    const minutes = Math.max(2, Math.ceil((Date.now() - this.sinceMs) / 60_000) + 2);
+  private async listUpdated(): Promise<UpdatedListing> {
+    const startedMs = Date.now();
+    const minutes = Math.max(2, Math.ceil((startedMs - this.sinceMs) / 60_000) + 2);
     let found: { issues: unknown[]; truncated: boolean };
     try {
       found = await this.search(`project = ${quote(this.project)} AND updated >= "-${minutes}m" ORDER BY updated ASC`);
     } catch (error) {
       this.settle(error, null);
-      return undefined;
+      return {};
     }
     let last: number | null = null;
     let ordered = true;
@@ -393,10 +410,13 @@ class Reading {
       if (this.refuseListed(hit.data.key)) continue;
       if (time >= this.sinceMs) this.updated.push({ role: "tracker", ref: hit.data.key, url: this.url(hit.data.key), at });
     }
-    if (!found.truncated) return undefined;
-    if (ordered && last !== null && last > this.sinceMs) return new Date(last).toISOString();
+    if (!found.truncated) return {};
+    if (ordered && last !== null) {
+      if (last > this.sinceMs) return { cutAt: new Date(last).toISOString() };
+      return { skipped: { from: new Date(startedMs - minutes * 60_000).toISOString(), to: new Date(startedMs).toISOString(), reached: new Date(last).toISOString() } };
+    }
     this.failures.push({ ref: null, reason: `the updated listing runs to more than ${MAX_PAGES} pages of ${PAGE_SIZE}` });
-    return undefined;
+    return {};
   }
 }
 

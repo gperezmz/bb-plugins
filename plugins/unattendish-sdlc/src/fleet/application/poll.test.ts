@@ -1024,6 +1024,97 @@ describe("a listing cut off at its page limit", () => {
   });
 });
 
+describe("a listing cut off at its page limit without getting past the cursor (#263)", () => {
+  const skipped = (reached = "2026-10-12T09:58:00.000Z") => ({ from: "2026-10-12T09:55:00.000Z", to: "2026-10-12T10:00:00.000Z", reached });
+  const cutPoll = async (w: World, over: Parameters<typeof outcome>[0] = {}) => {
+    w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], listingSkipped: skipped(), ...over }));
+    const result = await poll(w);
+    w.clock.advance(120_000);
+    return result;
+  };
+  const entries = (w: World) => rows(w, { done: "out-of-scope", listingCut: true });
+
+  it("moves the cursor as a listing that fit does, poll after poll (AC1)", async () => {
+    const fit = world();
+    await start(fit, manifest({ inbox: [inboxRow(7)] }));
+    const cut = world();
+    await start(cut, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) {
+      fit.adapters.github.queue(outcome({ snapshots: [snapshot(7)] }));
+      await poll(fit);
+      fit.clock.advance(120_000);
+      await cutPoll(cut);
+    }
+    expect(cut.store.getCursor(REPO_KEY, "forge")!.since).toBe(fit.store.getCursor(REPO_KEY, "forge")!.since);
+    expect(cut.adapters.github.reads.map((read) => read.since)).toEqual(fit.adapters.github.reads.map((read) => read.since));
+    expect(cut.adapters.github.reads.at(-1)!.since).toBe("2026-10-12T10:01:00.000Z");
+  });
+
+  it("writes one Dropped entry for each poll, with no ref, the window it listed and the last update it reached (AC2)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    await cutPoll(w);
+    await cutPoll(w, { listingSkipped: skipped("2026-10-12T10:01:00.000Z") });
+    expect(entries(w)).toHaveLength(2);
+    expect(entries(w)).toMatchObject([
+      { ref: null, url: null, kind: "listing cut", actor: null, disposition: "out-of-scope", rule: "listing cut at its page limit", seenAt: "2026-10-12T10:02:00.000Z", at: "2026-10-12T10:01:00.000Z", window: { from: "2026-10-12T09:55:00.000Z", to: "2026-10-12T10:00:00.000Z" } },
+      { ref: null, url: null, kind: "listing cut", seenAt: "2026-10-12T10:00:00.000Z", at: "2026-10-12T09:58:00.000Z" },
+    ]);
+  });
+
+  it("still records the out-of-scope row of each issue it listed that the fleet does not watch, and no failed read (AC2)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const updated = [98, 99].map((n) => ({ role: "forge" as const, ref: `#${n}`, url: issueUrl(n), at: "2026-10-12T09:58:00.000Z" }));
+    expect(await cutPoll(w, { updated })).toMatchObject({ outOfScope: 2 });
+    expect(rows(w, { done: "out-of-scope" }).flatMap((row) => (row.ref === null ? [] : [row.ref])).sort()).toEqual(["#98", "#99"]);
+    expect(ledger(w, { done: "failed read" })).toEqual([]);
+    expect(ledger(w).filter((entry) => entry.type === "failed read")).toEqual([]);
+  });
+
+  it("leaves the fleet watched however many polls are cut off, and the manager is told nothing (AC3)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 4; i += 1) await cutPoll(w);
+    expect(w.channel.sent).toEqual([]);
+    expect(w.store.getFleet(REPO_KEY)!.outages).toEqual({});
+    expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]).toMatchObject({ watched: true, notWatched: [] });
+  });
+
+  it("recovers a fleet that reads not watched because its listing kept failing (AC3)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    for (let i = 0; i < 3; i += 1) {
+      w.adapters.github.queue(outcome({ snapshots: [snapshot(7)], failures: [{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }] }));
+      await poll(w);
+      w.clock.advance(120_000);
+    }
+    expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]).toMatchObject({ watched: false });
+    await cutPoll(w);
+    expect(w.store.getFleet(REPO_KEY)!.outages).toEqual({});
+    expect((await fleetStatus({ ...w.register, clock: w.clock }))[0]).toMatchObject({ watched: true, notWatched: [] });
+  });
+
+  it("still wakes the manager for a watched item's comment and for the ready label in the partition (AC4)", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    const ready = snapshot(12, { fleetLabels: ["status:ready"], inPartition: true, transitions: [{ kind: "labelled", label: "status:ready", actor: "olivia", at: "2026-10-12T10:00:40.000Z", id: "l1" }] });
+    const result = await cutPoll(w, { snapshots: [snapshot(7), ready], events: [event("github:issuecomment:1", 7)] });
+    expect(result).toMatchObject({ woke: 2, delivery: "sent" });
+    expect(sentText(w)).toContain("#7 commented by alice");
+    expect(sentText(w)).toContain("#12 labelled status:ready by olivia");
+    expect(entries(w)).toHaveLength(1);
+  });
+
+  it("records its entry while no manager holds the fleet", async () => {
+    const w = world();
+    await start(w, manifest({ inbox: [inboxRow(7)] }));
+    w.threads.states.set(MANAGER, "gone");
+    await cutPoll(w);
+    expect(entries(w)).toHaveLength(1);
+  });
+});
+
 describe("an outage is kept per source (AC8, AC13)", () => {
   const linearIssue = (n: number) => `https://linear.app/acme/issue/ENG-${n}/slug`;
   const forbidden = outcome({ failures: [{ ref: null, reason: "the listing answered 403", kind: "forbidden" }, { ref: "#7", reason: "#7 answered 403", kind: "forbidden" }] });

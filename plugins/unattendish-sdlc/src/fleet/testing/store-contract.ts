@@ -464,6 +464,16 @@ export function describeStore(name: string, make: () => { store: Store; close?: 
         expect(store.ledger(REPO, {})).toEqual([{ type: "change", row: { ...recorded, wakeId: null } }]);
       });
 
+      it("returns the entry a cut-off listing wrote with no ref and no link, its window and the time it reached (#263)", () => {
+        const cut = row("cut", { ref: null, url: null, kind: "listing cut", actor: null, at: "2026-10-12T09:58:00.000Z", disposition: "out-of-scope", rule: "listing cut at its page limit", window: { from: "2026-10-12T09:55:00.000Z", to: "2026-10-12T10:00:00.000Z" } });
+        store.recordChange(REPO, cut);
+        store.recordChange(REPO, row("other", { disposition: "out-of-scope", kind: "updated" }));
+        expect(store.ledger(REPO, { done: "out-of-scope", listingCut: true })).toEqual([{ type: "change", row: { ...cut, wakeId: null } }]);
+        expect(store.ledger(REPO, { done: "out-of-scope" })).toHaveLength(2);
+        expect(store.ledger(REPO, { item: "#1" }).map((entry) => (entry.type === "change" ? entry.row.key : entry.type))).toEqual(["other"]);
+        expect(store.dispositions(REPO, ["cut"])).toEqual(new Map([["cut", "out-of-scope"]]));
+      });
+
       it("changes nothing when the same key is recorded again with the same disposition", () => {
         store.recordChange(REPO, row("a", { disposition: "echo", rule: "marker", seenAt: "2026-10-12T10:01:00.000Z" }));
         store.recordChange(REPO, row("a", { disposition: "echo", rule: "label", seenAt: "2026-10-12T10:09:00.000Z", actor: "someone" }));

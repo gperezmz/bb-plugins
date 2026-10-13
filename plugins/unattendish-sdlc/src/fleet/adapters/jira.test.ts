@@ -437,18 +437,43 @@ describe("the Jira adapter's updated listing", () => {
       expect(second.updated.map((u) => u.ref)).toEqual(Array.from({ length: 11 }, (_, i) => `PROJ-${20 + i}`));
     });
 
-    it("is a failure with no ref where the last issue it listed does not move the cursor", async () => {
+    it("is skipped, with no failure, where every issue it listed is at or before the cursor", async () => {
       const same = Array.from({ length: 25 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(5) }));
       const { read } = await world({ issues: same, settings: paged });
+      const before = Date.now();
       const out = await read({ since: iso(5) });
+      const after = Date.now();
+      expect(out.failures).toEqual([]);
       expect(out.listingCutAt).toBeUndefined();
-      expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
+      expect(out.listingSkipped).toEqual({ from: expect.any(String), to: expect.any(String), reached: iso(5) });
+      const { from, to } = out.listingSkipped!;
+      expect(Date.parse(to)).toBeGreaterThanOrEqual(before);
+      expect(Date.parse(to)).toBeLessThanOrEqual(after);
+      expect(Date.parse(from)).toBeLessThanOrEqual(Date.parse(iso(5)));
+      expect(out.updated).toHaveLength(20);
+    });
+
+    it("is skipped where the issues it listed are all before the cursor, and records none of them as updated", async () => {
+      const early = Array.from({ length: 30 }, (_, i) => issue(`PROJ-${i + 1}`, { updated: at(4, i) }));
+      const { read } = await world({ issues: early, settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(out.failures).toEqual([]);
+      expect(out.listingSkipped).toMatchObject({ reached: iso(4, 19) });
+      expect(out.updated).toEqual([]);
+    });
+
+    it("moves the cursor and skips nothing where the last issue it listed is after the cursor", async () => {
+      const { read } = await world({ issues: thirty(), settings: paged });
+      const out = await read({ since: iso(5) });
+      expect(Date.parse(out.listingCutAt!)).toBeGreaterThan(Date.parse(iso(5)));
+      expect(out.listingSkipped).toBeUndefined();
     });
 
     it("is a failure with no ref where the service did not list oldest first", async () => {
       const { read } = await world({ issues: thirty(), settings: { ...paged, unordered: true } });
       const out = await read();
       expect(out.listingCutAt).toBeUndefined();
+      expect(out.listingSkipped).toBeUndefined();
       expect(out.updated).toHaveLength(20);
       expect(out.failures).toEqual([{ ref: null, reason: "the updated listing runs to more than 10 pages of 100" }]);
     });
@@ -458,6 +483,7 @@ describe("the Jira adapter's updated listing", () => {
       const out = await read();
       expect(out.updated).toHaveLength(20);
       expect(out.listingCutAt).toBeUndefined();
+      expect(out.listingSkipped).toBeUndefined();
     });
   });
 
