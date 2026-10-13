@@ -66,7 +66,7 @@ npm ci --prefix scripts/ci && node scripts/ci/check-mermaid.mjs
 plugins/cache-keeper/harness/run-env.test.sh
 ```
 
-`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the drive harnesses' passed list and leak check, as [its harness README](../../plugins/cache-keeper/harness/README.md#files) describes them. It needs no install and no bb, and takes about two seconds.
+`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the drive harnesses' passed list and leak check, and refuses a credential or a way to one on that list, as [its harness README](../../plugins/cache-keeper/harness/README.md#files) describes them. It needs no install and no bb, and takes about two seconds.
 
 ## Turn on the commit hooks
 

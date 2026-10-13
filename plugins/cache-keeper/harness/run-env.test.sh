@@ -5,7 +5,11 @@
 # none; the planted variable is one whatever its value; the report names
 # variables and never prints a value; run_env keeps a run off the system
 # bashrc, the D-Bus session bus and XDG_RUNTIME_DIR, and a bash started with it
-# holds no leak; a shell sourcing run_env_script stops exporting what is not on
+# holds no leak; the passed list, run_env_set_by_run and every name run-env.sh
+# adds to run_env outside the passed list hold no refused name, a credential or
+# a way to one, nor any name containing TOKEN, SECRET, PASS, KEY, AUTH or
+# CREDENTIAL in any letter case unless the test excepts it with why, and the
+# failure names each such name and where it was found, never a value; a shell sourcing run_env_script stops exporting what is not on
 # the list; run_env_start_check fails on a leak and on a gh that finds a
 # token; run_env_default_branch names the caller's init.defaultBranch, else the
 # branch git itself gives a new repository, ignores the repository the caller
@@ -86,6 +90,175 @@ lacks_name() { [[ " ${run_env[*]} " != *" $1="* ]]; }
 check "run_env skips the system bashrc" holds NOSYSBASHRC=1
 check "run_env keeps a run off the D-Bus session bus" holds DBUS_SESSION_BUS_ADDRESS=disabled:
 check "run_env passes no XDG_RUNTIME_DIR" lacks_name XDG_RUNTIME_DIR
+
+# Refused names: what the passed list, run_env_set_by_run and run-env.sh's own
+# additions to run_env never hold, since a leak check cannot see a credential
+# its own lists let through. A run reaches a credential by its value or by a
+# variable that points at where one is kept. The test reads names alone and
+# prints no value.
+declare -A refused=(
+  [GH_TOKEN]="gh's token, which bb would hand every thread of the throwaway bb"
+  [GITHUB_TOKEN]="a GitHub token, which gh and git read"
+  [GITLAB_TOKEN]="a GitLab token, which glab and git read"
+  [HOME]="points gh at the caller's hosts.yml and git at the caller's configuration"
+  [XDG_RUNTIME_DIR]="points at the caller's D-Bus session bus and its keyring"
+  [XDG_CONFIG_HOME]="points gh, git and Claude Code at the caller's configuration"
+  [GH_CONFIG_DIR]="points gh at the caller's hosts.yml"
+  [SSH_AUTH_SOCK]="points at the caller's SSH agent"
+  [DBUS_SESSION_BUS_ADDRESS]="points at the caller's D-Bus session bus and its keyring; run_env holds it once, as DBUS_SESSION_BUS_ADDRESS=disabled:, since env -i keeps the last value it is given for a name"
+  [BB_SERVER_URL]="points a run's bb CLI at the caller's own bb, not the throwaway"
+  [BB_DATA_DIR]="points a run's bb at the caller's bb data, which holds their credentials"
+  [BB_HOST_DAEMON_PORT]="points a run's bb at the caller's host daemon, not the throwaway's"
+  [CLAUDE_CONFIG_DIR]="points Claude Code at the caller's login"
+  [GNUPGHOME]="points gpg at the caller's keys"
+  [KRB5CCNAME]="points at the caller's Kerberos ticket cache"
+  [KUBECONFIG]="points kubectl at the caller's clusters and their credentials"
+  [DOCKER_CONFIG]="points docker at the caller's registry logins"
+  [NPM_CONFIG_USERCONFIG]="points npm at the caller's .npmrc, which holds registry tokens"
+  [GIT_CONFIG_GLOBAL]="points git at the caller's configuration, credential helpers included"
+)
+# Case-insensitive substrings that mark a name as a credential's, since npm
+# reads its token from lowercase npm_config_* variables.
+patterns=(TOKEN SECRET PASS KEY AUTH CREDENTIAL)
+# Names that match a pattern and have to be there, each with why. An exception
+# exempts a name from the patterns only; a refused name fails whether or not
+# it is listed here.
+declare -A exempt=(
+  [GIT_AUTHOR_NAME]="the harness names the drives' commits' author, and AUTH matches inside AUTHOR"
+  [GIT_AUTHOR_EMAIL]="likewise"
+)
+
+# refusal_why <name>: prints why <name> is refused and returns 0, else returns 1.
+refusal_why() {
+  local name=$1 upper=${1^^} pattern
+  if [[ -n ${refused[$name]+x} ]]; then
+    echo "${refused[$name]}"
+    return 0
+  fi
+  [[ -n ${exempt[$name]+x} ]] && return 1
+  for pattern in "${patterns[@]}"; do
+    if [[ $upper == *"$pattern"* ]]; then
+      echo "its name contains $pattern, which marks a credential"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# refused_among <place> <name>...: one line per refused name, naming where it
+# was found and why it is refused.
+refused_among() {
+  local place=$1 name why
+  shift
+  for name in "$@"; do
+    if why=$(refusal_why "$name"); then echo "$place: $name is refused: $why"; fi
+  done
+}
+
+# refused_entries <place>: reads, a line each, the labels of entries added to
+# run_env outside the passed list: a name, the exact DBUS_SESSION_BUS_ADDRESS
+# entry, or ? for one whose name could not be read. Prints a line per refused
+# one, like refused_among, and for a second DBUS_SESSION_BUS_ADDRESS entry.
+refused_entries() {
+  local place=$1 label dbus=0
+  while IFS= read -r label; do
+    case $label in
+      '?') echo "$place: an entry whose name this test cannot read is refused" ;;
+      DBUS_SESSION_BUS_ADDRESS=disabled:)
+        dbus=$((dbus + 1))
+        ((dbus > 1)) && echo "$place: DBUS_SESSION_BUS_ADDRESS is refused: ${refused[DBUS_SESSION_BUS_ADDRESS]}"
+        ;;
+      *) refused_among "$place" "$label" ;;
+    esac
+  done
+}
+
+# run_env_words <file>: the words of every run_env=(...) and run_env+=(...)
+# statement in <file>, a line each, quotes kept: what it adds whether or not
+# the variable is set. Reads the text, so it sees an unset variable's addition;
+# whole-line comments are skipped, and a quote inside a $(...) is not parsed.
+run_env_words() {
+  awk '
+    { sub(/^[ \t]+/, ""); if ($0 !~ /^#/) text = text $0 "\n" }
+    END {
+      n = length(text); i = 1
+      while (match(substr(text, i), /(^|[^A-Za-z0-9_])run_env\+?=\(/)) {
+        i += RSTART + RLENGTH - 1
+        word = ""; quote = ""; sub_depth = 0
+        for (; i <= n; i++) {
+          c = substr(text, i, 1)
+          if (sub_depth > 0) {
+            word = word c
+            if (c == "(") sub_depth++
+            if (c == ")") sub_depth--
+          } else if (c == "$" && substr(text, i + 1, 1) == "(") {
+            word = word "$("; sub_depth = 1; i++
+          } else if (quote != "") {
+            word = word c
+            if (c == quote) quote = ""
+          } else if (c == "\"" || c == "\047") {
+            word = word c; quote = c
+          } else if (c ~ /[ \t\n]/) {
+            if (word != "") print word
+            word = ""
+          } else if (c == ")") {
+            if (word != "") print word
+            break
+          } else {
+            word = word c
+          }
+        }
+      }
+    }' "$1"
+}
+
+# static_entries: the labels, for refused_entries, of the entries run-env.sh
+# adds to run_env outside the passed list, read off its text. The passed list's
+# own append, and a copy of run_env itself, are no addition.
+static_entries() {
+  local word
+  while IFS= read -r word; do
+    word=${word#[\"\']}
+    case $word in
+      '$_name=${!_name}"' | '${run_env[@]}"') ;;
+      DBUS_SESSION_BUS_ADDRESS=disabled:*) [[ $word == 'DBUS_SESSION_BUS_ADDRESS=disabled:"' || $word == DBUS_SESSION_BUS_ADDRESS=disabled: ]] && echo DBUS_SESSION_BUS_ADDRESS=disabled: || echo DBUS_SESSION_BUS_ADDRESS ;;
+      [A-Za-z_]*) word=${word%%[!A-Za-z0-9_]*}; echo "$word" ;;
+      *) echo '?' ;;
+    esac
+  done < <(run_env_words "$here/run-env.sh")
+}
+
+# dynamic_entries: the same labels, read off the run_env that sourcing
+# run-env.sh builds with every refused name set, so an addition made some other
+# way than a literal, a name added to the passed list's loop, is found when it
+# is made for a set variable. Prints names, never the values it sets.
+dynamic_entries() {
+  local -a set=()
+  local name kv
+  for name in "${!refused[@]}"; do set+=("$name=set-for-the-test"); done
+  while IFS= read -r -d '' kv; do
+    name=${kv%%=*}
+    [[ " ${run_env_passed[*]} " == *" $name "* ]] && continue
+    if [[ $kv == DBUS_SESSION_BUS_ADDRESS=disabled: ]]; then echo "$kv"; else echo "$name"; fi
+  done < <(env -i PATH="$PATH" "${set[@]}" bash -c 'source "$1"; printf "%s\0" "${run_env[@]}"' _ "$here/run-env.sh")
+}
+
+# no_refused <case name> <findings>: PASS on no findings, else FAIL and each.
+no_refused() {
+  if [[ -z $2 ]]; then
+    echo "PASS $1"
+  else
+    echo "FAIL $1"
+    printf '  %s\n' "${2//$'\n'/$'\n  '}"
+    failed=1
+  fi
+}
+no_refused "the passed list names no credential or way to one" \
+  "$(refused_among "the passed list" "${run_env_passed[@]}")"
+no_refused "run_env_set_by_run names no credential or way to one" \
+  "$(refused_among "run_env_set_by_run" "${run_env_set_by_run[@]}")"
+no_refused "run-env.sh adds no credential or way to one to run_env outside the passed list" \
+  "$({ static_entries | refused_entries "run_env outside the passed list"; dynamic_entries | refused_entries "run_env outside the passed list"; } | sort -u)"
 
 # A bash started with run_env, reading the system bashrc where it honours
 # NOSYSBASHRC as NixOS's does, and the process it then starts.
