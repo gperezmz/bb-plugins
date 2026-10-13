@@ -46,6 +46,7 @@ export const ICONS = {
   age: "Clock",
   done: "Check",
   sending: "Loading",
+  unconfirmed: "CircleQuestion",
   unreadable: "AlertTriangle",
   clear: "X",
 

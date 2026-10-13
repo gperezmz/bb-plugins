@@ -548,6 +548,19 @@ describe("the queue (AC9–AC13)", () => {
     expect(within(queue()).getByRole("button", { name: "Build it #8" })).toBeTruthy();
   });
 
+  it("says beside the action when the last send could not be confirmed", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    const note = await within(queue()).findByText("could not confirm whether the last send went through");
+    expect(note.parentElement!.contains(within(queue()).getByRole("button", { name: "Build it #9" }))).toBe(true);
+  });
+
+  it("labels a link to the row's pull request by the pull request, not the row's Ref", async () => {
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: false }, link: { kind: "url", url: "https://github.test/org/dash/pull/12", text: "github.test/org/dash/pull/12" } })] }));
+    expect(within(queue()).getByRole("link", { name: "#12 ↗" }).getAttribute("href")).toBe("https://github.test/org/dash/pull/12");
+  });
+
   it("says not sent beside the title when bb refuses a Re-grant", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#4", waitsFor: "grant", offer: { kind: "grant", label: "Grant…", regrant: true } })] }));
@@ -601,6 +614,18 @@ describe("on a phone (AC15)", () => {
     const row = queueRows()[0]!;
     expect(row.children[0]!.textContent).toContain("#7");
     expect(row.children[1]!.textContent).toContain("org/dash");
-    expect(within(row).getByRole("button", { name: "Answer… #7" }).className).toContain("min-h-11");
+    // The action sits beside the title on the first line, so the second keeps the fleet, the link and the age.
+    expect(within(row.children[0] as HTMLElement).getByRole("button", { name: "Answer… #7" }).className).toContain("min-h-11");
+  });
+
+  it("keeps a row whose last send could not be confirmed to two lines, the note an icon with its words on the second", async () => {
+    fake.api.sendAction.mockRejectedValue(new Error("the connection dropped"));
+    await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#9", waitsFor: "ready", offer: { kind: "build", label: "Build it", regrant: false } })] }));
+    fireEvent.click(within(queue()).getByRole("button", { name: "Build it #9" }));
+    const note = await within(queue()).findByLabelText("could not confirm whether the last send went through");
+    const row = queueRows()[0]!;
+    expect(row.children).toHaveLength(2);
+    expect(row.children[1]!.contains(note)).toBe(true);
+    expect(await hoverText(note)).toBe("could not confirm whether the last send went through");
   });
 });

@@ -85,7 +85,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, refe
               <QueueRow key={row.id} row={row} now={now} fleet={fleets.get(row.fleet)} showFleet={showFleet} compact={compact} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
-              <UnreadableRow key={`${row.managerThreadId}:${row.line}`} row={row} />
+              <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} />
             ))}
           </ul>
         )}
@@ -165,9 +165,16 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
         <span className="flex min-w-0 items-center gap-x-3 pl-6">
           {showFleet ? <FleetName fleet={fleet} name={row.fleet} grow /> : null}
           <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="min-w-0 truncate text-xs" />
+          {/* A phone keeps the row to two lines, so the unconfirmed note is an icon here, its words on hover and to assistive technology. */}
+          {action.kind === "offer" && action.unconfirmed ? (
+            <Tip text={UNCONFIRMED}>
+              <span tabIndex={0} aria-label={UNCONFIRMED} className={cn(FOCUS, "shrink-0 text-muted-foreground")}>
+                <Glyph name={ICONS.unconfirmed} />
+              </span>
+            </Tip>
+          ) : null}
           <span className="ml-auto shrink-0">{ageCell}</span>
         </span>
-        {action.kind === "offer" && action.unconfirmed ? <span className="truncate pl-6 text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
         {composer}
       </li>
     );
