@@ -174,9 +174,10 @@ function QueueRow({ row, now, fleet, shortName, showFleet, compact, state }: { r
           <span className="line-clamp-2 min-w-0 flex-1">{itemTitle(row.ref, row.what)}</span>
         </span>
         {/* The details wrap as two pieces: a short name too wide to share the line takes it whole, cut only where it
-            is wider than the line, and the link and the age, which never part, go under it. Its margin keeps the
-            link's tap area, which reaches 14 px past a line of text, clear of the title and the buttons. */}
-        <span className="my-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-6">
+            is wider than the row, and the link and the age, which never part, go under it. It takes the row's whole
+            width, unindented, so a long short name has all of it. Its margin keeps the link's tap area, which reaches
+            14 px past a line of text, clear of the title and the buttons. */}
+        <span className="my-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           {showFleet ? <FleetName fleet={fleet} name={row.fleet} short={shortName} className="max-w-full shrink-0" /> : null}
           <span className="flex shrink-0 grow items-center gap-3">
             <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} arrowOnly className={cn("text-xs", TAP_AREA)} />
