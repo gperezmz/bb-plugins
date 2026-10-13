@@ -1,8 +1,12 @@
 import { UrlLink } from "@get-bb/plugin-sdk/app";
 import type { ConnectResult, NotReadableView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { expiryText } from "../format";
 import { LINK_CLASS } from "../ItemLink";
+import { Glyph } from "../look/Glyph";
+import { ICONS } from "../look/icons";
+import { TONE_BORDER } from "../look/tones";
 import { CanWrite } from "./Field";
 import { actionLabel, halfText, resultActions, type Checked, type ResultAction } from "./model";
 
@@ -44,14 +48,19 @@ export function ResultStep({
 function Body({ result, checked }: { result: ConnectResult; checked: Checked | null }) {
   switch (result.outcome) {
     case "confirm":
+      return <p role="status">{result.text}</p>;
     case "refused":
     case "unreachable":
     case "invalid":
-      return <p role={result.outcome === "confirm" ? "status" : "alert"}>{result.text}</p>;
+      return (
+        <p role="alert" className="text-destructive-text">
+          {result.text}
+        </p>
+      );
     case "wrong-login":
       return (
         <div role="alert" className="flex flex-col gap-2">
-          <p>{result.text}</p>
+          <p className="text-destructive-text">{result.text}</p>
           {result.command !== null ? <code className="rounded bg-secondary px-2 py-1 text-xs">{result.command}</code> : null}
         </div>
       );
@@ -60,10 +69,18 @@ function Body({ result, checked }: { result: ConnectResult; checked: Checked | n
       const notReadable = checked?.notReadable ?? result.notReadable;
       return (
         <div className="flex flex-col gap-2">
-          <p role="status">
-            Saved: {result.account.label}, {result.login}, {expiryText(result.expiresAt)}.
-            {result.canWrite ? <CanWrite className="ml-2" /> : null}
-          </p>
+          <div role="status" className={cn("flex flex-col gap-1 rounded-md border bg-success/10 p-3", TONE_BORDER.green)}>
+            <p className="flex items-center gap-1.5 font-medium">
+              <Glyph name={ICONS.saved} tone="green" className="size-4" />
+              Saved: {result.account.label}
+            </p>
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-5.5 text-xs text-muted-foreground">
+              <span>
+                {result.login}, {expiryText(result.expiresAt)}
+              </span>
+              {result.canWrite ? <CanWrite /> : null}
+            </p>
+          </div>
           <Reread checked={{ half, notReadable }} />
           {result.revoke !== null ? (
             <p className="text-xs text-muted-foreground">
@@ -79,12 +96,20 @@ function Body({ result, checked }: { result: ConnectResult; checked: Checked | n
   }
 }
 
-/** How the half stands, and the repositories still unreadable; after Check again, as the fleet was just read. */
+/**
+ * How the half stands, with a green check once it reads or in red with what it still needs, and the repositories
+ * still unreadable; after Check again, as the fleet was just read.
+ */
 function Reread({ checked }: { checked: { half: Checked["half"] | null; notReadable: readonly NotReadableView[] } }) {
   const { half, notReadable } = checked;
   return (
     <>
-      {half !== null ? <p className={half.needs !== null ? "text-destructive" : undefined}>{halfText(half, notReadable.length > 0)}</p> : null}
+      {half !== null ? (
+        <p className={cn("flex items-center gap-1.5", half.needs !== null && "text-destructive-text")}>
+          {halfText(half, notReadable.length > 0)}
+          {half.needs === null ? <Glyph name={ICONS.done} tone="green" label="reads" /> : null}
+        </p>
+      ) : null}
       {notReadable.length > 0 ? (
         <ul aria-label="Not readable" className="flex flex-col gap-2">
           {notReadable.map((entry) => (
@@ -98,9 +123,12 @@ function Reread({ checked }: { checked: { half: Checked["half"] | null; notReada
 
 function NotReadable({ entry }: { entry: NotReadableView }) {
   return (
-    <li className="flex flex-col gap-0.5 rounded-md border border-destructive/50 p-2 text-sm">
-      <span className="font-medium">{entry.fleet}</span>
-      <span>{entry.text}</span>
+    <li className={cn("flex items-start gap-2 rounded-md border p-2.5 text-sm", TONE_BORDER.red)}>
+      <Glyph name={ICONS.noFix} tone="red" className="mt-0.5" />
+      <span className="flex flex-col gap-0.5">
+        <span className="font-medium">{entry.fleet}</span>
+        <span>{entry.text}</span>
+      </span>
     </li>
   );
 }

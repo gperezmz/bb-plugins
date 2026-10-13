@@ -146,6 +146,7 @@ export function credentialSetting(over: Partial<CredentialSettingView> = {}): Cr
     expiresAt: null,
     expiresInDays: null,
     refused: false,
+    sharesRateLimit: false,
     fleets: [],
     renew: { kind: "create", url: "https://github.com/settings/personal-access-tokens/new?target_name=acme", owner: "acme" },
     ...over,

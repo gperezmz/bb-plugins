@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountSetting, credentialSetting } from "@/testing/fixtures";
-import { addTokenRequest, defaultText, expiryText, expiryWarning, intervalProblem, parseSeconds, renewOffer, secondsText, usedByText } from "./model";
+import { addTokenRequest, defaultText, expiryText, expiryShown, intervalProblem, parseSeconds, renewOffer, secondsText, usedByText } from "./model";
 
 describe("an account", () => {
   it("says the places it is the default for, or nothing", () => {
@@ -16,10 +16,14 @@ describe("a credential", () => {
     expect(expiryText({ refused: true, expiresAt: "2026-10-18T12:00:00Z" })).toBe("refused by the service");
   });
 
-  it("warns only within the window the cards warn in", () => {
-    expect(expiryWarning({ expiresInDays: null })).toBeNull();
-    expect(expiryWarning({ expiresInDays: 6 })).toEqual({ text: "token expires in 6 days", tone: "warning" });
-    expect(expiryWarning({ expiresInDays: -1 })).toEqual({ text: "token expired 1 day ago", tone: "destructive" });
+  it("colours its expiry by urgency: red where refused, amber within the window the cards warn in, else grey (AC7)", () => {
+    const at = "2026-10-18T12:00:00Z";
+    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: null })).toEqual({ text: "expires 18 Oct", tone: "grey", icon: null });
+    expect(expiryShown({ refused: false, expiresAt: null, expiresInDays: null })).toEqual({ text: "no expiry reported", tone: "grey", icon: null });
+    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "expires in 3 days", tone: "amber", icon: "Clock" });
+    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 1 })).toEqual({ text: "expires in 1 day", tone: "amber", icon: "Clock" });
+    expect(expiryShown({ refused: false, expiresAt: at, expiresInDays: 0 })).toEqual({ text: "expires today", tone: "amber", icon: "Clock" });
+    expect(expiryShown({ refused: true, expiresAt: at, expiresInDays: 3 })).toEqual({ text: "refused by the service", tone: "red", icon: "CircleX" });
   });
 
   it("names the fleets that read with it", () => {

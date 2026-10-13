@@ -1,8 +1,9 @@
 // What the settings section says and asks, decided from the accounts view and the interval typed.
 import type { AccountSettingView, CredentialSettingView } from "@/src/fleet/application/views";
-import { daysWarning } from "@/shared/card-model";
 import type { ConnectRequest } from "@/shared/connect/requests";
-import { expiryText as expiresText } from "@/shared/format";
+import { expiryText as expiresText, plural } from "@/shared/format";
+import { ICONS } from "@/shared/look/icons";
+import type { Tone } from "@/shared/look/tones";
 
 /** The shortest poll interval the server accepts. */
 export const MIN_INTERVAL_SECONDS = 30;
@@ -18,9 +19,21 @@ export function expiryText(credential: Pick<CredentialSettingView, "refused" | "
   return expiresText(credential.expiresAt);
 }
 
-/** The warning a credential expiring within the window carries; null otherwise. */
-export function expiryWarning(credential: Pick<CredentialSettingView, "expiresInDays">): { text: string; tone: "warning" | "destructive" } | null {
-  return credential.expiresInDays === null ? null : daysWarning(credential.expiresInDays);
+/** A credential's expiry as its line shows it, coloured by urgency, with the icon that leads it where it warns. */
+export interface ExpiryShown {
+  readonly text: string;
+  readonly tone: Extract<Tone, "grey" | "amber" | "red">;
+  readonly icon: string | null;
+}
+
+/**
+ * Red with a cross for a credential the service refuses, amber with a clock within the window the cards warn in,
+ * else plain grey: the date it expires, or that none was reported.
+ */
+export function expiryShown(credential: Pick<CredentialSettingView, "refused" | "expiresAt" | "expiresInDays">): ExpiryShown {
+  if (credential.refused) return { text: expiryText(credential), tone: "red", icon: ICONS.refused };
+  if (credential.expiresInDays !== null) return { text: credential.expiresInDays <= 0 ? "expires today" : `expires in ${plural(credential.expiresInDays, "day")}`, tone: "amber", icon: ICONS.expiring };
+  return { text: expiryText(credential), tone: "grey", icon: null };
 }
 
 /** The fleets that read with a credential, or that none does. */

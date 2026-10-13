@@ -163,23 +163,30 @@ fleet with `bb unattendish fleet register`, from its own thread.
   (`other-org/x needs a GitHub account that can read other-org`) as its
   description and `Connect…`, which opens the popup.
 - The popup, a `dialog` titled `Connect <repo>`, `Add a token`,
-  `Renew a token` or `Add account`. Connect asks
+  `Renew a token` or `Add account`, after the service's logo (`img "GitHub"`),
+  with `list "Steps"` (`Account › Token › Done`, the current step
+  `aria-current="step"`) under it. A Renew or Add a token draws the account
+  step for a moment, `Working…`, before its token step. Connect asks
   `Which account reads <host>/<owner>?` (radios `<account> default` and
   `a new login`) and `Continue`; Add a token asks `Owner`; Add account asks
-  `Service`, `Host` and `Owner`. The token step has `Create token` (opens the
-  service's token page, pre-filled read-only), radios `Paste a token` and
-  `Use your gh login`, `Token`, `Verify and save` and
-  `Choose another account`. The result: `Saved: GitHub · operator, operator, no expiry reported.`
-  and `<repo> is read as GitHub · operator.` with `Done`; a renew adds
+  `Service` (radio tiles `GitHub`, `GitLab`, `Linear`, `Jira`), `Host` and
+  `Owner`. The token step has `region "Create a token"` with `Create token`
+  (opens the service's token page, pre-filled read-only) and
+  `region "Give it to the plugin"` with radios `Paste a token` and
+  `Use your gh login`, `Token`, `Verify and save`, and `Back` where the popup
+  chose the account for a fleet. The result: `status` `Saved: GitHub · operator`
+  with `operator, no expiry reported`, and `<repo> is read as GitHub · operator.`
+  with `Done`; a renew adds
   `The old token still works at GitHub until it expires or is revoked there.`
 - Settings → Installed plugins → Unattendish, at
   `/settings/plugins/unattendish-sdlc`: `region "Accounts"`, a `listitem`
-  named for each account (`default for github.example` or `Make default`;
-  each token with its owner, kind, expiry, the fleets it is read by,
-  `token expires in 3 days` and `Renew` near its end, and
-  `button "Remove the token for <owner> of <account>"`;
-  `button "Add token for another owner to <account>"`;
-  `button "Remove <account>"`, confirmed with
+  named for each account (a `default` pill labelled `default for github.example`,
+  or `Make default`; each token with its owner, kind, the fleets it is read by,
+  then `expires in 3 days` and `Renew…` near its end, and
+  `button "Remove the token for <owner> of <account>"` (a 🗑);
+  `button "More for <account>"`, a ⋯ menu holding
+  `menuitem "Add token for another owner to <account>"` and
+  `menuitem "Remove <account>"`, confirmed with
   `button "Confirm removing <account>"` or `Keep`), `button "Add account"`;
   and `region "Poll interval"`, a
   `textbox "Poll interval of <repo>, in seconds"` per fleet with
@@ -296,7 +303,7 @@ and every repository a fleet registers is in the fake's `repos`.
   answers `confirm`, then `saved` with `"confirm": true`; a token `logins`
   does not hold is `refused`, `GitHub rejected the token. Nothing was stored.`
   A `tokens` entry with an `expiration` 3 days out makes that token read
-  `token expires in 3 days` with `Renew`.
+  `expires in 3 days` with `Renew…` in Settings.
 - **Settings** (`unattendish.settings/page`): `unattendish-sdlc settings`
   reads Accounts and Poll interval; `--interval <repo> 29` reads Set
   disabled and `The poll interval must be at least 30 seconds.`,

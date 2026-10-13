@@ -12,7 +12,7 @@ import { IntervalRow } from "./IntervalRow";
 import { ADD_ACCOUNT } from "./model";
 import { useAccountActions } from "./use-account-actions";
 
-/** The plugin's settings section: the accounts with their credentials and assignments, and each fleet's poll interval. */
+/** The plugin's settings section: the accounts as cards with their tokens and assignments, and a table of each fleet's poll interval. */
 export function AccountsSettings() {
   const api = useDashboardApi();
   const live = useLive(() => api.settings(), [api]);
@@ -51,13 +51,13 @@ export function AccountsSettings() {
                 Accounts
               </h3>
               {settings.accounts.length === 0 ? <p className="text-muted-foreground">No account is connected.</p> : null}
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-3">
                 {settings.accounts.map((account) => (
                   <AccountItem key={account.id} account={account} actions={actions} />
                 ))}
               </ul>
               {actions.refusal !== null ? (
-                <p role="alert" className="text-destructive">
+                <p role="alert" className="text-destructive-text">
                   {actions.refusal}
                 </p>
               ) : null}
@@ -82,11 +82,26 @@ export function AccountsSettings() {
               {settings.fleets.length === 0 ? (
                 <p className="text-muted-foreground">No fleet is registered.</p>
               ) : (
-                <ul className="flex flex-col gap-3">
-                  {settings.fleets.map((fleet) => (
-                    <IntervalRow key={`${fleet.repo}:${fleet.intervalMs}:${fleet.isDefault}`} repo={fleet.repo} intervalMs={fleet.intervalMs} isDefault={fleet.isDefault} onSet={(seconds) => setInterval(fleet.repo, seconds)} />
-                  ))}
-                </ul>
+                <table aria-labelledby="settings-intervals" className="w-full border-collapse text-sm">
+                  <thead className="text-left text-xs text-muted-foreground">
+                    <tr className="border-b border-border">
+                      <th scope="col" className="py-1.5 pr-3 font-medium">
+                        Fleet
+                      </th>
+                      <th scope="col" className="py-1.5 pr-3 font-medium">
+                        Interval
+                      </th>
+                      <th scope="col" className="py-1.5 font-medium">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {settings.fleets.map((fleet) => (
+                      <IntervalRow key={`${fleet.repo}:${fleet.intervalMs}:${fleet.isDefault}`} repo={fleet.repo} forge={fleet.forge} intervalMs={fleet.intervalMs} isDefault={fleet.isDefault} onSet={(seconds) => setInterval(fleet.repo, seconds)} />
+                    ))}
+                  </tbody>
+                </table>
               )}
             </section>
           </>

@@ -13,20 +13,20 @@ The plugin has no `bb plugin config` key. It keeps its accounts, their credentia
 
 | Part | What |
 |---|---|
-| **Accounts** | One entry for each [account](#accounts); see below. With none, it says `No account is connected.` |
+| **Accounts** | One card for each [account](#accounts); see below. With none, it says `No account is connected.` |
 | **Add account** | Opens the Connect popup without a fleet. It asks for the service and its host or Jira site, and for GitHub the owner the token is for, and lists that owner's registered fleets to tick on the token. It then asks for a credential and verifies it as Connect does. The first account on a host or site becomes its default |
-| **Poll interval** | One field in seconds for each registered fleet, with **Set** and a **Default** button back to the default. Under 30 seconds is refused |
+| **Poll interval** | A table with a row for each registered fleet: its forge's logo (GitHub's; GitLab's name) and the fleet, a field in seconds, marked `seconds (default)` while it is the default, **Set**, and **Default** back to the default. Under 30 seconds is refused |
 
 ## Accounts
 
-An account is one login on one host or service: `GitHub · yuser` and `GitHub · buser` on github.com are two accounts, and so is `GitLab · yuser` on gitlab.example.com, a Linear key and its user, or a Jira Cloud account on a site. Each entry shows:
+An account is one login on one host or service: `GitHub · yuser` and `GitHub · buser` on github.com are two accounts, and so is `GitLab · yuser` on gitlab.example.com, a Linear key and its user, or a Jira Cloud account on a site. Each is a card:
 
-| Line | What |
+| Part | What |
 |---|---|
-| Name | The account as `GitHub · yuser`, its host (for Linear `linear.app`, for Jira its site), **can write** where the account uses a `gh` or `glab` login, `default for <host>` where it is that place's default, and **Make default** on the other accounts of a place |
-| Credentials | One for each token or login the account holds: what it reaches (an owner on GitHub, the host on GitLab, every team the key reaches on Linear, the site on Jira), its kind, **can write** where it can, its expiry or `no expiry reported` or `refused by the service`, and `read by <fleets>` or `no fleet reads with it`. Each has **Remove**, and **Renew** where one is given |
-| Assignments | The owners, groups, Linear teams and Jira projects assigned to the account, each with **Remove**, which returns them to the default |
-| Actions | **Add token for another owner**, on a GitHub account that uses tokens, which opens the popup at step 2; and **Remove**, which asks first |
+| Header | The service's logo (GitHub's; GitLab, Linear and Jira are named in the label, since their trademark rules leave no logo to show), the account as `GitHub · yuser`, its host (for Linear `linear.app`, for Jira its site), **can write** where the account uses a `gh` or `glab` login, a `default` pill where it is that place's default (its hover text says `default for <host>`), and **Make default** on the other accounts of a place |
+| ⋯ menu | **Add token for another owner**, on a GitHub account that uses tokens, which opens the popup at its token step; and **Remove account**, which asks first |
+| Credentials | A line for each token or login the account holds, led by a key: what it reaches (an owner on GitHub, the host on GitLab, every team the key reaches on Linear, the site on Jira), its kind, **can write** where it can, `read by <fleets>` or `no fleet reads with it`, and for a `gh` or `glab` login `shares the agents' rate limit` in amber. Its [expiry](#expiry-and-refused-credentials) is at the end, with **Renew…** where one is given and a 🗑 that removes it, asking first |
+| Reads | The owners, groups, Linear teams and Jira projects assigned to the account, a chip each, whose ✕ returns it to the default |
 
 An account's login comes from its first token and is shown for you to confirm; for a `gh` or `glab` account it is picked from that tool's logins. Its service and host or site, and its API address, are fixed once it is added.
 
@@ -45,9 +45,17 @@ The plugin only reads. **can write** says the credential could write, wherever i
 
 ### Expiry and refused credentials
 
-A credential whose token expires within 7 days, or has expired, shows `token expires in N days`, `token expires today` or `token expired N days ago` in Settings and on the cards of the fleets it serves, with **Renew**. `expiresAt` is what the service reports: a GitHub token that expires and a GitLab personal access token with an expiry date; none for a Linear or Jira key. A credential the service now refuses shows `refused by the service`, and its fleets show **Connect…**.
+A credential's line in Settings shows its expiry by urgency:
 
-| Credential | **Renew** |
+| Expiry | Shows | Beside it |
+|---|---|---|
+| More than 7 days away, or none reported | `expires 18 Oct` or `no expiry reported`, in grey | Nothing |
+| Within 7 days, or passed | `expires in N days` or `expires today`, in amber with a clock | **Renew…** |
+| Refused by the service | `refused by the service`, in red with a ✕ | **Renew…** |
+
+On the cards of the fleets it serves, a credential that expires within 7 days, or has expired, shows `token expires in N days`, `token expires today` or `token expired N days ago`, with **Renew**. `expiresAt` is what the service reports: a GitHub token that expires and a GitLab personal access token with an expiry date; none for a Linear or Jira key. A credential the service now refuses shows `refused by the service`, and its fleets show **Connect…**.
+
+| Credential | **Renew…** |
 |---|---|
 | GitHub or GitLab token | Opens the same pre-filled page as **Create token**, with the same repositories to tick. A token saved through it replaces the old one |
 | Linear or Jira key | Opens the field to paste a new one, checked like any other |
@@ -57,11 +65,11 @@ A credential whose token expires within 7 days, or has expired, shows `token exp
 
 | Remove | Does |
 |---|---|
-| A credential | Deletes its token from the plugin's database. Its fleets then need an account |
-| An account | Deletes all its tokens, and its default if no fleet reads as it. It is refused while a registered fleet reads as the account, and the refusal names those fleets |
-| An assignment | Returns the owner, group, team or project to the host's default. The default itself is changed with **Make default** on another account |
+| A credential, with its 🗑 | Deletes its token from the plugin's database. Its fleets then need an account |
+| An account, with **Remove account** in its ⋯ menu | Deletes all its tokens, and its default if no fleet reads as it. It is refused while a registered fleet reads as the account, and the refusal names those fleets |
+| An assignment, with the ✕ on its chip | Returns the owner, group, team or project to the host's default. The default itself is changed with **Make default** on another account |
 
-After a **Remove** or a **Renew**, Settings says the old token still works at the service until it expires or is revoked there, and links to the service's token page. Removing a `gh` or `glab` credential says the login stays signed in on the machine, and that `gh auth logout` (or `glab auth logout`) signs it out.
+After a removal or a **Renew…**, Settings says the old token still works at the service until it expires or is revoked there, and links to the service's token page. Removing a `gh` or `glab` credential says the login stays signed in on the machine, and that `gh auth logout` (or `glab auth logout`) signs it out.
 
 ## Assignments
 

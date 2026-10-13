@@ -1,9 +1,10 @@
 import { useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Choice, Field } from "./Field";
-import { placeLabel, SERVICE_NAMES, SERVICES, setupFields, setupProblem, withService, type Setup } from "./model";
+import { Field } from "./Field";
+import { placeLabel, SERVICES, setupFields, setupProblem, withService, type Setup } from "./model";
 import type { ConnectRequest } from "./requests";
+import { ServiceTiles } from "./ServiceTiles";
 
 /** Add account's first question: the service, its host or Jira site, and for GitHub the owner the token is for. */
 export function SetupStep({ request, setup, busy, problem, onChange, onContinue }: { request: ConnectRequest; setup: Setup; busy: boolean; problem: string | null; onChange(setup: Setup): void; onContinue(): void }) {
@@ -18,14 +19,7 @@ export function SetupStep({ request, setup, busy, problem, onChange, onContinue 
         if (missing === null && !busy) onContinue();
       }}
     >
-      {fields.service ? (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-1 text-xs font-medium">Service</legend>
-          {SERVICES.map((service) => (
-            <Choice key={service} name="service" value={service} label={SERVICE_NAMES[service]} checked={setup.service === service} onChange={() => onChange(withService(setup, service))} />
-          ))}
-        </fieldset>
-      ) : null}
+      {fields.service ? <ServiceTiles legend="Service" name="service" services={SERVICES} chosen={setup.service === "" ? null : setup.service} onChoose={(service) => onChange(withService(setup, service))} /> : null}
       {fields.place ? (
         <Field id={ids.place} label={placeLabel(setup.service)} hint={setup.service === "jira" ? "A Jira Cloud site, such as acme.atlassian.net." : undefined}>
           <Input id={ids.place} value={setup.place} onChange={(event) => onChange({ ...setup, place: event.target.value })} />
@@ -37,7 +31,7 @@ export function SetupStep({ request, setup, busy, problem, onChange, onContinue 
         </Field>
       ) : null}
       {problem !== null ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {problem}
         </p>
       ) : null}

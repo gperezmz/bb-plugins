@@ -55,6 +55,20 @@ export const ICONS = {
   reload: "RotateCcw",
   nothingWaits: "CircleCheck",
 
+  // Accounts, tokens and the Connect popup.
+  token: own("key"),
+  newLogin: "Plus",
+  loginProblem: "CircleX",
+  openPage: "ExternalLink",
+  sentOnlyTo: "Lock",
+  verify: "SecurityCheck",
+  back: "ArrowLeft",
+  saved: "CircleCheck",
+  expiring: "Clock",
+  refused: "CircleX",
+  removeToken: "Trash2",
+  more: "MoreHorizontal",
+
   // The Fleet tab.
   merged: "GitMerge",
   folded: "ChevronRight",

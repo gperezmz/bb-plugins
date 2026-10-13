@@ -85,6 +85,16 @@ export const assessWatching = async (deps: WatchingDeps, registration: Registrat
 /** The service behind the fleet's forge, GitHub where no account reads it. */
 export const forgeServiceOf = (watching: Pick<Watching, "forge">): "github" | "gitlab" => (watching.forge?.source.role === "forge" ? watching.forge.source.service : "github");
 
+/**
+ * The service behind a fleet's forge without reading the fleet, for a page that only names it: the service of the
+ * credential its forge reads with, else what its host is known as, else GitHub.
+ */
+export const forgeServiceFor = (credentials: Pick<Credentials, "forForge">, registration: Pick<Registration, "repo">): "github" | "gitlab" => {
+  const lookup = credentials.forForge(registration.repo);
+  const service = lookup.found ? lookup.credential.service : null;
+  return service === "github" || service === "gitlab" ? service : (defaultServiceOfHost(registration.repo.host) ?? "github");
+};
+
 /** Whether an outage is the credential's to fix through Connect: the service refuses it, or it cannot see what the half reads. */
 export const fixedByConnect = (why: RefusedWhy): boolean => why === "refused" || why === "not-found" || why === "forbidden";
 

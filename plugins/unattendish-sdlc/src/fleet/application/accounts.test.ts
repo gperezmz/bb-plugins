@@ -218,6 +218,16 @@ describe("Connect (AC2)", () => {
     expect((await api(w).settings()).accounts[0]!.credentials[0]).toMatchObject({ refused: true });
   });
 
+  it("says a gh login's credential shares the agents' rate limit, and a token's does not", async () => {
+    const w = accountsWorld();
+    w.accounts.addAccount({ id: "b", service: "github", place: "github.com", login: "buser", name: "buser", via: "gh", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "bc", accountId: "b", kind: "gh", owner: null, expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, null);
+    w.accounts.addAccount({ id: "y", service: "github", place: "github.com", login: "yuser", name: "yuser", via: "token", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });
+    w.accounts.saveCredential({ id: "yc", accountId: "y", kind: "fine-grained", owner: "acme", expiresAt: null, addedAt: "2026-10-12T09:00:00.000Z" }, "tok-y");
+    const shares = Object.fromEntries((await api(w).settings()).accounts.flatMap((account) => account.credentials.map((credential) => [credential.id, credential.sharesRateLimit])));
+    expect(shares).toEqual({ bc: true, yc: false });
+  });
+
   it("tells a gh account signed in as another user how to sign in again, when Connect goes straight to it", async () => {
     const w = accountsWorld();
     w.accounts.addAccount({ id: "b", service: "github", place: "github.com", login: "buser", name: "buser", via: "gh", apiUrl: null, addedAt: "2026-10-12T09:00:00.000Z" });

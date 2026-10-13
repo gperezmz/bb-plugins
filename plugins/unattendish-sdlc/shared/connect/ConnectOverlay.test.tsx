@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fake, resetFakeApi } from "@/testing/api";
 import { accountOption, connectView, half, tokenPage } from "@/testing/fixtures";
+import { drawnIcons, expectIconsResolve } from "@/testing/icons";
 import { sdk } from "@/testing/sdk";
 import { ConnectOverlay } from "./ConnectOverlay";
 import { closeConnect, onConnectSaved, openConnect, type ConnectRequest } from "./requests";
@@ -73,7 +74,7 @@ describe("step 1: which account", () => {
     fake.api.connect.mockResolvedValue(savedResult({ account: { id: "acc_buser", label: "GitHub · buser" }, login: "buser" }));
     await open(forge);
     click("Continue");
-    await screen.findByText(/Saved: GitHub · buser, buser/);
+    await screen.findByText("Saved: GitHub · buser");
     expect(fake.api.connect).toHaveBeenCalledWith({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_buser" }, secret: { kind: "stored" } });
     expect(fake.api.tokenPage).not.toHaveBeenCalled();
   });
@@ -126,7 +127,7 @@ describe("step 2: the credential", () => {
     expect(within(screen.getByRole("list", { name: "Repositories to tick" })).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["acme/web", "acme/api"]);
     expect(screen.getByText(/signed in as buser/)).toBeTruthy();
     expect(screen.getByText("GitHub cannot issue a fine-grained token for zorg.")).toBeTruthy();
-    expect(screen.getByText("The token will be sent to api.github.com, and to nowhere else.")).toBeTruthy();
+    expect(screen.getByText("The token will be sent to api.github.com, and nowhere else.")).toBeTruthy();
     expect(fake.api.tokenPage).toHaveBeenCalledWith({ fleet: "github.com/acme/web", role: "forge", account: { id: "acc_buser" } });
   });
 
@@ -146,7 +147,7 @@ describe("step 2: the credential", () => {
     click(await screen.findByRole("button", { name: "Continue" }).then(() => "Continue"));
     await screen.findByLabelText("API key");
     expect(screen.queryByRole("button", { name: "Create token" })).toBeNull();
-    expect(screen.getByText("The key will be sent to api.linear.app, and to nowhere else.")).toBeTruthy();
+    expect(screen.getByText("The key will be sent to api.linear.app, and nowhere else.")).toBeTruthy();
   });
 
   it("sends the token on Verify and save, and clears the field", async () => {
@@ -209,7 +210,7 @@ describe("step 3: what was found", () => {
     expect(document.body.innerHTML).not.toContain("fake-secret-token");
     fake.api.connect.mockResolvedValueOnce(savedResult());
     click("Add as GitHub · yuser");
-    await screen.findByText(/Saved: GitHub · yuser, yuser/);
+    await screen.findByText("Saved: GitHub · yuser");
     expect(fake.api.connect).toHaveBeenLastCalledWith({
       fleet: "github.com/acme/web",
       role: "forge",
@@ -259,7 +260,9 @@ describe("step 3: what was found", () => {
   it("shows a saved credential: whose it is, its expiry, can write, and the half as read now", async () => {
     fake.api.connect.mockResolvedValue(savedResult({ canWrite: true, expiresAt: null }));
     await verify();
-    const status = await screen.findByText(/Saved: GitHub · yuser, yuser, no expiry reported/);
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("Saved: GitHub · yuser");
+    expect(status.textContent).toContain("yuser, no expiry reported");
     expect(status.textContent).toContain("can write");
     expect(screen.getByText("acme/web is read as GitHub · yuser.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
@@ -294,7 +297,7 @@ describe("step 3: what was found", () => {
   it("offers another account for a repository another kind of credential cannot see", async () => {
     fake.api.connect.mockResolvedValue(savedResult({ notReadable: [{ fleet: "acme/web", text: "yuser cannot see acme/web", fineGrained: false }] }));
     await verify();
-    click("Choose another account");
+    fireEvent.click(await screen.findByRole("button", { name: "Choose another account" }));
     expect(await screen.findByRole("radio", { name: /a new login/ })).toBeTruthy();
   });
 
@@ -356,6 +359,7 @@ describe("Add account", () => {
     fireEvent.change(field("Owner"), { target: { value: "zorg" } });
     click("Continue");
     await screen.findByRole("button", { name: "Verify and save" });
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     expect(fake.api.tokenPage).toHaveBeenCalledWith({ service: "github", place: "github.com", owner: "zorg", account: { id: "acc_yuser" } });
   });
 });
@@ -366,6 +370,7 @@ describe("Renew", () => {
     fake.api.connect.mockResolvedValue(savedResult());
     await open({ target: { service: "github", place: "github.com", owner: "acme" }, account: "acc_yuser", replaces: "cred_acme" });
     await screen.findByRole("button", { name: "Verify and save" });
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.change(field("Token"), { target: { value: "new-secret" } });
     click("Verify and save");
     await screen.findByText(/Saved/);
@@ -377,7 +382,6 @@ describe("Renew", () => {
       secret: { kind: "token", token: "new-secret" },
       replaces: "cred_acme",
     });
-    expect(screen.queryByRole("button", { name: "Choose another account" })).toBeNull();
   });
 
   it("sends the fleet and role of the card it was opened from, with the account and the credential it replaces", async () => {
@@ -385,6 +389,8 @@ describe("Renew", () => {
     fake.api.connect.mockResolvedValue(savedResult());
     await open({ target: { fleet: "github.com/acme/web", role: "forge" }, account: "acc_yuser", replaces: "cred_acme" });
     await screen.findByRole("button", { name: "Verify and save" });
+    // A Renew keeps its account: there is no way back to choosing another, which would drop the token it replaces.
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
     fireEvent.change(field("Token"), { target: { value: "new-secret" } });
     click("Verify and save");
     await screen.findByText(/Saved/);
@@ -411,3 +417,205 @@ describe("the popup", () => {
     expect(view.baseElement.textContent).toBe("");
   });
 });
+
+/** The step marker's steps, each as `<name>:<mark>`. */
+const marks = () => within(screen.getByRole("list", { name: "Steps" })).getAllByRole("listitem").filter((item) => item.hasAttribute("data-mark")).map((item) => `${item.textContent!.replace(/^\d/, "")}:${item.getAttribute("data-mark")}`);
+const iconsIn = (element: Element) => drawnIcons(element);
+
+describe("the popup's look", () => {
+  it("leads the title with the service's logo and marks how far the flow has got (AC1)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption()] }) });
+    fake.api.connect.mockResolvedValue(savedResult());
+    await open(forge);
+    await screen.findByRole("radio", { name: /GitHub · yuser/ });
+    const title = screen.getByRole("heading", { name: /Connect acme\/web/ });
+    expect(iconsIn(title)).toEqual(["GithubLogo"]);
+    expect(within(title).getByRole("img", { name: "GitHub" })).toBeTruthy();
+    expect(marks()).toEqual(["Account:current", "Token:later", "Done:later"]);
+    expect(screen.getByRole("list", { name: "Steps" }).querySelector("[aria-current=step]")!.textContent).toContain("Account");
+    click("Continue");
+    await screen.findByRole("button", { name: "Verify and save" });
+    expect(marks()).toEqual(["Account:done", "Token:current", "Done:later"]);
+    fireEvent.change(field("Token"), { target: { value: "fake-secret-token" } });
+    click("Verify and save");
+    await screen.findByText("Saved: GitHub · yuser");
+    expect(marks()).toEqual(["Account:done", "Token:done", "Done:done"]);
+    expect(iconsIn(screen.getByRole("list", { name: "Steps" }))).toEqual(["Check", "Check", "Check"]);
+  });
+
+  it("keeps Token current and Done grey for any outcome but saved (AC1)", async () => {
+    for (const outcome of [
+      { outcome: "refused", text: "Refused." },
+      { outcome: "confirm", login: "yuser", label: "GitHub · yuser", text: "Belongs to yuser." },
+      { outcome: "unreachable", text: "No answer." },
+    ] as const) {
+      fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [] }) });
+      fake.api.connect.mockResolvedValue(outcome);
+      await open(forge);
+      click(await screen.findByRole("button", { name: "Continue" }).then(() => "Continue"));
+      await screen.findByRole("button", { name: "Verify and save" });
+      fireEvent.change(field("Token"), { target: { value: "fake-secret-token" } });
+      click("Verify and save");
+      await screen.findByText(outcome.text);
+      expect(marks()).toEqual(["Account:done", "Token:current", "Done:later"]);
+      cleanup();
+      closeConnect();
+    }
+  });
+
+  it("offers the four services as logo tiles on Add account, the chosen one marked (AC2)", async () => {
+    await open({ target: {} });
+    const tiles = within(screen.getByRole("group", { name: "Service" })).getAllByRole("radio");
+    expect(tiles.map((tile) => tile.closest("label")!.textContent)).toEqual(["GitHub", "GitLab", "Linear", "Jira"]);
+    // GitHub's logo is bb's; GitLab, Linear and Jira show their names, which their trademark rules leave as the only mark.
+    expect(iconsIn(screen.getByRole("group", { name: "Service" }))).toEqual(["GithubLogo"]);
+    fireEvent.click(screen.getByRole("radio", { name: "GitLab" }));
+    expect(screen.getByRole("radio", { name: "GitLab" })).toHaveProperty("checked", true);
+    expect(iconsIn(screen.getByRole("radio", { name: "GitLab" }).closest("label")!)).toEqual(["Check"]);
+    expect(field("Host").value).toBe("gitlab.com");
+  });
+
+  it("offers GitHub and GitLab as tiles where the host names no service, keeping the choice marked (AC2)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ service: null, place: "git.example.com", accounts: [] }) });
+    await open(forge);
+    const group = await screen.findByRole("group", { name: "git.example.com is which service?" });
+    expect(within(group).getAllByRole("radio").map((tile) => tile.closest("label")!.textContent)).toEqual(["GitHub", "GitLab"]);
+    fireEvent.click(screen.getByRole("radio", { name: "GitLab" }));
+    expect(screen.getByRole("radio", { name: "GitLab" })).toHaveProperty("checked", true);
+    expect((await screen.findByRole("radio", { name: /a new login/ })).closest("label")!.textContent).toContain("GitLab on git.example.com");
+  });
+
+  it("draws each account as a card with its logo and pills, its login problem on a red line, and a new login last (AC3)", async () => {
+    fake.api.connectView.mockResolvedValue({
+      ok: true,
+      connect: connectView({
+        accounts: [
+          accountOption({ reaches: true }),
+          accountOption({ id: "acc_gh", label: "GitHub · cuser", via: "gh", isDefault: false, canWrite: true, loginProblem: "gh is signed in as yuser, not cuser" }),
+        ],
+      }),
+    });
+    await open(forge);
+    const first = (await screen.findByRole("radio", { name: /GitHub · yuser/ })).closest("label")!;
+    expect(first.textContent).toBe("GitHub · yuserdefaultalready reads this");
+    expect(iconsIn(first)).toEqual(["GithubLogo", "Check"]);
+    expect(within(first).getByText("already reads this").className).toContain("text-success");
+    const second = screen.getByRole("radio", { name: /GitHub · cuser/ }).closest("label")!;
+    expect(within(second).getByText("can write").className).toContain("text-warning-text");
+    const problem = within(second).getByText("gh is signed in as yuser, not cuser");
+    expect(problem.className).toContain("text-destructive-text");
+    expect(iconsIn(problem)).toEqual(["CircleX"]);
+    const last = screen.getAllByRole("radio").at(-1)!.closest("label")!;
+    expect(last.textContent).toBe("a new loginGitHub on github.com");
+    expect(iconsIn(last)).toEqual(["Plus"]);
+    expect(screen.getByRole("group", { name: "Which account reads acme?" })).toBeTruthy();
+  });
+
+  it("splits the token step into creating the token and giving it to the plugin, with Back and a shielded Verify and save (AC4)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ isDefault: false })] }) });
+    fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage({ signInAs: "yuser", repositories: ["acme/web"], note: "A note from the server." }) });
+    fake.api.cliLogins.mockResolvedValue({ logins: [] });
+    await open(forge);
+    await screen.findByRole("radio", { name: /GitHub · yuser/ });
+    click("Continue");
+    const create = await screen.findByRole("region", { name: "Create a token" });
+    const give = screen.getByRole("region", { name: "Give it to the plugin" });
+    expect(within(create).getByRole("heading").textContent).toBe("1Create a token");
+    expect(within(give).getByRole("heading").textContent).toBe("2Give it to the plugin");
+    expect(iconsIn(within(create).getByRole("button", { name: "Create token" }))).toEqual(["GithubLogo", "ExternalLink"]);
+    expect(within(create).getByText(/signed in as yuser/)).toBeTruthy();
+    expect(within(create).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Issues: read", "Pull requests: read", "Metadata: read", "acme/web"]);
+    expect(within(create).getByText("A note from the server.").className).toContain("text-warning-text");
+    const login = within(give).getByRole("radio", { name: "Use your gh login" });
+    expect(login).toHaveProperty("disabled", true);
+    expect(within(give).getByRole("radio", { name: "Paste a token" })).toHaveProperty("checked", true);
+    expect(within(give).getByText("gh holds no login for this host.")).toBeTruthy();
+    expect(iconsIn(within(give).getByText("The token will be sent to api.github.com, and nowhere else."))).toEqual(["Lock"]);
+    expect(iconsIn(screen.getByRole("button", { name: "Verify and save" }))).toEqual(["SecurityCheck"]);
+    click("Back");
+    expect(await screen.findByRole("radio", { name: /GitHub · yuser/ })).toBeTruthy();
+    expect(marks()).toEqual(["Account:current", "Token:later", "Done:later"]);
+  });
+
+  it("asks a Jira site's email inside the second part, alone and unnumbered where the service has no token page (AC4)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ service: "jira", place: "acme.atlassian.net", accounts: [] }) });
+    fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage({ url: null, grants: [], repositories: [], sentTo: "acme.atlassian.net", signInAs: null }) });
+    await open({ target: { fleet: "github.com/acme/web", role: "tracker" } });
+    click(await screen.findByRole("button", { name: "Continue" }).then(() => "Continue"));
+    const give = await screen.findByRole("region", { name: "Give it to the plugin" });
+    expect(screen.queryByRole("region", { name: "Create a token" })).toBeNull();
+    expect(within(give).getByRole("heading").textContent).toBe("Give it to the plugin");
+    expect(within(give).getByLabelText("Email")).toBeTruthy();
+    expect(within(give).queryByRole("radio")).toBeNull();
+  });
+
+  it("shows a saved token in a green box, and the half read with a green check (AC5)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ reaches: true })] }) });
+    fake.api.connect.mockResolvedValue(savedResult({ canWrite: true }));
+    await open(forge);
+    await screen.findByRole("radio", { name: /GitHub · yuser/ });
+    click("Continue");
+    const box = await screen.findByRole("status");
+    expect(box.className).toContain("border-success");
+    expect(box.className).toContain("bg-success/10");
+    expect(iconsIn(box)).toEqual(["CircleCheck"]);
+    expect(box.textContent).toBe("Saved: GitHub · yuseryuser, expires 10 Jancan write");
+    const read = screen.getByText("acme/web is read as GitHub · yuser.");
+    expect(iconsIn(read)).toEqual(["Check"]);
+  });
+
+  it("shows each fleet still unreadable in a red box with its sentence, and the half in red (AC5)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ reaches: true })] }) });
+    fake.api.connect.mockResolvedValue(savedResult({ half: half({ needs: "no" }), notReadable: [{ fleet: "github.com/acme/web", text: "acme/web is not readable as GitHub · yuser.", fineGrained: false }] }));
+    await open(forge);
+    await screen.findByRole("radio", { name: /GitHub · yuser/ });
+    click("Continue");
+    const entry = within(await screen.findByRole("list", { name: "Not readable" })).getByRole("listitem");
+    expect(entry.className).toContain("border-destructive");
+    expect(iconsIn(entry)).toEqual(["CircleX"]);
+    expect(entry.textContent).toBe("github.com/acme/webacme/web is not readable as GitHub · yuser.");
+    expect(screen.getByText("acme/web still needs an account that can read it.").className).toContain("text-destructive-text");
+    expect(screen.getByRole("button", { name: "Choose another account" })).toBeTruthy();
+  });
+
+  it("shows a refusal in red and a confirmation in the plain text colour, the confirming button solid (AC5)", async () => {
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [] }) });
+    fake.api.connect.mockResolvedValueOnce({ outcome: "confirm", login: "yuser", label: "GitHub · yuser", text: "Belongs to yuser." });
+    await open(forge);
+    click(await screen.findByRole("button", { name: "Continue" }).then(() => "Continue"));
+    await screen.findByRole("button", { name: "Verify and save" });
+    fireEvent.change(field("Token"), { target: { value: "fake-secret-token" } });
+    click("Verify and save");
+    expect((await screen.findByText("Belongs to yuser.")).className).toBe("");
+    expect(screen.getByRole("button", { name: "Add as GitHub · yuser" }).className).toContain("bg-foreground");
+    fake.api.connect.mockResolvedValueOnce({ outcome: "invalid", text: "The service rejected the token." });
+    click("Add as GitHub · yuser");
+    expect((await screen.findByText("The service rejected the token.")).className).toContain("text-destructive-text");
+  });
+
+  it("draws only icons bb resolves, on every step (AC11)", async () => {
+    const seen = new Set<string>();
+    const note = () => drawnIcons(document.body).forEach((name) => seen.add(name));
+    fake.api.connectView.mockResolvedValue({ ok: true, connect: connectView({ accounts: [accountOption({ loginProblem: "gone", canWrite: true })] }) });
+    fake.api.tokenPage.mockResolvedValue({ ok: true, page: tokenPage() });
+    fake.api.connect.mockResolvedValue(savedResult({ notReadable: [{ fleet: "acme/web", text: "no", fineGrained: false }] }));
+    await open(forge);
+    await screen.findByRole("radio", { name: /GitHub · yuser/ });
+    note();
+    click("Continue");
+    await screen.findByRole("button", { name: "Verify and save" });
+    note();
+    fireEvent.change(field("Token"), { target: { value: "fake-secret-token" } });
+    click("Verify and save");
+    await screen.findByText("Saved: GitHub · yuser");
+    note();
+    cleanup();
+    closeConnect();
+    await open({ target: {} });
+    fireEvent.click(screen.getByRole("radio", { name: "GitHub" }));
+    note();
+    expect(seen.size).toBeGreaterThan(8);
+    expectIconsResolve(seen);
+  });
+});
+
