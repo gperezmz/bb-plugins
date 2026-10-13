@@ -17,7 +17,7 @@ tags: [driving, fake-services, tls-proxy, certificate-authority, connect, accoun
 
 ## Context
 
-Unattendish's Connect popup sends a new login's token, and a `gh` or `glab` login's, to the service's own API host: an account's API address can be set only through the plugin's RPC `connect`, and the popup never sets one (`plugins/unattendish-sdlc/src/fleet/application/accounts.ts:308` reads it from the call; the popup's call never carries one, only a direct caller of the RPC does). The drive harness's fakes (`plugins/unattendish-sdlc/harness/fake-services.ts`) answer on loopback, so accounts the harness adds over RPC reach them, but nothing the popup adds does. A verification drive of #253 that stopped at that point came back blocked on every "new login" path.
+Unattendish's Connect popup sends a new login's token, and a `gh` or `glab` login's, to the service's own API host: an account's API address can be set only through the plugin's RPC `connect`, and the popup never sets one (`plugins/unattendish-sdlc/src/fleet/application/accounts.ts:309` reads it from the call; the popup's call never carries one, only a direct caller of the RPC does). The drive harness's fakes (`plugins/unattendish-sdlc/harness/fake-services.ts`) answer on loopback, so accounts the harness adds over RPC reach them, but nothing the popup adds does. A verification drive of #253 that stopped at that point came back blocked on every "new login" path.
 
 ## Guidance
 
@@ -27,7 +27,7 @@ Run the throwaway bb's server behind a local HTTPS proxy that terminates TLS for
 - Start the proxy: on `CONNECT` to a mapped host, answer `200`, wrap the socket in a server-side TLS socket with the leaf, and forward each request to the fake on `127.0.0.1`; answer `403` to any other `CONNECT`. Log every request with the host and whether it carried an `Authorization` header, never the header's value.
 - Start the run's bb server with `HTTPS_PROXY` set to the proxy, `NODE_USE_ENV_PROXY=1` so Node's `fetch` uses it, and `NODE_EXTRA_CA_CERTS` set to the authority's certificate (*per the #253 drive's own note; the values were not kept*). The proxy's log of the fakes answering shows the three worked together.
 - Let `registry.npmjs.org` bypass the proxy: through it, the plugin's toolchain download is refused with a 403 and `start` stops with "could not install".
-- Put fake `gh` and `glab` scripts first on the server's `PATH`, answering `auth status --hostname <h> --json hosts` and `auth token --hostname <h> --user <login>` (glab: `auth status --show-token`) from a state file, so a `gh` login switch can be scripted.
+- Put fake `gh` and `glab` scripts first on the server's `PATH`, answering `auth status --hostname <h> --json hosts` and `auth token --hostname <h> --user <login>` (glab: `auth status --show-token`) from a state file, so a `gh` login switch can be scripted. The fake `gh` exits non-zero on `auth token` with no `--user`: a run's doctor and `start.sh` run that bare form and fail the run when it finds a token (`plugins/cache-keeper/harness/run-env.sh:139`; see [the caller-environment lesson](keep-the-caller-environment-out-of-a-drive-run.md)).
 - Keep the browser on loopback too, so a Create token link opened in the drive does not reach the real site.
 
 The proxy's log then shows every host the server reached through it and that each connection outside the map was refused, a route the plugin did not write; a client that ignores the proxy variable (the npm bypass, the `gh` and `glab` CLIs) is not in it, and the browser is covered by its own loopback guard.
