@@ -60,7 +60,7 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over`),
   a ✕ with that name and no button. Quiet fleets, every count zero and nothing
   flagged, fold under `button "1 quiet fleet"` (`aria-expanded`), a filtered one
-  stays listed. In the narrow layout (a page under 64rem wide, counted beside
+  stays listed. In the narrow layout (a page under 66rem wide, counted beside
   bb's sidebar with a scrollbar drawn: a phone, or a 1024 px window with the
   sidebar open) the board shows three lines, the rest under
   `button "2 more fleets"`; a line holds the logo, the fleet's short name
