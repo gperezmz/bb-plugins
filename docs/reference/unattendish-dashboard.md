@@ -80,16 +80,16 @@ One list of every Inbox row across fleets, oldest first. Its tabs:
 | Unreadable | Rows the plugin cannot read; the tab shows only while there is one |
 | Sent | The actions seen done in the last hour, set apart by a divider: `You answered #5 Which queue · 40m ago · done`. An action still *sent* shows on its row in the queue instead |
 
-Each tab shows its count; with the queue filtered to one fleet the counts and the lists cover that fleet only, and the fleet is left off each row. A row shows, in this order:
+Each tab shows its count; with the queue filtered to one fleet the counts and the lists cover that fleet only, and the fleet is left off each row. In the [wide layout](#the-wide-and-narrow-layouts) a row is one line, in this order:
 
 | Part | What |
 |---|---|
 | Kind | The icon of what it waits for: a speech bubble for an answer, a merge icon for a grant, a rocket for a ready label, a dashed circle for something else |
-| Title | Its Ref and What |
-| Link | A short link to the item on the tracker or forge, such as `#7 ↗` |
-| Age | How long it has waited, amber after 8 hours |
+| Title | Its Ref and What, at least 12rem wide, cut with `…` where the line is too short for it |
+| Link | A short link to the item on the tracker or forge, such as `#7 ↗`. A link with no short form shows its own text, cut with `…` past 16rem, its full text on hover and keyboard focus |
+| Age | How long it has waited, amber after 8 hours, on one line |
 | Fleet | The forge's logo and the fleet's name |
-| Action | See [Actions](#actions) |
+| Action | See [Actions](#actions). A send that could not be confirmed adds an icon beside the buttons, `could not confirm whether the last send went through` on hover and keyboard focus |
 
 A row waiting for `other` has its link and no action: the cell reads `watch only`. A row the plugin cannot read is a red line, `Unreadable Inbox row, line N: <reason>`, with **Review**, which opens that fleet's Fleet tab; it counts as waiting.
 
@@ -103,11 +103,13 @@ A row waiting for `other` has its link and no action: the cell reads `watch only
 | No fleet registered | `No fleet is registered`, and that a fleet appears once `/run-fleet` from unattendish-sdlc runs with this plugin installed |
 | Empty Inbox | `Nothing waits on you`. The tabs stay, and Sent still lists what was done in the last hour |
 
-### On a compact viewport
+### The wide and narrow layouts
 
-Below 768 px a fleet is named by its [short name](../../plugins/unattendish-sdlc/GLOSSARY.md): the end of its name, with as many segments as tell it apart from every other registered fleet, so `github.example/org/dash` reads `dash` until another fleet ends in `dash`. The board's lines, the queue's rows, the Sent tab's lines and the filter chip use it, and each keeps the full name as its accessible name; the composer still names the full fleet. The filter chip's ✕ is touch-sized.
+The page draws its **wide layout**, the board and one line per queue row as above, wherever the page itself is at least 64rem wide, and its **narrow layout**, below, anywhere narrower: on a phone, and in a desktop window that bb's sidebar leaves narrow, such as a 1024 px window with the sidebar open. The width counted is the page's own, beside bb's sidebar, with a scrollbar drawn whether one shows or not, so the page goes wide up to one scrollbar's width later where nothing scrolls. 64rem is where the widest row the wide layout can hold still shows every part whole. The page switches as it is resized, with no reload, keeping an open composer with its draft, focus and caret, the queue's tab, its filter, every action's state, and whether each layout's board is unfolded.
 
-The board shows three lines: each has the fleet's logo and short name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does, since a phone has no hover; its accessible name is the full sentence. The tabs are pills.
+In the narrow layout a fleet is named by its [short name](../../plugins/unattendish-sdlc/GLOSSARY.md): the end of its name, with as many segments as tell it apart from every other registered fleet, so `github.example/org/dash` reads `dash` until another fleet ends in `dash`. The board's lines, the queue's rows, the Sent tab's lines and the filter chip use it, and each keeps the full name as its accessible name; the composer still names the full fleet. The filter chip's ✕ is touch-sized.
+
+The board shows three lines: each has the fleet's logo and short name, a ⚠ for a problem or a key for a warning that **Renew…** fixes, and its non-zero Status counts. The rest fold under `N more fleets`. Tapping a line filters the queue as above. The ⚠ or key is a touch-sized button that does what the verb does; its accessible name is the full sentence. The tabs are pills. With a mouse or a keyboard, the ⚠ or key shows its sentences, each count its label, a short name the full name and a `↗` alone its link's text, on hover and keyboard focus, as the wide layout's icons do; a tap shows none of them.
 
 Each queue row is three parts, one under the other:
 

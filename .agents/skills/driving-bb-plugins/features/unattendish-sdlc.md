@@ -60,17 +60,22 @@ fleet with `bb unattendish fleet register`, from its own thread.
   `The manager thread is archived or gone: run /run-fleet in a new thread to take the fleet over`),
   a ✕ with that name and no button. Quiet fleets, every count zero and nothing
   flagged, fold under `button "1 quiet fleet"` (`aria-expanded`), a filtered one
-  stays listed. Below 768 px the board shows three lines, the rest under
+  stays listed. In the narrow layout (a page under 64rem wide, counted beside
+  bb's sidebar with a scrollbar drawn: a phone, or a 1024 px window with the
+  sidebar open) the board shows three lines, the rest under
   `button "2 more fleets"`; a line holds the logo, the fleet's short name
   (`dash` for `github.example/org/dash`; its toggle is named by the full name),
   a touch-sized icon
   button named by the sentence in place of the verb, and the non-zero slots, and
-  has no Fleet tab button.
+  has no Fleet tab button; the icon, each count and the short name show their
+  words in a `tooltip` on hover and keyboard focus.
 - `region "Queue"`: `tablist "Kind"` with `tab "All 4"`, `Answer`, `Grant`,
   `Build`, `Other`, `Unreadable` (only while a row is unreadable) and `Sent`,
   each followed by its count, then `tabpanel "<tab>"` with a `listitem` per row,
-  oldest first. A row reads `#7 Which cache to use`, `link "#7 ↗"` (the item),
-  its age (`11h 1m`, amber from 8 hours), the fleet (left out while the queue is
+  oldest first. A row reads `#7 Which cache to use`, `link "#7 ↗"` (the item;
+  a link with no short form shows its own text cut with `…` past 16rem, its
+  full text in a `tooltip`), its age (`11h 1m`, amber from 8 hours, never
+  wrapping), the fleet (left out while the queue is
   filtered to one) and its action. A filter adds, at the right of the tabs, the
   fleet's name and `button "Show every fleet, not only <repo>"`; each tab counts
   that fleet's rows alone. An unreadable row is
@@ -79,7 +84,9 @@ fleet with `bb unattendish fleet register`, from its own thread.
   says `Nothing waits on you` (Sent:
   `Nothing you sent was seen done in the last hour`); Sent lists
   `You answered #5 Which queue`, its age and `done`, for what was seen done in
-  the last hour. Below 768 px a row is three parts, its `listitem`'s first
+  the last hour. An unconfirmed send is an icon beside the row's buttons, named
+  `could not confirm whether the last send went through`. In the narrow layout
+  a row is three parts, its `listitem`'s first
   three children: the title (wrapping to two lines), the details (the short
   name, with the full name as screen-reader text, then the link, which is
   `↗` alone named by its full text where it has no short form, and the age),
@@ -318,7 +325,7 @@ and every repository a fleet registers is in the fake's `repos`.
 - Every Answer, Grant or Build it starts a turn on the manager, which holds a
   session: `thread stop` it after.
 - The queue's filter lives in the page and is dropped with it: every verb
-  opens the page unfiltered. On a phone the board folds only past three
+  opens the page unfiltered. In the narrow layout the board folds only past three
   fleets, so `--unfold` needs a fourth.
 - Connect's `a new login` and Add account send no API address, so they reach
   the host typed into the popup, never a fake: type only a host under
