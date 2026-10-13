@@ -104,9 +104,9 @@ function NothingWaits() {
   );
 }
 
-function FleetName({ fleet, name }: { fleet: FleetCardView | undefined; name: string }) {
+function FleetName({ fleet, name, grow = false }: { fleet: FleetCardView | undefined; name: string; grow?: boolean }) {
   return (
-    <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+    <span className={cn("flex min-w-0 items-center gap-1 text-xs text-muted-foreground", grow && "flex-1")}>
       {fleet !== undefined ? <ServiceLogo service={fleet.forge} decorative /> : null}
       <span className="truncate">{name}</span>
     </span>
@@ -157,11 +157,12 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
           {kind}
           {title}
         </span>
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-6">
-          {showFleet ? <FleetName fleet={fleet} name={row.fleet} /> : null}
-          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="text-xs" />
-          {ageCell}
-          <span className="ml-auto">
+        {/* The second line never wraps: the fleet's name gives up its room first. */}
+        <span className="flex min-w-0 items-center gap-x-3 pl-6">
+          {showFleet ? <FleetName fleet={fleet} name={row.fleet} grow /> : null}
+          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="shrink-0 text-xs" />
+          <span className="shrink-0">{ageCell}</span>
+          <span className="ml-auto shrink-0">
             <ActionCell row={row} action={action} state={state} compact />
           </span>
         </span>
@@ -229,7 +230,7 @@ function ActionCell({ row, action, state, compact }: { row: InboxRowView; action
       const tone = KIND_TONES[kind];
       const size = compact ? "min-h-11 px-3" : "h-7 px-2";
       return (
-        <span className="flex flex-wrap items-center justify-end gap-2">
+        <span className={cn("flex items-center justify-end gap-2", !compact && "flex-wrap")}>
           <button
             type="button"
             aria-label={actionName(offer.label, row)}
