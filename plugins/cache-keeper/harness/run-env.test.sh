@@ -11,7 +11,7 @@
 # CREDENTIAL in any letter case unless the test excepts it with why, and the
 # failure names each such name and where it was found, never a value; a shell
 # sourcing run_env_script stops exporting what is not on the list, and the
-# functions the shell exports;
+# functions the shell exported before sourcing it;
 # run_env_start_check fails on a leak and on a gh that finds a
 # token; run_env_default_branch names the caller's init.defaultBranch, else the
 # branch git itself gives a new repository, ignores the repository the caller
