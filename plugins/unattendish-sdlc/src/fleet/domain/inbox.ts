@@ -40,8 +40,8 @@ export const parseLink = (link: string): ParsedLink => {
 /**
  * The id of an Inbox row: stable for a row across polls and reloads, since it is built from what the row says and
  * not from where it sits. A row with no Ref (`—`) is told apart by its Link as well, which names its message.
- * It names no fleet: the store keeps each fleet's seen rows and actions apart and holds this id with them, so the id
- * stays as it is, and a list of several fleets' rows tells them apart by the fleet beside it (`rowKey`).
+ * It names no fleet: the store holds it with each fleet's seen rows and sent actions, which it keeps apart, so where
+ * several fleets' rows are listed together it is not unique on its own.
  */
 export const inboxRowId = (row: Pick<InboxRow, "ref" | "waitsFor" | "since" | "link">): string =>
   row.ref === "—" ? `—|${row.waitsFor}|${row.since}|${row.link}` : `${row.ref}|${row.waitsFor}|${row.since}`;
