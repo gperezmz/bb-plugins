@@ -8,11 +8,6 @@ import { TONE_BORDER, TONE_FILL, TONE_TEXT } from "./tones";
 
 const root = join(import.meta.dirname, "..", "..");
 const filesUnder = (dir: string): string[] => readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? filesUnder(join(dir, name)) : [join(dir, name)]));
-/**
- * Files left out, each with why: the Connect popup's overlay dims the page in black, and the popup
- * is redrawn by its own spec (#259).
- */
-const EXCEPTIONS = new Set(["components/ui/dialog.tsx"]);
 const uiFiles = (): string[] => [join(root, "app.tsx"), ...["features", "shared", "components", "lib"].flatMap((folder) => filesUnder(join(root, folder)))].filter((file) => /\.tsx?$/.test(file) && !/\.test\./.test(file));
 
 const PALETTE = /(?<!dark:)\b(?:text|bg|border|ring|fill|stroke|from|to|via|outline|decoration|divide)-(?:red|blue|green|amber|yellow|purple|violet|orange|gray|grey|slate|zinc|neutral|stone|emerald|sky|indigo|pink|rose|lime|teal|cyan|fuchsia|black|white)(?:-\d{2,3})?\b/;
@@ -31,9 +26,7 @@ export function foreignColours(text: string): string[] {
 
 describe("the plugin's colours", () => {
   it("are all bb's theme tokens, with no dark: variant", () => {
-    const hits = uiFiles()
-      .filter((file) => !EXCEPTIONS.has(relative(root, file)))
-      .flatMap((file) => foreignColours(readFileSync(file, "utf8")).map((hit) => `${relative(root, file)}: ${hit}`));
+    const hits = uiFiles().flatMap((file) => foreignColours(readFileSync(file, "utf8")).map((hit) => `${relative(root, file)}: ${hit}`));
     expect(hits).toEqual([]);
   });
 

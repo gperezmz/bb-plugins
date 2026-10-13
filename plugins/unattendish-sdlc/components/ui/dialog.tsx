@@ -32,7 +32,7 @@ const DialogContent = React.forwardRef<
   const scopeProps = usePortalScopeProps();
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay {...scopeProps} className="fixed inset-0 z-50 bg-black/50" />
+      <DialogPrimitive.Overlay {...scopeProps} className="fixed inset-0 z-50 bg-surface-scrim" />
       <DialogPrimitive.Content
         ref={ref}
         {...scopeProps}

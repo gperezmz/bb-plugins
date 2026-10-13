@@ -135,6 +135,16 @@ export function asksService(view: ConnectView, chosen: Service | null): boolean 
   return view.service === null && chosen === null;
 }
 
+/**
+ * The service the popup connects, for its title's logo: the new login's, else the one the place names or the
+ * operator chose, else the one Add account was given or typed; null while none is known.
+ */
+export function popupService(request: ConnectRequest, state: Pick<ConnectState, "choice" | "view" | "chosenService" | "setup">): Service | null {
+  if (state.choice?.kind === "new") return state.choice.service;
+  if (state.view !== null) return newLoginService(state.view, state.chosenService);
+  return request.target.service ?? (state.setup.service === "" ? null : state.setup.service);
+}
+
 export function dialogTitle(request: ConnectRequest, view: ConnectView | null): string {
   if (request.replaces !== undefined) return "Renew a token";
   if (hasFleet(request)) {
@@ -170,8 +180,10 @@ export function signInText(page: TokenPageView): string {
   return page.signInAs !== null ? `Make sure your browser is signed in as ${page.signInAs} before you create the token.` : "Make sure your browser is signed in as the login you are adding before you create the token.";
 }
 
-export function sentToText(service: Service, page: TokenPageView): string {
-  return `The ${secretNoun(service)} will be sent to ${page.sentTo}, and to nowhere else.`;
+/** Where what is sent goes: the pasted token or key, or the token of the `gh` or `glab` login. */
+export function sentToText(service: Service, page: TokenPageView, method: Method = "paste"): string {
+  const what = method === "login" ? `The ${loginTool(service) ?? "gh"} login's token` : `The ${secretNoun(service)}`;
+  return `${what} will be sent to ${page.sentTo}, and nowhere else.`;
 }
 
 export interface SecretFields {
@@ -254,6 +266,22 @@ export function halfText(half: HalfView, notReadableListed = false): string {
   if (half.needs !== null && notReadableListed) return `${half.what} still needs an account that can read it.`;
   if (half.needs !== null) return `${half.what} still needs an account: ${half.needs}`;
   return half.account !== null ? `${half.what} is read as ${half.account.label}.` : `${half.what} is read.`;
+}
+
+// ---- the step marker ----
+
+/** The steps the marker names, in order; choosing the service is part of the first. */
+export const MARKED_STEPS = ["account", "token", "done"] as const;
+export type MarkedStep = (typeof MARKED_STEPS)[number];
+export type StepMark = "done" | "current" | "later";
+
+export const MARKED_STEP_NAMES: Readonly<Record<MarkedStep, string>> = { account: "Account", token: "Token", done: "Done" };
+
+/** How far the flow has got: every step done once a token is saved; until then the token step stays current from the moment it is reached. */
+export function stepMarks(state: Pick<ConnectState, "step" | "result">): Readonly<Record<MarkedStep, StepMark>> {
+  if (state.step === "setup" || state.step === "account") return { account: "current", token: "later", done: "later" };
+  if (state.step === "result" && state.result?.outcome === "saved") return { account: "done", token: "done", done: "done" };
+  return { account: "done", token: "current", done: "later" };
 }
 
 // ---- the flow ----

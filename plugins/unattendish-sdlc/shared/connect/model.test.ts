@@ -16,6 +16,7 @@ import {
   needsSetup,
   NEW_LOGIN,
   placeFrom,
+  popupService,
   resultActions,
   secretFor,
   secretLabel,
@@ -23,6 +24,7 @@ import {
   sentToText,
   setupFields,
   setupProblem,
+  stepMarks,
   targetOf,
   withService,
   type Setup,
@@ -129,8 +131,9 @@ describe("step 2", () => {
   const page = { sentTo: "api.github.com" } as never;
 
   it("names where the token goes", () => {
-    expect(sentToText("github", page)).toBe("The token will be sent to api.github.com, and to nowhere else.");
-    expect(sentToText("linear", page)).toBe("The key will be sent to api.github.com, and to nowhere else.");
+    expect(sentToText("github", page)).toBe("The token will be sent to api.github.com, and nowhere else.");
+    expect(sentToText("linear", page)).toBe("The key will be sent to api.github.com, and nowhere else.");
+    expect(sentToText("gitlab", page, "login")).toBe("The glab login's token will be sent to api.github.com, and nowhere else.");
   });
 
   it("labels the secret's field as its service names it", () => {
@@ -243,3 +246,43 @@ describe("the flow's state", () => {
     expect(state).toMatchObject({ busy: true, failure: null });
   });
 });
+
+describe("the step marker (AC1)", () => {
+  const saved = { outcome: "saved", account: { id: "a", label: "GitHub · yuser" }, login: "yuser", expiresAt: null, canWrite: false, notReadable: [], half: null, revoke: null } as const;
+
+  it("marks the account step current until an account is chosen, choosing the service included", () => {
+    for (const step of ["setup", "account"] as const) expect(stepMarks({ step, result: null })).toEqual({ account: "current", token: "later", done: "later" });
+  });
+
+  it("marks the token step current once it is reached", () => {
+    expect(stepMarks({ step: "token", result: null })).toEqual({ account: "done", token: "current", done: "later" });
+  });
+
+  it("marks every step done once the token was saved", () => {
+    expect(stepMarks({ step: "result", result: saved })).toEqual({ account: "done", token: "done", done: "done" });
+  });
+
+  it("keeps the token step current, and Done later, for any outcome but saved", () => {
+    for (const result of [
+      { outcome: "confirm", login: "y", label: "GitHub · y", text: "t" },
+      { outcome: "refused", text: "t" },
+      { outcome: "wrong-login", text: "t", command: null },
+      { outcome: "unreachable", text: "t" },
+      { outcome: "invalid", text: "t" },
+    ] as const)
+      expect(stepMarks({ step: "result", result })).toEqual({ account: "done", token: "current", done: "later" });
+  });
+});
+
+describe("the service in the title (AC1)", () => {
+  const blank = { choice: null, view: null, chosenService: null, setup: empty };
+  it("is the new login's, else the place's or the operator's choice, else Add account's", () => {
+    expect(popupService(fleetRequest, { ...blank, choice: { kind: "new", service: "gitlab", place: "git.example.com" } })).toBe("gitlab");
+    expect(popupService(fleetRequest, { ...blank, view: connectView() })).toBe("github");
+    expect(popupService(fleetRequest, { ...blank, view: connectView({ service: null }), chosenService: "gitlab" })).toBe("gitlab");
+    expect(popupService(addAccount, { ...blank, setup: { ...empty, service: "jira" } })).toBe("jira");
+    expect(popupService({ target: { service: "linear" } }, blank)).toBe("linear");
+    expect(popupService(addAccount, blank)).toBeNull();
+  });
+});
+
