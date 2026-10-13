@@ -350,7 +350,8 @@ export const verbs = {
       await group.waitFor();
       const ledger = () => page.locator("#fleet-tab-panel-ledger");
       const icons = () => ledger().locator("ol > li").evaluateAll((items) => items.map((li) => li.querySelector("[data-icon], svg")?.closest("span[class*='text-']")?.className.match(/text-[\w-]+/)?.[0] ?? null));
-      await sleep(800);
+      // The ledger loads once its tab is pressed; read it once it has, not while it says so.
+      for (let i = 0; i < 40 && (await ledger().innerText()).includes("Loading the ledger"); i++) await sleep(250);
       const before = lines(await ledger().innerText());
       const beforeTones = await icons();
       await capture("ledger", "press the Ledger tab");
@@ -360,6 +361,7 @@ export const verbs = {
       }
       if (flags.item) await page.getByRole("searchbox", { name: "Filter by item" }).fill(flags.item);
       await sleep(800);
+      for (let i = 0; i < 40 && (await ledger().innerText()).includes("Loading the ledger"); i++) await sleep(250);
       const after = lines(await ledger().innerText());
       await capture("filtered", `filter ${flags.filter ?? "All"}${flags.item ? `, item ${flags.item}` : ""}`);
       return { tab: tabName, filters: await group.getByRole("button").allInnerTexts(), before, beforeTones, after, afterTones: await icons() };
