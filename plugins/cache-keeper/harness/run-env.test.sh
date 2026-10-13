@@ -35,13 +35,20 @@ run_env_record "$dir/caller-env"
 plant=$(awk '$1 == "plant" { print $2 }' "$dir/caller-env")
 
 # wait_for_sleep <pid>: returns 0 once <pid> is running sleep, 1 if it is not
-# after 500 polls, which take 5 to 6 seconds. Until a process started to exec
+# after 500 polls, which take about 6 seconds. Until a process started to exec
 # sleep has done so, it holds the environment of whatever ran before the exec:
-# the test's own, or what a bash read from its bashrc.
+# the test's own, or what a bash read from its bashrc. Once exec has renamed
+# it, /proc/<pid>/environ still reads empty until the new image's environment
+# is placed, so the poll also waits for env_end, field 51 of /proc/<pid>/stat,
+# which is 0 until then; an empty environment is no sign of it.
 wait_for_sleep() {
-  local _
+  local _ stat fields
   for _ in $(seq 500); do
-    [[ $(< "/proc/$1/comm") == sleep ]] 2> /dev/null && return 0
+    if [[ $(< "/proc/$1/comm") == sleep ]] 2> /dev/null && stat=$(< "/proc/$1/stat") 2> /dev/null; then
+      # The fields after comm's closing parenthesis start at field 3.
+      read -ra fields <<< "${stat##*) }"
+      [[ ${fields[48]:-0} != 0 ]] && return 0
+    fi
     sleep 0.01
   done
   return 1
