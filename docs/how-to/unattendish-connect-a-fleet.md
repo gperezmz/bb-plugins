@@ -7,7 +7,7 @@ flowchart TB
   reg["/run-fleet registers the fleet"] --> who["The plugin works out which account<br/>reads its forge, and its tracker if it has one"]
   who --> ok{"Each half has an account<br/>whose credential reads it?"}
   ok -->|yes| watched["Watched"]
-  ok -->|no| not["Not watched: a toast and the fleet's card<br/>say what is missing, with Connect…"]
+  ok -->|no| not["Not watched: a toast and the fleet board<br/>say what is missing, with Connect…"]
   not --> connect["Connect… opens the popup:<br/>1. which account  2. a credential  3. Verify and save"]
   connect -->|saved and read at once| watched
 ```
@@ -18,11 +18,11 @@ You need a bb server with the plugin installed, and a registered fleet. Words: [
 
 **Connect…** appears wherever the plugin says a fleet is not watched for want of an account, and opens the popup over the view that is open:
 
-- the toast that says what a fleet needs, such as "other-org/x needs a GitHub account that can read other-org";
-- the **Needs an account** list at the top of **Waits on you** on the Fleets page, which counts in the heading's number;
-- the fleet's card on the Fleets page, on the Fleet tab and in the Fleet chip's card, where its **forge** and **tracker** lines each say which account the half reads as and what is missing.
+- the toast titled `other-org/x can't be read`, with what the fleet needs under it, such as "other-org/x needs a GitHub account that can read other-org";
+- the fleet's line on the fleet board of the Fleets page, where a red **Connect…** is its fix (a fleet that needs both halves shows `Connect… +1`, and its hover text lists each; a fleet whose token expires soon shows **Renew…**, which opens the same popup to renew it);
+- the fleet's card on the Fleet tab and in the Fleet chip's card, where its **forge** and **tracker** lines each say which account the half reads as and what is missing.
 
-A fleet that is watched shows **Change account…** in place of **Connect…** on each half, which opens the same popup for that half. A fleet whose tracker is the forge's issues has only the forge's half.
+A fleet that is watched shows **Change account…** in place of **Connect…** on each half of its card, which opens the same popup for that half. A fleet whose tracker is the forge's issues has only the forge's half.
 
 ## Connect a half
 
@@ -30,7 +30,7 @@ The popup is titled `Connect <repository>`, or `Connect the tracker of <reposito
 
 1. **Which account reads `github.com/acme`?** (the owner or group, or the Linear team or Jira project, in its place). It lists the accounts on the fleet's host, the default first and marked `default`, and **a new login**. For a Linear or Jira tracker it lists the accounts on that service or site. Choose the default, or the account that holds the login the owner's repositories read as. When the chosen account already has a credential that reaches the fleet, the popup goes straight to step 3.
 2. **A credential.** The popup names the host the token will be sent to, and to nowhere else. Choose **Create token**, **Paste a token**, or on GitHub and GitLab **Use your `gh` login** or **Use your `glab` login**. Each is below.
-3. **Verify and save.** The plugin asks the service whose the token is, and that it can read the fleet, before it stores anything; [what it says](#what-verify-and-save-says) follows. A saved credential makes the plugin read the fleet at once, and the card shows the result without waiting for the next poll.
+3. **Verify and save.** The plugin asks the service whose the token is, and that it can read the fleet, before it stores anything; [what it says](#what-verify-and-save-says) follows. A saved credential makes the plugin read the fleet at once, and the board and the card show the result without waiting for the next poll.
 
 Choosing an account other than the host's default assigns it the fleet's owner or group, or for a tracker its Jira project or Linear team; every fleet under that owner then reads as it. Choosing the default again removes that assignment. The most specific assignment wins, and the first account on a host, Jira site or Linear is that place's default.
 
@@ -95,7 +95,7 @@ Settings → Installed plugins → Unattendish shows the section **Fleets: accou
 | A credential gone | **Remove** on the credential. Its fleets then need an account |
 | An account gone | **Remove** on the account, with all its tokens. It is refused while a registered fleet reads as it, and the refusal names those fleets: connect them to another account first |
 
-A credential whose token expires within 7 days, or has expired, shows that warning in Settings and on the cards of the fleets it serves, with **Renew**. One the service now refuses shows `refused by the service`.
+A credential whose token expires within 7 days, or has expired, shows that warning in Settings, on the cards of the fleets it serves with **Renew**, and on their lines of the fleet board as **Renew…**. One the service now refuses shows `refused by the service`.
 
 ### Removing does not revoke
 
@@ -124,7 +124,7 @@ The text names the credential, such as `GitHub · yuser for acme`, and one of ei
 
 | Text | Do |
 |---|---|
-| `refused by the service` | Press **Renew** on the credential in Settings, or **Connect…** on the card. A revoked Linear key reads the same |
+| `refused by the service` | Press **Renew** on the credential in Settings, or **Connect…** on the fleet board or the card. A revoked Linear key reads the same |
 | `forbidden to read what the fleet needs (403)` | Give the token permission to read the repository or tracker: on GitHub, Issues, Pull requests and Metadata set to read and the repository ticked; on GitLab, `read_api` |
 | `the service did not answer` | Check that the service is up and, for a self-managed host, that the account's host is right |
 | `could not find what the fleet needs (404)` | The service answers 404 to the listing, as GitHub does for a private repository the token cannot see and Jira does for a token without permission. Give the token access to the repository or project, and check that `--repo` is spelled as the service spells it |

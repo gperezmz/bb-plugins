@@ -83,7 +83,7 @@ github.com/other-org/x  tracker forge-issues
   not watched: no-credential: other-org/x needs a GitHub account that can read other-org
 ```
 
-A half whose account holds a login that cannot give a token reads as that account and says why: `forge reads as GitHub · buser: gh is signed in as yuser, not buser`. Connect the half again from its card, or from the **Waits on you** entry.
+A half whose account holds a login that cannot give a token reads as that account and says why: `forge reads as GitHub · buser: gh is signed in as yuser, not buser`. Connect the half again from its card, or from **Connect…** on the fleet board.
 
 A fleet that a service refuses shows the cause and since when, here a token forbidden to read for 3 polls in a row. A fleet whose listing of what changed keeps failing shows it the same way, as `not watched: credential-refused: The service keeps failing to list what changed with the credential for GitHub · yuser for org`. `not watched since` is the first of the three polls, two intervals before the poll that showed it. The other causes read the same way, with their [own text](../how-to/unattendish-connect-a-fleet.md#what-credential-refused-says):
 
