@@ -21,7 +21,7 @@ export function InboxToasts() {
   useRealtime(INBOX_NEW, (payload) => {
     const signal = parseInboxNew(payload);
     if (signal === null) return;
-    const label = toastAction(signal);
+    const { label, opensComposer } = toastAction(signal);
     // The fleet and the row are the toast's id, so a signal delivered twice raises one toast and two fleets' rows two.
     toast(toastTitle(signal), {
       id: toastId(signal),
@@ -39,7 +39,7 @@ export function InboxToasts() {
       action: {
         label,
         onClick: () => {
-          if (label !== "Open Fleets") requestComposer({ fleet: signal.fleet, rowId: signal.rowId, ref: signal.ref, what: signal.what });
+          if (opensComposer) requestComposer({ fleet: signal.fleet, rowId: signal.rowId, ref: signal.ref, what: signal.what });
           navigate.toPluginPanel("fleets");
         },
       },

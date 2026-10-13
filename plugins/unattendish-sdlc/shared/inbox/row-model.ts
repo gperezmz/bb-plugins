@@ -11,6 +11,11 @@ export function rowKey(row: { readonly fleet: string; readonly id: string }): st
   return JSON.stringify([row.fleet, row.id]);
 }
 
+/** True where `a` and `b` name the same row: the same fleet and the same id, as `rowKey` names it. */
+export function sameRow(a: { readonly fleet: string; readonly id: string }, b: { readonly fleet: string; readonly id: string }): boolean {
+  return a.fleet === b.fleet && a.id === b.id;
+}
+
 /** What a row waits for, as the table says it. */
 export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
   switch (waitsFor) {

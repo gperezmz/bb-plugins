@@ -3,7 +3,7 @@
 import type { ActionRecordView, FleetCardView, FleetsView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { byFlagsThenWaiting, isQuiet } from "@/shared/fleet-flags";
 import { ageLabel } from "@/shared/format";
-import type { RowAction } from "@/shared/inbox/row-model";
+import { sameRow, type RowAction } from "@/shared/inbox/row-model";
 import { itemTitle } from "@/shared/item-title";
 
 /** The header's count: the Inbox rows across fleets, and nothing at zero or before the view arrives. */
@@ -142,7 +142,7 @@ export const NO_FLEET_TAIL = "from unattendish-sdlc runs with this plugin instal
 
 /** The row a toast's Answer… or Grant… names, in the view; null once it has left the Inbox. */
 export function requestedRow(view: Pick<FleetsView, "inbox">, target: { readonly fleet: string; readonly rowId: string }): InboxRowView | null {
-  return view.inbox.find((row) => row.fleet === target.fleet && row.id === target.rowId) ?? null;
+  return view.inbox.find((row) => sameRow(row, { fleet: target.fleet, id: target.rowId })) ?? null;
 }
 
 /** The filter that shows `row`: as it is where it already shows the row, every fleet otherwise. */
@@ -152,7 +152,7 @@ export function filterShowing(filter: string | null, row: Pick<InboxRowView, "fl
 
 /** The tab that shows `row`: as it is where it already lists the row, All otherwise. */
 export function tabShowing(queue: QueueView, tab: Tab, row: Pick<InboxRowView, "fleet" | "id">): Tab {
-  return tabRows(queue, tab).rows.some((shown) => shown.fleet === row.fleet && shown.id === row.id) ? tab : "all";
+  return tabRows(queue, tab).rows.some((shown) => sameRow(shown, row)) ? tab : "all";
 }
 
 /** The composer a toast opens on a row: the one its own Answer… or Grant… opens, and none while its action is under way, sent or done. */

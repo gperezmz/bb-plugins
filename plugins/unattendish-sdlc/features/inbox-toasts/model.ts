@@ -32,9 +32,9 @@ export function toastLine(signal: Pick<InboxNewSignal, "fleet" | "waitsFor">): s
   return `${signal.fleet} waits for ${waitsForText(signal.waitsFor)}`;
 }
 
-/** The toast's button: the row's own Answer… or Grant…, which opens its composer, and Open Fleets for anything else. */
-export function toastAction(signal: Pick<InboxNewSignal, "waitsFor">): "Answer…" | "Grant…" | "Open Fleets" {
-  if (signal.waitsFor === "answer") return "Answer…";
-  if (signal.waitsFor === "grant") return "Grant…";
-  return "Open Fleets";
+/** The toast's button: the row's own Answer… or Grant…, which opens its composer on the Fleets page, and Open Fleets for anything else. */
+export function toastAction(signal: Pick<InboxNewSignal, "waitsFor">): { readonly label: "Answer…" | "Grant…" | "Open Fleets"; readonly opensComposer: boolean } {
+  if (signal.waitsFor === "answer") return { label: "Answer…", opensComposer: true };
+  if (signal.waitsFor === "grant") return { label: "Grant…", opensComposer: true };
+  return { label: "Open Fleets", opensComposer: false };
 }

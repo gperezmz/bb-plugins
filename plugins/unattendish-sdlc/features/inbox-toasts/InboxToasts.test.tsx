@@ -94,9 +94,9 @@ describe("the Inbox toasts", () => {
     expect(sdk.navigate.toPluginPanel).toHaveBeenCalledWith("fleets");
   });
 
-  it("asks the Fleets page for the row's composer from Answer…, naming its fleet and row (AC2)", () => {
+  it.each(["answer", "grant"])("asks the Fleets page for the row's composer from the button of a row waiting for %s, naming its fleet and row (AC2)", (waitsFor) => {
     render(<InboxToasts />);
-    sdk.emit(INBOX_NEW, { ...signal, fleet: "org/b", ref: "#7", what: "Which cache to use", rowId: "row_7" });
+    sdk.emit(INBOX_NEW, { ...signal, waitsFor, fleet: "org/b", ref: "#7", what: "Which cache to use", rowId: "row_7" });
     (toast.mock.calls[0]![1] as { action: { onClick(): void } }).action.onClick();
     expect(waitingRequest()).toEqual(expect.objectContaining({ fleet: "org/b", rowId: "row_7", ref: "#7", what: "Which cache to use" }));
   });

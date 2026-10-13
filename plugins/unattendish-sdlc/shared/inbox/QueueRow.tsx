@@ -54,6 +54,7 @@ interface QueueRowProps {
   /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `phone` layout always has them. */
   readonly touch?: boolean;
   readonly state: RowActionState;
+  /** The `<li>`'s DOM id, as `UnreadableRow` takes one: for scrolling to the row and finding its composer. */
   readonly id?: string;
 }
 

@@ -3,17 +3,17 @@ import type { ActionRecordView, FleetCardView, InboxRowView } from "@/src/fleet/
 import { cn } from "@/lib/utils";
 import { sentAgo, sentText } from "@/shared/fleet-header/model";
 import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
-import { rowAction, rowKey } from "@/shared/inbox/row-model";
+import { rowAction, rowKey, sameRow } from "@/shared/inbox/row-model";
 import type { RowActionState } from "@/shared/inbox/use-row-action";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { ICONS, KIND_ICONS } from "@/shared/look/icons";
 import { KIND_TONES } from "@/shared/look/tones";
 import { composerFor, NOTHING_WAITS, NOTHING_WAITS_LINE, TAB_NAMES, tabCounts, tabRows, tabShowing, tabsShown, type QueueView, type Tab } from "./model";
 
-/** A row to show with its composer open, as a toast asks; `seq` tells two asks for the same row apart. */
+/** A row to show with its composer open, as a toast's request names it; `seq` tells two requests for the same row apart. */
 export interface OpenRow {
   readonly fleet: string;
-  readonly id: string;
+  readonly rowId: string;
   readonly seq: number;
 }
 
@@ -49,14 +49,14 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
   // open keeps its draft, and a row whose action is under way, sent or done opens none.
   useEffect(() => {
     if (opening === null) return;
-    const row = queue.rows.find((shown) => shown.fleet === opening.fleet && shown.id === opening.id);
+    const row = queue.rows.find((shown) => sameRow(shown, { fleet: opening.fleet, id: opening.rowId }));
     if (row === undefined) return;
     setPicked(tabShowing(queue, picked, row));
     const state = stateOf(row);
     const verb = composerFor(rowAction(row, now, state));
     if (verb !== null && state.composing !== verb) state.compose(verb);
     setOpened(opening);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- an ask is acted on once, when it arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a request is acted on once, when it arrives.
   }, [opening]);
   // Once drawn, the row is scrolled into view and its composer, where open, focused.
   useEffect(() => {
@@ -114,7 +114,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, compact, name
         ) : (
           <ul className="flex flex-col divide-y divide-border">
             {rows.map((row) => (
-              <QueueRow key={rowKey(row)} id={opened !== null && opened.fleet === row.fleet && opened.id === row.id ? OPENED_ID : undefined} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
+              <QueueRow key={rowKey(row)} id={opened !== null && sameRow(row, { fleet: opened.fleet, id: opened.rowId }) ? OPENED_ID : undefined} row={row} now={now} fleet={fleets.get(row.fleet)} shortName={nameOf(row.fleet)} showFleet={showFleet} layout={compact ? "phone" : "columns"} state={stateOf(row)} />
             ))}
             {unreadable.map((row) => (
               <UnreadableRow key={`${row.fleet}:${row.line}`} row={row} section="Inbox" review={row} />

@@ -4,7 +4,17 @@ import type { FleetsView, InboxRowView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { useDashboardApi } from "@/shared/client";
 import { useRowActions, type RowActionState } from "@/shared/inbox/use-row-action";
-import { composerRequestSeq, holdComposerRequest, takeComposerRequest, useComposerRequest, useComposerRequestSeq, type ComposerRequest } from "@/shared/composer-request";
+import {
+  composerRequestSeq,
+  failsRequest,
+  holdComposerRequest,
+  releaseComposerRequest,
+  requestOnView,
+  takeComposerRequest,
+  useComposerRequest,
+  useComposerRequestSeq,
+  type ComposerRequest,
+} from "@/shared/composer-request";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
@@ -19,7 +29,8 @@ import { Queue, type OpenRow } from "./Queue";
  * fleets. A refresh that fails over data already shown leaves the data as it is: the title bar says how old it is.
  *
  * A toast's Answer… or Grant… opens the page at its row's composer. The request is judged on a view fetched after it
- * was made, so the page fetches again from its loading state; one that fails drops the request. The queue's tab and
+ * was made, so the page fetches again from its loading state; one that fails drops the request. The page holds the
+ * request while it is mounted, and lets it lapse when it goes first. The queue's tab and
  * what its rows hold in this window, drafts among them, are kept here, above that state, so it leaves them as they were.
  */
 export function FleetsPage() {
@@ -45,9 +56,11 @@ export function FleetsPage() {
   useEffect(() => {
     if (request === null) return;
     holdComposerRequest();
-    if (state === "failed" && failedAsOf.current >= request.seq) takeComposerRequest(request.seq);
+    if (state === "failed" && failsRequest(request, failedAsOf.current)) takeComposerRequest(request.seq);
   }, [request, state]);
-  const fresh = request !== null && live.data !== null && live.data.asOf >= request.seq ? request : null;
+  // A page that goes before its view loads lets the request lapse, so a later visit does not act on an old click.
+  useEffect(() => releaseComposerRequest, []);
+  const fresh = requestOnView(request, live.data?.asOf ?? null);
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       {state === "loading" ? <Loading /> : null}
@@ -130,7 +143,7 @@ function Ready({ view, tab, onTab, stateOf, request }: ReadyProps) {
       return;
     }
     if (filterShowing(selected, row) !== selected) setPicked(null);
-    setOpening({ fleet: row.fleet, id: row.id, seq: request.seq });
+    setOpening({ fleet: row.fleet, rowId: row.id, seq: request.seq });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a request is taken once, on the view it was judged on.
   }, [request]);
   if (view.fleets.length === 0) return <NoFleet />;
