@@ -97,6 +97,9 @@ check "run_env passes no XDG_RUNTIME_DIR" lacks_name XDG_RUNTIME_DIR
 # its own lists let through. A run reaches a credential by its value or by a
 # variable that points at where one is kept. The test reads names alone and
 # prints no value.
+# A credential under a name that neither this list nor a pattern covers
+# (AWS_PROFILE, NETRC, DATABASE_URL) still passes: add the name here. The awk
+# below runs under mawk too, which is ubuntu-latest's awk.
 declare -A refused=(
   [GH_TOKEN]="gh's token, which bb would hand every thread of the throwaway bb"
   [GITHUB_TOKEN]="a GitHub token, which gh and git read"
