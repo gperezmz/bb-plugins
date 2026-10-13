@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { FleetsView } from "@/src/fleet/application/views";
 import { Button } from "@/components/ui/button";
 import { useDashboardApi } from "@/shared/client";
@@ -7,7 +6,7 @@ import { ICONS } from "@/shared/look/icons";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
 import { FALLBACK_POLL_MS, refetchEveryView, screenState, useLive } from "@/shared/use-live";
 import { Board, PhoneBoard } from "./Board";
-import { rememberedFilter, rememberFilter } from "./filter";
+import { rememberFilter, useQueueFilter } from "./filter";
 import { NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor } from "./model";
 import { Queue } from "./Queue";
 
@@ -79,11 +78,8 @@ function NoFleet() {
 function Ready({ view, refetch }: { view: FleetsView; refetch: () => Promise<void> }) {
   const compact = useIsCompactViewport();
   // The fleet the queue is filtered to, by name; a fleet no longer registered filters nothing.
-  const [picked, setPickedState] = useState<string | null>(rememberedFilter);
-  const setPicked = (fleet: string | null) => {
-    rememberFilter(fleet);
-    setPickedState(fleet);
-  };
+  const picked = useQueueFilter();
+  const setPicked = rememberFilter;
   if (view.fleets.length === 0) return <NoFleet />;
   const selected = picked !== null && view.fleets.some((card) => card.repo === picked) ? picked : null;
   const fleets = new Map(view.fleets.map((card) => [card.repo, card]));
