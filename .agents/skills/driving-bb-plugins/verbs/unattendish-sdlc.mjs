@@ -92,9 +92,10 @@ export async function readFleets(page) {
           filter: li.querySelector("button[aria-pressed]")?.getAttribute("aria-pressed") ?? null,
           manager: [...li.querySelectorAll("[aria-label]")].map(label).find((n) => /^(Manager|No manager)/.test(n)) ?? null,
           status: [...li.querySelectorAll("[aria-label]")].map(label).filter((n) => slot.test(n)),
-          // The fix: a verb button, a phone's icon button, or the ✕ with no verb; its name is the full sentence.
+          // The fix: a verb button, a phone's icon button, or the ✕ with no verb; its name is the full sentence. A logo is
+          // named exactly by its service; a sentence can start with one (`GitHub · yuser for acme: token expired`), so match whole.
           fix: [...li.querySelectorAll("button:not([aria-pressed]), [tabindex][aria-label], [role=img][aria-label]")]
-            .filter((e) => !/^Open the Fleet tab of /.test(label(e) ?? "") && !slot.test(label(e) ?? "") && !/^(Manager|No manager|GitHub|GitLab|Linear|Jira)/.test(label(e) ?? ""))
+            .filter((e) => !/^Open the Fleet tab of /.test(label(e) ?? "") && !slot.test(label(e) ?? "") && !/^(Manager|No manager)/.test(label(e) ?? "") && !/^(GitHub|GitLab|Linear|Jira)$/.test(label(e) ?? ""))
             .map((e) => ({ name: label(e), text: e.innerText.trim(), button: e.tagName === "BUTTON" })),
           text: li.innerText.split("\n").map((t) => t.trim()).filter(Boolean),
         };
