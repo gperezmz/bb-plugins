@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseInboxNew, toastLine, toastTitle } from "./model";
+import { parseInboxNew, toastId, toastLine, toastTitle } from "./model";
 
 describe("a toast for a new Inbox row", () => {
   it("is titled by the item's ref and title, with the fleet and what it waits for under it", () => {
@@ -21,5 +21,10 @@ describe("a toast for a new Inbox row", () => {
     expect(parseInboxNew({ ...signal, waitsFor: "lunch" })).toBeNull();
     expect(parseInboxNew(null)).toBeNull();
     expect(parseInboxNew("inbox-new")).toBeNull();
+  });
+
+  it("is identified by its fleet and its row, so two fleets' rows with the same id are two toasts", () => {
+    expect(toastId({ fleet: "org/a", rowId: "#7|answer|t" })).toBe(toastId({ fleet: "org/a", rowId: "#7|answer|t" }));
+    expect(toastId({ fleet: "org/a", rowId: "#7|answer|t" })).not.toBe(toastId({ fleet: "org/b", rowId: "#7|answer|t" }));
   });
 });

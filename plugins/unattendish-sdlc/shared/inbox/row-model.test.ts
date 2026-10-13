@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { actionRecord, ago, HOUR, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { type LocalAction, actionName, rowAge, rowAction, sendInput, shortLinkLabel, takesText, unreadableLine, waitsForText } from "./row-model";
+import { type LocalAction, actionName, rowAge, rowAction, rowKey, sendInput, shortLinkLabel, takesText, unreadableLine, waitsForText } from "./row-model";
 
 const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
@@ -133,5 +133,16 @@ describe("a queue row", () => {
   it("says what an unreadable row is and why", () => {
     expect(unreadableLine({ line: 9, reason: "the table has no \"Waits for\" column" }, "Inbox")).toBe("Unreadable Inbox row, line 9: the table has no \"Waits for\" column");
     expect(unreadableLine({ line: 22, reason: "the table has no \"Blocked on\" column" })).toBe("Unreadable row, line 22: the table has no \"Blocked on\" column");
+  });
+});
+
+describe("a row's key", () => {
+  it("tells two fleets' rows with the same id apart, and one row from itself", () => {
+    expect(rowKey(inboxRow({ fleet: "org/a" }))).not.toBe(rowKey(inboxRow({ fleet: "org/b" })));
+    expect(rowKey(inboxRow({ fleet: "org/a" }))).toBe(rowKey(inboxRow({ fleet: "org/a" })));
+  });
+
+  it("does not run a fleet into an id that begins like one", () => {
+    expect(rowKey({ fleet: "org/a", id: "b|x" })).not.toBe(rowKey({ fleet: "org/a|b", id: "x" }));
   });
 });

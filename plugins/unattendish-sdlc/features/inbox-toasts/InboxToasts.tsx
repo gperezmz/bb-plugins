@@ -5,7 +5,7 @@ import { INBOX_NEW } from "@/shared/client";
 import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
 import { KIND_ICONS } from "@/shared/look/icons";
 import { KIND_TONES } from "@/shared/look/tones";
-import { parseInboxNew, toastLine, toastTitle } from "./model";
+import { parseInboxNew, toastId, toastLine, toastTitle } from "./model";
 
 /**
  * Mounted once per bb window as an app overlay. It draws nothing itself: when the server publishes an Inbox row never
@@ -19,9 +19,9 @@ export function InboxToasts() {
   useRealtime(INBOX_NEW, (payload) => {
     const signal = parseInboxNew(payload);
     if (signal === null) return;
-    // The row's id is the toast's id, so a signal delivered twice raises one toast.
+    // The fleet and the row are the toast's id, so a signal delivered twice raises one toast and two fleets' rows two.
     toast(toastTitle(signal), {
-      id: signal.rowId,
+      id: toastId(signal),
       icon: (
         <span {...scope}>
           <Glyph name={KIND_ICONS[signal.waitsFor]} tone={KIND_TONES[signal.waitsFor]} className="size-4" />

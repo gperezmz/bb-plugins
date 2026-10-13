@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { ActionKind, InboxRowView } from "@/src/fleet/application/views";
 import { useDashboardApi } from "../client";
-import { sendInput, takesText, type LocalAction } from "./row-model";
+import { rowKey, sendInput, takesText, type LocalAction } from "./row-model";
 
 export interface RowActionState extends LocalAction {
   /** The kind whose composer is open on the row. */
@@ -31,8 +31,8 @@ export function useRowActions(refetch: () => Promise<void>): (row: InboxRowView)
   const patch = (id: string, change: Partial<Local>) => setLocals((previous) => ({ ...previous, [id]: { ...(previous[id] ?? IDLE), ...change } }));
 
   return (row) => {
-    const local = locals[row.id] ?? IDLE;
-    const id = row.id;
+    const id = rowKey(row);
+    const local = locals[id] ?? IDLE;
 
     async function send(kind: ActionKind, options: { regrant?: boolean } = {}): Promise<void> {
       const wantsText = takesText(kind, options.regrant);
