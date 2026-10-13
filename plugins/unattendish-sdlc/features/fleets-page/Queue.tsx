@@ -153,19 +153,21 @@ function QueueRow({ row, now, fleet, showFleet, compact, state }: { row: InboxRo
   if (compact) {
     return (
       <li className="flex flex-col gap-1 py-3">
-        <span className="flex items-center gap-2">
+        {/* Two lines that never wrap: the title gives its room to the action, and on the second line the fleet and
+            the link truncate, so every control stays on screen. */}
+        <span className="flex min-w-0 items-center gap-2">
           {kind}
-          {title}
-        </span>
-        {/* The second line never wraps: the fleet's name gives up its room first. */}
-        <span className="flex min-w-0 items-center gap-x-3 pl-6">
-          {showFleet ? <FleetName fleet={fleet} name={row.fleet} grow /> : null}
-          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="shrink-0 text-xs" />
-          <span className="shrink-0">{ageCell}</span>
-          <span className="ml-auto shrink-0">
+          <span className="min-w-0 flex-1">{title}</span>
+          <span className="shrink-0">
             <ActionCell row={row} action={action} state={state} compact />
           </span>
         </span>
+        <span className="flex min-w-0 items-center gap-x-3 pl-6">
+          {showFleet ? <FleetName fleet={fleet} name={row.fleet} grow /> : null}
+          <ItemLink link={row.link} managerThreadId={row.managerThreadId} label={shortLinkLabel(row)} className="min-w-0 truncate text-xs" />
+          <span className="ml-auto shrink-0">{ageCell}</span>
+        </span>
+        {action.kind === "offer" && action.unconfirmed ? <span className="pl-6 text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
         {composer}
       </li>
     );
@@ -197,6 +199,9 @@ function UnreadableRow({ row }: { row: UnreadableInboxRowView }) {
     </li>
   );
 }
+
+/** Said beside an action whose last send failed with its result unknown, once the server's view showed it not sent. */
+const UNCONFIRMED = "could not confirm whether the last send went through";
 
 const OFFER_KIND: Readonly<Record<"answer" | "grant" | "build", InboxRowView["waitsFor"]>> = { answer: "answer", grant: "grant", build: "ready" };
 
@@ -245,7 +250,7 @@ function ActionCell({ row, action, state, compact }: { row: InboxRowView; action
               Re-grant
             </button>
           ) : null}
-          {action.unconfirmed ? <span className="text-xs text-muted-foreground">could not confirm whether the last send went through</span> : null}
+          {action.unconfirmed && !compact ? <span className="text-xs text-muted-foreground">{UNCONFIRMED}</span> : null}
         </span>
       );
     }
