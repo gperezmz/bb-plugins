@@ -11,7 +11,8 @@ what it sent.
 
 ## Sub-features
 
-- `chip`: the composer chip, `Cache Keeper: <sentence>`, and its popover.
+- `chip`: the composer chip, `Cache Keeper: <sentence>`, its popover, and
+  the glyph on a sidebar row.
 - `compact`: Compact when idle, the compaction line, and the `/compact` at
   the deadline.
 - `banner`: `Compacting in Nm, before the cache goes cold`, with `Skip` and
@@ -25,7 +26,7 @@ what it sent.
 - A Claude Code thread's composer: `button` named `/^Cache Keeper:/`. Its
   popover holds `switch "Compact when idle"`,
   `switch "Keep warm while waiting"` and, once the first turn has ended, `slider "Compaction line"`
-  with a button on its handle named for the size (`≥ 500k`); clicking it
+  with a button on its handle named for the size alone (`500k`); clicking it
   turns it into `textbox "Compaction line size"`.
 - Above the composer while a compaction is due: `status` with
   `Compacting in Nm, before the cache goes cold`, `button "Skip"`, `button "Compact now"`.
@@ -34,9 +35,16 @@ what it sent.
   `Last 30 days`.
 - Settings → Installed plugins → Cache Keeper, at
   `/settings/plugins/cache-keeper`.
+- A row of bb's built-in thread list (not Thread Glance's), every 20 s: a
+  timer named `Cache Keeper: compacting before the cache goes cold` while a
+  compaction is due, a flame named
+  `Cache Keeper: keeping the cache warm while it waits` while a keep-warm is
+  planned.
 - CLI: `bb cache-keeper on [<thread>] [--above <size>]`, `off`,
   `compact-now`, `keep-warm on|off`, `status [<thread>] [--json]`; on a run,
-  also `drive advance <90s|4m|1h>` and `drive now`.
+  also `drive advance <90s|4m|1h>` and `drive now`. `<thread>` defaults to
+  the calling thread (`drive-bb-plugins bb --as <thread>`), and a command run
+  so is refused `outside_tree` for a thread outside its tree.
 
 ## Driving it with drive-bb-plugins
 
@@ -44,46 +52,60 @@ Preconditions: `drive-bb-plugins start cache-keeper`, then a settings file
 holding `{"keepWarm":"switched","checkIns":false,"fetchPrices":false}` passed
 to `drive-bb-plugins bb cache-keeper/setup -- plugin rpc call cache-keeper setSettings --input-file <file> --json`.
 
+Every UI step is a verb, `drive-bb-plugins cache-keeper <verb>`, which prints
+JSON of what the page showed and what `cache-keeper status --json` or the RPC
+reports as `stored`; the command with no verb lists them.
+
 - **A thread** (`cache-keeper.compact/spawn`):
   `T=$(drive-bb-plugins spawn cache-keeper.compact/spawn ck hello)`, then
   `drive-bb-plugins bb cache-keeper.compact/cli -- cache-keeper drive now`.
-- **Switch on from the chip** (`cache-keeper.chip/composer`): a `ui` script
-  opens `$T` from the sidebar, clicks `button` named `/^Cache Keeper:/`,
-  captures, clicks `switch "Compact when idle"`, waits for it
-  `aria-checked="true"`, and captures;
-  `drive-bb-plugins bb cache-keeper.chip/cli -- cache-keeper status "$T" --json`
-  has `.compactOn` true.
+- **Switch on from the chip** (`cache-keeper.chip/composer`):
+  `cache-keeper chip "$T" --switch "Compact when idle"` clicks the chip and
+  presses the switch: it flips to checked and `stored.compactOn` is true.
+  `--handle` presses the slider's handle button (`size` `122k`) and
+  `--size 300k` types a size, which snaps to the nearest line (`306k`).
 - **Due** (`cache-keeper.compact/cli`): `cache-keeper on "$T" --above 100k`
   (the fake API reports 800k tokens) and `drive now`: `status "$T" --json`
   has `.compactionDue` true at once and `.deadline` 4 minutes after the last
-  request, and a `ui` script on `$T` finds the banner `status`
-  `Compacting in 4m, before the cache goes cold` and the chip's text `4m`.
-- **Skip and Undo** (`cache-keeper.banner/composer`): the banner's `Skip`
-  turns it into `Skipped until this thread next runs` with `Undo`, and
-  `status` has `.compactSkipped` true and `.compactionDue` false; `Undo`
-  brings the banner back.
+  request (the line reads `122k`, the lowest of its ten above 100k).
+- **Banner, Skip and Undo** (`cache-keeper.banner/composer`), straight after
+  `drive now`: `cache-keeper banner "$T" --skip --undo` reads the banner
+  `status` `Compacting in 4m, before the cache goes cold` with `Skip` and
+  `Compact now` and the chip's text `4m`; Skip turns it into
+  `Skipped until this thread next runs` with `Undo`, `stored.compactSkipped`
+  true and `.compactionDue` false; Undo brings the banner back.
 - **Sent** (`cache-keeper.compact/cli`): take `.now` from `drive now` and
-  `.deadline` from `status --json`, then `drive advance <deadline − now + 2>s`
-  and `drive now`: `status` reads `compacted …`, and
+  `.deadline` from `status --json`, both epoch milliseconds, then
+  `drive advance $(( (deadline - now) / 1000 + 2 ))s` and `drive now`:
+  `status` reads `last decision: sent compact at …`, and once
+  `thread wait "$T" --status idle` returns, `status: compacted 0m ago`, and
   `plugin rpc call cache-keeper overview --json` has a `recent` entry with
-  `kind` `compaction` and `record.contextBefore` 800003; the page draws it as
-  `Compacted 800k → …`.
+  `kind` `compaction` and `record.contextBefore` 800003; the page's Recent
+  row draws it as `Compacted 800k → 1k`.
 - **Compact now** (`cache-keeper.cli/compact-now`):
   `cache-keeper compact-now "$T"` on an idle thread prints `compacting`.
 - **Keep warm** (`cache-keeper.keep-warm/cli`):
   `W=$(drive-bb-plugins spawn cache-keeper.keep-warm/spawn kw hello --background)`,
   `drive now`, then `cache-keeper keep-warm on "$W"` prints the tree top, and
-  `status "$W" --json` has `.keptWarm`, `.warmPlanned` and `.waiting` true; a
-  `ui` script on `$W` finds the popover's `switch "Keep warm while waiting"`
-  checked. `drive-bb-plugins release "$W"` after.
-- **Page** (`cache-keeper.page/nav`): a `ui` script clicks `Cache Keeper` in
-  `navigation "Primary navigation"` (or its `More` menu) and finds
-  `$T`'s title under `Compact when idle`, and h2s
-  `Waiting on background work`, `Recent` and `Last 30 days`.
-- **Settings** (`cache-keeper.settings/page`): a `ui` script at
-  `url + "settings/plugins/cache-keeper"` finds
-  `combobox "Keep caches warm while waiting"` and the sections `Waiting threads`, `Stalled tasks`,
-  `Prices` and `Agent tools`.
+  `status "$W" --json` has `.keptWarm`, `.warmPlanned` and `.waiting` true;
+  `cache-keeper keep-warm "$W"` reads the popover's
+  `switch "Keep warm while waiting"` checked. `drive-bb-plugins release "$W"`
+  after.
+- **Page** (`cache-keeper.page/nav`): `cache-keeper page --second-window`
+  clicks `Cache Keeper` in `navigation "Primary navigation"` (or its `More`
+  menu) and reads `$T`'s title under `Compact when idle`, `kw` under
+  `Waiting on background work`, the compaction under `Recent` and
+  `Last 30 days`; `stored` is the `overview` RPC.
+- **Row glyph** (`cache-keeper.chip/sidebar`): while a compaction is due,
+  `cache-keeper rows timer` waits for
+  `img "Cache Keeper: compacting before the cache goes cold"` on a row of the
+  sidebar's built-in list (a run without Thread Glance) and prints `glyphs`;
+  `rows flame` waits for the keep-warm flame while `$W` waits.
+- **Settings** (`cache-keeper.settings/page`):
+  `cache-keeper settings --keep-warm never` reads the sections
+  `Waiting threads`, `Stalled tasks`, `Prices` and `Agent tools`, picks
+  `Never` in `combobox "Keep caches warm while waiting"` (a native select) and
+  reads `stored.keepWarm` `never`; `--keep-warm switched` restores it.
 
 The plugin's own regression drives, `plugins/cache-keeper/harness/drives/`,
 run against its own harness, not this run; its README says how.
@@ -100,7 +122,9 @@ run against its own harness, not this run; its README says how.
 - The chip and banner refresh on the plugin's change signal, and sidebar row
   glyphs every 20 s: run `drive now` before reading the UI after an advance.
 - `compact-now` refuses (`not_ready`) unless the thread is idle with nothing
-  pending.
-- On a fresh install every switch is off, the agent tool included; a
-  reinstall resets them again.
+  pending, and on a thread Cache Keeper already compacted since its last turn
+  (`Cache Keeper already sent this thread a message for this moment`): drive
+  it on a thread of its own.
+- On a fresh install every switch that sends is off, the agent tool included,
+  and `Fetch current prices daily` is on; a reinstall resets them again.
 - Below 768 px wide the chip's popover opens as a dialog.

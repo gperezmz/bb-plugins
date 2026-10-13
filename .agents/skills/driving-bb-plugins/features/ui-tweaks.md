@@ -35,44 +35,43 @@ on thread views and the New-thread screen, and never on a phone.
 Preconditions: `drive-bb-plugins start ui-tweaks`. No thread is needed; the
 New-thread screen carries both effects.
 
+Every UI step is a verb, `drive-bb-plugins ui-tweaks <verb>`, which prints
+JSON of what the page showed and the `getTweaks` RPC as `stored`; the command
+with no verb lists them.
+
 - **Read the default** (`ui-tweaks.text-size/rpc`):
   `drive-bb-plugins bb ui-tweaks.text-size/rpc -- plugin rpc call ui-tweaks getTweaks --json`
   prints `{"textSize": "medium", "width": "medium"}`.
-- **Set both from Settings** (`ui-tweaks.text-size/settings`): a `ui` script
-  that goes to `url + "settings/plugins/ui-tweaks"`, waits for
-  `radiogroup "Text size"` → `radio "Medium"` checked, captures, clicks
-  `radio "Large"` in `Text size` and `radio "Narrow"` in `Transcript width`,
-  waits for each to be `checked: true`, and captures. No `alert` appears.
-- **Read the stored value**: `getTweaks` as above prints
-  `{"textSize": "large", "width": "narrow"}`.
-- **See the effect** (`ui-tweaks.width/new-thread`): a `ui` script at `url`
-  takes the New-thread column, the last `.max-w-\[760px\]` holding
-  `#root-compose-prompt`, and waits with `page.waitForFunction` for its
-  computed `maxWidth` to read `640px` (Narrow; `760px` at Medium, `960px`
-  after Wide); `#root-compose-prompt`'s computed `fontSize` then reads
-  `15px` (Large; `13px` at Medium, `12px` at Small).
-- **Keyboard** (`ui-tweaks.keyboard/settings`): in the same script, focus
-  `radio "Large"` in `Text size` and press ArrowRight: `radio "Small"` is
-  checked, and `getTweaks` reads `"textSize": "small"`.
+- **Set both from Settings** (`ui-tweaks.text-size/settings`):
+  `ui-tweaks settings --text-size Large --width Narrow --second-window --reload`
+  presses each radio in its group: `before` reads Medium and Medium, `after`
+  Large and Narrow with `alerts` empty, `stored` `{"textSize": "large", "width": "narrow"}`,
+  and `secondWindow.followed` and `reloaded.kept` true.
+- **See the effect** (`ui-tweaks.width/new-thread`): `ui-tweaks effect`
+  reads the New-thread column's computed `maxWidth` and the composer's
+  `fontSize` once they reach what `stored` calls for: `640px` and `15px` at
+  Narrow and Large (`760px` and `13px` at Medium, `960px` at Wide, `12px` at
+  Small), `reached` true, `styles` 1.
+- **Keyboard** (`ui-tweaks.keyboard/settings`): `ui-tweaks keyboard` focuses
+  `radio "Large"` in `Text size` and presses ArrowRight: `Small` is checked
+  and `stored` reads `"textSize": "small"`.
+  `--group "Transcript width" --from Narrow --key ArrowLeft` wraps to `Wide`.
 - **Thread view** (`ui-tweaks.width/thread`): with Large and Wide stored and
   a thread from `drive-bb-plugins spawn ui-tweaks.width/spawn "tweak thread" "reply ok"`,
-  a `ui` script at `url + "projects/<project>/threads/<thread>"` waits for
-  every `.max-w-\[760px\]` inside `[data-thread-window]:not([data-surface-tone])`
-  (the transcript and composer columns) to compute `maxWidth` `960px`; back
-  at Medium they read `760px` and `document.head` holds no tweak `<style>`.
-- **Live from RPC** (`ui-tweaks.live/rpc`): with a page open on
-  `settings/plugins/ui-tweaks`, write `{"width":"wide"}` to a file and run
-  `drive-bb-plugins bb ui-tweaks.live/rpc -- plugin rpc call ui-tweaks setTweaks --input-file <file> --json`;
-  the open page's `radio "Wide"` becomes checked without a reload. The `ui`
-  script runs that command with `child_process.execFileSync` on
-  `process.env.DBP_HARNESS` between its two captures.
+  `ui-tweaks effect --thread "tweak thread"` reads the transcript and
+  composer columns at `960px`; back at Medium they read `760px` and `styles`
+  0, the tweak `<style>` gone.
+- **Live from RPC** (`ui-tweaks.live/rpc`): `ui-tweaks live --width wide`
+  opens Settings and, in a second window, the New-thread screen, writes the
+  partial `setTweaks` over RPC and prints `followed` true for both: Settings'
+  `radio "Wide"` checked and the column at `960px`, with no reload.
 - **Strict** (`ui-tweaks.strict/rpc`): `setTweaks` with `{"width":"huge"}`,
   or with a key it does not have (`{"colour":"red"}`), exits 1 with
   `HTTP 400: rpc input validation failed`, and `getTweaks` still prints the
   previous value.
-- **Phone** (`ui-tweaks.phone/new-thread`): with Narrow stored, a `ui` script
-  with `--mobile` waits 5 seconds on `url` and finds the New-thread column's
-  `maxWidth` still `760px`, not `640px`.
+- **Phone** (`ui-tweaks.phone/new-thread`): with Narrow stored,
+  `ui-tweaks phone --mobile` waits out the 5 seconds and reads the New-thread
+  column still `760px`, not `640px`, `styles` 0 and `applied` false.
 
 ## Gotchas
 
@@ -91,7 +90,7 @@ New-thread screen carries both effects.
 - A reinstall resets both to Medium; an update keeps them.
 - The phone exclusion needs a coarse pointer as well as a narrow window: a
   narrow desktop viewport still applies the tweaks, so use `--mobile`.
-- The width targets are bb's own classes in bb 0.44 (`.chat-prompt-box`,
+- The width targets are bb's own classes in bb 0.46 (`.chat-prompt-box`,
   `.max-w-[760px]`); on another bb version a plugin that applies nothing
   logs a warning after 5 seconds, which `plugin-ui-tweaks.log` or
   `console.log` shows.

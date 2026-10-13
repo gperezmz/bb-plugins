@@ -309,15 +309,25 @@ export const verbs = {
   },
 
   tab: {
-    usage: "<thread> [--tab <Work|Notes|Watching|Ledger>] [--fold <section>] [--review]: open a manager's Fleet tab from its chip and read it; --tab presses that tab, --fold presses that Work section's heading, --review presses Review in the fleet header, each read as `after`; the `fleetDetail` RPC",
-    valued: ["tab", "fold"],
+    usage: "<thread> [--fleet <repo>] [--tab <Work|Notes|Watching|Ledger>] [--fold <section>] [--review]: open a manager's Fleet tab from its chip and read it; --fleet opens the header's fleet switcher of a manager holding several, lists its `fleets` and picks <repo>; --tab presses that tab, --fold presses that Work section's heading, --review presses Review in the fleet header, each read as `after`; the `fleetDetail` RPC",
+    valued: ["fleet", "tab", "fold"],
     async run({ page, url, capture, cli, args, flags }) {
       await openThread(page, url, cli, args[0], "unattendish.tab/show");
       await clickChip(page);
       await tabBar(page).waitFor();
       const result = { shown: await readTab(page) };
       await capture("tab", "click the chip");
-      if (flags.tab || flags.fold || flags.review) {
+      if (flags.fleet) {
+        await tabHeader(page).getByRole("button", { name: /: switch fleet$/ }).click();
+        const menu = page.getByRole("menu", { name: "Fleets of this thread" });
+        result.fleets = await menu.getByRole("menuitemradio").evaluateAll((items) =>
+          items.map((item) => ({ name: item.getAttribute("aria-label"), checked: item.getAttribute("aria-checked") === "true" })),
+        );
+        await capture("switcher", "open the fleet switcher");
+        await menu.getByRole("menuitemradio", { name: new RegExp(`^${escape(flags.fleet)}\\b`) }).click();
+        await tabHeader(page).getByRole("button", { name: new RegExp(`^Fleet ${escape(flags.fleet)}, one of`) }).waitFor();
+      }
+      if (flags.fleet || flags.tab || flags.fold || flags.review) {
         if (flags.tab) await tabBar(page).getByRole("tab", { name: new RegExp(`^${escape(flags.tab)}`) }).click();
         if (flags.fold) await page.locator("[role=tabpanel]:not([hidden])").last().getByRole("button", { name: new RegExp(`^${escape(flags.fold)}`) }).click();
         if (flags.review) await tabHeader(page).getByRole("button", { name: /^Review/ }).click();
@@ -327,7 +337,7 @@ export const verbs = {
           const rows = [...document.querySelectorAll("[id^=fleet-tab-unreadable-]")];
           return rows.map((row) => ({ id: row.id, top: Math.round(row.getBoundingClientRect().top), viewport: window.innerHeight }));
         });
-        await capture("after", [flags.tab && `tab ${flags.tab}`, flags.fold && `fold ${flags.fold}`, flags.review && "Review"].filter(Boolean).join(", "));
+        await capture("after", [flags.fleet && `fleet ${flags.fleet}`, flags.tab && `tab ${flags.tab}`, flags.fold && `fold ${flags.fold}`, flags.review && "Review"].filter(Boolean).join(", "));
       }
       const repo = result.shown.header?.[0] ?? null;
       const stored = rpc(cli, "unattendish.tab/rpc", "fleets").fleets?.find((card) => card.managerThreadId === args[0]);

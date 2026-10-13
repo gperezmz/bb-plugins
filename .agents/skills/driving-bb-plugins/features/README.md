@@ -74,7 +74,7 @@ handles, required state, commands, and observable evidence.
 
 - [UI Tweaks](./ui-tweaks.md): text size and transcript width, from the
   settings section, its arrow keys and RPC, applied live to the New-thread
-  screen and thread views.
+  screen and thread views, each a verb.
 - [Thread Glance](./thread-glance.md): the sidebar list's project scope,
   shelves, scenes and cards, child-thread chips, hover card, Snooze, Park and
   Settle with Undo, the Woke marker, rename and the menu's dialogs,
@@ -83,14 +83,14 @@ handles, required state, commands, and observable evidence.
   page with project appearance, each a verb.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab and the
   command palette's way to it, the Thread usage page, the budget warning and
-  the `thread-usage` CLI over a parent and child thread.
-- [Cache Keeper](./cache-keeper.md): the composer chip, compact when idle on
-  the drive clock, the banner with Skip and Undo, keep warm while waiting,
-  the Cache Keeper page and its settings.
+  the `thread-usage` CLI over a parent and child thread, each a verb.
+- [Cache Keeper](./cache-keeper.md): the composer chip and sidebar row glyphs,
+  compact when idle on the drive clock, the banner with Skip and Undo, keep
+  warm while waiting, the Cache Keeper page and its settings, each a verb.
 - [Unattendish](./unattendish-sdlc.md): fleets registered by their managers
   against fake GitHub, GitLab, Linear and Jira services, the wake, the Fleets
-  page and its Inbox actions, the Fleet chip and tab with the ledger, the
-  toasts, the Connect… popup, and the accounts and poll intervals in
+  page and its Inbox actions, the Fleet chip and tab with the ledger and a
+  manager's several fleets, the toasts, the Connect… popup, and the accounts and poll intervals in
   settings, each a verb.
 
 Not yet mapped: Team Onboarding (`plugins/team-onboarding`) and

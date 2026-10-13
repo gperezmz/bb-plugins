@@ -6,7 +6,9 @@ and Settled. A thread sits on one shelf, drawn as a full card (three lines), a
 folded card (one line, Working) or a slim row (Snoozed, Parked, Settled), and
 a parent's child threads fold behind a chip. Snooze, Park and Settle move a
 thread between shelves from hover buttons and bb's thread menu, each with
-Undo, and a thread back from a snooze carries a Woke marker. A plug icon
+Undo, and a thread back from a snooze, or told something while snoozed,
+carries a Woke marker; a parked or settled thread told something returns to
+Active. A plug icon
 on a card shows that something listens in the thread's workspace; its hover
 card lists those ports with Stop, a settle offers to close the ports the
 thread owns, and the Settled shelf's Clean closes the terminals and owned
@@ -27,7 +29,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
 - `actions`: Snooze (presets or a picked time), Park, Resume, Wake, Settle,
   Un-settle, Pin and Unpin, from hover buttons, slim-row buttons and the
   thread menu, and Undo on their toasts.
-- `woke`: the Woke marker on a thread back from a snooze, and its dismissal.
+- `woke`: the Woke marker on a thread back from a snooze, or one that
+  needed attention while snoozed, and its dismissal.
 - `menu`: bb's thread menu on a row with the list's items added, and its
   Parent… and Project ▸ dialogs.
 - `rename`: renaming a row inline, the editor keeping focus until the user
@@ -87,7 +90,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   `7m`). A Settled slim row has the status slot too (`Failed`, `Unread` or
   the age); a Parked or Snoozed slim row has plain text instead, `Waiting 0d`
   or the time left until the wake (`5m`, `2h`, `3d`). On a phone a full card has no Snooze, Settle or `…` button.
-- Woke marker: a thread back from a snooze has a bold title, `Woke` in its
+- Woke marker: a thread back from a snooze, or one that needed attention
+  (a reply, a failure) after it was snoozed, has, on Active, a bold title, `Woke` in its
   status slot and `button "Dismiss Woke marker"` in place of Snooze and
   Settle; opening the thread clears it too.
 - Rename: a double-click on a row's link, or the menu's `Rename`, swaps the
@@ -115,7 +119,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   the presets and `Pick date & time…`), `Park thread`, `Settle`, `Rename`,
   `Notifications`, `Archive`, `Delete`; `Resume` on a parked thread, `Wake now`
   on a snoozed one, `Un-settle` on a settled one, `Unpin` on a pinned one. A
-  busy thread's menu has no `Snooze`, `Park thread` or `Settle`. A child in an
+  busy thread's menu has no `Snooze`, `Park thread` or `Settle`, and a woke
+  one no `Snooze`; a thread of the Personal project has no `Project`. A child in an
   open child list has the same menu on a right-click. On a phone a long press
   opens it as a drawer, with no `Open in split` and with bb's
   `New thread in environment`.
@@ -132,7 +137,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
 - Toasts: `Thread parked`, `Thread snoozed` (with `Wakes …`),
   `Thread settled`, `Thread woke up`, `Thread returned to Active`, each with
   `Undo` (a settle's Undo then toasts `Settling undone`); snooze, park and
-  settle add `Agent session stopped`. The ports prompt
+  settle add `Agent session stopped` when they stopped a loaded session, and a
+  settle `closed N terminals nobody used` when it closed any. The ports prompt
   `Close this thread's ports?` with `Keep open` and `Close ports`, or
   `Thread settled, but its ports could not be checked` when the machine is
   unreachable; `Stop requested for :<port>`.
@@ -318,7 +324,9 @@ the pointer, so those verbs run on the desktop viewport.
   `--ports keep` presses `Keep open` (`promptGone` true, the server still
   listening). `--unsettle-first` un-settles through the server before
   answering: `promptAfterUnsettle` is false, the prompt leaves with the settle.
-  A thread owning no port raises no prompt (`prompt` null).
+  A thread owning no port raises no prompt (`prompt` null). `--undo` presses
+  the settle toast's `Undo` and prints `undone` (`Settling undone`, the
+  lifecycle row cleared); `lifecycle` has no settle.
 - **Clean** (`clean`): Clean skips a settled thread whose workspace is shared
   with any thread that is not settled and quiet, so settle threads that sit in
   a workspace of their own: `spawn … "wt a" hi --worktree`, then start the
@@ -337,8 +345,12 @@ the pointer, so those verbs run on the desktop viewport.
   `--refresh` presses `Refresh preview`. `--scope <project>` limits the
   preview.
 - **Terminals for Clean** (`clean`):
-  `drive-bb-plugins bb … terminal create --thread <id> --title devserver --command "BB_THREAD_ID=<id> node -e …" --json`
-  starts a terminal in the thread's workspace, its process owned when the
+  `drive-bb-plugins bb … terminal create --thread <id> --title devserver --command "BB_THREAD_ID=<id> <node> -e …" --json`
+  starts a terminal in the thread's workspace, `<node>` being node's absolute
+  path (`command -v node`), since the terminal's login shell need not find
+  node on its own `PATH` (the terminal then exits 127 with
+  `node: command not found`, which `terminal output <id>` shows); its process
+  is owned when the
   command sets `BB_THREAD_ID` and not otherwise. The preview reads
   `2 terminals · :18772 node` and `Clean resources` closes the terminals, which
   ends their processes (`0 port shutdown requests sent`). Settling a thread
@@ -388,9 +400,11 @@ the pointer, so those verbs run on the desktop viewport.
   bottom and back; every step has `outside` and `missing` 0 (the upper list's
   first nine rows, which bb's jump keys reach, and the open thread's row stay
   mounted), and `walkAlwaysSame` is true: bb's next and previous walk reads
-  the same threads in order. On `user-800`, saved more than 6 hours ago, every
-  live thread is on Inactive: pass `--shelf inactive`, or
-  `set "Inactive shelf" off` to put them on Active.
+  the same threads in order. On `user-800`, saved days ago, auto-settle draws
+  most roots on Settled and the rest on Inactive, which leaves a handful of rows
+  to scroll: first `thread-glance prefs set settleQuietThreads false` and
+  `prefs set inactiveShelf false` through `drive-bb-plugins bb`, which puts
+  every live root on Active.
 - **Remount** (`remount`): `thread-glance remount` picks
   `Thread list (built-in)` in Settings → Appearance, sees the list gone
   (`away`), picks `Thread Glance` again, and prints the rows before and after;
@@ -464,6 +478,11 @@ says.
 - Quiet threads (`seed`'s `trees`) read `pending`; their third line shows the
   machine (`dev-box`) where a fork's shows its branch (`main`), and their hover
   card `Not set` for Model and Reasoning. A fork (`states`) has a real turn.
+- Auto-settle is on at install (`settleQuietThreads`, after
+  `daysBeforeAutoSettle` 3 days, and `settleMergedPullRequests`): a root quiet
+  that long, or whose pull request merged or closed, draws on Settled with no
+  one settling it, and draws on Active again once the setting is off. A
+  snapshot saved days before opens that way.
 - Pinning is bb's: `Pin` and `Unpin` change `pinnedAt`, not the plugin's
   lifecycle row, and Snooze, Park or Settle unpin a thread.
 - The plugin has no `Settled` fold, settings popover, `N need you` filter or
