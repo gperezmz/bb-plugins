@@ -344,6 +344,16 @@ describe("Waits on you (#258 AC4)", () => {
     expect(drawnIcons(within(waits).getByText("done").parentElement!)).toEqual(["Check"]);
   });
 
+  it("holds a state at the buttons' height, 44 px on a phone", async () => {
+    const detail = { manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ id: "s", ref: "#1", offer: null, action: actionRecord({ sentAt: ago(HOUR) }) })] } };
+    await showDetail(detail);
+    expect(within(section(/^Waits on you/)).getByText("sent · 1h").className).toContain("h-7");
+    cleanup();
+    setCompactViewport(true);
+    await showDetail(detail);
+    expect(within(section(/^Waits on you/)).getByText("sent · 1h").className).toContain("h-11");
+  });
+
   it("opens the composer under its row, and says Not sent in its footer when bb refuses the message", async () => {
     fake.api.sendAction.mockResolvedValue({ ok: false, reason: "the manager thread is archived" });
     await showDetail({ manifest: { ...okManifest, unreadableInbox: [], inbox: [inboxRow({ ref: "#7", what: "Which cache" })] } });

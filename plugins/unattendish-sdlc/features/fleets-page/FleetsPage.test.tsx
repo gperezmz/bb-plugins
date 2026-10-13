@@ -549,7 +549,7 @@ describe("the queue (AC9–AC13)", () => {
     fireEvent.click(within(queue()).getByRole("button", { name: "Answer… #7" }));
     const row = queueRows()[0]!;
     expect(within(row).getByText("Your answer for #7 Which cache to use · goes to org/wake's manager")).toBeTruthy();
-    expect(within(row).getByText("composing…")).toBeTruthy();
+    expect(within(row).getByText("composing…").className).toContain("h-7");
     expect(within(row).getByText("⌘↵ send · Esc cancel")).toBeTruthy();
     fireEvent.change(within(row).getByRole("textbox"), { target: { value: "Use Redis" } });
     fireEvent.click(within(row).getByRole("button", { name: "Send" }));
@@ -697,13 +697,16 @@ describe("in the narrow layout (AC15)", () => {
     expect(within(line("org/dash")).queryByLabelText(/blocked/)).toBeNull();
   });
 
-  it("draws the kind tabs borderless and 24 px tall, as the narrow layout does", async () => {
+  it("draws the kind tabs borderless and 24 px tall, as the wide layout does", async () => {
     await show(fleetsView({ fleets: [fleet("org/dash", { waiting: 1 })], inbox: [inboxRow({ fleet: "org/dash", ref: "#7" })] }));
     const tab = within(queue()).getByRole("tab", { name: "All 1" });
     expect(tab.className).toContain("h-6");
     expect(tab.className).not.toContain("border");
     expect(tab.className).not.toContain("rounded-full");
     expect(tab.className).toContain("before:-inset-y-1");
+    // The gaps that keep the tabs' tap areas, and the ✕'s, apart where they wrap.
+    expect(tab.parentElement!.className).toContain("gap-y-2");
+    expect(tab.parentElement!.parentElement!.className).toContain("gap-y-3.5");
   });
 });
 
@@ -905,6 +908,8 @@ describe("a queue row in the narrow layout (#273)", () => {
     const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
     expect(clear.className).toContain("before:h-11");
     expect(clear.className).toContain("before:w-[max(100%,2.75rem)]");
+    // Room before the ✕ keeps its tap area off the name.
+    expect(clear.className).toContain("ml-2");
     expect(within(clear.parentElement!).getByText("dash")).toBeTruthy();
   });
 });
