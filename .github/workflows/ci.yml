@@ -140,7 +140,7 @@ jobs:
   # its environment from; the test starts its own processes, so it needs no bb
   # and no install.
   run-env:
-    name: run-env test
+    name: Drive harness environment (run-env)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
