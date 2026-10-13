@@ -1,5 +1,5 @@
 // What an Inbox row shows and offers, decided from the row the server sent and what this window has in flight.
-import type { ActionKind, ActionOffer, ActionRecordView, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
+import type { ActionKind, ActionOffer, InboxRowView, UnreadableInboxRowView } from "@/src/fleet/application/views";
 import { ageLabel, elapsedMs, spanLabel } from "../format";
 import { hasRef } from "../item-title";
 
@@ -15,11 +15,6 @@ export function waitsForText(waitsFor: InboxRowView["waitsFor"]): string {
     case "other":
       return "something else";
   }
-}
-
-/** How long a row has waited, as of the view's clock. */
-export function waitedText(row: Pick<InboxRowView, "since">, now: string): string {
-  return ageLabel(row.since, now);
 }
 
 /** What this window knows of the action it sent on a row, until the server's view says it. */
@@ -85,17 +80,6 @@ export function sendInput(row: Pick<InboxRowView, "fleet" | "id">, kind: ActionK
   if (options.regrant === true) return { ...base, regrant: true };
   if (takesText(kind)) return { ...base, text: (options.text ?? "").trim() };
   return base;
-}
-
-/** `unreadable: <column>`, whether the server's reason already says it or only names the column. */
-export function unreadableText(row: Pick<UnreadableInboxRowView, "reason">): string {
-  return /^unreadable\b/i.test(row.reason) ? row.reason : `unreadable: ${row.reason}`;
-}
-
-/** A recently finished action in a line: `answered #163 · done`. */
-export function recentActionText(action: Pick<ActionRecordView, "kind" | "ref" | "state">): string {
-  const verb = action.kind === "answer" ? "answered" : action.kind === "grant" ? "granted" : "asked to build";
-  return `${verb} ${action.ref} · ${action.state}`;
 }
 
 /** How long a row may wait before its age turns amber. A placeholder: changing it is this constant. */

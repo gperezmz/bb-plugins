@@ -1,22 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { actionRecord, ago, HOUR, inboxRow, MINUTE, NOW } from "@/testing/fixtures";
 import { canSend, keyIntent } from "./composer-model";
-import { type LocalAction, actionName, recentActionText, rowAge, rowAction, sendInput, shortLinkLabel, takesText, unreadableLine, unreadableText, waitedText, waitsForText } from "./row-model";
+import { type LocalAction, actionName, rowAge, rowAction, sendInput, shortLinkLabel, takesText, unreadableLine, waitsForText } from "./row-model";
 
 const idle: LocalAction = { phase: "idle", acceptedAt: null, refusal: null, unconfirmed: false };
 
 describe("what a row says", () => {
   it("says what each row waits for", () => {
     expect(["answer", "grant", "ready", "other"].map((w) => waitsForText(w as "answer"))).toEqual(["your answer", "a grant to merge", "your ready label", "something else"]);
-  });
-
-  it("ages the wait by the view's clock", () => {
-    expect(waitedText({ since: ago(5 * MINUTE) }, NOW)).toBe("5m");
-  });
-
-  it("says an unreadable row is unreadable, naming the column", () => {
-    expect(unreadableText({ reason: 'the table has no "Waits for" column' })).toBe('unreadable: the table has no "Waits for" column');
-    expect(unreadableText({ reason: "unreadable: Waits for" })).toBe("unreadable: Waits for");
   });
 });
 
@@ -94,14 +85,6 @@ describe("the call an action makes", () => {
   it("names a button with its item", () => {
     expect(actionName("Answer…", { ref: "ENG-212" })).toBe("Answer… ENG-212");
     expect(actionName("Answer…", { ref: "—" })).toBe("Answer…");
-  });
-});
-
-describe("recent actions", () => {
-  it("reads as a line", () => {
-    expect(recentActionText({ kind: "answer", ref: "#163", state: "done" })).toBe("answered #163 · done");
-    expect(recentActionText({ kind: "grant", ref: "!41", state: "sent" })).toBe("granted !41 · sent");
-    expect(recentActionText({ kind: "build", ref: "#167", state: "done" })).toBe("asked to build #167 · done");
   });
 });
 

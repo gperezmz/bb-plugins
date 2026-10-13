@@ -1,58 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { chipFace, ONE_LINE_MAX_CHARS } from "./model";
+import type { ProblemView, WarningView } from "@/src/fleet/application/views";
+import { fleetCard, NOW } from "@/testing/fixtures";
+import { chipFace } from "./model";
 
-describe("the Fleet chip", () => {
-  it("spells out the labelled counts", () => {
-    expect(chipFace({ waiting: 1, inFlight: 3, blocked: 0, landed: 2 }, false).text).toBe("1 waits on you · 3 in flight · 2 landed in 7d");
+const unreadable: ProblemView = { code: "unreadable-rows", text: "1 manifest row cannot be read: Inbox", fix: { kind: "fleet-tab" } };
+const expiring: WarningView = { kind: "expires", label: "GitHub · yuser for acme", credentialId: "c", accountId: "a", role: "forge", expiresAt: "2026-10-15T12:00:00Z", daysLeft: 3 };
+
+describe("the Fleet chip's face (#258 AC10)", () => {
+  it("shows the rows that wait with a red dot for a problem", () => {
+    expect(chipFace(fleetCard({ waiting: 6, problems: [unreadable] }), NOW)).toEqual({ count: 6, dot: "problem", label: "Fleet: 6 waiting on you, and it has a problem" });
   });
 
-  it("leaves out a count of zero", () => {
-    expect(chipFace({ waiting: 0, inFlight: 3, blocked: 0, landed: 0 }, false).text).toBe("3 in flight");
+  it("is the icon alone with nothing waiting and nothing flagged, whatever else is in flight", () => {
+    expect(chipFace(fleetCard({ inFlight: 2 }), NOW)).toEqual({ count: null, dot: null, label: "Fleet: nothing waits on you" });
   });
 
-  it("reads Fleet idle with none", () => {
-    expect(chipFace({ waiting: 0, inFlight: 0, blocked: 0, landed: 0 }, false).text).toBe("Fleet idle");
+  it("shows an amber dot and no count for a warning alone", () => {
+    expect(chipFace(fleetCard({ warnings: [expiring] }), NOW)).toEqual({ count: null, dot: "warning", label: "Fleet: nothing waits on you, and it has a warning" });
   });
 
-  it("shows only the count waiting on the operator on a compact viewport", () => {
-    expect(chipFace({ waiting: 2, inFlight: 3, blocked: 0, landed: 2 }, true)).toMatchObject({ text: "2", dot: false });
+  it("dots a problem red even beside a warning", () => {
+    expect(chipFace(fleetCard({ problems: [unreadable], warnings: [expiring] }), NOW).dot).toBe("problem");
   });
 
-  it("shows a dot with none waiting on a compact viewport", () => {
-    expect(chipFace({ waiting: 0, inFlight: 3, blocked: 0, landed: 0 }, true)).toMatchObject({ text: null, dot: true });
-  });
-
-  it("names an idle chip Fleet idle, not Fleet: Fleet idle", () => {
-    expect(chipFace({ waiting: 0, inFlight: 0, blocked: 0, landed: 0 }, false).label).toBe("Fleet idle");
-    expect(chipFace({ waiting: 0, inFlight: 0, blocked: 0, landed: 0 }, true).label).toBe("Fleet idle");
-  });
-
-  it("names the chip by its counts, on a compact viewport too", () => {
-    expect(chipFace({ waiting: 2, inFlight: 0, blocked: 0, landed: 0 }, true).label).toBe("Fleet: 2 waits on you");
-  });
-
-  it("draws the spec's own example on one line", () => {
-    const face = chipFace({ waiting: 1, inFlight: 3, blocked: 0, landed: 2 }, false);
-    expect(face.lines).toEqual(["1 waits on you · 3 in flight · 2 landed in 7d"]);
-    expect(face.text!.length).toBeLessThanOrEqual(ONE_LINE_MAX_CHARS);
-  });
-
-  it("draws counts too long for the box on two lines, split between the counts, losing nothing", () => {
-    const face = chipFace({ waiting: 987, inFlight: 654, blocked: 0, landed: 321 }, false);
-    expect(face.lines).toEqual(["987 waits on you · 654 in flight", "321 landed in 7d"]);
-    expect(face.lines.join(" · ")).toBe(face.text);
-  });
-
-  it("keeps every count with up to three digits within the one-line limit or on two lines each within it", () => {
-    for (const n of [1, 12, 123, 999]) {
-      const face = chipFace({ waiting: n, inFlight: n, blocked: 0, landed: n }, false);
-      for (const line of face.lines) expect(line.length).toBeLessThanOrEqual(ONE_LINE_MAX_CHARS);
-      expect(face.lines.length).toBeLessThanOrEqual(2);
-    }
-  });
-
-  it("draws one or two counts on one line however many digits they have", () => {
-    expect(chipFace({ waiting: 999, inFlight: 999, blocked: 0, landed: 0 }, false).lines).toHaveLength(1);
-    expect(chipFace({ waiting: 0, inFlight: 0, blocked: 0, landed: 0 }, false).lines).toEqual(["Fleet idle"]);
+  it("leaves the dot off for sharing the agents' rate limit, which only the credential card says", () => {
+    expect(chipFace(fleetCard({ warnings: [{ kind: "shares-rate-limit", label: "gh" }] }), NOW).dot).toBeNull();
   });
 });
