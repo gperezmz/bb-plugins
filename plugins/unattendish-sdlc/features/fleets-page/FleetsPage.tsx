@@ -5,8 +5,9 @@ import { useDashboardApi } from "@/shared/client";
 import { Glyph } from "@/shared/look/Glyph";
 import { ICONS } from "@/shared/look/icons";
 import { useIsCompactViewport } from "@/shared/use-compact-viewport";
-import { FALLBACK_POLL_MS, screenState, useLive } from "@/shared/use-live";
+import { FALLBACK_POLL_MS, refetchEveryView, screenState, useLive } from "@/shared/use-live";
 import { Board, PhoneBoard } from "./Board";
+import { rememberedFilter, rememberFilter } from "./filter";
 import { NO_FLEET_COMMAND, NO_FLEET_TAIL, NO_FLEET_TEXT, NO_FLEET_TITLE, queueFor } from "./model";
 import { Queue } from "./Queue";
 
@@ -21,7 +22,7 @@ export function FleetsPage() {
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">
       {state === "loading" ? <Loading /> : null}
-      {state === "failed" ? <CantLoad error={live.error ?? ""} retry={live.refetch} /> : null}
+      {state === "failed" ? <CantLoad error={live.error ?? ""} retry={refetchEveryView} /> : null}
       {state === "ready" ? <Ready view={live.data!} refetch={live.refetch} /> : null}
     </div>
   );
@@ -78,7 +79,11 @@ function NoFleet() {
 function Ready({ view, refetch }: { view: FleetsView; refetch: () => Promise<void> }) {
   const compact = useIsCompactViewport();
   // The fleet the queue is filtered to, by name; a fleet no longer registered filters nothing.
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPickedState] = useState<string | null>(rememberedFilter);
+  const setPicked = (fleet: string | null) => {
+    rememberFilter(fleet);
+    setPickedState(fleet);
+  };
   if (view.fleets.length === 0) return <NoFleet />;
   const selected = picked !== null && view.fleets.some((card) => card.repo === picked) ? picked : null;
   const fleets = new Map(view.fleets.map((card) => [card.repo, card]));
