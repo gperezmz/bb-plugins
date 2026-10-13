@@ -4,17 +4,21 @@ import { cardReasons, costText, countParts, countsText, halfAction, halfLine, ma
 const NOW = "2026-10-12T12:00:00Z";
 
 describe("a fleet's counts", () => {
+  it("counts blocked rows too, as the fleet board does", () => {
+    expect(countsText({ waiting: 0, inFlight: 0, blocked: 2, landed: 1 })).toBe("2 blocked · 1 landed in 7d");
+  });
+
   it("spells each count and joins them", () => {
-    expect(countsText({ waiting: 1, inFlight: 3, landed: 2 })).toBe("1 waits on you · 3 in flight · 2 landed in 7d");
+    expect(countsText({ waiting: 1, inFlight: 3, blocked: 0, landed: 2 })).toBe("1 waits on you · 3 in flight · 2 landed in 7d");
   });
 
   it("leaves out a count of zero", () => {
-    expect(countParts({ waiting: 0, inFlight: 2, landed: 0 })).toEqual(["2 in flight"]);
-    expect(countsText({ waiting: 1, inFlight: 0, landed: 0 })).toBe("1 waits on you");
+    expect(countParts({ waiting: 0, inFlight: 2, blocked: 0, landed: 0 })).toEqual(["2 in flight"]);
+    expect(countsText({ waiting: 1, inFlight: 0, blocked: 0, landed: 0 })).toBe("1 waits on you");
   });
 
   it("reads Fleet idle with no count", () => {
-    expect(countsText({ waiting: 0, inFlight: 0, landed: 0 })).toBe("Fleet idle");
+    expect(countsText({ waiting: 0, inFlight: 0, blocked: 0, landed: 0 })).toBe("Fleet idle");
   });
 });
 

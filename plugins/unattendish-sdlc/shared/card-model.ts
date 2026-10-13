@@ -2,17 +2,18 @@
 import type { WarningView, FleetCardView, HalfView, ManagerView } from "@/src/fleet/application/views";
 import { ageLabel, formatMoney, plural, polledLabel } from "./format";
 
-/** The three counts, each as it is spelled, a count of zero left out. Landed covers the last 7 days. */
-export function countParts(card: Pick<FleetCardView, "waiting" | "inFlight" | "landed">): string[] {
+/** The four counts, each as it is spelled, a count of zero left out. Landed covers the last 7 days. */
+export function countParts(card: Pick<FleetCardView, "waiting" | "inFlight" | "blocked" | "landed">): string[] {
   return [
     card.waiting > 0 ? `${card.waiting} waits on you` : null,
     card.inFlight > 0 ? `${card.inFlight} in flight` : null,
+    card.blocked > 0 ? `${card.blocked} blocked` : null,
     card.landed > 0 ? `${card.landed} landed in 7d` : null,
   ].filter((part): part is string => part !== null);
 }
 
 /** The counts joined by dots; `Fleet idle` when there is none. */
-export function countsText(card: Pick<FleetCardView, "waiting" | "inFlight" | "landed">): string {
+export function countsText(card: Pick<FleetCardView, "waiting" | "inFlight" | "blocked" | "landed">): string {
   const parts = countParts(card);
   return parts.length === 0 ? "Fleet idle" : parts.join(" · ");
 }

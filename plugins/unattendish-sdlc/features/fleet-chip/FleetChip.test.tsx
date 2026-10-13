@@ -41,6 +41,11 @@ describe("the Fleet chip", () => {
     expect(screen.getByRole("button").textContent).toBe("3 in flight");
   });
 
+  it("counts a fleet whose only rows are blocked, as the fleet board does", async () => {
+    await show(fleetCard({ blocked: 2 }));
+    expect(screen.getByRole("button").textContent).toBe("2 blocked");
+  });
+
   it("reads Fleet idle with none", async () => {
     await show(fleetCard());
     expect(screen.getByRole("button").textContent).toBe("Fleet idle");
