@@ -136,6 +136,19 @@ jobs:
           plugin: openai-inference
       - run: scripts/ci/npm-install-refusal-check.sh
 
+  # run-env.sh is the passed list and leak check every drive harness run takes
+  # its environment from; the test starts its own processes, so it needs no bb
+  # and no install.
+  run-env:
+    name: run-env test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: plugins/cache-keeper/harness/run-env.test.sh
+
   secrets:
     name: Secrets (gitleaks)
     runs-on: ubuntu-latest
@@ -187,7 +200,7 @@ jobs:
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, plugin, npm-install-refusal, secrets, docs]
+    needs: [changes, plugin, npm-install-refusal, run-env, secrets, docs]
     runs-on: ubuntu-latest
     steps:
       - name: Fail when a job failed or was cancelled
