@@ -51,6 +51,7 @@ describe("the result's texts", () => {
     [1, 1, "1 terminal closed · 1 port shutdown request sent"],
     [3, 1, "3 terminals closed · 1 port shutdown request sent"],
     [1, 0, "1 terminal closed · 0 port shutdown requests sent"],
+    [0, 1, "0 terminals closed · 1 port shutdown request sent"],
     [2, 2, "2 terminals closed · 2 port shutdown requests sent"],
   ])("reads %i closed and %i port requests as '%s'", (closedTerminals, portRequests, text) => {
     expect(cleanSummary(result({ closedTerminals, portRequests }))).toBe(text);

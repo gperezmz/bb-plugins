@@ -37,7 +37,7 @@ export function stillListeningText(result: RunCleanOutput): string | null {
   return result.stillListening.length === 0 ? null : `Still listening after the request: ${portList(result.stillListening)}`;
 }
 
-/** A thread's terminals as the dialog reads them. */
+/** A count of terminals, singular for one, as the preview and the result line read them. */
 export function terminalsText(count: number): string {
   return count === 1 ? "1 terminal" : `${count} terminals`;
 }

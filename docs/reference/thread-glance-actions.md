@@ -121,7 +121,7 @@ If the ports cannot be looked up after the settle, the toast reads "Thread settl
 - Each included thread lists its running or starting terminals, typed into or not, and its owned ports, with **Open**, which opens the thread and closes the dialog.
 - The dialog warns "This closes terminals even if you typed into them." and "A port process may need time to exit after its shutdown request." With nothing to close it reads "No live terminals or thread-owned listening ports found."
 
-**Clean resources** ("Cleaning..." while it runs) checks each thread and workspace again before each terminal and port, force-closes each terminal, sends SIGTERM to each port, waits 750 ms and reports "N terminals closed · M port shutdown requests sent" or "No resources were closed.", then "Still listening after the request: :port" and any issue, naming threads by title. No thread leaves Settled.
+**Clean resources** ("Cleaning..." while it runs) checks each thread and workspace again before each terminal and port, force-closes each terminal, sends SIGTERM to each port, waits 750 ms and reports "N terminals closed · M port shutdown requests sent" (each noun singular for one) or "No resources were closed.", then "Still listening after the request: :port" and any issue, naming threads by title. No thread leaves Settled.
 
 The preview lasts 2 minutes, survives a plugin restart, and runs once. A used or expired one reads "Cleanup preview expired. Review the resources again.", with **Refresh preview**.
 
