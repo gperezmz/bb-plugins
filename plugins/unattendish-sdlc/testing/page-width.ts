@@ -2,6 +2,8 @@
 import { act } from "@testing-library/react";
 
 let widthNow: number | null = null;
+/** How much narrower than its border box a watched element's content box is. */
+const CONTENT_INSET = 48;
 const watchers = new Set<FakeResizeObserver>();
 
 class FakeResizeObserver {
@@ -22,13 +24,14 @@ class FakeResizeObserver {
   report(): void {
     if (widthNow === null) return;
     const width = widthNow;
-    const entries = [...this.watched].map((target) => ({ target, contentRect: { width }, borderBoxSize: [{ inlineSize: width, blockSize: 0 }] }) as unknown as ResizeObserverEntry);
+    // The content box is narrower than the border box by a padding, as on a page, so a reader of the wrong one is told apart.
+    const entries = [...this.watched].map((target) => ({ target, contentRect: { width: width - CONTENT_INSET }, borderBoxSize: [{ inlineSize: width, blockSize: 0 }] }) as unknown as ResizeObserverEntry);
     if (entries.length > 0) this.callback(entries, this as unknown as ResizeObserver);
   }
 }
 
 /**
- * Makes every element a ResizeObserver watches `px` wide, and tells every observer; `null` takes the fake away, as a
+ * Makes every element a ResizeObserver watches `px` wide at its border box, and tells every observer; `null` takes the fake away, as a
  * browser with no ResizeObserver has none.
  */
 export function setPageWidth(px: number | null): void {

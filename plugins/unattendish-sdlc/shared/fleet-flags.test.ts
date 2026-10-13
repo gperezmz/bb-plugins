@@ -88,7 +88,7 @@ describe("a flag's icon", () => {
     expect(flags.map(fixIcon)).toEqual(["AlertTriangle", "ElectricPlugs", "CircleX", "unattendish-sdlc/key", null]);
   });
 
-  it("is ⚠ on a phone for a problem or a polling warning, and a key for a token to renew", () => {
+  it("is ⚠ in the narrow layout for a problem or a polling warning, and a key for a token to renew", () => {
     expect(narrowFlagIcon(flagsOf(fleetCard({ problems: [gone] }), NOW))).toBe("AlertTriangle");
     expect(narrowFlagIcon(flagsOf(fleetCard({ warnings: [late] }), NOW))).toBe("AlertTriangle");
     expect(narrowFlagIcon(flagsOf(fleetCard({ warnings: [expires] }), NOW))).toBe("unattendish-sdlc/key");

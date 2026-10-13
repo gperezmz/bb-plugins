@@ -14,6 +14,7 @@ import {
   moreLabel,
   narrowBoard,
   pageLayout,
+  widthWithScrollbar,
   pollingCell,
   queueFor,
   quietLabel,
@@ -66,7 +67,7 @@ describe("the fleet board's order", () => {
     expect(quietLabel(3)).toBe("3 quiet fleets");
   });
 
-  it("condenses to three fleets on a phone, the rest folded", () => {
+  it("condenses to three fleets in the narrow layout, the rest folded", () => {
     const cards = ["a", "b", "c", "d", "e"].map((name) => fleetCard({ repo: `org/${name}` }));
     expect(narrowBoard(cards, NOW)).toMatchObject({ more: 2 });
     expect(narrowBoard(cards, NOW).shown.map((card) => card.repo)).toEqual(["org/a", "org/b", "org/c"]);
@@ -190,5 +191,13 @@ describe("the page's layout", () => {
     expect(pageLayout(SWITCH_POINT_REM * 16 - 0.5, 16)).toBe("narrow");
     expect(pageLayout(SWITCH_POINT_REM * 16, 20)).toBe("narrow");
     expect(pageLayout(SWITCH_POINT_REM * 20, 20)).toBe("wide");
+  });
+});
+
+describe("the page's width with a scrollbar drawn", () => {
+  it("is the same whether the scrollbar shows now or not, so a layout's height cannot switch it back", () => {
+    expect(widthWithScrollbar(1009, 15, 15)).toBe(1009);
+    expect(widthWithScrollbar(1024, 0, 15)).toBe(1009);
+    expect(widthWithScrollbar(1024, 0, 0)).toBe(1024);
   });
 });

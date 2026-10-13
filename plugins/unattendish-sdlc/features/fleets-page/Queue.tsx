@@ -5,9 +5,8 @@ import { sentAgo, sentText } from "@/shared/fleet-header/model";
 import { FleetName, OFFER_KIND, QueueRow, UnreadableRow } from "@/shared/inbox/QueueRow";
 import { rowAction, rowKey, sameRow } from "@/shared/inbox/row-model";
 import type { RowActionState } from "@/shared/inbox/use-row-action";
-import { Glyph, ServiceLogo } from "@/shared/look/Glyph";
+import { Glyph } from "@/shared/look/Glyph";
 import { ICONS, KIND_ICONS } from "@/shared/look/icons";
-import { Tip } from "@/shared/look/Tip";
 import { KIND_TONES } from "@/shared/look/tones";
 import { composerFor, NOTHING_WAITS, NOTHING_WAITS_LINE, TAB_NAMES, tabCounts, tabRows, tabShowing, tabsShown, type QueueView, type Tab } from "./model";
 
@@ -100,16 +99,7 @@ export function Queue({ queue, now, fleets, filter, onClearFilter, narrow, nameO
         </div>
         {filter !== null ? (
           <span className={cn("ml-auto flex min-w-0 max-w-full items-center gap-1 rounded-full border border-border pl-2 text-xs", narrow ? "pr-0" : "py-0.5 pr-1")}>
-            {card !== undefined ? <ServiceLogo service={card.forge} decorative /> : null}
-            {nameOf(filter) === filter ? (
-              <span className="truncate">{filter}</span>
-            ) : (
-              <Tip text={filter}>
-                <span tabIndex={0} className={cn(FOCUS, "truncate")}>
-                  {nameOf(filter)}
-                </span>
-              </Tip>
-            )}
+            <FleetName fleet={card} name={filter} short={nameOf(filter)} className="text-foreground" />
             <button type="button" aria-label={`Show every fleet, not only ${filter}`} className={cn(FOCUS, "flex shrink-0 items-center justify-center text-muted-foreground hover:text-foreground", narrow ? "size-11" : "size-5")} onClick={onClearFilter}>
               <Glyph name={ICONS.clear} className="size-3" />
             </button>

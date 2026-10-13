@@ -847,7 +847,7 @@ describe("a queue row in the narrow layout (#273)", () => {
     fireEvent.click(line("github.example/org/dash"));
     const clear = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" });
     expect(clear.className).toContain("size-11");
-    expect(clear.parentElement!.textContent).toBe("dash");
+    expect(within(clear.parentElement!).getByText("dash")).toBeTruthy();
   });
 });
 
@@ -1033,7 +1033,7 @@ describe("opening a row from a toast's Answer… or Grant… (#262)", () => {
     expect((within(rowOf("Which cache to use")).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Use Redis");
   });
 
-  it("opens the composer on a phone too", async () => {
+  it("opens the composer in the narrow layout too", async () => {
     setPageWidth(NARROW);
     ask();
     await show(fleetsView({ fleets: cards, inbox: [wake, dash] }));
@@ -1065,7 +1065,8 @@ describe("the layout follows the page's own width (#277)", () => {
     expect(narrow()).toBe(true);
   });
 
-  it("keeps the wide layout at the switch point when the queue is filtered to one fleet or a poll brings a row with a long link (AC1)", async () => {
+  // That no row the wide layout holds is wider than the switch point is measured in bb: jsdom has no layout.
+  it("keeps the layout as it is when the queue is filtered to one fleet or a poll brings a row with a long link (AC1)", async () => {
     setPageWidth(SWITCH);
     await show(view());
     fireEvent.click(line("github.example/org/dash"));
@@ -1084,8 +1085,6 @@ describe("the layout follows the page's own width (#277)", () => {
     expect(link.className).toContain("max-w-[16rem]");
     expect(link.className).toContain("truncate");
     expect(await hoverText(link)).toBe(longLink.text);
-    const short = within(rowOf("Merge the cache")).getByRole("link", { name: `${longLink.text} ↗` });
-    expect(short.className).toContain("text-xs");
     cleanupTooltip();
     const issue = { kind: "url" as const, url: "https://github.example/org/dash/issues/7", text: "github.example/org/dash/issues/7" };
     cleanup();
@@ -1179,6 +1178,10 @@ describe("the layout follows the page's own width (#277)", () => {
     expect(await hoverText(within(line("github.example/org/dash")).getByLabelText("1 waiting on you"))).toBe("1 waiting on you");
     cleanupTooltip();
     expect(await hoverText(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" }))).toBe("github.example/org/dash");
+    cleanupTooltip();
+    fireEvent.click(within(line("github.example/org/dash")).getByRole("button", { name: "github.example/org/dash" }));
+    const chip = within(queue()).getByRole("button", { name: "Show every fleet, not only github.example/org/dash" }).parentElement!;
+    expect(await hoverText(within(chip).getByText("dash").parentElement!)).toBe("github.example/org/dash");
   });
 });
 

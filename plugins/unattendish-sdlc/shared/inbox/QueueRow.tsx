@@ -62,7 +62,7 @@ interface QueueRowProps {
   /**
    * `columns` lines the row up under the queue's columns, for the Fleets page's wide layout; `stacked` gives the
    * title, the details and the action a line each, for its narrow layout; `two-line` puts the kind's icon, the title and the action on one line and the link and
-   * the age on a second, for the Fleet tab's narrow panel.
+   * the age on a second, for the Fleet tab's side panel.
    */
   readonly layout: "columns" | "stacked" | "two-line";
   /** Touch-sized buttons in the `two-line` layout, for a coarse pointer on a phone; the `stacked` layout always has them. */

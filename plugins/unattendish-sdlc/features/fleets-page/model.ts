@@ -54,10 +54,19 @@ export type PageLayout = "wide" | "narrow";
  * The switch point, in rem: the narrowest page, padding included, at which the widest row the wide layout can hold
  * keeps each of its parts whole. That row names its fleet, links with no short form cut at 16rem, offers Grant… and
  * Re-grant with a refused Re-grant's "not sent" beside a 12rem title, has waited 99d 23h, and has an unconfirmed send.
- * Measured in bb at 1440 px, where that row's narrowest is 60.46rem and the page's padding 3rem, and rounded up to the
- * next rem, since the buttons' and "not sent"'s widths are their text's.
+ * Measured in bb, since the buttons' and "not sent"'s widths are their text's: that row at its narrowest, 60.46rem, and
+ * the page's 3rem of padding, rounded up.
  */
 export const SWITCH_POINT_REM = 64;
+
+/**
+ * The page's width as it is with a scrollbar drawn beside it, from its width now, `gutterNowPx` (the scrollbar it has
+ * now, 0 without one) and `gutterPx` (a scrollbar's width where it scrolls), so a layout whose height brings or takes
+ * away the scrollbar does not change the width the layout is chosen by.
+ */
+export function widthWithScrollbar(widthPx: number, gutterNowPx: number, gutterPx: number): number {
+  return widthPx + gutterNowPx - gutterPx;
+}
 
 /** The layout for a page `widthPx` wide, where a rem is `remPx`: wide from the switch point up, narrow below it. */
 export function pageLayout(widthPx: number, remPx: number): PageLayout {
