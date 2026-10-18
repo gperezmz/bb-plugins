@@ -9,16 +9,12 @@ portal families, sonner and others) are not bundled and are not listed.
 |---|---|---|---|---|
 | @get-bb/plugin-sdk | 0.6.49 | MIT | Copyright (c) 2026 Michael Yong (LICENSE of github.com/get-bb/bb, the package's repository) | host |
 | @radix-ui/primitive | 1.1.7 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-collection | 1.1.15 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-compose-refs | 1.1.5 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-context | 1.2.2 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-direction | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-id | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-primitive | 2.1.10 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-roving-focus | 1.1.19 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-slot | 1.3.3 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-toggle | 1.1.18 | MIT | Copyright (c) 2022 WorkOS | app |
-| @radix-ui/react-toggle-group | 1.1.19 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-slot | 1.4.0 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-toggle | 1.1.19 | MIT | Copyright (c) 2022 WorkOS | app |
+| @radix-ui/react-toggle-group | 1.1.20 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-callback-ref | 1.1.4 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-controllable-state | 1.2.6 | MIT | Copyright (c) 2022 WorkOS | app |
 | @radix-ui/react-use-effect-event | 0.0.5 | MIT | Copyright (c) 2022 WorkOS | app |
