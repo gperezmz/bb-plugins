@@ -22,6 +22,11 @@ describe("the settings 0.3 saved", () => {
     expect(read).toMatchObject({ ok: true, items: [{ endpoint: { url: "http://x.example.com:8080/v1" } }] });
   });
 
+  it.each(["HTTP://127.0.0.1:18451/v1", " http://127.0.0.1:18451/v1", "Https://gw.example.com/v1 "])("reads the URL %j that 0.3 accepted", (url) => {
+    const read = readLegacy(JSON.stringify([{ id: "mlx", url, model: "m" }]), undefined);
+    expect(read).toMatchObject({ ok: true, items: [{ endpoint: { url: url.trim() } }] });
+  });
+
   it("lets a literal key win over the Endpoint's own reference", () => {
     const read = readLegacy('[{"id": "gw", "url": "${U}", "key": "${K}", "model": "m"}]', '{"gw": "sk-wins"}');
     expect(read).toMatchObject({ ok: true, items: [{ endpoint: { key: { kind: "literal", set: true } }, literalKey: "sk-wins" }] });

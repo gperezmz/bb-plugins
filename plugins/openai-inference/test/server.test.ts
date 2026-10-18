@@ -250,6 +250,28 @@ describe("the page", () => {
     await stop();
   });
 
+  it("registers the service again when its key is typed, so bb does not read it as not ready for its cached 10 seconds", async () => {
+    const { harness, stop } = await start({ endpoints: [{ ...mlx, key: { kind: "literal", set: false } }] });
+    const before = service(harness, "mlx");
+    expect(await before.status!()).toMatchObject({ ready: false });
+    await save(harness, { id: "mlx", url: mlx.url, model: "qwen3-4b", key: { kind: "literal", value: "sk-new" } }, false);
+    const after = service(harness, "mlx");
+    expect(after).not.toBe(before);
+    expect(serviceIds(harness)).toEqual(["mlx"]);
+    expect(await after.status!()).toEqual({ ready: true });
+    await stop();
+  });
+
+  it("registers the service again when a model is entered for an Endpoint that had none, and leaves the others' services alone", async () => {
+    const { harness, stop } = await start({ endpoints: [{ ...plain, model: null }, mlx] });
+    const [before, other] = [service(harness, "plain"), service(harness, "mlx")];
+    await save(harness, { id: "plain", url: plain.url, model: "m" }, false);
+    expect(service(harness, "plain")).not.toBe(before);
+    expect(service(harness, "mlx")).toBe(other);
+    expect(await service(harness, "plain").status!()).toEqual({ ready: true });
+    await stop();
+  });
+
   it("applies a changed model, URL or key on Save, with no reload, and not before", async () => {
     const { harness, keys, urls, stop } = await start({ endpoints: [mlx], keys: { mlx: "sk-old" } });
     await service(harness, "mlx").complete!("x", { signal: new AbortController().signal });

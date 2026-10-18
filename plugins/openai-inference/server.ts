@@ -54,7 +54,8 @@ type Missing = Map<string, string[]>;
 
 export default async function plugin(bb: BbPluginApi) {
   const host = bb.hosts.experimental_client({ contract });
-  const services = new Map<string, { displayName: string; dispose(): void }>();
+  // `held` is the Endpoint as registered: a service is registered again when its Endpoint changes at all.
+  const services = new Map<string, { held: string; dispose(): void }>();
 
   const copied = (await bb.storage.kv.get<boolean>(COPIED_KEY)) === true;
   const legacy = copied ? undefined : bb.settings.define(LEGACY_SETTINGS);
@@ -109,10 +110,12 @@ export default async function plugin(bb: BbPluginApi) {
   };
 
   // bb registers a service at once when the plugin is already running, so a
-  // saved change needs no reload.
+  // saved change needs no reload. bb keeps a service's status for about 10
+  // seconds, so an Endpoint that changes, a key typed for one that had none
+  // included, is registered again to be read afresh.
   const registerServices = () => {
     for (const [id, service] of services) {
-      if (!endpoints.some((e) => e.id === id && displayName(e) === service.displayName)) {
+      if (!endpoints.some((e) => e.id === id && JSON.stringify(e) === service.held)) {
         service.dispose();
         services.delete(id);
       }
@@ -133,7 +136,7 @@ export default async function plugin(bb: BbPluginApi) {
             return result.text;
           },
         });
-        services.set(id, { displayName: name, dispose });
+        services.set(id, { held: JSON.stringify(found), dispose });
       } catch (error) {
         bb.log.warn(`Endpoint "${id}" is not a service: ${String(error)}`);
       }

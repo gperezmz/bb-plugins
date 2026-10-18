@@ -10,7 +10,10 @@ import { isVariableReference } from "./rules.js";
 const entrySchema = z
   .object({
     id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "An id is lowercase letters, digits and dashes."),
-    url: z.string().refine((url) => url.includes("${") || (/^https?:\/\//.test(url) && URL.canParse(url)), "A url is an http:// or https:// URL, or references a variable as ${NAME}."),
+    // As 0.3 accepted it: a scheme in any case, and surrounding spaces, which the copy trims.
+    url: z
+      .string()
+      .refine((url) => url.includes("${") || (/^https?:\/\//i.test(url.trim()) && URL.canParse(url.trim())), "A url is an http:// or https:// URL, or references a variable as ${NAME}."),
     /** Optional so that a setting saved before 0.2.0 still lists its Endpoints. */
     model: z.string().trim().min(1).optional(),
     key: z.string().refine(isVariableReference, "A key here can only be a ${NAME} reference.").optional(),
