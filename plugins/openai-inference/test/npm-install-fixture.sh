@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # The npm-install check's fixture for OpenAI-compatible inference (see
 # scripts/ci/npm-install-check.sh): starts the fake LiteLLM
-# (test/fake-litellm.mjs) as the stub OpenAI-compatible server, sets `endpoints` to one Endpoint pointing at it,
-# then requires bb to list that Endpoint as an AI service ready for
+# (test/fake-litellm.mjs) as the stub OpenAI-compatible server, saves one
+# Endpoint pointing at it with a literal key the way the plugin's page does
+# (through the server's RPC route, since the command takes no literal key), then
+# requires bb to list that Endpoint as an AI service ready for
 # thread-title and commit-message, and to answer each AI task with the text
 # the stub sent back for the prompt bb sent it.
 set -euo pipefail
@@ -29,9 +31,30 @@ fi
 admin=${url%/v1}/__admin/requests
 echo "Stub OpenAI-compatible server at $url"
 
-bb plugin config "$PLUGIN_ID" set keys "{\"$service\": \"$key\"}" > /dev/null
-bb plugin config "$PLUGIN_ID" set endpoints \
-  "[{\"id\": \"$service\", \"url\": \"$url\", \"model\": \"$model\"}]" > /dev/null
+rpc() {
+  local out code
+  out=$(curl -sS -w '\n%{http_code}' -X POST -H 'Content-Type: application/json' -d "$2" "$BB_SERVER_URL/api/v1/plugins/$PLUGIN_ID/rpc/$1")
+  code=${out##*$'\n'}
+  echo "rpc $1 answered HTTP $code: ${out%$'\n'*}" >&2
+  [[ $code == 200 ]] && echo "${out%$'\n'*}"
+}
+draft=$(jq -nc --arg id "$service" --arg url "$url" --arg model "$model" --arg key "$key" \
+  '{draft: {id: $id, url: $url, model: $model, key: {kind: "literal", value: $key}}, create: true}')
+saved=$(rpc saveEndpoint "$draft") || { echo "::error::the plugin's page could not save the Endpoint" >&2; exit 1; }
+if [[ $(jq -r '.result.ok // .ok' <<< "$saved") != true ]]; then
+  echo "::error::the plugin's page refused the Endpoint: $saved" >&2
+  exit 1
+fi
+# The literal key is in one file under bb's data directory, readable by its owner alone.
+data=$(cd "$FIXTURE_DIR/../bb" && pwd)
+holders=$(grep -rlF -- "$key" "$data" 2>/dev/null || true)
+keys_file=$data/plugins/$PLUGIN_ID/host-data/keys.json
+if [[ $holders != "$keys_file" || $(stat -c %a "$keys_file") != 600 ]]; then
+  echo "::error::the literal key is held by: ${holders:-no file} (mode $(stat -c %a "$keys_file" 2>/dev/null || echo none)), not only by $keys_file with mode 600" >&2
+  exit 1
+fi
+bb openai-inference list | grep -q "^$service .*key literal (set)$" \
+  || { echo "::error::bb openai-inference list does not show $service with a literal key set" >&2; bb openai-inference list >&2; exit 1; }
 
 # Ready once the host entry has answered for the Endpoint.
 tasks_json=$(printf '%s\n' "${tasks[@]}" | jq -Rn '[inputs]')

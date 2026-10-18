@@ -1,27 +1,41 @@
 // OpenAI-compatible inference's backend entry: registers each Endpoint as an
-// AI service, and hands every AI task sent to one to the host entry on the
-// primary host, which sends it on.
+// AI service, hands every AI task sent to one to the host entry on the primary
+// host, which sends it on, and serves the page, the command and the one-time
+// copy of what 0.3 saved in its settings.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { createCli } from "./src/cli";
 import { contract } from "./src/contract";
-import { endpointStatus, endpointsText, keysText, resolveEndpoints, type Endpoint } from "./src/endpoints";
+import { endpointListSchema, endpointStatus, type Endpoint } from "./src/endpoints";
+import { readLegacy } from "./src/legacy";
+import { createEndpointManager, type EndpointManager } from "./src/manage";
+import { pageContract } from "./src/page-contract";
+import { registerPageRpc } from "./src/page-rpc";
 
-export const SETTINGS = {
+export { pageContract };
+
+/** Where the Endpoints are kept, in the plugin's storage: JSON, never a literal key. */
+const ENDPOINTS_KEY = "endpoints";
+/** Set once 0.3's settings are copied; from then on the plugin declares no setting. */
+const COPIED_KEY = "legacy-settings-copied";
+
+/**
+ * 0.3's settings, declared only until their values are copied (bb 0.46 lets a
+ * plugin read a setting only by declaring it).
+ */
+const LEGACY_SETTINGS = {
   endpoints: {
     type: "string",
-    label: "Endpoints",
+    label: "Endpoints (old setting)",
     description:
-      'JSON list of Endpoints, each an OpenAI-compatible server and the model it answers with, e.g. [{"id": "mlx", "url": "http://127.0.0.1:8080/v1", "model": "qwen3-4b"}, {"id": "gateway", "url": "${GATEWAY_URL}", "key": "${GATEWAY_VIRTUAL_KEY}", "model": "gpt-6-luna"}]. Each Endpoint is an AI service: select it for an AI task with bb settings ai-services set thread-title <id> (or commit-message). url and key may reference bb\'s environment as ${NAME}; key takes only a reference. A change to this list applies on save; after changing a referenced variable, run bb plugin reload openai-inference.',
+      "Saved by 0.3 and copied once into the Endpoints section of this page, then no longer shown. Fix a value that could not be read here and save; it is copied again.",
     experimental_multiline: true,
-    experimental_schema: endpointsText,
     default: "[]",
   },
   keys: {
     type: "string",
-    label: "Endpoint keys",
-    description:
-      'JSON object from Endpoint id to the literal key sent to it as a Bearer token, e.g. {"mlx": "sk-..."}. It wins over the Endpoint\'s own key reference.',
+    label: "Endpoint keys (old setting)",
+    description: "Saved by 0.3, copied once into the Endpoints section as literal keys and then removed.",
     secret: true,
-    experimental_schema: keysText,
   },
 } as const;
 
@@ -32,14 +46,33 @@ export const displayName = (endpoint: Endpoint): string => {
   return name.length <= MAX_DISPLAY_NAME ? name : `${name.slice(0, MAX_DISPLAY_NAME - 1)}…`;
 };
 
+/** How long a failed copy waits before it tries again. */
+const COPY_RETRY_MS = 30_000;
+
 /** The variables each Endpoint lacks on the primary host, by id. */
 type Missing = Map<string, string[]>;
 
 export default async function plugin(bb: BbPluginApi) {
-  const settings = bb.settings.define(SETTINGS);
   const host = bb.hosts.experimental_client({ contract });
   const services = new Map<string, { displayName: string; dispose(): void }>();
-  let endpoints = resolveEndpoints(await settings.get());
+
+  const copied = (await bb.storage.kv.get<boolean>(COPIED_KEY)) === true;
+  const legacy = copied ? undefined : bb.settings.define(LEGACY_SETTINGS);
+
+  const store = {
+    async read(): Promise<Endpoint[]> {
+      return endpointListSchema.parse((await bb.storage.kv.get<unknown>(ENDPOINTS_KEY)) ?? []);
+    },
+    async write(list: readonly Endpoint[]): Promise<void> {
+      await bb.storage.kv.set(ENDPOINTS_KEY, list);
+    },
+  };
+  let endpoints: Endpoint[] = [];
+  try {
+    endpoints = await store.read();
+  } catch (error) {
+    bb.log.error(`The saved Endpoints could not be read: ${String(error)}`);
+  }
 
   const primaryHostId = async (): Promise<string> => {
     const { primaryHostId } = await bb.sdk.system.config();
@@ -71,7 +104,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   const endpoint = (id: string): Endpoint => {
     const found = endpoints.find((e) => e.id === id);
-    if (found === undefined) throw new Error(`No Endpoint "${id}" in the plugin's settings`);
+    if (found === undefined) throw new Error(`No Endpoint "${id}" in the plugin's Endpoints`);
     return found;
   };
 
@@ -84,9 +117,10 @@ export default async function plugin(bb: BbPluginApi) {
         services.delete(id);
       }
     }
-    for (const { id, ...rest } of endpoints) {
+    for (const found of endpoints) {
+      const { id } = found;
       if (services.has(id)) continue;
-      const name = displayName({ id, ...rest });
+      const name = displayName(found);
       try {
         const { dispose } = bb.experimental_aiServices.register({
           id,
@@ -106,15 +140,28 @@ export default async function plugin(bb: BbPluginApi) {
     }
   };
 
-  registerServices();
-  settings.onChange((next) => {
-    endpoints = resolveEndpoints(next);
-    registerServices();
-    report = undefined;
-    // Sent now rather than at the next status read, so the host entry
-    // forgets what URLs no longer listed refused.
-    void started.then(() => void sendEndpoints());
+  const manager: EndpointManager = createEndpointManager({
+    store,
+    vault: {
+      put: async (id, key) => void (await host.call("putKey", { id, key }, { hostId: await primaryHostId() })),
+      remove: async (id) => void (await host.call("removeKey", { id }, { hostId: await primaryHostId() })),
+    },
+    changed: (next) => {
+      endpoints = [...next];
+      registerServices();
+      report = undefined;
+      // Sent now rather than at the next status read, so the host entry
+      // forgets what URLs no longer listed refused.
+      void started.then(() => void sendEndpoints());
+    },
   });
+
+  // What the page says about the old settings, while they are still declared.
+  let notice: string | null = null;
+  registerServices();
+  registerPageRpc(bb, manager, () => notice);
+  bb.cli.register(createCli(manager));
+
   // A service, because bb.sdk is usable only once the server listens; a
   // failed send throws, and bb restarts the service with backoff.
   bb.background.service("send-endpoints", {
@@ -124,4 +171,53 @@ export default async function plugin(bb: BbPluginApi) {
       await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
     },
   });
+
+  if (legacy !== undefined) {
+    let wake: () => void = () => undefined;
+    legacy.onChange(() => wake());
+    bb.background.service("copy-legacy-settings", {
+      async start(signal) {
+        const wait = (ms: number | null) =>
+          new Promise<void>((resolve) => {
+            const done = () => {
+              if (timer !== undefined) clearTimeout(timer);
+              signal.removeEventListener("abort", done);
+              wake = () => undefined;
+              resolve();
+            };
+            const timer = ms === null ? undefined : setTimeout(done, ms);
+            wake = done;
+            signal.addEventListener("abort", done, { once: true });
+          });
+        while (!signal.aborted) {
+          const values = await legacy.get();
+          const read = readLegacy(values.endpoints, values.keys);
+          if (!read.ok) {
+            notice = `${read.reason} Nothing was copied: fix it in the old setting above and save.`;
+            await wait(null);
+            continue;
+          }
+          try {
+            const added = await manager.adopt(read.items);
+            await legacy.experimental_set({ keys: null });
+            await bb.storage.kv.set(COPIED_KEY, true);
+            notice = null;
+            bb.log.info(`Copied ${added.length} Endpoint(s) from the old settings.`);
+          } catch (error) {
+            notice = `The Endpoints saved in the old settings are not copied yet: ${error instanceof Error ? error.message : String(error)}. The plugin tries again.`;
+            bb.log.warn(notice);
+            await wait(COPY_RETRY_MS);
+            continue;
+          }
+          // The next load declares no setting, so bb stops drawing the old fields.
+          try {
+            await bb.sdk.plugins.reload({ pluginId: bb.pluginId });
+          } catch (error) {
+            bb.log.warn(`The old settings are copied; reload the plugin to stop showing them: ${String(error)}`);
+          }
+          await wait(null);
+        }
+      },
+    });
+  }
 }

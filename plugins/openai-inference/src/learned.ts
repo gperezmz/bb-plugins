@@ -4,9 +4,10 @@
  * few idle minutes. Keyed by the URL as the settings write it, so the file
  * holds no expanded `${NAME}` value and no key.
  */
-import { chmod, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { writePrivateFile } from "./private-file.js";
 
 const LEARNED_FILE = "learned-fields.json";
 
@@ -27,12 +28,4 @@ export async function readLearned(dataDir: string): Promise<LearnedFields> {
 /** Replaces the stored learned fields. */
 export async function writeLearned(dataDir: string, learned: LearnedFields): Promise<void> {
   await writePrivateFile(join(dataDir, LEARNED_FILE), JSON.stringify(learned));
-}
-
-/** Replaces `file` in one step, with a file only its owner may read. */
-async function writePrivateFile(file: string, text: string): Promise<void> {
-  const temp = `${file}.${process.pid}.tmp`;
-  await writeFile(temp, text, { mode: 0o600 });
-  await chmod(temp, 0o600);
-  await rename(temp, file);
 }
