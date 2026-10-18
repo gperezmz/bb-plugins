@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { experimental_createHostEntryHarness } from "@get-bb/plugin-sdk/testing/host";
@@ -32,10 +32,11 @@ const entry = (dir = dataDir) =>
   );
 
 const prompt = "You create concise titles for coding tasks.\nTask:\nAdd dark mode to the settings page";
+const URL = () => `${fake.url}/v1`;
 const gateway = (overrides: Partial<Endpoint> = {}): Endpoint => ({
   id: "gateway",
   url: `${fake.url}/v1`,
-  key: "sk-test",
+  key: { kind: "variable", reference: "${FAKE_KEY}" },
   model: "gpt-6-luna",
   ...overrides,
 });
@@ -62,21 +63,26 @@ describe("host entry against a LiteLLM-like server", () => {
   });
 
   it("answers why when the key is refused", async () => {
-    expect(await entry().experimental_call("complete", { endpoint: gateway({ key: "sk-nope" }), prompt })).toMatchObject({
+    const wrong = { ...env, FAKE_KEY: "sk-nope" };
+    const h = experimental_createHostEntryHarness(
+      { experimental_apiVersion: 1, contract, handlers: createHandlers(wrong) },
+      { experimental_paths: { dataDir, tempDir: dataDir } },
+    );
+    expect(await h.experimental_call("complete", { endpoint: gateway(), prompt })).toMatchObject({
       ok: false,
       message: expect.stringContaining('Endpoint "gateway" answered HTTP 401'),
     });
   });
 
   it("expands ${NAME} in url and key from bb's environment, and drops trailing slashes", async () => {
-    const endpoint = gateway({ url: "${FAKE_URL}/v1//", key: "${FAKE_KEY}" });
+    const endpoint = gateway({ url: "${FAKE_URL}/v1//" });
     expect(await entry().experimental_call("configure", [endpoint])).toEqual([{ id: "gateway", missing: [] }]);
     expect(await entry().experimental_call("complete", { endpoint, prompt })).toMatchObject({ ok: true });
     expect(fake.requests.at(-1)).toMatchObject({ path: "/v1/chat/completions", authorized: true });
   });
 
   it("reports unset variables, and refuses a completion that needs them", async () => {
-    const endpoint = gateway({ url: "${UNSET_URL}", key: "${UNSET_KEY}" });
+    const endpoint = gateway({ url: "${UNSET_URL}", key: { kind: "variable", reference: "${UNSET_KEY}" } });
     expect(await entry().experimental_call("configure", [endpoint])).toEqual([{ id: "gateway", missing: ["UNSET_URL", "UNSET_KEY"] }]);
     expect(await entry().experimental_call("complete", { endpoint, prompt })).toEqual({
       ok: false,
@@ -93,7 +99,8 @@ describe("host entry against a LiteLLM-like server", () => {
 
   it("puts no key and no expanded value in a failure, even when the server echoes them", async () => {
     const secretEnv = { FAKE_URL: fake.url, FAKE_KEY: "sk-test" };
-    for (const endpoint of [gateway({ url: "${FAKE_URL}/v1", key: "${FAKE_KEY}", model: "echo" }), gateway({ model: "echo" })]) {
+    await entry().experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" });
+    for (const endpoint of [gateway({ url: "${FAKE_URL}/v1", model: "echo" }), gateway({ model: "echo", key: { kind: "literal", set: true } })]) {
       const h = experimental_createHostEntryHarness(
         { experimental_apiVersion: 1, contract, handlers: createHandlers(secretEnv) },
         { experimental_paths: { dataDir, tempDir: dataDir } },
@@ -117,7 +124,7 @@ describe("host entry against a LiteLLM-like server", () => {
       { experimental_apiVersion: 1, contract, handlers: createHandlers(unreachable) },
       { experimental_paths: { dataDir, tempDir: dataDir } },
     );
-    const out = await h.experimental_call("complete", { endpoint: gateway({ url: "${DEAD_URL}", key: null }), prompt });
+    const out = await h.experimental_call("complete", { endpoint: gateway({ url: "${DEAD_URL}", key: { kind: "none" } }), prompt });
     expect(out).toMatchObject({ ok: false, message: expect.stringContaining('Could not reach Endpoint "gateway"') });
     expect((out as { message: string }).message).not.toMatch(/secret-path|127\.0\.0\.1:9/);
   });
@@ -138,6 +145,107 @@ describe("host entry against a LiteLLM-like server", () => {
     await writeFile(join(dataDir, "endpoints.json"), '[{"id":"gateway","url":"x","key":"sk-old"}]');
     await entry().experimental_call("configure", [gateway()]);
     await expect(stat(join(dataDir, "endpoints.json"))).rejects.toThrow();
+  });
+});
+
+describe("literal keys", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "openai-inference-keys-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const keysFile = () => join(dir, "keys.json");
+  const literal = (id = "gateway") => gateway({ id, key: { kind: "literal", set: true } });
+
+  it("keeps a key in a file only its owner reads, and sends it as the Bearer token", async () => {
+    const h = entry(dir);
+    expect(await h.experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" })).toBeNull();
+    expect((await stat(keysFile())).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(keysFile(), "utf8"))).toEqual({ gateway: { url: URL(), key: "sk-test" } });
+
+    expect(await entry(dir).experimental_call("complete", { endpoint: literal(), prompt })).toMatchObject({ ok: true });
+    expect(fake.requests.at(-1)).toMatchObject({ authorized: true });
+  });
+
+  it("replaces a key in place, so the old one is in no file", async () => {
+    const h = entry(dir);
+    await h.experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-old" });
+    await h.experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" });
+    const stored = await readFile(keysFile(), "utf8");
+    expect(stored).toContain("sk-test");
+    expect(stored).not.toContain("sk-old");
+    expect((await stat(keysFile())).mode & 0o777).toBe(0o600);
+    expect(await readdir(dir)).toEqual(["keys.json"]);
+  });
+
+  it("deletes one Endpoint's key and keeps the others'", async () => {
+    const h = entry(dir);
+    await h.experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" });
+    await h.experimental_call("putKey", { id: "mlx", url: "http://127.0.0.1:8080/v1", key: "sk-mlx" });
+    await h.experimental_call("removeKey", { id: "gateway" });
+    expect(JSON.parse(await readFile(keysFile(), "utf8"))).toEqual({ mlx: { url: "http://127.0.0.1:8080/v1", key: "sk-mlx" } });
+    expect(await h.experimental_call("removeKey", { id: "never-had-one" })).toBeNull();
+  });
+
+  it("applies changes made at once, one after another", async () => {
+    const h = entry(dir);
+    await Promise.all(["a1", "b1", "c1"].map((id) => h.experimental_call("putKey", { id, url: URL(), key: `sk-${id}` })));
+    expect(JSON.parse(await readFile(keysFile(), "utf8"))).toEqual({ a1: { url: URL(), key: "sk-a1" }, b1: { url: URL(), key: "sk-b1" }, c1: { url: URL(), key: "sk-c1" } });
+  });
+
+  it("answers why when the Endpoint's key is not saved, without calling the server", async () => {
+    const before = fake.requests.length;
+    expect(await entry(dir).experimental_call("complete", { endpoint: literal(), prompt })).toEqual({
+      ok: false,
+      message: 'Endpoint "gateway" cannot answer: its literal key is not saved for its URL.',
+    });
+    expect(fake.requests).toHaveLength(before);
+  });
+
+  it("sends a key only to the URL it was typed for", async () => {
+    const h = entry(dir);
+    await h.experimental_call("putKey", { id: "gateway", url: "https://old.example.com/v1", key: "sk-test" });
+    const before = fake.requests.length;
+    expect(await h.experimental_call("complete", { endpoint: literal(), prompt })).toEqual({
+      ok: false,
+      message: 'Endpoint "gateway" cannot answer: its literal key is not saved for its URL.',
+    });
+    expect(fake.requests).toHaveLength(before);
+  });
+
+  it.each([
+    ["is not JSON", "{not json"],
+    ["is JSON of another shape, such as keys without their URLs", '{"mlx":"sk-mlx"}'],
+  ])("does not replace a keys file that %s, which would delete every key in it", async (_name, text) => {
+    await writeFile(keysFile(), text);
+    await expect(entry(dir).experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" })).rejects.toThrow("cannot be read");
+    await expect(entry(dir).experimental_call("removeKey", { id: "mlx" })).rejects.toThrow("cannot be read");
+    expect(await readFile(keysFile(), "utf8")).toBe(text);
+    expect(await entry(dir).experimental_call("complete", { endpoint: literal(), prompt })).toMatchObject({ ok: false });
+  });
+
+  it("does not replace a keys file it cannot read for a reason other than being missing", async () => {
+    await mkdir(keysFile());
+    await expect(entry(dir).experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" })).rejects.toThrow("cannot be read");
+    expect((await stat(keysFile())).isDirectory()).toBe(true);
+  });
+
+  it("answers why when the Endpoint's key is Literal and not set", async () => {
+    expect(await entry(dir).experimental_call("complete", { endpoint: gateway({ key: { kind: "literal", set: false } }), prompt })).toMatchObject({
+      ok: false,
+      message: expect.stringContaining("Literal and not set"),
+    });
+  });
+
+  it("puts a key the server echoes nowhere in the failure", async () => {
+    const h = entry(dir);
+    await h.experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" });
+    const out = await h.experimental_call("complete", { endpoint: { ...literal(), model: "echo" }, prompt });
+    expect(out).toMatchObject({ ok: false, message: expect.stringContaining("<key>") });
+    expect((out as { message: string }).message).not.toContain("sk-test");
   });
 });
 
@@ -191,6 +299,13 @@ describe("fields learned across worker restarts", () => {
     await configure(h, "https://gateway.example.com/v1");
     expect(JSON.parse(await readFile(learnedFile(), "utf8"))).toEqual({});
     expect(await titleFromNoReasoning(entry(dir))).toEqual(["with", "without"]);
+  });
+
+  it("forgets nothing when it is sent no Endpoint, as while the plugin copies 0.3's settings", async () => {
+    const h = entry(dir);
+    await titleFromNoReasoning(h);
+    await h.experimental_call("configure", []);
+    expect(JSON.parse(await readFile(learnedFile(), "utf8"))).toEqual({ [`${fake.url}/v1`]: { "no-reasoning": ["reasoning_effort"] } });
   });
 
   it("reads a corrupt file as nothing learned, and replaces it", async () => {

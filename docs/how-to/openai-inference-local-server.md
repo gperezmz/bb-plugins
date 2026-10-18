@@ -14,13 +14,16 @@ The `id` of the model is the name to put in the Endpoint's `model`. A name with 
 
 ## 2. Add it as an Endpoint
 
-Under Settings → Installed plugins → OpenAI-compatible inference, add the server to **Endpoints** with an id of your choice, `mlx` here, and the model from step 1:
+Under Settings → Installed plugins → OpenAI-compatible inference, press **Add Endpoint** in the Endpoints section and fill the card:
 
-```json
-[{"id": "mlx", "url": "http://127.0.0.1:8080/v1", "model": "qwen3-4b"}]
-```
+- **ID**: one of your choice, `mlx` here. It cannot be changed once saved.
+- **URL**: `http://127.0.0.1:8080/v1`, which ends where `/chat/completions` starts.
+- **Model**: the name from step 1, `qwen3-4b` here.
+- **Key**: **None** if the server asks for no key. If it does, choose **Literal** and type it into the masked field, or set it in bb's environment and choose **Variable** with its `${NAME}`.
 
-Keep any Endpoints already in the list. The url ends where `/chat/completions` starts. If the server asks for a key, add it to **Endpoint keys** under the same id, for example `{"mlx": "..."}`, or set it in bb's environment and reference it as the Endpoint's `"key": "${NAME}"`. `bb settings ai-services` lists `mlx` once you save. To use a second model on the same server, add the server again under another id with that model.
+Press **Save**. `bb settings ai-services` lists `mlx` at once; no reload is needed. To use a second model on the same server, add the server again under another ID with that model.
+
+The command does the same without a literal key: `bb openai-inference set mlx --url http://127.0.0.1:8080/v1 --model qwen3-4b`. [The Endpoints section](../reference/openai-inference-settings.md#the-endpoints-section) lists what each field accepts, and [Literal keys](../reference/openai-inference-settings.md#literal-keys) says where a typed key is kept and when it is deleted.
 
 ## 3. Select it
 

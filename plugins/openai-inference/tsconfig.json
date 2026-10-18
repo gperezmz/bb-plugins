@@ -6,18 +6,27 @@
     "moduleResolution": "bundler",
     "lib": [
       "ES2022",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "types": [
       "node"
     ],
     "noEmit": true,
-    "skipLibCheck": false
+    "skipLibCheck": false,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    }
   },
   "include": [
     "server.ts",
     "host.ts",
+    "app.tsx",
     "src",
+    "features",
     "test",
     "vitest.config.ts"
   ]
