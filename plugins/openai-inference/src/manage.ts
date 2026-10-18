@@ -7,7 +7,7 @@
  */
 import type { Endpoint } from "./endpoints.js";
 import type { Legacy } from "./legacy.js";
-import { clearsLiteralKey, planSave, type Draft, type FieldErrors, type KeyDraft } from "./rules.js";
+import { clearsLiteralKey, holdsLiteralKey, planSave, type Draft, type FieldErrors, type KeyDraft } from "./rules.js";
 
 /** Where the Endpoints are kept; never holds a literal key. */
 export interface EndpointStore {
@@ -66,6 +66,20 @@ export function createEndpointManager(options: {
   const replace = (list: readonly Endpoint[], endpoint: Endpoint): Endpoint[] =>
     list.some((e) => e.id === endpoint.id) ? list.map((e) => (e.id === endpoint.id ? endpoint : e)) : [...list, endpoint];
 
+  /**
+   * Undoes the key a Save put when its Endpoint could not be stored. An
+   * Endpoint that held no literal key before has none now. One that held a key
+   * for the same URL has the new key, which is in effect; one whose URL
+   * changed has a key for a URL it no longer has, and says so.
+   */
+  const undoPut = async (saved: readonly Endpoint[], endpoint: Endpoint, error: unknown): Promise<void> => {
+    const before = saved.find((e) => e.id === endpoint.id);
+    if (!holdsLiteralKey(before)) await keyFile.remove(endpoint.id).catch(() => undefined);
+    else if (before.url !== endpoint.url) {
+      throw new Error(`${error instanceof Error ? error.message : String(error)} The key was changed and must be typed again.`, { cause: error });
+    }
+  };
+
   const saveNow = async (draft: Draft, create: boolean): Promise<SaveResult> => {
     const saved = await store.read();
     const plan = planSave(draft, saved, create);
@@ -77,15 +91,7 @@ export function createEndpointManager(options: {
     try {
       await store.write(next);
     } catch (error) {
-      if (action.do === "put") {
-        if (!saved.some((e) => e.id === endpoint.id)) {
-          // A key put for an Endpoint that was not saved would stay behind.
-          await keyFile.remove(endpoint.id).catch(() => undefined);
-        } else {
-          // The key that was there is replaced and cannot be put back.
-          throw new Error(`${error instanceof Error ? error.message : String(error)} The key was changed and must be typed again.`, { cause: error });
-        }
-      }
+      if (action.do === "put") await undoPut(saved, endpoint, error);
       throw error;
     }
     await changed(next);

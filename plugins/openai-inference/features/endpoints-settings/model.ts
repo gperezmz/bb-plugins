@@ -39,8 +39,6 @@ export function formOf(endpoint: Endpoint): Form {
   };
 }
 
-/** Whether the saved Endpoint holds a literal key. */
-
 /** Whether the key field is shown as "set", with Replace, rather than as an empty masked field. */
 export const showsKeySet = (form: Form, saved: Endpoint | null): boolean => form.keyKind === "literal" && holdsLiteralKey(saved) && !form.replacing;
 

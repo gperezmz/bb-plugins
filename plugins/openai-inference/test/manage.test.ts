@@ -95,10 +95,26 @@ describe("save", () => {
     expect(state.keys).toEqual({});
   });
 
-  it("says the key must be typed again when it was replaced and the Endpoint could not be stored", async () => {
+  it("says the key must be typed again when it was replaced for a new URL and the Endpoint could not be stored", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-old" });
     state.failWrite = true;
-    await expect(manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("storage is down The key was changed and must be typed again.");
+    await expect(manager.save({ id: "mlx", url: "http://127.0.0.1:9/v1", model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow(
+      "storage is down The key was changed and must be typed again.",
+    );
+  });
+
+  it("keeps the replaced key, which is in effect, when the Endpoint's URL is the same and it could not be stored", async () => {
+    const { state, manager } = fakes([mlx], { mlx: "sk-old" });
+    state.failWrite = true;
+    await expect(manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("storage is down");
+    expect(state.keys).toEqual({ mlx: "sk-new" });
+  });
+
+  it("takes back a key put for an Endpoint that held none, so it is left in no file", async () => {
+    const { state, manager } = fakes([mac]);
+    state.failWrite = true;
+    await expect(manager.save({ id: "mac", url: mac.url, model: "m", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("storage is down");
+    expect(state.keys).toEqual({});
   });
 
   it("runs saves one at a time, so none overwrites another", async () => {

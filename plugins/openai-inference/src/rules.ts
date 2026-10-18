@@ -56,11 +56,11 @@ const isHttpUrl = (url: string): boolean => {
  * only reaches the server it was typed for, so a changed URL deletes it.
  */
 export function clearsLiteralKey(saved: Endpoint | null | undefined, url: string): boolean {
-  return holdsLiteralKey(saved) && saved!.url !== url.trim();
+  return holdsLiteralKey(saved) && saved.url !== url.trim();
 }
 
 /** Whether the Endpoint as saved holds a literal key. */
-export function holdsLiteralKey(saved: Endpoint | null | undefined): boolean {
+export function holdsLiteralKey(saved: Endpoint | null | undefined): saved is Endpoint & { key: { kind: "literal"; set: true } } {
   return saved?.key.kind === "literal" && saved.key.set;
 }
 
