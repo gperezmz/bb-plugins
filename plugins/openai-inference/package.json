@@ -16,19 +16,26 @@
     "host": "./host.ts",
     "skills": [
       "skills"
-    ]
+    ],
+    "app": "./app.tsx"
   },
   "dependencies": {
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.49",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "better-sqlite3": "^12.0.0",
     "cron-parser": "^5.5.0",
     "hono": "^4.11.9",
+    "jsdom": "^30.1.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },
@@ -52,7 +59,9 @@
     "tsconfig.json",
     "THIRD_PARTY_NOTICES.md",
     "host.ts",
+    "app.tsx",
     "src",
+    "features",
     "!**/*.test.*"
   ]
 }
