@@ -46,6 +46,10 @@ export const displayName = (endpoint: Endpoint): string => {
   return name.length <= MAX_DISPLAY_NAME ? name : `${name.slice(0, MAX_DISPLAY_NAME - 1)}…`;
 };
 
+/** What a registered service holds of its Endpoint, in a fixed field order, so a service is registered again only when the Endpoint changed. */
+const signature = (e: Endpoint): string =>
+  JSON.stringify([e.id, e.url, e.model, e.key.kind, e.key.kind === "variable" ? e.key.reference : e.key.kind === "literal" ? e.key.set : null]);
+
 /** How long a failed copy waits before it tries again. */
 const COPY_RETRY_MS = 30_000;
 
@@ -115,7 +119,7 @@ export default async function plugin(bb: BbPluginApi) {
   // included, is registered again to be read afresh.
   const registerServices = () => {
     for (const [id, service] of services) {
-      if (!endpoints.some((e) => e.id === id && JSON.stringify(e) === service.held)) {
+      if (!endpoints.some((e) => e.id === id && signature(e) === service.held)) {
         service.dispose();
         services.delete(id);
       }
@@ -136,7 +140,7 @@ export default async function plugin(bb: BbPluginApi) {
             return result.text;
           },
         });
-        services.set(id, { held: JSON.stringify(found), dispose });
+        services.set(id, { held: signature(found), dispose });
       } catch (error) {
         bb.log.warn(`Endpoint "${id}" is not a service: ${String(error)}`);
       }

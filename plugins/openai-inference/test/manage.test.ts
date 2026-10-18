@@ -106,7 +106,7 @@ describe("save", () => {
   it("keeps the replaced key, which is in effect, when the Endpoint's URL is the same and it could not be stored", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-old" });
     state.failWrite = true;
-    await expect(manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("storage is down");
+    await expect(manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow(/^storage is down$/);
     expect(state.keys).toEqual({ mlx: "sk-new" });
   });
 

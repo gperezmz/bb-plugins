@@ -272,6 +272,18 @@ describe("the page", () => {
     await stop();
   });
 
+  it("leaves the service of an Endpoint that did not change as it was when another is saved", async () => {
+    const { harness, stop } = await start({ endpoints: [mlx, gateway] });
+    const [mlxService, gatewayService] = [service(harness, "mlx"), service(harness, "gateway")];
+    await save(harness, { id: "plain", url: plain.url, model: "m" });
+    const plainService = service(harness, "plain");
+    await save(harness, { id: "plain2", url: plain.url, model: "m" });
+    expect(service(harness, "mlx")).toBe(mlxService);
+    expect(service(harness, "gateway")).toBe(gatewayService);
+    expect(service(harness, "plain")).toBe(plainService);
+    await stop();
+  });
+
   it("applies a changed model, URL or key on Save, with no reload, and not before", async () => {
     const { harness, keys, urls, stop } = await start({ endpoints: [mlx], keys: { mlx: "sk-old" } });
     await service(harness, "mlx").complete!("x", { signal: new AbortController().signal });
