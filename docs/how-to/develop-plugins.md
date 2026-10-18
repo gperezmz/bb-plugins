@@ -39,7 +39,7 @@ scripts/ci/check-plugin.sh thread-glance git-install
 scripts/ci/check-plugin.sh thread-glance npm-install
 ```
 
-The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The next line is the command CI's `check` job runs after it, in the plugin's folder: it fails when the SDK pin or a devDependency that bb shims differs from the bb in use, naming the package. It stays out of the script because the [compatibility run](../../CONTRIBUTING.md#the-compatibility-run) calls the script against newer bb releases, where an SDK pin that trails bb is only a warning. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered: OpenAI-compatible inference's fixture points an Endpoint at a stub server and runs each AI task through it. Cache Keeper's checks that its app bundle registers the composer chip and banner, the sidebar script, the nav page and the Agent tools settings section, that bb serves its timer, flame and crossed-out flame icons as SVG, that bb holds its four settings with check-ins off, that `bb cache-keeper --help` lists `compact-now` and no `now`, and that `bb cache-keeper` answers and that `bb cache-keeper on` and `bb cache-keeper keep-warm on` refuse a thread bb does not list. UI Tweaks' checks that its app bundle registers the settings section, the overlay and the content script, that the tweaks read Medium on a fresh install, and that `setTweaks` keeps a change and refuses a choice outside the segments. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone.
+The first installs, type-checks, tests, builds, reruns the plugin's generators and fails when one changes a committed file. The next line is the command CI's `check` job runs after it, in the plugin's folder: it fails when the SDK pin or a devDependency that bb shims differs from the bb in use, naming the package. It stays out of the script because the [compatibility run](../../CONTRIBUTING.md#the-compatibility-run) calls the script against newer bb releases, where an SDK pin that trails bb is only a warning. The second installs the way bb does after cloning from GitHub, without dev dependencies, optional dependencies or install scripts, then builds; it fails when the build needs a package that only a dev install brings in. The third packs the [npm package](../../CONTRIBUTING.md#the-npm-package), publishes it to a local registry, and installs it into a throwaway bb server on a temporary data directory, with a host daemon as its primary machine; it fails unless the plugin runs and bb built nothing, and unless it runs again when bb loads its `server.ts` from source, as bb does after an upgrade that changes the plugin SDK. Where the plugin has a fixture, `test/npm-install-fixture.sh`, it then configures the plugin and checks what the plugin registered: OpenAI-compatible inference's fixture points an Endpoint at a stub server and runs each AI task through it. UI Tweaks' checks that its app bundle registers the settings section, the overlay and the content script, that the tweaks read Medium on a fresh install, and that `setTweaks` keeps a change and refuses a choice outside the segments. Last, it fails when `bb plugin logs` holds a warning or an error, and prints them. It needs `bb-server` and `bb-host-daemon` on your `PATH` too, and leaves your own bb alone.
 
 A plugin that pins Playwright, as Thread Glance does, has tests named `*.browser.test.tsx` that run in Chromium, and the first check downloads Playwright's headless Chromium for them. Where that download cannot run, as on NixOS, point `CHROMIUM_PATH` at a system Chromium:
 
@@ -63,10 +63,10 @@ The repository-wide checks:
 gitleaks git --redact .
 lychee --offline --include-fragments '*.md' 'docs/**/*.md' 'plugins/*/*.md'
 npm ci --prefix scripts/ci && node scripts/ci/check-mermaid.mjs
-plugins/cache-keeper/harness/run-env.test.sh
+scripts/harness/run-env.test.sh
 ```
 
-`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the drive harnesses' passed list and leak check, and refuses a credential or a way to one on that list, among the names a run sets or among what `run-env.sh` adds to a run, as [its harness README](../../plugins/cache-keeper/harness/README.md#files) describes them. It needs no install and no bb, and takes about two seconds.
+`lychee --offline` checks links to files in the repository and their `#` anchors, and skips web addresses. `run-env.test.sh` checks the drive harnesses' passed list and leak check, and refuses a credential or a way to one on that list, among the names a run sets or among what `run-env.sh` adds to a run, as [the shared harness README](../../scripts/harness/README.md#environment-isolation) describes them. It needs no install and no bb, and takes about two seconds.
 
 ## Turn on the commit hooks
 
@@ -87,26 +87,11 @@ git config core.hooksPath .githooks
 | `npm run prices` | To refresh the price snapshot bundled in `prices/`. The plugin fetches current prices at run time; the snapshot is only its [fallback](../reference/thread-usage-cost-sources.md#price-freshness). |
 | `node test/fake-litellm.mjs --port 4455 --key sk-test` | To try gateway features without a gateway. Point the plugin at `http://127.0.0.1:4455`; it prints its `/__admin/*` routes for adding rows and failures when it starts. |
 
-### Team Onboarding
-
-| Script | When to run it |
-|---|---|
-| `npm run schema` | After changing `src/core/manifest.ts`, to regenerate [`schema/onboarding.schema.json`](../../plugins/team-onboarding/schema/onboarding.schema.json). |
-| `npm run refresh-keys` | Before a release, to re-pin GitHub's SSH host keys from `api.github.com/meta`. |
-
-### Cache Keeper
-
-| Script | When to run it |
-|---|---|
-| `npm run prices` | To refresh the price list bundled in `prices/`, the same one Thread Usage bundles. The plugin fetches current prices daily while Fetch current prices daily is on; the bundled list is its last fallback. |
-| `npm run bench` | After changing the engine, the store or the host entry, to measure the plugin's CPU, bb calls, host calls and transcript bytes read at 50, 500 and 5,000 threads, on a restart, learning a 1, 10 and 35 MiB transcript, and for the page's overview, each next to its target. It runs the real server against a fake bb and the real host entry in about 5 minutes and writes `bench/out/results.md`; `node bench/run.mjs steady 500` runs one size. Its header comment lists every option. |
-| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against real Claude Code threads on a throwaway bb with the plugin installed from your checkout, on a clock the harness moves forward, so a compaction, a tree keep-warm, the cost stop, a check-in, Skip and Undo and a reinstall are each reached in under 2 minutes. It needs Linux, `node`, `jq`, `curl`, `git`, `rsync`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/cache-keeper/harness/README.md) has the drives, the fake Anthropic API and the ports. |
-
 ### Unattendish
 
 | Script | When to run it |
 |---|---|
-| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against the real plugin in a throwaway bb: a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, scripted over HTTP, and Claude Code manager threads on Cache Keeper's fake Anthropic API, with every poll interval at the 30-second floor, so registering, a wake, an echo, a fleet with no manager, a refused credential and a restart are each reached in under 2 minutes. It needs Linux, `node` 24, `jq`, `curl`, `git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/unattendish-sdlc/harness/README.md) has the drives and the ports. |
+| `harness/start.sh`, `harness/drives/run-all.sh`, `harness/stop.sh` | To drive a change against the real plugin in a throwaway bb: a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, scripted over HTTP, and Claude Code manager threads on the shared fake Anthropic API, with every poll interval at the 30-second floor, so registering, a wake, an echo, a fleet with no manager, a refused credential and a restart are each reached in under 2 minutes. It needs Linux, `node` 24, `jq`, `curl`, `git`, `rsync`, `bb`, `bb-server` and `bb-host-daemon`, and `npm install` in the plugin; it never touches your own bb. The [harness README](../../plugins/unattendish-sdlc/harness/README.md) has the drives and the ports. |
 
 ## Third-party notices
 

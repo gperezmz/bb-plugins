@@ -84,15 +84,11 @@ handles, required state, commands, and observable evidence.
 - [Thread Usage](./thread-usage.md): the header coin, the Usage tab and the
   command palette's way to it, the Thread usage page, the budget warning and
   the `thread-usage` CLI over a parent and child thread, each a verb.
-- [Cache Keeper](./cache-keeper.md): the composer chip and sidebar row glyphs,
-  compact when idle on the drive clock, the banner with Skip and Undo, keep
-  warm while waiting, the Cache Keeper page and its settings, each a verb.
 - [Unattendish](./unattendish-sdlc.md): fleets registered by their managers
   against fake GitHub, GitLab, Linear and Jira services, the wake, the Fleets
   page and its Inbox actions, the Fleet chip and tab with the ledger and a
   manager's several fleets, the toasts, the Connect… popup, and the accounts and poll intervals in
   settings, each a verb.
 
-Not yet mapped: Team Onboarding (`plugins/team-onboarding`) and
-OpenAI-compatible inference (`plugins/openai-inference`). Each has a
-`test/npm-install-fixture.sh` or tests that show what a drive would reach.
+Not yet mapped: OpenAI-compatible inference (`plugins/openai-inference`). Its
+`test/npm-install-fixture.sh` and tests show what a drive would reach.

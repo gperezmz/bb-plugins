@@ -2,7 +2,7 @@
 
 A throwaway bb with Unattendish installed from this checkout, real Claude Code manager threads that talk to a fake Anthropic API, a fake GitHub, GitLab, Linear and Jira Cloud that the plugin polls, and drives that register fleets, script the fakes over HTTP and read what reached the managers, the ledger and the status. Every poll interval is set to the 30-second floor, so a drive waits at most about 35 seconds for a poll.
 
-The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](../../cache-keeper/harness/run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Every bash in the run, the one Claude Code runs its commands in included, skips the system bashrc (`NOSYSBASHRC=1`), which on NixOS sources the machine's profile, so nothing that profile exports enters the run either. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is. Nothing it writes goes inside the checkout, and no drive calls a real service: the accounts it adds have loopback API addresses and fake tokens.
+The harness never touches your own bb and hands its run none of your credentials. Every process of the run starts from an empty environment holding the **passed list**, the variables named with why in [`run-env.sh`](../../../scripts/harness/run-env.sh) (shared by every drive harness in this repository), and what the harness sets: the throwaway's address, a data directory under `/tmp`, its own ports, and a `HOME` of its own, so Claude Code in it reads none of your configuration and spends no tokens. Every bash in the run, the one Claude Code runs its commands in included, skips the system bashrc (`NOSYSBASHRC=1`), which on NixOS sources the machine's profile, so nothing that profile exports enters the run either. A variable your machine's runs need goes on that list; a `start.sh` that fails says where it is. Nothing it writes goes inside the checkout, and no drive calls a real service: the accounts it adds have loopback API addresses and fake tokens.
 
 ## Requirements
 
@@ -10,7 +10,7 @@ The harness never touches your own bb and hands its run none of your credentials
 - `node` 24 (it runs `fake-services.ts` and reads `bb`'s database with `node:sqlite`), `jq`, `curl`, `git` and `rsync`.
 - bb-app's `bb`, `bb-server` and `bb-host-daemon` on your `PATH`, bb 0.46 or later, with its Claude Code provider.
 - The plugin's dependencies installed: `npm install` in `plugins/unattendish-sdlc`.
-- Cache Keeper's `plugins/cache-keeper/harness/fake-anthropic.mjs`, which is used from where it is.
+- The shared [`fake-anthropic.mjs`](../../../scripts/harness/fake-anthropic.mjs), which is used from where it is.
 
 ## Start
 
@@ -20,7 +20,7 @@ plugins/unattendish-sdlc/harness/start.sh
 
 It refuses to start, and changes nothing, when any of its ports answers, when its run directory exists, or when a process of an earlier start still runs. Otherwise it starts, in about 20 seconds:
 
-- the fake Anthropic API, `../../cache-keeper/harness/fake-anthropic.mjs`;
+- the fake Anthropic API, `../../../scripts/harness/fake-anthropic.mjs`;
 - `fake-services.ts`: the four fakes of `test/fakes/`, each on a port of its own, answering the probe `connect` sends (whose a token is, whether it reads a repository, team or project);
 - a bb server and a host daemon on a data directory in the run directory, the daemon's Claude Code pointed at the fake API (`ANTHROPIC_BASE_URL`, a fake `ANTHROPIC_API_KEY`);
 - a project for the drives' threads, in a git checkout in the run directory;
@@ -58,7 +58,7 @@ The run directory and ports can be changed, to run two at once or to avoid a por
 | `UD_HARNESS_SERVER_PORT` | `40196` | the bb server |
 | `UD_HARNESS_DAEMON_PORT` | `40197` | the host daemon |
 
-The defaults are clear of Cache Keeper's harness (40180-40187) and of the npm-install check (39886/39887). Set the same ones for `stop.sh` and the drives.
+The defaults are clear of the npm-install check (39886/39887). Set the same ones for `stop.sh` and the drives.
 
 ## The fake services
 
@@ -111,7 +111,7 @@ To find a run's processes yourself, test each one's environment for the mark, as
 
 ## Guarantees
 
-- **Never your bb, none of your credentials.** Every process of the run holds the passed list and what the harness sets, nothing else of yours, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones, Cache Keeper's harness's and the npm-install check's.
+- **Never your bb, none of your credentials.** Every process of the run holds the passed list and what the harness sets, nothing else of yours, a data directory in the run directory, `HOME` in the run directory, and ports other than bb's usual ones and the npm-install check's.
 - **Nothing real is called.** The fakes answer on loopback, the accounts' tokens are fake, and the fake Anthropic API answers every Claude Code turn.
 - **Refuses busy ports and directories.** `start.sh` starts nothing when a port answers, the run directory exists, or a process of an earlier start runs.
 - **Stop leaves nothing.** `stop.sh` exits 0 only when no process carries the harness's mark and no harness port answers.
@@ -119,7 +119,7 @@ To find a run's processes yourself, test each one's environment for the mark, as
 ## Files
 
 - `start.sh`, `stop.sh`, `config.sh`: the throwaway bb; `config.sh` holds the ports, the run directory and the process search both use.
-- `../../cache-keeper/harness/run-env.sh`: the passed list, and the leak check, shared with Cache Keeper's harness and the driving-bb-plugins skill's.
+- `../../../scripts/harness/run-env.sh`: the passed list, and the leak check, shared with the driving-bb-plugins skill's harness.
 - `fake-services.ts`: the four fakes of `test/fakes/` on their ports. `age-last-poll.mjs`: moves a fleet's stored last-poll time back, for the restart drive.
 - `drives/lib.sh`: what every drive shares. `drives/*.sh`: the drives, and `run-all.sh`.
 - In the run directory: `env.sh`, `caller-env`, `server.log`, `host-daemon.log`, `fake-anthropic.log`, `fake-services.log`, `requests.jsonl` (the fake Anthropic API's), `manifests/` (each drive's manifest files), `drive-threads` and `drive-repos` (what every drive made), and bb's data under `bb/` (its own logs in `bb/logs/`, the plugin's database in `bb/plugins/unattendish-sdlc/data.db`).

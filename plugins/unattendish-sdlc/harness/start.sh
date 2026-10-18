@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts a throwaway bb with Unattendish installed from this checkout, for the
-# drives: a fake Anthropic API (Cache Keeper's, so a Claude Code thread runs
+# drives: the shared fake Anthropic API (so a Claude Code thread runs
 # without spending tokens), the fake GitHub, GitLab, Linear and Jira of
 # fake-services.ts, a bb server and a host daemon on a data dir under the run
 # directory, one project, and one account for each of the four fakes, added through the
@@ -11,7 +11,7 @@
 # run directory exists, or when a process of an earlier start is still
 # running. Touches no other bb and hands the run no credential: every process
 # of the run starts from an empty environment holding the passed list in
-# ../../cache-keeper/harness/run-env.sh and what this script sets, and start
+# ../../../scripts/harness/run-env.sh and what this script sets, and start
 # fails, naming the variable and never its value, when a process it started
 # holds a leak: a variable of yours, same name and value, outside the passed
 # list and the names run-env.sh lists as set by the run. Writes nothing inside

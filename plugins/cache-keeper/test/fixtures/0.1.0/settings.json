@@ -1,6 +1,0 @@
-{
-  "keepWarm": "Every waiting thread",
-  "stalledCheckIns": true,
-  "noOutputWait": "30 min",
-  "fetchPrices": false
-}

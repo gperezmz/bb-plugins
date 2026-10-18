@@ -12,16 +12,8 @@
       "source": "./plugins/thread-usage"
     },
     {
-      "name": "team-onboarding",
-      "source": "./plugins/team-onboarding"
-    },
-    {
       "name": "openai-inference",
       "source": "./plugins/openai-inference"
-    },
-    {
-      "name": "cache-keeper",
-      "source": "./plugins/cache-keeper"
     },
     {
       "name": "ui-tweaks",

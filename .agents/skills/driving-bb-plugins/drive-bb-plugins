@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Drives this repository's plugins in a throwaway bb: a bb server and a host
 # daemon on a data directory of their own, the chosen plugins installed from a
-# copy of the checkout, Claude Code threads answered by Cache Keeper's fake
+# copy of the checkout, Claude Code threads answered by the shared fake
 # Anthropic API, and the bb web UI in headless Chromium. Never touches the
 # user's own bb and hands the run no credential: every process of the run,
 # and every command sent to it, starts from an empty environment holding the
-# passed list in plugins/cache-keeper/harness/run-env.sh and what the harness
+# passed list in scripts/harness/run-env.sh and what the harness
 # sets, the throwaway's address and HOME inside the run's scratch directory
 # among them; doctor fails on a leak, a variable of the caller's found there.
 # Never exhausts the machine: everything a run starts, Claude Code included,
@@ -91,9 +91,9 @@ to_bytes() { numfmt --from=iec "${1%[Bb]}" 2> /dev/null || die "'$1' is not a si
 iec() { numfmt --to=iec "$1"; }
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 # The passed list, run_env, and the leak check every process of a run is
-# started and checked with, shared with Cache Keeper's and Unattendish's harnesses.
-# shellcheck source-path=SCRIPTDIR source=../../../plugins/cache-keeper/harness/run-env.sh
-source "$repo/plugins/cache-keeper/harness/run-env.sh"
+# started and checked with, shared with Unattendish's harness.
+# shellcheck source-path=SCRIPTDIR source=../../../scripts/harness/run-env.sh
+source "$repo/scripts/harness/run-env.sh"
 sysu() { systemctl --user "$@"; }
 port_busy() { (exec 3<> "/dev/tcp/127.0.0.1/$1") 2> /dev/null; }
 bb_version() { env -i "${run_env[@]}" bb --version; }
@@ -414,11 +414,11 @@ cmd__launch() {
   }
 
   tb env PORT="$api_port" REQUEST_LOG="$scratch/requests.jsonl" \
-    node "$repo/plugins/cache-keeper/harness/fake-anthropic.mjs" > "$scratch/fake-anthropic.log" 2>&1 &
+    node "$repo/scripts/harness/fake-anthropic.mjs" > "$scratch/fake-anthropic.log" 2>&1 &
   echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
   wait_for "the fake Anthropic API" "http://127.0.0.1:$api_port/_control"
 
-  tb env CACHE_KEEPER_DRIVE_CLOCK=1 BB_HOST_DAEMON_PORT="$daemon_port" \
+  tb env BB_HOST_DAEMON_PORT="$daemon_port" \
     bb-server --data-dir "$scratch/bb" --server-bind-host 127.0.0.1 --server-port "$server_port" > "$scratch/server.log" 2>&1 &
   echo $! | tee -a "$ev/pids" >> "$ev/launch-pids"
   wait_for "the bb server" "$server_url/health"
@@ -520,7 +520,7 @@ restore_snapshot() {
 # given. Run it in a subshell: it replaces the shell.
 start_daemon() {
   exec env -i "${run_env[@]}" "DBP_MARK=$scratch" HOME="$scratch/home" TMPDIR="$scratch/tmp" BB_TELEMETRY=0 BB_SERVER_URL="$server_url" \
-    CACHE_KEEPER_DRIVE_CLOCK=1 BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_HOST_ID="$host_id" "$@" \
+    BB_DATA_DIR="$scratch/bb" BB_HOST_DAEMON_PORT="$daemon_port" BB_HOST_ID="$host_id" "$@" \
     ANTHROPIC_BASE_URL="http://127.0.0.1:$api_port" ANTHROPIC_API_KEY=sk-ant-drive-fake \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1 \
     bb-host-daemon --server-url "$server_url" --host-daemon-port "$daemon_port" >> "$scratch/host-daemon.log" 2>&1 < /dev/null
@@ -668,7 +668,7 @@ cmd_spawn() {
   done
   set -- "${pos[@]}"
   local label=${1:?usage: drive-bb-plugins spawn <label> <title> <prompt> [<parent-thread>] [--fail|--background|--hold <s>] [--worktree|--beside <thread>]} title=${2:?} prompt=${3:?} parent=${4:-} parent_env="" args id idle=0 want=idle
-  # The fake API reads these markers in the prompt (plugins/cache-keeper/harness/README.md).
+  # The fake API reads these markers in the prompt (scripts/harness/README.md).
   case $mode in
     fail) prompt+=" [fake: fail]" want=error ;;
     background) prompt+=" [fake: background]" ;;

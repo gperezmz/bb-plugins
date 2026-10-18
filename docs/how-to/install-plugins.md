@@ -1,6 +1,6 @@
 # Install, update or remove a plugin
 
-Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `team-onboarding`, `openai-inference`, `cache-keeper`, `ui-tweaks` or `unattendish-sdlc`, as listed in [`.bb/plugins.json`](../../.bb/plugins.json). Run these on any machine with the `bb` CLI; they act on the bb server.
+Each plugin installs on its own, by name: `thread-glance`, `thread-usage`, `openai-inference`, `ui-tweaks` or `unattendish-sdlc`, as listed in [`.bb/plugins.json`](../../.bb/plugins.json). Run these on any machine with the `bb` CLI; they act on the bb server.
 
 ## Install
 
@@ -14,9 +14,7 @@ Then turn it on where it shows:
 
 - Thread Glance: [switch the sidebar to it](thread-glance-switch-sidebar.md).
 - Thread Usage: nothing to do; the coin appears in a thread's header after its next turn.
-- Team Onboarding: open **Onboarding** in the sidebar, and [put your team's manifest on the server](team-onboarding-provision-manifest.md).
 - OpenAI-compatible inference: add an Endpoint with its `model` and select it per AI task with `bb settings ai-services set`, as its [first run](../tutorials/openai-inference-first-run.md#3-add-the-gateway-as-an-endpoint) shows. Automatic never picks an Endpoint, and bb has no fallback from one selected service to another.
-- Cache Keeper: it sends nothing until you switch something on; [compact a thread when it goes idle](cache-keeper-compact-a-thread.md) with the composer chip, as its [first run](../tutorials/cache-keeper-first-run.md) shows.
 - UI Tweaks: nothing changes until you pick a choice other than Medium under Settings → Plugins → UI Tweaks; [its settings](../reference/ui-tweaks-settings.md) say what each does.
 - Unattendish: it polls nothing until a manager registers a fleet; [connect the fleet to an account](unattendish-connect-a-fleet.md) that can read its repository and tracker, as its [first run](../tutorials/unattendish-first-run.md) shows. Its tokens are kept in its own `data.db`, which `bb plugin remove` leaves on disk: remove every account in Settings first to delete them.
 

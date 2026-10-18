@@ -1,6 +1,0 @@
-{
-  "keepWarm": "Only threads switched on",
-  "stalledCheckIns": true,
-  "noOutputWait": "15 min",
-  "fetchPrices": true
-}

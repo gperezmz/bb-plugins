@@ -1,6 +1,6 @@
 ---
 name: driving-bb-plugins
-description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Cache Keeper, Unattendish) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
+description: Drives this repository's bb plugins (Thread Glance, Thread Usage, UI Tweaks, Unattendish) for real, in a throwaway bb, through its web UI in headless Chromium and the bb CLI. Use when a plugin change has to be seen working in bb, when asked to run, click through, screenshot or try a plugin, or to check what a plugin shows or stores after a user action.
 ---
 
 # Driving bb-plugins
@@ -52,20 +52,19 @@ What a run holds:
 
 - a bb server at the `web UI` address, a host daemon enrolled as the machine,
   and a project named `drives` in a git repository of its own;
-- Claude Code threads answered by Cache Keeper's fake Anthropic API
-  (`plugins/cache-keeper/harness/README.md#the-fake-anthropic-api` says how a
+- Claude Code threads answered by the shared fake Anthropic API
+  (`scripts/harness/README.md#the-fake-anthropic-api` says how a
   prompt steers it), so a thread spends no tokens. Claude Code is the run's
   only provider, so a thread sent from the web UI's compose screen is one of
   these too;
 - bb's first-run setup guide marked done, so the web UI opens on the app;
-- `CACHE_KEEPER_DRIVE_CLOCK=1`, so `bb cache-keeper drive advance` exists;
 - with `unattendish-sdlc` started, a fake GitHub, GitLab, Linear and Jira
   and one Unattendish account on each ([Fake services](#fake-services)).
 
 A run never touches the user's bb and holds none of the caller's
 credentials: every process of the run starts from an empty environment
 holding the **passed list**, the variables named with why in
-`plugins/cache-keeper/harness/run-env.sh`, and what the harness sets for the
+`scripts/harness/run-env.sh`, and what the harness sets for the
 run, its mark (`DBP_MARK`), its bb's address, `HOME` inside its scratch
 directory and `NOSYSBASHRC=1`, so no bash in the run reads the machine's
 profile, among them. A variable this machine's runs need goes on that list;
@@ -121,7 +120,7 @@ registering an Unattendish fleet.
 The arguments are `bb`'s own:
 `plugin rpc call <plugin> <method> --input-file <json file> --json`,
 `settings ui get|set <key>`, `plugin config <plugin> set <key> <value>`, and
-each plugin's command (`thread-usage show`, `cache-keeper status`), plus bb's
+each plugin's command (`thread-usage show`, `unattendish fleet status`), plus bb's
 own, such as `terminal create --thread <id>`. A JSON input goes in a file,
 passed with `--input-file`.
 
@@ -398,6 +397,5 @@ ps -p "$(paste -sd, - < "${TMPDIR:-/tmp}/drives-$(id -u)/bb-plugins/<run>/pids")
 - `.agents/skills/driving-bb-plugins/verbs/<plugin>.mjs`: a plugin's verbs.
 - `.agents/skills/driving-bb-plugins/browser.mjs`: what `ui` and the verbs
   run; not called directly.
-- `plugins/cache-keeper/harness/`: Cache Keeper's own drives, on a separate
-  throwaway bb with ports 40180 to 40187. Its README says when to reach for
-  them.
+- `scripts/harness/`: the shared fake Anthropic API and environment isolation
+  helpers; its README describes the prompt markers and passed list.

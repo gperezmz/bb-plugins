@@ -1,4 +1,0 @@
-# The bundled server and host, the generated transcripts and databases, and the results.
-.build/
-.data/
-out/

@@ -1,7 +1,7 @@
 # shellcheck shell=bash disable=SC2034
 # The harness's directory and ports, shared by every script. Each can be set
-# in the environment; the defaults stay clear of Cache Keeper's 40180-40187,
-# of the npm-install check's 39886/39887 and of a bb on its usual ports.
+# in the environment; the defaults stay clear of the npm-install check's
+# 39886/39887 and of a bb on its usual ports.
 #
 #   UD_HARNESS_DIR            the throwaway bb's run directory (default /tmp/ud-harness)
 #   UD_HARNESS_API_PORT       the fake Anthropic API (default 40190)
@@ -13,7 +13,7 @@
 #   UD_HARNESS_DAEMON_PORT    the host daemon (default 40197)
 harness=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 plugin_src=$(cd "$harness/.." && pwd)
-fake_anthropic=$(cd "$harness/../../cache-keeper/harness" && pwd)/fake-anthropic.mjs
+fake_anthropic=$(cd "$harness/../../../scripts/harness" && pwd)/fake-anthropic.mjs
 run=${UD_HARNESS_DIR:-/tmp/ud-harness}
 api_port=${UD_HARNESS_API_PORT:-40190}
 github_port=${UD_HARNESS_GITHUB_PORT:-40191}
@@ -28,9 +28,9 @@ ports=("$api_port" "$github_port" "$gitlab_port" "$linear_port" "$jira_port" "$s
 # commands too.
 mark="UD_HARNESS=$run"
 # The passed list, run_env, and the leak check every process of a run is
-# started and checked with, shared with Cache Keeper's harness.
-# shellcheck source-path=SCRIPTDIR source=../../cache-keeper/harness/run-env.sh
-source "$harness/../../cache-keeper/harness/run-env.sh"
+# started and checked with, shared with the driving-bb-plugins skill's harness.
+# shellcheck source-path=SCRIPTDIR source=../../../scripts/harness/run-env.sh
+source "$harness/../../../scripts/harness/run-env.sh"
 
 # Whether something listens on 127.0.0.1:$1.
 port_busy() {

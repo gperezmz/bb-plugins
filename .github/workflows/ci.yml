@@ -45,20 +45,6 @@ jobs:
               - scripts/ci/check-plugin.sh
               - scripts/ci/pack-npm.sh
               - scripts/ci/npm-install-check.sh
-            team-onboarding:
-              - plugins/team-onboarding/**
-              - .github/workflows/ci.yml
-              - .github/actions/setup/**
-              - scripts/ci/check-plugin.sh
-              - scripts/ci/pack-npm.sh
-              - scripts/ci/npm-install-check.sh
-            cache-keeper:
-              - plugins/cache-keeper/**
-              - .github/workflows/ci.yml
-              - .github/actions/setup/**
-              - scripts/ci/check-plugin.sh
-              - scripts/ci/pack-npm.sh
-              - scripts/ci/npm-install-check.sh
             ui-tweaks:
               - plugins/ui-tweaks/**
               - .github/workflows/ci.yml
@@ -147,7 +133,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: plugins/cache-keeper/harness/run-env.test.sh
+      - run: scripts/harness/run-env.test.sh
 
   secrets:
     name: Secrets (gitleaks)
