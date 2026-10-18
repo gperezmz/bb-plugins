@@ -30,6 +30,7 @@ interface Options {
 /** Starts the plugin on a fake host whose host entry keeps keys in `keys` and answers each completion with `answer`. */
 const start = async (options: Options = {}) => {
   const keys = { ...options.keys };
+  const urls: Record<string, string> = {};
   const state = { hostDown: options.hostDown ?? false, reloads: 0, reloadFails: false };
   const fake = createFakePluginHost({
     pluginId: "openai-inference",
@@ -55,8 +56,9 @@ const start = async (options: Options = {}) => {
             missing: (options.unset ?? []).filter((name) => `${e.url} ${e.key.kind === "variable" ? e.key.reference : ""}`.includes(`\${${name}}`)),
           }));
         case "putKey": {
-          const { id, key } = call.input as { id: string; key: string };
+          const { id, url, key } = call.input as { id: string; url: string; key: string };
           keys[id] = key;
+          urls[id] = url;
           return null;
         }
         case "removeKey":
@@ -75,7 +77,7 @@ const start = async (options: Options = {}) => {
   // A host that is down fails the send, which bb answers by restarting the service.
   running.done.catch(() => undefined);
   await expect.poll(() => configureCalls(harness).length).toBeGreaterThanOrEqual(1);
-  return { fake, harness, keys, state, stop: async () => (running.controller.abort(), await running.done.catch(() => undefined)) };
+  return { fake, harness, keys, urls, state, stop: async () => (running.controller.abort(), await running.done.catch(() => undefined)) };
 };
 type Harness = Awaited<ReturnType<typeof start>>["harness"];
 
@@ -239,14 +241,24 @@ describe("the page", () => {
     await stop();
   });
 
+  it("offers the service under its new URL when the URL changes", async () => {
+    const { harness, stop } = await start({ endpoints: [plain, mlx] });
+    await save(harness, { id: "plain", url: "http://127.0.0.1:9999/v1", model: "m" }, false);
+    expect(serviceIds(harness).sort()).toEqual(["mlx", "plain"]);
+    expect(service(harness, "plain").displayName).toContain("127.0.0.1:9999");
+    expect(service(harness, "plain").displayName).not.toContain("8081");
+    await stop();
+  });
+
   it("applies a changed model, URL or key on Save, with no reload, and not before", async () => {
-    const { harness, keys, stop } = await start({ endpoints: [mlx], keys: { mlx: "sk-old" } });
+    const { harness, keys, urls, stop } = await start({ endpoints: [mlx], keys: { mlx: "sk-old" } });
     await service(harness, "mlx").complete!("x", { signal: new AbortController().signal });
     expect(harness.inspection.experimental_hostRpcCalls.at(-1)!.input).toMatchObject({ endpoint: { model: "qwen3-4b" } });
     await save(harness, { id: "mlx", url: mlx.url, model: "qwen3-8b", key: { kind: "literal", value: "sk-new" } }, false);
     await service(harness, "mlx").complete!("x", { signal: new AbortController().signal });
     expect(harness.inspection.experimental_hostRpcCalls.at(-1)!.input).toMatchObject({ endpoint: { model: "qwen3-8b" } });
     expect(keys).toEqual({ mlx: "sk-new" });
+    expect(urls).toEqual({ mlx: mlx.url });
     await stop();
   });
 
@@ -370,6 +382,15 @@ describe("the command", () => {
     });
     await harness.behavior.runCli(["set", "plain", "--url", plain.url, "--model", "m", "--key", "${PLAIN_KEY}"]);
     expect(JSON.parse((await harness.behavior.runCli(["list", "--json"])).stdout)[1].key).toEqual({ kind: "variable", reference: "${PLAIN_KEY}" });
+    await stop();
+  });
+
+  it("refuses a new URL for an Endpoint with a literal key even with a reference, and names the page", async () => {
+    const { fake, harness, stop } = await start({ endpoints: [mlx], keys: { mlx: "sk-mlx" } });
+    const out = await harness.behavior.runCli(["set", "mlx", "--url", "http://127.0.0.1:1/v1", "--model", "qwen3-4b", "--key", "${MLX_KEY}"]);
+    expect(out.exitCode).not.toBe(0);
+    expect(out.stderr).toContain("page");
+    expect(await kvEndpoints(fake)).toEqual([mlx]);
     await stop();
   });
 

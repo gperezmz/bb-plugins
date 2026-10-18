@@ -3,12 +3,11 @@
 import { useMemo } from "react";
 import { useRpc, type PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { Endpoint } from "@/src/endpoints";
+import type { SaveResult } from "@/src/manage";
+import type { Draft } from "@/src/rules";
 import type { pageContract } from "@/server";
-import type { draftOf } from "./model";
 
 type Contract = typeof pageContract;
-
-export type Draft = ReturnType<typeof draftOf>;
 
 /** The Endpoints as saved, with what the section says about the old settings, if anything. */
 export interface Saved {
@@ -17,10 +16,7 @@ export interface Saved {
 }
 
 /** What a change came to: the Endpoints now saved, or why it was refused. */
-export type Change =
-  | { ok: true; endpoints: Endpoint[] }
-  | { ok: false; fields: Partial<Record<"id" | "url" | "model" | "key", string>> }
-  | { ok: false; problem: string };
+export type Change = SaveResult;
 
 export interface EndpointsApi {
   endpoints(): Promise<Saved>;

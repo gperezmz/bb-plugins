@@ -3,7 +3,7 @@ import type { Endpoint } from "@/src/endpoints";
 import { useEndpointsApi } from "./client";
 import { Button } from "./controls";
 import { EndpointCard } from "./EndpointCard";
-import { NO_ENDPOINTS } from "./model";
+import { NO_ENDPOINTS } from "@/src/rules";
 import { useSaved } from "./use-saved";
 
 /**
@@ -26,9 +26,10 @@ export function EndpointsSettings() {
   }
 
   const { endpoints, notice } = state.saved;
-  const changed = (id: string) => (next: Endpoint[]) => {
+  const changed = (id: string, closesNewCard = false) => (next: Endpoint[]) => {
     setVersions((was) => ({ ...was, [id]: (was[id] ?? 0) + 1 }));
-    setAdding(false);
+    // Another card's change leaves the card being added as it is.
+    if (closesNewCard) setAdding(false);
     replace(next);
   };
   return (
@@ -43,7 +44,7 @@ export function EndpointsSettings() {
         {endpoints.map((endpoint) => (
           <EndpointCard key={`${endpoint.id}:${versions[endpoint.id] ?? 0}`} saved={endpoint} api={api} onChanged={changed(endpoint.id)} onDiscard={() => undefined} />
         ))}
-        {adding ? <EndpointCard key="new" saved={null} api={api} onChanged={changed("")} onDiscard={() => setAdding(false)} /> : null}
+        {adding ? <EndpointCard key="new" saved={null} api={api} onChanged={changed("", true)} onDiscard={() => setAdding(false)} /> : null}
       </ul>
       <div>
         <Button disabled={adding} onClick={() => setAdding(true)}>

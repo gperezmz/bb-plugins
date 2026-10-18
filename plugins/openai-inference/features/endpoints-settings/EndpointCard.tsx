@@ -1,11 +1,10 @@
 import { useId, useRef, useState } from "react";
 import type { Endpoint } from "@/src/endpoints";
+import type { FieldErrors } from "@/src/rules";
 import type { EndpointsApi } from "./client";
 import { messageOf } from "./client";
 import { Button, TextField } from "./controls";
 import { blankForm, clearsKey, draftOf, formOf, isEdited, removeQuestion, showsKeySet, type Form, type KeyKind } from "./model";
-
-type FieldErrors = Partial<Record<"id" | "url" | "model" | "key", string>>;
 
 const KEY_KINDS: ReadonlyArray<{ kind: KeyKind; label: string }> = [
   { kind: "none", label: "None" },

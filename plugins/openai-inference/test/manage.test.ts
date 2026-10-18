@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Endpoint } from "../src/endpoints.js";
-import { createEndpointManager, type EndpointStore, type KeyVault } from "../src/manage.js";
+import { createEndpointManager, type EndpointStore, type KeyFile } from "../src/manage.js";
 import { readLegacy, type Legacy } from "../src/legacy.js";
 
 /** An in-memory store and key vault, which record what was changed and can be made to fail. */
 function fakes(initial: Endpoint[] = [], keys: Record<string, string> = {}) {
-  const state = { endpoints: initial, keys: { ...keys }, failWrite: false, failVault: false, changes: [] as Endpoint[][], log: [] as string[] };
+  const state = { endpoints: initial, keys: { ...keys }, urls: {} as Record<string, string>, failWrite: false, failVault: false, changes: [] as Endpoint[][], log: [] as string[] };
   const store: EndpointStore = {
     read: async () => structuredClone(state.endpoints),
     write: async (list) => {
@@ -13,11 +13,12 @@ function fakes(initial: Endpoint[] = [], keys: Record<string, string> = {}) {
       state.endpoints = structuredClone([...list]);
     },
   };
-  const vault: KeyVault = {
-    put: async (id, key) => {
+  const keyFile: KeyFile = {
+    put: async (id, key, url) => {
       state.log.push(`put ${id}`);
       if (state.failVault) throw new Error("no primary machine");
       state.keys[id] = key;
+      state.urls[id] = url;
     },
     remove: async (id) => {
       state.log.push(`remove ${id}`);
@@ -25,7 +26,7 @@ function fakes(initial: Endpoint[] = [], keys: Record<string, string> = {}) {
       delete state.keys[id];
     },
   };
-  const manager = createEndpointManager({ store, vault, changed: (list) => void state.changes.push(structuredClone([...list])) });
+  const manager = createEndpointManager({ store, keyFile, changed: (list) => void state.changes.push(structuredClone([...list])) });
   return { state, manager };
 }
 
@@ -41,6 +42,12 @@ describe("save", () => {
     expect(state.keys).toEqual({ mlx: "sk-test" });
     expect(JSON.stringify(state.endpoints)).not.toContain("sk-test");
     expect(state.changes).toHaveLength(1);
+  });
+
+  it("keeps a key with the URL it was typed for", async () => {
+    const { state, manager } = fakes([mlx], { mlx: "sk-old" });
+    await manager.save({ id: "mlx", url: "http://127.0.0.1:9/v1", model: "q", key: { kind: "literal", value: "sk-new" } }, false);
+    expect(state.urls).toEqual({ mlx: "http://127.0.0.1:9/v1" });
   });
 
   it("changes nothing when a field is refused", async () => {
@@ -125,6 +132,13 @@ describe("set, the command's save", () => {
     expect(state.keys).toEqual({});
   });
 
+  it("refuses a new URL for an Endpoint with a literal key even when a reference is given", async () => {
+    const { state, manager } = fakes([mlx], { mlx: "sk-test" });
+    expect(await manager.set({ id: "mlx", url: "http://127.0.0.1:1/v1", model: "q", key: "${MLX_KEY}" })).toEqual({ ok: false, problem: expect.stringContaining("page") });
+    expect(state.endpoints).toEqual([mlx]);
+    expect(state.keys).toEqual({ mlx: "sk-test" });
+  });
+
   it("refuses a new URL for an Endpoint with a literal key, and names the page", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-test" });
     const result = await manager.set({ id: "mlx", url: "http://127.0.0.1:1/v1", model: "q", key: null });
@@ -161,7 +175,7 @@ describe("remove", () => {
   });
 });
 
-describe("adopt, the copy of what 0.3 saved", () => {
+describe("copy, the copy of what 0.3 saved", () => {
   const items = (): Legacy[] => {
     const read = readLegacy('[{"id": "mac", "url": "http://192.168.1.5:8083/v1", "key": "${K}", "model": "m"}, {"id": "mlx", "url": "http://127.0.0.1:8080/v1", "model": "q"}]', '{"mlx": "sk-mlx"}');
     if (!read.ok) throw new Error(read.reason);
@@ -170,26 +184,27 @@ describe("adopt, the copy of what 0.3 saved", () => {
 
   it("adds the Endpoints and puts the literal keys, and reports what it added", async () => {
     const { state, manager } = fakes();
-    expect(await manager.adopt(items())).toEqual(["mac", "mlx"]);
+    expect(await manager.copy(items())).toEqual(["mac", "mlx"]);
     expect(state.endpoints.map((e) => e.id)).toEqual(["mac", "mlx"]);
     expect(state.keys).toEqual({ mlx: "sk-mlx" });
+    expect(state.urls).toEqual({ mlx: "http://127.0.0.1:8080/v1" });
     expect(JSON.stringify(state.endpoints)).not.toContain("sk-mlx");
   });
 
   it("skips an id the plugin already has, so a copy run twice adds nothing", async () => {
     const { state, manager } = fakes([{ ...mac, model: "mine" }]);
-    expect(await manager.adopt(items())).toEqual(["mlx"]);
+    expect(await manager.copy(items())).toEqual(["mlx"]);
     expect(state.endpoints[0]!.model).toBe("mine");
-    expect(await manager.adopt(items())).toEqual([]);
+    expect(await manager.copy(items())).toEqual([]);
   });
 
   it("stores no Endpoint when a key cannot be kept, so the next attempt copies everything", async () => {
     const { state, manager } = fakes();
     state.failVault = true;
-    await expect(manager.adopt(items())).rejects.toThrow();
+    await expect(manager.copy(items())).rejects.toThrow();
     expect(state.endpoints).toEqual([]);
     state.failVault = false;
-    expect(await manager.adopt(items())).toEqual(["mac", "mlx"]);
+    expect(await manager.copy(items())).toEqual(["mac", "mlx"]);
     expect(state.keys).toEqual({ mlx: "sk-mlx" });
   });
 });

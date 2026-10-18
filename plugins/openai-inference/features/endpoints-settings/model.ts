@@ -1,5 +1,6 @@
 // What the Endpoints section decides, as plain functions over plain values: what a card holds, when it counts as edited, what Save sends, and the words the section says.
 import type { Endpoint } from "@/src/endpoints";
+import { clearsLiteralKey } from "@/src/rules";
 
 /** What the section says under its heading, which bb draws. */
 export const SECTION_TITLE = "Endpoints";
@@ -46,7 +47,7 @@ export const showsKeySet = (form: Form, saved: Endpoint | null): boolean => form
 
 /** Whether a Save with this form clears the saved literal key, because the URL changed and no key is typed. */
 export function clearsKey(form: Form, saved: Endpoint | null): boolean {
-  return form.keyKind === "literal" && holdsLiteralKey(saved) && form.literal.trim() === "" && form.url.trim() !== saved!.url;
+  return form.keyKind === "literal" && form.literal.trim() === "" && clearsLiteralKey(saved, form.url);
 }
 
 /** Whether the card differs from the Endpoint as saved, which is when it shows Save and Cancel. */
@@ -77,4 +78,3 @@ export function draftOf(form: Form) {
 export const removeQuestion = (id: string): string =>
   `Remove ${id}? If it's selected for an AI task, select another under Settings → AI services first, or that task stops.`;
 
-export const NO_ENDPOINTS = "No Endpoint is set.";

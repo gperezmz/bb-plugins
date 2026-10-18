@@ -6,6 +6,9 @@
  */
 import type { Endpoint, EndpointKey } from "./endpoints.js";
 
+/** What the page and the command say when there is no Endpoint. */
+export const NO_ENDPOINTS = "No Endpoint is set.";
+
 /** What a card holds for the key: the kind chosen and what was typed. */
 export type KeyDraft =
   | { kind: "none" }
@@ -25,10 +28,10 @@ export type Field = "id" | "url" | "model" | "key";
 export type FieldErrors = Partial<Record<Field, string>>;
 
 /** What the key file must do for the Endpoint to hold the key it is saved with. */
-export type VaultAction = { do: "keep" } | { do: "put"; key: string } | { do: "remove" };
+export type KeyFileAction = { do: "keep" } | { do: "put"; key: string } | { do: "remove" };
 
 export type Plan =
-  | { ok: true; endpoint: Endpoint; vault: VaultAction }
+  | { ok: true; endpoint: Endpoint; keyFile: KeyFileAction }
   /** A field is refused; `fields` names each with why. */
   | { ok: false; fields: FieldErrors }
   /** Not a field's fault: the Endpoint to edit is gone, or is already there. */
@@ -47,6 +50,14 @@ const isHttpUrl = (url: string): boolean => {
     return false;
   }
 };
+
+/**
+ * Whether saving `url` for the Endpoint as saved clears its literal key: a key
+ * only reaches the server it was typed for, so a changed URL deletes it.
+ */
+export function clearsLiteralKey(saved: Endpoint | null | undefined, url: string): boolean {
+  return saved?.key.kind === "literal" && saved.key.set && saved.url !== url.trim();
+}
 
 /** Whether `key` is a `${NAME}` reference. */
 export const isVariableReference = (key: string): boolean => VARIABLE.test(key);
@@ -99,10 +110,10 @@ export function planSave(draft: Draft, saved: readonly Endpoint[], create: boole
   if (model === "") fields.model = "A model is a model name the server serves.";
 
   const key = draft.key;
-  const urlChanged = existing !== undefined && existing.url !== url;
+  const urlChanged = clearsLiteralKey(existing, url);
   const held = existing?.key.kind === "literal" && existing.key.set;
   let stored: EndpointKey = { kind: "none" };
-  let vault: VaultAction = held ? { do: "remove" } : { do: "keep" };
+  let keyFile: KeyFileAction = held ? { do: "remove" } : { do: "keep" };
   if (key.kind === "variable") {
     const reference = key.reference.trim();
     if (!isVariableReference(reference)) fields.key = "A variable key is a reference to bb's environment, as ${NAME}.";
@@ -111,10 +122,10 @@ export function planSave(draft: Draft, saved: readonly Endpoint[], create: boole
     const typed = key.value?.trim() ?? "";
     if (typed !== "") {
       stored = { kind: "literal", set: true };
-      vault = { do: "put", key: typed };
+      keyFile = { do: "put", key: typed };
     } else if (held) {
       stored = { kind: "literal", set: !urlChanged };
-      vault = urlChanged ? { do: "remove" } : { do: "keep" };
+      keyFile = urlChanged ? { do: "remove" } : { do: "keep" };
     } else {
       fields.key = "Type the key, or choose None or Variable.";
       stored = { kind: "literal", set: false };
@@ -122,5 +133,5 @@ export function planSave(draft: Draft, saved: readonly Endpoint[], create: boole
   }
 
   if (Object.keys(fields).length > 0) return { ok: false, fields };
-  return { ok: true, endpoint: { id, url, model, key: stored }, vault };
+  return { ok: true, endpoint: { id, url, model, key: stored }, keyFile };
 }

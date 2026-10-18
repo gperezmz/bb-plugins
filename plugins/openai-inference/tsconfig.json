@@ -25,7 +25,6 @@
     "server.ts",
     "host.ts",
     "app.tsx",
-    "app.test.tsx",
     "src",
     "features",
     "test",

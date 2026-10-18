@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Endpoint } from "../src/endpoints.js";
-import { planSave, type Draft } from "../src/rules.js";
+import { clearsLiteralKey, planSave, type Draft } from "../src/rules.js";
 
 const mac: Endpoint = { id: "mac", url: "http://192.168.1.5:8083/v1", model: "qwen3-4b", key: { kind: "none" } };
 const mlx: Endpoint = { id: "mlx", url: "http://127.0.0.1:8080/v1", model: "qwen3-4b", key: { kind: "literal", set: true } };
@@ -12,12 +12,22 @@ const refused = (plan: ReturnType<typeof planSave>) => {
   return plan.fields;
 };
 
+describe("what clears a literal key", () => {
+  it("is a changed URL on an Endpoint whose literal key is set, and nothing else", () => {
+    expect(clearsLiteralKey(mlx, "http://127.0.0.1:9/v1")).toBe(true);
+    expect(clearsLiteralKey(mlx, ` ${mlx.url} `)).toBe(false);
+    expect(clearsLiteralKey({ ...mlx, key: { kind: "literal", set: false } }, "http://x.example.com")).toBe(false);
+    expect(clearsLiteralKey(mac, "http://x.example.com")).toBe(false);
+    expect(clearsLiteralKey(undefined, "http://x.example.com")).toBe(false);
+  });
+});
+
 describe("a new Endpoint", () => {
   it("is saved as typed, trimmed", () => {
     expect(planSave(draft({ id: " mlx2 ", url: " http://127.0.0.1:9000/v1 ", model: " m " }), saved, true)).toEqual({
       ok: true,
       endpoint: { id: "mlx2", url: "http://127.0.0.1:9000/v1", model: "m", key: { kind: "none" } },
-      vault: { do: "keep" },
+      keyFile: { do: "keep" },
     });
   });
 
@@ -55,7 +65,7 @@ describe("a new Endpoint", () => {
     expect(planSave(draft({ key: { kind: "literal", value: " sk-test " } }), saved, true)).toMatchObject({
       ok: true,
       endpoint: { key: { kind: "literal", set: true } },
-      vault: { do: "put", key: "sk-test" },
+      keyFile: { do: "put", key: "sk-test" },
     });
   });
 
@@ -80,25 +90,25 @@ describe("an Endpoint already saved", () => {
   });
 
   it("keeps its literal key when the key is left empty and the URL is the same", () => {
-    expect(edit({ model: "other" })).toMatchObject({ ok: true, endpoint: { model: "other", key: { kind: "literal", set: true } }, vault: { do: "keep" } });
+    expect(edit({ model: "other" })).toMatchObject({ ok: true, endpoint: { model: "other", key: { kind: "literal", set: true } }, keyFile: { do: "keep" } });
   });
 
   it("replaces its literal key with the one typed", () => {
-    expect(edit({ key: { kind: "literal", value: "sk-new" } })).toMatchObject({ vault: { do: "put", key: "sk-new" } });
+    expect(edit({ key: { kind: "literal", value: "sk-new" } })).toMatchObject({ keyFile: { do: "put", key: "sk-new" } });
   });
 
   it("clears its literal key when the URL changes and no key is typed, leaving it Literal and not set", () => {
     expect(edit({ url: "http://127.0.0.1:9999/v1" })).toEqual({
       ok: true,
       endpoint: { ...mlx, url: "http://127.0.0.1:9999/v1", key: { kind: "literal", set: false } },
-      vault: { do: "remove" },
+      keyFile: { do: "remove" },
     });
   });
 
   it("sets the key typed when the URL changes with it", () => {
     expect(edit({ url: "http://127.0.0.1:9999/v1", key: { kind: "literal", value: "sk-new" } })).toMatchObject({
       endpoint: { key: { kind: "literal", set: true } },
-      vault: { do: "put", key: "sk-new" },
+      keyFile: { do: "put", key: "sk-new" },
     });
   });
 
@@ -106,7 +116,7 @@ describe("an Endpoint already saved", () => {
     ["None", { kind: "none" }, { kind: "none" }],
     ["Variable", { kind: "variable", reference: "${K}" }, { kind: "variable", reference: "${K}" }],
   ] as const)("deletes its literal key when saved with Key %s", (_name, key, stored) => {
-    expect(edit({ key })).toMatchObject({ ok: true, endpoint: { key: stored }, vault: { do: "remove" } });
+    expect(edit({ key })).toMatchObject({ ok: true, endpoint: { key: stored }, keyFile: { do: "remove" } });
   });
 
   it("is refused a Literal key with nothing typed when none is saved", () => {

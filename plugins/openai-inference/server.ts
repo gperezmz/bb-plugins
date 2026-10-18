@@ -142,8 +142,8 @@ export default async function plugin(bb: BbPluginApi) {
 
   const manager: EndpointManager = createEndpointManager({
     store,
-    vault: {
-      put: async (id, key) => void (await host.call("putKey", { id, key }, { hostId: await primaryHostId() })),
+    keyFile: {
+      put: async (id, key, url) => void (await host.call("putKey", { id, url, key }, { hostId: await primaryHostId() })),
       remove: async (id) => void (await host.call("removeKey", { id }, { hostId: await primaryHostId() })),
     },
     changed: (next) => {
@@ -198,7 +198,7 @@ export default async function plugin(bb: BbPluginApi) {
             continue;
           }
           try {
-            const added = await manager.adopt(read.items);
+            const added = await manager.copy(read.items);
             await legacy.experimental_set({ keys: null });
             await bb.storage.kv.set(COPIED_KEY, true);
             notice = null;

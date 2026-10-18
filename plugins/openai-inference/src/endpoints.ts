@@ -51,8 +51,8 @@ export function missingVariables(endpoint: Endpoint, env: Readonly<Record<string
   return references(endpoint).filter((name) => !env[name]?.trim());
 }
 
-/** Where an Endpoint is edited, as a not-ready reason names it. */
-const PAGE = "the Endpoints section of the plugin's page under Settings → Installed plugins → OpenAI-compatible inference";
+/** Where an Endpoint is edited, as a message names it. */
+export const PAGE = "the Endpoints section of the plugin's page under Settings → Installed plugins → OpenAI-compatible inference";
 
 /** Whether an Endpoint can answer, as bb's `status()` reports it. */
 export type EndpointStatus = { ready: true } | { ready: false; message: string };

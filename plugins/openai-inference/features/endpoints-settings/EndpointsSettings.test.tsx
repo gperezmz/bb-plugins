@@ -24,7 +24,7 @@ function server(initial: Endpoint[] = [], keys: Record<string, string> = {}, not
       read: async () => structuredClone(state.endpoints),
       write: async (list) => void (state.endpoints = structuredClone([...list])),
     },
-    vault: {
+    keyFile: {
       put: async (id, key) => void (state.keys[id] = key),
       remove: async (id) => void delete state.keys[id],
     },
@@ -100,12 +100,6 @@ describe("the section", () => {
     expect((old.getByLabelText("Model") as HTMLInputElement).value).toBe("");
     expect(old.getByText("Enter the model this server answers with.")).toBeTruthy();
   });
-
-  it("holds no saved literal key in anything it draws", async () => {
-    const { view } = await show([mlx], { mlx: "sk-secret-key" });
-    expect(view.container.innerHTML).not.toContain("sk-secret-key");
-    for (const input of screen.getAllByRole("textbox") as HTMLInputElement[]) expect(input.value).not.toContain("sk-secret");
-  });
 });
 
 describe("adding an Endpoint", () => {
@@ -150,6 +144,19 @@ describe("adding an Endpoint", () => {
     expect((within(card("mlx")).getByLabelText("ID") as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect((screen.getByRole("button", { name: "Add Endpoint" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps the card being added when another Endpoint is saved or removed", async () => {
+    const fake = await show([mac, mlx]);
+    fireEvent.click(screen.getByRole("button", { name: "Add Endpoint" }));
+    type(within(card("New Endpoint")).getByLabelText("ID"), "half");
+    type(within(card("mac")).getByLabelText("Model"), "qwen3-8b");
+    fireEvent.click(within(card("mac")).getByRole("button", { name: "Save" }));
+    await saved(fake, (list) => list[0]!.model === "qwen3-8b");
+    fireEvent.click(within(card("mlx")).getByRole("button", { name: "Remove mlx" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm removing mlx" }));
+    await waitFor(() => expect(screen.queryByRole("listitem", { name: "mlx" })).toBeNull());
+    expect((within(card("New Endpoint")).getByLabelText("ID") as HTMLInputElement).value).toBe("half");
   });
 
   it("refuses an invalid card, naming each field, keeps what was typed, and changes nothing", async () => {

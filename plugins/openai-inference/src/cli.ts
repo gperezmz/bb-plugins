@@ -4,11 +4,9 @@
  * never changes or clears a saved literal key.
  */
 import { cliCommand, defineCli, PluginCliError, type PluginCliRegistration } from "@get-bb/plugin-sdk";
-import type { Endpoint } from "./endpoints.js";
+import { PAGE, type Endpoint } from "./endpoints.js";
+import { NO_ENDPOINTS } from "./rules.js";
 import type { EndpointManager, SaveResult } from "./manage.js";
-
-/** Where a literal key is typed. */
-const PAGE = "the Endpoints section of the plugin's page under Settings → Installed plugins → OpenAI-compatible inference";
 
 /** How `list` says what an Endpoint's key is, never its value. */
 export function keyText(endpoint: Endpoint): string {
@@ -20,7 +18,7 @@ export function keyText(endpoint: Endpoint): string {
 
 const lines = (endpoints: readonly Endpoint[]): string =>
   endpoints.length === 0
-    ? "No Endpoint is set."
+    ? NO_ENDPOINTS
     : endpoints.map((e) => `${e.id}  ${e.url}  model ${e.model ?? "(none)"}  key ${keyText(e)}`).join("\n");
 
 /** Throws the refusal in a result, or returns the Endpoints now saved. */

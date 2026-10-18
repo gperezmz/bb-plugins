@@ -5,7 +5,7 @@ import type { ExperimentalHostRpcHandlers } from "@get-bb/plugin-sdk/host";
 import { complete, type CompleteOptions } from "./complete.js";
 import type { contract } from "./contract.js";
 import { endpointStatus, expandEndpoint, missingVariables, redactor } from "./endpoints.js";
-import { readKeys, writeKeys } from "./keys.js";
+import { readKeys, writeKeys, type Keys } from "./keys.js";
 import { readLearned, writeLearned, type LearnedFields } from "./learned.js";
 
 /**
@@ -36,9 +36,12 @@ export function createHandlers(
 
   // Every change to the keys file reads it and writes it back, so they run one at a time.
   let keying: Promise<unknown> = Promise.resolve();
-  const changeKeys = (dataDir: string, change: (keys: Record<string, string>) => void): Promise<null> => {
+  const changeKeys = (dataDir: string, change: (keys: Keys) => void): Promise<null> => {
     const done = keying.then(async () => {
-      const keys = await readKeys(dataDir);
+      // A file that cannot be read is not replaced: that would delete every key in it.
+      const keys = await readKeys(dataDir).catch(() => {
+        throw new Error("keys.json in the plugin's data directory cannot be read, so no key was changed: delete it and type the keys again.");
+      });
       change(keys);
       await writeKeys(dataDir, keys);
     });
@@ -47,9 +50,9 @@ export function createHandlers(
   };
 
   return {
-    putKey: ({ id, key }, context) =>
+    putKey: ({ id, url, key }, context) =>
       changeKeys(context.experimental_paths.dataDir, (keys) => {
-        keys[id] = key;
+        keys[id] = { url, key };
       }),
     removeKey: ({ id }, context) =>
       changeKeys(context.experimental_paths.dataDir, (keys) => {
@@ -60,7 +63,8 @@ export function createHandlers(
       await rm(join(dataDir, OLD_ENDPOINTS_FILE), { force: true });
       // What a URL refused says nothing about the URL an Endpoint moves to.
       const fields = await loadLearned(dataDir);
-      const stale = Object.keys(fields).filter((url) => !input.some((endpoint) => endpoint.url === url));
+      // An empty list is what the server sends before it has the Endpoints, as while it copies 0.3's settings, so it forgets nothing.
+      const stale = input.length === 0 ? [] : Object.keys(fields).filter((url) => !input.some((endpoint) => endpoint.url === url));
       for (const url of stale) delete fields[url];
       if (stale.length > 0) await saveLearned(dataDir, fields);
       return input.map((endpoint) => ({ id: endpoint.id, missing: missingVariables(endpoint, env) }));
@@ -72,9 +76,11 @@ export function createHandlers(
       }
       const { model } = endpoint;
       const { dataDir } = context.experimental_paths;
-      const literalKey = endpoint.key.kind === "literal" ? ((await readKeys(dataDir))[endpoint.id] ?? null) : null;
+      // A key is used only for the URL it was typed for.
+      const held = endpoint.key.kind === "literal" ? await readKeys(dataDir).then((keys) => keys[endpoint.id], () => undefined) : undefined;
+      const literalKey = held !== undefined && held.url === endpoint.url ? held.key : null;
       if (endpoint.key.kind === "literal" && literalKey === null) {
-        return { ok: false, message: `Endpoint "${endpoint.id}" cannot answer: its literal key is not saved.` };
+        return { ok: false, message: `Endpoint "${endpoint.id}" cannot answer: its literal key is not saved for its URL.` };
       }
       const fields = await loadLearned(dataDir);
       let changed = false;
