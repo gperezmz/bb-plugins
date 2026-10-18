@@ -37,10 +37,12 @@ const start = async (options: Options = {}) => {
     sdk: {
       system: { config: async () => ({ primaryHostId: "host_primary" }) },
       plugins: {
+        // bb finishes a reload only once the plugin's services have stopped, so
+        // one that waits for it from inside a service never returns.
         reload: async () => {
           state.reloads += 1;
           if (state.reloadFails) throw new Error("reload refused");
-          return { ok: true, plugins: [] };
+          return new Promise(() => undefined);
         },
       },
     } as never,

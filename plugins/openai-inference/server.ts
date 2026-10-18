@@ -210,11 +210,11 @@ export default async function plugin(bb: BbPluginApi) {
             continue;
           }
           // The next load declares no setting, so bb stops drawing the old fields.
-          try {
-            await bb.sdk.plugins.reload({ pluginId: bb.pluginId });
-          } catch (error) {
+          // Not awaited: bb stops this service before the reload finishes, and
+          // waits for it to return.
+          bb.sdk.plugins.reload({ pluginId: bb.pluginId }).catch((error: unknown) => {
             bb.log.warn(`The old settings are copied; reload the plugin to stop showing them: ${String(error)}`);
-          }
+          });
           await wait(null);
         }
       },
