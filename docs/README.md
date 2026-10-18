@@ -72,7 +72,7 @@ The pages each plugin's behaviour rests on:
 - [Thread Usage: `bb thread-usage`](reference/thread-usage-cli.md)
 - [Thread Usage: the `thread_usage` agent tool](reference/thread-usage-agent-tool.md)
 - [Thread Usage: cost sources, prices, attribution and billing](reference/thread-usage-cost-sources.md)
-- [OpenAI-compatible inference: endpoints, settings and failures](reference/openai-inference-settings.md)
+- [OpenAI-compatible inference: Endpoints, the command and failures](reference/openai-inference-settings.md)
 - [UI Tweaks: settings](reference/ui-tweaks-settings.md)
 - [Unattendish: `bb unattendish fleet` and the wake](reference/unattendish-cli.md)
 - [Unattendish: accounts, settings and what it stores](reference/unattendish-settings.md)
