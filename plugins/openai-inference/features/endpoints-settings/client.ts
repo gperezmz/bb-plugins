@@ -15,14 +15,11 @@ export interface Saved {
   notice: string | null;
 }
 
-/** What a change came to: the Endpoints now saved, or why it was refused. */
-export type Change = SaveResult;
-
 export interface EndpointsApi {
   endpoints(): Promise<Saved>;
   /** Saves `draft` as a new Endpoint (`create`) or over the saved one with its id. */
-  save(draft: Draft, create: boolean): Promise<Change>;
-  remove(id: string): Promise<Change>;
+  save(draft: Draft, create: boolean): Promise<SaveResult>;
+  remove(id: string): Promise<SaveResult>;
 }
 
 /** The part of bb's RPC client the section uses. */

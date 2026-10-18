@@ -23,7 +23,7 @@ Endpoints are cards under Settings → Installed plugins → OpenAI-compatible i
 
 ## Upgrading from 0.3
 
-Releases after 0.3 keep the Endpoints in the plugin's own storage and edit them in the Endpoints section of the plugin's page, not in the `endpoints` and `keys` settings, which `bb plugin config` no longer sets. The first start after the update copies the Endpoints and literal keys once, and an Endpoint stays selected for the AI tasks it was selected for. [Upgrading from 0.3](../../docs/reference/openai-inference-settings.md#upgrading-from-03) says what the copy does when it cannot read an old value. Going back to 0.3 afterwards finds the `endpoints` setting but not the literal keys, which the copy unsets, so type them again.
+Releases after 0.3 keep the Endpoints in the plugin's own storage and edit them in the Endpoints section of the plugin's page, not in the `endpoints` and `keys` settings, which `bb plugin config` no longer sets. The first start after the update copies the Endpoints and literal keys once, and an Endpoint stays selected for the AI tasks it was selected for. [Upgrading from 0.3](../../docs/reference/openai-inference-settings.md#upgrading-from-03) says what the copy does when it cannot read an old value, and what going back to 0.3 loses.
 
 ## Licence
 

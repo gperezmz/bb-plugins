@@ -16,7 +16,7 @@ afterEach(cleanup);
 const mac: Endpoint = { id: "mac", url: "http://192.168.1.5:8083/v1", model: "qwen3-4b", key: { kind: "variable", reference: "${MAC_INFERENCE_KEY}" } };
 const mlx: Endpoint = { id: "mlx", url: "http://127.0.0.1:8080/v1", model: "qwen3-4b", key: { kind: "literal", set: true } };
 
-/** The server's side of the page: the real manager over an in-memory store and key vault. */
+/** The server's side of the page: the real manager over an in-memory store and key file. */
 function server(initial: Endpoint[] = [], keys: Record<string, string> = {}, notice: string | null = null) {
   const state = { endpoints: initial, keys: { ...keys }, failSave: null as Error | null, saves: 0 };
   const manager = createEndpointManager({

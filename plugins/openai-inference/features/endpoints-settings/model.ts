@@ -1,6 +1,6 @@
 // What the Endpoints section decides, as plain functions over plain values: what a card holds, when it counts as edited, what Save sends, and the words the section says.
 import type { Endpoint } from "@/src/endpoints";
-import { clearsLiteralKey } from "@/src/rules";
+import { clearsLiteralKey, holdsLiteralKey } from "@/src/rules";
 
 /** What the section says under its heading, which bb draws. */
 export const SECTION_TITLE = "Endpoints";
@@ -40,7 +40,6 @@ export function formOf(endpoint: Endpoint): Form {
 }
 
 /** Whether the saved Endpoint holds a literal key. */
-export const holdsLiteralKey = (saved: Endpoint | null): boolean => saved?.key.kind === "literal" && saved.key.set;
 
 /** Whether the key field is shown as "set", with Replace, rather than as an empty masked field. */
 export const showsKeySet = (form: Form, saved: Endpoint | null): boolean => form.keyKind === "literal" && holdsLiteralKey(saved) && !form.replacing;

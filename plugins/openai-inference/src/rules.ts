@@ -1,7 +1,7 @@
 /**
  * What a card's Save, and the plugin's command, may do to the Endpoints: the
  * rules an Endpoint must meet and what changing one does to the literal key it
- * holds. Pure: it reads the saved Endpoints and answers with the Endpoint to
+ * holds, and what both say when there is none to list. Pure: it reads the saved Endpoints and answers with the Endpoint to
  * store and what the host entry's key file must do, and names no framework.
  */
 import type { Endpoint, EndpointKey } from "./endpoints.js";
@@ -56,7 +56,12 @@ const isHttpUrl = (url: string): boolean => {
  * only reaches the server it was typed for, so a changed URL deletes it.
  */
 export function clearsLiteralKey(saved: Endpoint | null | undefined, url: string): boolean {
-  return saved?.key.kind === "literal" && saved.key.set && saved.url !== url.trim();
+  return holdsLiteralKey(saved) && saved!.url !== url.trim();
+}
+
+/** Whether the Endpoint as saved holds a literal key. */
+export function holdsLiteralKey(saved: Endpoint | null | undefined): boolean {
+  return saved?.key.kind === "literal" && saved.key.set;
 }
 
 /** Whether `key` is a `${NAME}` reference. */
@@ -110,8 +115,8 @@ export function planSave(draft: Draft, saved: readonly Endpoint[], create: boole
   if (model === "") fields.model = "A model is a model name the server serves.";
 
   const key = draft.key;
-  const urlChanged = clearsLiteralKey(existing, url);
-  const held = existing?.key.kind === "literal" && existing.key.set;
+  const clearsKey = clearsLiteralKey(existing, url);
+  const held = holdsLiteralKey(existing);
   let stored: EndpointKey = { kind: "none" };
   let keyFile: KeyFileAction = held ? { do: "remove" } : { do: "keep" };
   if (key.kind === "variable") {
@@ -124,8 +129,8 @@ export function planSave(draft: Draft, saved: readonly Endpoint[], create: boole
       stored = { kind: "literal", set: true };
       keyFile = { do: "put", key: typed };
     } else if (held) {
-      stored = { kind: "literal", set: !urlChanged };
-      keyFile = urlChanged ? { do: "remove" } : { do: "keep" };
+      stored = { kind: "literal", set: !clearsKey };
+      keyFile = clearsKey ? { do: "remove" } : { do: "keep" };
     } else {
       fields.key = "Type the key, or choose None or Variable.";
       stored = { kind: "literal", set: false };

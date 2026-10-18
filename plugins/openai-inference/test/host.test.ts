@@ -216,11 +216,21 @@ describe("literal keys", () => {
     expect(fake.requests).toHaveLength(before);
   });
 
-  it("does not replace a keys file it cannot read, which would delete every key in it", async () => {
-    await writeFile(keysFile(), "{not json");
+  it.each([
+    ["is not JSON", "{not json"],
+    ["is JSON of another shape, such as keys without their URLs", '{"mlx":"sk-mlx"}'],
+  ])("does not replace a keys file that %s, which would delete every key in it", async (_name, text) => {
+    await writeFile(keysFile(), text);
     await expect(entry(dir).experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" })).rejects.toThrow("cannot be read");
-    expect(await readFile(keysFile(), "utf8")).toBe("{not json");
+    await expect(entry(dir).experimental_call("removeKey", { id: "mlx" })).rejects.toThrow("cannot be read");
+    expect(await readFile(keysFile(), "utf8")).toBe(text);
     expect(await entry(dir).experimental_call("complete", { endpoint: literal(), prompt })).toMatchObject({ ok: false });
+  });
+
+  it("does not replace a keys file it cannot read for a reason other than being missing", async () => {
+    await mkdir(keysFile());
+    await expect(entry(dir).experimental_call("putKey", { id: "gateway", url: URL(), key: "sk-test" })).rejects.toThrow("cannot be read");
+    expect((await stat(keysFile())).isDirectory()).toBe(true);
   });
 
   it("answers why when the Endpoint's key is Literal and not set", async () => {

@@ -77,8 +77,15 @@ export function createEndpointManager(options: {
     try {
       await store.write(next);
     } catch (error) {
-      // A key put for an Endpoint that was not saved would stay behind.
-      if (action.do === "put" && !saved.some((e) => e.id === endpoint.id)) await keyFile.remove(endpoint.id).catch(() => undefined);
+      if (action.do === "put") {
+        if (!saved.some((e) => e.id === endpoint.id)) {
+          // A key put for an Endpoint that was not saved would stay behind.
+          await keyFile.remove(endpoint.id).catch(() => undefined);
+        } else {
+          // The key that was there is replaced and cannot be put back.
+          throw new Error(`${error instanceof Error ? error.message : String(error)} The key was changed and must be typed again.`, { cause: error });
+        }
+      }
       throw error;
     }
     await changed(next);
@@ -98,9 +105,8 @@ export function createEndpointManager(options: {
         let key: KeyDraft;
         if (input.key !== null) key = { kind: "variable", reference: input.key };
         else if (existing === undefined) key = { kind: "none" };
-        else if (existing.key.kind === "literal") {
-          key = { kind: "literal", value: null };
-        } else key = existing.key;
+        else if (existing.key.kind === "literal") key = { kind: "literal", value: null };
+        else key = existing.key;
         return saveNow({ id: input.id, url: input.url, model: input.model, key }, existing === undefined);
       }),
     remove: (id) =>

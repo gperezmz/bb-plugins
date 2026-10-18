@@ -3,9 +3,9 @@ import type { Endpoint } from "../src/endpoints.js";
 import { createEndpointManager, type EndpointStore, type KeyFile } from "../src/manage.js";
 import { readLegacy, type Legacy } from "../src/legacy.js";
 
-/** An in-memory store and key vault, which record what was changed and can be made to fail. */
+/** An in-memory store and key file, which record what was changed and can be made to fail. */
 function fakes(initial: Endpoint[] = [], keys: Record<string, string> = {}) {
-  const state = { endpoints: initial, keys: { ...keys }, urls: {} as Record<string, string>, failWrite: false, failVault: false, changes: [] as Endpoint[][], log: [] as string[] };
+  const state = { endpoints: initial, keys: { ...keys }, urls: {} as Record<string, string>, failWrite: false, failKeyFile: false, changes: [] as Endpoint[][], log: [] as string[] };
   const store: EndpointStore = {
     read: async () => structuredClone(state.endpoints),
     write: async (list) => {
@@ -16,13 +16,13 @@ function fakes(initial: Endpoint[] = [], keys: Record<string, string> = {}) {
   const keyFile: KeyFile = {
     put: async (id, key, url) => {
       state.log.push(`put ${id}`);
-      if (state.failVault) throw new Error("no primary machine");
+      if (state.failKeyFile) throw new Error("no primary machine");
       state.keys[id] = key;
       state.urls[id] = url;
     },
     remove: async (id) => {
       state.log.push(`remove ${id}`);
-      if (state.failVault) throw new Error("no primary machine");
+      if (state.failKeyFile) throw new Error("no primary machine");
       delete state.keys[id];
     },
   };
@@ -35,7 +35,7 @@ const mac: Endpoint = { id: "mac", url: "http://192.168.1.5:8083/v1", model: "m"
 const draft = (over = {}) => ({ id: "new", url: "http://127.0.0.1:9000/v1", model: "m", key: { kind: "none" } as const, ...over });
 
 describe("save", () => {
-  it("stores a new Endpoint, keeps its literal key in the vault only, and reports the list", async () => {
+  it("stores a new Endpoint, keeps its literal key in the key file only, and reports the list", async () => {
     const { state, manager } = fakes();
     const result = await manager.save(draft({ id: "mlx", key: { kind: "literal", value: "sk-test" } }), true);
     expect(result).toMatchObject({ ok: true, endpoints: [{ id: "mlx", key: { kind: "literal", set: true } }] });
@@ -73,15 +73,15 @@ describe("save", () => {
     expect(state.endpoints[0]).toMatchObject({ url: "http://127.0.0.1:1/v1", key: { kind: "literal", set: false } });
   });
 
-  it("replaces the key in the vault, leaving the old one nowhere", async () => {
+  it("replaces the key in the key file, leaving the old one nowhere", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-old" });
     await manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false);
     expect(state.keys).toEqual({ mlx: "sk-new" });
   });
 
-  it("changes no Endpoint when the vault fails", async () => {
+  it("changes no Endpoint when the key file fails", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-old" });
-    state.failVault = true;
+    state.failKeyFile = true;
     await expect(manager.save({ id: "mlx", url: mlx.url, model: "other", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("no primary machine");
     expect(state.endpoints).toEqual([mlx]);
     expect(state.keys).toEqual({ mlx: "sk-old" });
@@ -93,6 +93,12 @@ describe("save", () => {
     state.failWrite = true;
     await expect(manager.save(draft({ id: "mlx", key: { kind: "literal", value: "sk-test" } }), true)).rejects.toThrow("storage is down");
     expect(state.keys).toEqual({});
+  });
+
+  it("says the key must be typed again when it was replaced and the Endpoint could not be stored", async () => {
+    const { state, manager } = fakes([mlx], { mlx: "sk-old" });
+    state.failWrite = true;
+    await expect(manager.save({ id: "mlx", url: mlx.url, model: "q", key: { kind: "literal", value: "sk-new" } }, false)).rejects.toThrow("storage is down The key was changed and must be typed again.");
   });
 
   it("runs saves one at a time, so none overwrites another", async () => {
@@ -156,7 +162,7 @@ describe("remove", () => {
     expect(state.changes).toHaveLength(1);
   });
 
-  it("does not touch the vault for an Endpoint without a literal key", async () => {
+  it("does not touch the key file for an Endpoint without a literal key", async () => {
     const { state, manager } = fakes([mac]);
     await manager.remove("mac");
     expect(state.log).toEqual([]);
@@ -164,7 +170,7 @@ describe("remove", () => {
 
   it("keeps the Endpoint when its key cannot be deleted", async () => {
     const { state, manager } = fakes([mlx], { mlx: "sk-test" });
-    state.failVault = true;
+    state.failKeyFile = true;
     await expect(manager.remove("mlx")).rejects.toThrow();
     expect(state.endpoints).toEqual([mlx]);
   });
@@ -200,10 +206,10 @@ describe("copy, the copy of what 0.3 saved", () => {
 
   it("stores no Endpoint when a key cannot be kept, so the next attempt copies everything", async () => {
     const { state, manager } = fakes();
-    state.failVault = true;
+    state.failKeyFile = true;
     await expect(manager.copy(items())).rejects.toThrow();
     expect(state.endpoints).toEqual([]);
-    state.failVault = false;
+    state.failKeyFile = false;
     expect(await manager.copy(items())).toEqual(["mac", "mlx"]);
     expect(state.keys).toEqual({ mlx: "sk-mlx" });
   });

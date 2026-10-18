@@ -57,7 +57,7 @@ export function readLegacy(endpointsText: string | undefined, keysText: string |
       return {
         endpoint: {
           id,
-          url,
+          url: url.trim(),
           model: model ?? null,
           key: literalKey !== null ? { kind: "literal", set: true } : key !== undefined ? { kind: "variable", reference: key } : { kind: "none" },
         },

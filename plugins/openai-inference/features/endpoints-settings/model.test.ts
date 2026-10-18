@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Endpoint } from "@/src/endpoints";
-import { blankForm, clearsKey, draftOf, formOf, holdsLiteralKey, isEdited, removeQuestion, showsKeySet } from "./model";
+import { blankForm, clearsKey, draftOf, formOf, isEdited, removeQuestion, showsKeySet } from "./model";
 
 const mlx: Endpoint = { id: "mlx", url: "http://127.0.0.1:8080/v1", model: "qwen3-4b", key: { kind: "literal", set: true } };
 const mac: Endpoint = { id: "mac", url: "http://192.168.1.5:8083/v1", model: "m", key: { kind: "variable", reference: "${MAC_KEY}" } };
@@ -28,7 +28,6 @@ describe("what a card holds", () => {
     expect(showsKeySet({ ...formOf(mlx), replacing: true }, mlx)).toBe(false);
     expect(showsKeySet(formOf(mac), mac)).toBe(false);
     expect(showsKeySet({ ...formOf(mac), keyKind: "literal" }, mac)).toBe(false);
-    expect(holdsLiteralKey({ ...mlx, key: { kind: "literal", set: false } })).toBe(false);
   });
 
   it("says a Save clears the saved key when the URL changes and no key is typed", () => {

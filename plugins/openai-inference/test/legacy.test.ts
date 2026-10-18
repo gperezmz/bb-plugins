@@ -17,6 +17,11 @@ describe("the settings 0.3 saved", () => {
     });
   });
 
+  it("trims a URL, so the Endpoint is saved with the URL a later Save would store", () => {
+    const read = readLegacy('[{"id": "mlx", "url": "http://x.example.com:8080/v1 ", "model": "m"}]', '{"mlx": "sk-mlx"}');
+    expect(read).toMatchObject({ ok: true, items: [{ endpoint: { url: "http://x.example.com:8080/v1" } }] });
+  });
+
   it("lets a literal key win over the Endpoint's own reference", () => {
     const read = readLegacy('[{"id": "gw", "url": "${U}", "key": "${K}", "model": "m"}]', '{"gw": "sk-wins"}');
     expect(read).toMatchObject({ ok: true, items: [{ endpoint: { key: { kind: "literal", set: true } }, literalKey: "sk-wins" }] });

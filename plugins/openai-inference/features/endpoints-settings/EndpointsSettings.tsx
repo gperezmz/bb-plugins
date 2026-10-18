@@ -26,10 +26,8 @@ export function EndpointsSettings() {
   }
 
   const { endpoints, notice } = state.saved;
-  const changed = (id: string, closesNewCard = false) => (next: Endpoint[]) => {
+  const changed = (id: string) => (next: Endpoint[]) => {
     setVersions((was) => ({ ...was, [id]: (was[id] ?? 0) + 1 }));
-    // Another card's change leaves the card being added as it is.
-    if (closesNewCard) setAdding(false);
     replace(next);
   };
   return (
@@ -44,7 +42,11 @@ export function EndpointsSettings() {
         {endpoints.map((endpoint) => (
           <EndpointCard key={`${endpoint.id}:${versions[endpoint.id] ?? 0}`} saved={endpoint} api={api} onChanged={changed(endpoint.id)} onDiscard={() => undefined} />
         ))}
-        {adding ? <EndpointCard key="new" saved={null} api={api} onChanged={changed("", true)} onDiscard={() => setAdding(false)} /> : null}
+        {adding ? <EndpointCard key="new" saved={null} api={api} onChanged={(next) => {
+              // Only the new card's own Save closes it.
+              setAdding(false);
+              changed("")(next);
+            }} onDiscard={() => setAdding(false)} /> : null}
       </ul>
       <div>
         <Button disabled={adding} onClick={() => setAdding(true)}>
