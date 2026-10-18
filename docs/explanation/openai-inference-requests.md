@@ -32,7 +32,7 @@ The request is made by the plugin's host entry, which runs in bb's daemon on the
 
 An Endpoint's `${NAME}` references are expanded for each request and the expanded URL and key stay inside it: the plugin's storage, bb's list of services and the failure messages keep the reference.
 
-A literal key is the one secret the backend never keeps. The page sends it to the host entry once, which writes it to `keys.json` beside `learned-fields.json`, readable only by bb's user, and reads it from there for each request; the Endpoint the backend holds says only that a key is set. That is why saving a literal key needs the primary machine connected, and why the key is in none of the backend's storage, its answers to the page or its log. [Where literal keys are kept](../reference/openai-inference-settings.md#literal-keys) says when one is deleted.
+A literal key is the one secret the backend never keeps. The backend hands it to the host entry once, which writes it to `keys.json` beside `learned-fields.json`, readable only by bb's user, with the URL it was typed for, and reads it from there for each request, sending it only to that URL; the Endpoint the backend holds says only that a key is set. That is why saving a literal key needs the primary machine connected, and why the key is in none of the backend's storage, its answers to the page or its log. [Where literal keys are kept](../reference/openai-inference-settings.md#literal-keys) says when one is deleted.
 
 ## What the request asks for
 
@@ -63,7 +63,7 @@ bb starts the host entry's worker when a request needs it and stops it after a f
 
 An entry is keyed by the Endpoint's URL as the Endpoint holds it, `${NAME}` references included, and by the model. It is forgotten in two cases:
 
-- **No Endpoint lists the URL any more**, because it changed or its Endpoint was removed. What one URL refused says nothing about another. The host entry checks this whenever the backend sends it the Endpoints.
+- **No Endpoint lists the URL any more**, because it changed or its Endpoint was removed. What one URL refused says nothing about another. The host entry checks this whenever the backend sends it the Endpoints, except an empty list, which the backend sends before it has any, as while it copies what 0.3 saved.
 - **The server names a field it was not sent.** When the first request leaves out remembered fields and its 400 or 422 names one of them, the server has changed, for example to one that now needs `max_tokens`. The host entry forgets the entry and sends the request again with every field, then drops fields as above.
 
 A URL that stays the same while `${NAME}` points somewhere else keeps its entry until the second case applies.

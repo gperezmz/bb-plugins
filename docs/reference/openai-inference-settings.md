@@ -82,7 +82,7 @@ A saved literal key is never shown: its card says "Key set", with **Replace**, w
 - the Endpoint's **URL changes** and no key is typed with it: a key only reaches the server it was typed for, so the card then shows Literal, not set, and asks for the key again, and no AI task sends the old key to the new URL;
 - the Endpoint is removed.
 
-The key lives in `keys.json` in the plugin's data directory on the primary machine (`<data dir>/plugins/openai-inference/host-data/`), readable only by bb's user, and nowhere else: not in the plugin's storage on the server, not in what the page receives and not in the plugin's log. Saving one needs the primary machine connected.
+The key lives, with the URL it was typed for and used only for that URL, in `keys.json` in the plugin's data directory on the primary machine (`<data dir>/plugins/openai-inference/host-data/`), readable only by bb's user, and nowhere else: not in the plugin's storage on the server, not in what the page receives and not in the plugin's log. Saving one needs the primary machine connected.
 
 ## The command
 
@@ -104,6 +104,7 @@ Put `--key`'s value in single quotes so the shell leaves `${...}` alone.
 - If the primary machine cannot keep the keys, nothing is copied either; the section says so, and the plugin tries again every 30 seconds.
 - An Endpoint saved before 0.2.0 with no `model` is copied with an empty Model, which its card asks for.
 - The copy skips an ID the plugin already has, so running twice adds nothing.
+- Going back to 0.3 after the copy finds the `endpoints` setting but not the literal keys, since the copy unsets `keys`: type them again in the setting. Endpoints changed since are not carried back.
 
 ## Environment variables
 
@@ -136,11 +137,10 @@ A 400 or 422 is first taken as the server refusing an optional field, and the re
 
 ## What stays after uninstalling
 
-`bb plugin uninstall openai-inference` deletes the plugin's settings, and nothing else it keeps: the Endpoints stay in the plugin's key-value store on the server, so a reinstall finds them, and the host entry's files stay in `plugins/openai-inference/host-data/`, in the data directory of bb on the primary machine (`~/.bb` by default), readable only by bb's user. To delete the literal keys, remove the Endpoints that hold them before uninstalling, or delete that folder after:
+`bb plugin uninstall openai-inference` deletes the plugin's settings, and nothing else it keeps: the Endpoints stay in the plugin's key-value store on the server, so a reinstall finds them, and the host entry's files stay in `plugins/openai-inference/host-data/`, in the data directory of bb on the primary machine (`~/.bb` by default), readable only by bb's user. To delete the literal keys, remove the Endpoints that hold them before uninstalling, or delete that folder after. It holds:
 
 | File | Holds |
 |---|---|
-| `keys.json` | The literal keys of the Endpoints, by Endpoint ID |
+| `keys.json` | The literal keys of the Endpoints, by Endpoint ID, each with the URL it was typed for |
 | `learned-fields.json` | The [fields each Endpoint URL and model refused](../explanation/openai-inference-requests.md#why-what-was-dropped-is-kept-in-a-file). No keys: URLs as the Endpoints hold them, model names and field names |
 
-Delete that folder after uninstalling to leave no key and nothing learned on the machine.
