@@ -40,11 +40,11 @@ const EXPECTED = 40_000 * 0.1e-6 + 100 * 0.5e-6 + 20_000 * 0.5e-6 + 1_000 * 2.5e
 
 let started_: FakePluginHost | null = null;
 /** `others` are further threads, each with the model its turn ran on. */
-async function load(model = "claude-haiku-5-5", settings: Record<string, boolean> = {}, others: Record<string, string> = {}) {
+async function load(model = "claude-haiku-5-5", settings: Record<string, boolean> = {}, others: Record<string, string> = {}, providerId = "codex") {
   vi.stubGlobal("fetch", fetchStub);
   fetchStub.mockClear();
   const models: Record<string, string> = { [THREAD]: model, ...others };
-  const dtos = Object.keys(models).map((id) => ({ id, providerId: "claude-code", title: id === THREAD ? "Surfaces" : id, status: "idle", createdAt: T0 }));
+  const dtos = Object.keys(models).map((id) => ({ id, providerId, title: id === THREAD ? "Surfaces" : id, status: "idle", createdAt: T0 }));
   const host = createFakePluginHost({
     pluginId: "thread-usage",
     settings,
@@ -138,6 +138,19 @@ describe("a thread's dollars are the models.dev estimate, request by request", (
     expect((await t.show()).pricesUpdatedAt).toBeNull();
     expect((await t.tool()).pricesUpdatedAt).toBeNull();
     expect(fetchStub).not.toHaveBeenCalled();
+  });
+});
+
+describe("Claude Code reports one usage event for a whole turn", () => {
+  it("keeps no per-request sizes for its turns, prices them at the base rates and says so", async () => {
+    const t = await load("claude-haiku-5-5", {}, {}, "claude-code");
+    await t.fetchPrices();
+    const report = await t.report();
+    // The turn's two requests are one summed event: no tier is guessed.
+    expect(report.turns[0]).toMatchObject({ tierDetail: null, approximate: true, tierUnsized: true, requests: 0 });
+    expect(report.thread.figure.cost.estimate).toBeCloseTo(60_000 * 0.1e-6 + 1_100 * 0.5e-6 + 70_000 * 0.01e-6 + 10_001 * 0.125e-6, 12);
+    const note = report.quality.find((q) => q.id === "tier-unsized")!;
+    expect(note.text).toContain("Claude Code adapter reports one usage event for a whole turn");
   });
 });
 

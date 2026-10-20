@@ -159,6 +159,20 @@ describe("children of a deleted thread (scenario 12)", () => {
   });
 });
 
+describe("per-request counts by harness", () => {
+  it("keeps a turn's requests for a harness that reports one usage event per request, and none for Claude Code, which reports one per turn", async () => {
+    const r = rig();
+    r.store.upsertEdge({ threadId: "thr_cx", providerId: "codex" }, T0);
+    r.store.upsertEdge({ threadId: "thr_cc", providerId: "claude-code" }, T0);
+    for (const id of ["thr_cx", "thr_cc"]) {
+      r.events.set(id, turns(1, 1, T0, 1000));
+      await r.engine.catchUp(id);
+    }
+    expect(r.store.getTurns("thr_cx")[0]!.requests).toEqual([{ input: 1000, output: 0, cacheRead: 0, cacheWrite: 0 }]);
+    expect(r.store.getTurns("thr_cc")[0]!.requests).toBeUndefined();
+  });
+});
+
 describe("forks (scenario 11)", () => {
   it("skips the source's events copied into a fork, which keep their original times", async () => {
     const r = rig();

@@ -340,7 +340,7 @@ export class UsageModel {
       notes.push({
         id: "tier-unsized",
         tone: "info",
-        text: "Some turns have no per-request prompt sizes, because they were stored as a sum, filled from bb's running total, or are an opening balance, so a long-context tier cannot be applied and their dollars may be low. Turns whose per-request sizes are known are priced per request.",
+        text: `Some turns have no per-request prompt sizes, because they were stored as a sum, filled from bb's running total, or are an opening balance, so a long-context tier cannot be applied and their dollars may be low. Turns whose per-request sizes are known are priced per request.${providerId === "claude-code" ? " bb's Claude Code adapter reports one usage event for a whole turn, so its turns have none." : ""}`,
       });
     }
     if (fig.assumedRates) {

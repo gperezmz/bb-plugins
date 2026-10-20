@@ -188,6 +188,22 @@ describe("what the Usage tab no longer says", () => {
     expect(note.textContent).not.toMatch(/override/i);
   });
 
+  it("shows an unpriced turn's bar and a subagent of an unpriced model as not priced, never $0.00", async () => {
+    const h = harness();
+    h.clock.now = NOW;
+    addThread(h, "thr_np");
+    h.store.putTurns("thr_np", [
+      turnRecord({ turnId: "a", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "test-model", tokens: tokens({ input: 5_000 }) }),
+      turnRecord({ turnId: "b", startedAt: T0 + 5 * MIN, completedAt: T0 + 6 * MIN, model: "my-internal-model", tokens: tokens({ input: 10_000 }) }),
+    ]);
+    h.store.upsertLogEntries("thr_np", [logEntry({ key: "s", agentId: "agent-z", ts: T0 + 5 * MIN + SEC, model: "my-internal-model", tokens: tokens({ input: 100 }) })]);
+    await show(h.model.report("thr_np"));
+    expect(screen.getByRole("button", { name: "Turn 2: not priced" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Turn 1: \$/ })).toBeTruthy();
+    openTurn(2);
+    expect(screen.getByText(/· not priced/)).toBeTruthy();
+  });
+
   it("says that the last refresh failed, and why", async () => {
     clockAt(NOW);
     const h = harness();

@@ -151,6 +151,13 @@ export interface IngestInput {
    */
   latestSeq: number;
   now: number;
+  /**
+   * Whether each usage event is one model request, so a turn keeps its
+   * requests. False for a harness whose adapter reports one event for the
+   * whole turn, which would make a turn of many requests look like one large
+   * request. Defaults to true.
+   */
+  perRequestEvents?: boolean;
 }
 
 export const OPENING_TURN_ID = "opening";
@@ -394,7 +401,7 @@ export function ingestEvents(input: IngestInput): IngestResult {
         // A turn that already holds tokens from before its requests were
         // kept, or filled in from bb's total, stays a sum: its requests would
         // not add up to its tokens.
-        if (record.usageEvents === 0 && isZeroTokens(record.tokens)) record.requests = [];
+        if (input.perRequestEvents !== false && record.usageEvents === 0 && isZeroTokens(record.tokens)) record.requests = [];
         if (record.requests !== undefined) {
           record.requests = [
             ...record.requests,

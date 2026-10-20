@@ -298,14 +298,23 @@ describe("tiers", () => {
     const h = harness();
     h.clock.now = NOW;
     h.prices.models = { ...TEST_PRICES, "tier-model": tiered };
-    addThread(h, "plain", {}, { input: 300_000 });
-    addThread(h, "sum", {}, {});
+    addThread(h, "plain", { providerId: "codex" }, { input: 300_000 });
+    addThread(h, "sum", { providerId: "codex" }, {});
     h.store.putTurns("sum", [turnRecord({ turnId: "sum-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "tier-model", tokens: tokens({ input: 300_000 }) })]);
     expect(h.model.report("plain").quality.map((q) => q.id)).not.toContain("tier-unsized");
     const note = h.model.report("sum").quality.find((q) => q.id === "tier-unsized")!;
     expect(note.text).toBe(
       "Some turns have no per-request prompt sizes, because they were stored as a sum, filled from bb's running total, or are an opening balance, so a long-context tier cannot be applied and their dollars may be low. Turns whose per-request sizes are known are priced per request.",
     );
+  });
+
+  it("says why a Claude Code thread's turns have no per-request sizes", () => {
+    const h = harness();
+    h.clock.now = NOW;
+    h.prices.models = { ...TEST_PRICES, "tier-model": tiered };
+    addThread(h, "cc", {}, {});
+    h.store.putTurns("cc", [turnRecord({ turnId: "cc-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "tier-model", tokens: tokens({ input: 300_000 }) })]);
+    expect(h.model.report("cc").quality.find((q) => q.id === "tier-unsized")!.text).toMatch(/Claude Code adapter reports one usage event for a whole turn, so its turns have none\.$/);
   });
 
   it("prices a turn recorded after the change request by request, with no such note", () => {

@@ -370,7 +370,7 @@ function TurnDetails({ turn, number, currency }: { turn: TurnView; number: numbe
                 <span className="text-muted-foreground">{s.model ?? ""}</span>
                 <span className="ml-auto tabular-nums">
                   {formatTokens(totalTokens(s.tokens))} tokens · {formatCount(s.requests)} req
-                  {` · ${formatUsd(s.costUsd, currency)}`}
+                  {s.costUsd === 0 && s.unpricedTokens > 0 ? " · not priced" : ` · ${formatUsd(s.costUsd, currency)}`}
                 </span>
               </li>
             ))}

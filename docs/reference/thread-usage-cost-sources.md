@@ -31,6 +31,7 @@ A turn with no per-request counts uses the base rates and is marked approximate 
 
 - a turn stored as a sum, from before requests were kept;
 - a turn filled in from bb's running total;
+- a Claude Code turn, because bb reports one usage event for the whole turn;
 - an opening balance, and a turn older than a year, collapsed by retention.
 
 A model with a tier needs per-request counts for a tier to apply, so [Data quality](../tutorials/thread-usage-first-run.md#4-open-the-usage-tab) says those turns may be low. A turn whose per-request counts are known is priced per request.

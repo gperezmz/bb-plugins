@@ -126,6 +126,8 @@ export interface SubagentRow {
   tokens: Tokens;
   requests: number;
   costUsd: number;
+  /** Tokens of the agent's requests that have no price. */
+  unpricedTokens: number;
 }
 
 /** One request of a turn that was charged at a tier. */
@@ -428,6 +430,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
         tokens: ZERO_TOKENS,
         requests: 0,
         costUsd: 0,
+        unpricedTokens: 0,
       };
       row.tokens = addTokens(row.tokens, e.tokens);
       row.requests += 1;
@@ -437,6 +440,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
       if (est.unpricedModel !== null) unpricedModels.add(est.unpricedModel);
       assumedAny ||= est.assumed;
       row.costUsd += est.usd;
+      row.unpricedTokens += est.unpriced;
       models.add(e.model, { tokens: e.tokens, cost: estimated(est.usd), unpriced: est.unpriced });
       byAgent.set(e.agentId ?? "", row);
     }
