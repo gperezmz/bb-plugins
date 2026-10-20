@@ -5,11 +5,10 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
 import type {
   ChipView,
-  ConnectionCheck,
   PricesInfo,
   SettingsStatus,
   ThreadReport,
-  TopTree,
+  TopTrees,
 } from "../core/report-types";
 
 const threadId = z.string().check(z.regex(/^thr_[A-Za-z0-9_-]+$/, "Not a thread id"));
@@ -37,15 +36,11 @@ export const rpcContract = defineRpcContract({
       projectId: z.nullable(z.string()),
       sinceDays: z.number().check(z.int(), z.minimum(1), z.maximum(3650)),
     }),
-    output: z.custom<{ trees: TopTree[]; projects: { id: string; name: string }[]; prices: PricesInfo }>(isObject),
+    output: z.custom<{ trees: TopTrees; projects: { id: string; name: string }[]; prices: PricesInfo }>(isObject),
   },
   status: {
     input: z.null(),
     output: z.custom<SettingsStatus>(isObject),
-  },
-  testConnection: {
-    input: z.null(),
-    output: z.custom<{ checks: ConnectionCheck[]; adapter: "none" | "litellm" }>(isObject),
   },
   backfill: {
     input: z.strictObject({ action: z.enum(["pause", "resume", "retry-failed"]) }),

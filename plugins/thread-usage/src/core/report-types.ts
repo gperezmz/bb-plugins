@@ -2,10 +2,9 @@
  * Shapes the backend sends to the frontend, the CLI and the agent tool.
  * Type-only: the frontend imports these without pulling in server code.
  */
-import type { AttributionState, BillingMode } from "./attribution";
+import type { BillingMode } from "./billing";
 import type { Headline } from "./format";
 import type { PriceOrigin } from "./pricing";
-import type { ConnectionCheck, ConnectionCheckId } from "./litellm";
 import type { Figure, TurnView } from "./summary";
 
 export interface FigureView {
@@ -17,7 +16,6 @@ export interface QualityNote {
   id: string;
   tone: "info" | "warn";
   text: string;
-  snippet?: { label: string; code: string };
 }
 
 export interface TreeRow {
@@ -32,7 +30,6 @@ export interface TreeRow {
   hidden: boolean;
   archived: boolean;
   deleted: boolean;
-  state: AttributionState;
   billing: BillingMode;
   ownChip: string;
   ownUsd: number;
@@ -55,26 +52,19 @@ export interface ForkRow {
   sideChat: boolean;
 }
 
-export interface GatewayBanner {
-  check: ConnectionCheckId;
-  message: string;
-  since: number;
-}
-
-/** What the model knows about the public price lists, before `now` is applied. */
+/** What the model knows about the models.dev list, before `now` is applied. */
 export interface PricesMeta {
-  /** When LiteLLM's list was last fetched and is in use; null when the bundled snapshot is. */
-  litellmAt: number | null;
+  /** When the list in use was fetched; null when the bundled copy is in use. */
   modelsDevAt: number | null;
   bundledDate: string | null;
   refreshOn: boolean;
-  /** The last failed refresh, e.g. "LiteLLM: HTTP 503"; null when the last one succeeded. */
+  /** The last failed refresh, e.g. "HTTP 503"; null when the last one succeeded. */
   lastError: string | null;
 }
 
 /** How fresh the estimates' prices are. */
 export interface PricesInfo {
-  /** Last successful refresh of the public list; null when none ever succeeded. */
+  /** When the models.dev list in use was fetched; null when the bundled copy is in use. */
   updatedAt: number | null;
   bundledDate: string | null;
   refreshOn: boolean;
@@ -85,9 +75,9 @@ export interface PricesInfo {
 
 export interface PriceSourceInfo {
   source: PriceOrigin;
-  /** The name the price was found under, e.g. "claude-opus-5-5" for an alias. */
+  /** The name the price was found under, e.g. "claude-opus-5-5" for a model id with a date. */
   as: string;
-  /** When that list was fetched; null for overrides, the gateway and the bundled snapshot. */
+  /** When that list was fetched; null for the bundled copy. */
   fetchedAt: number | null;
 }
 
@@ -107,15 +97,12 @@ export interface ThreadReport {
   treeTotal: FigureView;
   descendants: number;
   hiddenDescendants: number;
-  state: AttributionState;
   billing: BillingMode;
-  stateMessage: string | null;
   firstSeenAt: number | null;
   turns: TurnView[];
   tree: TreeRow[];
   forks: ForkRow[];
   quality: QualityNote[];
-  gatewayBanner: GatewayBanner | null;
   budget: { amount: number; crossedAt: number } | null;
 }
 
@@ -124,7 +111,6 @@ export interface ChipView {
   chip: string;
   headline: FigureView["headline"];
   tokens: Figure["tokens"];
-  untrackedTokens: number;
   descendants: number;
   hiddenDescendants: number;
   turns: number;
@@ -140,7 +126,7 @@ export interface TopTree {
   projectId: string | null;
   headline: FigureView["headline"];
   usd: number;
-  /** Dollars billed (gateway, API key or unknown); `usd` minus the subscription's list-price part. */
+  /** Dollars billed (API key or unknown); `usd` minus the subscription's list-price part. */
   billedUsd: number;
   /** List-price equivalent of the tree's subscription use. */
   listPriceUsd: number;
@@ -150,21 +136,22 @@ export interface TopTree {
   billing: BillingMode | "mixed";
 }
 
+/**
+ * Trees ranked by their dollars, and apart from them the trees that have
+ * tokens and no priced token, ordered by tokens. Each list is cut to the
+ * limit on its own.
+ */
+export interface TopTrees {
+  priced: TopTree[];
+  notPriced: TopTree[];
+}
+
 export interface SettingsStatus {
-  adapter: "none" | "litellm";
-  snapshot: {
-    commit: string;
-    date: string | null;
+  prices: PricesInfo & {
+    /** Models in the list in use. */
     models: number;
-    online: boolean;
-    onlineFetchedAt: number | null;
-    modelsDevFetchedAt: number | null;
-    lastError: string | null;
   };
   backfill: { queued: number; running: number; done: number; failed: number; paused: boolean; failures: { threadId: string; kind: string; error: string | null }[] };
-  gateway: { lastSweepAt: number | null; lastError: GatewayBanner | null; rows: boolean };
   logsMissing: { threadId: string; host: string; since: number }[];
   threadsTracked: number;
 }
-
-export type { ConnectionCheck };

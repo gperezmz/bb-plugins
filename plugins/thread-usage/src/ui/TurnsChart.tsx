@@ -10,8 +10,6 @@ import { totalTokens } from "../core/tokens";
 import { cn } from "@/lib/utils";
 
 export const SOURCE_STYLE: Record<CostSource, { fill: string; swatch: string; label: string }> = {
-  gateway: { fill: "fill-primary", swatch: "bg-primary", label: "Gateway" },
-  harness: { fill: "fill-success", swatch: "bg-success", label: "Harness" },
   estimate: { fill: "fill-primary/45", swatch: "bg-primary/45", label: "Estimate" },
   unpriced: { fill: "fill-muted-foreground/35", swatch: "bg-muted-foreground/35", label: "Unpriced" },
 };

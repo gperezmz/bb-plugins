@@ -93,7 +93,6 @@ export async function parseCodexFile(
         cacheWrite1h: 0,
         reasoning: num(last.reasoning_output_tokens),
       },
-      costUsd: null,
     });
   }
   return entries;

@@ -4,10 +4,8 @@ import { EMPTY_CURSOR, type LedgerCursor } from "../../src/core/ledger";
 import { costTotal } from "../../src/core/summary";
 import { totalTokens } from "../../src/core/tokens";
 import type { EdgeExtra } from "../../src/server/store";
-import { gatewayRow, logEntry, MIN, SEC, T0, tokens, turnRecord } from "../core/fixtures";
-import { harness, TEST_SNAPSHOT, type Harness } from "./harness";
-import { PriceBook } from "../../src/core/pricing";
-import { UsageModel } from "../../src/server/model";
+import { logEntry, MIN, SEC, T0, tokens, turnRecord } from "../core/fixtures";
+import { harness, TEST_PRICES, type Harness } from "./harness";
 
 const NOW = T0 + 60 * MIN;
 
@@ -118,55 +116,30 @@ describe("tree totals (scenarios 10–13)", () => {
   });
 });
 
-describe("gateway threads (scenario 3)", () => {
-  const setup = (readLogs: boolean) => {
-    const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test", readLogs });
-    h.clock.now = NOW;
-    addThread(h, "thr_gw", {}, { input: 1000, output: 100 });
-    h.store.upsertGatewayRows([
-      gatewayRow({ threadId: "thr_gw", requestId: "main", startTime: T0 + MIN + SEC, promptTokens: 1000, completionTokens: 100, spend: 0.02, durationMs: 1000 }),
-      gatewayRow({ threadId: "thr_gw", requestId: "sub", startTime: T0 + MIN + 2 * SEC, promptTokens: 400, completionTokens: 50, spend: 0.01, durationMs: 500 }),
-    ]);
-    h.store.upsertLogEntries("thr_gw", [
-      logEntry({ key: "s", agentId: "agent-a", ts: T0 + MIN + 2 * SEC, tokens: tokens({ input: 400, output: 50 }) }),
-    ]);
-    return h;
-  };
-
-  it("is tagged, billed by the gateway, with API time; logs off labels the remainder as subagents", () => {
-    const h = setup(false);
-    const r = h.model.report("thr_gw");
-    expect(r.state).toBe("tagged");
-    expect(r.billing).toBe("gateway");
-    expect(costTotal(r.thread.figure.cost)).toBeCloseTo(0.03, 10);
-    expect(r.thread.headline.detail).toContain("billed by the gateway");
-    expect(r.thread.figure.apiMs).toBe(1500);
-    const note = r.quality.find((q) => q.id === "untracked")!;
-    expect(note.text).toMatch(/subagents/);
-    expect(note.text).toContain("450");
-  });
-
-  it("with logs on, subagent rows sit under the turn and nothing is left unlabelled", () => {
-    const h = setup(true);
-    const r = h.model.report("thr_gw");
-    expect(r.turns.find((t) => t.turnId === "thr_gw-t1")!.subagents).toHaveLength(1);
-    expect(r.quality.find((q) => q.id === "untracked")).toBeUndefined();
-  });
-
-  it("a sweep failure (banner) does not change the state", () => {
-    const h = setup(true);
-    h.store.setMeta("gatewayBanner", { check: "reachable", message: "down", since: NOW });
-    h.model.invalidateAll();
-    const r = h.model.report("thr_gw");
-    expect(r.state).toBe("tagged");
-    expect(r.gatewayBanner).toMatchObject({ check: "reachable" });
-    expect(costTotal(r.thread.figure.cost)).toBeCloseTo(0.03, 10);
+describe("subagent requests", () => {
+  it("sit under the turn they ran in, with logs on, and are left out with logs off", () => {
+    const setup = (readLogs: boolean) => {
+      const h = harness({ readLogs });
+      h.clock.now = NOW;
+      addThread(h, "thr_sub", {}, { input: 1000, output: 100 });
+      h.store.upsertLogEntries("thr_sub", [
+        logEntry({ key: "s", agentId: "agent-a", ts: T0 + MIN + 2 * SEC, model: "test-model", tokens: tokens({ input: 400, output: 50 }) }),
+      ]);
+      return h;
+    };
+    const on = setup(true).model.report("thr_sub");
+    expect(on.turns.find((t) => t.turnId === "thr_sub-t1")!.subagents).toHaveLength(1);
+    expect(totalTokens(on.thread.figure.tokens)).toBe(1550);
+    const off = setup(false).model.report("thr_sub");
+    expect(off.turns.find((t) => t.turnId === "thr_sub-t1")!.subagents).toHaveLength(0);
+    expect(totalTokens(off.thread.figure.tokens)).toBe(1100);
+    expect(off.quality.map((q) => q.id)).toContain("subagents-off");
   });
 });
 
 describe("billing (scenario 14)", () => {
   it("subscription-window leads with tokens; account-pool says so; an api-key setting switches both to estimates", () => {
-    const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test" });
+    const h = harness();
     h.clock.now = NOW;
     addThread(h, "sub", {}, { cursor: { rateLimitKind: "subscription-window" } });
     addThread(h, "pool", {}, { cursor: { routing: [{ name: "ANTHROPIC_BASE_URL", source: "plugin:account-pool", value: null }] } });
@@ -175,9 +148,8 @@ describe("billing (scenario 14)", () => {
     expect(sub.billing).toBe("subscription");
     expect(sub.thread.headline.primaryKind).toBe("tokens");
     expect(sub.thread.headline.detail).toMatch(/list-price equivalent/);
-    expect(pool.state).toBe("account-pool");
-    expect(pool.stateMessage).toBe("Not via gateway: account pool");
     expect(pool.billing).toBe("subscription");
+    expect(pool.quality.map((q) => q.id)).not.toContain("routing");
 
     h.settings.current = { ...h.settings.current, billing: { ...h.settings.current.billing, claudeCode: "api-key" } };
     h.model.invalidateAll();
@@ -198,15 +170,27 @@ describe("billing (scenario 14)", () => {
     expect(h.model.report("pi-thread").billing).toBe("unknown");
   });
 
-  it("scenario 4: an untagged Codex thread shows estimates and the Codex snippet", () => {
-    const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test" });
+  it("reads a billing choice saved as gateway like auto", () => {
+    const h = harness({ billingClaudeCode: "gateway" });
+    h.clock.now = NOW;
+    addThread(h, "sub", {}, { cursor: { rateLimitKind: "subscription-window" } });
+    addThread(h, "api", {}, { cursor: { rateLimitKind: "spend-control" } });
+    expect(h.model.report("sub").billing).toBe("subscription");
+    expect(h.model.report("api").billing).toBe("api-key");
+  });
+
+  it("gives a thread no attribution state, and a Cursor thread no note of its own", () => {
+    const h = harness();
     h.clock.now = NOW;
     addThread(h, "cx", { providerId: "codex", idleSince: T0 + 3 * MIN }, { output: 10 });
-    const r = h.model.report("cx");
-    expect(r.state).toBe("untagged");
-    expect(r.thread.figure.cost.estimate).toBeGreaterThan(0);
-    const note = r.quality.find((q) => q.id === "untagged")!;
-    expect(note.snippet?.code).toContain("env_http_headers");
+    addThread(h, "cursor", { providerId: "acp-cursor" }, { input: 0 });
+    for (const id of ["cx", "cursor"]) {
+      const r = h.model.report(id) as unknown as Record<string, unknown>;
+      expect(r).not.toHaveProperty("state");
+      expect(r).not.toHaveProperty("stateMessage");
+      expect(r).not.toHaveProperty("gatewayBanner");
+      expect((r.quality as { id: string }[]).map((q) => q.id)).not.toEqual(expect.arrayContaining(["untagged", "routing", "pending", "cursor", "untracked"]));
+    }
   });
 });
 
@@ -244,35 +228,107 @@ describe("surfaces agree (scenario 18)", () => {
     const r = h.model.report("manager");
     expect(h.model.summaryText("manager", true)).toContain(r.treeTotal.headline.primary);
     const top = h.model.top(null, T0);
-    expect(top.map((t) => t.threadId)).toEqual(["other-root", "manager", "fork"]);
-    expect(top.find((t) => t.threadId === "manager")!.usd).toBeCloseTo(costTotal(r.treeTotal.figure.cost), 10);
-    expect(h.model.top("proj_x", T0).map((t) => t.threadId)).toEqual(["other-root"]);
+    expect(top.priced.map((t) => t.threadId)).toEqual(["other-root", "manager", "fork"]);
+    expect(top.notPriced).toEqual([]);
+    expect(top.priced.find((t) => t.threadId === "manager")!.usd).toBeCloseTo(costTotal(r.treeTotal.figure.cost), 10);
+    expect(h.model.top("proj_x", T0).priced.map((t) => t.threadId)).toEqual(["other-root"]);
     expect(totalTokens(r.treeTotal.figure.tokens)).toBe(21_000_000);
   });
 });
 
-describe("list-price equivalent", () => {
-  it("prices a subscription thread at list prices even when the gateway's price map is cheaper", () => {
-    const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test" });
+describe("trees no price covers", () => {
+  /** A thread whose one turn ran on a model models.dev does not list. */
+  function addUnpriced(h: Harness, threadId: string, tokenCount: number, edge: Partial<EdgeExtra> = {}) {
+    addThread(h, threadId, edge, { input: tokenCount });
+    h.store.putTurns(threadId, [
+      turnRecord({ turnId: `${threadId}-t1`, startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "my-internal-model", tokens: tokens({ input: tokenCount }) }),
+    ]);
+  }
+
+  it("leads with the token count on the chip and the report, and says the tokens are not priced", () => {
+    const h = harness();
     h.clock.now = NOW;
-    const gatewayCheap = new PriceBook({
-      snapshot: TEST_SNAPSHOT,
-      gateway: { "test-model": { input: 1e-9, output: 1e-9 } },
-    });
-    const model = new UsageModel({
-      store: h.store,
-      settings: () => h.settings.current,
-      prices: () => gatewayCheap,
-      listPrices: () => new PriceBook({ snapshot: TEST_SNAPSHOT }),
-      pricesMeta: () => ({ litellmAt: null, modelsDevAt: null, bundledDate: null, refreshOn: true, lastError: null }),
-      now: () => h.clock.now,
-      gatewayBanner: () => null,
-      gatewayPricesUsed: () => true,
-    });
-    addThread(h, "sub", {}, { cursor: { rateLimitKind: "subscription-window" } });
-    addThread(h, "api", {}, { cursor: { rateLimitKind: "spend-control" } });
-    expect(costTotal(model.report("sub").thread.figure.cost)).toBeCloseTo(1, 6);
-    expect(costTotal(model.report("api").thread.figure.cost)).toBeLessThan(0.01);
+    addUnpriced(h, "odd", 45_000);
+    expect(h.model.chip("odd")).toMatchObject({ visible: true, chip: "45k" });
+    expect(h.model.chip("odd").headline).toMatchObject({ primary: "45k tokens", primaryKind: "tokens", detail: "The tokens are not priced" });
+    const r = h.model.report("odd");
+    expect(r.thread.headline).toMatchObject({ primary: "45k tokens", primaryKind: "tokens" });
+    const note = r.quality.find((q) => q.id === "unpriced")!;
+    expect(note.text).toBe("my-internal-model has no price: its tokens are counted and not priced. A price would come from models.dev, which does not list it.");
+    expect(note.text).not.toMatch(/override/i);
+    expect(h.model.summaryText("odd", true)).toContain("45k tokens");
+  });
+
+  it("ranks trees with dollars apart from trees whose every token is unpriced, each list from its own order", () => {
+    const h = harness();
+    h.clock.now = NOW;
+    addThread(h, "cheap", {}, { input: 1_000_000 });
+    addThread(h, "dear", {}, { input: 9_000_000 });
+    addUnpriced(h, "odd-small", 5_000);
+    addUnpriced(h, "odd-big", 45_000);
+    // A tree with some priced dollars stays in the dollar ranking, with its unpriced tokens named.
+    addThread(h, "partly", {}, { input: 2_000_000 });
+    h.store.putTurns("partly", [
+      turnRecord({ turnId: "partly-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "test-model", tokens: tokens({ input: 2_000_000 }) }),
+      turnRecord({ turnId: "partly-t2", startedAt: T0 + 3 * MIN, completedAt: T0 + 4 * MIN, model: "my-internal-model", tokens: tokens({ input: 500 }) }),
+    ]);
+    // A tree with no tokens is listed in neither.
+    h.store.upsertEdge({ threadId: "empty", createdAt: T0 }, T0);
+    h.store.putThread({ ...h.store.getThread("cheap")!, threadId: "empty" }, T0);
+    h.store.putTurns("empty", [turnRecord({ turnId: "empty-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "test-model" })]);
+    const top = h.model.top(null, T0);
+    expect(top.priced.map((t) => t.threadId)).toEqual(["dear", "partly", "cheap"]);
+    expect(top.notPriced.map((t) => t.threadId)).toEqual(["odd-big", "odd-small"]);
+    expect(top.priced.find((t) => t.threadId === "partly")!.headline.unpricedNote).toBe("+ 500 unpriced tokens");
+    expect(top.notPriced[0]).toMatchObject({ tokens: 45_000, usd: 0 });
+  });
+
+  it("keeps a thread with no tokens a dash, with no usage recorded", () => {
+    const h = harness();
+    h.clock.now = NOW;
+    addThread(h, "none", {}, { input: 0 });
+    expect(h.model.report("none").thread.headline).toMatchObject({ primary: "—", detail: "No usage recorded" });
+  });
+});
+
+describe("tiers", () => {
+  const tiered = { input: 1e-6, output: 4e-6, tiers: [{ above: 100_000, input: 5e-6 }] };
+
+  it("notes turns that have no per-request prompt sizes, only on a model with a tier", () => {
+    const h = harness();
+    h.clock.now = NOW;
+    h.prices.models = { ...TEST_PRICES, "tier-model": tiered };
+    addThread(h, "plain", {}, { input: 300_000 });
+    addThread(h, "sum", {}, {});
+    h.store.putTurns("sum", [turnRecord({ turnId: "sum-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "tier-model", tokens: tokens({ input: 300_000 }) })]);
+    expect(h.model.report("plain").quality.map((q) => q.id)).not.toContain("tier-unsized");
+    const note = h.model.report("sum").quality.find((q) => q.id === "tier-unsized")!;
+    expect(note.text).toBe(
+      "Some turns have no per-request prompt sizes, because they were stored as a sum, filled from bb's running total, or are an opening balance, so a long-context tier cannot be applied and their dollars may be low. Turns whose per-request sizes are known are priced per request.",
+    );
+  });
+
+  it("prices a turn recorded after the change request by request, with no such note", () => {
+    const h = harness();
+    h.clock.now = NOW;
+    h.prices.models = { ...TEST_PRICES, "tier-model": tiered };
+    addThread(h, "rec", {}, {});
+    const requests = [{ input: 40_000, output: 0, cacheRead: 0, cacheWrite: 0 }, { input: 120_000, output: 0, cacheRead: 0, cacheWrite: 0 }];
+    h.store.putTurns("rec", [
+      turnRecord({ turnId: "rec-t1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "tier-model", tokens: tokens({ input: 160_000 }), requests }),
+    ]);
+    const r = h.model.report("rec");
+    expect(costTotal(r.thread.figure.cost)).toBeCloseTo(40_000 * 1e-6 + 120_000 * 5e-6, 10);
+    expect(r.quality.map((q) => q.id)).not.toContain("tier-unsized");
+    expect(r.turns[0]!.tierDetail).toMatchObject({ requests: 2, tiered: [{ number: 2, tierAbove: 100_000 }] });
+  });
+
+  it("keeps a turn's requests across a stored round trip", () => {
+    const h = harness();
+    addThread(h, "rt", {}, {});
+    const requests = [{ input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }];
+    h.store.putTurns("rt", [turnRecord({ turnId: "rt-t1", startedAt: T0, completedAt: T0 + 1, model: "test-model", requests })]);
+    expect(h.store.getTurns("rt")[0]!.requests).toEqual(requests);
   });
 });
 
@@ -283,47 +339,27 @@ describe("price freshness", () => {
     const h = harness();
     h.clock.now = NOW;
     expect(h.model.pricesInfo()).toMatchObject({ updatedAt: null, stale: true, bundledDate: "2026-05-01" });
-    h.prices.meta = { ...h.prices.meta, litellmAt: NOW - 3 * 3_600_000 };
+    h.prices.meta = { ...h.prices.meta, modelsDevAt: NOW - 3 * 3_600_000 };
     expect(h.model.pricesInfo()).toMatchObject({ updatedAt: NOW - 3 * 3_600_000, stale: false });
-    h.prices.meta = { ...h.prices.meta, litellmAt: NOW - 8 * DAY, lastError: "LiteLLM: HTTP 503" };
-    expect(h.model.pricesInfo()).toMatchObject({ stale: true, lastError: "LiteLLM: HTTP 503" });
+    h.prices.meta = { ...h.prices.meta, modelsDevAt: NOW - 8 * DAY, lastError: "HTTP 503" };
+    expect(h.model.pricesInfo()).toMatchObject({ stale: true, lastError: "HTTP 503" });
   });
 
-  it("names, per model, the list that priced it and when that list was fetched", () => {
+  it("names, per model, the models.dev copy that priced it and when it was fetched", () => {
     const h = harness();
     h.clock.now = NOW;
-    h.prices.snapshot = { ...TEST_SNAPSHOT, "test-model": TEST_SNAPSHOT["test-model"] };
-    h.prices.modelsDev = { "dev-only": { input_cost_per_token: 2e-6, output_cost_per_token: 2e-6 } };
-    h.prices.meta = { ...h.prices.meta, litellmAt: NOW - 1000, modelsDevAt: NOW - 2000 };
     addThread(h, "t");
     h.store.putTurns("t", [
-      turnRecord({ turnId: "t-2", startedAt: T0 + 5 * MIN, completedAt: T0 + 6 * MIN, model: "dev-only", tokens: tokens({ input: 1_000_000 }) }),
       turnRecord({ turnId: "t-3", startedAt: T0 + 7 * MIN, completedAt: T0 + 8 * MIN, model: "nobody-knows", tokens: tokens({ input: 10 }) }),
     ]);
+    h.store.putTurns("t", [turnRecord({ turnId: "t-1", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "test-model", tokens: tokens({ input: 1_000_000 }) })]);
+    expect(h.model.report("t").prices.models["test-model"]).toEqual({ source: "snapshot", as: "test-model", fetchedAt: null });
+    h.prices.origin = "models.dev";
+    h.prices.meta = { ...h.prices.meta, modelsDevAt: NOW - 2000 };
+    h.model.invalidateAll();
     const { models } = h.model.report("t").prices;
-    expect(models["test-model"]).toEqual({ source: "snapshot", as: "test-model", fetchedAt: null });
-    expect(models["dev-only"]).toEqual({ source: "models.dev", as: "dev-only", fetchedAt: NOW - 2000 });
+    expect(models["test-model"]).toEqual({ source: "models.dev", as: "test-model", fetchedAt: NOW - 2000 });
     expect(models["nobody-knows"]).toBeUndefined();
-  });
-
-  it("names the public list, not the gateway's map, for a figure of subscription use only", () => {
-    const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test" });
-    h.clock.now = NOW;
-    addThread(h, "sub", {}, { cursor: { rateLimitKind: "subscription-window" } });
-    addThread(h, "api", {}, { cursor: { rateLimitKind: "spend-control" } });
-    const gateway = new PriceBook({ snapshot: TEST_SNAPSHOT, gateway: { "test-model": { input: 1e-9, output: 1e-9 } } });
-    const model = new UsageModel({
-      store: h.store,
-      settings: () => h.settings.current,
-      prices: () => gateway,
-      listPrices: () => new PriceBook({ snapshot: TEST_SNAPSHOT }),
-      pricesMeta: () => h.prices.meta,
-      now: () => h.clock.now,
-      gatewayBanner: () => null,
-      gatewayPricesUsed: () => true,
-    });
-    expect(model.report("sub").prices.models["test-model"]!.source).toBe("snapshot");
-    expect(model.report("api").prices.models["test-model"]!.source).toBe("gateway");
   });
 
   it("re-prices past turns with the current prices (estimates, not bills)", () => {
@@ -331,7 +367,7 @@ describe("price freshness", () => {
     h.clock.now = NOW;
     addThread(h, "t");
     expect(costTotal(h.model.report("t").thread.figure.cost)).toBeCloseTo(1, 6);
-    h.prices.snapshot = { "test-model": { input_cost_per_token: 3e-6, output_cost_per_token: 3e-6 } };
+    h.prices.models = { "test-model": { input: 3e-6, output: 3e-6 } };
     h.model.invalidateAll();
     expect(costTotal(h.model.report("t").thread.figure.cost)).toBeCloseTo(3, 6);
   });

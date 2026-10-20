@@ -24,7 +24,7 @@ import {
 } from "./files.js";
 
 /** Names {@link toEntry} in the host's log cache: change it when `toEntry` changes, so cached entries are read again. */
-const CLAUDE_PARSER = "claude@1";
+const CLAUDE_PARSER = "claude@2";
 
 export interface ClaudeFiles {
   main: string[];
@@ -132,7 +132,6 @@ function toEntry(
       cacheWrite1h: write1h,
       reasoning: num(rec(usage.output_tokens_details).thinking_tokens),
     },
-    costUsd: null,
   };
 }
 

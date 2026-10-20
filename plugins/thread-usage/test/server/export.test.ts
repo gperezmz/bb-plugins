@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { csvCell, reportMarkdown, turnsCsv } from "../../src/core/export";
 import { EMPTY_CURSOR } from "../../src/core/ledger";
-import { gatewayRow, MIN, T0, tokens, turnRecord } from "../core/fixtures";
+import { logEntry, MIN, T0, tokens, turnRecord } from "../core/fixtures";
 import { harness } from "./harness";
 
-/** A thread with three turns (one with a tricky prompt), an opening balance and a request outside turns. */
+/** A thread with three turns (one with a tricky prompt), an opening balance and a subagent request outside turns. */
 function report() {
-  const h = harness({ adapter: "litellm", gatewayUrl: "https://gw.example.test" });
+  const h = harness();
   h.clock.now = T0 + 60 * MIN;
   h.store.upsertEdge({ threadId: "thr_x", providerId: "claude-code", title: "Export | test" }, T0);
   h.store.putThread(
@@ -27,7 +27,7 @@ function report() {
     ...turns,
     turnRecord({ turnId: "opening", kind: "opening", startedAt: T0, completedAt: T0, partial: true, model: "test-model", tokens: tokens({ input: 5 }) }),
   ]);
-  h.store.upsertGatewayRows([gatewayRow({ threadId: "thr_x", requestId: "between", startTime: T0 + 15 * MIN, spend: 0.01 })]);
+  h.store.upsertLogEntries("thr_x", [logEntry({ key: "between", agentId: "agent-a", ts: T0 + 15 * MIN, model: "test-model", tokens: tokens({ input: 50 }) })]);
   return h.model.report("thr_x");
 }
 
@@ -37,6 +37,9 @@ describe("export (scenario 19)", () => {
     const csv = turnsCsv(r.turns);
     const lines = csv.trimEnd().split("\n");
     expect(lines[0]).toMatch(/^turn_id,kind,/);
+    // Dollars are an estimate; API time and the gateway's requests are not among the columns.
+    expect(lines[0]).toContain("cost_estimate_usd");
+    expect(lines[0]).not.toMatch(/api_ms|gateway|harness/);
     expect(lines).toHaveLength(1 + r.turns.length);
     expect(r.turns.map((t) => t.turnId).sort()).toEqual(["opening", "outside", "turn-1", "turn-2", "turn-3"]);
     for (const t of r.turns) expect(lines.some((l) => l.startsWith(`${t.turnId},`))).toBe(true);
@@ -53,6 +56,8 @@ describe("export (scenario 19)", () => {
     expect(rows).toHaveLength(r.turns.length);
     for (const p of ["prompt 1", "Fix", "prompt 3"]) expect(md).not.toContain(p);
     expect(md).toContain("# Usage: Export \\| test");
+    expect(md).not.toMatch(/API time|outside bb's view|gateway|litellm/i);
+    expect(md).toContain("models.dev");
   });
 });
 

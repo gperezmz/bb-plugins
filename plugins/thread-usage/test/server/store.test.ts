@@ -4,20 +4,30 @@ import { EMPTY_CURSOR } from "../../src/core/ledger";
 import { PriceBook } from "../../src/core/pricing";
 import { costTotal, threadUsage } from "../../src/core/summary";
 import { totalTokens } from "../../src/core/tokens";
-import { gatewayRow, logEntry, MIN, T0, tokens, turnRecord } from "../core/fixtures";
-import { memoryStore, TEST_SNAPSHOT } from "./harness";
+import { MIGRATIONS, Store, type Db } from "../../src/server/store";
+import Database from "better-sqlite3";
+import { logEntry, MIN, T0, tokens, turnRecord } from "../core/fixtures";
+import { memoryStore, TEST_PRICES } from "./harness";
 
-describe("gateway rows", () => {
-  it("upserts by request id and never lowers spend", () => {
-    const store = memoryStore();
-    const row = gatewayRow({ requestId: "r1", startTime: T0, spend: 0.5, threadId: "thr_a" });
-    expect([...store.upsertGatewayRows([row])]).toEqual(["thr_a"]);
-    expect(store.upsertGatewayRows([{ ...row, spend: 0.3 }]).size).toBe(0);
-    expect(store.getGatewayRows("thr_a")[0]!.spend).toBe(0.5);
-    store.upsertGatewayRows([{ ...row, spend: 0.7, completionTokens: 999 }]);
-    expect(store.getGatewayRows("thr_a")).toEqual([{ ...row, spend: 0.7, completionTokens: 999 }]);
-    expect(store.threadHasGatewayRows("thr_a")).toBe(true);
-    expect(store.threadHasGatewayRows("thr_b")).toBe(false);
+describe("the migration that drops the gateway's rows", () => {
+  const dropAt = MIGRATIONS.findIndex((sql) => sql.startsWith("DROP TABLE gateway_requests"));
+
+  it("deletes the stored gateway rows and what the sweep and the old price lists kept, and nothing else", () => {
+    expect(dropAt).toBeGreaterThan(0);
+    const db = new Database(":memory:");
+    // An install as it was before: gateway rows, sweep state, both old lists, an unrelated meta key.
+    for (const sql of MIGRATIONS.slice(0, dropAt)) db.exec(sql);
+    db.prepare(`INSERT INTO gateway_requests (request_id, thread_id, start_time, spend, row) VALUES ('r1', 'thr_a', 1, 0.5, '{}')`).run();
+    for (const key of ["lastSweepAt", "gatewayBanner", "gatewayPrices", "onlinePrices", "modelsDevPrices", "pricesRefreshError", "ledgerVersion", "refreshPricesDefaultOn"]) {
+      db.prepare(`INSERT INTO meta (key, value) VALUES (?, '1')`).run(key);
+    }
+    const before = new Store(db as unknown as Db);
+    before.putTurns("thr_a", [turnRecord({ turnId: "t1", startedAt: T0, completedAt: T0 + MIN, tokens: tokens({ input: 700, output: 5 }) })]);
+    for (const sql of MIGRATIONS.slice(dropAt)) db.exec(sql);
+    expect(db.prepare(`SELECT name FROM sqlite_master WHERE name = 'gateway_requests'`).all()).toEqual([]);
+    expect((db.prepare(`SELECT key FROM meta ORDER BY key`).all() as { key: string }[]).map((r) => r.key)).toEqual(["ledgerVersion", "refreshPricesDefaultOn"]);
+    // The tokens bb's events supplied stay.
+    expect(totalTokens(new Store(db as unknown as Db).getTurns("thr_a")[0]!.tokens)).toBe(705);
   });
 });
 
@@ -105,40 +115,32 @@ describe("thread state", () => {
 });
 
 describe("retention", () => {
-  it("collapseBefore folds old turns and rows into one per thread and keeps the totals", () => {
+  it("collapseBefore folds old turns into one per thread and keeps the totals", () => {
     const store = memoryStore();
-    const prices = new PriceBook({ snapshot: TEST_SNAPSHOT });
+    const prices = new PriceBook({ models: TEST_PRICES, origin: "snapshot" });
     const day = 86_400_000;
     const old1 = turnRecord({ turnId: "o1", startedAt: T0, completedAt: T0 + MIN, model: "test-model", tokens: tokens({ input: 1000, output: 10 }), linesAdded: 3 });
     const old2 = turnRecord({ turnId: "o2", startedAt: T0 + day, completedAt: T0 + day + MIN, model: "test-model", tokens: tokens({ input: 2000, output: 20 }), linesRemoved: 1 });
     const fresh = turnRecord({ turnId: "n1", startedAt: T0 + 400 * day, completedAt: T0 + 400 * day + MIN, model: "test-model", tokens: tokens({ input: 5, output: 5 }) });
     store.putTurns("thr_a", [old1, old2, fresh]);
-    store.upsertGatewayRows([
-      gatewayRow({ threadId: "thr_a", requestId: "g1", startTime: T0 + 1000, spend: 0.25, durationMs: 100 }),
-      gatewayRow({ threadId: "thr_a", requestId: "g2", startTime: T0 + day + 1000, spend: 0.5, durationMs: 200 }),
-      gatewayRow({ threadId: "thr_a", requestId: "g3", startTime: T0 + 400 * day + 1000, spend: 1 }),
-    ]);
     const figure = () =>
       threadUsage({
         turns: store.getTurns("thr_a"),
-        rows: store.getGatewayRows("thr_a"),
-        logs: { history: [], gapFill: [], subagent: [], costOnly: [], cacheWrites: [] },
+        logs: { history: [], gapFill: [], subagent: [], cacheWrites: [] },
         prices,
-        billing: "gateway",
+        billing: "api-key",
         now: T0 + 500 * day,
       }).figure;
     const before = figure();
     const cutoff = T0 + 365 * day;
     expect(store.collapseBefore(cutoff)).toBe(1);
     expect(store.getTurns("thr_a").map((t) => t.turnId).sort()).toEqual(["n1", "retained"]);
-    expect(store.getGatewayRows("thr_a").map((r) => r.requestId).sort()).toEqual(["g3", "retained:thr_a"]);
     const after = figure();
     expect(costTotal(after.cost)).toBeCloseTo(costTotal(before.cost), 10);
     expect(totalTokens(after.tokens)).toBe(totalTokens(before.tokens));
     expect(after.linesAdded).toBe(before.linesAdded);
     expect(after.linesRemoved).toBe(before.linesRemoved);
     expect(after.wallMs).toBe(before.wallMs);
-    expect(after.apiMs).toBe(before.apiMs);
 
     // A later collapse merges into the retained record without losing anything.
     const old3 = turnRecord({ turnId: "o3", startedAt: T0 + 2 * day, completedAt: T0 + 2 * day + MIN, model: "test-model", tokens: tokens({ input: 7 }) });
@@ -146,7 +148,19 @@ describe("retention", () => {
     store.collapseBefore(cutoff);
     expect(store.getTurns("thr_a").map((t) => t.turnId).sort()).toEqual(["n1", "retained"]);
     expect(totalTokens(figure().tokens)).toBe(totalTokens(before.tokens) + 7);
-    expect(costTotal(figure().cost)).toBeCloseTo(costTotal(before.cost), 10);
+    expect(costTotal(figure().cost)).toBeCloseTo(costTotal(before.cost) + 7 * 1e-6, 10);
+  });
+
+  it("collapses requests into a sum: the retained turn keeps no per-request counts", () => {
+    const store = memoryStore();
+    const day = 86_400_000;
+    const requests = [{ input: 10, output: 1, cacheRead: 0, cacheWrite: 0 }];
+    store.putTurns("thr_a", [turnRecord({ turnId: "o1", startedAt: T0, completedAt: T0 + MIN, tokens: tokens({ input: 10, output: 1 }), requests })]);
+    store.collapseBefore(T0 + 365 * day);
+    const retained = store.getTurns("thr_a")[0]!;
+    expect(retained.turnId).toBe("retained");
+    expect(retained.requests).toBeUndefined();
+    expect(retained.tokens).toEqual(tokens({ input: 10, output: 1 }));
   });
 });
 

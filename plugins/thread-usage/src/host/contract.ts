@@ -33,8 +33,6 @@ export const logEntrySchema = z.strictObject({
   ts: z.number(),
   model: z.nullable(z.string()),
   tokens: logTokensSchema,
-  /** Cost the harness itself computed (pi), else null. */
-  costUsd: z.nullable(z.number()),
 });
 export type LogEntry = z.infer<typeof logEntrySchema>;
 

@@ -8,6 +8,7 @@ import { createFakePluginHost, type FakePluginHost } from "@get-bb/plugin-sdk/te
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../../server";
 import type { SettingsStatus } from "../../src/core/report-types";
+import { SETTINGS } from "../../src/server/settings";
 
 const never = () => new Promise<never>(() => {});
 
@@ -44,24 +45,31 @@ describe("Activation, as wired in server.ts", () => {
     expect(fetchStub).not.toHaveBeenCalled();
     expect(host.harness.inspection.experimental_hostRpcCalls).toEqual([]);
 
-    // The harnesses it tags by name are tagged from the start.
-    expect([...host.harness.inspection.registrations.providerEnvResolvers.keys()]).toEqual(["claude-code", "codex", "pi"]);
-
     // With the services stuck, the settings page still answers with what the plugin has.
-    for (const name of ["backfill", "online-prices", "provider-env"]) host.harness.behavior.runService(name);
+    for (const name of ["backfill", "online-prices"]) host.harness.behavior.runService(name);
     const status = (await host.harness.behavior.callRpc("status", null)) as SettingsStatus;
-    expect(status.snapshot.online).toBe(false);
+    expect(status.prices.updatedAt).toBeNull();
     expect(status.threadsTracked).toBe(0);
   });
 
-  it("tags the other providers bb lists once the provider-env service runs", async () => {
-    const host = createFakePluginHost({
-      pluginId: "thread-usage",
-      sdk: { providers: { list: async () => [{ id: "codex" }, { id: "acme" }] } },
-    });
+  it("has no gateway surface: it tags no provider's requests and runs no sweep", async () => {
+    const host = createFakePluginHost({ pluginId: "thread-usage", sdk: { providers: { list: async () => [{ id: "codex" }] } } });
     started = host;
     await plugin(host.bb);
-    await host.harness.behavior.runService("provider-env").done;
-    expect([...host.harness.inspection.registrations.providerEnvResolvers.keys()]).toEqual(["claude-code", "codex", "pi", "acme"]);
+    expect([...host.harness.inspection.registrations.providerEnvResolvers.keys()]).toEqual([]);
+    expect(() => host.harness.behavior.runService("gateway-sweep")).toThrow();
+    expect(() => host.harness.behavior.runService("provider-env")).toThrow();
+    expect(await host.harness.behavior.callRpc("status", null)).not.toHaveProperty("gateway");
+    await expect(host.harness.behavior.callRpc("testConnection", null)).rejects.toThrow();
+  });
+
+  it("declares no gateway adapter, URL, read key, extra headers, or price overrides and aliases", () => {
+    expect(Object.keys(SETTINGS).sort()).toEqual(
+      ["billingClaudeCode", "billingCodex", "billingOther", "billingPi", "currency", "readLogs", "refreshPrices", "showAmount", "warnAbove"],
+    );
+    const options = (SETTINGS.billingClaudeCode as { options: string[] }).options;
+    expect(options).toEqual(["auto", "api-key", "subscription"]);
+    // Nothing declared is a secret, so the plugin reads none, and an old gateway read key stays where bb keeps it.
+    expect(Object.values(SETTINGS).some((d) => "secret" in d)).toBe(false);
   });
 });

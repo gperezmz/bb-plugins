@@ -1,113 +1,38 @@
 /**
- * Public price lists fetched at runtime: LiteLLM's
- * `model_prices_and_context_window.json` and models.dev's `api.json`. A copy
- * is stored with its fetch time and replaced only by a later successful
- * fetch; a failure keeps the last good copy.
+ * The models.dev price list, fetched at runtime. A copy is stored with its
+ * fetch time and replaced only by a later successful fetch; a failure keeps
+ * the last good copy. Until one succeeded, the plugin uses the copy bundled
+ * with it (`snapshot.ts`).
  */
-import type { LiteLlmPriceEntry } from "../core/pricing";
-import { LITELLM_PRICES_URL, trimPriceMap } from "./snapshot";
+import { MODELS_DEV_URL, trimModelsDev } from "../core/models-dev";
+import type { ModelPrice } from "../core/pricing";
 
-export const MODELS_DEV_URL = "https://models.dev/api.json";
-
-/** Fetched copies are replaced after this long. */
+/** A fetched copy is replaced after this long. */
 export const REFRESH_AFTER_MS = 24 * 3_600_000;
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_BYTES = 20 * 1024 * 1024;
 const MIN_MODELS = 100;
-/** Bump when `trimPriceMap` or `trimModelsDev` change what they keep, so stored copies are refetched. */
-const TRIM_VERSION = 2;
+/** Bump when `trimModelsDev` changes what it keeps, so stored copies are fetched again. */
+const TRIM_VERSION = 1;
 
-export const LITELLM_META = "onlinePrices";
-export const MODELS_DEV_META = "modelsDevPrices";
-export const REFRESH_ERROR_META = "pricesRefreshError";
+/** Where the fetched list is stored. Copies under older keys were trimmed without tier sizes and are not read. */
+export const MODELS_DEV_META = "modelsDevList";
+export const REFRESH_ERROR_META = "modelsDevRefreshError";
 const DEFAULT_FLIP_META = "refreshPricesDefaultOn";
 
-/** A public list as stored: LiteLLM's field names, whichever list it came from. */
+/** The models.dev list as fetched and stored. */
 export interface FetchedPrices {
   /** `TRIM_VERSION` when stored; a copy trimmed under older rules is fetched again. */
   trim?: number;
   source: string;
   fetchedAt: string;
   fetchedAtMs: number;
-  models: Record<string, LiteLlmPriceEntry>;
+  models: Record<string, ModelPrice>;
 }
 
 export interface MetaStore {
   getMeta<T>(key: string): T | null;
   setMeta(key: string, value: unknown): void;
-}
-
-// Model makers whose own price wins when several providers list the same model id.
-const FIRST_PARTY = ["anthropic", "openai", "google", "xai", "mistral", "deepseek", "alibaba", "moonshotai", "zhipuai", "minimax", "meta", "cohere", "zai"];
-const PER_MTOK = 1_000_000;
-
-/**
- * Maps models.dev's `api.json` (providers → models, USD per million tokens)
- * to LiteLLM's field names, keyed by model id. Where several providers list
- * an id, the maker's own price wins; otherwise the median of the others,
- * since a reseller's or a free tier's price is not the model's. Entries
- * priced at 0 for both input and output are skipped, so a model with no
- * real price stays unpriced. Anthropic's published 1-hour cache-write price
- * is 2 × input, which models.dev does not carry, so Claude models get it
- * derived.
- */
-export function trimModelsDev(raw: unknown): Record<string, LiteLlmPriceEntry> {
-  const out: Record<string, LiteLlmPriceEntry> = {};
-  if (raw === null || typeof raw !== "object") return out;
-  const candidates = new Map<string, { entry: LiteLlmPriceEntry; firstParty: boolean }[]>();
-  for (const [providerId, provider] of Object.entries(raw as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))) {
-    const models = (provider as { models?: unknown } | null)?.models;
-    if (models === null || models === undefined || typeof models !== "object") continue;
-    for (const [id, model] of Object.entries(models as Record<string, unknown>)) {
-      const cost = (model as { cost?: Record<string, unknown> } | null)?.cost;
-      if (cost === null || cost === undefined || typeof cost !== "object") continue;
-      const perMtok = (source: Record<string, unknown>, key: string) => {
-        const v = source[key];
-        return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v / PER_MTOK : undefined;
-      };
-      const input = perMtok(cost, "input");
-      const output = perMtok(cost, "output");
-      if (input === undefined || output === undefined || input + output === 0) continue;
-      const entry: LiteLlmPriceEntry = { input_cost_per_token: input, output_cost_per_token: output };
-      const cacheRead = perMtok(cost, "cache_read");
-      const cacheWrite = perMtok(cost, "cache_write");
-      if (cacheRead !== undefined) entry.cache_read_input_token_cost = cacheRead;
-      if (cacheWrite !== undefined) entry.cache_creation_input_token_cost = cacheWrite;
-      if (providerId === "anthropic" || /(^|[/.])claude/i.test(id)) {
-        entry.cache_creation_input_token_cost_above_1hr = 2 * input;
-      }
-      // Long-context rates, in the field names the price book reads for its 200k tier.
-      const over200k = cost.context_over_200k;
-      if (over200k !== null && typeof over200k === "object") {
-        const tier = over200k as Record<string, unknown>;
-        for (const [from, to] of [
-          ["input", "input_cost_per_token_above_200k_tokens"],
-          ["output", "output_cost_per_token_above_200k_tokens"],
-          ["cache_read", "cache_read_input_token_cost_above_200k_tokens"],
-          ["cache_write", "cache_creation_input_token_cost_above_200k_tokens"],
-        ] as const) {
-          const v = perMtok(tier, from);
-          if (v !== undefined) entry[to] = v;
-        }
-      }
-      const name = id.toLowerCase();
-      const bare = name.includes("/") ? name.slice(name.lastIndexOf("/") + 1) : null;
-      const firstParty = FIRST_PARTY.includes(providerId);
-      for (const key of bare === null ? [name] : [name, bare]) {
-        const list = candidates.get(key) ?? [];
-        list.push({ entry, firstParty });
-        candidates.set(key, list);
-      }
-    }
-  }
-  for (const [key, list] of candidates) {
-    const makers = list.filter((c) => c.firstParty);
-    const pool = makers.length > 0 ? makers : list;
-    const total = (c: { entry: LiteLlmPriceEntry }) => (c.entry.input_cost_per_token ?? 0) + (c.entry.output_cost_per_token ?? 0);
-    const sorted = [...pool].sort((a, b) => total(a) - total(b));
-    out[key] = (sorted[Math.floor((sorted.length - 1) / 2)] as { entry: LiteLlmPriceEntry }).entry;
-  }
-  return out;
 }
 
 /** GETs a JSON document, refusing a body over `MAX_BYTES` or a response slower than the timeout. */
@@ -133,10 +58,11 @@ async function fetchJson(fetchFn: typeof fetch, url: string): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-const SOURCES = [
-  { name: "LiteLLM", meta: LITELLM_META, url: LITELLM_PRICES_URL, trim: trimPriceMap },
-  { name: "models.dev", meta: MODELS_DEV_META, url: MODELS_DEV_URL, trim: trimModelsDev },
-] as const;
+/** The stored models.dev copy, or null when none was stored under the current trimming rules. */
+export function storedPrices(store: MetaStore): FetchedPrices | null {
+  const stored = store.getMeta<FetchedPrices>(MODELS_DEV_META);
+  return stored !== null && stored.trim === TRIM_VERSION ? stored : null;
+}
 
 export interface RefreshDeps {
   store: MetaStore;
@@ -146,39 +72,32 @@ export interface RefreshDeps {
 }
 
 /**
- * Fetches each list whose stored copy is missing or older than a day. A
- * failing list keeps its last good copy and is retried on the next call;
- * the other list is fetched regardless. Returns true when a copy changed.
+ * Fetches the list when the stored copy is missing or older than a day. A
+ * failure keeps the last good copy and is retried on the next call. Returns
+ * true when the copy changed.
  */
 export async function refreshPublicPrices(deps: RefreshDeps): Promise<boolean> {
-  const errors: Record<string, string | null> = deps.store.getMeta(REFRESH_ERROR_META) ?? {};
-  let changed = false;
-  for (const source of SOURCES) {
-    const current = deps.store.getMeta<FetchedPrices>(source.meta);
-    if (current !== null && current.trim === TRIM_VERSION && deps.now() - current.fetchedAtMs <= REFRESH_AFTER_MS) continue;
-    try {
-      const models = source.trim(await fetchJson(deps.fetch, source.url));
-      if (Object.keys(models).length < MIN_MODELS) throw new Error("price list looks truncated");
-      const at = deps.now();
-      const stored: FetchedPrices = { trim: TRIM_VERSION, source: source.url, fetchedAt: new Date(at).toISOString(), fetchedAtMs: at, models };
-      deps.store.setMeta(source.meta, stored);
-      errors[source.name] = null;
-      changed = true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      errors[source.name] = message;
-      deps.log.warn(`${source.name} price refresh failed; keeping the last copy: ${message}`);
-    }
+  const current = storedPrices(deps.store);
+  if (current !== null && deps.now() - current.fetchedAtMs <= REFRESH_AFTER_MS) return false;
+  try {
+    const models = trimModelsDev(await fetchJson(deps.fetch, MODELS_DEV_URL));
+    if (Object.keys(models).length < MIN_MODELS) throw new Error("price list looks truncated");
+    const at = deps.now();
+    const stored: FetchedPrices = { trim: TRIM_VERSION, source: MODELS_DEV_URL, fetchedAt: new Date(at).toISOString(), fetchedAtMs: at, models };
+    deps.store.setMeta(MODELS_DEV_META, stored);
+    deps.store.setMeta(REFRESH_ERROR_META, null);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.store.setMeta(REFRESH_ERROR_META, message);
+    deps.log.warn(`models.dev price refresh failed; keeping the last copy: ${message}`);
+    return false;
   }
-  deps.store.setMeta(REFRESH_ERROR_META, errors);
-  return changed;
 }
 
-/** The first non-null failure message, for the "refresh is failing" note. */
+/** Why the last refresh failed, or null when it did not. */
 export function refreshError(store: MetaStore): string | null {
-  const errors = store.getMeta<Record<string, string | null>>(REFRESH_ERROR_META) ?? {};
-  for (const [name, message] of Object.entries(errors)) if (message) return `${name}: ${message}`;
-  return null;
+  return store.getMeta<string | null>(REFRESH_ERROR_META) ?? null;
 }
 
 /**

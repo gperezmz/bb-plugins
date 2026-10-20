@@ -1,107 +1,26 @@
 /**
- * The custom settings section: Test connection, harness setup
- * snippets, backfill progress with pause and resume, and Export all.
- * Declared settings cannot render buttons, so these live here.
+ * The custom settings section: backfill progress with pause and resume, the
+ * price list in use, and Export all. Declared settings cannot render
+ * buttons, so these live here.
  */
 import { useState } from "react";
-import { useRealtime, useSettings } from "@get-bb/plugin-sdk/app";
+import { useRealtime } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { SETUP_SNIPPETS } from "../core/attribution-snippets";
-import type { ConnectionCheck, SettingsStatus } from "../core/report-types";
-import { download, Icon, Panel, SectionTitle, useLive, useUsageRpc } from "./common";
-import { Snippet } from "./UsagePanel";
+import { pricesLabel } from "../core/format";
+import type { SettingsStatus } from "../core/report-types";
+import { download, Icon, SectionTitle, useLive, useUsageRpc } from "./common";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 export function SettingsPanel() {
   const rpc = useUsageRpc();
-  const { values } = useSettings();
-  const adapter = values?.adapter === "litellm" ? "litellm" : "none";
   const { data: status, reload } = useLive(() => rpc.call("status", null), [rpc]);
   useRealtime("backfill-changed", reload);
   return (
     <div className="space-y-6">
-      <ConnectionTest adapter={adapter} />
-      <section>
-        <SectionTitle>Tag requests from Codex and pi</SectionTitle>
-        <p className="mb-2 text-sm text-muted-foreground">
-          Claude Code threads are tagged automatically. Codex and pi read the session id from{" "}
-          <code className="font-mono text-xs">BB_USAGE_SESSION</code>, which this plugin sets per thread; add one line to
-          their own config so the gateway can attribute spend to the thread.
-        </p>
-        <Snippet label={`Codex: ${SETUP_SNIPPETS.codex.file}`} code={SETUP_SNIPPETS.codex.snippet} />
-        <Snippet label={`pi: ${SETUP_SNIPPETS.pi.file}`} code={SETUP_SNIPPETS.pi.snippet} />
-        <p className="mt-2 text-xs text-muted-foreground">
-          Cursor cannot use a custom gateway, so its threads have no token or cost data.
-        </p>
-      </section>
       {status !== null ? <Backfill status={status} onChange={reload} /> : null}
       {status !== null ? <Prices status={status} /> : null}
       <ExportAll />
     </div>
-  );
-}
-
-const STATUS_STYLE: Record<ConnectionCheck["status"], { icon: string; className: string; label: string }> = {
-  pass: { icon: "CircleCheck", className: "text-success", label: "Pass" },
-  fail: { icon: "CircleX", className: "text-destructive", label: "Fail" },
-  warn: { icon: "AlertCircle", className: "text-warning", label: "Warning" },
-  skipped: { icon: "Circle", className: "text-muted-foreground", label: "Skipped" },
-};
-
-function ConnectionTest({ adapter }: { adapter: "none" | "litellm" }) {
-  const rpc = useUsageRpc();
-  const [running, setRunning] = useState(false);
-  const [checks, setChecks] = useState<ConnectionCheck[] | null>(null);
-  const run = async () => {
-    setRunning(true);
-    try {
-      setChecks((await rpc.call("testConnection", null)).checks);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setRunning(false);
-    }
-  };
-  const failed = checks?.find((c) => c.status === "fail");
-  return (
-    <section>
-      <SectionTitle>Gateway connection</SectionTitle>
-      {adapter !== "litellm" ? (
-        <p className="text-sm text-muted-foreground">
-          Choose the <span className="font-medium text-foreground">litellm</span> adapter above to read exact cost from
-          a LiteLLM gateway. Until then, cost is estimated from tokens and list prices.
-        </p>
-      ) : (
-        <>
-          <div className="flex items-center gap-3">
-            <Button size="sm" onClick={() => void run()} disabled={running}>
-              {running ? <Icon name="Loading" className="size-3.5 animate-spin motion-reduce:animate-none" /> : null}
-              Test connection
-            </Button>
-            {checks !== null ? (
-              <span className={cn("text-sm", failed ? "text-destructive" : "text-muted-foreground")}>
-                {failed ? `“${failed.label}” failed` : "All checks passed"}
-              </span>
-            ) : null}
-          </div>
-          {checks !== null ? (
-            <Panel className="mt-3 divide-y divide-border">
-              {checks.map((c) => (
-                <div key={c.id} className="flex items-start gap-2 px-3 py-2 text-sm">
-                  <Icon name={STATUS_STYLE[c.status].icon} className={cn("mt-0.5 size-4 shrink-0", STATUS_STYLE[c.status].className)} />
-                  <div className="min-w-0">
-                    <div className="text-foreground">{c.label}</div>
-                    <div className="break-words text-xs text-muted-foreground">{c.detail}</div>
-                  </div>
-                  <span className="sr-only">{STATUS_STYLE[c.status].label}</span>
-                </div>
-              ))}
-            </Panel>
-          ) : null}
-        </>
-      )}
-    </section>
   );
 }
 
@@ -150,16 +69,12 @@ function Backfill({ status, onChange }: { status: SettingsStatus; onChange: () =
 }
 
 function Prices({ status }: { status: SettingsStatus }) {
+  const { prices } = status;
   return (
     <section>
       <SectionTitle>Prices</SectionTitle>
       <p className="text-sm text-muted-foreground">
-        {status.snapshot.online
-          ? `Using LiteLLM's public price list, fetched ${status.snapshot.onlineFetchedAt === null ? "recently" : new Date(status.snapshot.onlineFetchedAt).toLocaleString()}${status.snapshot.modelsDevFetchedAt === null ? "" : `, and models.dev's, fetched ${new Date(status.snapshot.modelsDevFetchedAt).toLocaleString()}`}.`
-          : `Using the LiteLLM snapshot bundled with the plugin, from ${status.snapshot.date?.slice(0, 10) ?? "an unknown date"} (${status.snapshot.models} models, commit ${status.snapshot.commit.slice(0, 7)}); no online copy in use.`}{" "}
-        {status.snapshot.lastError === null ? "" : `The last refresh failed (${status.snapshot.lastError}); the last good copy stays in use. `}
-        Gateway rows always use the gateway's own billed cost.
-        {status.gateway.lastSweepAt !== null ? ` Last gateway sweep ${new Date(status.gateway.lastSweepAt).toLocaleTimeString()}.` : ""}
+        {pricesLabel(prices, Date.now())}. The list holds {prices.models.toLocaleString("en-US")} models.
       </p>
     </section>
   );
@@ -186,8 +101,8 @@ function ExportAll() {
     <section>
       <SectionTitle>Export all</SectionTitle>
       <p className="mb-2 text-sm text-muted-foreground">
-        Every thread total, turn record and gateway row the plugin knows. Uninstalling the plugin deletes its settings
-        and read key but keeps its database; export to keep a copy elsewhere.
+        Every thread total and turn record the plugin knows. Uninstalling the plugin deletes its settings but keeps its
+        database; export to keep a copy elsewhere.
       </p>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void run("json")}>

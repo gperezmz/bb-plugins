@@ -8,11 +8,9 @@ import {
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
 import * as z from "zod/mini";
-import { attributionEnv } from "./src/core/headers";
-import { testConnection } from "./src/core/litellm";
 import { PriceBook } from "./src/core/pricing";
 import { turnsCsv } from "./src/core/export";
-import { treeContext, treeTags, treeThreads, formatTokens, formatUsd, usualBilling } from "./src/core/format";
+import { topText } from "./src/core/format";
 import { costTotal, figureTokenCount } from "./src/core/summary";
 import { hostContract } from "./src/host/contract";
 import { Engine, PANEL_LOG_TIMEOUT_MS, type ThreadDto } from "./src/server/engine";
@@ -21,21 +19,19 @@ import { rpcContract } from "./src/server/rpc";
 import { parseSettings, SETTINGS, type UsageSettings } from "./src/server/settings";
 import {
   flipRefreshPricesDefault,
-  LITELLM_META,
-  MODELS_DEV_META,
   refreshError,
   refreshPublicPrices,
+  storedPrices,
   type FetchedPrices,
 } from "./src/server/public-prices";
 import { PINNED_SNAPSHOT } from "./src/server/snapshot";
 import { MIGRATIONS, Store, type Db } from "./src/server/store";
-import type { GatewayBanner, SettingsStatus } from "./src/core/report-types";
+import type { SettingsStatus } from "./src/core/report-types";
 import type { LedgerEvent } from "./src/core/ledger";
 
 export { rpcContract };
 export type { RpcContract } from "./src/server/rpc";
 
-const TAGGED_PROVIDERS = ["claude-code", "codex", "pi"];
 const RETENTION_MS = 365 * 86_400_000;
 /** Bump when a ledger rule changes; stored ledgers are then rebuilt from bb's events. */
 const LEDGER_VERSION = 4;
@@ -83,46 +79,32 @@ export default async function plugin(bb: BbPluginApi) {
     bb.log.info("Refresh prices online is now on by default; a stored \"off\" from before was reset");
   }
   let priceBook: PriceBook | null = null;
-  let listPriceBook: PriceBook | null = null;
-  // The fetched public lists, read from the store once per refresh; none while the setting is off.
-  let fetched: { litellm: FetchedPrices | null; modelsDev: FetchedPrices | null } | null = null;
-  const publicPrices = () => {
-    if (!settings.refreshPrices) return { litellm: null, modelsDev: null };
-    fetched ??= { litellm: store.getMeta<FetchedPrices>(LITELLM_META), modelsDev: store.getMeta<FetchedPrices>(MODELS_DEV_META) };
-    return fetched;
+  // The fetched models.dev list, read from the store once per refresh; none while the setting is off.
+  let fetched: { list: FetchedPrices | null } | null = null;
+  const fetchedList = (): FetchedPrices | null => {
+    if (!settings.refreshPrices) return null;
+    fetched ??= { list: storedPrices(store) };
+    return fetched.list;
   };
-  // Lookup order after overrides and the gateway's map: LiteLLM's list (fetched, else bundled), then models.dev.
-  const listInput = () => {
-    const { litellm, modelsDev } = publicPrices();
-    return {
-      snapshot: litellm?.models ?? PINNED_SNAPSHOT.models,
-      snapshotOrigin: litellm !== null ? ("litellm" as const) : ("snapshot" as const),
-      modelsDev: modelsDev?.models,
-      overrides: settings.priceOverrides,
-    };
-  };
-  const listPrices = (): PriceBook => {
-    listPriceBook ??= new PriceBook(listInput());
-    return listPriceBook;
-  };
+  // The fetched list, else the one bundled with the plugin.
   const prices = (): PriceBook => {
-    priceBook ??= new PriceBook({
-      ...listInput(),
-      gateway: settings.adapter === "litellm" ? engine.gatewayPriceMap() : null,
-    });
+    priceBook ??= new PriceBook(
+      fetchedList() === null
+        ? { models: PINNED_SNAPSHOT.models, origin: "snapshot" }
+        : { models: (fetchedList() as FetchedPrices).models, origin: "models.dev" },
+    );
     return priceBook;
   };
   const pricesChanged = () => {
     fetched = null;
     priceBook = null;
-    listPriceBook = null;
     model.invalidateAll();
     bb.realtime.publish("usage-changed", { threadIds: [] });
   };
   const refreshPrices = async () => {
     if (!settings.refreshPrices) return;
     const failing = refreshError(store);
-    // A change in what failed also changes the reports' "refresh failing" note.
+    // A change in what failed also changes the reports' "refresh failed" note.
     if ((await refreshPublicPrices({ store, fetch, now: Date.now, log: bb.log })) || refreshError(store) !== failing) pricesChanged();
   };
 
@@ -130,20 +112,13 @@ export default async function plugin(bb: BbPluginApi) {
     store,
     settings: () => settings,
     prices,
-    listPrices,
     pricesMeta: () => ({
-      litellmAt: publicPrices().litellm?.fetchedAtMs ?? null,
-      modelsDevAt: publicPrices().modelsDev?.fetchedAtMs ?? null,
-      bundledDate: PINNED_SNAPSHOT.commitDate ?? PINNED_SNAPSHOT.fetchedAt,
+      modelsDevAt: fetchedList()?.fetchedAtMs ?? null,
+      bundledDate: PINNED_SNAPSHOT.fetchedAt,
       refreshOn: settings.refreshPrices,
       lastError: settings.refreshPrices ? refreshError(store) : null,
     }),
     now: () => Date.now(),
-    gatewayBanner: () => store.getMeta<GatewayBanner | null>("gatewayBanner"),
-    gatewayPricesUsed: () => {
-      const map = engine.gatewayPriceMap();
-      return map !== null && Object.keys(map).length > 0;
-    },
   });
 
   const engine: Engine = new Engine({
@@ -185,11 +160,9 @@ export default async function plugin(bb: BbPluginApi) {
     async readLogs(hostId, input, timeoutMs) {
       return host.call("readSessionLogs", input, { hostId, timeoutMs });
     },
-    fetch: (input, init) => fetch(input, init),
     publish: (channel, payload) => bb.realtime.publish(channel, payload),
     log: bb.log,
   });
-  engine.loadGatewayPrices();
 
   settingsHandle.onChange(async () => {
     const before = settings;
@@ -197,23 +170,7 @@ export default async function plugin(bb: BbPluginApi) {
     pricesChanged();
     if (settings.refreshPrices && !before.refreshPrices) void refreshPrices();
     if (settings.warnAbove !== before.warnAbove) engine.checkAllBudgets();
-    if (settings.adapter === "litellm" && (before.readKey !== settings.readKey || before.gatewayUrl !== settings.gatewayUrl || before.adapter !== settings.adapter)) {
-      void engine.sweep();
-    }
   });
-
-  // ---- attribution header on every provider command ----
-  const tagged = new Set<string>();
-  const tagProvider = (providerId: string) => {
-    if (tagged.has(providerId)) return;
-    tagged.add(providerId);
-    bb.providers.experimental_contributeEnv(providerId, (context) =>
-      settings.adapter === "litellm"
-        ? attributionEnv(providerId, context.threadId, settings.extraHeaders)
-        : [],
-    );
-  };
-  for (const providerId of TAGGED_PROVIDERS) tagProvider(providerId);
 
   // ---- lifecycle events ----
   bb.events.on("experimental_thread.events", ({ thread, sequence }) => {
@@ -260,7 +217,6 @@ export default async function plugin(bb: BbPluginApi) {
     engine.recordThread(dto);
     store.upsertEdge({ threadId: dto.id, idleSince: Date.now() }, Date.now());
     await engine.catchUpQuietly(dto.id);
-    if (settings.adapter === "litellm") engine.scheduleSweep(20_000);
     await engine.readThreadLogs(dto.id, { timeoutMs: PANEL_LOG_TIMEOUT_MS * 6 });
   });
   bb.events.on("thread.failed", ({ thread }) => {
@@ -283,29 +239,6 @@ export default async function plugin(bb: BbPluginApi) {
   // Nothing above awaits bb.sdk, the network or the logs: bb gives the factory
   // 30 seconds, and on a server that has just started bb.sdk can take all of
   // them to answer. What needs them runs in the services below.
-  // The other providers bb has are tagged too, once bb lists them.
-  bb.background.service("provider-env", {
-    async start(signal) {
-      while (!signal.aborted) {
-        try {
-          const listed = (await bb.sdk.providers.list()) as unknown as { id: string }[] | { providers?: { id: string }[] };
-          for (const p of Array.isArray(listed) ? listed : (listed.providers ?? [])) tagProvider(p.id);
-          break;
-        } catch (error) {
-          bb.log.warn(`could not list bb's providers: ${error instanceof Error ? error.message : String(error)}`);
-        }
-        await sleep(60_000, signal);
-      }
-    },
-  });
-  bb.background.service("gateway-sweep", {
-    async start(signal) {
-      while (!signal.aborted) {
-        if (settings.adapter === "litellm" && engine.anyActive()) await engine.sweep();
-        await sleep(60_000, signal);
-      }
-    },
-  });
   bb.background.service("backfill", {
     async start(signal) {
       store.requeueRunning(Date.now());
@@ -328,7 +261,6 @@ export default async function plugin(bb: BbPluginApi) {
         bb.log.warn(`thread discovery failed: ${error instanceof Error ? error.message : String(error)}`);
       }
       engine.checkAllBudgets();
-      if (settings.adapter === "litellm") void engine.sweep();
       while (!signal.aborted) {
         const ran = await engine.runBackfill(2);
         if (ran > 0) bb.realtime.publish("backfill-changed", store.queueCounts());
@@ -364,28 +296,17 @@ export default async function plugin(bb: BbPluginApi) {
 
   // ---- RPC ----
   const status = (): SettingsStatus => {
-    const { litellm, modelsDev } = publicPrices();
+    const list = fetchedList();
     const counts = store.queueCounts();
     return {
-      adapter: settings.adapter,
-      snapshot: {
-        commit: litellm === null ? PINNED_SNAPSHOT.commit : "main",
-        date: litellm?.fetchedAt ?? PINNED_SNAPSHOT.commitDate,
-        models: Object.keys(litellm?.models ?? PINNED_SNAPSHOT.models).length,
-        online: litellm !== null,
-        onlineFetchedAt: litellm?.fetchedAtMs ?? null,
-        modelsDevFetchedAt: modelsDev?.fetchedAtMs ?? null,
-        lastError: settings.refreshPrices ? refreshError(store) : null,
+      prices: {
+        ...model.pricesInfo(),
+        models: Object.keys(list?.models ?? PINNED_SNAPSHOT.models).length,
       },
       backfill: {
         ...counts,
         paused: engine.paused(),
         failures: store.failedJobs(5).map((j) => ({ threadId: j.threadId, kind: j.kind, error: j.lastError })),
-      },
-      gateway: {
-        lastSweepAt: store.getMeta<number>("lastSweepAt"),
-        lastError: store.getMeta<GatewayBanner | null>("gatewayBanner"),
-        rows: store.anyGatewayRows(),
       },
       logsMissing: store
         .threadsWithMissingLogs()
@@ -449,24 +370,6 @@ export default async function plugin(bb: BbPluginApi) {
       await readSettings();
       return status();
     },
-    async testConnection() {
-      await readSettings();
-      if (settings.adapter !== "litellm") return { checks: [], adapter: settings.adapter };
-      if (settings.gatewayUrl === "") {
-        return {
-          adapter: settings.adapter,
-          checks: [
-            { id: "reachable" as const, label: "Gateway URL answers", status: "fail" as const, detail: "Set the Gateway URL first" },
-          ],
-        };
-      }
-      const checks = await testConnection(
-        { baseUrl: settings.gatewayUrl, key: settings.readKey ?? "", fetch },
-        Date.now(),
-        store.allThreadIds().length > 0,
-      );
-      return { checks, adapter: settings.adapter };
-    },
     async backfill({ action }) {
       if (action === "pause") engine.setPaused(true);
       if (action === "resume") engine.setPaused(false);
@@ -495,13 +398,10 @@ export default async function plugin(bb: BbPluginApi) {
             usd: costTotal(report.thread.figure.cost),
             cost: report.thread.figure.cost,
             tokens: report.thread.figure.tokens,
-            untrackedTokens: report.thread.figure.untrackedTokens,
             billing: report.billing,
-            state: report.state,
           },
           // Prompt lines stay in the panel; exports carry no prompt text.
           turns: store.getTurns(edge.threadId).map(({ prompt: _prompt, ...turn }) => turn),
-          gatewayRows: store.getGatewayRows(edge.threadId),
           report,
         };
       });
@@ -532,7 +432,7 @@ export default async function plugin(bb: BbPluginApi) {
       name: "thread-usage",
       summary: "Show what a bb thread and the threads it spawned cost",
       description:
-        "Cost and tokens per thread, rolled up over child threads. Cost comes from the gateway when one is configured, else from the harness, else from list prices.",
+        "Cost and tokens per thread, rolled up over child threads. Cost is an estimate from models.dev prices; tokens no price covers are counted and not priced.",
       commands: {
         show: cliCommand({
           summary: "Show a thread's usage, with its children by default",
@@ -577,14 +477,11 @@ export default async function plugin(bb: BbPluginApi) {
                     headline: view.headline,
                     tokens: view.figure.tokens,
                     totalTokens: figureTokenCount(view.figure),
-                    untrackedTokens: view.figure.untrackedTokens,
                     unpricedTokens: view.figure.unpricedTokens,
-                    apiMs: view.figure.apiMs,
                     wallMs: view.figure.wallMs,
                     lines: { added: view.figure.linesAdded, removed: view.figure.linesRemoved },
                     turns: view.figure.turns,
                     billing: report.billing,
-                    state: report.state,
                     pricesUpdatedAt: pricesUpdatedAt(report.prices.updatedAt),
                     children: withChildren
                       ? report.tree.map((r) => ({ threadId: r.threadId, title: r.title, depth: r.depth, usd: r.ownUsd, treeUsd: r.treeUsd, tokens: r.ownTokens }))
@@ -613,15 +510,17 @@ export default async function plugin(bb: BbPluginApi) {
           },
           async run(input) {
             await readSettings();
-            const trees = model
-              .top(input.options.project ?? null, Date.now() - input.options.since)
-              .slice(0, input.options.limit);
+            const all = model.top(input.options.project ?? null, Date.now() - input.options.since);
+            // The limit applies to each list, so a full dollar ranking does not hide the Not priced one.
+            const trees = { priced: all.priced.slice(0, input.options.limit), notPriced: all.notPriced.slice(0, input.options.limit) };
             if (input.options.json === true) {
-              return { exitCode: 0, stdout: JSON.stringify({ pricesUpdatedAt: pricesUpdatedAt(model.pricesInfo().updatedAt), trees }, null, 2) };
+              return {
+                exitCode: 0,
+                stdout: JSON.stringify({ pricesUpdatedAt: pricesUpdatedAt(model.pricesInfo().updatedAt), trees: trees.priced, notPriced: trees.notPriced }, null, 2),
+              };
             }
-            if (trees.length === 0) return { exitCode: 0, stdout: "No thread trees with usage in that window." };
             const projectNames = new Map<string, string>();
-            if (input.options.project === undefined) {
+            if (input.options.project === undefined && trees.priced.length + trees.notPriced.length > 0) {
               try {
                 const listed = (await bb.sdk.projects.list()) as unknown as { id: string; name: string }[];
                 for (const p of listed) projectNames.set(p.id, p.name);
@@ -629,20 +528,14 @@ export default async function plugin(bb: BbPluginApi) {
                 // Without names the line just leaves the project out.
               }
             }
-            const usual = usualBilling(trees);
-            const now = Date.now();
-            const lines = trees.map((f, i) => {
-              // The first line already carries the amount, tokens and thread count.
-              const context = treeContext(f, {
-                projectName: f.projectId === null ? null : (projectNames.get(f.projectId) ?? null),
-                countThreads: false,
-                now,
-              });
-              const second = [...context, ...treeTags(f, usual)].join(" · ");
-              const threads = treeThreads(f);
-              return `${String(i + 1).padStart(2)}. ${formatUsd(f.usd, settings.currency).padEnd(9)} ${formatTokens(f.tokens).padStart(6)} tokens  ${f.title.slice(0, 60)}  (${f.threadId}${threads === null ? "" : `, ${threads}`})${second === "" ? "" : `\n      ${second}`}`;
-            });
-            return { exitCode: 0, stdout: lines.join("\n") };
+            return {
+              exitCode: 0,
+              stdout: topText(trees, {
+                currency: settings.currency,
+                projectName: (id) => (id === null ? null : (projectNames.get(id) ?? null)),
+                now: Date.now(),
+              }),
+            };
           },
         }),
       },
@@ -652,7 +545,7 @@ export default async function plugin(bb: BbPluginApi) {
   // ---- agent tool ----
   bb.agents.registerTool({
     name: "thread_usage",
-    description: "Returns the tokens and dollars spent by this thread and every thread it spawned, split by cost source, with the billing mode.",
+    description: "Returns the tokens and dollars spent by this thread and every thread it spawned, with the billing mode. Dollars are an estimate from models.dev prices; tokens no price covers are counted and not priced.",
     presentation: { label: { pending: "Checking thread usage", completed: "Checked thread usage" } },
     // The SDK types a validated tool's parameters as full zod, but takes any
     // schema with safeParse and validates the call with it, as for full zod.

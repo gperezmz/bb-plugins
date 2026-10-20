@@ -45,9 +45,9 @@ export default definePluginApp((app) => {
   });
 
   app.slots.settingsSection({
-    id: "gateway",
-    title: "Gateway, history and export",
-    description: "Test the gateway connection, set up Codex and pi, follow the history backfill, and export everything.",
+    id: "history",
+    title: "History, prices and export",
+    description: "Follow the history backfill, see which price list is in use, and export everything.",
     component: SettingsPanel,
   });
 });

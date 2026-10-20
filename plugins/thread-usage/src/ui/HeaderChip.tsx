@@ -109,7 +109,7 @@ export function ChipButton({ threadId, chip, showAmount }: { threadId: string; c
 }
 
 export function ChipSummary({ chip }: { chip: ChipView }) {
-  const tokens = figureTokenCount({ tokens: chip.tokens, untrackedTokens: chip.untrackedTokens });
+  const tokens = figureTokenCount({ tokens: chip.tokens });
   return (
     <div className="cursor-pointer space-y-2">
       <div>
@@ -122,7 +122,7 @@ export function ChipSummary({ chip }: { chip: ChipView }) {
           <div className="text-xs text-muted-foreground">{chip.headline.unpricedNote}</div>
         ) : null}
       </div>
-      <TokenBar tokens={chip.tokens} untracked={chip.untrackedTokens} />
+      <TokenBar tokens={chip.tokens} />
       <div className="flex justify-between text-xs text-muted-foreground">
         <span className="tabular-nums">
           {chip.headline.primaryKind === "tokens"
