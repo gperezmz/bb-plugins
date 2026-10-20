@@ -6,10 +6,12 @@
 import {
   addTokens,
   fromBbBreakdown,
+  isZeroTokens,
   scaleTokens,
   subtractTokens,
   ZERO_TOKENS,
   type BbTokenBreakdown,
+  type RequestTokens,
   type Tokens,
 } from "./tokens";
 
@@ -57,6 +59,14 @@ export interface TurnRecord {
   /** First line of the prompt that started the turn. */
   prompt: string | null;
   tokens: Tokens;
+  /**
+   * Each request's own token counts, in the order the usage events came, so a
+   * later read can price each request on its own prompt size. Present only
+   * for a turn whose every usage event was recorded here: a turn stored as a
+   * sum, filled from bb's running total or collapsed has none, and `tokens`
+   * is all that is known of it.
+   */
+  requests?: RequestTokens[];
   usageEvents: number;
   linesAdded: number;
   linesRemoved: number;
@@ -381,6 +391,21 @@ export function ingestEvents(input: IngestInput): IngestResult {
         if (last === null || turnId === null) break;
         const lastTokens = fromBbBreakdown(last);
         const record = turn(turnId, event.seq);
+        // A turn that already holds tokens from before its requests were
+        // kept, or filled in from bb's total, stays a sum: its requests would
+        // not add up to its tokens.
+        if (record.usageEvents === 0 && isZeroTokens(record.tokens)) record.requests = [];
+        if (record.requests !== undefined) {
+          record.requests = [
+            ...record.requests,
+            {
+              input: lastTokens.input,
+              output: lastTokens.output,
+              cacheRead: lastTokens.cacheRead,
+              cacheWrite: lastTokens.cacheWrite,
+            },
+          ];
+        }
         record.tokens = addTokens(record.tokens, lastTokens);
         record.usageEvents += 1;
         usageTurns.add(turnId);

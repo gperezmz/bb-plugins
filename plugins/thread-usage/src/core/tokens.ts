@@ -12,6 +12,18 @@ export interface Tokens {
   reasoning: number;
 }
 
+/**
+ * One model request's token counts by kind, as bb's per-request usage events
+ * report them. `reasoning` is part of `output`, and bb does not say which
+ * cache writes were 1-hour ones.
+ */
+export interface RequestTokens {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 export const ZERO_TOKENS: Tokens = Object.freeze({
   input: 0,
   output: 0,
