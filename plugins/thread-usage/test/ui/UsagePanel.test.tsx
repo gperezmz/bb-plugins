@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EMPTY_CURSOR } from "../../src/core/ledger";
 import { Report } from "../../src/ui/UsagePanel";
-import { logEntry, MIN, T0, tokens, turnRecord } from "../core/fixtures";
+import { logEntry, MIN, SEC, T0, tokens, turnRecord } from "../core/fixtures";
 import { harness, type Harness } from "../server/harness";
 
 vi.mock("@get-bb/plugin-sdk/app", () => ({
@@ -116,6 +116,25 @@ describe("a turn's tier on the Usage tab", () => {
     expect(row.textContent).not.toMatch(/tier/i);
     expect(within(row).getByText("models.dev")).toBeTruthy();
     expect(screen.getByText("Estimated with models.dev prices, fetched 3 hours ago")).toBeTruthy();
+  });
+});
+
+describe("a turn's 1-hour cache writes on the Usage tab", () => {
+  it("shows them as a line of their own on an opened turn that used no tier", async () => {
+    const h = harness();
+    h.clock.now = NOW;
+    h.prices.models = { "claude-haiku-5-5": TIERED };
+    addThread(h, "thr_h");
+    h.store.upsertLogEntries("thr_h", [logEntry({ key: "w", ts: T0 + MIN + SEC, model: "claude-haiku-5-5", tokens: tokens({ cacheWrite: 1_000, cacheWrite1h: 500 }) })]);
+    h.store.putTurns("thr_h", [
+      turnRecord({ turnId: "a", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "claude-haiku-5-5", tokens: tokens({ input: 10_000, cacheWrite: 1_000 }), requests: [req(10_000, { cacheWrite: 1_000 })] }),
+    ]);
+    await show(h.model.report("thr_h"));
+    openTurn(1);
+    const line = screen.getByText("1-hour cache writes, 500 tokens").parentElement!;
+    // Twice the base input rate: 500 × $0.20 per M.
+    expect(within(line).getByText("$0.0001")).toBeTruthy();
+    expect(screen.queryByText(/requests used/)).toBeNull();
   });
 });
 

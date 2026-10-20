@@ -140,6 +140,23 @@ describe("ingestEvents: per-turn tokens", () => {
     expect(t2.requests).toBeUndefined();
   });
 
+  it("keeps no requests for a filled turn that later receives a usage event, whose requests would not add up to its tokens", () => {
+    const store = new Map<string, TurnRecord>();
+    const first = read(EMPTY_CURSOR, store, [
+      ...turn(1, T0, "t1", cb({ input: 100, output: 50 }), cb({ input: 100, output: 50 })),
+    ], T0 + MIN);
+    const second = read(first.cursor, store, [
+      started(300, T0 + 2 * MIN, "t2"),
+      completed(301, T0 + 3 * MIN, "t2"),
+      usage(600, T0 + 10 * MIN, "t3", cb({ input: 5, output: 5 }), cb({ input: 400, output: 200 })),
+    ], T0 + 20 * MIN, 600);
+    expect(store.get("t2")!.filled).toBe(true);
+    read(second.cursor, store, [usage(601, T0 + 21 * MIN, "t2", cb({ input: 7, output: 1 }), cb({ input: 407, output: 201 }))], T0 + 22 * MIN);
+    const t2 = store.get("t2")!;
+    expect(t2.tokens.input).toBeGreaterThan(7);
+    expect(t2.requests).toBeUndefined();
+  });
+
   it("scenario 1: a harness restart resets bb's total, but the sum of lasts stays right", () => {
     const store = new Map<string, TurnRecord>();
     const events = [

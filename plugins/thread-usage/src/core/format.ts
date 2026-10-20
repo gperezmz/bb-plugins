@@ -179,6 +179,11 @@ export function treeContext(
   ].filter((part): part is string => part !== null && part !== "");
 }
 
+/** Each list cut to `limit` trees on its own, so a full dollar ranking does not hide the Not priced list. */
+export function limitTopTrees(top: TopTrees, limit: number): TopTrees {
+  return { priced: top.priced.slice(0, limit), notPriced: top.notPriced.slice(0, limit) };
+}
+
 /**
  * `bb thread-usage top` as text: the trees ranked by dollars, then, apart
  * and headed Not priced, the trees whose tokens have no price, each list

@@ -10,6 +10,7 @@ import {
   costOf,
   priceRequests,
   type PriceBook,
+  type PricedRequest,
   type RequestsCost,
 } from "./pricing";
 import {
@@ -124,19 +125,14 @@ export interface SubagentRow {
   model: string | null;
   tokens: Tokens;
   requests: number;
-  costUsd: number | null;
+  costUsd: number;
 }
 
 /** One request of a turn that was charged at a tier. */
-export interface TieredRequest {
-  /** Its place in the order the turn's requests were made, from 1. */
-  number: number;
-  /** Uncached input plus cache reads and writes. */
-  prompt: number;
-  usd: number;
+export type TieredRequest = PricedRequest & {
   /** The size its tier starts above. */
   tierAbove: number;
-}
+};
 
 /**
  * What a turn's requests cost, for a turn with at least one request charged
@@ -149,8 +145,6 @@ export interface TierDetail {
   tiered: TieredRequest[];
   /** The requests charged at the base rates, together. */
   untiered: { count: number; usd: number };
-  /** The 1-hour cache writes no request carries, as a line of their own. */
-  oneHour: { tokens: number; usd: number } | null;
 }
 
 export interface TurnView {
@@ -176,6 +170,8 @@ export interface TurnView {
   /** The model has a tier and the turn's per-request prompt sizes are unknown, so base rates were used. */
   tierUnsized: boolean;
   tierDetail: TierDetail | null;
+  /** The 1-hour cache writes no request of the turn carries, as a line of their own; null when there are none. */
+  oneHour: { tokens: number; usd: number } | null;
 }
 
 /** Aggregated figures for one thread or a whole tree. */
@@ -279,6 +275,7 @@ interface Estimate {
   /** Requests priced one by one. */
   requests: number;
   tierDetail: TierDetail | null;
+  oneHour: { tokens: number; usd: number } | null;
 }
 
 const NO_ESTIMATE: Estimate = {
@@ -290,6 +287,7 @@ const NO_ESTIMATE: Estimate = {
   unpricedModel: null,
   requests: 0,
   tierDetail: null,
+  oneHour: null,
 };
 
 function addEstimates(a: Estimate, b: Estimate): Estimate {
@@ -302,6 +300,7 @@ function addEstimates(a: Estimate, b: Estimate): Estimate {
     unpricedModel: a.unpricedModel ?? b.unpricedModel,
     requests: a.requests + b.requests,
     tierDetail: null,
+    oneHour: null,
   };
 }
 
@@ -350,6 +349,7 @@ function estimateRequests(
     assumed: cost.assumed,
     requests: requests.length,
     tierDetail: tierDetail(cost),
+    oneHour: cost.oneHour,
   };
 }
 
@@ -361,7 +361,6 @@ function tierDetail(cost: RequestsCost): TierDetail | null {
     requests: cost.requests.length,
     tiered: tiered.map((r) => ({ number: r.number, prompt: r.prompt, usd: r.usd, tierAbove: r.tierAbove as number })),
     untiered: { count: plain.length, usd: plain.reduce((n, r) => n + r.usd, 0) },
-    oneHour: cost.oneHour,
   };
 }
 
@@ -437,7 +436,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
       unpriced += est.unpriced;
       if (est.unpricedModel !== null) unpricedModels.add(est.unpricedModel);
       assumedAny ||= est.assumed;
-      row.costUsd = (row.costUsd ?? 0) + est.usd;
+      row.costUsd += est.usd;
       models.add(e.model, { tokens: e.tokens, cost: estimated(est.usd), unpriced: est.unpriced });
       byAgent.set(e.agentId ?? "", row);
     }
@@ -509,6 +508,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
         approximate: est.approximate,
         tierUnsized: est.unsized,
         tierDetail: est.tierDetail,
+        oneHour: est.oneHour,
       }),
     );
   }
@@ -558,6 +558,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
       approximate: est.approximate,
       tierUnsized: false,
       tierDetail: null,
+      oneHour: null,
     });
   } else if (opening !== null && input.logs.history.length === 0) {
     const est = estimate(prices, opening.model, opening.tokens, null);
@@ -576,6 +577,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
         approximate: est.approximate,
         tierUnsized: est.unsized,
         tierDetail: null,
+        oneHour: null,
       }),
     );
   }
@@ -605,6 +607,7 @@ export function threadUsage(input: ThreadUsageInput): ThreadUsage {
       approximate: false,
       tierUnsized: false,
       tierDetail: null,
+      oneHour: null,
     });
   }
 
@@ -651,6 +654,7 @@ function view(
     approximate: boolean;
     tierUnsized: boolean;
     tierDetail: TierDetail | null;
+    oneHour: { tokens: number; usd: number } | null;
   },
 ): TurnView {
   return {
@@ -673,6 +677,7 @@ function view(
     approximate: v.approximate,
     tierUnsized: v.tierUnsized,
     tierDetail: v.tierDetail,
+    oneHour: v.oneHour,
   };
 }
 

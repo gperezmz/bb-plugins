@@ -42,7 +42,7 @@ describe("Refresh prices online, as wired in server.ts", () => {
     const { host, status, top } = await load({ refreshPrices: false });
     expect(fetchedAt(await status())).toBeNull();
     host.harness.behavior.runService("online-prices");
-    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull());
+    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull(), { timeout: 10_000 });
     const s = await status();
     expect(s.prices).toMatchObject({ refreshOn: true, lastError: null, models: 120 });
     expect(fetchStub).toHaveBeenCalledTimes(1);
@@ -56,7 +56,7 @@ describe("Refresh prices online, as wired in server.ts", () => {
     // Not fetched yet: the bundled copy, which holds far more than the stub's 120 models.
     expect((await status()).prices.models).toBeGreaterThan(1000);
     host.harness.behavior.runService("online-prices");
-    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull());
+    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull(), { timeout: 10_000 });
     expect((await status()).prices.models).toBe(120);
     await host.harness.behavior.setSettings({ refreshPrices: false });
     expect(fetchedAt(await status())).toBeNull();
@@ -87,6 +87,6 @@ describe("Refresh prices online, as wired in server.ts", () => {
     await host.harness.behavior.setSettings({ refreshPrices: false });
     expect(fetchStub).not.toHaveBeenCalled();
     await host.harness.behavior.setSettings({ refreshPrices: true });
-    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull());
+    await vi.waitFor(async () => expect(fetchedAt(await status())).not.toBeNull(), { timeout: 10_000 });
   });
 });

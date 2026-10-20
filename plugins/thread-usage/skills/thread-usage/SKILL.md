@@ -15,8 +15,8 @@ Reading the numbers:
   request priced on its own prompt size. The cost has three amounts, `gateway`,
   `harness` and `estimate`; `gateway` and `harness` are always zero, so
   `estimate` is the total.
-- `pricesUpdatedAt` says when that list was last fetched; null means never, and
-  the bundled copy is in use.
+- `pricesUpdatedAt` says when that list was last fetched; null means never, or
+  that refresh is off, and the bundled copy is in use.
 - `unpriced` tokens have no price on models.dev. They are counted, not free, and
   a thread whose every token is unpriced leads with its token count.
 - Billing `subscription` means the plan is not billed per token: report the

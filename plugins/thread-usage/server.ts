@@ -10,7 +10,7 @@ import {
 import * as z from "zod/mini";
 import { PriceBook } from "./src/core/pricing";
 import { turnsCsv } from "./src/core/export";
-import { topText } from "./src/core/format";
+import { limitTopTrees, topText } from "./src/core/format";
 import { costTotal, figureTokenCount } from "./src/core/summary";
 import { hostContract } from "./src/host/contract";
 import { Engine, PANEL_LOG_TIMEOUT_MS, type ThreadDto } from "./src/server/engine";
@@ -511,8 +511,7 @@ export default async function plugin(bb: BbPluginApi) {
           async run(input) {
             await readSettings();
             const all = model.top(input.options.project ?? null, Date.now() - input.options.since);
-            // The limit applies to each list, so a full dollar ranking does not hide the Not priced one.
-            const trees = { priced: all.priced.slice(0, input.options.limit), notPriced: all.notPriced.slice(0, input.options.limit) };
+            const trees = limitTopTrees(all, input.options.limit);
             if (input.options.json === true) {
               return {
                 exitCode: 0,

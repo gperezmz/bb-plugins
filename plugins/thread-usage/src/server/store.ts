@@ -97,9 +97,10 @@ export const MIGRATIONS: string[] = [
    )`,
   `CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   `ALTER TABLE edges ADD COLUMN title_from_prompt INTEGER NOT NULL DEFAULT 0`,
-  // The gateway is no longer read: its rows, sweep state and price map go, and so does the stored
-  // LiteLLM and models.dev lists of before models.dev's tiers were kept.
-  `DROP TABLE gateway_requests`,
+  // The gateway is no longer read: its rows, sweep state and price map go, and so do the stored
+  // LiteLLM and models.dev lists of before models.dev's tiers were kept. The table is emptied
+  // rather than dropped, so a release that still reads it runs on this database.
+  `DELETE FROM gateway_requests`,
   `DELETE FROM meta WHERE key IN ('lastSweepAt', 'gatewayBanner', 'gatewayPrices', 'onlinePrices', 'modelsDevPrices', 'pricesRefreshError')`,
 ];
 

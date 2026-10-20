@@ -10,7 +10,7 @@ import { logEntry, MIN, T0, tokens, turnRecord } from "../core/fixtures";
 import { memoryStore, TEST_PRICES } from "./harness";
 
 describe("the migration that drops the gateway's rows", () => {
-  const dropAt = MIGRATIONS.findIndex((sql) => sql.startsWith("DROP TABLE gateway_requests"));
+  const dropAt = MIGRATIONS.findIndex((sql) => sql.startsWith("DELETE FROM gateway_requests"));
 
   it("deletes the stored gateway rows and what the sweep and the old price lists kept, and nothing else", () => {
     expect(dropAt).toBeGreaterThan(0);
@@ -24,7 +24,8 @@ describe("the migration that drops the gateway's rows", () => {
     const before = new Store(db as unknown as Db);
     before.putTurns("thr_a", [turnRecord({ turnId: "t1", startedAt: T0, completedAt: T0 + MIN, tokens: tokens({ input: 700, output: 5 }) })]);
     for (const sql of MIGRATIONS.slice(dropAt)) db.exec(sql);
-    expect(db.prepare(`SELECT name FROM sqlite_master WHERE name = 'gateway_requests'`).all()).toEqual([]);
+    // Emptied, not dropped: a release that still reads the table can run on this database.
+    expect(db.prepare(`SELECT count(*) AS n FROM gateway_requests`).get()).toEqual({ n: 0 });
     expect((db.prepare(`SELECT key FROM meta ORDER BY key`).all() as { key: string }[]).map((r) => r.key)).toEqual(["ledgerVersion", "refreshPricesDefaultOn"]);
     // The tokens bb's events supplied stay.
     expect(totalTokens(new Store(db as unknown as Db).getTurns("thr_a")[0]!.tokens)).toBe(705);

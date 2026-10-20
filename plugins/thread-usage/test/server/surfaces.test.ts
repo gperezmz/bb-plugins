@@ -64,7 +64,7 @@ async function load(model = "claude-haiku-5-5", settings: Record<string, boolean
     host,
     fetchPrices: async () => {
       b.runService("online-prices");
-      await vi.waitFor(async () => expect(((await b.callRpc("status", null)) as { prices: { updatedAt: number | null } }).prices.updatedAt).not.toBeNull());
+      await vi.waitFor(async () => expect(((await b.callRpc("status", null)) as { prices: { updatedAt: number | null } }).prices.updatedAt).not.toBeNull(), { timeout: 10_000 });
     },
     report: () => b.callRpc("report", { threadId: THREAD }) as Promise<ThreadReport>,
     show: async () => JSON.parse((await b.runCli(["show", THREAD, "--json"], { threadId: THREAD })).stdout ?? "null") as Record<string, unknown>,

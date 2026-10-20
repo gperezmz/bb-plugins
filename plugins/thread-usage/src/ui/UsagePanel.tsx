@@ -353,6 +353,12 @@ function TurnDetails({ turn, number, currency }: { turn: TurnView; number: numbe
       </dl>
       <TokenLegend tokens={turn.tokens} compact />
       {turn.tierDetail !== null ? <TierRequests detail={turn.tierDetail} currency={currency} /> : null}
+      {turn.oneHour !== null ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>1-hour cache writes, {formatCount(turn.oneHour.tokens)} tokens</span>
+          <span className="ml-auto tabular-nums">{formatUsd(turn.oneHour.usd, currency)}</span>
+        </div>
+      ) : null}
       {turn.subagents.length > 0 ? (
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">Subagents</div>
@@ -364,7 +370,7 @@ function TurnDetails({ turn, number, currency }: { turn: TurnView; number: numbe
                 <span className="text-muted-foreground">{s.model ?? ""}</span>
                 <span className="ml-auto tabular-nums">
                   {formatTokens(totalTokens(s.tokens))} tokens · {formatCount(s.requests)} req
-                  {s.costUsd !== null ? ` · ${formatUsd(s.costUsd, currency)}` : ""}
+                  {` · ${formatUsd(s.costUsd, currency)}`}
                 </span>
               </li>
             ))}
@@ -406,12 +412,6 @@ function TierRequests({ detail, currency }: { detail: TierDetail; currency: stri
         </span>
         <span className="ml-auto tabular-nums">{formatUsd(detail.untiered.usd, currency)}</span>
       </div>
-      {detail.oneHour !== null ? (
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          <span>1-hour cache writes, {formatCount(detail.oneHour.tokens)} tokens</span>
-          <span className="ml-auto tabular-nums">{formatUsd(detail.oneHour.usd, currency)}</span>
-        </div>
-      ) : null}
     </div>
   );
 }

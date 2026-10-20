@@ -9,6 +9,7 @@ import {
   tierHint,
   tierMark,
   tierSummary,
+  limitTopTrees,
   topText,
   treeContext,
   treeTags,
@@ -89,7 +90,6 @@ describe("tier wording", () => {
     requests,
     tiered: sizes.map((tierAbove, i) => ({ number: i + 1, prompt: tierAbove + 1, usd: 1, tierAbove })),
     untiered: { count: requests - sizes.length, usd: 0 },
-    oneHour: null,
   });
 
   it("marks a request with the size its tier starts above", () => {
@@ -135,6 +135,16 @@ describe("ranked tree rows", () => {
       "2 hours ago",
     ]);
     expect(treeContext({ descendants: 4, lastActivityAt: null }, { projectName: null, countThreads: false, now })).toEqual([]);
+  });
+});
+
+describe("limitTopTrees", () => {
+  it("cuts each list to the limit on its own, so a full dollar ranking keeps the Not priced list", () => {
+    const t = (n: number) => ({ threadId: `thr_${n}` }) as TopTree;
+    const cut = limitTopTrees({ priced: [t(1), t(2), t(3)], notPriced: [t(4), t(5)] }, 2);
+    expect(cut.priced.map((x) => x.threadId)).toEqual(["thr_1", "thr_2"]);
+    expect(cut.notPriced.map((x) => x.threadId)).toEqual(["thr_4", "thr_5"]);
+    expect(limitTopTrees({ priced: [t(1), t(2)], notPriced: [t(4), t(5)] }, 1)).toEqual({ priced: [t(1)], notPriced: [t(4)] });
   });
 });
 

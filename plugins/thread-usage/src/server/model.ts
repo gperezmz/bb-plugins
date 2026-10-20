@@ -344,7 +344,7 @@ export class UsageModel {
       });
     }
     if (fig.assumedRates) {
-      notes.push({ id: "approximate", tone: "info", text: "Some prices are approximate: a cache rate or a 1-hour cache-write rate that models.dev does not publish had to be assumed, or one 1-hour price stands for requests in different tiers" });
+      notes.push({ id: "approximate", tone: "info", text: "Some prices are approximate: a cache rate or a 1-hour cache-write rate that models.dev does not publish had to be assumed, or one 1-hour price stands for requests charged at different rates" });
     }
     if (self.edge?.status === "active") {
       notes.push({

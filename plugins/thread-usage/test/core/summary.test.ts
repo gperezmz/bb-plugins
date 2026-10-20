@@ -36,23 +36,23 @@ const TEST_MODEL: ModelPrice = { input: 1e-6, output: 1e-5, cacheRead: 1e-7, cac
 const bookOf = (models: Record<string, ModelPrice>) => new PriceBook({ models, origin: "models.dev" });
 const prices = bookOf({ "test-model": TEST_MODEL });
 // Claude Haiku 5.5 as models.dev published it on 2026-10-19: one context tier, over 100,000 tokens.
-const haikuPrices = bookOf(
-  trimModelsDev({
-    anthropic: {
-      models: {
-        "claude-haiku-5-5": {
-          cost: {
-            input: 0.1,
-            output: 0.5,
-            cache_read: 0.01,
-            cache_write: 0.125,
-            tiers: [{ input: 0.5, output: 2.5, cache_read: 0.05, cache_write: 0.625, tier: { type: "context", size: 100_000 } }],
-          },
+const HAIKU_PUBLISHED = {
+  anthropic: {
+    models: {
+      "claude-haiku-5-5": {
+        cost: {
+          input: 0.1,
+          output: 0.5,
+          cache_read: 0.01,
+          cache_write: 0.125,
+          tiers: [{ input: 0.5, output: 2.5, cache_read: 0.05, cache_write: 0.625, tier: { type: "context", size: 100_000 } }],
         },
       },
     },
-  }),
-);
+  },
+};
+const haikuModel = (): ModelPrice => trimModelsDev(HAIKU_PUBLISHED)["claude-haiku-5-5"]!;
+const haikuPrices = bookOf({ "claude-haiku-5-5": haikuModel() });
 const NO_LOGS: MergedLogs = { history: [], gapFill: [], subagent: [], cacheWrites: [] };
 const NOW = T0 + 60 * MIN;
 
@@ -185,8 +185,8 @@ describe("a turn bb recorded is priced request by request", () => {
       requests: 2,
       tiered: [{ number: 2, prompt: 100_001, usd: expect.closeTo(tiered, 12), tierAbove: 100_000 }],
       untiered: { count: 1, usd: expect.closeTo(plain, 12) },
-      oneHour: null,
     });
+    expect(u.turns[0]!.oneHour).toBeNull();
     expect(u.figure.unsizedTurns).toBe(0);
   });
 
@@ -220,7 +220,7 @@ describe("a turn bb recorded is priced request by request", () => {
     // Half of the logged cache writes were 1-hour ones, so half of the turn's 1,000 are.
     const logs = mergeLogEntries([logEntry({ key: "w", ts: T0 + MIN + SEC, model: "claude-haiku-5-5", tokens: tokens({ cacheWrite: 1_000, cacheWrite1h: 500 }) })], ctx());
     const u = threadUsage({ turns: [turnOf([{ input: 120_000, cacheWrite: 1_000 }])], logs, prices: haikuPrices, billing: "api-key", now: NOW });
-    expect(u.turns[0]!.tierDetail!.oneHour).toEqual({ tokens: 500, usd: expect.closeTo(500 * 1.0e-6, 12) });
+    expect(u.turns[0]!.oneHour).toEqual({ tokens: 500, usd: expect.closeTo(500 * 1.0e-6, 12) });
   });
 
   it("marks a turn approximate when its requests were charged at more than one rate and it has 1-hour writes", () => {
@@ -264,6 +264,35 @@ describe("requests a log records are priced on their own", () => {
     expect(u.figure.cost.estimate).toBeCloseTo(120_000 * 0.5e-6 + 10 * 2.5e-6 + 40_000 * 0.1e-6 + 10 * 0.5e-6, 12);
     expect(u.turns[0]!.tierDetail!.tiered.map((r) => r.number)).toEqual([1]);
     expect(u.turns[0]!.approximate).toBe(false);
+  });
+});
+
+describe("log history and mixed-model gaps are priced request by request", () => {
+  const big = tokens({ input: 120_000, output: 10 });
+  const baseCost = 120_000 * 0.1e-6 + 10 * 0.5e-6;
+  const tierCost = 120_000 * 0.5e-6 + 10 * 2.5e-6;
+
+  it("charges a history request over the tier at the tier's rates", () => {
+    const logs = mergeLogEntries(
+      [logEntry({ key: "h", ts: T0 - 30 * MIN, model: "claude-haiku-5-5", tokens: big })],
+      ctx({ firstSeenAt: T0, historyBackfilled: true }),
+    );
+    const u = threadUsage({ turns: [], logs, prices: haikuPrices, billing: "api-key", now: NOW, historyBefore: T0 });
+    expect(u.figure.cost.estimate).toBeCloseTo(tierCost, 12);
+    expect(u.figure.cost.estimate).not.toBeCloseTo(baseCost, 8);
+  });
+
+  it("charges each request of a gap over several models on its own size", () => {
+    const record = recorded("t1", "claude-haiku-5-5", [{ input: 1 }], { partial: true });
+    const logs = mergeLogEntries(
+      [
+        logEntry({ key: "a", ts: T0 + MIN + SEC, model: "claude-haiku-5-5", tokens: big }),
+        logEntry({ key: "b", ts: T0 + MIN + 2 * SEC, model: "test-model", tokens: tokens({ input: 1_000 }) }),
+      ],
+      ctx({ partialGaps: [{ fromMs: T0, toMs: T0 + 3 * MIN }] }),
+    );
+    const u = threadUsage({ turns: [record], logs, prices: bookOf({ "test-model": TEST_MODEL, "claude-haiku-5-5": haikuModel() }), billing: "api-key", now: NOW });
+    expect(u.figure.cost.estimate).toBeCloseTo(tierCost + 1_000 * 1e-6, 12);
   });
 });
 

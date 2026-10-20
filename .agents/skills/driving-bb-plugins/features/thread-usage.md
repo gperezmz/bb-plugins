@@ -4,9 +4,9 @@ Shows what a thread and every thread it spawned cost, in tokens and dollars,
 and how long it took. A coin in the thread header opens a Usage tab with the
 tree's tokens, cost by model, cost per turn and the child threads; a Thread
 usage page ranks the costliest thread trees; `bb thread-usage` and an agent
-tool answer the same from the CLI. Cost comes from a LiteLLM gateway when one
-is set, else the harness, else tokens times list price, marked as an
-estimate.
+tool answer the same from the CLI. Cost is an estimate: tokens times the
+price models.dev lists, each request priced on its own prompt size; tokens of a
+model models.dev does not list are counted and not priced.
 
 ## Sub-features
 
@@ -30,7 +30,7 @@ estimate.
   `radiogroup "Period"` (`7 days`, `30 days`).
 - Settings → Installed plugins → Thread Usage, at
   `/settings/plugins/thread-usage`: the plugin's settings and the
-  `Gateway, history and export` section.
+  `History, prices and export` section.
 - CLI: `bb thread-usage show|top`; RPC `report {threadId}`,
   `refresh {threadId}`, `top {projectId, sinceDays}`, `status`.
 
