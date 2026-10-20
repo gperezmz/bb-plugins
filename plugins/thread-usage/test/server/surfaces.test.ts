@@ -39,15 +39,21 @@ const events = (model: string) => [
 const EXPECTED = 40_000 * 0.1e-6 + 100 * 0.5e-6 + 20_000 * 0.5e-6 + 1_000 * 2.5e-6 + 70_000 * 0.05e-6 + 10_001 * 0.625e-6;
 
 let started_: FakePluginHost | null = null;
-async function load(model = "claude-haiku-5-5", settings: Record<string, boolean> = {}) {
+/** `others` are further threads, each with the model its turn ran on. */
+async function load(model = "claude-haiku-5-5", settings: Record<string, boolean> = {}, others: Record<string, string> = {}) {
   vi.stubGlobal("fetch", fetchStub);
   fetchStub.mockClear();
-  const dto = { id: THREAD, providerId: "claude-code", title: "Surfaces", status: "idle", createdAt: T0 };
+  const models: Record<string, string> = { [THREAD]: model, ...others };
+  const dtos = Object.keys(models).map((id) => ({ id, providerId: "claude-code", title: id === THREAD ? "Surfaces" : id, status: "idle", createdAt: T0 }));
   const host = createFakePluginHost({
     pluginId: "thread-usage",
     settings,
     sdk: {
-      threads: { get: async () => dto, list: async () => [dto], events: { list: async () => events(model) } },
+      threads: {
+        get: async ({ threadId }: { threadId: string }) => dtos.find((d) => d.id === threadId),
+        list: async () => dtos,
+        events: { list: async ({ threadId }: { threadId: string }) => events(models[threadId] ?? model) },
+      },
       projects: { list: async () => [] },
     },
   });
@@ -158,5 +164,19 @@ describe("a model models.dev does not list is unpriced, not free", () => {
     expect(top.notPriced).toEqual([expect.objectContaining({ threadId: THREAD, tokens: 141_101, usd: 0 })]);
     const text = (await started_!.harness.behavior.runCli(["top", "--since", "3650d"], { threadId: THREAD })).stdout ?? "";
     expect(text).toMatch(/^Not priced\n 1\. +141k tokens +Surfaces .*\n +.*not priced$/);
+  });
+});
+
+describe("the limit of `bb thread-usage top`", () => {
+  it("applies to each list, so a full dollar ranking does not hide the Not priced list", async () => {
+    const t = await load("claude-haiku-5-5", {}, { thr_two: "claude-haiku-5-5", thr_odd1: "my-internal-model", thr_odd2: "my-internal-model" });
+    await t.fetchPrices();
+    // Opening each thread reads its events into the ledger.
+    for (const id of [THREAD, "thr_two", "thr_odd1", "thr_odd2"]) await started_!.harness.behavior.runCli(["show", id, "--json"], { threadId: id });
+    const all = await started_!.harness.behavior.runCli(["top", "--json", "--since", "3650d"], { threadId: THREAD });
+    const full = JSON.parse(all.stdout ?? "null") as { trees: unknown[]; notPriced: unknown[] };
+    expect([full.trees.length, full.notPriced.length]).toEqual([2, 2]);
+    const limited = JSON.parse((await started_!.harness.behavior.runCli(["top", "--json", "--since", "3650d", "--limit", "1"], { threadId: THREAD })).stdout ?? "null") as { trees: unknown[]; notPriced: unknown[] };
+    expect([limited.trees.length, limited.notPriced.length]).toEqual([1, 1]);
   });
 });

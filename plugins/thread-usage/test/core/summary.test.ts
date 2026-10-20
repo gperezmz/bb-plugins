@@ -434,6 +434,16 @@ describe("headline wording", () => {
   });
 });
 
+describe("a cost a harness wrote", () => {
+  it("is ignored: an entry stored by an earlier version with a cost is priced from its tokens", () => {
+    const stored = { ...logEntry({ key: "legacy", agentId: "agent-a", ts: t1.startedAt! + SEC, model: "test-model", tokens: tokens({ input: 1_000_000 }) }), costUsd: 42 };
+    const logs = mergeLogEntries([stored], ctx());
+    const u = threadUsage({ turns: [t1], logs, prices, billing: "api-key", now: NOW });
+    expect(u.turns[0]!.subagents[0]!.costUsd).toBeCloseTo(1, 10);
+    expect(costTotal(u.figure.cost)).toBeLessThan(2);
+  });
+});
+
 describe("the report's cost amounts", () => {
   it("keeps gateway and harness at zero and puts every dollar in estimate", () => {
     const u = threadUsage({ turns: [t1, t2], logs: NO_LOGS, prices, billing: "api-key", now: NOW });
