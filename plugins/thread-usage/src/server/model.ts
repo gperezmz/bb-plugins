@@ -1,19 +1,15 @@
 /**
- * Reads stored ledger, gateway rows and log entries and computes what every
- * surface shows. Tree totals are computed when read, never stored,
+ * Reads the stored ledger and log entries and computes what every surface
+ * shows. Tree totals are computed when read, never stored,
  * because a parent can change.
  */
 import {
-  attributionState,
   billingMode,
   billingSettingKey,
-  describeState,
   isCursorProvider,
-  routingFrom,
-  SETUP_SNIPPETS,
-  type AttributionState,
+  routedThroughAccountPool,
   type BillingMode,
-} from "../core/attribution";
+} from "../core/billing";
 import {
   ancestorIds,
   treeOf,
@@ -29,16 +25,17 @@ import type {
   ChipView,
   FigureView,
   ForkRow,
-  GatewayBanner,
   PriceSourceInfo,
   PricesInfo,
   PricesMeta,
   QualityNote,
   ThreadReport,
   TopTree,
+  TopTrees,
   TreeRow,
 } from "../core/report-types";
 import {
+  allTokensUnpriced,
   costTotal,
   figureTokenCount,
   hasAnyUsage,
@@ -55,24 +52,14 @@ export interface ModelDeps {
   store: Store;
   settings: () => UsageSettings;
   prices: () => PriceBook;
-  /**
-   * List prices (overrides and snapshot, without the gateway's map), for
-   * figures shown as a list-price equivalent.
-   */
-  listPrices: () => PriceBook;
   pricesMeta: () => PricesMeta;
   now: () => number;
-  gatewayBanner: () => GatewayBanner | null;
-  /** True when the gateway's `/model/info` price map is loaded. */
-  gatewayPricesUsed: () => boolean;
 }
 
 export interface ThreadComputed {
   threadId: string;
   edge: EdgeExtra | null;
-  state: AttributionState;
   billing: BillingMode;
-  routingHost: string | null;
   usage: ThreadUsage;
   thread: ThreadState | null;
 }
@@ -125,27 +112,11 @@ export class UsageModel {
     const edge = (store.getEdge(threadId) ?? null) as EdgeExtra | null;
     const thread = store.getThread(threadId);
     const turns = store.getTurns(threadId);
-    // Stored rows stay on disk, but with the adapter off cost is estimated (`no-adapter`).
-    const rows = settings.adapter === "litellm" ? store.getGatewayRows(threadId) : [];
     const entries = settings.readLogs ? store.getLogEntries(threadId) : [];
     const providerId = edge?.providerId ?? null;
-    const routing = routingFrom(thread?.cursor.routing ?? [], settings.gatewayUrl || null);
-    const hasOutput = turns.some((t) => t.tokens.output > 0);
-    const state = attributionState({
-      adapter: settings.adapter,
-      providerId,
-      routing,
-      hasRows: rows.length > 0,
-      hasTurns: turns.some((t) => t.kind === "turn"),
-      hasOutputTokens: hasOutput,
-      // A thread that is not running and never reported going idle counts as idle since it was last seen.
-      idleSince:
-        edge?.status === "active" ? null : (edge?.idleSince ?? thread?.lastActivityAt ?? thread?.firstSeenAt ?? 0),
-      now,
-    });
     const billing = billingMode({
-      state,
       setting: settings.billing[billingSettingKey(providerId)],
+      accountPool: routedThroughAccountPool(thread?.cursor.routing ?? []),
       // A thread that never reported a rate-limit kind takes its provider's latest one.
       rateLimitKind:
         thread?.cursor.rateLimitKind ??
@@ -157,28 +128,17 @@ export class UsageModel {
       historyBackfilled: thread?.historyBackfilled ?? false,
       partialGaps: (thread?.gaps ?? []).filter((g) => g.resolution === "partial"),
       forkCreatedAt: isFork ? (edge?.createdAt ?? null) : null,
-      harnessCost: providerId === "pi",
     });
     const usage = threadUsage({
       turns,
-      rows,
       logs,
-      // A subscription's dollars are a list-price equivalent, whatever the gateway charges.
-      prices: billing === "subscription" ? this.deps.listPrices() : this.deps.prices(),
+      prices: this.deps.prices(),
       billing,
       now,
       historyBefore: thread?.firstSeenAt ?? null,
     });
     void index;
-    return {
-      threadId,
-      edge,
-      state,
-      billing,
-      routingHost: routing.kind === "other-host" ? routing.host : null,
-      usage,
-      thread,
-    };
+    return { threadId, edge, billing, usage, thread };
   }
 
   treeFigure(
@@ -204,7 +164,7 @@ export class UsageModel {
   /** How fresh the prices behind estimates are, for the panels, the CLI and the agent tool. */
   pricesInfo(): PricesInfo {
     const meta = this.deps.pricesMeta();
-    const updatedAt = meta.litellmAt;
+    const updatedAt = meta.modelsDevAt;
     return {
       updatedAt,
       bundledDate: meta.bundledDate,
@@ -214,21 +174,15 @@ export class UsageModel {
     };
   }
 
-  /** Per model of a figure's By-model table: which list priced it, and when that list was fetched. */
+  /** Per model of a figure's By-model table: which models.dev copy priced it, and when that list was fetched. */
   private pricesReport(figure: Figure): ThreadReport["prices"] {
     const meta = this.deps.pricesMeta();
-    // A figure of subscription use only is priced from the public lists, not the gateway's map.
-    const subscriptionOnly = (["gateway", "api-key", "unknown"] as const).every(
-      (mode) => figure.byBilling[mode].tokens === 0 && figure.byBilling[mode].usd === 0,
-    );
-    const book = subscriptionOnly ? this.deps.listPrices() : this.deps.prices();
+    const book = this.deps.prices();
     const models: Record<string, PriceSourceInfo> = {};
     for (const line of figure.byModel) {
       const found = book.lookup(line.model);
       if (found === null) continue;
-      const fetchedAt =
-        found.origin === "litellm" ? meta.litellmAt : found.origin === "models.dev" ? meta.modelsDevAt : null;
-      models[line.model] = { source: found.origin, as: found.model, fetchedAt };
+      models[line.model] = { source: found.origin, as: found.model, fetchedAt: found.origin === "models.dev" ? meta.modelsDevAt : null };
     }
     return { ...this.pricesInfo(), models };
   }
@@ -271,7 +225,6 @@ export class UsageModel {
           hidden: node.edge.hidden,
           archived: node.edge.archivedAt !== null,
           deleted: node.edge.deletedAt !== null,
-          state: computed.state,
           billing: computed.billing,
           ownChip: ownHeadline.chip,
           ownUsd: costTotal(own.cost),
@@ -321,18 +274,12 @@ export class UsageModel {
       treeTotal: this.view(treeFig),
       descendants,
       hiddenDescendants,
-      state: self.state,
       billing: self.billing,
-      stateMessage: self.state === "untagged" && self.billing === "subscription" ? null : describeState(self.state, {
-        host: self.routingHost,
-        providerId: self.edge?.providerId ?? null,
-      }),
       firstSeenAt: self.thread?.firstSeenAt ?? null,
       turns: self.usage.turns,
       tree: rows,
       forks,
       quality: this.quality(self, index, treeFig),
-      gatewayBanner: settings.adapter === "litellm" ? this.deps.gatewayBanner() : null,
       budget:
         crossing === null || settings.warnAbove === null
           ? null
@@ -373,40 +320,12 @@ export class UsageModel {
     }
     if (fig.unpricedModels.length > 0 || treeFig.unpricedModels.length > 0) {
       const models = [...new Set([...fig.unpricedModels, ...treeFig.unpricedModels])];
+      const one = models.length === 1;
       notes.push({
         id: "unpriced",
         tone: "warn",
-        text: `No price for ${models.join(", ")}: tokens are counted but not priced. Add a price override in settings.`,
+        text: `${models.join(", ")} ${one ? "has" : "have"} no price: ${one ? "its" : "their"} tokens are counted and not priced. A price would come from models.dev, which does not list ${one ? "it" : "them"}.`,
       });
-    }
-    // A subscription thread never reaches a gateway, so "not tagged" is noise there.
-    if (self.state === "untagged" && providerId !== null && self.billing !== "subscription") {
-      const snippet =
-        providerId === "codex" ? SETUP_SNIPPETS.codex : providerId === "pi" ? SETUP_SNIPPETS.pi : null;
-      notes.push({
-        id: "untagged",
-        // Claude Code history from before tagging is expected, not a fault.
-        tone: providerId === "claude-code" ? "info" : "warn",
-        text:
-          describeState("untagged", { providerId }) ??
-          "Requests are not tagged",
-        ...(snippet === null
-          ? {}
-          : { snippet: { label: snippet.file, code: snippet.snippet } }),
-      });
-    }
-    if (self.state === "account-pool" || self.state === "not-routed") {
-      notes.push({
-        id: "routing",
-        tone: "info",
-        text: describeState(self.state, { host: self.routingHost }) ?? "",
-      });
-    }
-    if (self.state === "pending") {
-      notes.push({ id: "pending", tone: "info", text: "Waiting for gateway spend… it lands 2–15 s after a request" });
-    }
-    if (self.state === "unsupported") {
-      notes.push({ id: "cursor", tone: "warn", text: "No token or cost data for Cursor: its requests never reach bb or a gateway" });
     }
     if (self.billing === "unknown" && figureTokenCount(fig) > 0) {
       notes.push({ id: "billing-unknown", tone: "info", text: "Billing unknown: set it in settings. Cost is shown as a list-price estimate." });
@@ -414,43 +333,24 @@ export class UsageModel {
     if (self.billing === "subscription") {
       notes.push({ id: "subscription", tone: "info", text: "Subscription plan: tokens are what counts; dollars are a list-price equivalent" });
     }
-    if (self.usage.reconciliation !== null) {
-      const tokens = formatTokens(self.usage.reconciliation.untrackedTokens);
-      notes.push({
-        id: "untracked",
-        tone: "info",
-        text:
-          settings.readLogs
-            ? `${tokens} gateway tokens in requests outside bb's and the logs' view`
-            : `${tokens} gateway tokens made by subagents or tools outside bb's view (turn on Read harness logs to see them)`,
-      });
-    }
-    if (providerId === "claude-code" && !settings.readLogs && self.state !== "tagged") {
+    if (providerId === "claude-code" && !settings.readLogs) {
       notes.push({ id: "subagents-off", tone: "info", text: "Claude Code subagent tokens are not counted: Read harness logs is off" });
     }
-    if (fig.approximate) {
-      notes.push({ id: "approximate", tone: "info", text: "Some prices are approximate: a long-context tier or cache rate needed per-request sizes bb does not record" });
+    if (fig.unsizedTurns > 0) {
+      notes.push({
+        id: "tier-unsized",
+        tone: "info",
+        text: `Some turns have no per-request prompt sizes, because they were stored as a sum, filled from bb's running total, or are an opening balance, so a long-context tier cannot be applied and their dollars may be low. Turns whose per-request sizes are known are priced per request.${providerId === "claude-code" ? " bb's Claude Code adapter reports one usage event for a whole turn, so its turns have none." : ""}`,
+      });
     }
-    if (settings.priceOverridesError !== null) {
-      notes.push({ id: "overrides", tone: "warn", text: `Price overrides are ignored: ${settings.priceOverridesError}` });
+    if (fig.assumedRates) {
+      notes.push({ id: "approximate", tone: "info", text: "Some prices are approximate: a cache rate or a 1-hour cache-write rate that models.dev does not publish had to be assumed, or one 1-hour price stands for requests charged at different rates" });
     }
     if (self.edge?.status === "active") {
       notes.push({
         id: "running",
         tone: "info",
         text: "A turn is running: harnesses report its tokens when it ends, so it is not counted yet",
-      });
-    }
-    if (
-      settings.adapter === "litellm" &&
-      self.billing !== "subscription" &&
-      fig.cost.estimate > 0 &&
-      this.deps.gatewayPricesUsed()
-    ) {
-      notes.push({
-        id: "gateway-prices",
-        tone: "info",
-        text: "Estimates use the gateway's own price map where it has the model, so they can differ from list prices",
       });
     }
     notes.push({ id: "lines", tone: "info", text: "Lines changed through shell commands are not counted" });
@@ -496,7 +396,6 @@ export class UsageModel {
       chip: h.chip,
       headline: h,
       tokens: figure.tokens,
-      untrackedTokens: figure.untrackedTokens,
       descendants,
       hiddenDescendants,
       turns: figure.turns,
@@ -505,18 +404,24 @@ export class UsageModel {
     };
   }
 
-  /** Trees (roots with no parent) ordered by billed dollars, then tokens. */
-  top(projectId: string | null, sinceMs: number): TopTree[] {
+  /**
+   * Trees (roots with no parent) with usage: those with priced tokens ordered
+   * by dollars, subscription list price included, then tokens; apart from
+   * them, those whose every token is unpriced, ordered by tokens. A tree with
+   * no tokens is left out.
+   */
+  top(projectId: string | null, sinceMs: number): TopTrees {
     const settings = this.deps.settings();
     const index = this.index();
-    const out: TopTree[] = [];
+    const priced: TopTree[] = [];
+    const notPriced: TopTree[] = [];
     for (const edge of index.byId.values()) {
       if (edge.parentThreadId !== null && index.byId.has(edge.parentThreadId) && edge.sourceThreadId === null) {
         continue;
       }
       if (projectId !== null && edge.projectId !== projectId) continue;
       const { figure, tree } = this.treeFigure(edge.threadId, index);
-      if (!hasAnyUsage(figure)) continue;
+      if (figureTokenCount(figure) === 0 && costTotal(figure.cost) === 0) continue;
       let last: number | null = null;
       let descendants = 0;
       const walk = (node: TreeNode) => {
@@ -529,7 +434,7 @@ export class UsageModel {
       walk(tree);
       if (last === null || (last as number) < sinceMs) continue;
       const h = headline(figure, settings.currency);
-      out.push({
+      (allTokensUnpriced(figure) ? notPriced : priced).push({
         threadId: edge.threadId,
         title: edge.title ?? edge.threadId,
         providerId: edge.providerId,
@@ -544,7 +449,10 @@ export class UsageModel {
         billing: h.billing,
       });
     }
-    return out.sort((a, b) => b.usd - a.usd || b.tokens - a.tokens || a.threadId.localeCompare(b.threadId));
+    return {
+      priced: priced.sort((a, b) => b.usd - a.usd || b.tokens - a.tokens || a.threadId.localeCompare(b.threadId)),
+      notPriced: notPriced.sort((a, b) => b.tokens - a.tokens || a.threadId.localeCompare(b.threadId)),
+    };
   }
 
   /** Tree billed totals of the thread and each ancestor, for budget checks. */
@@ -569,8 +477,8 @@ export class UsageModel {
       ...(view.headline.secondary === null ? [] : [view.headline.secondary]),
       ...(view.headline.unpricedNote === null ? [] : [view.headline.unpricedNote]),
       `Tokens: ${formatTokens(figureTokenCount(f))} (in ${formatTokens(f.tokens.input)}, out ${formatTokens(f.tokens.output)}, cache read ${formatTokens(f.tokens.cacheRead)}, cache write ${formatTokens(f.tokens.cacheWrite)})`,
-      `Turns: ${f.turns}  Wall time: ${formatDuration(f.wallMs)}  API time: ${f.apiMs === null ? "—" : formatDuration(f.apiMs)}  Lines: +${f.linesAdded} −${f.linesRemoved}`,
-      `Billing: ${report.billing}  Attribution: ${report.state}`,
+      `Turns: ${f.turns}  Wall time: ${formatDuration(f.wallMs)}  Lines: +${f.linesAdded} −${f.linesRemoved}`,
+      `Billing: ${report.billing}`,
     ];
     return lines.join("\n");
   }

@@ -3,7 +3,7 @@
  * a `{"type":"session","id":<sessionId>}` header; each assistant turn is a
  * `{"type":"message","id","timestamp","message":{"role":"assistant","model",
  * "usage":{input,output,cacheRead,cacheWrite,reasoning?,cacheWrite1h?,cost}}}`
- * line. pi prices the request itself, so `costUsd` is `usage.cost.total`.
+ * line. The cost pi writes on the line is not read: only tokens are.
  */
 import { join } from "node:path";
 import type { LogEntry } from "./contract.js";
@@ -40,7 +40,7 @@ export async function locatePiSession(
 }
 
 /** Names {@link toEntry} in the host's log cache: change it when `toEntry` changes, so cached entries are read again. */
-const PI_PARSER = "pi@1";
+const PI_PARSER = "pi@2";
 
 export async function parsePiFile(
   path: string,
@@ -68,16 +68,14 @@ function toEntry(value: Record<string, unknown>, lineNo: number, sessionId: stri
     cacheWrite1h: num(usage.cacheWrite1h),
     reasoning: num(usage.reasoning),
   };
-  const total = rec(usage.cost).total;
-  const costUsd = typeof total === "number" && Number.isFinite(total) ? total : null;
   // Aborted turns are logged with all-zero usage; they carry nothing to count.
-  if (Object.values(tokens).every((n) => n === 0) && !costUsd) return null;
+  if (Object.values(tokens).every((n) => n === 0)) return null;
 
   const ts = toMs(value.timestamp) ?? toMs(message.timestamp);
   if (ts === null) return null;
 
   const key = str(value.id) ?? `${sessionId}:${lineNo}`;
-  return { key, sessionId, agentId: null, ts, model: str(message.model), tokens, costUsd };
+  return { key, sessionId, agentId: null, ts, model: str(message.model), tokens };
 }
 
 export async function readPiSession(

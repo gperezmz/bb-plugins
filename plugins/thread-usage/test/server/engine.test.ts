@@ -4,7 +4,6 @@ import type { LedgerEvent } from "../../src/core/ledger";
 import { costTotal } from "../../src/core/summary";
 import { totalTokens } from "../../src/core/tokens";
 import { CATCH_UP_DELAY_MS, Engine, EVENTS_PAGE, REFRESH_CONCURRENCY, type EngineDeps, type ThreadDto } from "../../src/server/engine";
-import { startFakeLiteLlm, type FakeLiteLlm } from "../fake-litellm.mjs";
 import {
   claudeBreakdown as cb,
   accepted,
@@ -76,7 +75,6 @@ function rig(raw: Record<string, unknown> = {}): Rig {
       );
       return { entries, nextOffset: null, sessionsFound: input.sessionIds };
     },
-    fetch,
     publish: (channel, payload) => published.push({ channel, payload }),
     log: { info() {}, warn() {}, error() {} },
   };
@@ -161,6 +159,27 @@ describe("children of a deleted thread (scenario 12)", () => {
   });
 });
 
+describe("per-request counts by harness", () => {
+  it("keeps a turn's requests for a harness that reports one usage event per request, and none for Claude Code, which reports one per turn", async () => {
+    const r = rig();
+    r.store.upsertEdge({ threadId: "thr_cx", providerId: "codex" }, T0);
+    r.store.upsertEdge({ threadId: "thr_cc", providerId: "claude-code" }, T0);
+    for (const id of ["thr_cx", "thr_cc"]) {
+      r.events.set(id, turns(1, 1, T0, 1000));
+      await r.engine.catchUp(id);
+    }
+    expect(r.store.getTurns("thr_cx")[0]!.requests).toEqual([{ input: 1000, output: 0, cacheRead: 0, cacheWrite: 0 }]);
+    expect(r.store.getTurns("thr_cc")[0]!.requests).toBeUndefined();
+  });
+
+  it("keeps none while the thread's provider is not known yet", async () => {
+    const r = rig();
+    r.events.set("thr_unknown", turns(1, 1, T0, 1000));
+    await r.engine.catchUp("thr_unknown");
+    expect(r.store.getTurns("thr_unknown")[0]!.requests).toBeUndefined();
+  });
+});
+
 describe("forks (scenario 11)", () => {
   it("skips the source's events copied into a fork, which keep their original times", async () => {
     const r = rig();
@@ -192,8 +211,8 @@ describe("history backfill and offline machines (scenarios 8, 9)", () => {
     ]);
     r.clock.now = T0;
     r.logs.entries = [
-      { key: "a", sessionId: "sess-a", agentId: null, ts: T0 - 50 * MIN, model: "test-model", tokens: tokens({ input: 700, output: 80 }), costUsd: null },
-      { key: "b", sessionId: "sess-a", agentId: null, ts: T0 - 20 * MIN, model: "test-model", tokens: tokens({ input: 10, output: 1 }), costUsd: null },
+      { key: "a", sessionId: "sess-a", agentId: null, ts: T0 - 50 * MIN, model: "test-model", tokens: tokens({ input: 700, output: 80 })},
+      { key: "b", sessionId: "sess-a", agentId: null, ts: T0 - 20 * MIN, model: "test-model", tokens: tokens({ input: 10, output: 1 })},
     ];
     return r;
   };
@@ -257,91 +276,37 @@ describe("deletion (scenario 12)", () => {
   });
 });
 
-describe("gateway sweep", () => {
-  let fake: FakeLiteLlm | null = null;
-  afterEach(async () => {
-    await fake?.close();
-    fake = null;
-  });
-
-  const gatewayRig = async (key = "sk-read", warnAbove = 0) => {
-    fake = await startFakeLiteLlm({ key: "sk-read" });
-    const r = rig({ adapter: "litellm", gatewayUrl: fake.url, readKey: key, warnAbove });
-    r.store.upsertEdge({ threadId: "thr_gw", providerId: "claude-code", status: "idle" }, T0);
-    r.events.set("thr_gw", turns(1, 1, T0, 1000));
-    await r.engine.catchUp("thr_gw");
-    fake.setRows([
-      { request_id: "g1", session_id: "bb-thr_gw", startTime: new Date(T0 + SEC).toISOString(), spend: 0.1, request_duration_ms: 900 },
-      // A row for a thread this server does not know is not stored.
-      { request_id: "g-other", session_id: "bb-thr_unknown", startTime: new Date(T0 + SEC).toISOString(), spend: 5 },
-    ]);
+describe("budget crossings", () => {
+  /** A thread with one turn of 1,000,000 input tokens: $1 at test-model's price. */
+  const budgetRig = async (warnAbove: number) => {
+    const r = rig({ warnAbove });
+    r.store.upsertEdge({ threadId: "thr_b", providerId: "claude-code", status: "idle" }, T0);
+    r.events.set("thr_b", turns(1, 1, T0, 1_000_000));
     return r;
   };
 
-  it("stores rows for known threads only; the thread becomes tagged with gateway cost", async () => {
-    const r = await gatewayRig();
-    await r.engine.sweep();
-    expect(r.store.getGatewayRows("thr_gw").map((x) => x.requestId)).toEqual(["g1"]);
-    expect(r.store.getGatewayRows("thr_unknown")).toEqual([]);
-    const report = r.model.report("thr_gw");
-    expect(report.state).toBe("tagged");
-    expect(report.thread.figure.cost.gateway).toBeCloseTo(0.1, 10);
-    expect(r.store.getMeta("gatewayBanner")).toBeNull();
-  });
-
-  it("scenario 20: a failed sweep sets the banner and keeps stored gateway figures; new turns are estimated", async () => {
-    const r = await gatewayRig();
-    await r.engine.sweep();
-    fake!.setMode("down");
-    r.clock.now += MIN;
-    await r.engine.sweep();
-    expect(r.store.getMeta("gatewayBanner")).toMatchObject({ check: "reachable" });
-    r.events.get("thr_gw")!.push(...turns(10, 1, T0 + 30 * MIN, 1_000_000));
-    await r.engine.catchUp("thr_gw");
-    const report = r.model.report("thr_gw");
-    expect(report.state).toBe("tagged");
-    expect(report.gatewayBanner).toMatchObject({ check: "reachable" });
-    expect(report.thread.figure.cost.gateway).toBeCloseTo(0.1, 10);
-    expect(report.thread.figure.cost.estimate).toBeCloseTo(1, 10);
-    // The banner clears on the next good sweep.
-    fake!.setMode("ok");
-    await r.engine.sweep();
-    expect(r.store.getMeta("gatewayBanner")).toBeNull();
-  });
-
-  it("scenario 20: a rotated read key takes effect on the next sweep without a reload", async () => {
-    const r = await gatewayRig("sk-old");
-    await r.engine.sweep();
-    expect(r.store.getMeta("gatewayBanner")).toMatchObject({ check: "key-valid" });
-    expect(r.store.getGatewayRows("thr_gw")).toEqual([]);
-    r.settings.current = { ...r.settings.current, readKey: "sk-read" };
-    await r.engine.sweep();
-    expect(r.store.getMeta("gatewayBanner")).toBeNull();
-    expect(r.store.getGatewayRows("thr_gw")).toHaveLength(1);
-  });
-
-  it("records a budget crossing once", async () => {
-    const r = await gatewayRig("sk-read", 0.05);
-    await r.engine.sweep();
-    expect([...r.store.crossingKeys()]).toEqual(["thr_gw@0.05"]);
+  it("records a crossing once, when the catch-up that pushed the tree over it ran", async () => {
+    const r = await budgetRig(0.5);
+    await r.engine.catchUp("thr_b");
+    expect([...r.store.crossingKeys()]).toEqual(["thr_b@0.5"]);
     // A crossing names no thread, so every chip (the crossed tree's included) refetches.
     expect(r.published.at(-1)).toEqual({ channel: "usage-changed", payload: { threadIds: [] } });
-    fake!.addRow({ request_id: "g2", session_id: "bb-thr_gw", startTime: new Date(T0 + 2 * SEC).toISOString(), spend: 0.2 });
-    await r.engine.sweep();
-    expect([...r.store.crossingKeys()]).toEqual(["thr_gw@0.05"]);
-    expect(r.store.crossingFor("thr_gw", 0.05)!.total).toBeCloseTo(0.1, 10);
-    expect(r.model.chip("thr_gw").toast).not.toBeNull();
+    r.events.get("thr_b")!.push(...turns(10, 1, T0 + 30 * MIN, 1_000_000));
+    await r.engine.catchUp("thr_b");
+    expect([...r.store.crossingKeys()]).toEqual(["thr_b@0.5"]);
+    expect(r.store.crossingFor("thr_b", 0.5)!.total).toBeCloseTo(1, 10);
+    expect(r.model.chip("thr_b").toast).not.toBeNull();
   });
 
   it("counts a tree already over Warn above when the amount is set", async () => {
-    const r = await gatewayRig("sk-read", 0);
-    await r.engine.sweep();
+    const r = await budgetRig(0);
+    await r.engine.catchUp("thr_b");
     expect([...r.store.crossingKeys()]).toEqual([]);
-    r.settings.current = { ...r.settings.current, warnAbove: 0.05 };
+    r.settings.current = { ...r.settings.current, warnAbove: 0.5 };
     r.engine.checkAllBudgets();
-    expect([...r.store.crossingKeys()]).toEqual(["thr_gw@0.05"]);
+    expect([...r.store.crossingKeys()]).toEqual(["thr_b@0.5"]);
     // Found by sweeping history: the chip tints, but no toast fires.
-    const chip = r.model.chip("thr_gw");
+    const chip = r.model.chip("thr_b");
     expect(chip.attention).toBe(true);
     expect(chip.toast).toBeNull();
   });
@@ -451,7 +416,7 @@ describe("incremental harness-log reads", () => {
     r.store.upsertEdge({ threadId: "thr_h", providerId: "claude-code", createdAt: T0, hostId: "host-1" }, T0);
     r.events.set("thr_h", [identity(1, T0, "sess-h"), ...turns(2, 1, T0, 100)]);
     await r.engine.catchUp("thr_h");
-    const main = { sessionId: "sess-h", agentId: null, model: "test-model", costUsd: null };
+    const main = { sessionId: "sess-h", agentId: null, model: "test-model"};
     r.logs.entries = [
       { ...main, key: "1h", ts: r.clock.now, tokens: tokens({ cacheWrite: 50, cacheWrite1h: 50 }) },
       { ...main, key: "5m", ts: r.clock.now, tokens: tokens({ cacheWrite: 50 }) },
@@ -468,7 +433,7 @@ describe("incremental harness-log reads", () => {
     await r.engine.catchUp("thr_o");
     const firstSeenAt = r.store.getThread("thr_o")!.firstSeenAt!;
     r.logs.entries = [
-      { key: "1h", sessionId: "sess-o", agentId: null, ts: firstSeenAt, model: "test-model", tokens: tokens({ cacheWrite: 50, cacheWrite1h: 50 }), costUsd: null },
+      { key: "1h", sessionId: "sess-o", agentId: null, ts: firstSeenAt, model: "test-model", tokens: tokens({ cacheWrite: 50, cacheWrite1h: 50 })},
     ];
     // Read through a later time, as a read under the rule that dropped such entries left it.
     r.store.putThread({ ...r.store.getThread("thr_o")!, logsReadThrough: firstSeenAt + 30 * MIN }, r.clock.now);

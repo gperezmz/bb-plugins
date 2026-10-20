@@ -20,13 +20,10 @@ const TURN_COLUMNS = [
   "output_tokens",
   "cache_read_tokens",
   "cache_write_tokens",
-  "cost_gateway_usd",
-  "cost_harness_usd",
   "cost_estimate_usd",
   "cost_source",
   "unpriced_tokens",
-  "gateway_requests",
-  "api_ms",
+  "requests",
   "lines_added",
   "lines_removed",
   "subagent_requests",
@@ -56,13 +53,10 @@ export function turnCsvRow(t: TurnView, label: string): string[] {
     String(t.tokens.output),
     String(t.tokens.cacheRead),
     String(t.tokens.cacheWrite),
-    t.cost.gateway.toFixed(6),
-    t.cost.harness.toFixed(6),
     t.cost.estimate.toFixed(6),
     t.source,
     String(t.unpricedTokens),
     String(t.requests),
-    t.apiMs === null ? "" : String(t.apiMs),
     String(t.linesAdded),
     String(t.linesRemoved),
     String(t.subagents.reduce((n, s) => n + s.requests, 0)),
@@ -84,7 +78,7 @@ export function turnsCsv(turns: readonly TurnView[], prefix?: { header: string[]
 const KIND_LABEL: Record<Exclude<TurnView["kind"], "turn">, string> = {
   opening: "Before first seen (partial)",
   history: "History from harness logs",
-  outside: "Requests outside turns",
+  outside: "Subagent requests outside turns",
 };
 
 /**
@@ -123,16 +117,14 @@ export function reportMarkdown(r: ThreadReport, scope: "thread" | "tree"): strin
   if (view.headline.secondary !== null) out.push(`\n${view.headline.secondary}`);
   if (view.headline.unpricedNote !== null) out.push(`\n${view.headline.unpricedNote}`);
   out.push("");
-  out.push("| API time | Wall time | Lines | Turns |");
-  out.push("|---|---|---|---|");
-  out.push(
-    `| ${f.apiMs === null ? "—" : formatDuration(f.apiMs)} | ${formatDuration(f.wallMs)} | +${f.linesAdded} −${f.linesRemoved} | ${f.turns} |`,
-  );
+  out.push("| Wall time | Lines | Turns |");
+  out.push("|---|---|---|");
+  out.push(`| ${formatDuration(f.wallMs)} | +${f.linesAdded} −${f.linesRemoved} | ${f.turns} |`);
   out.push("");
   out.push("## Tokens");
   out.push("");
   out.push(
-    `Input ${formatExactTokens(f.tokens.input)} · output ${formatExactTokens(f.tokens.output)} · cache read ${formatExactTokens(f.tokens.cacheRead)} · cache write ${formatExactTokens(f.tokens.cacheWrite)}${f.untrackedTokens > 0 ? ` · outside bb's view ${formatExactTokens(f.untrackedTokens)}` : ""}`,
+    `Input ${formatExactTokens(f.tokens.input)} · output ${formatExactTokens(f.tokens.output)} · cache read ${formatExactTokens(f.tokens.cacheRead)} · cache write ${formatExactTokens(f.tokens.cacheWrite)}`,
   );
   out.push("");
   out.push("## By model");
@@ -140,9 +132,9 @@ export function reportMarkdown(r: ThreadReport, scope: "thread" | "tree"): strin
   out.push("| Model | Tokens | Cost | Source |");
   out.push("|---|---|---|---|");
   for (const m of f.byModel) {
-    const sources = (["gateway", "harness", "estimate"] as const).filter((s) => m.cost[s] > 0);
+    const unpriced = m.unpricedTokens > 0 && costTotal(m.cost) === 0;
     out.push(
-      `| ${mdEscape(m.model)} | ${formatTokens(m.tokens.input + m.tokens.output + m.tokens.cacheRead + m.tokens.cacheWrite + m.gatewayTokens)} | ${m.unpricedTokens > 0 && costTotal(m.cost) === 0 ? "unpriced" : formatUsd(costTotal(m.cost), cur)} | ${sources.join(", ") || (m.unpricedTokens > 0 ? "unpriced" : "—")} |`,
+      `| ${mdEscape(m.model)} | ${formatTokens(m.tokens.input + m.tokens.output + m.tokens.cacheRead + m.tokens.cacheWrite)} | ${unpriced ? "unpriced" : formatUsd(costTotal(m.cost), cur)} | ${unpriced ? "unpriced" : m.cost.estimate > 0 ? "estimate" : "—"} |`,
     );
   }
   out.push("");
@@ -182,7 +174,7 @@ export function reportMarkdown(r: ThreadReport, scope: "thread" | "tree"): strin
     out.push("");
     out.push("## Data quality");
     out.push("");
-    for (const q of notes) out.push(`- ${q.text}${q.snippet ? `: \`${q.snippet.code}\`` : ""}`);
+    for (const q of notes) out.push(`- ${q.text}`);
   }
   out.push("");
   out.push(

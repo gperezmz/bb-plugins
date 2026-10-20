@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useBbNavigate, type JsonValue } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
-import { CHECK_LABELS } from "../core/litellm-labels";
 import { costTotal, figureTokenCount } from "../core/figure-math";
 import { reportMarkdown, turnsCsv } from "../core/export";
 import {
@@ -17,11 +16,15 @@ import {
   formatTokens,
   formatUsd,
   priceSourceLabel,
+  priceSourceName,
   pricesLabel,
   pricesStale,
+  tierHint,
+  tierMark,
+  tierSummary,
 } from "../core/format";
 import type { QualityNote, ThreadReport, TreeRow } from "../core/report-types";
-import type { TurnView } from "../core/summary";
+import type { TierDetail, TurnView } from "../core/summary";
 import { cacheHitRatio, totalTokens } from "../core/tokens";
 import {
   download,
@@ -65,7 +68,7 @@ export function UsageTab({ threadId: ownThreadId, params }: { threadId: string; 
   useEffect(() => {
     if (data !== null) setTreeIds([data.threadId, ...data.tree.map((r) => r.threadId), ...data.forks.map((f) => f.threadId)]);
   }, [data]);
-  // Opening the tab refreshes the tree: catch-up, gateway sweep, and a retry of offline machines.
+  // Opening the tab refreshes the tree: catch-up, and a retry of offline machines.
   useEffect(() => {
     void rpc.call("refresh", { threadId }).catch(() => undefined);
   }, [rpc, threadId]);
@@ -114,20 +117,6 @@ export function Report({ report }: { report: ThreadReport }) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      {report.gatewayBanner !== null ? (
-        <div role="alert" className="flex gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-          <Icon name="AlertCircle" className="mt-0.5 text-warning" />
-          <div>
-            <div className="font-medium text-foreground">
-              Gateway spend unavailable: “{CHECK_LABELS[report.gatewayBanner.check]}” fails
-            </div>
-            <div className="text-muted-foreground">
-              {report.gatewayBanner.message}. Stored gateway figures still show; new turns are estimated until it recovers.
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <Panel className="p-4">
         {hasChildren ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -165,12 +154,6 @@ export function Report({ report }: { report: ThreadReport }) {
             <div className="mt-1 text-sm text-muted-foreground">{view.headline.unpricedNote}</div>
           ) : null}
         </div>
-        {report.stateMessage !== null && report.state !== "untagged" ? (
-          <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Icon name={report.state === "pending" ? "Loading" : "Info"} className={cn("size-3.5", report.state === "pending" && "animate-spin motion-reduce:animate-none")} />
-            {report.stateMessage}
-          </div>
-        ) : null}
         {report.budget !== null ? (
           <div className="mt-3 flex items-center gap-1.5 text-xs text-warning">
             <Icon name="AlertCircle" className="size-3.5" />
@@ -180,11 +163,6 @@ export function Report({ report }: { report: ThreadReport }) {
       </Panel>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2">
-        <Stat
-          label="API time"
-          value={f.apiMs === null ? "—" : formatDuration(f.apiMs)}
-          hint={f.apiMs === null ? "API time comes from gateway request logs; this thread has none" : "Sum of request durations the gateway logged"}
-        />
         <Stat label="Wall time" value={formatDuration(f.wallMs)} hint="From each turn's start to its end" />
         <Stat
           label="Lines"
@@ -210,9 +188,9 @@ export function Report({ report }: { report: ThreadReport }) {
         >
           Tokens
         </SectionTitle>
-        <TokenBar tokens={f.tokens} untracked={f.untrackedTokens} className="h-2.5" />
+        <TokenBar tokens={f.tokens} className="h-2.5" />
         <div className="mt-2.5">
-          <TokenLegend tokens={f.tokens} untracked={f.untrackedTokens} />
+          <TokenLegend tokens={f.tokens} />
         </div>
       </section>
 
@@ -232,14 +210,14 @@ export function Report({ report }: { report: ThreadReport }) {
               <tbody>
                 {f.byModel.map((m) => {
                   const cost = costTotal(m.cost);
-                  const sources = (["gateway", "harness", "estimate"] as const).filter((s) => m.cost[s] > 0);
+                  const priceSource = report.prices.models[m.model];
                   return (
                     <tr key={m.model} className="border-b border-border last:border-0">
                       <td className="truncate px-3 py-2 font-mono text-xs" title={m.model}>
                         {m.model}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {formatTokens(totalTokens(m.tokens) + m.gatewayTokens)}
+                        {formatTokens(totalTokens(m.tokens))}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         <Tooltip>
@@ -252,15 +230,11 @@ export function Report({ report }: { report: ThreadReport }) {
                               )}
                             </span>
                           </TooltipTrigger>
-                          <TooltipContent>
-                            {sources.length > 0 && !sources.includes("estimate")
-                              ? `Cost reported by the ${sources.join(" and ")}, not estimated`
-                              : priceSourceLabel(report.prices.models[m.model], Date.now())}
-                          </TooltipContent>
+                          <TooltipContent>{priceSourceLabel(priceSource, Date.now())}</TooltipContent>
                         </Tooltip>
                       </td>
                       <td className="hidden px-3 py-2 text-xs text-muted-foreground md:table-cell">
-                        {sources.length > 0 ? sources.join(", ") : m.unpricedTokens > 0 ? "unpriced" : "—"}
+                        {priceSourceName(priceSource)}
                       </td>
                     </tr>
                   );
@@ -322,18 +296,13 @@ export function Report({ report }: { report: ThreadReport }) {
 
       <ExportBar report={report} scope={effective} />
 
-      <p className="text-center text-xs text-muted-foreground">
-        {[
-          f.cost.estimate > 0 || f.unpricedTokens > 0 ? (
-            <span key="prices" className={cn(pricesStale(report.prices.updatedAt, Date.now()) && "text-warning")}>
-              {pricesLabel(report.prices, Date.now())}
-            </span>
-          ) : null,
-          report.billing === "gateway" ? <span key="gw">gateway costs are what the gateway billed</span> : null,
-        ]
-          .filter((part) => part !== null)
-          .flatMap((part, i) => (i === 0 ? [part] : [" · ", part]))}
-      </p>
+      {f.cost.estimate > 0 || f.unpricedTokens > 0 ? (
+        <p className="text-center text-xs text-muted-foreground">
+          <span className={cn(pricesStale(report.prices.updatedAt, Date.now()) && "text-warning")}>
+            {pricesLabel(report.prices, Date.now())}
+          </span>
+        </p>
+      ) : null}
     </TooltipProvider>
   );
 }
@@ -378,12 +347,18 @@ function TurnDetails({ turn, number, currency }: { turn: TurnView; number: numbe
         {turn.kind === "turn" && turn.startedAt !== null && turn.completedAt !== null ? (
           <Detail label="Wall time" value={formatDuration(turn.completedAt - turn.startedAt)} />
         ) : null}
-        {turn.apiMs !== null ? <Detail label="API time" value={formatDuration(turn.apiMs)} /> : null}
         {turn.linesAdded + turn.linesRemoved > 0 ? (
           <Detail label="Lines" value={`+${formatCount(turn.linesAdded)} −${formatCount(turn.linesRemoved)}`} />
         ) : null}
       </dl>
       <TokenLegend tokens={turn.tokens} compact />
+      {turn.tierDetail !== null ? <TierRequests detail={turn.tierDetail} currency={currency} /> : null}
+      {turn.oneHour !== null ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>1-hour cache writes, {formatCount(turn.oneHour.tokens)} tokens</span>
+          <span className="ml-auto tabular-nums">{formatUsd(turn.oneHour.usd, currency)}</span>
+        </div>
+      ) : null}
       {turn.subagents.length > 0 ? (
         <div>
           <div className="mb-1 text-xs font-medium text-muted-foreground">Subagents</div>
@@ -395,13 +370,48 @@ function TurnDetails({ turn, number, currency }: { turn: TurnView; number: numbe
                 <span className="text-muted-foreground">{s.model ?? ""}</span>
                 <span className="ml-auto tabular-nums">
                   {formatTokens(totalTokens(s.tokens))} tokens · {formatCount(s.requests)} req
-                  {s.costUsd !== null ? ` · ${formatUsd(s.costUsd, currency)}` : ""}
+                  {s.costUsd === 0 && s.unpricedTokens > 0 ? " · not priced" : ` · ${formatUsd(s.costUsd, currency)}`}
                 </span>
               </li>
             ))}
           </ul>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The requests of an opened turn that were charged at a tier, in the order
+ * they were made, then the requests that were not, together.
+ */
+function TierRequests({ detail, currency }: { detail: TierDetail; currency: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-muted-foreground">{tierSummary(detail)}</div>
+      <ol className="space-y-1 text-xs">
+        {detail.tiered.map((r) => (
+          <li key={r.number} className="flex items-center gap-2">
+            <span className="w-16 shrink-0 text-muted-foreground">Request {formatCount(r.number)}</span>
+            <span className="tabular-nums">{formatCount(r.prompt)} prompt tokens</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">
+                  {tierMark(r.tierAbove)}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{tierHint(r.tierAbove)}</TooltipContent>
+            </Tooltip>
+            <span className="ml-auto tabular-nums">{formatUsd(r.usd, currency)}</span>
+          </li>
+        ))}
+      </ol>
+      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+        <span>
+          {formatCount(detail.untiered.count)} request{detail.untiered.count === 1 ? "" : "s"} without a tier
+        </span>
+        <span className="ml-auto tabular-nums">{formatUsd(detail.untiered.usd, currency)}</span>
+      </div>
     </div>
   );
 }
@@ -507,26 +517,10 @@ function QualityList({ notes }: { notes: QualityNote[] }) {
           />
           <div className="min-w-0 flex-1">
             <span className={note.tone === "warn" ? "text-foreground" : "text-muted-foreground"}>{note.text}</span>
-            {note.snippet !== undefined ? <Snippet label={note.snippet.label} code={note.snippet.code} /> : null}
           </div>
         </li>
       ))}
     </ul>
-  );
-}
-
-export function Snippet({ label, code }: { label: string; code: string }) {
-  const [copied, copy] = useCopy();
-  return (
-    <div className="mt-1.5 overflow-hidden rounded-md border border-border bg-muted/50">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-[11px] text-muted-foreground">
-        <span className="truncate">{label}</span>
-        <button type="button" className="shrink-0 hover:text-foreground" onClick={() => void copy(code)}>
-          {copied ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <pre className="overflow-x-auto px-2 py-1.5 font-mono text-xs text-foreground">{code}</pre>
-    </div>
   );
 }
 

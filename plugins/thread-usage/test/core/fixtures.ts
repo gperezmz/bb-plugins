@@ -3,7 +3,6 @@
  * hosts are made up.
  */
 import type { LedgerEvent, TurnRecord } from "../../src/core/ledger";
-import type { GatewayRow } from "../../src/core/gateway";
 import type { StoredLogEntry } from "../../src/core/summary";
 import { ZERO_TOKENS, type Tokens } from "../../src/core/tokens";
 
@@ -90,27 +89,12 @@ export function turnRecord(partial: Partial<TurnRecord> & { turnId: string }): T
   };
 }
 
-export function gatewayRow(partial: Partial<GatewayRow> & { requestId: string; startTime: number }): GatewayRow {
-  return {
-    threadId: "thr_alpha",
-    endTime: null,
-    model: "claude-opus-5-5",
-    promptTokens: 1000,
-    completionTokens: 100,
-    spend: 0.01,
-    durationMs: 1500,
-    status: "success",
-    ...partial,
-  };
-}
-
 export function logEntry(partial: Partial<StoredLogEntry> & { key: string; ts: number }): StoredLogEntry {
   return {
     sessionId: "sess-main",
     agentId: null,
     model: "claude-opus-5-5",
     tokens: tokens({ input: 100, output: 10 }),
-    costUsd: null,
     ...partial,
   };
 }

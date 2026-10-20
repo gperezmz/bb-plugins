@@ -4,7 +4,6 @@
  */
 import type { Crossing } from "../core/budget";
 import type { Edge } from "../core/tree";
-import type { GatewayRow } from "../core/gateway";
 import { EMPTY_CURSOR, type LedgerCursor, type TurnRecord } from "../core/ledger";
 import type { StoredLogEntry } from "../core/summary";
 
@@ -98,6 +97,11 @@ export const MIGRATIONS: string[] = [
    )`,
   `CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
   `ALTER TABLE edges ADD COLUMN title_from_prompt INTEGER NOT NULL DEFAULT 0`,
+  // The gateway is no longer read: its rows, sweep state and price map go, and so do the stored
+  // LiteLLM and models.dev lists of before models.dev's tiers were kept. The table is emptied
+  // rather than dropped, so a release that still reads it runs on this database.
+  `DELETE FROM gateway_requests`,
+  `DELETE FROM meta WHERE key IN ('lastSweepAt', 'gatewayBanner', 'gatewayPrices', 'onlinePrices', 'modelsDevPrices', 'pricesRefreshError')`,
 ];
 
 export interface GapRecord {
@@ -385,48 +389,6 @@ export class Store {
     ).n;
   }
 
-  // ---- gateway rows ----
-
-  /**
-   * Upserts rows by request id. A sweep only adds or updates: an update
-   * never lowers a row's spend.
-   */
-  upsertGatewayRows(rows: readonly GatewayRow[]): Set<string> {
-    const touched = new Set<string>();
-    const get = this.db.prepare(`SELECT spend FROM gateway_requests WHERE request_id = ?`);
-    const put = this.db.prepare(
-      `INSERT INTO gateway_requests (request_id, thread_id, start_time, spend, row) VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(request_id) DO UPDATE SET thread_id = excluded.thread_id, start_time = excluded.start_time,
-         spend = excluded.spend, row = excluded.row`,
-    );
-    for (const row of rows) {
-      const existing = get.get(row.requestId) as { spend: number } | undefined;
-      if (existing !== undefined && existing.spend > row.spend) continue;
-      put.run(row.requestId, row.threadId, row.startTime, row.spend, JSON.stringify(row));
-      touched.add(row.threadId);
-    }
-    return touched;
-  }
-
-  getGatewayRows(threadId: string): GatewayRow[] {
-    return (
-      this.db
-        .prepare(`SELECT row FROM gateway_requests WHERE thread_id = ? ORDER BY start_time`)
-        .all(threadId) as { row: string }[]
-    ).map((r) => JSON.parse(r.row) as GatewayRow);
-  }
-
-  threadHasGatewayRows(threadId: string): boolean {
-    return (
-      this.db.prepare(`SELECT 1 FROM gateway_requests WHERE thread_id = ? LIMIT 1`).get(threadId) !==
-      undefined
-    );
-  }
-
-  anyGatewayRows(): boolean {
-    return this.db.prepare(`SELECT 1 FROM gateway_requests LIMIT 1`).get() !== undefined;
-  }
-
   // ---- log entries ----
 
   upsertLogEntries(threadId: string, entries: readonly StoredLogEntry[]): number {
@@ -615,7 +577,7 @@ export class Store {
 
   /**
    * Drops every ledger (turns and cursors) of a thread that still exists, so
-   * the next discovery re-reads bb's events under changed rules. Edges, gateway rows, log entries and
+   * the next discovery re-reads bb's events under changed rules. Edges, log entries and
    * crossings are kept: they are facts, not derived from the rules.
    */
   resetLedger(listed: ReadonlySet<string>): void {
@@ -639,8 +601,8 @@ export class Store {
   // ---- retention ----
 
   /**
-   * Collapses turn and gateway rows older than `cutoff` into one retained
-   * turn and one retained row per thread (365 days).
+   * Collapses turns older than `cutoff` into one retained turn per thread
+   * (365 days). The retained turn is a sum: it keeps no per-request counts.
    */
   collapseBefore(cutoff: number): number {
     const threads = this.db
@@ -659,30 +621,6 @@ export class Store {
         const retained = collapseTurns(all);
         for (const t of old) this.deleteTurn(threadId, t.turnId);
         this.putTurns(threadId, [retained]);
-        const rows = this.getGatewayRows(threadId).filter((r) => r.startTime < cutoff);
-        if (rows.length > 0) {
-          const priorRow = rows.find((r) => r.requestId === `retained:${threadId}`);
-          const merged: GatewayRow = {
-            requestId: `retained:${threadId}`,
-            threadId,
-            startTime: retained.startedAt ?? rows[0]!.startTime,
-            endTime: null,
-            model: priorRow?.model ?? rows[0]!.model,
-            promptTokens: rows.reduce((n, r) => n + r.promptTokens, 0),
-            completionTokens: rows.reduce((n, r) => n + r.completionTokens, 0),
-            spend: rows.reduce((n, r) => n + r.spend, 0),
-            durationMs: rows.reduce((n, r) => n + (r.durationMs ?? 0), 0),
-            status: null,
-          };
-          this.db
-            .prepare(`DELETE FROM gateway_requests WHERE thread_id = ? AND start_time < ?`)
-            .run(threadId, cutoff);
-          this.db
-            .prepare(
-              `INSERT INTO gateway_requests (request_id, thread_id, start_time, spend, row) VALUES (?, ?, ?, ?, ?)`,
-            )
-            .run(merged.requestId, threadId, merged.startTime, merged.spend, JSON.stringify(merged));
-        }
       }
     });
     run();

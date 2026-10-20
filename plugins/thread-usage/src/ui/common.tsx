@@ -155,20 +155,9 @@ export const TOKEN_KINDS = [
   { key: "cacheWrite", label: "Cache write", swatch: "bg-[color-mix(in_oklab,var(--success)_70%,var(--foreground))]" },
 ] as const;
 
-/** One stacked bar for input, output, cache read, cache write (and tokens outside bb's view). */
-export function TokenBar({
-  tokens,
-  untracked = 0,
-  className,
-}: {
-  tokens: Tokens;
-  untracked?: number;
-  className?: string;
-}) {
-  const parts = [
-    ...TOKEN_KINDS.map((k) => ({ label: k.label, value: tokens[k.key], swatch: k.swatch })),
-    { label: "Outside bb's view", value: untracked, swatch: "bg-warning/60" },
-  ].filter((p) => p.value > 0);
+/** One stacked bar for input, output, cache read and cache write. */
+export function TokenBar({ tokens, className }: { tokens: Tokens; className?: string }) {
+  const parts = TOKEN_KINDS.map((k) => ({ label: k.label, value: tokens[k.key], swatch: k.swatch })).filter((p) => p.value > 0);
   const total = parts.reduce((n, p) => n + p.value, 0);
   return (
     <div
@@ -191,11 +180,8 @@ export function TokenBar({
   );
 }
 
-export function TokenLegend({ tokens, untracked = 0, compact = false }: { tokens: Tokens; untracked?: number; compact?: boolean }) {
-  const rows = [
-    ...TOKEN_KINDS.map((k) => ({ label: k.label, value: tokens[k.key], swatch: k.swatch })),
-    ...(untracked > 0 ? [{ label: "Outside bb's view", value: untracked, swatch: "bg-warning/60" }] : []),
-  ];
+export function TokenLegend({ tokens, compact = false }: { tokens: Tokens; compact?: boolean }) {
+  const rows = TOKEN_KINDS.map((k) => ({ label: k.label, value: tokens[k.key], swatch: k.swatch }));
   return (
     <dl
       className={cn(

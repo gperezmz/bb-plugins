@@ -44,6 +44,13 @@ function sum(store: Map<string, TurnRecord>): Tokens {
   return [...store.values()].reduce((acc, t) => addTokens(acc, t.tokens), ZERO_TOKENS);
 }
 
+/** The record of a turn read from one usage event, for a test that then strips what it kept. */
+function ingestSingle(): TurnRecord {
+  const store = new Map<string, TurnRecord>();
+  read(EMPTY_CURSOR, store, [started(1, T0, "t1"), usage(2, T0 + 1, "t1", cb({ input: 40, output: 10 }), cb({ input: 40, output: 10 }))], T0 + SEC);
+  return store.get("t1")!;
+}
+
 /** A complete turn with one usage event: 5 events starting at `seq`. */
 function turn(seq: number, at: number, id: string, last: ReturnType<typeof cb>, total: ReturnType<typeof cb>) {
   return [
@@ -71,6 +78,83 @@ describe("ingestEvents: per-turn tokens", () => {
     expect(t1.status).toBe("completed");
     expect(t1.startedAt).toBe(T0);
     expect(t1.completedAt).toBe(T0 + 3);
+  });
+
+  it("keeps each usage event's own counts, in order, as the turn's requests", () => {
+    const store = new Map<string, TurnRecord>();
+    const events = [
+      started(1, T0, "t1"),
+      usage(2, T0 + 1, "t1", cb({ input: 10, output: 5, cacheRead: 100 }), cb({ input: 10, output: 5, cacheRead: 100 })),
+      usage(3, T0 + 2, "t1", cb({ input: 20, output: 7, cacheWrite: 50 }), cb({ input: 30, output: 12, cacheRead: 100, cacheWrite: 50 })),
+      completed(4, T0 + 3, "t1"),
+    ];
+    read(EMPTY_CURSOR, store, events, T0 + MIN);
+    expect(store.get("t1")!.requests).toEqual([
+      { input: 10, output: 5, cacheRead: 100, cacheWrite: 0 },
+      { input: 20, output: 7, cacheRead: 0, cacheWrite: 50 },
+    ]);
+  });
+
+  it("keeps requests across reads, without changing the record it was given", () => {
+    const store = new Map<string, TurnRecord>();
+    const first = read(EMPTY_CURSOR, store, [
+      started(1, T0, "t1"),
+      usage(2, T0 + 1, "t1", cb({ input: 10, output: 5 }), cb({ input: 10, output: 5 })),
+    ], T0 + SEC);
+    const before = store.get("t1")!;
+    const frozen = JSON.stringify(before);
+    read(first.cursor, store, [
+      usage(3, T0 + 2, "t1", cb({ input: 20, output: 7 }), cb({ input: 30, output: 12 })),
+    ], T0 + 2 * SEC);
+    expect(JSON.stringify(before)).toBe(frozen);
+    expect(store.get("t1")!.requests).toHaveLength(2);
+  });
+
+  it("keeps no requests for a turn stored as a sum, which usage events then join", () => {
+    const store = new Map<string, TurnRecord>();
+    const { requests: _requests, ...asSum } = {
+      ...ingestSingle(),
+    };
+    store.set("t1", { ...asSum, tokens: tokens({ input: 40, output: 10 }), usageEvents: 1 });
+    read({ ...EMPTY_CURSOR, firstSeenAt: T0 }, store, [
+      usage(9, T0 + 5, "t1", cb({ input: 20, output: 7 }), cb({ input: 60, output: 17 })),
+    ], T0 + SEC);
+    const t1 = store.get("t1")!;
+    expect(t1.tokens).toEqual(tokens({ input: 60, output: 17 }));
+    expect(t1.requests).toBeUndefined();
+  });
+
+  it("keeps no requests for a turn filled from bb's running total", () => {
+    const store = new Map<string, TurnRecord>();
+    const first = read(EMPTY_CURSOR, store, [
+      ...turn(1, T0, "t1", cb({ input: 100, output: 50 }), cb({ input: 100, output: 50 })),
+    ], T0 + MIN);
+    // t2 lost its usage events to pruning; its share is filled from bb's total.
+    read(first.cursor, store, [
+      started(300, T0 + 2 * MIN, "t2"),
+      completed(301, T0 + 3 * MIN, "t2"),
+      usage(600, T0 + 10 * MIN, "t3", cb({ input: 5, output: 5 }), cb({ input: 400, output: 200 })),
+    ], T0 + 20 * MIN, 600);
+    const t2 = store.get("t2")!;
+    expect(t2.filled).toBe(true);
+    expect(t2.requests).toBeUndefined();
+  });
+
+  it("keeps no requests for a filled turn that later receives a usage event, whose requests would not add up to its tokens", () => {
+    const store = new Map<string, TurnRecord>();
+    const first = read(EMPTY_CURSOR, store, [
+      ...turn(1, T0, "t1", cb({ input: 100, output: 50 }), cb({ input: 100, output: 50 })),
+    ], T0 + MIN);
+    const second = read(first.cursor, store, [
+      started(300, T0 + 2 * MIN, "t2"),
+      completed(301, T0 + 3 * MIN, "t2"),
+      usage(600, T0 + 10 * MIN, "t3", cb({ input: 5, output: 5 }), cb({ input: 400, output: 200 })),
+    ], T0 + 20 * MIN, 600);
+    expect(store.get("t2")!.filled).toBe(true);
+    read(second.cursor, store, [usage(601, T0 + 21 * MIN, "t2", cb({ input: 7, output: 1 }), cb({ input: 407, output: 201 }))], T0 + 22 * MIN);
+    const t2 = store.get("t2")!;
+    expect(t2.tokens.input).toBeGreaterThan(7);
+    expect(t2.requests).toBeUndefined();
   });
 
   it("scenario 1: a harness restart resets bb's total, but the sum of lasts stays right", () => {

@@ -1,7 +1,6 @@
 /**
- * The backend's moving parts: ledger catch-up from bb events, the
- * gateway sweep, harness-log reads and the backfill queue, and
- * budget crossings. bb is reached through {@link EngineDeps} so tests
+ * The backend's moving parts: ledger catch-up from bb events, harness-log
+ * reads and the backfill queue, and budget crossings. bb is reached through {@link EngineDeps} so tests
  * can drive it without a server.
  */
 import { crossingKey, newCrossings } from "../core/budget";
@@ -16,15 +15,6 @@ import {
   slimEvent,
   type LedgerEvent,
 } from "../core/ledger";
-import {
-  fetchModelInfo,
-  GatewayError,
-  sweepSpendLogs,
-  SWEEP_OVERLAP_MS,
-  type Fetch,
-} from "../core/litellm";
-import type { ModelPrice } from "../core/pricing";
-import type { GatewayBanner } from "../core/report-types";
 import type { UsageModel } from "./model";
 import type { UsageSettings } from "./settings";
 import type { EdgeExtra, Store, ThreadState } from "./store";
@@ -74,7 +64,6 @@ export interface EngineDeps {
     },
     timeoutMs: number,
   ): Promise<{ entries: LogEntry[]; nextOffset: number | null; sessionsFound: string[] }>;
-  fetch: Fetch;
   publish(channel: string, payload: unknown): void;
   log: { info(m: string): void; warn(m: string): void; error(m: string): void };
 }
@@ -96,7 +85,6 @@ export const REFRESH_CONCURRENCY = 4;
 export const PANEL_LOG_TIMEOUT_MS = 5_000;
 /** Log reads from the backfill queue. */
 export const BACKFILL_LOG_TIMEOUT_MS = 5 * 60_000;
-const INITIAL_SWEEP_LOOKBACK_MS = 30 * 86_400_000;
 
 /** True when every field `edge` sets already has that value in `stored`. */
 function sameEdge(stored: EdgeExtra, edge: Partial<EdgeExtra>): boolean {
@@ -151,24 +139,14 @@ export class Engine {
   private readonly soon = new Map<string, { timer: ReturnType<typeof setTimeout>; hint: number | undefined }>();
   /** Per thread, the sequence every ledger event up to which has been read. */
   private readonly readThrough = new Map<string, number>();
-  private sweepTimer: ReturnType<typeof setTimeout> | null = null;
-  private sweeping: Promise<void> | null = null;
-  private gatewayPrices: Record<string, ModelPrice> | null = null;
-  private gatewayPricesAt = 0;
   private disposed = false;
 
   constructor(private readonly deps: EngineDeps) {}
 
   dispose(): void {
     this.disposed = true;
-    if (this.sweepTimer !== null) clearTimeout(this.sweepTimer);
     for (const { timer } of this.soon.values()) clearTimeout(timer);
     this.soon.clear();
-  }
-
-  /** The gateway's price map, when read (`/model/info`). */
-  gatewayPriceMap(): Record<string, ModelPrice> | null {
-    return this.gatewayPrices;
   }
 
   // ---- edges ----
@@ -332,6 +310,9 @@ export class Engine {
       events: own,
       latestSeq,
       now,
+      // bb's Claude Code adapter reports one usage event for a whole turn, not one per request, and a
+      // thread whose provider is not known yet may be a Claude Code one.
+      perRequestEvents: forkEdge?.providerId != null && forkEdge.providerId !== "claude-code",
     });
     const next: ThreadState = {
       ...state,
@@ -393,101 +374,12 @@ export class Engine {
     return crossings.length > 0;
   }
 
-  // ---- gateway ----
-
-  /** Runs a sweep now (coalesced with one already running). */
-  sweep(): Promise<void> {
-    if (this.sweeping !== null) return this.sweeping;
-    this.sweeping = this.sweepNow().finally(() => {
-      this.sweeping = null;
-    });
-    return this.sweeping;
-  }
-
-  /** Schedules a sweep after `delayMs`, keeping the earliest pending one. */
-  scheduleSweep(delayMs: number): void {
-    if (this.disposed) return;
-    const at = this.deps.now() + delayMs;
-    if (this.sweepTimer !== null && this.nextSweepAt <= at) return;
-    if (this.sweepTimer !== null) clearTimeout(this.sweepTimer);
-    this.nextSweepAt = at;
-    this.sweepTimer = setTimeout(() => {
-      this.sweepTimer = null;
-      this.nextSweepAt = Number.POSITIVE_INFINITY;
-      void this.sweep();
-    }, delayMs);
-  }
-  private nextSweepAt = Number.POSITIVE_INFINITY;
-
-  private async sweepNow(): Promise<void> {
-    const settings = this.deps.settings();
-    if (settings.adapter !== "litellm") return;
-    const { store } = this.deps;
-    const now = this.deps.now();
-    if (settings.gatewayUrl === "" || settings.readKey === null) {
-      this.setBanner({
-        check: settings.gatewayUrl === "" ? "reachable" : "key-valid",
-        message: settings.gatewayUrl === "" ? "Gateway URL is not set" : "Gateway read key is not set",
-        since: now,
-      });
-      return;
-    }
-    const config = { baseUrl: settings.gatewayUrl, key: settings.readKey, fetch: this.deps.fetch };
-    const lastSweep = store.getMeta<number>("lastSweepAt");
-    const from = lastSweep === null ? now - INITIAL_SWEEP_LOOKBACK_MS : lastSweep - SWEEP_OVERLAP_MS;
-    try {
-      const result = await sweepSpendLogs(config, from, now + 60_000);
-      const known = new Set(store.allEdges().map((e) => e.threadId));
-      const rows = result.rows.filter((r) => known.has(r.threadId));
-      const touched = store.upsertGatewayRows(rows);
-      // A truncated sweep resumes from the newest row it read (the next one
-      // starts SWEEP_OVERLAP_MS before lastSweepAt).
-      store.setMeta(
-        "lastSweepAt",
-        result.truncated && result.resumeFrom !== null ? result.resumeFrom + SWEEP_OVERLAP_MS : now,
-      );
-      this.setBanner(null);
-      if (now - this.gatewayPricesAt > 3_600_000) {
-        this.gatewayPricesAt = now;
-        try {
-          this.gatewayPrices = await fetchModelInfo(config);
-          store.setMeta("gatewayPrices", this.gatewayPrices);
-          this.deps.model.invalidateAll();
-        } catch {
-          // /model/info is optional: the edge may not expose it.
-        }
-      }
-      if (touched.size > 0) this.changed(touched);
-    } catch (error) {
-      const banner: GatewayBanner =
-        error instanceof GatewayError
-          ? { check: error.check, message: error.message, since: now }
-          : { check: "reachable", message: error instanceof Error ? error.message : String(error), since: now };
-      const previous = store.getMeta<GatewayBanner>("gatewayBanner");
-      this.setBanner(previous !== null && previous.check === banner.check ? { ...banner, since: previous.since } : banner);
-      this.deps.log.warn(`gateway sweep failed: ${banner.message}`);
-    }
-  }
-
-  private setBanner(banner: GatewayBanner | null): void {
-    const previous = this.deps.store.getMeta<GatewayBanner | null>("gatewayBanner");
-    this.deps.store.setMeta("gatewayBanner", banner);
-    if ((previous === null) !== (banner === null)) {
-      this.deps.model.invalidateAll();
-      this.deps.publish(USAGE_CHANGED, { threadIds: [] });
-    }
-  }
-
-  loadGatewayPrices(): void {
-    this.gatewayPrices = this.deps.store.getMeta<Record<string, ModelPrice>>("gatewayPrices");
-  }
-
   // ---- harness logs ----
 
   /**
    * Reads a thread's harness logs on its machine: subagent entries (Claude
-   * Code), the harness's own cost (pi), and a history or gap window when
-   * `window` is given. A failure marks the thread `logs-missing`.
+   * Code), the cache writes that were 1-hour ones, and a history or gap
+   * window when `window` is given. A failure marks the thread `logs-missing`.
    */
   async readThreadLogs(
     threadId: string,
@@ -542,7 +434,7 @@ export class Engine {
       }
       // Incremental reads keep only what the merge rule can use outside windows.
       const kept = incremental
-        ? entries.filter((e) => e.agentId !== null || harness === "pi" || e.tokens.cacheWrite > 0)
+        ? entries.filter((e) => e.agentId !== null || e.tokens.cacheWrite > 0)
         : entries;
       store.upsertLogEntries(threadId, kept);
       // Only the row as it is now is updated. Writing back the one read before
@@ -598,7 +490,6 @@ export class Engine {
    */
   async refresh(threadIds: readonly string[]): Promise<void> {
     await eachLimit(threadIds, REFRESH_CONCURRENCY, (id) => this.catchUpQuietly(id));
-    if (this.deps.settings().adapter === "litellm") await this.sweep();
     const stale = threadIds.filter((id) => {
       const state = this.deps.store.getThread(id);
       if (state === null) return false;
@@ -798,7 +689,7 @@ export class Engine {
     return picked.length;
   }
 
-  /** Called on thread deletion: stamp, try one last read, sweep. */
+  /** Called on thread deletion: stamp, try one last read. */
   async onDeleted(dto: ThreadDto): Promise<void> {
     const now = this.deps.now();
     this.deps.store.upsertEdge({ ...edgeFromDto(dto), deletedAt: dto.deletedAt ?? now }, now);
@@ -808,11 +699,5 @@ export class Engine {
       // Deleted threads' events may be unreadable; the idle catch-up already ran.
     }
     this.changed([dto.id]);
-    if (this.deps.settings().adapter === "litellm") void this.sweep();
-  }
-
-  /** Any thread running? Drives the 60 s sweep cadence. */
-  anyActive(): boolean {
-    return this.deps.store.allEdges().some((e) => e.status === "active" && e.deletedAt === null);
   }
 }

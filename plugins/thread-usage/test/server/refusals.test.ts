@@ -108,7 +108,7 @@ const RPC: { method: Method; field: string; accepts: unknown; refuses: unknown; 
     refuses: { projectId: null, sinceDays: 30, limit: 5 },
     issues: [{ message: 'Unrecognized key: "limit"' }],
   },
-  ...(["status", "testConnection", "exportAll"] as const).map((method) => ({
+  ...(["status", "exportAll"] as const).map((method) => ({
     method,
     field: "input",
     accepts: null,
@@ -131,37 +131,8 @@ const RPC: { method: Method; field: string; accepts: unknown; refuses: unknown; 
   },
 ];
 
-const OVERRIDE_PRICE = { input: 1, output: 4 };
-
 /** For each setting with a schema, a value it takes and one it refuses with the text shown. */
 const SETTINGS: { setting: string; accepts: string | number; refuses: string | number; text: string }[] = [
-  { setting: "gatewayUrl", accepts: "https://llm.example.com", refuses: "ftp://llm.example.com", text: "Must be an http(s) URL" },
-  { setting: "gatewayUrl", accepts: "", refuses: "https://llm example.com", text: "Must be an http(s) URL" },
-  {
-    setting: "extraHeaders",
-    accepts: "X-Team: usage",
-    refuses: "Authorization: Bearer x",
-    text: 'Line 1: "Authorization" carries credentials; bb shows these values in the timeline, so it is not allowed here',
-  },
-  { setting: "extraHeaders", accepts: "", refuses: "no colon", text: 'Line 1: expected "Name: Value"' },
-  {
-    setting: "priceOverrides",
-    accepts: JSON.stringify({ aliases: { a: "b" }, prices: { m: { ...OVERRIDE_PRICE, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 } } }),
-    refuses: "{",
-    text: "Not valid JSON: Expected property name or '}' in JSON at position 1 (line 1 column 2)",
-  },
-  { setting: "priceOverrides", accepts: "", refuses: "[]", text: "value: Invalid input: expected object, received array" },
-  { setting: "priceOverrides", accepts: "{}", refuses: JSON.stringify({ models: {} }), text: 'value: Unrecognized key: "models"' },
-  { setting: "priceOverrides", accepts: JSON.stringify({ aliases: {} }), refuses: JSON.stringify({ aliases: { a: "" } }), text: "aliases.a: Too small: expected string to have >=1 characters" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ aliases: { a: "b" } }), refuses: JSON.stringify({ aliases: { "": "b" } }), text: "aliases.: Invalid key in record" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ aliases: { a: "b" } }), refuses: JSON.stringify({ aliases: { a: 1 } }), text: "aliases.a: Invalid input: expected string, received number" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: {} }), refuses: JSON.stringify({ prices: { "": OVERRIDE_PRICE } }), text: "prices.: Invalid key in record" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: OVERRIDE_PRICE } }), refuses: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, input: -1 } } }), text: "prices.m.input: Too small: expected number to be >=0" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: { input: 0, output: 0 } } }), refuses: JSON.stringify({ prices: { m: { input: 1 } } }), text: "prices.m.output: Invalid input: expected number, received undefined" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheRead: 2 } } }), refuses: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheRead: -1 } } }), text: "prices.m.cacheRead: Too small: expected number to be >=0" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheWrite: 2 } } }), refuses: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheWrite: "2" } } }), text: "prices.m.cacheWrite: Invalid input: expected number, received string" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheWrite1h: 2 } } }), refuses: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, cacheWrite1h: -2 } } }), text: "prices.m.cacheWrite1h: Too small: expected number to be >=0" },
-  { setting: "priceOverrides", accepts: JSON.stringify({ prices: { m: OVERRIDE_PRICE } }), refuses: JSON.stringify({ prices: { m: { ...OVERRIDE_PRICE, currency: "EUR" } } }), text: 'prices.m: Unrecognized key: "currency"' },
   { setting: "warnAbove", accepts: 0, refuses: -1, text: "Too small: expected number to be >=0" },
   { setting: "warnAbove", accepts: 12.5, refuses: -0.01, text: "Too small: expected number to be >=0" },
   { setting: "currency", accepts: "credits", refuses: " ", text: "1 to 12 characters" },

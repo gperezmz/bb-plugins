@@ -2,10 +2,10 @@
  * Number formatting and headline wording shared by the panel, the header
  * chip, the CLI and the agent tool, so every surface says the same thing.
  */
-import type { BillingMode } from "./attribution";
-import { costTotal, figureTokenCount } from "./figure-math";
-import type { PriceSourceInfo, PricesInfo, TopTree } from "./report-types";
-import type { CostBuckets, Figure } from "./summary";
+import type { BillingMode } from "./billing";
+import { allTokensUnpriced, costTotal, figureTokenCount } from "./figure-math";
+import type { PriceSourceInfo, PricesInfo, TopTree, TopTrees } from "./report-types";
+import type { Figure, TierDetail } from "./summary";
 
 export function formatUsd(usd: number, label = "$"): string {
   const abs = Math.abs(usd);
@@ -70,54 +70,63 @@ export function formatAgo(ms: number): string {
 }
 
 /**
- * The line under the figures saying how fresh the prices behind estimates
- * are. Plain when they are more than a week old, or were never fetched.
+ * The line under the figures saying where the prices behind estimates come
+ * from and how fresh they are. Plain when they are more than a week old, were
+ * never fetched, or the last refresh failed.
  */
 export function pricesLabel(prices: PricesInfo, now: number): string {
+  const failed = prices.lastError === null ? "" : `. The last refresh failed: ${prices.lastError}`;
   if (prices.updatedAt !== null) {
     const ago = formatAgo(now - prices.updatedAt);
     return pricesStale(prices.updatedAt, now)
-      ? `Estimated with public list prices, last updated ${ago}. They are more than a week old and may be out of date${prices.lastError === null ? "" : ` (refresh failing: ${prices.lastError})`}`
-      : `Estimated with public list prices, updated ${ago}`;
+      ? `Estimated with models.dev prices, fetched ${ago}. They are more than a week old and may be out of date${failed}`
+      : `Estimated with models.dev prices, fetched ${ago}${failed}`;
   }
-  const bundled = `the price list bundled with the plugin${prices.bundledDate === null ? "" : ` (${prices.bundledDate.slice(0, 10)})`}`;
+  const bundled = `the models.dev list bundled with the plugin${prices.bundledDate === null ? "" : ` (${prices.bundledDate.slice(0, 10)})`}`;
   if (!prices.refreshOn) return `Estimated with ${bundled}. Online updates are off, so prices may be out of date`;
-  return `Estimated with ${bundled}; it has not been updated online yet, so prices may be out of date${prices.lastError === null ? "" : ` (refresh failing: ${prices.lastError})`}`;
+  return `Estimated with ${bundled}; it has not been fetched yet, so prices may be out of date${failed}`;
 }
 
 /** Tooltip for one By-model row: where its price came from and when that list was fetched. */
 export function priceSourceLabel(info: PriceSourceInfo | undefined, now: number): string {
-  if (info === undefined) return "No public price for this model";
+  if (info === undefined) return "No models.dev price for this model";
   const names: Record<PriceSourceInfo["source"], string> = {
-    override: "Your price override",
-    gateway: "The gateway's price map",
-    litellm: "LiteLLM public list",
-    snapshot: "LiteLLM list bundled with the plugin",
-    "models.dev": "models.dev public list",
+    "models.dev": "models.dev list",
+    snapshot: "models.dev list bundled with the plugin",
   };
   const fetched = info.fetchedAt === null ? "" : `, fetched ${formatAgo(now - info.fetchedAt)}`;
   return `${names[info.source]}${fetched}, as ${info.as}`;
 }
 
-export function formatPercent(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`;
+/** Short name of where a model's price came from, for the By-model table. */
+export function priceSourceName(info: PriceSourceInfo | undefined): string {
+  if (info === undefined) return "unpriced";
+  return info.source === "snapshot" ? "models.dev, bundled" : "models.dev";
+}
+
+/** The mark on a request charged at a tier: "tier over 100,000". */
+export function tierMark(above: number): string {
+  return `tier over ${formatCount(above)}`;
+}
+
+/** What the mark means, as its hover and focus hint says it. */
+export function tierHint(above: number): string {
+  return `A prompt over ${formatCount(above)} tokens is charged at that tier's rates for the whole request, output included.`;
 }
 
 /**
- * "$4.12 (gateway) + $0.30 (estimate)", sources in trust order, empty ones
- * left out. A single source is named without its amount ("estimate"), since
- * the headline above it already shows that amount.
+ * How many of an opened turn's requests used a tier, e.g. "1 of 2 requests
+ * used the tier over 100,000 tokens"; requests that crossed different sizes
+ * are counted together.
  */
-export function sourceMix(cost: CostBuckets, label = "$"): string {
-  const parts: [string, number][] = (
-    [
-      ["gateway", cost.gateway],
-      ["harness", cost.harness],
-      ["estimate", cost.estimate],
-    ] as [string, number][]
-  ).filter(([, usd]) => usd > 0);
-  if (parts.length === 1) return (parts[0] as [string, number])[0];
-  return parts.map(([name, usd]) => `${formatUsd(usd, label)} (${name})`).join(" + ");
+export function tierSummary(detail: TierDetail): string {
+  const sizes = [...new Set(detail.tiered.map((r) => r.tierAbove))];
+  const used = sizes.length === 1 ? `the tier over ${formatCount(sizes[0] as number)} tokens` : "a tier";
+  return `${formatCount(detail.tiered.length)} of ${formatCount(detail.requests)} requests used ${used}`;
+}
+
+export function formatPercent(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`;
 }
 
 type TopBilling = TopTree["billing"];
@@ -132,7 +141,6 @@ export function usualBilling(trees: readonly Pick<TopTree, "billing">[]): TopBil
 }
 
 const BILLING_TAGS: Record<TopBilling, string> = {
-  gateway: "gateway",
   "api-key": "API key",
   subscription: "subscription",
   unknown: "billing unknown",
@@ -171,15 +179,50 @@ export function treeContext(
   ].filter((part): part is string => part !== null && part !== "");
 }
 
+/** Each list cut to `limit` trees on its own, so a full dollar ranking does not hide the Not priced list. */
+export function limitTopTrees(top: TopTrees, limit: number): TopTrees {
+  return { priced: top.priced.slice(0, limit), notPriced: top.notPriced.slice(0, limit) };
+}
+
+/**
+ * `bb thread-usage top` as text: the trees ranked by dollars, then, apart
+ * and headed Not priced, the trees whose tokens have no price, each list
+ * ranked from 1.
+ */
+export function topText(
+  top: TopTrees,
+  opts: { currency: string; projectName: (projectId: string | null) => string | null; now: number },
+): string {
+  const line = (f: TopTree, rank: number, figure: string, tags: string[]) => {
+    // The first line already carries the amount, tokens and thread count.
+    const context = treeContext(f, { projectName: opts.projectName(f.projectId), countThreads: false, now: opts.now });
+    const second = [...context, ...tags].join(" · ");
+    const threads = treeThreads(f);
+    return `${String(rank).padStart(2)}. ${figure} ${f.title.slice(0, 60)}  (${f.threadId}${threads === null ? "" : `, ${threads}`})${second === "" ? "" : `\n      ${second}`}`;
+  };
+  const usual = usualBilling(top.priced);
+  const priced = top.priced.map((f, i) =>
+    line(f, i + 1, `${formatUsd(f.usd, opts.currency).padEnd(9)} ${formatTokens(f.tokens).padStart(6)} tokens `, treeTags(f, usual)),
+  );
+  const notPriced = top.notPriced.map((f, i) =>
+    line(f, i + 1, `${formatTokens(f.tokens).padStart(6)} tokens `, ["not priced"]),
+  );
+  const blocks = [
+    ...(priced.length > 0 ? [priced.join("\n")] : []),
+    ...(notPriced.length > 0 ? [`Not priced\n${notPriced.join("\n")}`] : []),
+  ];
+  return blocks.length === 0 ? "No thread trees with usage in that window." : blocks.join("\n\n");
+}
+
 export interface Headline {
-  /** The large figure: dollars, or tokens for an all-subscription figure. */
+  /** The large figure: dollars, or tokens for a subscription or a figure with no priced token. */
   primary: string;
   primaryKind: "usd" | "tokens";
-  /** Source mix or billing label under the primary figure. */
+  /** Estimate and billing label under the primary figure. */
   detail: string;
   /** Second line for a tree that mixes billing modes. */
   secondary: string | null;
-  /** "+ unpriced tokens" when any tokens had no price. */
+  /** "+ unpriced tokens" when some tokens had no price. */
   unpricedNote: string | null;
   /** The compact figure for the header chip. */
   chip: string;
@@ -196,17 +239,18 @@ function dominantBilling(f: Figure): BillingMode | "mixed" {
 }
 
 /**
- * The headline for a figure, by billing mode:
- * subscription leads with tokens and a list-price equivalent; gateway shows
- * dollars; api-key and unknown show dollars labelled estimate; a mix shows
- * billed dollars plus a subscription line.
+ * The headline for a figure, by billing mode: subscription leads with tokens
+ * and a list-price equivalent; api-key and unknown show dollars labelled
+ * estimate; a mix shows billed dollars plus a subscription line. A figure
+ * with tokens and no priced token leads with the token count, whatever the
+ * billing, and says they are not priced; a figure with no tokens is a dash.
  */
 export function headline(f: Figure, currency = "$"): Headline {
   const billing = dominantBilling(f);
   const tokens = figureTokenCount(f);
   const usd = costTotal(f.cost);
   const unpricedNote = f.unpricedTokens > 0 ? `+ ${formatTokens(f.unpricedTokens)} unpriced tokens` : null;
-  if (tokens === 0 && usd === 0) {
+  if (tokens === 0) {
     return {
       primary: "—",
       primaryKind: "usd",
@@ -214,6 +258,17 @@ export function headline(f: Figure, currency = "$"): Headline {
       secondary: null,
       unpricedNote: null,
       chip: "—",
+      billing,
+    };
+  }
+  if (allTokensUnpriced(f)) {
+    return {
+      primary: `${formatTokens(tokens)} tokens`,
+      primaryKind: "tokens",
+      detail: "The tokens are not priced",
+      secondary: null,
+      unpricedNote: null,
+      chip: formatTokens(tokens),
       billing,
     };
   }
@@ -230,21 +285,12 @@ export function headline(f: Figure, currency = "$"): Headline {
   }
   const sub = f.byBilling.subscription;
   const billedUsd = usd - sub.usd;
-  // The billed split is the whole split minus what the subscription part contributed.
-  const billedCost: CostBuckets = {
-    gateway: f.cost.gateway - sub.cost.gateway,
-    harness: f.cost.harness - sub.cost.harness,
-    estimate: f.cost.estimate - sub.cost.estimate,
-  };
-  const mix = sourceMix(billing === "mixed" ? billedCost : f.cost, currency);
   const labelFor: Record<string, string> = {
-    gateway: "billed by the gateway",
     "api-key": "API key",
     unknown: "billing unknown",
     mixed: "mixed billing",
   };
-  // "gateway · billed by the gateway" would say the same thing twice.
-  const detail = [mix === "" || (billing === "gateway" && mix === "gateway") ? null : mix, labelFor[billing]].filter(Boolean).join(" · ");
+  const detail = [billedUsd > 0 ? "estimate" : null, labelFor[billing]].filter(Boolean).join(" · ");
   return {
     primary: formatUsd(billedUsd, currency),
     primaryKind: "usd",
@@ -258,4 +304,3 @@ export function headline(f: Figure, currency = "$"): Headline {
     billing,
   };
 }
-

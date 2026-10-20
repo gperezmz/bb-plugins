@@ -26,7 +26,6 @@ describe("claude", () => {
       ts: ms("2026-01-01T10:00:01.400Z"),
       model: "claude-sonnet-5",
       tokens: { input: 2, output: 80, cacheRead: 0, cacheWrite: 1000, cacheWrite1h: 1000, reasoning: 3 },
-      costUsd: null,
     });
     expect(entries[1]!.tokens).toEqual({
       input: 1, output: 50, cacheRead: 1000, cacheWrite: 200, cacheWrite1h: 0, reasoning: 0,
@@ -76,14 +75,16 @@ describe("claude", () => {
 });
 
 describe("pi", () => {
-  it("maps usage and cost, skips zero-usage turns, keeps 0 cost as 0", async () => {
+  it("maps tokens and not the cost pi wrote, and skips zero-usage turns", async () => {
     const { found, entries } = await readPiSession([piRoot], "pi-sess-1", open, signal);
     expect(found).toBe(true);
-    expect(entries.map((e) => [e.key, e.model, e.costUsd])).toEqual([
-      ["p1", "model-a", 0.0123],
-      ["p2", "model-b", 0],
-      ["p4", "model-a", null],
+    expect(entries.map((e) => [e.key, e.model])).toEqual([
+      ["p1", "model-a"],
+      ["p2", "model-b"],
+      ["p4", "model-a"],
     ]);
+    // The log line carries a cost; the entry has no field for it.
+    expect(entries.every((e) => !("costUsd" in e))).toBe(true);
     expect(entries[0]!.tokens).toEqual({
       input: 10, output: 20, cacheRead: 30, cacheWrite: 40, cacheWrite1h: 15, reasoning: 5,
     });

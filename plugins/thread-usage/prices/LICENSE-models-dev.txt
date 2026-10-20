@@ -1,10 +1,6 @@
-The file litellm-prices.json is derived from model_prices_and_context_window.json
-in https://github.com/BerriAI/litellm, trimmed to chat models and cost keys by
-scripts/update-prices.mjs. The commit it was taken from is recorded in the file.
-
 MIT License
 
-Copyright (c) 2023 Berri AI
+Copyright (c) 2025 models.dev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

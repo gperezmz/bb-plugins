@@ -1,6 +1,6 @@
 # Thread Usage: first run
 
-In this tutorial you install Thread Usage, run a thread that spawns a child, and read what the two cost in the header, the Usage tab, the sidebar page and the CLI. You need a bb server you can install plugins on and one project with an agent that can run. No gateway is needed: costs here are estimates from public prices.
+In this tutorial you install Thread Usage, run a thread that spawns a child, and read what the two cost in the header, the Usage tab, the sidebar page and the CLI. You need a bb server you can install plugins on and one project with an agent that can run. Costs here are estimates from models.dev prices.
 
 ## 1. Install it
 
@@ -32,10 +32,10 @@ Click the coin. The Usage tab opens in the thread's side panel:
 
 - The headline, with a toggle between **This thread** and **With children**. Switch it and watch the figure change by what the child cost.
 - **Tokens** by kind, and the share of input read from cache.
-- **By model**. Hover a cost to see which price list it came from and when that list was fetched.
-- **Cost per turn**, or **Tokens per turn** on a subscription. Click a bar to see that turn's prompt, model, tokens and cost.
+- **By model**. Hover a cost to see which models.dev list priced it and when that list was fetched.
+- **Cost per turn**, or **Tokens per turn** on a subscription. Click a bar to see that turn's prompt, model, tokens and cost. When some of its requests were charged at a long-context tier, it also lists those requests.
 - **Child threads**: your child, with its own cost and its share of the total. Click it to open the child.
-- **Data quality**: anything missing or estimated, in words.
+- **Data quality**: anything missing or estimated, in words. A model models.dev has no price for shows here, with its tokens counted and not priced.
 
 ## 5. Ask from a shell
 
@@ -56,4 +56,4 @@ Click **Thread usage** in the sidebar. The page ranks the most expensive thread 
 bb thread-usage top --since 30d
 ```
 
-You have installed Thread Usage and read one tree's cost in each place it shows. To get exact costs instead of estimates, [connect a LiteLLM gateway](../how-to/thread-usage-connect-litellm.md).
+You have installed Thread Usage and read one tree's cost in each place it shows. [How Thread Usage counts tokens and cost](../explanation/thread-usage-counting.md#prices) says how each request is priced.

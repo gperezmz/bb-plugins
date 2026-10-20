@@ -8,7 +8,7 @@
   },
   "bb": {
     "name": "Thread usage",
-    "description": "What a thread and every thread it spawned cost: tokens, dollars from your gateway or list prices, time and lines.",
+    "description": "What a thread and every thread it spawned cost: tokens, dollars estimated from models.dev prices, time and lines.",
     "branding": {
       "icon": "./icons/coin.svg",
       "experimental_icons": {
@@ -62,7 +62,7 @@
     "vaul": "^1.1.2",
     "vitest": "^5.0.1"
   },
-  "description": "Per-thread usage and cost for bb, rolled up over child threads, with LiteLLM gateway support.",
+  "description": "Per-thread usage and cost for bb, rolled up over child threads, estimated from models.dev prices.",
   "license": "MIT",
   "repository": {
     "type": "git",

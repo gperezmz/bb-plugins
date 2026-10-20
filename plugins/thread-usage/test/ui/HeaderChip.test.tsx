@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChipView } from "../../src/core/report-types";
-import { HeaderChip } from "../../src/ui/HeaderChip";
+import { ChipSummary, HeaderChip } from "../../src/ui/HeaderChip";
 
 const sdk = vi.hoisted(() => ({
   values: {} as Record<string, unknown>,
@@ -37,7 +37,6 @@ const chipView = (over: Partial<ChipView> = {}): ChipView => ({
   chip: "$1.23",
   headline: { primary: "$1.23", primaryKind: "usd", detail: "estimate", secondary: null, unpricedNote: null, chip: "$1.23", billing: "api" },
   tokens: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
-  untrackedTokens: 0,
   descendants: 2,
   hiddenDescendants: 0,
   turns: 3,
@@ -88,5 +87,31 @@ describe("the header chip", () => {
   it("shows a budget toast the server hands this window", async () => {
     await renderChip(chipView({ toast: { amount: 5, total: "$5.10", title: "Build", rootThreadId: "thr_a" } }));
     expect(sdk.warning).toHaveBeenCalledWith("“Build” crossed $5.00", { description: "Now $5.10. Nothing was stopped." });
+  });
+});
+
+describe("the card the chip shows on hover", () => {
+  it("leads with the token count and says they are not priced when no token has a price", () => {
+    render(
+      <ChipSummary
+        chip={chipView({
+          chip: "45k",
+          headline: { primary: "45k tokens", primaryKind: "tokens", detail: "The tokens are not priced", secondary: null, unpricedNote: null, chip: "45k", billing: "api-key" },
+        })}
+      />,
+    );
+    expect(screen.getByText("45k tokens")).toBeTruthy();
+    expect(screen.getByText("The tokens are not priced")).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
+  });
+
+  it("names the unpriced tokens beside the dollars", () => {
+    render(
+      <ChipSummary
+        chip={chipView({ headline: { primary: "$1.23", primaryKind: "usd", detail: "estimate · API key", secondary: null, unpricedNote: "+ 2.5k unpriced tokens", chip: "$1.23", billing: "api-key" } })}
+      />,
+    );
+    expect(screen.getByText("$1.23")).toBeTruthy();
+    expect(screen.getByText("+ 2.5k unpriced tokens")).toBeTruthy();
   });
 });

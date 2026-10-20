@@ -1,6 +1,6 @@
 # bb plugins
 
-Five plugins for [bb](https://getbb.app). **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars, taking exact figures from a LiteLLM gateway when one sits in front of the models. **OpenAI-compatible inference** lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. **UI Tweaks** adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. **Unattendish** wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, so an answer written on an issue, a review or a spec marked ready reaches the manager without the operator telling it; it reads GitHub, GitLab, Linear and Jira Cloud on an interval and sends one message per poll, and shows the operator what waits on them across fleets, on a Fleets page, a Fleet chip in each manager's header and a Fleet tab in its panel, where Answer…, Grant… and Build it send the manager the message. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state, but for one read: Unattendish shows a fleet's cost from Thread Usage when that is installed, and leaves it out when it is not.
+Five plugins for [bb](https://getbb.app). **Thread Glance** replaces the sidebar's thread list with shelves, so you can snooze, park or settle a thread and have the list bring it back when its time comes, and keep Active in an order of your own. **Thread Usage** shows what a thread and every thread it spawned cost, in tokens and dollars estimated from models.dev's prices, each request priced on its own prompt size. **OpenAI-compatible inference** lets bb title threads and write commit messages through a LiteLLM gateway or a local model, where bb's built-in Codex service needs a Codex login. **UI Tweaks** adds appearance settings bb lacks: the size of the transcript and composer text, and the width of the transcript and composer columns, in thread views and on the New-thread screen. **Unattendish** wakes the manager thread of an Unattendish fleet when the tracker or forge the fleet waits on changes, so an answer written on an issue, a review or a spec marked ready reaches the manager without the operator telling it; it reads GitHub, GitLab, Linear and Jira Cloud on an interval and sends one message per poll, and shows the operator what waits on them across fleets, on a Fleets page, a Fleet chip in each manager's header and a Fleet tab in its panel, where Answer…, Grant… and Build it send the manager the message. Each plugin installs on its own from this repository, and none depends on another: they share bb, not state, but for one read: Unattendish shows a fleet's cost from Thread Usage when that is installed, and leaves it out when it is not.
 
 ```mermaid
 flowchart LR
@@ -14,13 +14,14 @@ flowchart LR
   tu["Thread Usage"]
   oi["OpenAI-compatible inference"]
   gateway["LiteLLM gateway, optional"]
+  modelsdev["models.dev price list"]
   localmodel["Local model server, optional"]
   logs["Harness session logs"]
   events -->|state of each thread| tg
   tg -->|shelf list| ui
   events -->|tokens per turn| tu
   logs -->|tokens bb never sees| tu
-  gateway -->|spend per request| tu
+  modelsdev -->|price per token, by tier| tu
   tu -->|header chip, Usage tab, Thread usage page| ui
   helper --> oi
   oi -->|chat completions| gateway
@@ -57,8 +58,6 @@ The pages each plugin's behaviour rests on:
 - [Install, update or remove a plugin](how-to/install-plugins.md)
 - [Develop a plugin from this repository](how-to/develop-plugins.md)
 - [Switch the sidebar between Thread Glance and bb's list](how-to/thread-glance-switch-sidebar.md)
-- [Connect a LiteLLM gateway for exact cost](how-to/thread-usage-connect-litellm.md)
-- [Set price overrides and model aliases](how-to/thread-usage-set-prices.md)
 - [Title threads with a local model](how-to/openai-inference-local-server.md)
 - [Connect a fleet to an account](how-to/unattendish-connect-a-fleet.md): Connect…, read-only tokens, and managing accounts in Settings
 - [Answer, grant or build from the dashboard](how-to/unattendish-answer-from-the-dashboard.md)
@@ -71,7 +70,7 @@ The pages each plugin's behaviour rests on:
 - [Thread Usage: settings](reference/thread-usage-settings.md)
 - [Thread Usage: `bb thread-usage`](reference/thread-usage-cli.md)
 - [Thread Usage: the `thread_usage` agent tool](reference/thread-usage-agent-tool.md)
-- [Thread Usage: cost sources, prices, attribution and billing](reference/thread-usage-cost-sources.md)
+- [Thread Usage: cost sources, prices and billing](reference/thread-usage-cost-sources.md)
 - [OpenAI-compatible inference: Endpoints, the command and failures](reference/openai-inference-settings.md)
 - [UI Tweaks: settings](reference/ui-tweaks-settings.md)
 - [Unattendish: `bb unattendish fleet` and the wake](reference/unattendish-cli.md)

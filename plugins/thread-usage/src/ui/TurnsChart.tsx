@@ -10,8 +10,6 @@ import { totalTokens } from "../core/tokens";
 import { cn } from "@/lib/utils";
 
 export const SOURCE_STYLE: Record<CostSource, { fill: string; swatch: string; label: string }> = {
-  gateway: { fill: "fill-primary", swatch: "bg-primary", label: "Gateway" },
-  harness: { fill: "fill-success", swatch: "bg-success", label: "Harness" },
   estimate: { fill: "fill-primary/45", swatch: "bg-primary/45", label: "Estimate" },
   unpriced: { fill: "fill-muted-foreground/35", swatch: "bg-muted-foreground/35", label: "Unpriced" },
 };
@@ -57,7 +55,9 @@ export function TurnsChart({
   const width = Math.max(n, 40) * slot;
   const sources = [...new Set(bars.map((b) => b.turn.source))];
   const hovered = hover === null ? null : bars[hover.index];
-  const label = (v: number) => (measure === "usd" ? formatUsd(v, currency) : `${formatTokens(v)} tokens`);
+  // An unpriced turn has no dollars to show: showing $0.00 would read as free.
+  const label = (v: number, turn: TurnView) =>
+    measure === "usd" ? (v === 0 && turn.unpricedTokens > 0 ? "not priced" : formatUsd(v, currency)) : `${formatTokens(v)} tokens`;
 
   return (
     <div className="relative" ref={box}>
@@ -102,7 +102,7 @@ export function TurnsChart({
                 className="cursor-pointer fill-transparent outline-none focus-visible:fill-primary/10"
                 tabIndex={0}
                 role="button"
-                aria-label={`${turnLabel(b.turn, turnNumbers(turns).get(b.turn.turnId) ?? 0)}: ${label(b.value)}`}
+                aria-label={`${turnLabel(b.turn, turnNumbers(turns).get(b.turn.turnId) ?? 0)}: ${label(b.value, b.turn)}`}
                 aria-pressed={isSelected}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -129,7 +129,7 @@ export function TurnsChart({
         >
           <div className="font-medium">{turnLabel(hovered.turn, turnNumbers(turns).get(hovered.turn.turnId) ?? 0)}</div>
           <div className="tabular-nums text-muted-foreground">
-            {measure === "usd" ? `${label(hovered.value)} · ${formatTokens(hovered.tokens)} tokens` : label(hovered.value)}
+            {measure === "usd" ? `${label(hovered.value, hovered.turn)} · ${formatTokens(hovered.tokens)} tokens` : label(hovered.value, hovered.turn)}
             {hovered.turn.model !== null ? ` · ${hovered.turn.model.replace(/\[[^\]]*\]$/, "")}` : ""}
           </div>
         </div>

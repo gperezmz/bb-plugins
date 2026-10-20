@@ -26,13 +26,21 @@ export function UsagePage({ subPath }: { subPath: string }) {
   const projectId = projectFromSubPath(subPath);
   const [days, setDays] = useState<7 | 30>(7);
   const { data, error, loading } = useLive(() => rpc.call("top", { projectId, sinceDays: days }), [rpc, projectId, days]);
-  const trees = data?.trees ?? null;
+  const trees = data?.trees.priced ?? null;
+  const notPriced = data?.trees.notPriced ?? [];
   const { values } = useSettings();
   const currency = typeof values?.currency === "string" && values.currency !== "" ? values.currency : "$";
   const max = Math.max(...(trees ?? []).map((f) => (f.usd > 0 ? f.usd : 0)), 0);
   const usual = usualBilling(trees ?? []);
   const projectNames = new Map((data?.projects ?? []).map((p) => [p.id, p.name]));
   const now = Date.now();
+  // A project filter already names the project.
+  const contextOf = (f: TopTree) =>
+    treeContext(f, {
+      projectName: projectId === null && f.projectId !== null ? (projectNames.get(f.projectId) ?? null) : null,
+      countThreads: true,
+      now,
+    });
 
   return (
     <div className="h-full min-h-0 flex-1 overflow-y-auto">
@@ -88,30 +96,53 @@ export function UsagePage({ subPath }: { subPath: string }) {
               <Skeleton key={i} className="h-14 w-full" />
             ))}
           </div>
-        ) : trees.length === 0 ? (
+        ) : trees.length === 0 && notPriced.length === 0 ? (
           <EmptyState>No thread trees with usage in the last {days} days.</EmptyState>
         ) : (
-          <Panel className={cn("overflow-hidden transition-opacity", loading && "opacity-50")}>
-            <ol className="divide-y divide-border" aria-busy={loading}>
-              {trees.map((f, i) => (
-                <TopTreeRow
-                  key={f.threadId}
-                  tree={f}
-                  rank={i + 1}
-                  max={max}
-                  currency={currency}
-                  // A project filter already names the project.
-                  context={treeContext(f, {
-                    projectName: projectId === null && f.projectId !== null ? (projectNames.get(f.projectId) ?? null) : null,
-                    countThreads: true,
-                    now,
-                  })}
-                  tags={treeTags(f, usual)}
-                  onOpen={() => navigate.toThread(f.threadId)}
-                />
-              ))}
-            </ol>
-          </Panel>
+          <>
+            {trees.length > 0 ? (
+              <Panel className={cn("overflow-hidden transition-opacity", loading && "opacity-50")}>
+                <ol className="divide-y divide-border" aria-busy={loading}>
+                  {trees.map((f, i) => (
+                    <TopTreeRow
+                      key={f.threadId}
+                      tree={f}
+                      rank={i + 1}
+                      max={max}
+                      currency={currency}
+                      context={contextOf(f)}
+                      tags={treeTags(f, usual)}
+                      onOpen={() => navigate.toThread(f.threadId)}
+                    />
+                  ))}
+                </ol>
+              </Panel>
+            ) : null}
+            {notPriced.length > 0 ? (
+              <section aria-labelledby="not-priced">
+                <h2 id="not-priced" className="mb-2 text-xs font-medium text-muted-foreground">
+                  Not priced
+                </h2>
+                <Panel className={cn("overflow-hidden transition-opacity", loading && "opacity-50")}>
+                  <ol className="divide-y divide-border" aria-busy={loading}>
+                    {notPriced.map((f, i) => (
+                      <TopTreeRow
+                        key={f.threadId}
+                        tree={f}
+                        rank={i + 1}
+                        max={0}
+                        currency={currency}
+                        context={contextOf(f)}
+                        tags={[]}
+                        notPriced
+                        onOpen={() => navigate.toThread(f.threadId)}
+                      />
+                    ))}
+                  </ol>
+                </Panel>
+              </section>
+            ) : null}
+          </>
         )}
         {data !== null ? (
           <p className={cn("text-xs", pricesStale(data.prices.updatedAt, Date.now()) ? "text-warning" : "text-muted-foreground")}>
@@ -134,6 +165,7 @@ function TopTreeRow({
   currency,
   context,
   tags,
+  notPriced = false,
   onOpen,
 }: {
   tree: TopTree;
@@ -142,6 +174,8 @@ function TopTreeRow({
   currency: string;
   context: string[];
   tags: string[];
+  /** The tree's tokens have no price: its figure is the token count and it carries no bar. */
+  notPriced?: boolean;
   onOpen: () => void;
 }) {
   return (
@@ -168,18 +202,27 @@ function TopTreeRow({
             ))}
           </span>
         </span>
-        <span className="hidden w-24 shrink-0 sm:block" aria-hidden>
-          <span className="block h-1.5 overflow-hidden rounded-full bg-muted">
-            <span
-              className={cn("block h-full rounded-full", tree.billing === "subscription" ? "bg-muted-foreground/50" : "bg-primary/70")}
-              style={{ width: `${max > 0 ? Math.max(2, (tree.usd / max) * 100) : 0}%` }}
-            />
+        {notPriced ? null : (
+          <span className="hidden w-24 shrink-0 sm:block" aria-hidden>
+            <span className="block h-1.5 overflow-hidden rounded-full bg-muted">
+              <span
+                className={cn("block h-full rounded-full", tree.billing === "subscription" ? "bg-muted-foreground/50" : "bg-primary/70")}
+                style={{ width: `${max > 0 ? Math.max(2, (tree.usd / max) * 100) : 0}%` }}
+              />
+            </span>
           </span>
-        </span>
-        <span className="w-20 shrink-0 text-right" title="All dollars, list-price equivalent of subscription use included">
-          <span className="block text-sm font-medium tabular-nums text-foreground">{formatUsd(tree.usd, currency)}</span>
-          <span className="block text-[11px] tabular-nums text-muted-foreground">{formatTokens(tree.tokens)} tokens</span>
-        </span>
+        )}
+        {notPriced ? (
+          <span className="w-20 shrink-0 text-right">
+            <span className="block text-sm font-medium tabular-nums text-foreground">{formatTokens(tree.tokens)} tokens</span>
+            <span className="block text-[11px] text-muted-foreground">not priced</span>
+          </span>
+        ) : (
+          <span className="w-20 shrink-0 text-right" title="All dollars, list-price equivalent of subscription use included">
+            <span className="block text-sm font-medium tabular-nums text-foreground">{formatUsd(tree.usd, currency)}</span>
+            <span className="block text-[11px] tabular-nums text-muted-foreground">{formatTokens(tree.tokens)} tokens</span>
+          </span>
+        )}
       </button>
     </li>
   );

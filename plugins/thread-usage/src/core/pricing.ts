@@ -1,25 +1,26 @@
 /**
- * Price tables and cost arithmetic.
+ * Price lookup and request costing.
  *
- * Rates are USD per token, as in LiteLLM's price map. Precedence is: aliases
- * first, then price overrides from settings, then the gateway's price map,
- * then LiteLLM's public list (the fetched copy, or the bundled snapshot when
- * none was ever fetched), then models.dev.
+ * Every price comes from models.dev, as published: the fetched copy, or the
+ * copy bundled with the plugin until one was fetched. Rates are USD per
+ * token. A request is priced on its own, by the tier its prompt is over.
  */
-import * as z from "zod/mini";
-import type { Tokens } from "./tokens";
+import { promptTokens, type Tokens } from "./tokens";
 
 /** Per-token rates for one model. Absent rates are unknown, not zero. */
 export interface ModelPrice {
   input: number;
   output: number;
   cacheRead?: number;
+  /** The 5-minute cache-write rate: the one models.dev publishes. */
   cacheWrite?: number;
-  cacheWrite1h?: number;
-  /** Long-context tiers: rates that replace the base once a request's prompt exceeds `above` tokens. */
+  /** A Claude model: its 1-hour cache writes cost twice the input rate. */
+  claude?: true;
+  /** Context tiers: rates that replace the base once a request's prompt is over `above` tokens. */
   tiers?: PriceTier[];
 }
 
+/** The rates a tier sets; a kind it omits keeps the base rate. */
 export interface PriceTier {
   above: number;
   input?: number;
@@ -28,113 +29,14 @@ export interface PriceTier {
   cacheWrite?: number;
 }
 
-/** `snapshot` is the copy bundled with the plugin; `litellm` and `models.dev` are fetched public lists. */
-export type PriceOrigin = "override" | "gateway" | "litellm" | "snapshot" | "models.dev";
+/** `models.dev` is the fetched list, `snapshot` the copy bundled with the plugin. */
+export type PriceOrigin = "models.dev" | "snapshot";
 
 export interface ResolvedPrice {
   /** The model name the price was found under. */
   model: string;
   origin: PriceOrigin;
   price: ModelPrice;
-}
-
-/** A LiteLLM price-map entry, as in the snapshot and in `/model/info`. */
-export type LiteLlmPriceEntry = Partial<Record<string, number>>;
-
-const TIER_THRESHOLDS = [200_000, 272_000] as const;
-
-/** Converts one LiteLLM price-map entry, or returns null without input and output rates. */
-export function fromLiteLlmEntry(entry: LiteLlmPriceEntry): ModelPrice | null {
-  const num = (key: string) => {
-    const value = entry[key];
-    return typeof value === "number" && Number.isFinite(value) && value >= 0
-      ? value
-      : undefined;
-  };
-  const input = num("input_cost_per_token");
-  const output = num("output_cost_per_token");
-  if (input === undefined || output === undefined) return null;
-  const price: ModelPrice = { input, output };
-  const cacheRead = num("cache_read_input_token_cost");
-  const cacheWrite = num("cache_creation_input_token_cost");
-  const cacheWrite1h = num("cache_creation_input_token_cost_above_1hr");
-  if (cacheRead !== undefined) price.cacheRead = cacheRead;
-  if (cacheWrite !== undefined) price.cacheWrite = cacheWrite;
-  if (cacheWrite1h !== undefined) price.cacheWrite1h = cacheWrite1h;
-  const tiers: PriceTier[] = [];
-  for (const above of TIER_THRESHOLDS) {
-    const suffix = `_above_${above / 1000}k_tokens`;
-    const tier: PriceTier = { above };
-    const tInput = num(`input_cost_per_token${suffix}`);
-    const tOutput = num(`output_cost_per_token${suffix}`);
-    const tRead = num(`cache_read_input_token_cost${suffix}`);
-    const tWrite = num(`cache_creation_input_token_cost${suffix}`);
-    if (tInput !== undefined) tier.input = tInput;
-    if (tOutput !== undefined) tier.output = tOutput;
-    if (tRead !== undefined) tier.cacheRead = tRead;
-    if (tWrite !== undefined) tier.cacheWrite = tWrite;
-    if (Object.keys(tier).length > 1) tiers.push(tier);
-  }
-  if (tiers.length > 0) price.tiers = tiers;
-  return price;
-}
-
-const nonEmpty = () => z.string().check(z.minLength(1));
-const rate = () => z.number().check(z.nonnegative());
-
-/** Settings value "Price overrides and aliases": rates per million tokens. */
-export const priceOverridesSchema = z.strictObject({
-  aliases: z.optional(z.record(nonEmpty(), nonEmpty())),
-  prices: z.optional(
-    z.record(
-      nonEmpty(),
-      z.strictObject({
-        input: rate(),
-        output: rate(),
-        cacheRead: z.optional(rate()),
-        cacheWrite: z.optional(rate()),
-        cacheWrite1h: z.optional(rate()),
-      }),
-    ),
-  ),
-});
-export type PriceOverrides = z.infer<typeof priceOverridesSchema>;
-
-export const EXAMPLE_OVERRIDES = `{
-  "aliases": { "claude-opus-5": "claude-opus-5-5" },
-  "prices": { "my-internal-model": { "input": 1, "output": 4 } }
-}`;
-
-/** Parses the overrides setting. Empty text is no overrides; bad JSON throws. */
-export function parsePriceOverrides(text: string): PriceOverrides {
-  const trimmed = text.trim();
-  if (trimmed === "") return {};
-  return priceOverridesSchema.parse(JSON.parse(trimmed));
-}
-
-/** Validation message for the overrides setting, or null when valid. */
-export function priceOverridesError(text: string): string | null {
-  try {
-    parsePriceOverrides(text);
-    return null;
-  } catch (error) {
-    if (error instanceof SyntaxError) return `Not valid JSON: ${error.message}`;
-    if (error instanceof z.core.$ZodError) {
-      const issue = error.issues[0];
-      return `${issue?.path.join(".") || "value"}: ${issue?.message ?? "invalid"}`;
-    }
-    return String(error);
-  }
-}
-
-const PER_MTOK = 1_000_000;
-
-function overrideToPrice(o: NonNullable<PriceOverrides["prices"]>[string]): ModelPrice {
-  const price: ModelPrice = { input: o.input / PER_MTOK, output: o.output / PER_MTOK };
-  if (o.cacheRead !== undefined) price.cacheRead = o.cacheRead / PER_MTOK;
-  if (o.cacheWrite !== undefined) price.cacheWrite = o.cacheWrite / PER_MTOK;
-  if (o.cacheWrite1h !== undefined) price.cacheWrite1h = o.cacheWrite1h / PER_MTOK;
-  return price;
 }
 
 /** Strips `[1m]`-style suffixes, whitespace and case. */
@@ -157,8 +59,9 @@ const PROVIDER_PREFIXES = [
 
 /**
  * Candidate names to look a model up under, most specific first: the name
- * itself, without a provider prefix, with a Vertex `@date` turned into a
- * `-date`, and without a trailing `-YYYYMMDD` date.
+ * itself, without a provider prefix, its last slash-separated segment, with
+ * a Vertex `@date` turned into a `-date`, and each of those without a
+ * trailing `-YYYYMMDD` date.
  */
 export function candidateNames(model: string): string[] {
   const out: string[] = [];
@@ -190,56 +93,21 @@ export function candidateNames(model: string): string[] {
 }
 
 export interface PriceBookInput {
-  /** LiteLLM's list: the fetched copy, or the bundled one. */
-  snapshot: Record<string, LiteLlmPriceEntry>;
-  /** Origin the `snapshot` layer reports; "snapshot" (bundled) when absent. */
-  snapshotOrigin?: "litellm" | "snapshot";
-  /** models.dev prices in LiteLLM's field names, for models the snapshot lacks. */
-  modelsDev?: Record<string, LiteLlmPriceEntry>;
-  gateway?: Record<string, ModelPrice> | null;
-  overrides?: PriceOverrides;
+  /** models.dev's prices by model id, lower case. */
+  models: Record<string, ModelPrice>;
+  /** Which copy `models` is. */
+  origin: PriceOrigin;
 }
 
-/** Looks up prices with alias, override, gateway, LiteLLM and models.dev precedence. */
+/** Looks a model up in one models.dev list. */
 export class PriceBook {
-  private readonly snapshot = new Map<string, ModelPrice>();
-  private readonly modelsDev = new Map<string, ModelPrice>();
-  private readonly snapshotOrigin: "litellm" | "snapshot";
-  private readonly gateway = new Map<string, ModelPrice>();
-  private readonly overrides = new Map<string, ModelPrice>();
-  private readonly aliases = new Map<string, string>();
+  private readonly models = new Map<string, ModelPrice>();
+  private readonly origin: PriceOrigin;
   private readonly cache = new Map<string, ResolvedPrice | null>();
 
   constructor(input: PriceBookInput) {
-    this.snapshotOrigin = input.snapshotOrigin ?? "snapshot";
-    for (const [name, entry] of Object.entries(input.snapshot)) {
-      const price = fromLiteLlmEntry(entry);
-      if (price !== null) this.snapshot.set(name.toLowerCase(), price);
-    }
-    for (const [name, entry] of Object.entries(input.modelsDev ?? {})) {
-      const price = fromLiteLlmEntry(entry);
-      if (price !== null) this.modelsDev.set(name.toLowerCase(), price);
-    }
-    for (const [name, price] of Object.entries(input.gateway ?? {})) {
-      this.gateway.set(normalizeModelName(name), price);
-    }
-    for (const [from, to] of Object.entries(input.overrides?.aliases ?? {})) {
-      this.aliases.set(normalizeModelName(from), normalizeModelName(to));
-    }
-    for (const [name, o] of Object.entries(input.overrides?.prices ?? {})) {
-      this.overrides.set(normalizeModelName(name), overrideToPrice(o));
-    }
-  }
-
-  /** The model an alias maps to, or the normalized name itself. */
-  resolveAlias(model: string): string {
-    let name = normalizeModelName(model);
-    for (let hops = 0; hops < 8; hops++) {
-      const next = this.aliases.get(name);
-      if (next === undefined || next === name) break;
-      name = next;
-    }
-    return name;
+    this.origin = input.origin;
+    for (const [name, price] of Object.entries(input.models)) this.models.set(name.toLowerCase(), price);
   }
 
   lookup(model: string | null | undefined): ResolvedPrice | null {
@@ -247,22 +115,12 @@ export class PriceBook {
     const key = normalizeModelName(model);
     const cached = this.cache.get(key);
     if (cached !== undefined) return cached;
-    const aliased = this.resolveAlias(model);
-    const names = candidateNames(aliased);
     let found: ResolvedPrice | null = null;
-    const layers: [PriceOrigin, Map<string, ModelPrice>][] = [
-      ["override", this.overrides],
-      ["gateway", this.gateway],
-      [this.snapshotOrigin, this.snapshot],
-      ["models.dev", this.modelsDev],
-    ];
-    outer: for (const [origin, table] of layers) {
-      for (const name of names) {
-        const price = table.get(name);
-        if (price !== undefined) {
-          found = { model: name, origin, price };
-          break outer;
-        }
+    for (const name of candidateNames(key)) {
+      const price = this.models.get(name);
+      if (price !== undefined) {
+        found = { model: name, origin: this.origin, price };
+        break;
       }
     }
     this.cache.set(key, found);
@@ -270,90 +128,147 @@ export class PriceBook {
   }
 }
 
-export interface CostResult {
-  usd: number;
-  /** True when a rate had to be approximated (missing cache rate, tier unknown). */
-  approximate: boolean;
+/** The rates a request is charged at. */
+export interface Rates {
+  input: number;
+  output: number;
+  cacheRead: number | undefined;
+  cacheWrite: number | undefined;
 }
 
 /**
- * Cost of `tokens` at `price`.
- *
- * `requestPromptTokens` is the prompt size of the single request these
- * tokens belong to. Tiers apply only when it is known (gateway or log rows);
- * a turn summed over several requests passes null and gets the base rate,
- * flagged approximate when the model has a tier.
+ * The rates for a request whose prompt is `prompt` tokens: the base, with
+ * every kind the tier sets replaced. The tier is the one with the highest
+ * size the prompt is over; with no prompt size, no tier applies.
  */
-export function costOf(
-  tokens: Tokens,
-  price: ModelPrice,
-  requestPromptTokens: number | null,
-): CostResult {
-  let approximate = false;
-  let rates = {
+export function ratesFor(price: ModelPrice, prompt: number | null): { rates: Rates; tier: PriceTier | null } {
+  const base: Rates = {
     input: price.input,
     output: price.output,
     cacheRead: price.cacheRead,
     cacheWrite: price.cacheWrite,
   };
-  const tiers = price.tiers ?? [];
-  if (tiers.length > 0) {
-    if (requestPromptTokens === null) {
-      approximate = true;
-    } else {
-      // Whole-request switch: the highest tier the prompt exceeds.
-      const tier = [...tiers]
-        .sort((a, b) => b.above - a.above)
-        .find((t) => requestPromptTokens > t.above);
-      if (tier !== undefined) {
-        rates = {
-          input: tier.input ?? rates.input,
-          output: tier.output ?? rates.output,
-          cacheRead: tier.cacheRead ?? rates.cacheRead,
-          cacheWrite: tier.cacheWrite ?? rates.cacheWrite,
-        };
-      }
-    }
-  }
+  const tier =
+    prompt === null
+      ? null
+      : ([...(price.tiers ?? [])].sort((a, b) => b.above - a.above).find((t) => prompt > t.above) ?? null);
+  if (tier === null) return { rates: base, tier: null };
+  return {
+    tier,
+    rates: {
+      input: tier.input ?? base.input,
+      output: tier.output ?? base.output,
+      cacheRead: tier.cacheRead ?? base.cacheRead,
+      cacheWrite: tier.cacheWrite ?? base.cacheWrite,
+    },
+  };
+}
+
+export interface CostResult {
+  usd: number;
+  /** Any rate had to be assumed: `unsized` or `assumed`. */
+  approximate: boolean;
+  /** The model has a tier and the prompt size is unknown, so the base rates were used. */
+  unsized: boolean;
+  /** A cache rate models.dev does not publish, or a 1-hour write rate it cannot give, was assumed. */
+  assumed: boolean;
+  /** Size of the tier the request was charged at, or null at the base rates. */
+  tierAbove: number | null;
+  rates: Rates;
+}
+
+/**
+ * Cost of `tokens` at `price`.
+ *
+ * `prompt` is the prompt size of the single request these tokens belong to,
+ * or null for tokens summed over requests whose sizes are not known, which
+ * get the base rates. A 1-hour cache write of a Claude model costs twice the
+ * input rate of the tier in effect; any other model's, the cache-write rate
+ * of that tier, which is an assumption.
+ */
+export function costOf(tokens: Tokens, price: ModelPrice, prompt: number | null): CostResult {
+  const { rates, tier } = ratesFor(price, prompt);
+  const unsized = prompt === null && (price.tiers?.length ?? 0) > 0;
+  let assumed = false;
   const readRate = rates.cacheRead ?? rates.input;
-  if (tokens.cacheRead > 0 && rates.cacheRead === undefined) approximate = true;
+  if (tokens.cacheRead > 0 && rates.cacheRead === undefined) assumed = true;
   const writeRate = rates.cacheWrite ?? rates.input;
-  if (tokens.cacheWrite > 0 && rates.cacheWrite === undefined) approximate = true;
+  if (tokens.cacheWrite > 0 && rates.cacheWrite === undefined) assumed = true;
   const oneHour = Math.min(tokens.cacheWrite1h, tokens.cacheWrite);
   const fiveMinute = tokens.cacheWrite - oneHour;
-  let oneHourRate = price.cacheWrite1h;
-  if (oneHour > 0 && oneHourRate === undefined) {
-    oneHourRate = writeRate;
-    approximate = true;
+  let oneHourRate = writeRate;
+  if (oneHour > 0) {
+    if (price.claude === true) oneHourRate = 2 * rates.input;
+    else assumed = true;
   }
   const usd =
     tokens.input * rates.input +
     tokens.output * rates.output +
     tokens.cacheRead * readRate +
     fiveMinute * writeRate +
-    oneHour * (oneHourRate ?? writeRate);
-  return { usd, approximate };
+    oneHour * oneHourRate;
+  return { usd, approximate: unsized || assumed, unsized, assumed, tierAbove: tier?.above ?? null, rates };
 }
 
-/** Parses LiteLLM `/model/info` into a price map keyed by public and upstream model names. */
-export function gatewayPricesFromModelInfo(body: unknown): Record<string, ModelPrice> {
-  const out: Record<string, ModelPrice> = {};
-  const data = (body as { data?: unknown })?.data;
-  if (!Array.isArray(data)) return out;
-  for (const item of data) {
-    if (item === null || typeof item !== "object") continue;
-    const record = item as {
-      model_name?: unknown;
-      litellm_params?: { model?: unknown } | null;
-      model_info?: LiteLlmPriceEntry | null;
-    };
-    const info = record.model_info;
-    if (info === null || info === undefined || typeof info !== "object") continue;
-    const price = fromLiteLlmEntry(info);
-    if (price === null) continue;
-    if (typeof record.model_name === "string") out[record.model_name] = price;
-    const upstream = record.litellm_params?.model;
-    if (typeof upstream === "string" && !(upstream in out)) out[upstream] = price;
+/** One priced request of a turn, numbered in the order the requests were made. */
+export interface PricedRequest {
+  number: number;
+  /** Uncached input plus cache reads and writes. */
+  prompt: number;
+  usd: number;
+  /** Size of the tier it was charged at, or null at the base rates. */
+  tierAbove: number | null;
+}
+
+export interface RequestsCost {
+  usd: number;
+  approximate: boolean;
+  assumed: boolean;
+  requests: PricedRequest[];
+  /** The 1-hour cache writes no request carries, priced as a line of their own; null when there are none. */
+  oneHour: { tokens: number; usd: number } | null;
+}
+
+/**
+ * Cost of a turn's requests, each priced on its own prompt size.
+ *
+ * `unmatchedOneHour` is the part of the turn's cache writes known only as a
+ * turn-level share, which no request can be matched to: those tokens leave
+ * every request's 5-minute writes in proportion and are priced as one line.
+ * Their rate is twice the highest input rate any request was charged at (a
+ * Claude model), and the line is approximate where the requests were not all
+ * charged one rate. For any other model it is the highest cache-write rate,
+ * and always approximate.
+ */
+export function priceRequests(
+  requests: readonly Tokens[],
+  price: ModelPrice,
+  unmatchedOneHour: number,
+): RequestsCost {
+  const totalWrites = requests.reduce((n, r) => n + r.cacheWrite, 0);
+  const oneHour = Math.min(unmatchedOneHour, totalWrites);
+  const keep = oneHour > 0 ? 1 - oneHour / totalWrites : 1;
+  const priced: PricedRequest[] = [];
+  const inputRates = new Set<number>();
+  const writeRates = new Set<number>();
+  let usd = 0;
+  let assumed = false;
+  requests.forEach((r, i) => {
+    const prompt = promptTokens(r);
+    const cost = costOf({ ...r, cacheWrite: r.cacheWrite * keep }, price, prompt);
+    priced.push({ number: i + 1, prompt, usd: cost.usd, tierAbove: cost.tierAbove });
+    inputRates.add(cost.rates.input);
+    writeRates.add(cost.rates.cacheWrite ?? cost.rates.input);
+    usd += cost.usd;
+    assumed ||= cost.assumed;
+  });
+  let line: RequestsCost["oneHour"] = null;
+  if (oneHour > 0) {
+    const claude = price.claude === true;
+    const rate = claude ? 2 * Math.max(...inputRates) : Math.max(...writeRates);
+    line = { tokens: oneHour, usd: oneHour * rate };
+    usd += line.usd;
+    assumed ||= !claude || inputRates.size > 1;
   }
-  return out;
+  return { usd, approximate: assumed, assumed, requests: priced, oneHour: line };
 }

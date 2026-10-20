@@ -84,8 +84,7 @@ git config core.hooksPath .githooks
 
 | Script | When to run it |
 |---|---|
-| `npm run prices` | To refresh the price snapshot bundled in `prices/`. The plugin fetches current prices at run time; the snapshot is only its [fallback](../reference/thread-usage-cost-sources.md#price-freshness). |
-| `node test/fake-litellm.mjs --port 4455 --key sk-test` | To try gateway features without a gateway. Point the plugin at `http://127.0.0.1:4455`; it prints its `/__admin/*` routes for adding rows and failures when it starts. |
+| `npm run prices` | To refresh the models.dev snapshot bundled in `prices/`. It needs Node 22.18 or later, which runs the TypeScript the script shares with the server. The plugin fetches current prices at run time; the snapshot is only its [fallback](../reference/thread-usage-cost-sources.md#price-freshness). |
 
 ### Unattendish
 
