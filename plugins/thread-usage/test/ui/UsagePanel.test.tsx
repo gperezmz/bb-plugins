@@ -204,6 +204,16 @@ describe("what the Usage tab no longer says", () => {
     expect(screen.getByText(/· not priced/)).toBeTruthy();
   });
 
+  it("does not call a turn not priced when its subagent was priced, since it then has dollars", async () => {
+    const h = harness();
+    h.clock.now = NOW;
+    addThread(h, "thr_mix");
+    h.store.putTurns("thr_mix", [turnRecord({ turnId: "a", startedAt: T0 + MIN, completedAt: T0 + 2 * MIN, model: "my-internal-model", tokens: tokens({ input: 10_000 }) })]);
+    h.store.upsertLogEntries("thr_mix", [logEntry({ key: "s", agentId: "agent-z", ts: T0 + MIN + SEC, model: "test-model", tokens: tokens({ input: 1_000_000 }) })]);
+    await show(h.model.report("thr_mix"));
+    expect(screen.getByRole("button", { name: /^Turn 1: \$1\.00/ })).toBeTruthy();
+  });
+
   it("says that the last refresh failed, and why", async () => {
     clockAt(NOW);
     const h = harness();

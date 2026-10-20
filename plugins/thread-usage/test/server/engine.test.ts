@@ -171,6 +171,13 @@ describe("per-request counts by harness", () => {
     expect(r.store.getTurns("thr_cx")[0]!.requests).toEqual([{ input: 1000, output: 0, cacheRead: 0, cacheWrite: 0 }]);
     expect(r.store.getTurns("thr_cc")[0]!.requests).toBeUndefined();
   });
+
+  it("keeps none while the thread's provider is not known yet", async () => {
+    const r = rig();
+    r.events.set("thr_unknown", turns(1, 1, T0, 1000));
+    await r.engine.catchUp("thr_unknown");
+    expect(r.store.getTurns("thr_unknown")[0]!.requests).toBeUndefined();
+  });
 });
 
 describe("forks (scenario 11)", () => {

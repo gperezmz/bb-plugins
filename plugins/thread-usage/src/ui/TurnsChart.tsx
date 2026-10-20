@@ -57,7 +57,7 @@ export function TurnsChart({
   const hovered = hover === null ? null : bars[hover.index];
   // An unpriced turn has no dollars to show: showing $0.00 would read as free.
   const label = (v: number, turn: TurnView) =>
-    measure === "usd" ? (turn.source === "unpriced" ? "not priced" : formatUsd(v, currency)) : `${formatTokens(v)} tokens`;
+    measure === "usd" ? (v === 0 && turn.unpricedTokens > 0 ? "not priced" : formatUsd(v, currency)) : `${formatTokens(v)} tokens`;
 
   return (
     <div className="relative" ref={box}>

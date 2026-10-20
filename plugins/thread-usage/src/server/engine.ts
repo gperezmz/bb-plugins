@@ -310,8 +310,9 @@ export class Engine {
       events: own,
       latestSeq,
       now,
-      // bb's Claude Code adapter reports one usage event for a whole turn, not one per request.
-      perRequestEvents: forkEdge?.providerId !== "claude-code",
+      // bb's Claude Code adapter reports one usage event for a whole turn, not one per request, and a
+      // thread whose provider is not known yet may be a Claude Code one.
+      perRequestEvents: forkEdge?.providerId != null && forkEdge.providerId !== "claude-code",
     });
     const next: ThreadState = {
       ...state,

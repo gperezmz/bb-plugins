@@ -398,9 +398,10 @@ export function ingestEvents(input: IngestInput): IngestResult {
         if (last === null || turnId === null) break;
         const lastTokens = fromBbBreakdown(last);
         const record = turn(turnId, event.seq);
-        // A turn that already holds tokens from before its requests were
-        // kept, or filled in from bb's total, stays a sum: its requests would
-        // not add up to its tokens.
+        // A turn stays a sum when its harness reports one usage event for the
+        // whole turn, and when it already holds tokens from before its requests
+        // were kept, or filled in from bb's total: its requests would not add
+        // up to its tokens.
         if (input.perRequestEvents !== false && record.usageEvents === 0 && isZeroTokens(record.tokens)) record.requests = [];
         if (record.requests !== undefined) {
           record.requests = [
