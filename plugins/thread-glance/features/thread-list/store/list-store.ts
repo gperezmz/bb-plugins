@@ -11,12 +11,15 @@ import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
 import { resolveScope } from "../model/scope";
+import { NO_MARKS, parentsToClose, settleMarksOf, type SettleMarks } from "../model/settle-close";
 import {
   readDeviceState,
+  closeStoredParents,
   saveDeviceState,
+  withParentsClosed,
   type DeviceState,
 } from "../storage/device-state";
-import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
+import { CAPS, createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, type HostData, type ListInputs } from "./derive";
@@ -128,12 +131,13 @@ const frames = {
 };
 
 /** The inputs the plugin's data gives, as it stands. */
-function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "settings" | "order"> {
+function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "rowsComplete" | "settings" | "order"> {
   const data = pluginData.get();
   return {
     lifecycle: data.records.lifecycle,
     // An answer, a cache of earlier answers, or a failed answer: any of them is a list to draw.
     rowsReady: data.records.point !== null || data.cached || data.status === "failed",
+    rowsComplete: data.records.point !== null || (data.cached && Object.keys(data.records.lifecycle).length < CAPS.lifecycleRows),
     settings: pluginData.settings(),
     order: data.order?.value ?? NO_ORDER,
   };
@@ -175,6 +179,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const wokeClearAsked = new Set<string>();
   // Pinned threads whose lifecycle row this window has asked the server to clear.
   const pinClearAsked = new Set<string>();
+  // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
+  let settleMarks: SettleMarks = NO_MARKS;
 
   const whenMounted = (request: () => void) => {
     if (mounted) request();
@@ -198,6 +204,17 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         return;
       }
     }
+    // A settle closes the child lists of the tree it moves onto Settled, however it was made. A
+    // cache cut at its cap lacks the oldest Settled rows: those roots move onto Settled when the
+    // answer comes, and nobody settled them then.
+    if (model !== null && current.inputs.rowsComplete && checked.rowsComplete) {
+      const closed = parentsToClose(current.model, model, checked.device.expandedParents, settleMarks);
+      if (closed.length > 0) {
+        closeStoredParents(storage, closed);
+        commit({ ...checked, device: withParentsClosed(checked.device, closed) });
+        return;
+      }
+    }
     const deadline = current.model?.nextDeadline ?? null;
     // Stamped before the rows are told, so a row that renders for its thread working reads the stamp.
     if (model !== null) {
@@ -206,6 +223,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       workingSince.observe(workingIds, Date.now());
     }
     api.setState({ inputs: checked, model });
+    if (model !== null) settleMarks = settleMarksOf(model, settleMarks, checked.frozenShelves);
     if (model !== null) {
       for (const threadId of model.pinnedWithRow) {
         if (pinClearAsked.has(threadId)) continue;

@@ -95,6 +95,28 @@ export function withParentExpanded(state: DeviceState, threadId: string, expande
   return { ...state, expandedParents };
 }
 
+/** Closes the child lists of `threadIds` at once. */
+export function withParentsClosed(state: DeviceState, threadIds: readonly string[]): DeviceState {
+  const expandedParents = without(state.expandedParents, threadIds);
+  return expandedParents.length === state.expandedParents.length ? state : { ...state, expandedParents };
+}
+
+/**
+ * Removes `threadIds` from the stored open parents, from what the storage
+ * holds now rather than from this window's copy, so a window that closes
+ * lists nobody asked it to close does not undo what another window opened.
+ */
+export function closeStoredParents(storage: DeviceStorage, threadIds: readonly string[]): void {
+  const stored = stringList(storage.read("expandedParents"), CAPS.expandedParents);
+  const kept = without(stored, threadIds);
+  if (kept.length !== stored.length) storage.write("expandedParents", kept);
+}
+
+function without(list: readonly string[], ids: readonly string[]): string[] {
+  const removed = new Set(ids);
+  return list.filter((id) => !removed.has(id));
+}
+
 function stringList(value: unknown, cap: number): string[] {
   return Array.isArray(value) ? lastDistinct(value.filter((entry): entry is string => typeof entry === "string"), cap) : [];
 }

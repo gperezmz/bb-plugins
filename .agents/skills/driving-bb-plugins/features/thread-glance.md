@@ -104,7 +104,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   but the user until a press outside it, Tab, Enter (saves) or Escape (keeps
   the title).
 - Children chip: `button` named `N child thread(s), 1 failed, 1 need you…`
-  with `aria-expanded`; open, it lists the children under the card.
+  with `aria-expanded`; open, it lists the children under the card. Slim rows on
+  Snoozed, Parked and Settled carry it too, and settling a thread closes it.
 - Port indicator: `img "N workspace port(s)"` on a card's third line and on a
   folded card; none on a slim row.
 - Hover card (pointer rests on a row 250 ms; keyboard focus opens it at once):

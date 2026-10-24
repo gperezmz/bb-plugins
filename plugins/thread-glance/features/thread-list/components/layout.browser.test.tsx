@@ -180,6 +180,24 @@ describe("the cards' lines", () => {
     expect(chip.scrollWidth).toBeLessThanOrEqual(chip.clientWidth);
   });
 
+  it("keeps a slim row's title readable beside the Children chip at the default sidebar width", async () => {
+    const family = [
+      makeThread({ id: "boss", title: "boss", ...old }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "boss", ...old }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "boss", ...old }),
+      makeThread({ id: "k3", title: "kid three", parentThreadId: "boss", ...old }),
+    ];
+    await render(family, { rows: { boss: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, 255);
+    screen.getByRole("button", { name: "Parked (1)" }).click();
+    await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+    await frames();
+    const boss = card("boss");
+    expect(boss.dataset.card).toBe("slim");
+    expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
+    expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+    expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+  });
+
   it("puts the Status slot at 80 px at the right edge of the card's first line", async () => {
     await draw(false);
     const slot = card("full").querySelector<HTMLElement>("[data-status-slot]")!;
@@ -330,7 +348,7 @@ describe("the shelf headers", () => {
     }
   });
 
-  it("shrink the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
+  it("narrow the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
     await render(threads, { rows, settings: { workingShelf: true } });
     for (let width = 200; width >= 70; width -= 5) {
       await page.viewport(width, 600);

@@ -269,6 +269,100 @@ describe("Settle (AC9)", () => {
     expect(describing(toastCall("Thread settled"))).toBe("Agent session stopped");
   });
 
+  it("closes the child lists of the tree it settles, and a list opened on Settled stays open", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
+    const threads = [
+      makeThread({ id: "p", title: "Parent", ...old }),
+      makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old }),
+      makeThread({ id: "g", title: "Grand", parentThreadId: "c", ...old }),
+    ];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const childTitles = () => [...document.querySelectorAll<HTMLElement>("[data-child-id] > div a")].map((link) => link.textContent!.trim());
+    await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    fireEvent.click(document.querySelector<HTMLElement>('[data-child-id="c"] button[aria-label="Grandchildren of Child"]')!);
+    await flush();
+    expect(childTitles()).toEqual(["Child", "Grand"]);
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p", "c"]);
+    await settleFromCard("Parent");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
+    fireEvent.click(screen.getByText("Settled (1)", { selector: "button *" }));
+    await flush();
+    expect(chip("p").getAttribute("aria-expanded")).toBe("false");
+    expect(childTitles()).toEqual([]);
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(childTitles()).toEqual(["Child"]);
+  });
+
+  it("closes the child lists when another window or the auto-settle puts the tree on Settled", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
+  });
+
+  it("leaves what another window opened in the stored list when it closes a tree", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    localStorage.setItem("thread-glance:expandedParents", JSON.stringify(["p", "opened-elsewhere"]));
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["opened-elsewhere"]);
+  });
+
+  it("closes the child lists of a tree settled while its root was being renamed, when the rename ends", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    fireEvent.doubleClick(document.querySelector("[data-card][data-thread-id=p] a")!);
+    await flush();
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
+  });
+
+  it("keeps the child lists of a settled tree that works, is renamed, and goes idle again with the same settle mark", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet({ rows: { p: settledRow(NOW - 2 * DAY, "manual") } }) });
+    fireEvent.click(screen.getByText("Settled (1)", { selector: "button *" }));
+    await flush();
+    fireEvent.click(chip("p"));
+    await flush();
+    act(() => m.host.updateThread("p", { ...working }));
+    await flush();
+    expect(document.querySelector("[data-card][data-thread-id=p]")?.getAttribute("data-shelf-of")).not.toBe("settled");
+    fireEvent.doubleClick(document.querySelector("[data-card][data-thread-id=p] a")!);
+    await flush();
+    act(() => m.host.updateThread("p", { status: "idle", runtimeStatus: "idle", indicator: "none" }));
+    await flush();
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    await flush();
+    expect(document.querySelector("[data-card][data-thread-id=p]")?.getAttribute("data-shelf-of")).toBe("settled");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+  });
+
   it("says when the Settle can no longer be undone", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: quiet() });
