@@ -20,7 +20,6 @@ import { isShelfCollapsed, type DeviceState } from "../storage/device-state";
 import type { Scope } from "./scope";
 import { buildForest, isFailed, urgencyOfRoots, type ChildrenInfo, type Forest, type Urgency } from "./forest";
 import { isListed } from "./listed";
-import { seenKey } from "./waits-seen";
 import {
   canReorderActive,
   comparePinned,
@@ -151,8 +150,8 @@ export interface ModelInputs {
   draftIds: ReadonlySet<string>;
   /** Threads other split panes show. */
   openElsewhereIds: ReadonlySet<string>;
-  /** The questions and queued failures you have opened threads on, until each clears (see `seenWaits`). */
-  seenWaits: ReadonlySet<string>;
+  /** Threads opened while their own question waits, until it clears (see `questionsSeen`). */
+  seenQuestionIds: ReadonlySet<string>;
   now: number;
   compact: boolean;
   /** Settled rows shown. */
@@ -190,10 +189,8 @@ export interface CardFacts {
   tree: TreeSignals;
   /** Why a snoozed thread shows as woke, or null. */
   woke: WakeReason | null;
-  /** You have opened the thread while its own question waits (see `seenWaits`). */
+  /** You have opened the thread while its own question waits (see `questionsSeen`). */
   questionSeen: boolean;
-  /** You have opened the thread while its queued message has failed to send (see `seenWaits`). */
-  queuedFailureSeen: boolean;
   /** A question or approval waits below the thread, at any depth. */
   questionBelow: boolean;
 }
@@ -215,8 +212,7 @@ export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, facts: Car
     case "compact-working":
       return isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou ? "folded" : "full";
     case "compact-all":
-      if (isFailed(thread) && !(thread.indicator === "queued-failed" && facts.queuedFailureSeen)) return "full";
-      if ((thread.hasPendingInteraction && !facts.questionSeen) || facts.questionBelow) return "full";
+      if (isFailed(thread) || (thread.hasPendingInteraction && !facts.questionSeen) || facts.questionBelow) return "full";
       if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
       if (display.keepWokeAsFullCards && woke !== null) return "full";
       return "folded";
@@ -376,13 +372,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
     const children = forest.children.get(thread.id) ?? null;
     const isExpanded = children !== null && expanded.has(thread.id);
     const woke = shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null;
-    const facts: CardFacts = {
-      tree,
-      woke,
-      questionSeen: inputs.seenWaits.has(seenKey("question", thread.id)),
-      queuedFailureSeen: inputs.seenWaits.has(seenKey("queued-failed", thread.id)),
-      questionBelow: (children?.counts.needsYou ?? 0) > 0,
-    };
+    const facts: CardFacts = { tree, woke, questionSeen: inputs.seenQuestionIds.has(thread.id), questionBelow: (children?.counts.needsYou ?? 0) > 0 };
     rows.set(thread.id, {
       id: thread.id,
       thread,

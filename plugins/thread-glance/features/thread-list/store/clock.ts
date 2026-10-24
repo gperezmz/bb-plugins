@@ -13,8 +13,7 @@ const MINUTE = 60_000;
 const DEADLINE_SLACK_MS = 50;
 const LONGEST_TIMEOUT = 2 ** 31 - 1;
 
-/** Whether the document is hidden: a background tab or a minimised window. */
-export function hidden(): boolean {
+function hidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 

@@ -9,7 +9,6 @@ import {
   readDeviceState,
   readOrderCache,
   readRowsCache,
-  readSeenWaits,
   saveDeviceState,
   withGroupCollapsed,
   closeStoredParents,
@@ -19,7 +18,6 @@ import {
   withWorktreeCollapsed,
   writeOrderCache,
   writeRowsCache,
-  writeSeenWaits,
 } from "./device-state";
 import { CAPS, createDeviceStorage, type StorageLike } from "./device-storage";
 
@@ -52,16 +50,6 @@ describe("lists are capped", () => {
     expect(state.expandedParents.at(-1)).toBe("t50");
     state = withParentExpanded(state, "t50", false);
     expect(state.expandedParents).not.toContain("t50");
-  });
-
-  it("keeps the 500 most recent waits seen, written and read", () => {
-    const { storage } = limitedStorage(1_000_000);
-    const device = createDeviceStorage(storage);
-    writeSeenWaits(device, new Set(Array.from({ length: 520 }, (_, index) => `question:t${index}`)));
-    const read = [...readSeenWaits(device)];
-    expect(read).toHaveLength(CAPS.seenWaits);
-    expect(read[0]).toBe("question:t20");
-    expect(read.at(-1)).toBe("question:t519");
   });
 
   it("closes several parents at once, and keeps the state it was given when none is open", () => {

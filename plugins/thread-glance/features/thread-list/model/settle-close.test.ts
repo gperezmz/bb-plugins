@@ -28,7 +28,7 @@ function model(lifecycle: ModelInputs["lifecycle"], all = threads, scope: string
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
-    seenWaits: new Set(),
+    seenQuestionIds: new Set(),
     now: NOW,
     compact: false,
     settledShown: 10,
