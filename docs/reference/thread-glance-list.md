@@ -30,7 +30,7 @@ A project pinned from the picker is drawn as its [project mark](thread-glance-se
 
 - Clicking a pin puts its project in the scope when it is out, and takes it out when it is in, exactly as ticking it in the picker does: a scope that is left empty is All projects. A pin in the scope is pressed, and a pin the scope leaves out that has a thread waiting on a question or an approval carries the **Needs you** mark, its name ending ". Needs you".
 - **Reset**, an icon with no text at the end of the row and drawn only while the scope limits the list, makes the scope All projects. It leaves the pins.
-- Pins are saved per device, in the browser's `localStorage`, up to 50, and every window on the device reads them when it loads. A pin whose project bb no longer lists is not drawn and is kept, in case the project returns.
+- Pins are saved per device, in the browser's `localStorage`, up to 50, and a change in one window reaches the others on the device at once. A pin whose project bb no longer lists is not drawn and is kept, in case the project returns.
 
 ## Shelves
 

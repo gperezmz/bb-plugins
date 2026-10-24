@@ -113,6 +113,11 @@ function stringList(value: unknown, cap: number): string[] {
   return Array.isArray(value) ? lastDistinct(value.filter((entry): entry is string => typeof entry === "string"), cap) : [];
 }
 
+/** The pinned projects saved in `storage`, which another window may have changed since this one read them. */
+export function readPinnedProjects(storage: DeviceStorage): readonly string[] {
+  return stringList(storage.read("pinnedProjects"), CAPS.pinnedProjects);
+}
+
 export function readDeviceState(storage: DeviceStorage): DeviceState {
   const stored = storage.read("collapsedShelves");
   const collapsedShelves: Partial<Record<Shelf, boolean>> = {};
@@ -129,7 +134,7 @@ export function readDeviceState(storage: DeviceStorage): DeviceState {
     collapsedGroups: stringList(storage.read("collapsedGroups"), CAPS.collapsedGroups),
     collapsedWorktrees: stringList(storage.read("collapsedWorktrees"), CAPS.collapsedWorktrees),
     expandedParents: stringList(storage.read("expandedParents"), CAPS.expandedParents),
-    pinnedProjects: stringList(storage.read("pinnedProjects"), CAPS.pinnedProjects),
+    pinnedProjects: readPinnedProjects(storage),
   };
 }
 

@@ -23,6 +23,7 @@ function titles(): string[] {
 
 // Buttons are found by their label with a selector: a role query over the whole list is slow under load.
 const button = (label: string) => screen.getByLabelText(label, { selector: "button" });
+const done = () => screen.getByText("Done", { selector: "button" });
 const maybeButton = (label: string) => screen.queryByLabelText(label, { selector: "button" });
 const pinsRow = () => screen.queryByRole("group", { name: "Pinned projects" });
 const pinned = () => (pinsRow() === null ? [] : [...pinsRow()!.querySelectorAll("button")].map((b) => b.getAttribute("aria-label")));
@@ -84,7 +85,7 @@ describe("AC2: a click on a pin adds its project to the scope or removes it, in 
   it("adds a pinned project to All projects as its scope, then returns to All projects on the second click", async () => {
     await mount({ threads: threads() });
     await pin("Alpha", "Beta");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(done());
     await flush();
     expect(button("Alpha").getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(button("Alpha"));
@@ -118,7 +119,7 @@ describe("AC2: a click on a pin adds its project to the scope or removes it, in 
   it("marks a pinned project the scope leaves out that has a thread waiting on the person", async () => {
     const { host } = await mount({ threads: threads() });
     await pin("Alpha", "Beta");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(done());
     fireEvent.click(button("Alpha"));
     host.updateThread("b1", { hasPendingInteraction: true });
     await flush();
@@ -131,11 +132,40 @@ describe("AC2: a click on a pin adds its project to the scope or removes it, in 
   });
 });
 
+describe("pins follow another window on the device", () => {
+  const otherWindowPins = (ids: string[]) => {
+    localStorage.setItem("thread-glance:pinnedProjects", JSON.stringify(ids));
+    window.dispatchEvent(new StorageEvent("storage", { key: "thread-glance:pinnedProjects", storageArea: localStorage }));
+  };
+
+  it("shows pins another window made, and builds the next pin on them rather than over them", async () => {
+    await mount({ threads: threads() });
+    await pin("Beta");
+    fireEvent.click(done());
+    otherWindowPins(["proj_b", "proj_personal"]);
+    await flush();
+    expect(pinned()).toEqual(["Beta", "Personal"]);
+    await openPicker();
+    fireEvent.click(button("Pin Alpha"));
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:pinnedProjects")!)).toEqual(["proj_b", "proj_personal", "proj_a"]);
+  });
+
+  it("drops a pin another window removed, and ignores a change to another key", async () => {
+    await mount({ threads: threads() });
+    await pin("Alpha");
+    window.dispatchEvent(new StorageEvent("storage", { key: "thread-glance:activeSort", storageArea: localStorage }));
+    otherWindowPins([]);
+    await flush();
+    expect(pinsRow()).toBeNull();
+  });
+});
+
 describe("AC3: pins are kept per device, and Reset clears the scope but keeps them", () => {
   it("keeps the pins when the list reloads on this device, but not the scope of another window", async () => {
     const first = await mount({ threads: threads() });
     await pin("Alpha", "Beta");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(done());
     first.view.unmount();
     sessionStorage.clear();
     await mount({ threads: threads() });
@@ -146,7 +176,7 @@ describe("AC3: pins are kept per device, and Reset clears the scope but keeps th
   it("has no Reset while the scope is All projects, and clears the scope but not the pins when chosen", async () => {
     await mount({ threads: threads() });
     await pin("Alpha", "Beta");
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(done());
     await flush();
     expect(maybeButton("Reset")).toBeNull();
     fireEvent.click(button("Alpha"));

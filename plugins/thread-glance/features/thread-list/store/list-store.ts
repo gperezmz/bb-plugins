@@ -12,10 +12,11 @@ import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
 import {
   readDeviceState,
+  readPinnedProjects,
   saveDeviceState,
   type DeviceState,
 } from "../storage/device-state";
-import { createDeviceStorage, type DeviceStorage, type StorageLike } from "../storage/device-storage";
+import { createDeviceStorage, storedKeyName, type DeviceStorage, type StorageLike } from "../storage/device-storage";
 import { readScope, windowStorage, writeScope } from "../storage/window-state";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
@@ -318,6 +319,16 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       mounted = true;
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
+      // Another window's change of the pins reaches this one, so its next change builds on them rather than over them.
+      const onStorage = (event: StorageEvent) => {
+        if (event.key !== null && event.key !== storedKeyName("pinnedProjects")) return;
+        const pinned = readPinnedProjects(storage);
+        store.feed(({ device }) => {
+          const same = pinned.length === device.pinnedProjects.length && pinned.every((id, index) => id === device.pinnedProjects[index]);
+          return same ? {} : { device: { ...device, pinnedProjects: pinned } };
+        });
+      };
+      globalThis.addEventListener("storage", onStorage);
       // What changed between the store's creation and its mount.
       store.feed(dataInputs);
       const requests = waiting;
@@ -333,6 +344,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       });
       return () => {
         unfollow();
+        globalThis.removeEventListener("storage", onStorage);
         clock?.stop();
         clock = null;
         if (frame !== null) frames.cancel(frame);
