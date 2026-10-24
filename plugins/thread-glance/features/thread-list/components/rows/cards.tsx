@@ -252,18 +252,20 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
   let right: ReactNode = null;
   if (hint !== null) right = <JumpHint label={hint} />;
   else if (settled) right = <StatusView status={status} className="w-auto" />;
-  else if (label !== null) right = <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{label}</span>;
+  else if (label !== null) right = <span className="text-[10px] text-muted-foreground tabular-nums">{label}</span>;
   return (
-    <div className="pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
+    <div className="@container pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
       <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
-      {/* Squeezed first, then the chip's marks, so the title keeps `min-w-12` of the one line. */}
-      <ProjectName name={projectName} colour={colour} className="max-w-[40%] shrink-[4] truncate" />
-      <span aria-hidden className="shrink-0 text-muted-foreground/60">
-        ·
+      {/* From 200 px of row, the project name gives way first, then the label or status, then the title down to `min-w-12`, so the chip and the buttons stay whole at bb's default sidebar width. Below that nothing keeps its width: the chip and the title shrink so the row never overflows. */}
+      <span className="max-w-[40%] min-w-0 shrink-[100] truncate">
+        <ProjectName name={projectName} colour={colour} />
+        <span aria-hidden className="text-muted-foreground/60">
+          {" ·"}
+        </span>
       </span>
-      <Title row={row} editing={editing} className="min-w-12 text-xs" />
-      {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
-      {right}
+      <Title row={row} editing={editing} className="min-w-0 text-xs @min-[200px]:min-w-12" />
+      {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} className="@min-[200px]:shrink-0" />}
+      {right === null ? null : <span className="flex min-w-0 shrink-[50] justify-end overflow-hidden whitespace-nowrap">{right}</span>}
       <span
         data-slim-actions=""
         className="flex shrink-0 items-center gap-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex [@media(hover:hover)]:group-focus-within/card:flex"

@@ -198,6 +198,43 @@ describe("the cards' lines", () => {
     expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
   });
 
+  describe("a hovered slim row with a Children chip", () => {
+    const family = (id: string) => [
+      makeThread({ id, title: "Investigate flaky checkout tests on CI", ...old }),
+      makeThread({ id: `${id}1`, title: "kid one", parentThreadId: id, ...old }),
+      makeThread({ id: `${id}2`, title: "kid two", parentThreadId: id, ...old }),
+    ];
+    const hovered = async (width: number, shelf: "Parked" | "Settled") => {
+      const rows = shelf === "Parked" ? { boss: parkedRow(NOW - 86_400_000) } : { boss: settledRow(NOW - 86_400_000, "manual") };
+      await render(family("boss"), { rows, settings: { inactiveShelf: false } }, {}, 600, width);
+      screen.getByRole("button", { name: `${shelf} (1)` }).click();
+      await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+      await frames();
+      const boss = card("boss");
+      await userEvent.hover(boss);
+      await frames();
+      return boss;
+    };
+    const whole = (el: HTMLElement) => el.scrollWidth <= el.clientWidth;
+
+    it.each(["Parked", "Settled"] as const)("keeps the chip and the restore button whole on a hovered %s row at the default sidebar width, the project name giving way first", async (shelf) => {
+      const boss = await hovered(249, shelf);
+      const chip = boss.querySelector<HTMLElement>("[data-children-chip]")!;
+      expect(chip.getBoundingClientRect().width).toBeGreaterThanOrEqual(34);
+      expect(whole(chip)).toBe(true);
+      const restore = boss.querySelector<HTMLElement>("[data-slim-actions] button")!;
+      expect(whole(restore)).toBe(true);
+      expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+      expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+    });
+
+    it.each(["Parked", "Settled"] as const)("does not overflow a hovered %s row at the narrowest sidebar width", async (shelf) => {
+      const boss = await hovered(169, shelf);
+      expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+      expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
+    });
+  });
+
   it("puts the Status slot at 80 px at the right edge of the card's first line", async () => {
     await draw(false);
     const slot = card("full").querySelector<HTMLElement>("[data-status-slot]")!;

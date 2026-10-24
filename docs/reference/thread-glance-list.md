@@ -118,7 +118,7 @@ One line: project name · title, then the children chip, the [port indicator](#w
 
 ### Slim row
 
-One line: project name · title, the [children chip](#children-chip) on a parent, and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
+One line: project name · title, the [children chip](#children-chip) on a parent, and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". On a narrow row the project name gives way first, then the label or status, then the title down to 48 px, so the chip and the restore button stay whole at bb's default sidebar width; below about 200 px the row keeps nothing whole and never scrolls sideways. The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
 
 | Shelf | Label | Restore button |
 |---|---|---|
