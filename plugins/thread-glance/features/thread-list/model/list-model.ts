@@ -66,10 +66,14 @@ export interface RowView {
   expanded: boolean;
 }
 
-/** An entry of a shelf's list, as the list draws it. */
+/**
+ * An entry of a shelf's list, as the list draws it. The `headers` of a row,
+ * group or worktree group are the keys of the shelf, group and worktree headers
+ * it sits under, outermost first.
+ */
 export type ListItem =
   | { kind: "shelf"; key: string; shelf: Shelf; count: number; collapsed: boolean; spinning: boolean }
-  | { kind: "group"; key: string; projectId: string; count: number; collapsed: boolean }
+  | { kind: "group"; key: string; projectId: string; count: number; collapsed: boolean; headers: readonly string[] }
   | {
       kind: "worktree";
       key: string;
@@ -81,8 +85,9 @@ export type ListItem =
       collapsed: boolean;
       /** While collapsed, the most urgent thing in its threads and below them; null otherwise. */
       urgency: Urgency | null;
+      headers: readonly string[];
     }
-  | { kind: "row"; key: string; threadId: string; shelf: Shelf }
+  | { kind: "row"; key: string; threadId: string; shelf: Shelf; headers: readonly string[] }
   | { kind: "more"; key: string; remaining: number; next: number };
 
 export type Scene = "all-clear" | "working";
@@ -374,9 +379,10 @@ export function buildModel(inputs: ModelInputs): ListModel {
       const ids = shelves[shelf];
       if (ids.length === 0) continue;
       const collapsed = isShelfCollapsed(device, shelf);
+      const shelfKey = `shelf:${shelf}`;
       items.push({
         kind: "shelf",
-        key: `shelf:${shelf}`,
+        key: shelfKey,
         shelf,
         count: ids.length,
         collapsed,
@@ -386,17 +392,18 @@ export function buildModel(inputs: ModelInputs): ListModel {
       if (shelf === "active" && groupedProjects.size > 0) {
         for (const entry of entries) {
           if (entry.kind === "thread") {
-            if (!collapsed || keep(entry.thread.id)) items.push({ kind: "row", key: `row:${entry.thread.id}`, threadId: entry.thread.id, shelf });
+            if (!collapsed || keep(entry.thread.id)) items.push({ kind: "row", key: `row:${entry.thread.id}`, threadId: entry.thread.id, shelf, headers: [shelfKey] });
             continue;
           }
           const groupCollapsed = device.collapsedGroups.includes(entry.projectId);
           const shownThreads = entry.threads.filter((thread) => !(collapsed || groupCollapsed) || keep(thread.id));
           if (collapsed && shownThreads.length === 0) continue;
-          items.push({ kind: "group", key: groupKey(entry.projectId), projectId: entry.projectId, count: entry.threads.length, collapsed: groupCollapsed });
+          items.push({ kind: "group", key: groupKey(entry.projectId), projectId: entry.projectId, count: entry.threads.length, collapsed: groupCollapsed, headers: [shelfKey] });
+          const groupHeaders = [shelfKey, groupKey(entry.projectId)];
           const shownIds = new Set(shownThreads.map((thread) => thread.id));
           for (const member of entry.members) {
             if (member.kind === "thread") {
-              if (shownIds.has(member.thread.id)) items.push({ kind: "row", key: `row:${member.thread.id}`, threadId: member.thread.id, shelf });
+              if (shownIds.has(member.thread.id)) items.push({ kind: "row", key: `row:${member.thread.id}`, threadId: member.thread.id, shelf, headers: groupHeaders });
               continue;
             }
             if (!member.threads.some((thread) => shownIds.has(thread.id))) continue;
@@ -410,17 +417,20 @@ export function buildModel(inputs: ModelInputs): ListModel {
               count: member.threads.length,
               collapsed: worktreeCollapsed,
               urgency: worktreeCollapsed ? urgencyOfRoots(member.threads, forest.children) : null,
+              headers: groupHeaders,
             });
             // A collapsed worktree group keeps only the rows bb needs drawn: the open thread's and the one being renamed.
             for (const thread of member.threads) {
-              if (shownIds.has(thread.id) && (!worktreeCollapsed || keptSet.has(thread.id))) items.push({ kind: "row", key: `row:${thread.id}`, threadId: thread.id, shelf });
+              if (shownIds.has(thread.id) && (!worktreeCollapsed || keptSet.has(thread.id))) {
+                items.push({ kind: "row", key: `row:${thread.id}`, threadId: thread.id, shelf, headers: [...groupHeaders, worktreeKey(member.environmentId)] });
+              }
             }
           }
         }
         continue;
       }
       const shown = shelf === "settled" && !collapsed ? ids.slice(0, inputs.settledShown) : ids;
-      for (const id of shown) if (!collapsed || keep(id)) items.push({ kind: "row", key: `row:${id}`, threadId: id, shelf });
+      for (const id of shown) if (!collapsed || keep(id)) items.push({ kind: "row", key: `row:${id}`, threadId: id, shelf, headers: [shelfKey] });
       if (shelf === "settled" && !collapsed && ids.length > shown.length) {
         const remaining = ids.length - shown.length;
         items.push({ kind: "more", key: "more:settled", remaining, next: Math.min(SETTLED_PAGE, remaining) });

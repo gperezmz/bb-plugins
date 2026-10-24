@@ -141,6 +141,7 @@ Thread Glance adds its actions to bb's thread menu, which appears on a row's **�
 | | **Resume** | The thread is parked |
 | | **Settle** | The thread is not busy |
 | | **Un-settle** | The thread is settled |
+| After the lifecycle actions | **Notify parent ▸** | The thread has a parent and is not a fork |
 | Beside bb's Copy thread link | **Copy branch** | The thread has a branch |
 | | **Copy thread ID** | Always |
 
@@ -158,6 +159,20 @@ Opens a search dialog.
 - Choosing a parent unpins a pinned thread, with a note saying so. **None** keeps the pin.
 
 Toasts read "Parent updated", "Parent removed" or "Parent updated, but unpinning could not be confirmed".
+
+### Notify parent ▸
+
+Chooses which of the thread's turn outcomes wake its parent. It sets bb's own per-thread setting, `parentNotifications`; Thread Glance stores nothing for it, so the choice is the same in bb's thread view and `bb thread update`.
+
+| Item | bb's value | Wakes the parent for |
+|---|---|---|
+| **All outcomes** | `auto` | Every finished turn, failure and blocker |
+| **Only when stuck** | `stuck` | Only failures, interruptions and blockers |
+| **Off** | `off` | Nothing |
+
+The thread's current value is shown as chosen, and named under the item's label. It is read from bb when the thread first comes into view among those whose menus bb may show (the sidebar's rows on screen, the open thread's header), and again each time it comes back into view after leaving it, so a change made elsewhere appears then. Until it has been read, or if it could not be read, no item is chosen. Choosing an item sets bb's setting, even the one shown as chosen, since the value shown may be older than bb's, and then shows it chosen; if bb refuses, a toast shows its message and the old value stays.
+
+It is not offered on a thread with no parent, nor on a fork, whose outcomes bb never reports to its parent.
 
 ### Project ▸
 

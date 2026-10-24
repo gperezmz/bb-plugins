@@ -8,9 +8,10 @@ import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { layoutItems } from "../model/layout";
 import type { ListItem } from "../model/list-model";
 import { REDUCED_MOTION_QUERY } from "../model/motion";
+import { isToggleOnly, type RowPlace } from "../model/reorder";
 import { keptIndexes, mountedIndexes, rangeKey, windowedNavValue, type NavTarget } from "../model/windowing";
 import { useHeights, useListStore, useRows, useSelect } from "../store/hooks";
-import { rowOffsets, slideRows } from "./reorder/slide";
+import { readRowPlaces, slideRows } from "./reorder/slide";
 import { GroupHeader, LoadMore, ShelfHeader, WorktreeHeader } from "./ShelfParts";
 import { ThreadRow } from "./rows/ThreadRow";
 import { ViewTracker } from "./view-tracker";
@@ -61,15 +62,18 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
     };
   }, []);
 
-  // The rows slide from where they were to where the new order puts them.
-  const offsets = useRef<Map<string, number>>(new Map());
+  // When the items change other than by a shelf or group opening or closing,
+  // or by group headers drawn or dropped around rows that keep their order
+  // (Group by worktree turned on or off), the rows slide from where they were
+  // to where they are now, as far as their header did not carry them.
+  const places = useRef<Map<string, RowPlace>>(new Map());
   const rowOrder = items.map((item) => item.key).join(" ");
-  const lastOrder = useRef(rowOrder);
+  const last = useRef({ order: rowOrder, items });
   useLayoutEffect(() => {
     const list = root.current!;
-    if (lastOrder.current !== rowOrder) slideRows(list, offsets.current, reduced);
-    lastOrder.current = rowOrder;
-    offsets.current = rowOffsets(list);
+    if (last.current.order !== rowOrder && !isToggleOnly(last.current.items, items)) slideRows(list, places.current, reduced);
+    last.current = { order: rowOrder, items };
+    places.current = readRowPlaces(list);
     // What is above the list, or the list's own size, may have moved the view.
     tracker.current?.update();
   });
@@ -106,7 +110,7 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
         break;
       case "row":
         content.push(
-          <div key={item.key} data-row-id={item.threadId} style={{ height: laid.size }} className="relative">
+          <div key={item.key} data-row-id={item.threadId} data-row-header={item.headers.at(-1)} style={{ height: laid.size }} className="relative">
             <ThreadRow threadId={item.threadId} />
           </div>,
         );

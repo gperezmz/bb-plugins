@@ -6,6 +6,7 @@ import type { PluginThreadAction, PluginThreadActionTarget } from "@get-bb/plugi
 import type { LifecycleCommands } from "@/features/thread-list";
 import { resolveSnoozePreset, snoozeChoices, TIME_PASSED_REASON, type SnoozePreset } from "@/shared/snooze";
 import type { MenuFacts } from "./facts";
+import { isParentNotifications, NOTIFY_CHOICES, type NotifyState } from "./notify";
 
 /** What the project actions that open a dialog can ask for. */
 export type ProjectDialogKind = "rename" | "add-path" | "remove";
@@ -40,6 +41,7 @@ export interface MenuData {
   presets: readonly SnoozePreset[];
   machines: MachinesState;
   commands: LifecycleCommands;
+  notify: NotifyState;
   ports: MenuPorts;
 }
 
@@ -154,6 +156,26 @@ export const unsettleAction: Builder = (thread, data) => {
   const facts = lifecycleFacts(thread, data);
   if (facts === null || facts.mark !== "settled") return null;
   return { label: "Un-settle", icon: "Undo", run: () => data.commands.unsettle(thread.id) };
+};
+
+export const notifyParentAction: Builder = (thread, data) => {
+  if (data.facts.get(thread.id)?.notifiable !== true) return null;
+  const current = data.notify.values.get(thread.id);
+  const currentLabel = NOTIFY_CHOICES.find((choice) => choice.id === current)?.label;
+  return {
+    label: "Notify parent",
+    icon: "BellDot",
+    ...(currentLabel === undefined ? {} : { detail: currentLabel }),
+    choices: {
+      heading: "Notify parent",
+      items: NOTIFY_CHOICES.map((choice) => ({ id: choice.id, label: choice.label, selected: choice.id === current })),
+    },
+    run: ({ value }) => {
+      // The pick is written even when it is the value shown: the menu's value may be older than bb's.
+      if (!isParentNotifications(value)) return;
+      return data.notify.set(thread.id, value);
+    },
+  };
 };
 
 export const copyBranchAction: Builder = (thread, data) => {

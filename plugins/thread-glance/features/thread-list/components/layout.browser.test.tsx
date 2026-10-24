@@ -44,13 +44,15 @@ async function render(
   projects: PluginSidebarProject[] = PROJECTS,
 ) {
   await page.viewport(width, height);
-  const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
-    rpc: createFakeServer(server).handlers as never,
+  // Attached, so the fake server's realtime signals reach the list, as a lifecycle call's do.
+  const fake = createFakeServer(server);
+  const slot = fake.attach(renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
+    rpc: fake.handlers as never,
     sidebarThreads: { status: "ready", threads, projects, sections: [] },
     sdk: {} as never,
     realtimeConnectionState: "connected",
     sidebarShortcuts,
-  } as never);
+  } as never));
   await waitFor(() => expect(document.querySelector("[data-list-ready]")).not.toBeNull());
   await frames();
   return slot;
@@ -580,5 +582,100 @@ describe("the shelf headers", () => {
     expect(box(clean).height).toBeGreaterThanOrEqual(box(select).height);
     await userEvent.click(clean);
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
+  });
+});
+
+describe("the slide of rows", () => {
+  const threads = [
+    makeThread({ id: "p", title: "Pinned one", ...at(4), isPinned: true, pinnedAt: NOW }),
+    makeThread({ id: "a1", title: "Active one", ...at(5) }),
+    makeThread({ id: "a2", title: "Active two", ...at(6) }),
+    makeThread({ id: "a3", title: "Active three", ...at(7) }),
+    makeThread({ id: "s1", title: "Snoozed one", ...old }),
+    makeThread({ id: "k1", title: "Parked one", ...old }),
+    makeThread({ id: "k2", title: "Parked two", ...old }),
+  ];
+  const rows = { s1: snoozedRow(NOW + 3_600_000, NOW - 1000), k1: parkedRow(NOW - 1000), k2: parkedRow(NOW - 2000) };
+  const toggle = (shelf: string) => document.querySelector<HTMLElement>(`[data-shelf="${shelf}"] button[aria-expanded]`)!;
+  // Every row animation the list starts, by row id: a slow frame cannot hide one that has already ended.
+  const slid: string[] = [];
+  beforeAll(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+      const id = (this as HTMLElement).dataset?.rowId;
+      if (id !== undefined) slid.push(id);
+      return animate.apply(this, args);
+    };
+    return () => void (Element.prototype.animate = animate);
+  });
+  const press = async (shelf: string) => {
+    const was = toggle(shelf).getAttribute("aria-expanded");
+    await userEvent.click(toggle(shelf));
+    await waitFor(() => expect(toggle(shelf).getAttribute("aria-expanded")).not.toBe(was));
+    await frames();
+  };
+
+  it("slides no row when a shelf opens or closes", async () => {
+    await render(threads, { rows, settings: { inactiveShelf: false } });
+    await press("snoozed");
+    await press("parked");
+    slid.length = 0;
+    for (const shelf of ["pinned", "active", "snoozed", "parked"]) {
+      await press(shelf);
+      await press(shelf);
+    }
+    expect(slid).toEqual([]);
+  });
+
+  it("slides the rows a keyboard move swaps", async () => {
+    await render(threads, { rows, settings: { inactiveShelf: false } });
+    slid.length = 0;
+    const first = document.querySelector<HTMLElement>('[data-shelf="active"] ~ [data-row-id] a[data-sidebar-thread-id]')!;
+    first.focus();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await waitFor(() => expect(slid.length).toBeGreaterThan(0));
+    expect(new Set(slid).size).toBe(2);
+  });
+
+  it("slides the rows below a row that leaves for a closed shelf under the same header, and not the rows a header below carries", async () => {
+    // Project mode: two lone rows on Active, then a group whose header and rows move up as one.
+    localStorage.setItem("thread-glance:activeSort", JSON.stringify("project"));
+    const grouped = [
+      makeThread({ id: "l1", title: "Lone one", projectId: "proj_personal", ...at(5) }),
+      makeThread({ id: "l2", title: "Lone two", projectId: "proj_a", ...at(6) }),
+      makeThread({ id: "b1", title: "Beta one", projectId: "proj_b", ...at(7) }),
+      makeThread({ id: "b2", title: "Beta two", projectId: "proj_b", ...at(8) }),
+    ];
+    await render(grouped, { settings: { inactiveShelf: false }, order: ["l1", "l2", "b1", "b2"] });
+    expect(document.querySelector('[data-group-key="group:proj_b"]')).not.toBeNull();
+    slid.length = 0;
+    await userEvent.hover(screen.getByRole("link", { name: "Lone one" }));
+    await userEvent.click(screen.getByRole("button", { name: "Snooze Lone one" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Park thread" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Lone one" })).toBeNull());
+    await waitFor(() => expect(slid).toContain("l2"));
+    expect(slid).not.toContain("b1");
+    expect(slid).not.toContain("b2");
+  });
+
+  it("leaves still the rows a worktree header carries when a row above it in the project group leaves", async () => {
+    localStorage.setItem("thread-glance:activeSort", JSON.stringify("project"));
+    const worktree = { environment: { id: "env_x", branchName: "feat/x", isWorktree: true } };
+    const grouped = [
+      makeThread({ id: "a1", title: "Alpha one", projectId: "proj_a", ...at(5) }),
+      makeThread({ id: "a2", title: "Alpha two", projectId: "proj_a", ...at(6) }),
+      makeThread({ id: "w1", title: "Worktree one", projectId: "proj_a", ...worktree, ...at(7) }),
+      makeThread({ id: "w2", title: "Worktree two", projectId: "proj_a", ...worktree, ...at(8) }),
+    ];
+    await render(grouped, { settings: { inactiveShelf: false, groupByWorktree: true }, order: ["a1", "a2", "w1", "w2"] });
+    expect(document.querySelector('[data-group-key="worktree:env_x"]')).not.toBeNull();
+    slid.length = 0;
+    await userEvent.hover(screen.getByRole("link", { name: "Alpha one" }));
+    await userEvent.click(screen.getByRole("button", { name: "Snooze Alpha one" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Park thread" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Alpha one" })).toBeNull());
+    await waitFor(() => expect(slid).toContain("a2"));
+    expect(slid).not.toContain("w1");
+    expect(slid).not.toContain("w2");
   });
 });
