@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 // AC19: the Hover card and the Jump hints; and AC5's clock menu on a card.
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { PluginSidebarPullRequest } from "@get-bb/plugin-sdk/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSnoozePickerRequests } from "../commands/snooze-picker-request";
 import { parkedRow, settledRow } from "@/shared/lifecycle";
@@ -24,19 +23,24 @@ afterEach(() => {
   forgetModelLookups();
 });
 
-const pullRequest = (patch: Partial<PluginSidebarPullRequest> = {}): PluginSidebarPullRequest => ({
-  experimental_autoMerge: false,
-  experimental_inMergeQueue: null,
-  experimental_checks: { state: "failing" },
-  experimental_review: { state: "review_requested" },
-  experimental_mergeability: { state: "mergeable" },
+/** A pull request as GitHub PR Status reports it; `patch` replaces top-level fields. */
+const pullRequest = (patch: Record<string, unknown> = {}) => ({
   number: 7,
   title: "Add shelves",
-  url: "https://example.test/pr/7",
   state: "open",
+  url: "https://example.test/pr/7",
+  baseRefName: "main",
+  headRefName: "feat/shelves",
+  updatedAt: "2026-10-24T12:00:00Z",
+  autoMerge: false,
+  inMergeQueue: null,
+  checks: { state: "failing", totalCount: 2, passedCount: 1, failedCount: 1, pendingCount: 0 },
+  review: { state: "review_requested", reviewRequestCount: 1 },
+  mergeability: { state: "mergeable", mergeStateStatus: "CLEAN", mergeable: "MERGEABLE" },
   attention: "checks_failed",
   ...patch,
 });
+const available = (patch: Record<string, unknown> = {}) => ({ outcome: "available", pullRequest: pullRequest(patch) });
 
 const models = (options: unknown) => ({
   threads: { defaultExecutionOptions: async () => options },
@@ -117,8 +121,8 @@ describe("AC19: the Hover card", () => {
     expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Unavailable")).toHaveLength(2);
   });
 
-  it("shows the branch's pull request with bb's attention, in red when checks failed", async () => {
-    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { sidebarPullRequests: { a: pullRequest() }, sdk: models(null) } });
+  it("shows the branch's pull request with its attention state, in red when checks failed", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { pullRequests: { env_main: available() }, sdk: models(null) } });
     await focusWithKeyboard(anchor("a"));
     const section = document.querySelector<HTMLElement>("[data-section=pull-request]")!;
     expect(section.textContent).toContain("#7");
@@ -178,6 +182,57 @@ describe("AC19: the Hover card", () => {
     await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
     await flush();
     expect(cards()).toHaveLength(0);
+  });
+});
+
+describe("#330: pull requests from GitHub PR Status", () => {
+  const badge = (id: string) => anchor(id).parentElement!.querySelector<HTMLAnchorElement>("[data-pull-request]");
+  const section = () => document.querySelector("[data-section=pull-request]");
+
+  it("AC2: shows a merged pull request as Merged on the card and in the hover card", async () => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { pullRequests: { env_main: available({ state: "merged", attention: "merged" }) }, sdk: models(null) } });
+    await flush();
+    expect(badge("a")?.textContent).toBe("#7");
+    expect(badge("a")?.getAttribute("aria-label")).toBe("Pull request #7, Merged: Add shelves");
+    expect(badge("a")?.className).toContain("var(--tg-merged)");
+    await focusWithKeyboard(anchor("a"));
+    expect(section()?.textContent).toContain("#7 Add shelves");
+    expect(section()?.querySelector("[data-pull-request-label]")?.textContent).toBe("Merged");
+  });
+
+  it("asks GitHub PR Status by each thread's environment", async () => {
+    const { host } = await mount({
+      threads: [makeThread({ id: "a", ...fresh, environment: { id: "env_x" } }), makeThread({ id: "b", ...fresh, environment: { id: "env_y" } })],
+      slot: { pullRequests: { env_y: available() }, sdk: models(null) },
+    });
+    await flush();
+    expect(badge("a")).toBeNull();
+    expect(badge("b")?.textContent).toBe("#7");
+    const asked = host.sdkCalls.filter((call) => call.method === "bb--github-pr-status.pullRequests").flatMap((call) => (call.args as { keys: string[] }).keys);
+    expect(new Set(asked)).toEqual(new Set(["env_x", "env_y"]));
+  });
+
+  it.each([
+    ["the lookup failed", { env_main: { outcome: "unavailable", message: "gh auth status failed: not logged in" } }],
+    ["the row is out of shape", { env_main: { outcome: "available", pullRequest: { number: 7 } } }],
+    ["the link is not a web address", { env_main: available({ url: "javascript:alert(1)" }) }],
+    ["its attention state is one this version does not know", { env_main: available({ attention: "auto_merging" }) }],
+    ["the workspace is gone", { env_main: { outcome: "unavailable", message: "Workspace path no longer exists: /tmp/tmp.qpn5eBNR89" } }],
+    ["GitHub PR Status is disabled or absent", null],
+  ] as const)("AC3: shows no badge and no hover card pull request when %s", async (_case, pullRequests) => {
+    await mount({ threads: [makeThread({ id: "a", ...fresh })], slot: { pullRequests, sdk: models(null) } });
+    await flush();
+    expect(badge("a")).toBeNull();
+    await focusWithKeyboard(anchor("a"));
+    expect(cards()).toHaveLength(1);
+    expect(section()).toBeNull();
+  });
+
+  it("asks nothing for a thread without an environment", async () => {
+    const { host } = await mount({ threads: [makeThread({ id: "a", ...fresh, environment: null })], slot: { pullRequests: { env_main: available() }, sdk: models(null) } });
+    await flush();
+    expect(badge("a")).toBeNull();
+    expect(host.sdkCalls.filter((call) => call.method === "bb--github-pr-status.pullRequests")).toEqual([]);
   });
 });
 
