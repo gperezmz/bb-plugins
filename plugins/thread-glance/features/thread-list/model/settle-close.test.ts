@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@/shared/settings";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
-import { DAY, makeThread, PROJECTS } from "@/testing/fixtures";
+import { DAY, makeThread, PROJECTS, working } from "@/testing/fixtures";
 import { INITIAL_DEVICE_STATE } from "../storage/device-state";
 import { buildModel, type ModelInputs } from "./list-model";
 import { parentsToClose } from "./settle-close";
@@ -15,15 +15,15 @@ const threads = [
   makeThread({ id: "other", ...old }),
 ];
 
-function model(lifecycle: ModelInputs["lifecycle"]) {
+function model(lifecycle: ModelInputs["lifecycle"], all = threads, scopeId: string | null = null) {
   return buildModel({
-    threads,
+    threads: all,
     projects: PROJECTS,
     lifecycle,
     settings: { ...DEFAULT_SETTINGS, inactiveShelf: false },
     order: [],
     device: INITIAL_DEVICE_STATE,
-    scopeId: null,
+    scopeId,
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
@@ -54,5 +54,28 @@ describe("parentsToClose", () => {
     expect(parentsToClose(before, model({ p: snoozedRow(NOW + DAY, NOW) }), ["p"])).toEqual([]);
     expect(parentsToClose(before, model({}), ["p"])).toEqual([]);
     expect(parentsToClose(before, after, [])).toEqual([]);
+  });
+
+  it("closes nothing for a settled tree that went busy and came back, or was unpinned, with the same settle mark", () => {
+    const mark = { p: settledRow(NOW - DAY, "manual") };
+    const busy = threads.map((thread) => (thread.id === "p" ? { ...thread, ...working } : thread));
+    const away = model(mark, busy);
+    expect(away.rows.get("p")?.shelf).toBe("active");
+    expect(parentsToClose(away, model(mark), ["p", "c"])).toEqual([]);
+    const pinned = threads.map((thread) => (thread.id === "p" ? { ...thread, isPinned: true, pinnedAt: NOW } : thread));
+    expect(parentsToClose(model(mark, pinned), model(mark), ["p"])).toEqual([]);
+  });
+
+  it("closes a tree settled again with a new settle mark", () => {
+    const busy = threads.map((thread) => (thread.id === "p" ? { ...thread, ...working } : thread));
+    expect(parentsToClose(model({ p: settledRow(NOW - DAY, "manual") }, busy), model({ p: settledRow(NOW, "manual") }), ["p"])).toEqual(["p"]);
+  });
+
+  it("closes nothing for a root that came into scope with the project scope", () => {
+    const mark = { p: settledRow(NOW - DAY, "manual") };
+    const elsewhere = PROJECTS.find((project) => project.id !== threads[0]!.projectId)!.id;
+    const scoped = model(mark, threads, elsewhere);
+    expect(scoped.rows.get("p")?.shelf).toBeNull();
+    expect(parentsToClose(scoped, model(mark), ["p", "c"])).toEqual([]);
   });
 });

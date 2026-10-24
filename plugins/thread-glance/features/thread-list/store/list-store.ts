@@ -19,7 +19,7 @@ import {
   withParentsClosed,
   type DeviceState,
 } from "../storage/device-state";
-import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
+import { CAPS, createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, type HostData, type ListInputs } from "./derive";
@@ -131,13 +131,13 @@ const frames = {
 };
 
 /** The inputs the plugin's data gives, as it stands. */
-function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "rowsFromServer" | "settings" | "order"> {
+function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "rowsComplete" | "settings" | "order"> {
   const data = pluginData.get();
   return {
     lifecycle: data.records.lifecycle,
     // An answer, a cache of earlier answers, or a failed answer: any of them is a list to draw.
     rowsReady: data.records.point !== null || data.cached || data.status === "failed",
-    rowsFromServer: data.records.point !== null,
+    rowsComplete: data.records.point !== null || (data.cached && Object.keys(data.records.lifecycle).length < CAPS.lifecycleRows),
     settings: pluginData.settings(),
     order: data.order?.value ?? NO_ORDER,
   };
@@ -202,10 +202,10 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         return;
       }
     }
-    // A settle closes the child lists of the tree it moves onto Settled, however it was made. Rows
-    // drawn from the browser's cache or before any answer are not the server's: a root they lack
-    // moves onto Settled when the answer comes, and nobody settled it then.
-    if (model !== null && current.inputs.rowsFromServer && checked.rowsFromServer) {
+    // A settle closes the child lists of the tree it moves onto Settled, however it was made. A
+    // cache cut at its cap lacks the oldest Settled rows: those roots move onto Settled when the
+    // answer comes, and nobody settled them then.
+    if (model !== null && current.inputs.rowsComplete && checked.rowsComplete) {
       const closed = parentsToClose(current.model, model, checked.device.expandedParents);
       if (closed.length > 0) {
         closeStoredParents(storage, closed);
