@@ -11,7 +11,7 @@ import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
 import { resolveScope } from "../model/scope";
-import { parentsToClose } from "../model/settle-close";
+import { NO_MARKS, parentsToClose, settleMarksOf, type SettleMarks } from "../model/settle-close";
 import {
   readDeviceState,
   closeStoredParents,
@@ -179,6 +179,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const wokeClearAsked = new Set<string>();
   // Pinned threads whose lifecycle row this window has asked the server to clear.
   const pinClearAsked = new Set<string>();
+  // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
+  let settleMarks: SettleMarks = NO_MARKS;
 
   const whenMounted = (request: () => void) => {
     if (mounted) request();
@@ -206,7 +208,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     // cache cut at its cap lacks the oldest Settled rows: those roots move onto Settled when the
     // answer comes, and nobody settled them then.
     if (model !== null && current.inputs.rowsComplete && checked.rowsComplete) {
-      const closed = parentsToClose(current.model, model, checked.device.expandedParents, current.inputs.frozenShelves);
+      const closed = parentsToClose(current.model, model, checked.device.expandedParents, settleMarks);
       if (closed.length > 0) {
         closeStoredParents(storage, closed);
         commit({ ...checked, device: withParentsClosed(checked.device, closed) });
@@ -221,6 +223,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       workingSince.observe(workingIds, Date.now());
     }
     api.setState({ inputs: checked, model });
+    if (model !== null) settleMarks = settleMarksOf(model, settleMarks, checked.frozenShelves);
     if (model !== null) {
       for (const threadId of model.pinnedWithRow) {
         if (pinClearAsked.has(threadId)) continue;

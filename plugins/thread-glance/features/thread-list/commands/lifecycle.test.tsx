@@ -342,6 +342,27 @@ describe("Settle (AC9)", () => {
     expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
   });
 
+  it("keeps the child lists of a settled tree that works, is renamed, and goes idle again with the same settle mark", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet({ rows: { p: settledRow(NOW - 2 * DAY, "manual") } }) });
+    fireEvent.click(screen.getByText("Settled (1)", { selector: "button *" }));
+    await flush();
+    fireEvent.click(chip("p"));
+    await flush();
+    act(() => m.host.updateThread("p", { ...working }));
+    await flush();
+    expect(document.querySelector("[data-card][data-thread-id=p]")?.getAttribute("data-shelf-of")).not.toBe("settled");
+    fireEvent.doubleClick(document.querySelector("[data-card][data-thread-id=p] a")!);
+    await flush();
+    act(() => m.host.updateThread("p", { status: "idle", runtimeStatus: "idle", indicator: "none" }));
+    await flush();
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    await flush();
+    expect(document.querySelector("[data-card][data-thread-id=p]")?.getAttribute("data-shelf-of")).toBe("settled");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+  });
+
   it("says when the Settle can no longer be undone", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: quiet() });
