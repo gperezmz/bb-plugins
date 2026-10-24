@@ -204,6 +204,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     if (next !== stored) writeSeenWaits(storage, next);
     return next;
   };
+
   // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
   let settleMarks: SettleMarks = NO_MARKS;
 
@@ -212,13 +213,17 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     else waiting.push(request);
   };
 
-  /** Runs the derive step over `next` and publishes the result. */
-  const commit = (next: ListInputs) => {
+  /**
+   * Runs the derive step over `next` and publishes the result. With `storedSeen`, what you have seen
+   * is drawn as another window stored it and not written back, so two windows whose lists differ for
+   * a moment cannot answer each other's writes.
+   */
+  const commit = (next: ListInputs, storedSeen = false) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
     // bb's latest list, which a hidden window holds before any frame applies it: an older one would
     // undo what another window has just seen, and the two would write over each other.
-    const seen = host.status === "ready" ? updateSeen(host.threads, next.activeThreadId) : next.seenWaits;
+    const seen = storedSeen ? readSeenWaits(storage) : host.status === "ready" ? updateSeen(host.threads, next.activeThreadId) : next.seenWaits;
     const shared = share(next.seenWaits, seen);
     const checked = scope === next.scope && shared === next.seenWaits ? next : { ...next, scope, seenWaits: shared };
     const current = api.getState();
@@ -363,11 +368,11 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       mounted = true;
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
-      // Coming back to the window counts its open thread as opened; another window's change reaches this one.
+      // Coming back to the window counts its open thread as opened.
       const recheckSeen = () => commit(api.getState().inputs);
       // Another window's change of the pins reaches this one, so its next change builds on them rather than over them.
       const onStorage = (event: StorageEvent) => {
-        if (event.key === storedKeyName("seenWaits")) recheckSeen();
+        if (event.key === storedKeyName("seenWaits")) commit(api.getState().inputs, true);
         if (event.key !== null && event.key !== storedKeyName("pinnedProjects")) return;
         const pinned = readPinnedProjects(storage);
         store.feed(({ device }) => {

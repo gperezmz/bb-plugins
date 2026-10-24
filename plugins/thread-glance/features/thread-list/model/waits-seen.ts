@@ -16,6 +16,10 @@ export function seenKey(kind: WaitKind, threadId: string): string {
   return `${kind}:${threadId}`;
 }
 
+function threadOf(key: string): string {
+  return key.slice(key.indexOf(":") + 1);
+}
+
 function waitingKeys(thread: WaitingThread): string[] {
   const keys: string[] = [];
   if (thread.hasPendingInteraction) keys.push(seenKey("question", thread.id));
@@ -25,8 +29,11 @@ function waitingKeys(thread: WaitingThread): string[] {
 
 /**
  * `previous` with what waits on the open thread added, and every entry whose
- * question or failure no longer waits dropped, so the next one unfolds the
- * thread again. Returns `previous` itself when nothing changed.
+ * question or failure no longer waits on a thread in `threads` dropped, so the
+ * next one unfolds the thread again. An entry for a thread `threads` does not
+ * list is kept: another window may list it, as one hidden since before the
+ * thread was made does not, and the stored cap drops it in time. Returns
+ * `previous` itself when nothing changed.
  */
 export function seenWaits(
   previous: ReadonlySet<string>,
@@ -34,7 +41,8 @@ export function seenWaits(
   activeThreadId: string | null,
 ): ReadonlySet<string> {
   const waiting = new Set(threads.flatMap(waitingKeys));
-  const next = new Set([...previous].filter((key) => waiting.has(key)));
+  const listed = new Set(threads.map((thread) => thread.id));
+  const next = new Set([...previous].filter((key) => waiting.has(key) || !listed.has(threadOf(key))));
   const open = activeThreadId === null ? undefined : threads.find((thread) => thread.id === activeThreadId);
   if (open !== undefined) for (const key of waitingKeys(open)) next.add(key);
   return share<ReadonlySet<string>>(previous, next);

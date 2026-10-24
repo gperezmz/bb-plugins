@@ -34,7 +34,8 @@ describe("seenWaits", () => {
     expect(seenWaits(opened, [thread("a", { queuedFailed: true })], null)).toEqual(new Set([f("a")]));
   });
 
-  it("forgets a thread that is gone", () => {
-    expect(seenWaits(new Set([q("a")]), [], null).size).toBe(0);
+  it("keeps what was seen on a thread the list does not have, which another window may list", () => {
+    const seen = new Set([q("a")]);
+    expect(seenWaits(seen, [thread("b")], null)).toBe(seen);
   });
 });

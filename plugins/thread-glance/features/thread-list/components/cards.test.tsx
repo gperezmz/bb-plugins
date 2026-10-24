@@ -303,6 +303,20 @@ describe("AC17: the Folded card", () => {
     expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(["question:q"]);
   });
 
+  it("does not write back another window's store while this window's list is behind it", async () => {
+    await mount({
+      threads: [makeThread({ id: "q", ...fresh }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "other",
+    });
+    const key = storedKeyName("seenWaits");
+    act(() => {
+      localStorage.setItem(key, JSON.stringify(["question:q"]));
+      window.dispatchEvent(new StorageEvent("storage", { key }));
+    });
+    expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(["question:q"]);
+  });
+
   it("folds a question another window on the device opened, when that window stores it", async () => {
     await mount({
       threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
