@@ -136,7 +136,11 @@ export function resetRowRenderCounts(): void {
  * bb's `ThreadTitle` for the fake host: the thread's `displayTitle` in a span
  * marked with its id, read from the threads the test drives. The SDK's own
  * test stand-in reads the slot's environment instead, which the fake host does
- * not feed, and draws nothing for an unknown thread, as bb does.
+ * not feed, and draws nothing for an unknown thread, as bb does. bb's own
+ * ThreadTitle also needs the sidebar's `SidebarThreadEntriesProvider` and
+ * throws "SidebarThreadEntriesProvider is required" without it, as in a toast
+ * (bb's toaster sits outside the sidebar); this stand-in draws anywhere, so a
+ * test cannot see a ThreadTitle placed where bb throws, and only a drive in bb does.
  */
 function FakeThreadTitle({ threadId }: { threadId: string }) {
   const thread = useHost((state) => state.threads).find((candidate) => candidate.id === threadId);
