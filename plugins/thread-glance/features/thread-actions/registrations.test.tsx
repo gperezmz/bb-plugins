@@ -266,7 +266,7 @@ describe("Notify parent in the window (AC1, AC2)", () => {
   const itemFor = (thread: ReturnType<typeof makeThread>, data: MenuData) =>
     notify().item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never });
 
-  it("puts Notify parent after the lifecycle actions and before Rename on a child, and nowhere on a root thread or a fork", () => {
+  it("puts Notify parent after the lifecycle actions on a child, and nowhere on a root thread or a fork", () => {
     const { data } = menuData([child, root, fork]);
     expect(menuFor(child, data).map((entry) => entry.label)).toEqual([
       "Open in split",

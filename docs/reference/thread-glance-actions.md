@@ -141,7 +141,7 @@ Thread Glance adds its actions to bb's thread menu, which appears on a row's **�
 | | **Resume** | The thread is parked |
 | | **Settle** | The thread is not busy |
 | | **Un-settle** | The thread is settled |
-| After the lifecycle actions, before bb's Rename | **Notify parent ▸** | The thread has a parent and is not a fork |
+| After the lifecycle actions | **Notify parent ▸** | The thread has a parent and is not a fork |
 | Beside bb's Copy thread link | **Copy branch** | The thread has a branch |
 | | **Copy thread ID** | Always |
 
