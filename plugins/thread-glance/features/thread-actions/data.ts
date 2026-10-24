@@ -10,8 +10,11 @@ import type { PluginThreadActionDataInput } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { requestSnoozePicker, useLifecycleRows, useServerSettings } from "@/features/thread-list";
 import { readSnoozePresets } from "@/shared/snooze";
+import { messageOf } from "@/lib/error-message";
 import { menuFactsOf, shareFacts, type MenuFacts } from "./model/facts";
 import type { MenuData, MenuPorts, MenuProject } from "./model/menu";
+import type { ParentNotifications } from "./model/notify";
+import { setParentNotifications, useParentNotifications } from "./notify-state";
 import { useMachines, useMinuteClock } from "./window-state";
 import { useLifecycleCommands } from "./use-lifecycle-commands";
 import { requestParentDialog, requestProjectDialog } from "./requests";
@@ -55,7 +58,8 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
   const rows = useLifecycleRows();
   const settings = useServerSettings();
   const now = useMinuteClock();
-  const machines = useMachines(useSdk());
+  const sdk = useSdk();
+  const machines = useMachines(sdk);
 
   const byId = useMemo(() => new Map(sidebar.threads.map((thread) => [thread.id, thread])), [sidebar.threads]);
   const commands = useLifecycleCommands(sidebar.threads);
@@ -78,6 +82,16 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
     }
     return map;
   }, [sidebar.projects]);
+  const notifiable = useMemo(() => threadIds.filter((id) => facts.get(id)?.notifiable === true), [threadIds, facts]);
+  const values = useParentNotifications(sdk, notifiable);
+  const notify = useMemo(
+    () => ({
+      values,
+      set: (threadId: string, value: ParentNotifications) =>
+        setParentNotifications(sdk, threadId, value).catch((error: unknown) => ports.refuse(messageOf(error))),
+    }),
+    [sdk, values],
+  );
   const presets = useMemo(() => readSnoozePresets(settings.snoozeShortcuts), [settings.snoozeShortcuts]);
 
   return useMemo<MenuData>(
@@ -88,8 +102,9 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
       presets,
       machines,
       commands,
+      notify,
       ports,
     }),
-    [now, facts, projects, presets, machines, commands],
+    [now, facts, projects, presets, machines, commands, notify],
   );
 }

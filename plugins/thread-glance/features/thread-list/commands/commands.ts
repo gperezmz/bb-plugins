@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import type { Shelf } from "@/shared/lifecycle";
 import { waitingChildTitle } from "../model/forest";
 import { SETTLED_PAGE } from "../model/list-model";
+import type { Scope } from "../model/scope";
 import {
   withActiveSort,
   withGroupCollapsed,
@@ -37,8 +38,8 @@ export interface ListCommands {
   toggleGroupByWorktree(): Promise<void>;
   /** Opens or closes a parent's child list on this device. */
   setExpanded(parentId: string, expanded: boolean): void;
-  /** Picks the project scope (null for All projects) for this mount of the list. */
-  setScope(projectId: string | null): void;
+  /** Picks the project scope (empty for All projects) and keeps it for this window. */
+  setScope(scope: Scope): void;
   /** Shows the next page of Settled. */
   loadMoreSettled(): void;
   /** Starts renaming a row in place; the row keeps its shelf until `endRename`. */
@@ -96,8 +97,8 @@ export function createCommands(store: ListStore): Commands {
       store.updateDevice((device) => withParentExpanded(device, parentId, expanded));
     },
 
-    setScope(projectId) {
-      store.feed({ scopeId: projectId });
+    setScope(scope) {
+      store.feed({ scope });
     },
 
     loadMoreSettled() {

@@ -2,12 +2,13 @@
 // Thread Glance's actions in bb's thread menu: where bb's menu puts them
 // (AC20) and that they run through the window's lifecycle commands.
 import { act, cleanup, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginThreadAction, PluginThreadActionRegistration } from "@get-bb/plugin-sdk/app";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { makeThread, PROJECTS } from "@/testing/fixtures";
 import type { MenuData } from "./model/menu";
-import { targetOf } from "./model/testing";
+import { menuData, targetOf } from "./model/testing";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
@@ -65,6 +66,7 @@ describe("registrations", () => {
       "resume",
       "settle",
       "unsettle",
+      "notify-parent",
     ]);
   });
 });
@@ -75,11 +77,12 @@ describe("where the actions sit in bb's menu (AC20)", () => {
     const now = Date.now();
     return {
       now,
-      facts: new Map([["t1", { busy: false, woke: false, mark: "active" as const, branch: "feat/x" }]]),
+      facts: new Map([["t1", { busy: false, woke: false, mark: "active" as const, branch: "feat/x", notifiable: false }]]),
       projects: new Map([["proj_a", { name: "Alpha", isPersonal: false, settingsHref: "/p" }]]),
       presets: [],
       machines: { count: 1 },
       commands: {} as never,
+      notify: { values: new Map(), set: async () => {} },
       ports: {} as never,
     } satisfies MenuData;
   })();
@@ -137,7 +140,7 @@ describe("the window's data", () => {
       sdk: { hosts: { list: async () => [{ id: "h1", name: "Laptop" }] } } as never,
     });
     await waitFor(() => expect(data?.machines).toEqual({ count: 1 }));
-    expect(data!.facts.get("t1")).toEqual({ busy: false, woke: false, mark: "active", branch: "main" });
+    expect(data!.facts.get("t1")).toEqual({ busy: false, woke: false, mark: "active", branch: "main", notifiable: false });
     expect(data!.presets.map((preset) => preset.label)).toContain("1 hour");
 
     const action = park.item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never })!;
@@ -235,5 +238,193 @@ describe("the window's data", () => {
     await act(async () => void (await vi.advanceTimersByTimeAsync(300_000)));
     expect(list).toHaveBeenCalledTimes(3);
     vi.useRealTimers();
+  });
+});
+
+describe("Notify parent in the window (AC1, AC2)", () => {
+  const child = makeThread({ id: "c1", parentThreadId: "p1" });
+  const other = makeThread({ id: "c2", parentThreadId: "p1" });
+  const fork = makeThread({ id: "f1", parentThreadId: "p1", originKind: "fork", sourceThreadId: "p1" });
+  const root = makeThread({ id: "r1" });
+  const notify = () => registrations.find((registration) => registration.id === "notify-parent")!;
+
+  /** Mounts the menu data for the ids the test sets, and gives the data and the way to change them. */
+  function mountData(sdk: unknown, initial: string[]) {
+    const view: { data?: MenuData; setIds?: (ids: string[]) => void } = {};
+    function Probe() {
+      const [ids, setIds] = useState(initial);
+      view.setIds = setIds;
+      view.data = notify().useData!({ threadIds: ids }) as MenuData;
+      return null;
+    }
+    renderSlot({ component: Probe }, {}, {
+      sidebarThreads: { status: "ready", threads: [child, other, fork, root], projects: PROJECTS },
+      sdk: sdk as never,
+    });
+    return view;
+  }
+  const itemFor = (thread: ReturnType<typeof makeThread>, data: MenuData) =>
+    notify().item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never });
+
+  it("puts Notify parent after the lifecycle actions on a child, and nowhere on a root thread or a fork", () => {
+    const { data } = menuData([child, root, fork]);
+    expect(menuFor(child, data).map((entry) => entry.label)).toEqual([
+      "Open in split",
+      "Parent…",
+      "Project",
+      "New thread in environment",
+      "Copy thread link",
+      "Copy branch",
+      "Copy thread ID",
+      "Mark read",
+      "Pin",
+      "Snooze",
+      "Park thread",
+      "Settle",
+      "Notify parent",
+      "Rename",
+      "Archive",
+      "Delete",
+    ]);
+    for (const thread of [root, fork]) {
+      expect(menuFor(thread, data).map((entry) => entry.label)).not.toContain("Notify parent");
+    }
+  });
+
+  it("reads bb's setting for a child only and shows it as chosen", async () => {
+    const get = vi.fn(async ({ threadId }: { threadId: string }) => ({ id: threadId, parentNotifications: threadId === "c1" ? "stuck" : "off" }));
+    const view = mountData({ threads: { get } }, ["c1", "f1", "r1"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c1")).toBe("stuck"));
+    expect(get.mock.calls).toEqual([[{ threadId: "c1" }]]);
+    const action = itemFor(child, view.data!)!;
+    expect(action.choices!.items.find((item) => item.selected)).toMatchObject({ id: "stuck", label: "Only when stuck" });
+  });
+
+  it("sets bb's setting and then shows the pick as chosen", async () => {
+    const update = vi.fn(async (args: { threadId: string; parentNotifications: string }) => ({ id: args.threadId, parentNotifications: args.parentNotifications }));
+    const get = vi.fn(async () => ({ id: "c1", parentNotifications: "auto" }));
+    const view = mountData({ threads: { get, update } }, ["c1"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c1")).toBe("auto"));
+
+    await act(async () => {
+      await itemFor(child, view.data!)!.run({ value: "stuck", requestRename: () => {} });
+    });
+    expect(update).toHaveBeenCalledExactlyOnceWith({ threadId: "c1", parentNotifications: "stuck" });
+    expect(itemFor(child, view.data!)!.choices!.items.filter((item) => item.selected).map((item) => item.id)).toEqual(["stuck"]);
+    expect(toasts.error).not.toHaveBeenCalled();
+  });
+
+  it("leaves the shown value and tells the person when bb refuses the change", async () => {
+    const get = vi.fn(async () => ({ id: "c1", parentNotifications: "auto" }));
+    const update = vi.fn(async () => Promise.reject(new Error("Thread is gone")));
+    const view = mountData({ threads: { get, update } }, ["c1"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c1")).toBe("auto"));
+
+    await act(async () => {
+      await itemFor(child, view.data!)!.run({ value: "off", requestRename: () => {} });
+    });
+    expect(toasts.error).toHaveBeenCalledWith("Thread is gone");
+    expect(view.data!.notify.values.get("c1")).toBe("auto");
+  });
+
+  it("offers the choices with none chosen when bb's setting cannot be read", async () => {
+    const get = vi.fn(async () => Promise.reject(new Error("offline")));
+    const view = mountData({ threads: { get } }, ["c1"]);
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    const action = itemFor(child, view.data!)!;
+    expect(action.choices!.items.some((item) => item.selected)).toBe(false);
+  });
+
+  it("reads a thread again each time it enters the menus' set, and the others not at all", async () => {
+    const get = vi.fn(async ({ threadId }: { threadId: string }) => ({ id: threadId, parentNotifications: "auto" }));
+    const view = mountData({ threads: { get } }, ["c1"]);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+    await act(async () => view.setIds!(["c1", "c2"]));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(get).toHaveBeenLastCalledWith({ threadId: "c2" });
+    await act(async () => view.setIds!(["c2"]));
+    await act(async () => view.setIds!(["c1", "c2"]));
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
+    expect(get).toHaveBeenLastCalledWith({ threadId: "c1" });
+  });
+
+  /** A promise the test settles by hand. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  }
+
+  it("keeps a pick shown when the read it overtook answers afterwards with the old value", async () => {
+    const read = deferred<{ id: string; parentNotifications: string }>();
+    const update = vi.fn(async (args: { threadId: string; parentNotifications: string }) => ({ id: args.threadId, parentNotifications: args.parentNotifications }));
+    const view = mountData({ threads: { get: () => read.promise, update } }, ["c1"]);
+    await waitFor(() => expect(view.data).toBeDefined());
+
+    await act(async () => {
+      await itemFor(child, view.data!)!.run({ value: "off", requestRename: () => {} });
+    });
+    expect(view.data!.notify.values.get("c1")).toBe("off");
+    await act(async () => read.resolve({ id: "c1", parentNotifications: "auto" }));
+    expect(view.data!.notify.values.get("c1")).toBe("off");
+  });
+
+  it("drops a read that answers after the menu data unmounted, and starts again from nothing", async () => {
+    const stale = deferred<{ id: string; parentNotifications: string }>();
+    const first = mountData({ threads: { get: () => stale.promise } }, ["c1"]);
+    await waitFor(() => expect(first.data).toBeDefined());
+    cleanup();
+
+    const second = mountData({ threads: { get: () => new Promise(() => {}) } }, ["c1"]);
+    await waitFor(() => expect(second.data).toBeDefined());
+    await act(async () => stale.resolve({ id: "c1", parentNotifications: "stuck" }));
+    expect(second.data!.notify.values.has("c1")).toBe(false);
+  });
+
+  it("shows the last pick when an earlier pick's answer arrives after it", async () => {
+    const answers = new Map<string, ReturnType<typeof deferred<{ id: string; parentNotifications: string }>>>();
+    const update = vi.fn((args: { threadId: string; parentNotifications: string }) => {
+      const answer = deferred<{ id: string; parentNotifications: string }>();
+      answers.set(args.parentNotifications, answer);
+      return answer.promise;
+    });
+    const get = vi.fn(async () => ({ id: "c1", parentNotifications: "auto" }));
+    const view = mountData({ threads: { get, update } }, ["c1"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c1")).toBe("auto"));
+
+    let picks: Promise<void>[] = [];
+    await act(async () => {
+      picks = ["off", "stuck"].map((value) => itemFor(child, view.data!)!.run({ value, requestRename: () => {} }) as Promise<void>);
+    });
+    await act(async () => answers.get("stuck")!.resolve({ id: "c1", parentNotifications: "stuck" }));
+    await act(async () => answers.get("off")!.resolve({ id: "c1", parentNotifications: "off" }));
+    await act(async () => void (await Promise.all(picks)));
+    expect(view.data!.notify.values.get("c1")).toBe("stuck");
+  });
+
+  it("drops a pick's answer that arrives after the menu data unmounted", async () => {
+    const answer = deferred<{ id: string; parentNotifications: string }>();
+    const first = mountData({ threads: { get: async () => ({ id: "c1", parentNotifications: "auto" }), update: () => answer.promise } }, ["c1"]);
+    await waitFor(() => expect(first.data!.notify.values.get("c1")).toBe("auto"));
+    let pick: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pick = itemFor(child, first.data!)!.run({ value: "off", requestRename: () => {} }) as Promise<void>;
+    });
+    cleanup();
+
+    const second = mountData({ threads: { get: () => new Promise(() => {}) } }, ["c1"]);
+    await waitFor(() => expect(second.data).toBeDefined());
+    await act(async () => answer.resolve({ id: "c1", parentNotifications: "off" }));
+    await act(async () => void (await pick));
+    expect(second.data!.notify.values.has("c1")).toBe(false);
+  });
+
+  it("shows the threads that were read when another thread read with them could not be", async () => {
+    const get = vi.fn(async ({ threadId }: { threadId: string }) =>
+      threadId === "c1" ? Promise.reject(new Error("gone")) : { id: threadId, parentNotifications: "off" },
+    );
+    const view = mountData({ threads: { get } }, ["c1", "c2"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c2")).toBe("off"));
+    expect(view.data!.notify.values.has("c1")).toBe(false);
   });
 });

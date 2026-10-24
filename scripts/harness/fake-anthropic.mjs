@@ -11,8 +11,8 @@
 //   `[fake: background]`                               -> a Bash `sleep 1800` run in the background
 //   `[fake: fail]`                                     -> HTTP 400, so the turn ends failed
 //   `[fake: ask]`                                      -> an AskUserQuestion, so the turn waits on a question
-//   `[fake: approve]`                                  -> a Bash `touch` that writes, so a turn not in full
-//                                                         permission mode waits on an approval
+//   `[fake: approve]`                                  -> a Bash `touch` that writes; it waits on an approval only
+//                                                         where Claude Code has an ask rule for `touch`
 //   `[fake: hold=N]`                                   -> the answer it would give, N seconds late
 //   `/compact`, or a summary request                    -> a short summary
 //   anything else, and every tool result                -> "OK"

@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TB
-  scope["Project scope: All projects, or one project"]
+  scope["Project scope: All projects, or the ticked projects"]
   subgraph upper["Upper group"]
     pinned["Pinned"] --> active["Active"]
   end
@@ -16,10 +16,12 @@ The list is a [project scope](#project-scope) and then a column of [shelves](#sh
 
 ## Project scope
 
-The picker at the top of the list. **All projects** shows every shelf as it is; choosing one project limits every shelf to that project.
+The picker at the top of the list. **All projects** shows every shelf as it is; ticking projects limits every shelf to those projects.
 
-- It lists every project, the personal one included, with a filter field. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
-- It is not saved. Each time the list mounts it starts on All projects, and it falls back to All projects when its project disappears.
+- It lists every project, the personal one included, with a filter field. A project ticks and unticks when clicked, or with Enter on the highlighted option, and the list follows at once; **Done** closes the picker. **All projects** clears the ticks. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
+- The scope applies to every shelf and to Clean. It does not limit thread search, which is bb's palette.
+- It is saved per window, in the browser's session storage: a reload keeps it, another window has its own, and a new window starts on All projects. A project that bb no longer lists drops out of the scope once bb has listed the projects, and a scope with no project left is All projects.
+- A project the scope leaves out that has a thread waiting on a question or an approval puts a **Needs you** mark on the picker's button, whose name then ends "Needs you in <projects>", and on its own row in the picker. The mark goes when the thread is answered.
 
 ## Shelves
 
@@ -195,7 +197,7 @@ Child rows have their own marks, titles and status or age, and a disclosure for 
 Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms after the pointer leaves. Keyboard focus opens it at once. One card is open at a time, on the right of the row, 256 px wide. It shows:
 
 - the title, project, machine and branch;
-- the harness with its status glyph, model and reasoning level, loaded from bb: "Loading…", "Not set" or "Unavailable";
+- the harness with its status glyph, then the model and reasoning level on one line as bb names them, such as "GPT 6.1 Sol Medium", loaded from bb. A model bb has no display name for shows its id; a level takes the label bb's model list gives it, else the level capitalised; no level leaves the name alone; "Loading…", "Not set" or "Unavailable" stand in for what is missing;
 - the branch's pull request from GitHub PR Status, when it has one: `#number` and title, linking to it, with its attention state as its label and its checks, review and mergeability on one line. No pull request, no section;
 - "Subthreads (N)", with a toggle listing the direct children, each opening that child;
 - "Workspace ports (N)", when the thread's environment has listeners ([Workspace ports](#workspace-ports)).
@@ -229,4 +231,4 @@ The server rereads every non-archived thread's environment at most every 30 s, a
 
 ## Jump hints
 
-Holding Ctrl (⌘ on Mac) alone for 700 ms shows "Ctrl + n" or "⌘ n" in the status slot of the first nine rows. Shift, Alt, another key, release or losing focus cancels it. bb performs the jump.
+While bb's jump modifier is held, each row bb gives a jump key shows bb's own label for it in the status slot, such as "Ctrl + Shift + 1" on the web, where holding Ctrl shows them. bb decides when the hints show, which rows get them and the chord each names, and performs the jump: it numbers the first nine rows the list has drawn, in page order, so with the upper list holding fewer than nine, the keys reach on into the lower one. The list draws only the rows near the view, and always the upper list's first nine, so after scrolling, numbered rows can be out of view and rows in view can have no number. The slot widens while a hint is longer than it.

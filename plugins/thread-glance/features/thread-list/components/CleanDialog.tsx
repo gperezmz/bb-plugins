@@ -42,17 +42,17 @@ export function CleanDialog() {
 /** The dialog's state and its two calls; a call that comes back after a newer one started is dropped. */
 function useClean(): { state: CleanState; refresh(): void; run(token: string): void } {
   const store = useListStore();
-  const { scopeId } = useScope();
+  const { scope } = useScope();
   const [state, setState] = useState<CleanState>({ phase: "loading" });
   const latest = useRef(0);
   const refresh = useCallback(() => {
     const mine = (latest.current += 1);
     setState({ phase: "loading" });
-    store.edge.rpc.call("previewClean", { projectId: scopeId }).then(
+    store.edge.rpc.call("previewClean", { projectIds: [...scope] }).then(
       (preview) => mine === latest.current && setState({ phase: "preview", preview }),
       (error) => mine === latest.current && setState({ phase: "failed", message: messageOf(error) }),
     );
-  }, [store, scopeId]);
+  }, [store, scope]);
   useEffect(() => {
     refresh();
     return () => {

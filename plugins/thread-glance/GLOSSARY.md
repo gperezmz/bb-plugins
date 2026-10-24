@@ -93,7 +93,7 @@ The machine, chosen per device on the settings page, whose ports a row links to 
 _Avoid_: Link host, port host
 
 **Project scope**:
-The picker at the top of Thread Glance's list that limits every shelf to one project or to all of them. It is not saved: each time the list mounts it starts on All projects.
+The picker at the top of Thread Glance's list that limits every shelf to the projects ticked in it, or to all of them when none is. It is saved per window: a reload keeps it, another window has its own, and a new window starts on All projects. It marks a project left out of it that has a thread needing you.
 _Avoid_: Project filter
 
 **Project colour**:
