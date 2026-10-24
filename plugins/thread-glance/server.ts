@@ -12,6 +12,7 @@ import { applySubsetOrder } from "./shared/manual-order";
 import { PROJECT_ICON_ROUTE } from "./shared/project-icon";
 import { affectsAutoSettle, type SettingKey } from "./shared/settings";
 import { CHANNELS } from "./shared/signals";
+import type { TurnRecord } from "./shared/waiting-settle";
 import { createLifecycleActions, type ChangeRecords } from "./server/actions";
 import { createAppearanceStore } from "./server/appearance-store";
 import { createArchiveRelease } from "./server/archive-release";
@@ -29,9 +30,10 @@ import { createSdkRuntime } from "./server/runtime";
 import { createSerialQueue } from "./server/serial";
 import { createSettingsStore } from "./server/settings-store";
 import { runStartup } from "./server/startup";
-import { createThreadEvents } from "./server/thread-events";
+import { createThreadEvents, type EventThread } from "./server/thread-events";
 import { createSdkThreads } from "./server/threads";
 import { createVersionedChannel } from "./server/versioned";
+import { createWaitingSettles } from "./server/waiting-settles";
 import { createPortActions } from "./server/ports/actions";
 import { createClean } from "./server/ports/clean";
 import { createPortsEngine } from "./server/ports/engine";
@@ -119,7 +121,15 @@ export default function threadGlance(bb: BbPluginApi): void {
     change,
     warn,
   });
-  const actions = createLifecycleActions({ lifecycle, threads, reclaim, change, warn });
+  const waitingSettles = createWaitingSettles({ lifecycle, threads, reclaim, change, warn });
+  const actions = createLifecycleActions({
+    lifecycle,
+    threads,
+    reclaim,
+    change,
+    warn,
+    onWaiting: (threadId, tree) => waitingSettles.chosen(threadId, tree),
+  });
   const events = createThreadEvents({ lifecycle, order, orderChanged: publishOrder, archived, threads, change });
 
   bb.rpc.register(rpcContract, {
@@ -137,7 +147,12 @@ export default function threadGlance(bb: BbPluginApi): void {
     wake: ({ threadId }) => actions.wake(threadId),
     park: ({ threadId }) => actions.park(threadId),
     resume: ({ threadId }) => actions.resume(threadId),
-    settle: ({ threadId }) => actions.settle(threadId),
+    async settle({ threadId }) {
+      const result = await actions.settle(threadId);
+      if (result.waiting) waitingSettles.poke();
+      return result;
+    },
+    cancelSettle: ({ threadId }) => actions.cancelSettle(threadId),
     undoSettle: ({ threadId, undoToken }) => actions.undoSettle(threadId, undoToken),
     unsettle: ({ threadId }) => actions.unsettle(threadId),
     undoLifecycle: ({ changes }) => actions.undoLifecycle(changes),
@@ -186,11 +201,23 @@ export default function threadGlance(bb: BbPluginApi): void {
     createCli({ read: () => settings.read(), write: writeSettings, reset: resetSettings }),
   );
 
-  bb.events.on("thread.created", ({ thread }) => events.created(thread));
-  bb.events.on("thread.active", ({ thread }) => events.active(thread));
-  bb.events.on("thread.idle", ({ thread }) => events.attention(thread));
-  bb.events.on("thread.failed", ({ thread }) => events.attention(thread));
-  bb.events.on("interaction.pending", ({ thread }) => events.attention(thread));
+  /** Each thread event is also news to the waiting settles, after the lifecycle rows took it in; `turns` are what the event itself reports. */
+  const thenWaitingSettles =
+    (handle: (thread: EventThread) => Promise<void>, turns?: () => TurnRecord[]) =>
+    async ({ thread }: { thread: EventThread }) => {
+      await handle(thread);
+      waitingSettles.poke({ threadId: thread.id, ...(turns === undefined ? {} : { turns: turns() }) });
+    };
+  bb.events.on("thread.created", thenWaitingSettles(events.created));
+  bb.events.on("thread.active", thenWaitingSettles(events.active));
+  bb.events.on("thread.idle", thenWaitingSettles(events.attention));
+  bb.events.on("thread.failed", thenWaitingSettles(events.attention, () => [{ kind: "ended", at: Date.now(), outcome: "failed" }]));
+  bb.events.on("interaction.pending", thenWaitingSettles(events.attention));
+  // A message a person sent to a busy thread waits in its queue before any turn records it.
+  bb.events.on("message.queued", ({ entry }) => {
+    if (entry.initiator !== "user" || entry.senderThreadId !== null) return;
+    waitingSettles.poke({ threadId: entry.threadId, turns: [{ kind: "requested", at: entry.createdAt, byUser: true }] });
+  });
   bb.events.on("thread.archived", async ({ thread }) => {
     await events.archived(thread);
     await releaseArchived(thread.id);
@@ -203,6 +230,8 @@ export default function threadGlance(bb: BbPluginApi): void {
   bb.background.schedule("auto-settle", "*/5 * * * *", async () => {
     await autoSettle.run();
   });
+
+  bb.background.service("waiting-settles", { start: (signal) => waitingSettles.run(signal) });
 
   bb.background.service("startup", {
     start: (signal) =>

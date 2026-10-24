@@ -9,7 +9,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
 import { clearStaleRows, holdRows } from "./reconcile";
 import type { ThreadGateway } from "./threads";
-import { hasMark, type LifecycleRow } from "../shared/lifecycle";
+import { hasMark, isWaitingSettle, waitingSettleRow, type LifecycleRow } from "../shared/lifecycle";
 
 /** The part of bb's thread payload the handlers read. */
 export interface EventThread {
@@ -98,9 +98,15 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
     return held;
   }
 
-  /** Clears the parked, snoozed or settled mark of each of `ancestors` that carries one and is not held. */
+  /** Clears the parked, snoozed or settled mark of each of `ancestors` that carries one and is not held, keeping a waiting settle. */
   function reopen(ancestors: readonly string[], held: ReadonlySet<string>): string[] {
-    return lifecycle.putMany(ancestors.filter((id) => hasMark(lifecycle.get(id)) && !held.has(id)).map((id): [string, null] => [id, null]));
+    return lifecycle.putMany(
+      ancestors.flatMap((id): [string, LifecycleRow | null][] => {
+        const row = lifecycle.get(id);
+        if (!hasMark(row) || held.has(id)) return [];
+        return [[id, isWaitingSettle(row) ? waitingSettleRow(row.waitingSettleAt) : null]];
+      }),
+    );
   }
 
   return {

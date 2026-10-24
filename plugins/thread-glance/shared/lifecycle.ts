@@ -33,6 +33,14 @@ export const lifecycleRowSchema = z.object({
    * before it existed reads as null.
    */
   heldAttentionAt: z._default(z.nullable(z.number()), null),
+  /**
+   * When the user settled the thread's tree while a thread in it was busy: a
+   * waiting settle, which settles the tree once none is busy (see
+   * `waitingSettleVerdict`). Not itself a mark: the row keeps the marks it had
+   * until the settle lands, and has them still if it ends. A row stored
+   * before it existed reads as null.
+   */
+  waitingSettleAt: z._default(z.nullable(z.number()), null),
 });
 export type LifecycleRow = z.infer<typeof lifecycleRowSchema>;
 
@@ -47,6 +55,7 @@ export const EMPTY_ROW: LifecycleRow = Object.freeze({
   snoozedAt: null,
   activeOverride: false,
   heldAttentionAt: null,
+  waitingSettleAt: null,
 });
 
 /** Whether the row carries no mark, so the thread follows the automatic rules. */
@@ -56,11 +65,12 @@ export function isEmptyRow(row: LifecycleRow): boolean {
     row.parkedAt === null &&
     row.snoozeUntil === null &&
     row.snoozedAt === null &&
-    !row.activeOverride
+    !row.activeOverride &&
+    row.waitingSettleAt === null
   );
 }
 
-/** Whether two rows hold the same marks and the same held attention. */
+/** Whether two rows hold the same marks, the same held attention and the same waiting settle. */
 export function sameRow(left: LifecycleRow | null | undefined, right: LifecycleRow | null | undefined): boolean {
   const a = left ?? EMPTY_ROW;
   const b = right ?? EMPTY_ROW;
@@ -71,7 +81,8 @@ export function sameRow(left: LifecycleRow | null | undefined, right: LifecycleR
     a.snoozeUntil === b.snoozeUntil &&
     a.snoozedAt === b.snoozedAt &&
     a.activeOverride === b.activeOverride &&
-    a.heldAttentionAt === b.heldAttentionAt
+    a.heldAttentionAt === b.heldAttentionAt &&
+    a.waitingSettleAt === b.waitingSettleAt
   );
 }
 
@@ -90,6 +101,30 @@ export function settledRow(now: number, kind: SettledKind): LifecycleRow {
   return { ...EMPTY_ROW, settledAt: now, settledKind: kind };
 }
 
+/** The row a Settle of a busy tree writes on the thread it was chosen for: `row` with a waiting settle from `now`. */
+export function waitingSettleRow(now: number, row: LifecycleRow | null = null): LifecycleRow {
+  return { ...(row ?? EMPTY_ROW), waitingSettleAt: now };
+}
+
+/** The row with its waiting settle ended and its marks as they were, null when nothing else is in it. */
+export function withoutWaitingSettle(row: LifecycleRow): LifecycleRow | null {
+  const next = { ...row, waitingSettleAt: null };
+  return isEmptyRow(next) ? null : next;
+}
+
+/** Whether the row holds a waiting settle. */
+export function isWaitingSettle(row: LifecycleRow | null | undefined): row is LifecycleRow & { waitingSettleAt: number } {
+  return row != null && row.waitingSettleAt !== null;
+}
+
+/**
+ * Whether the thread was pinned after `at`: a pin that ends a settle waiting
+ * since then, where an older pin waits to be undone when the settle lands.
+ */
+export function pinnedAfter(thread: { pinnedAt: number | null }, at: number): boolean {
+  return thread.pinnedAt !== null && thread.pinnedAt > at;
+}
+
 /** The row Resume and Un-settle write. */
 export function activeRow(): LifecycleRow {
   return { ...EMPTY_ROW, activeOverride: true };
@@ -101,11 +136,12 @@ export function hasMark(row: LifecycleRow | null | undefined): boolean {
 }
 
 /**
- * Whether the row is a mark the user set by hand: a manual settle or the
- * active override. Auto-settle leaves such a thread alone.
+ * Whether the row holds what the user chose by hand: a manual settle, the
+ * active override or a waiting settle (the last two `hasMark` does not
+ * count). Auto-settle leaves such a thread alone.
  */
 export function hasManualMark(row: LifecycleRow | null | undefined): boolean {
-  return row != null && (row.settledKind === "manual" || row.activeOverride);
+  return row != null && (row.settledKind === "manual" || row.activeOverride || isWaitingSettle(row));
 }
 
 /** Shelves, in the order the list draws them. */
@@ -290,9 +326,16 @@ export function clearStaleMark(
  * Whether a window that sees this thread should ask the server to clear its
  * row. Pin is bb's own action and wins over any row, so a pinned thread with
  * a row has the row cleared and, once unpinned, follows the automatic rules.
+ * A waiting settle chosen while the thread was already pinned is the
+ * exception: the settle unpins it when it lands, and only a pin made since
+ * ends it.
  */
-export function shouldClearForPin(row: LifecycleRow | null | undefined, thread: Pick<ShelfThread, "isPinned">): boolean {
-  return thread.isPinned && row != null;
+export function shouldClearForPin(
+  row: LifecycleRow | null | undefined,
+  thread: Pick<ShelfThread, "isPinned"> & { pinnedAt: number | null },
+): boolean {
+  if (!thread.isPinned || row == null) return false;
+  return !isWaitingSettle(row) || pinnedAfter(thread, row.waitingSettleAt);
 }
 
 /** What a thread's tree says about the thread's own shelf. */

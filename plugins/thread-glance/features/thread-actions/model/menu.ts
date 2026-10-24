@@ -146,10 +146,17 @@ export const resumeAction: Builder = (thread, data) => {
   return { label: "Resume", icon: "Play", run: () => data.commands.resume(thread.id) };
 };
 
+/** Settle, offered on a busy thread too, whose tree it then waits for; not on one with a question of its own. */
 export const settleAction: Builder = (thread, data) => {
   const facts = lifecycleFacts(thread, data);
-  if (facts === null || facts.busy || facts.mark === "settled") return null;
+  if (facts === null || facts.needsYou || facts.waitingSettle || facts.mark === "settled") return null;
   return { label: "Settle", icon: "thread-glance-meditation", run: () => data.commands.settle(thread.id) };
+};
+
+export const cancelSettleAction: Builder = (thread, data) => {
+  const facts = lifecycleFacts(thread, data);
+  if (facts === null || !facts.waitingSettle) return null;
+  return { label: "Cancel settle", icon: "X", run: () => data.commands.cancelSettle(thread.id) };
 };
 
 export const unsettleAction: Builder = (thread, data) => {

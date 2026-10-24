@@ -3,12 +3,16 @@
 // data keeps its identity while a thread changes in ways the menu ignores.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { isBusy } from "@/shared/busy";
-import { isWoke, markShelf, type LifecycleRow, type MarkShelf } from "@/shared/lifecycle";
+import { isWaitingSettle, isWoke, markShelf, type LifecycleRow, type MarkShelf } from "@/shared/lifecycle";
 import { canNotifyParent } from "./notify";
 
 export interface MenuFacts {
   /** One busy rule decides: the thread is working, waiting for input, or has queued work. */
   busy: boolean;
+  /** The thread itself has a question or approval waiting. */
+  needsYou: boolean;
+  /** A Settle of the thread's tree waits for it to be idle. */
+  waitingSettle: boolean;
   /** The thread woke from a snooze and its Woke marker is still up. */
   woke: boolean;
   /** The shelf the thread's lifecycle row alone puts it on. */
@@ -22,6 +26,8 @@ export interface MenuFacts {
 export function menuFactsOf(thread: PluginSidebarThread, row: LifecycleRow | null, now: number): MenuFacts {
   return {
     busy: isBusy(thread),
+    needsYou: thread.hasPendingInteraction,
+    waitingSettle: isWaitingSettle(row),
     woke: isWoke(row, thread, now),
     mark: markShelf(row, thread, now),
     branch: thread.environment?.branchName ?? null,
@@ -30,7 +36,15 @@ export function menuFactsOf(thread: PluginSidebarThread, row: LifecycleRow | nul
 }
 
 function same(a: MenuFacts, b: MenuFacts): boolean {
-  return a.busy === b.busy && a.woke === b.woke && a.mark === b.mark && a.branch === b.branch && a.notifiable === b.notifiable;
+  return (
+    a.busy === b.busy &&
+    a.needsYou === b.needsYou &&
+    a.waitingSettle === b.waitingSettle &&
+    a.woke === b.woke &&
+    a.mark === b.mark &&
+    a.branch === b.branch &&
+    a.notifiable === b.notifiable
+  );
 }
 
 /**

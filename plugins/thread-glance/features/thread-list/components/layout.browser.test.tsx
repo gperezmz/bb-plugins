@@ -8,7 +8,7 @@ import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { PluginSidebarProject, PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
-import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
+import { parkedRow, settledRow, snoozedRow, waitingSettleRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
 import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
@@ -239,6 +239,27 @@ describe("the cards' lines", () => {
       const name = boss.querySelector<HTMLElement>("[data-project-name]")!.parentElement!;
       expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
       expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+      expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+    });
+
+    it.each([249, 169])("keeps a waiting settle's cancel whole and inside a hovered Parked row at %s px, its label giving way", async (width) => {
+      await render(family("boss"), { rows: { boss: waitingSettleRow(NOW, parkedRow(NOW - 86_400_000)) }, settings: { inactiveShelf: false } }, {}, 600, width);
+      screen.getByRole("button", { name: "Parked (1)" }).click();
+      await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+      await frames();
+      const boss = card("boss");
+      await userEvent.hover(boss);
+      await frames();
+      const cancel = boss.querySelector<HTMLElement>("[data-waiting-settle] button")!;
+      const rect = cancel.getBoundingClientRect();
+      const box = boss.getBoundingClientRect();
+      expect(Math.round(rect.width)).toBe(16);
+      expect(rect.left).toBeGreaterThanOrEqual(box.left);
+      expect(rect.right).toBeLessThanOrEqual(box.right);
+      // Not cut by a wrapper narrower than the button.
+      for (let clip = cancel.parentElement; clip !== null && clip !== boss; clip = clip.parentElement) {
+        if (getComputedStyle(clip).overflow === "hidden") expect(clip.getBoundingClientRect().right).toBeGreaterThanOrEqual(rect.right - 0.5);
+      }
       expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
     });
 

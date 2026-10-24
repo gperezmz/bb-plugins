@@ -20,7 +20,7 @@ export interface LifecycleStore {
   prune(liveIds: ReadonlySet<string>): string[];
 }
 
-type Raw = [string, number | null, string | null, number | null, number | null, number | null, number, number | null];
+type Raw = [string, number | null, string | null, number | null, number | null, number | null, number, number | null, number | null];
 
 /** SQLite keeps whatever a column is given, so anything but a finite number reads as absent. */
 function number(value: unknown): number | null {
@@ -37,17 +37,18 @@ function rowOf(raw: Raw): LifecycleRow {
     snoozedAt: number(raw[5]),
     activeOverride: raw[6] === 1,
     heldAttentionAt: number(raw[7]),
+    waitingSettleAt: number(raw[8]),
   };
 }
 
 export function createLifecycleStore(db: Database): LifecycleStore {
   const select = db
     .prepare(
-      "SELECT thread_id, settled_at, settled_kind, parked_at, snooze_until, snoozed_at, active_override, held_attention_at FROM thread_lifecycle",
+      "SELECT thread_id, settled_at, settled_kind, parked_at, snooze_until, snoozed_at, active_override, held_attention_at, waiting_settle_at FROM thread_lifecycle",
     )
     .raw(true);
   const upsert = db.prepare(
-    "INSERT OR REPLACE INTO thread_lifecycle (thread_id, settled_at, settled_kind, parked_at, snooze_until, snoozed_at, active_override, held_attention_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT OR REPLACE INTO thread_lifecycle (thread_id, settled_at, settled_kind, parked_at, snooze_until, snoozed_at, active_override, held_attention_at, waiting_settle_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
   );
   const remove = db.prepare("DELETE FROM thread_lifecycle WHERE thread_id = ?");
   const rows = new Map<string, LifecycleRow>();
@@ -74,6 +75,7 @@ export function createLifecycleStore(db: Database): LifecycleStore {
           next.snoozedAt,
           next.activeOverride ? 1 : 0,
           next.heldAttentionAt,
+          next.waitingSettleAt,
         );
         rows.set(threadId, next);
       }

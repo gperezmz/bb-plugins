@@ -3,8 +3,10 @@
 // and the thread is not pinned; every other visible thread in scope is a root,
 // a row of its own. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { isBusy } from "@/shared/busy";
 import { lastActivityAt, treeSignals, waitingBelow, type TreeSignals } from "@/shared/lifecycle";
 import type { Settings } from "@/shared/settings";
+import { treeIds } from "@/shared/thread-tree";
 import { isListed } from "./listed";
 import { inScope, type Scope } from "./scope";
 
@@ -14,6 +16,15 @@ const MAX_DEPTH = 64;
 /** The title of a thread below `threadId` with a question or approval pending, or null; unlisted threads neither wait nor pass a chain on. */
 export function waitingChildTitle(threads: readonly PluginSidebarThread[], threadId: string): string | null {
   return waitingBelow(threads.filter(isListed), threadId)?.displayTitle ?? null;
+}
+
+/** Whether `threadId` or a thread below it is busy, so a Settle of it waits; unlisted threads are left out. */
+export function treeHasBusy(threads: readonly PluginSidebarThread[], threadId: string): boolean {
+  const byId = new Map(threads.filter(isListed).map((thread) => [thread.id, thread]));
+  return treeIds([...byId.values()], threadId).some((id) => {
+    const thread = byId.get(id);
+    return thread !== undefined && isBusy(thread);
+  });
 }
 
 /** A thread that failed: its last turn ended in an error nobody has read, or a queued message failed to send. */

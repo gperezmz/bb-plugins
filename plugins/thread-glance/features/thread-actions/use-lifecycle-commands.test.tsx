@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 // The thread menu's lifecycle commands refuse a gated action on a thread with a
-// question waiting below it, from the threads bb lists when the command runs.
+// question waiting below it, from the threads bb lists when the command runs,
+// and settle a busy tree without its sweep.
 import { renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { childNeedsYouRefusal } from "@/shared/messages";
-import { makeThread } from "@/testing/fixtures";
+import { registerCard } from "@/features/thread-list";
+import { makeThread, working } from "@/testing/fixtures";
 import { useLifecycleCommands } from "./use-lifecycle-commands";
 
 const rpc = vi.hoisted(() => ({ call: vi.fn() }));
@@ -35,6 +37,20 @@ describe("useLifecycleCommands", () => {
       childNeedsYouRefusal("settle", "Grandkid"),
     ]);
     expect(rpc.call).not.toHaveBeenCalled();
+  });
+
+  it("settles a tree with a busy thread at once, without the sweep its drawn card would play", async () => {
+    rpc.call.mockResolvedValue({ waiting: true, changes: [], note: null, reclaim: {} });
+    const gone = registerCard("root");
+    try {
+      const { result } = renderHook(() => useLifecycleCommands(family({ ...working })));
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      await result.current.settle("root");
+      expect(rpc.call.mock.calls).toEqual([["settle", { threadId: "root" }]]);
+    } finally {
+      vi.useRealTimers();
+      gone();
+    }
   });
 
   it("reads the threads as they are when the command runs, and ignores an archived or hidden asker", async () => {

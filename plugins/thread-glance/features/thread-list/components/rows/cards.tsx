@@ -4,6 +4,7 @@
 import { experimental_Icon as Icon, ThreadTitle } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { isWaitingSettle } from "@/shared/lifecycle";
 import type { RowView } from "../../model/list-model";
 import { storedTitle } from "../../model/title";
 import type { ProjectColour } from "../../model/project-colour";
@@ -13,7 +14,7 @@ import { ProjectMark, ProjectName } from "../../project/ProjectMark";
 import { useCommands, useNow } from "../../store/hooks";
 import { ChildrenChip } from "./ChildrenChip";
 import { HarnessLogo } from "./HarnessLogo";
-import { HoverActions, offersHoverActions } from "./HoverActions";
+import { HoverActions, hoverActionsOf } from "./HoverActions";
 import { JumpHint, useJumpHint } from "./jump-hints";
 import { Location } from "./Location";
 import { PortIndicator } from "./PortIndicator";
@@ -121,38 +122,79 @@ function WokeMarker({ row }: { row: RowView }) {
   );
 }
 
+/** The mark of a waiting settle, with its cancel. Where the row is short of width, the label gives way and the cancel stays whole. */
+function WaitingSettleMarker({ row }: { row: RowView }) {
+  const commands = useCommands();
+  return (
+    <span data-waiting-settle="" className="flex min-w-0 shrink items-center gap-0.5">
+      <Tip label="Settles once no thread in its tree is busy">
+        <span className="min-w-0 truncate text-[10px] font-semibold text-muted-foreground">Settling</span>
+      </Tip>
+      <Tip label="Cancel settle">
+        <button
+          type="button"
+          data-no-drag=""
+          aria-label={`Cancel settling ${row.thread.displayTitle}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            void commands.cancelSettle(row.id);
+          }}
+          className="pointer-events-auto flex size-4 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        >
+          <Icon name="X" aria-hidden className="size-3" />
+        </button>
+      </Tip>
+    </span>
+  );
+}
+
 /**
  * The Status slot (80 px, right-aligned): one thing, or the jump hint while the
- * modifier is held, which widens the slot where bb's label is longer. On hover
- * a card that is not busy and not woke swaps it for Snooze and Settle, and
- * every card for Unpin and the thread menu. On touch there is no hover, so
- * Unpin stays beside the status.
+ * modifier is held, which widens the slot where bb's label is longer. A woke
+ * card shows its Woke marker there, and a card waiting to settle its Settling
+ * mark, both kept on hover. On hover a card that is not busy and not woke
+ * swaps the slot for Snooze and Settle, a busy one for Settle alone, and every
+ * card for Unpin and the thread menu. On touch there is no hover, so Unpin
+ * stays beside the status.
  */
 function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot; compact?: boolean }) {
   const hint = useJumpHint(row.id);
   const title = row.thread.displayTitle;
-  const woke = row.woke !== null;
+  const waitingSettle = row.woke === null && isWaitingSettle(row.lifecycle);
+  // The Woke marker and the Settling mark stay drawn on hover, beside the actions.
+  const keepsMarker = row.woke !== null || waitingSettle;
+  const hover = hoverActionsOf(row);
   return (
     <div data-status-slot="" className={cn("pointer-events-none relative flex h-5 shrink-0 items-center justify-end", hint !== null ? "min-w-20" : "w-20")}>
       <div
         className={cn(
           "flex min-w-0 items-center justify-end gap-1 transition-opacity duration-150 motion-reduce:transition-none",
-          !woke && "[@media(hover:hover)]:group-hover/card:opacity-0 [@media(hover:hover)]:group-focus-within/card:opacity-0",
+          !keepsMarker && "[@media(hover:hover)]:group-hover/card:opacity-0 [@media(hover:hover)]:group-focus-within/card:opacity-0",
         )}
       >
         <UnpinButton row={row} className="[@media(hover:hover)]:hidden" />
-        {hint !== null ? <JumpHint label={hint} /> : woke ? <WokeMarker row={row} /> : compact ? <CompactStatusView status={status} /> : <StatusView status={status} />}
+        {hint !== null ? (
+          <JumpHint label={hint} />
+        ) : waitingSettle ? (
+          <WaitingSettleMarker row={row} />
+        ) : row.woke !== null ? (
+          <WokeMarker row={row} />
+        ) : compact ? (
+          <CompactStatusView status={status} />
+        ) : (
+          <StatusView status={status} />
+        )}
       </div>
       <div
         data-slot-actions=""
         className={cn(
           "absolute inset-y-0 right-0 hidden items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none",
           "[@media(hover:hover)]:flex [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:group-focus-within/card:opacity-100",
-          woke && "static ml-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex",
+          keepsMarker && "static ml-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex",
         )}
       >
         <UnpinButton row={row} />
-        {offersHoverActions(row) ? <HoverActions threadId={row.id} title={title} /> : null}
+        {hover === null ? null : <HoverActions threadId={row.id} title={title} snooze={hover === "all"} />}
         <MoreButton thread={row.thread} />
       </div>
     </div>
@@ -254,12 +296,15 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
   const label = shelfLabel(row, now);
   const restore = restoreAction(row.shelf);
   const settled = row.shelf === "settled";
+  const waitingSettle = isWaitingSettle(row.lifecycle);
   let right: ReactNode = null;
   if (hint !== null) right = <JumpHint label={hint} className="[@media(hover:hover)]:group-focus-within/card:hidden" />;
+  else if (waitingSettle) right = <WaitingSettleMarker row={row} />;
   else if (settled) right = <StatusView status={status} className="w-auto" />;
   else if (label !== null) right = <span className="min-w-0 truncate text-[10px] text-muted-foreground tabular-nums">{label}</span>;
   // The jump hint keeps its width, so its key is never cut: while it shows, the title has no floor and the hover buttons give way, unless one holds focus, and then the hint gives way to them.
-  const squeezable = hint === null && right !== null;
+  // The Settling mark is not clipped by the wrapper: its own label gives way, so its cancel button is never cut.
+  const squeezable = hint === null && right !== null && !waitingSettle;
   return (
     <div className="@container pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
       <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
