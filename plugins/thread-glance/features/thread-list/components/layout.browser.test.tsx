@@ -430,16 +430,24 @@ describe("the slide of rows", () => {
     expect(new Set(slid).size).toBe(2);
   });
 
-  it("slides the rows below a row that leaves for a closed shelf, and not the rows of the shelves below", async () => {
-    await render(threads, { rows, settings: { inactiveShelf: false } });
-    await press("snoozed");
+  it("slides the rows below a row that leaves for a closed shelf under the same header, and not the rows a header below carries", async () => {
+    // Project mode: two lone rows on Active, then a group whose header and rows move up as one.
+    localStorage.setItem("thread-glance:activeSort", JSON.stringify("project"));
+    const grouped = [
+      makeThread({ id: "l1", title: "Lone one", projectId: "proj_personal", ...at(5) }),
+      makeThread({ id: "l2", title: "Lone two", projectId: "proj_a", ...at(6) }),
+      makeThread({ id: "b1", title: "Beta one", projectId: "proj_b", ...at(7) }),
+      makeThread({ id: "b2", title: "Beta two", projectId: "proj_b", ...at(8) }),
+    ];
+    await render(grouped, { settings: { inactiveShelf: false }, order: ["l1", "l2", "b1", "b2"] });
+    expect(document.querySelector('[data-group-key="group:proj_b"]')).not.toBeNull();
     slid.length = 0;
-    await userEvent.hover(screen.getByRole("link", { name: "Active two" }));
-    await userEvent.click(screen.getByRole("button", { name: "Snooze Active two" }));
+    await userEvent.hover(screen.getByRole("link", { name: "Lone one" }));
+    await userEvent.click(screen.getByRole("button", { name: "Snooze Lone one" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Park thread" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Parked (3)" })).toBeTruthy());
-    await waitFor(() => expect(screen.queryByRole("link", { name: "Active two" })).toBeNull());
-    await waitFor(() => expect(slid).toContain("a3"));
-    expect(slid).not.toContain("s1");
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Lone one" })).toBeNull());
+    await waitFor(() => expect(slid).toContain("l2"));
+    expect(slid).not.toContain("b1");
+    expect(slid).not.toContain("b2");
   });
 });
