@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
-import { ALL_PROJECTS, filterScopeOptions, firstSelectedIndex, inScope, isOptionSelected, moveHighlight, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
+import { ALL_PROJECTS, filterScopeOptions, firstSelectedIndex, inScope, isOptionSelected, listedPins, moveHighlight, pinnedProjectLabel, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
 
 describe("the project scope", () => {
   it("lists All projects, then every project including the personal one, by name", () => {
@@ -117,5 +117,25 @@ describe("the projects a scope leaves out that need you", () => {
   it("names them on the button, after the scope", () => {
     expect(scopeButtonLabel(["proj_personal"], PROJECTS, [])).toBe("Project scope: Personal");
     expect(scopeButtonLabel(["proj_personal"], PROJECTS, ["proj_a", "proj_b"])).toBe("Project scope: Personal. Needs you in Alpha, Beta");
+  });
+});
+
+describe("the pinned projects", () => {
+  it("are the pinned projects bb lists, in the order they were pinned, named as bb names them", () => {
+    expect(listedPins(["proj_b", "proj_personal", "proj_a"], PROJECTS)).toEqual([
+      { id: "proj_b", name: "Beta" },
+      { id: "proj_personal", name: "Personal" },
+      { id: "proj_a", name: "Alpha" },
+    ]);
+  });
+
+  it("leave out a pin whose project bb does not list", () => {
+    expect(listedPins(["proj_gone", "proj_a"], PROJECTS)).toEqual([{ id: "proj_a", name: "Alpha" }]);
+    expect(listedPins([], PROJECTS)).toEqual([]);
+  });
+
+  it("name the button for the project, then that it needs you", () => {
+    expect(pinnedProjectLabel("Alpha", false)).toBe("Alpha");
+    expect(pinnedProjectLabel("Alpha", true)).toBe("Alpha. Needs you");
   });
 });

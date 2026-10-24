@@ -1,5 +1,6 @@
 // The project scope picker: the scope itself, its options, the marks for the
-// projects left out, the filter field and the keyboard moves. Pure.
+// projects left out, the filter field, the keyboard moves and the pinned
+// projects drawn above the list. Pure.
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { isListed } from "./listed";
 
@@ -106,6 +107,26 @@ export function projectsNeedingYou(scope: Scope, threads: readonly PluginSidebar
 }
 
 const NONE: readonly string[] = [];
+
+/** A project pinned above the list. */
+export interface PinnedProject {
+  id: string;
+  name: string;
+}
+
+/** The pinned projects bb lists, in the order they were pinned; a pin whose project bb no longer lists is not drawn, and is kept in case it returns. */
+export function listedPins(pinned: readonly string[], projects: readonly PluginSidebarProject[]): PinnedProject[] {
+  const byId = new Map(projects.map((project) => [project.id, project.name]));
+  return pinned.flatMap((id) => {
+    const name = byId.get(id);
+    return name === undefined ? [] : [{ id, name }];
+  });
+}
+
+/** What a pinned project's button is named for a screen reader: the project, then that it needs the person when the scope leaves it out. */
+export function pinnedProjectLabel(name: string, needsYou: boolean): string {
+  return needsYou ? `${name}. Needs you` : name;
+}
 
 /** What the picker's button is named for a screen reader: the scope, then the left-out projects that need the person. */
 export function scopeButtonLabel(scope: Scope, projects: readonly PluginSidebarProject[], needingYou: readonly string[]): string {
