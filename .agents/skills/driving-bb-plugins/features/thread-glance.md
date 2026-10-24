@@ -487,8 +487,9 @@ says.
 - A snooze, park or settle toast lasts 4 to 10 s, and the ports prompt stays
   until answered, so read `toasts` in the same verb that acted.
 - Settle's 520 ms sweep and the list's slide on reorder are animations (a
-  shelf or group opening or closing slides nothing): the verbs wait about
-  300 ms before reading, so a read taken sooner may miss a new shelf header.
+  shelf or group opening or closing, or Group by worktree turned on or off,
+  slides nothing): the verbs wait about 300 ms before reading, so a read taken
+  sooner may miss a new shelf header.
 - Manual order holds every non-pinned thread across projects; the verb's
   `after.stored` lists titles in that order.
 - Quiet threads (`seed`'s `trees`) read `pending`; their third line shows the

@@ -63,8 +63,9 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
   }, []);
 
   // When the items change other than by a shelf or group opening or closing,
-  // the rows slide from where they were to where they are now, as far as
-  // their header did not carry them.
+  // or by group headers drawn or dropped around rows that keep their order
+  // (Group by worktree turned on or off), the rows slide from where they were
+  // to where they are now, as far as their header did not carry them.
   const places = useRef<Map<string, RowPlace>>(new Map());
   const rowOrder = items.map((item) => item.key).join(" ");
   const last = useRef({ order: rowOrder, items });
