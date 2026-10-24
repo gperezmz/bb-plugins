@@ -224,8 +224,11 @@ describe("AC19: Jump hints", () => {
     expect(card("settled2").querySelector("[data-status]")).not.toBeNull();
   });
 
-  it("shows none while bb assigns none", async () => {
+  it("shows none while bb assigns none, whatever key is held", async () => {
     await mount({ threads: threads() });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { key: "Control", ctrlKey: true })));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
     expect(hints()).toEqual([]);
     expect(document.querySelectorAll("[data-status-slot]").length).toBeGreaterThan(0);
   });

@@ -221,6 +221,18 @@ describe("the jump hints", () => {
     const title = card("work").querySelector<HTMLElement>("[data-title]")!;
     expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(card("work").querySelector("[data-status-slot]")!.getBoundingClientRect().left);
   });
+
+  it("keeps a Slim row within its width with the longest label", async () => {
+    const threads = [makeThread({ id: "pk", title: "A parked thread with a long title", ...old })];
+    await render(threads, { rows: { pk: parkedRow(NOW - 1000) }, settings: { inactiveShelf: false } }, {}, 600, 255, { pk: long });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    expect(card("pk").dataset.card).toBe("slim");
+    const hint = card("pk").querySelector<HTMLElement>("[data-jump-hint]")!;
+    expect(hint.getBoundingClientRect().right).toBeLessThanOrEqual(card("pk").getBoundingClientRect().right);
+    expect(hint.scrollWidth).toBeLessThanOrEqual(hint.clientWidth);
+    expect(card("pk").scrollWidth).toBeLessThanOrEqual(card("pk").clientWidth);
+  });
 });
 
 describe("a card takes the pointer", () => {
