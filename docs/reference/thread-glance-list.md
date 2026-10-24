@@ -96,6 +96,8 @@ A never-run thread with nothing queued is at rest, as bb's own list draws it: it
 
 A thread is lifted while a question or approval is pending on any thread below it, at any depth. A parked, snoozed or settled thread that is lifted is on Active, and a snoozed one shows as [woke](#woke). The lift changes no lifecycle row, so once no such question waits, whether it was answered or its thread was archived, deleted or interrupted, the thread returns to its shelf: a parked thread keeps its park time, a settled one stays settled, and a snoozed one returns to Snoozed with its wake time, unless that time has passed meanwhile, when it stays woke.
 
+The shelf survives the lift only while nothing else clears it. A parked, snoozed or settled mark is cleared, as it always was, when a thread below the thread starts a turn or is created or moved under it, and by new attention on the thread itself. bb's parent notifications start a turn on the asking thread's parents when a child asks, so with them on, which is bb's default, a child's question clears the mark before the lift can matter, and the thread stays on Active after the answer. A thread goes back to its shelf only when the asking thread's turn was already running when it was set aside and the parent notifications are off.
+
 Park, Snooze and Settle on a lifted thread are refused, in the window at once and by the server, with "Cannot <action> while a child thread needs you: <title>", naming the thread that asks. A thread's own question is not a lift: it makes the thread [busy](#busy-threads), and new attention takes it off Parked and Settled as usual. Hidden threads and archived ones are not counted, and a thread that is not on the list ends the chain above it.
 
 ### Woke
