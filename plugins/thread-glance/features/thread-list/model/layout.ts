@@ -55,6 +55,7 @@ export function layoutItems(items: readonly ListItem[], rows: ReadonlyMap<string
         size = heights.shelfHeader + (laid.length > 0 ? heights.shelfGap : 0);
         break;
       case "group":
+      case "worktree":
         size = heights.groupHeader;
         break;
       case "more":

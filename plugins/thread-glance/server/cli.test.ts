@@ -25,10 +25,10 @@ async function refusal(harness: Harness, argv: string[]) {
 }
 
 describe("bb thread-glance prefs", () => {
-  it("lists all 15 keys with a value and a description, as lines and as JSON", async () => {
+  it("lists all 16 keys with a value and a description, as lines and as JSON", async () => {
     const harness = await load();
     const lines = (await harness.behavior.runCli(["prefs", "list"])).stdout?.split("\n") ?? [];
-    expect(SETTING_KEYS).toHaveLength(15);
+    expect(SETTING_KEYS).toHaveLength(16);
     expect(lines.map((line) => line.split("\t")[0])).toEqual(SETTING_KEYS);
     for (const line of lines) {
       const [key, value, description] = line.split("\t");
@@ -59,6 +59,14 @@ describe("bb thread-glance prefs", () => {
     expect(lines.find((line) => line.startsWith("hoursBeforeInactive\t"))?.split("\t")[1]).toBe("12");
     const json = JSON.parse((await harness.behavior.runCli(["prefs", "list", "--json"])).stdout ?? "") as Record<string, unknown>;
     expect(json.hoursBeforeInactive).toBe(12);
+  });
+
+  it("sets Group by worktree, off until it is turned on", async () => {
+    const harness = await load();
+    expect((await harness.behavior.runCli(["prefs", "get", "groupByWorktree"])).stdout).toBe("false");
+    expect((await harness.behavior.runCli(["prefs", "set", "groupByWorktree", "true"])).stdout).toBe("groupByWorktree = true");
+    expect((await stored(harness)).groupByWorktree).toBe(true);
+    expect((await refusal(harness, ["prefs", "set", "groupByWorktree", "yes"])).code).toBe("invalid_preference_value");
   });
 
   it("reads a bare word as a string and a JSON word as its value", async () => {

@@ -1,5 +1,5 @@
-// The list's non-row items: a shelf's header, a Project-mode group's header
-// and "Load N more". Each is sized by the item's height in the layout.
+// The list's non-row items: a shelf's header, a Project-mode group's header,
+// a worktree group's header and "Load N more". Each is sized by the item's height in the layout.
 import { memo } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
@@ -13,9 +13,11 @@ import { useProjectIds } from "../project/use-project-ids";
 import { ACTIVE_SORT_LABELS, ACTIVE_SORTS, type ActiveSort } from "../storage/device-state";
 import { useActiveSort, useCommands, useIsDragged, useProject, useSettings } from "../store/hooks";
 import { Tip } from "./rows/Tip";
+import { UrgencyGlyph } from "./rows/UrgencyGlyph";
 
 type ShelfItem = Extract<ListItem, { kind: "shelf" }>;
 type GroupItem = Extract<ListItem, { kind: "group" }>;
+type WorktreeItem = Extract<ListItem, { kind: "worktree" }>;
 type MoreItem = Extract<ListItem, { kind: "more" }>;
 
 /** Active's sort select: highlighted while the sort is not Manual order. */
@@ -40,6 +42,29 @@ function ActiveSortSelect() {
         </option>
       ))}
     </select>
+  );
+}
+
+/** Active's Group by worktree button, beside the sort select while the sort is Project. */
+function GroupByWorktreeButton() {
+  const { groupByWorktree } = useSettings();
+  const commands = useCommands();
+  return (
+    <Tip label={groupByWorktree ? "Stop grouping by worktree" : "Group by worktree"}>
+      <button
+        type="button"
+        data-no-drag=""
+        aria-label="Group by worktree"
+        aria-pressed={groupByWorktree}
+        onClick={() => void commands.toggleGroupByWorktree()}
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          groupByWorktree ? "bg-sidebar-accent text-foreground" : "text-muted-foreground",
+        )}
+      >
+        <Icon name="FolderGit" aria-hidden className="size-3.5" />
+      </button>
+    </Tip>
   );
 }
 
@@ -70,6 +95,7 @@ function CleanButton() {
  */
 export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item: ShelfItem; gap: number; size: number }) {
   const commands = useCommands();
+  const sort = useActiveSort();
   const name = SHELF_NAMES[item.shelf];
   const label = item.collapsed ? `${name} (${item.count})` : name;
   // Working's icon spins while the shelf has work, whatever the motion setting.
@@ -88,6 +114,7 @@ export const ShelfHeader = memo(function ShelfHeader({ item, gap, size }: { item
         <span data-shelf-rule="" aria-hidden className="-ml-1.5 h-px min-w-0 flex-1 bg-[linear-gradient(to_right,transparent_6px,var(--tg-shelf-rule)_6px)]" />
       </button>
       {item.shelf === "active" && !item.collapsed ? <ActiveSortSelect /> : null}
+      {item.shelf === "active" && !item.collapsed && sort === "project" ? <GroupByWorktreeButton /> : null}
       {item.shelf === "settled" ? <CleanButton /> : null}
     </div>
   );
@@ -119,6 +146,39 @@ export const GroupHeader = memo(function GroupHeader({ item, size }: { item: Gro
         <ProjectMark projectId={item.projectId} name={name} colour={colour} className="size-3" />
         <ProjectName name={name} colour={colour} className="min-w-0 truncate font-medium" />
         <span className="shrink-0 tabular-nums">{item.count}</span>
+        <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
+      </button>
+    </div>
+  );
+});
+
+/**
+ * A worktree group's header, one step in under its project's: the worktree
+ * icon, its branch, its count and a chevron. While collapsed it shows the
+ * most urgent state among its threads, so a question or a failure does not
+ * hide inside it. The header moves as a unit.
+ */
+export const WorktreeHeader = memo(function WorktreeHeader({ item, size }: { item: WorktreeItem; size: number }) {
+  const commands = useCommands();
+  const dragged = useIsDragged(item.key);
+  return (
+    <div
+      data-group-key={item.key}
+      data-worktree-group=""
+      style={{ height: size }}
+      className={cn("relative flex items-center gap-1 rounded-md pl-5 pr-1 text-xs text-muted-foreground select-none", dragged && "opacity-60")}
+    >
+      <button
+        type="button"
+        aria-expanded={!item.collapsed}
+        aria-label={`${item.collapsed ? "Expand" : "Collapse"} ${item.branch} worktree group`}
+        onClick={() => commands.setWorktreeCollapsed(item.environmentId, !item.collapsed)}
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      >
+        <Icon name="FolderGit" aria-hidden className="size-3 shrink-0" />
+        <span className="min-w-0 truncate font-mono font-medium">{item.branch}</span>
+        <span className="shrink-0 tabular-nums">{item.count}</span>
+        {item.urgency === null ? null : <UrgencyGlyph urgency={item.urgency} />}
         <Icon name="ChevronRight" aria-hidden className={cn("size-3 shrink-0 transition-transform duration-150", !item.collapsed && "rotate-90")} />
       </button>
     </div>

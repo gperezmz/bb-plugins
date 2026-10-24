@@ -147,6 +147,7 @@ describe("the page (AC26)", () => {
     expect(toggle("Working shelf").getAttribute("aria-checked")).toBe("false");
     expect(toggle("Inactive shelf").getAttribute("aria-checked")).toBe("true");
     expect(toggle("Dock shelves to the bottom").getAttribute("aria-checked")).toBe("false");
+    expect(toggle("Group by worktree").getAttribute("aria-checked")).toBe("false");
     expect(screen.getAllByText("Experimental")).toHaveLength(3);
     const hours = screen.getByLabelText("Hours before inactive") as HTMLInputElement;
     expect([hours.value, hours.min, hours.max]).toEqual(["6", "1", "720"]);
@@ -267,6 +268,15 @@ describe("autosave", () => {
     typeInto("Hours before inactive", "9");
     await settle(SAVE_DELAY_MS);
     expect(writes(server)).toEqual([{ patch: { hoursBeforeInactive: 9, workingShelf: true } }]);
+  });
+
+  it("sends Group by worktree as it is named", async () => {
+    fakeTimers();
+    const server = fakeServer();
+    openPage(server);
+    fireEvent.click(toggle("Group by worktree"));
+    await settle(SAVE_DELAY_MS);
+    expect(writes(server)).toEqual([{ patch: { groupByWorktree: true } }]);
   });
 
   it("sends nothing for an edit put back to the server's value", async () => {

@@ -67,7 +67,12 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   chevron to its controls, inside the toggle. Active's header holds
   `combobox "Sort Active"` (Manual order, Recent activity, Date created,
   Project) while Active is open; Project sort heads each project with two or
-  more Active threads with `button "Collapse <project> group"`. Settled's
+  more Active threads with `button "Collapse <project> group"`, and, beside the
+  sort, `button "Group by worktree"` (`aria-pressed`) that flips the setting of
+  the same name; with it on, two or more root threads sharing a bb worktree sit
+  under `button "Collapse <branch> worktree group"` inside their project's
+  group, whose header shows the most urgent mark while collapsed. No verb
+  covers these controls yet. Settled's
   header holds `button "Close terminals and ports of settled threads"`, a broom
   icon with no text, shown collapsed too. Settled draws 10 rows, then
   `button "Load N more"` adds up to 25 at a time.

@@ -60,6 +60,12 @@ export function SidebarLayout({ form }: { form: Form }) {
         checked={values.dockShelves === true}
         onChange={(on) => edit("dockShelves", on)}
       />
+      <SwitchRow
+        label="Group by worktree"
+        description="Under the Project sort on Active, group threads that share a worktree under its branch."
+        checked={values.groupByWorktree === true}
+        onChange={(on) => edit("groupByWorktree", on)}
+      />
     </Group>
   );
 }
