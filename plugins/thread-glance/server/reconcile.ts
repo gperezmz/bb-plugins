@@ -30,18 +30,18 @@ export type HoldCandidate = Pick<ShelfThread, "latestAttentionAt"> & {
 
 /**
  * The rows whose mark a waiting question holds, with the attention their
- * threads just had set aside, and the ids of the threads held (`turnHeld`
+ * threads just had set aside, and the ids of the threads held (`turnsHeld`
  * adds threads whose turn began while one waited). `threads` are the visible
  * ones; a thread that is missing a field the rule reads is left out.
  */
 export function holdRows(
   rows: ReadonlyMap<string, LifecycleRow>,
   threads: readonly HoldCandidate[],
-  turnHeld: ReadonlySet<string> = new Set(),
+  turnsHeld: ReadonlySet<string> = new Set(),
 ): { rows: [string, LifecycleRow][]; held: Set<string> } {
   const known = threads.filter((thread): thread is HoldThread => thread.parentThreadId !== undefined && thread.hasPendingInteraction !== undefined);
   const byId = new Map(known.map((thread) => [thread.id, thread]));
-  const held = heldIds(rows, known, turnHeld);
+  const held = heldIds(rows, known, turnsHeld);
   const changed = [...held].flatMap((threadId): [string, LifecycleRow][] => {
     const row = rows.get(threadId)!;
     const next = holdAttention(row, byId.get(threadId)!.latestAttentionAt);

@@ -243,6 +243,26 @@ describe("events", () => {
       expect(rowOf(await sync(harness), "root")).toBeNull();
     });
 
+    it("keeps the hold of a turn's end when bb cannot list its threads then, and applies it at the next event", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = tree().map((thread) => (thread.id === "leaf" ? { ...thread, hasPendingInteraction: false } : thread));
+      let listing = true;
+      const { harness } = await load(sdkWith(() => (listing ? threads : Promise.reject(new Error("bb is busy")) as never)));
+      await harness.behavior.callRpc("park", { threadId: "root" });
+      const before = rowOf(await sync(harness), "root")!;
+      threads[2]!.hasPendingInteraction = true;
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 12_000 }) });
+      threads[2]!.hasPendingInteraction = false;
+      threads[0]!.latestAttentionAt = 25_000;
+      listing = false;
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 25_000 }), lastAssistantText: null });
+      listing = true;
+      expect(rowOf(await sync(harness), "root")).toEqual({ ...before, heldAttentionAt: 12_000 });
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 25_000 }), lastAssistantText: null });
+      expect(rowOf(await sync(harness), "root")).toEqual({ ...before, heldAttentionAt: 25_000 });
+    });
+
     it("leaves a marked root alone when a thread is created below it while a question waits, and reopens it otherwise", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);

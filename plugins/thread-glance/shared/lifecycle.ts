@@ -202,20 +202,20 @@ export type HoldThread = TreeThread & Pick<ShelfThread, "latestAttentionAt" | "h
 /**
  * The ids among `rows` whose mark a waiting question holds: the row carries a
  * mark, and a question waits on a thread below its thread (or the thread's
- * turn began while one did, `turnHeld`) and none on the thread itself, whose
+ * turn began while one did, `turnsHeld`) and none on the thread itself, whose
  * own question is its own attention. `threads` are the ones a user can answer
  * for, as for `liftedIds`.
  */
 export function heldIds(
   rows: ReadonlyMap<string, LifecycleRow>,
   threads: readonly HoldThread[],
-  turnHeld: ReadonlySet<string> = new Set(),
+  turnsHeld: ReadonlySet<string> = new Set(),
 ): Set<string> {
   const lifted = liftedIds(threads);
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const held = new Set<string>();
   for (const [threadId, row] of rows) {
-    if (hasMark(row) && (lifted.has(threadId) || turnHeld.has(threadId)) && byId.get(threadId)?.hasPendingInteraction === false) held.add(threadId);
+    if (hasMark(row) && (lifted.has(threadId) || turnsHeld.has(threadId)) && byId.get(threadId)?.hasPendingInteraction === false) held.add(threadId);
   }
   return held;
 }

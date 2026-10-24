@@ -45,7 +45,7 @@ export interface ThreadEvents {
 export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
   const { lifecycle, order, threads } = deps;
   /** Marked threads that began a turn while a question held their mark; the turn's end is held too. In memory, so a restart ends the hold. */
-  const turnsHeld = new Set<string>();
+  const heldTurns = new Set<string>();
 
   const addToOrder = (thread: EventThread) => {
     if (thread.visibility === "hidden") return;
@@ -75,22 +75,25 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
   /**
    * Sets aside the attention the marked threads among `ids` have while a
    * question waits below them, and returns those threads, which a turn in
-   * their tree must not reopen. `thread` is the thread the event is about, with
-   * the attention it carries; `turnHeld` names threads whose turn began while a
+   * their tree must not reopen, or null when bb could not list its threads, so
+   * nothing is known. `thread` is the thread the event is about, with the
+   * attention it carries; `turnsHeld` names threads whose turn began while a
    * question waited, which is held though it ended after the answer.
    */
   async function holdWhileAsked(
     ids: readonly string[],
     thread: EventThread,
     changed: (threadIds: Iterable<string>) => void,
-    turnHeld: ReadonlySet<string> = new Set(),
-  ): Promise<Set<string>> {
+    turnsHeld: ReadonlySet<string> = new Set(),
+  ): Promise<Set<string> | null> {
     const marked = new Map(ids.flatMap((id): [string, LifecycleRow][] => (hasMark(lifecycle.get(id)) ? [[id, lifecycle.get(id)!]] : [])));
     if (marked.size === 0) return new Set();
-    const visible = (await threads.snapshot())
-      .filter((listed) => !listed.hidden)
-      .map((listed) => (listed.id === thread.id ? { ...listed, latestAttentionAt: Math.max(listed.latestAttentionAt, thread.latestAttentionAt) } : listed));
-    const { rows, held } = holdRows(marked, visible, turnHeld);
+    const listed = await threads.snapshot().catch(() => null);
+    if (listed === null) return null;
+    const visible = listed
+      .filter((candidate) => !candidate.hidden)
+      .map((candidate) => (candidate.id === thread.id ? { ...candidate, latestAttentionAt: Math.max(candidate.latestAttentionAt, thread.latestAttentionAt) } : candidate));
+    const { rows, held } = holdRows(marked, visible, turnsHeld);
     changed(lifecycle.putMany(rows));
     return held;
   }
@@ -106,7 +109,7 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
         addToOrder(thread);
         if (![...lifecycle.all().values()].some(hasMark)) return;
         const ancestors = await ancestorsFrom(thread.parentThreadId);
-        changed(reopen(ancestors, await holdWhileAsked(ancestors, thread, changed)));
+        changed(reopen(ancestors, (await holdWhileAsked(ancestors, thread, changed)) ?? new Set()));
       }),
 
     active: (thread) =>
@@ -115,21 +118,26 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
         // The active override lasts until the thread next starts a turn.
         if (row?.activeOverride) changed(lifecycle.putMany([[thread.id, { ...row, activeOverride: false }]]));
         const ancestors = [...lifecycle.all().values()].some(hasMark) ? await ancestorsFrom(thread.parentThreadId) : [];
-        const held = await holdWhileAsked([thread.id, ...ancestors], thread, changed);
-        if (held.has(thread.id)) turnsHeld.add(thread.id);
+        const held = (await holdWhileAsked([thread.id, ...ancestors], thread, changed)) ?? new Set();
+        if (held.has(thread.id)) heldTurns.add(thread.id);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
         changed(reopen(ancestors, held));
       }),
 
     attention: (thread) =>
       deps.change(async (changed) => {
-        await holdWhileAsked([thread.id], thread, changed, turnsHeld.delete(thread.id) ? new Set([thread.id]) : undefined);
+        // The turn that ends here began while a question held the mark, if the record says so.
+        const turnWasHeld = heldTurns.has(thread.id);
+        const held = await holdWhileAsked([thread.id], thread, changed, turnWasHeld ? new Set([thread.id]) : undefined);
+        // Without bb's threads the hold of that turn is unknown: its record stays and the mark is left for the next event.
+        if (held === null && turnWasHeld) return;
+        heldTurns.delete(thread.id);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
       }),
 
     archived: (thread) =>
       deps.change(async () => {
-        turnsHeld.delete(thread.id);
+        heldTurns.delete(thread.id);
         deps.archived.archive(thread.id);
         removeFromOrder(thread.id);
       }),
@@ -144,7 +152,7 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
 
     deleted: (thread) =>
       deps.change(async (changed) => {
-        turnsHeld.delete(thread.id);
+        heldTurns.delete(thread.id);
         deps.archived.unarchive(thread.id);
         removeFromOrder(thread.id);
         changed(lifecycle.forget([thread.id]));
