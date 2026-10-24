@@ -69,6 +69,15 @@ wait_for() {
   return 1
 }
 
+# The bb server's own log, oldest first. bb 0.46 writes it to
+# logs/server-stdio.log; bb 0.47 writes JSON lines to logs/server.<n>.log,
+# rotating to the next number, and leaves server-stdio.log empty.
+server_log() {
+  local logs=("$work/bb/logs/server-stdio.log")
+  mapfile -t -O 1 logs < <(find "$work/bb/logs" -maxdepth 1 -name 'server.*.log' | sort -V)
+  cat "${logs[@]}" 2>/dev/null || true
+}
+
 # Every command below reads this npmrc, the bb server's own npm included, and
 # none reads the user's.
 export HOME=$work/home
@@ -115,7 +124,8 @@ env "${unset_bb[@]}" BB_HOST_DAEMON_PORT="$daemon_port" BB_TELEMETRY=0 \
 pids+=("$!")
 export BB_SERVER_URL=http://127.0.0.1:$server_port
 if ! wait_for "bb server" "$BB_SERVER_URL/health"; then
-  tail -50 "$work/server.log" "$work/bb/logs/server-stdio.log" >&2 || true
+  tail -50 "$work/server.log" >&2 || true
+  server_log | tail -50 >&2
   exit 1
 fi
 
@@ -173,7 +183,7 @@ status=$(plugin_status)
 if [[ $status != running ]]; then
   echo "::error::$id: installed from npm but its status is '$status', not running" >&2
   bb plugin logs "$id" -n 50 >&2 || true
-  grep -F "$id" "$work/bb/logs/server-stdio.log" | tail -50 >&2 || true
+  server_log | grep -F "$id" | tail -50 >&2 || true
   exit 1
 fi
 echo "$id: running"
@@ -198,10 +208,15 @@ bb plugin enable "$id"
 # bb writes its log a moment after `enable` returns.
 fallback="plugin $id: ignoring prebuilt dist/server.js (built with SDK 0.0.1,"
 for _ in $(seq 15); do
-  if grep -qF "$fallback" "$work/bb/logs/server-stdio.log"; then break; fi
+  if server_log | grep -F "$fallback" > /dev/null; then break; fi
   sleep 1
 done
-if ! grep -qF "$fallback" "$work/bb/logs/server-stdio.log"; then
+if ! server_log | grep -F "$fallback" > /dev/null; then
+  if [[ -z $(server_log) ]]; then
+    echo "::error::$id: found no bb server log in $work/bb/logs, so whether bb fell back to server.ts went unread" >&2
+    ls -l "$work/bb/logs" >&2 || true
+    exit 1
+  fi
   echo "::error::$id: bb did not fall back to server.ts, so the source load went untested" >&2
   exit 1
 fi
@@ -209,7 +224,7 @@ status=$(plugin_status)
 if [[ $status != running ]]; then
   echo "::error::$id: loaded from server.ts, as after a bb upgrade, its status is '$status', not running; the npm package lacks a dependency the server source imports" >&2
   bb plugin logs "$id" -n 50 >&2 || true
-  grep -F "$id" "$work/bb/logs/server-stdio.log" | tail -50 >&2 || true
+  server_log | grep -F "$id" | tail -50 >&2 || true
   exit 1
 fi
 echo "$id: running from server.ts"
