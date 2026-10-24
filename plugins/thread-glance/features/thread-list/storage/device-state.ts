@@ -1,7 +1,7 @@
-// What the list keeps per device: which shelves are collapsed, the Active sort, collapsed
-// project and worktree groups, the parents whose child list is open and the pinned
-// projects. Pure steps over
-// plain values; `readDeviceState` and the cache helpers bind them to storage.
+// What the list keeps per device: which shelves are collapsed, the Active sort,
+// collapsed project and worktree groups, the parents whose child list is open
+// and the pinned projects. Pure steps over plain values; `readDeviceState` and
+// the cache helpers bind them to storage.
 import { lifecycleRowSchema, SHELVES, type LifecycleRow, type Shelf } from "@/shared/lifecycle";
 import { readSettings, type Settings } from "@/shared/settings";
 import { appearanceSchema, type Appearance } from "@/shared/signals";

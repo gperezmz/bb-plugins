@@ -145,7 +145,7 @@ export function usePinnedProjects(): readonly PinnedProject[] {
 }
 
 /** The ids of the projects pinned above the list, listed or not. */
-export function usePinnedIds(): readonly string[] {
+export function usePinnedProjectIds(): readonly string[] {
   return useListSelect((state) => state.inputs.device.pinnedProjects);
 }
 

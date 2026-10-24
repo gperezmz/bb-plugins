@@ -124,7 +124,7 @@ export function listedPins(pinned: readonly string[], projects: readonly PluginS
 }
 
 /** What a pinned project's button is named for a screen reader: the project, then that it needs the person when the scope leaves it out. */
-export function pinButtonLabel(name: string, needsYou: boolean): string {
+export function pinnedProjectLabel(name: string, needsYou: boolean): string {
   return needsYou ? `${name}. Needs you` : name;
 }
 

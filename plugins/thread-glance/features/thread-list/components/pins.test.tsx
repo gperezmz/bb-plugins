@@ -78,6 +78,9 @@ describe("AC1: a project is pinned or unpinned from its row in the picker", () =
     localStorage.setItem("thread-glance:pinnedProjects", JSON.stringify(["proj_gone", "proj_a"]));
     await mount({ threads: threads() });
     expect(pinned()).toEqual(["Alpha"]);
+    // The pin stays saved for the project's return, through the next change of the pins.
+    await pin("Beta");
+    expect(JSON.parse(localStorage.getItem("thread-glance:pinnedProjects")!)).toEqual(["proj_gone", "proj_a", "proj_b"]);
   });
 });
 
@@ -166,10 +169,16 @@ describe("AC3: pins are kept per device, and Reset clears the scope but keeps th
     const first = await mount({ threads: threads() });
     await pin("Alpha", "Beta");
     fireEvent.click(done());
+    await flush();
+    fireEvent.click(button("Alpha"));
+    await flush();
+    expect(titles()).toEqual(["Alpha active"]);
     first.view.unmount();
     sessionStorage.clear();
     await mount({ threads: threads() });
     expect(pinned()).toEqual(["Alpha", "Beta"]);
+    expect(screen.getByLabelText("Project scope: All projects", { selector: "button" })).toBeTruthy();
+    expect(titles()).toEqual(["Alpha active", "Beta active"]);
     expect(JSON.parse(localStorage.getItem("thread-glance:pinnedProjects")!)).toEqual(["proj_a", "proj_b"]);
   });
 
@@ -212,5 +221,6 @@ describe("AC3: pins are kept per device, and Reset clears the scope but keeps th
     fireEvent.click(button("Alpha"));
     await flush();
     expect(button("Reset").textContent).toBe("");
+    expect(button("Reset").querySelector("[data-icon=X]")).not.toBeNull();
   });
 });

@@ -8,7 +8,8 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { ALL_PROJECTS_SCOPE, filterScopeOptions, firstSelectedIndex, isOptionSelected, moveHighlight, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject, type ScopeOption } from "../model/scope";
-import { useCommands, usePinnedIds, useScope } from "../store/hooks";
+import { ICON_BUTTON } from "./PinnedProjects";
+import { useCommands, usePinnedProjectIds, useScope } from "../store/hooks";
 
 function NeedsYouMark() {
   return (
@@ -19,14 +20,14 @@ function NeedsYouMark() {
 }
 
 /** A picker row's pin: pins the project above the list, or unpins it. */
-function PinButton({ projectId, name, pinned }: { projectId: string; name: string; pinned: boolean }) {
+function ProjectPinButton({ projectId, name, pinned }: { projectId: string; name: string; pinned: boolean }) {
   const commands = useCommands();
   return (
     <button
       type="button"
       aria-label={`${pinned ? "Unpin" : "Pin"} ${name}`}
       onClick={() => commands.setProjectPinned(projectId, !pinned)}
-      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      className={cn(ICON_BUTTON, "text-muted-foreground hover:text-foreground")}
     >
       <Icon name={pinned ? "PinOff" : "Pin"} aria-hidden className="size-3.5" />
     </button>
@@ -36,7 +37,7 @@ function PinButton({ projectId, name, pinned }: { projectId: string; name: strin
 export function ProjectScope() {
   const { scope, projects, needingYou } = useScope();
   const commands = useCommands();
-  const pinned = usePinnedIds();
+  const pinned = usePinnedProjectIds();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(-1);
@@ -111,7 +112,7 @@ export function ProjectScope() {
                   {option.id !== null && needingYou.includes(option.id) ? <NeedsYouMark /> : null}
                   {isOptionSelected(scope, option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
                 </div>
-                {option.id !== null ? <PinButton projectId={option.id} name={option.name} pinned={pinned.includes(option.id)} /> : null}
+                {option.id !== null ? <ProjectPinButton projectId={option.id} name={option.name} pinned={pinned.includes(option.id)} /> : null}
               </div>
             ))}
             {options.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No projects match.</p> : null}

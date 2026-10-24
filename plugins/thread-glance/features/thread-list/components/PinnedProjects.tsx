@@ -4,14 +4,15 @@
 // scope limits the list.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
-import { ALL_PROJECTS_SCOPE, pinButtonLabel, toggleProject, type PinnedProject } from "../model/scope";
+import { ALL_PROJECTS_SCOPE, pinnedProjectLabel, toggleProject, type PinnedProject } from "../model/scope";
 import { ProjectMark } from "../project/ProjectMark";
 import { useProjectColour } from "../project/use-project-colour";
 import { useProjectIds } from "../project/use-project-ids";
 import { useCommands, usePinnedProjects, useScope } from "../store/hooks";
 import { Tip } from "./rows/Tip";
 
-const BUTTON =
+/** The look of a 28 px icon button in the scope's controls, pins and Reset alike. */
+export const ICON_BUTTON =
   "relative flex size-7 shrink-0 items-center justify-center rounded-md outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring";
 
 function PinnedProject({ pin, selected, needsYou }: { pin: PinnedProject; selected: boolean; needsYou: boolean }) {
@@ -23,9 +24,9 @@ function PinnedProject({ pin, selected, needsYou }: { pin: PinnedProject; select
       <button
         type="button"
         aria-pressed={selected}
-        aria-label={pinButtonLabel(pin.name, needsYou)}
+        aria-label={pinnedProjectLabel(pin.name, needsYou)}
         onClick={() => commands.setScope(toggleProject(scope, pin.id))}
-        className={cn(BUTTON, selected && "bg-sidebar-accent")}
+        className={cn(ICON_BUTTON, selected && "bg-sidebar-accent")}
       >
         <ProjectMark projectId={pin.id} name={pin.name} colour={colour} className="size-4" />
         {needsYou ? <Icon name="CircleQuestion" aria-hidden className="absolute -right-0.5 -top-0.5 size-3 text-[color:var(--tg-needs-you)]" /> : null}
@@ -46,7 +47,7 @@ export function PinnedProjects() {
       ))}
       {scope.length > 0 ? (
         <Tip label="Reset">
-          <button type="button" aria-label="Reset" onClick={() => commands.setScope(ALL_PROJECTS_SCOPE)} className={cn(BUTTON, "ml-auto text-muted-foreground hover:text-foreground")}>
+          <button type="button" aria-label="Reset" onClick={() => commands.setScope(ALL_PROJECTS_SCOPE)} className={cn(ICON_BUTTON, "ml-auto text-muted-foreground hover:text-foreground")}>
             <Icon name="X" aria-hidden className="size-3.5" />
           </button>
         </Tip>

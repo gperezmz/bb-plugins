@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
-import { ALL_PROJECTS, filterScopeOptions, firstSelectedIndex, inScope, isOptionSelected, listedPins, moveHighlight, pinButtonLabel, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
+import { ALL_PROJECTS, filterScopeOptions, firstSelectedIndex, inScope, isOptionSelected, listedPins, moveHighlight, pinnedProjectLabel, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
 
 describe("the project scope", () => {
   it("lists All projects, then every project including the personal one, by name", () => {
@@ -135,7 +135,7 @@ describe("the pinned projects", () => {
   });
 
   it("name the button for the project, then that it needs you", () => {
-    expect(pinButtonLabel("Alpha", false)).toBe("Alpha");
-    expect(pinButtonLabel("Alpha", true)).toBe("Alpha. Needs you");
+    expect(pinnedProjectLabel("Alpha", false)).toBe("Alpha");
+    expect(pinnedProjectLabel("Alpha", true)).toBe("Alpha. Needs you");
   });
 });

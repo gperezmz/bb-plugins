@@ -89,7 +89,7 @@ The picker at the top of Thread Glance's list that limits every shelf to the pro
 _Avoid_: Project filter
 
 **Pinned project**:
-A project you pinned from the Project scope picker, drawn as its icon in a row above the list, where a click puts it in the scope or takes it out. It is saved per device and stays when the scope is reset; it is not a pinned thread, which sits on the Pinned shelf.
+A project you pinned from the Project scope picker, drawn as its project mark (its icon, or its monogram) in a row above the list, where a click puts it in the scope or takes it out. It is saved per device and stays when the scope is reset; it is not a pinned thread, which sits on the Pinned shelf.
 _Avoid_: Favourite project, project shortcut
 
 **Project colour**:
