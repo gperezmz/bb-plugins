@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TB
-  scope["Project scope: All projects, or one project"]
+  scope["Project scope: All projects, or the ticked projects"]
   subgraph upper["Upper group"]
     pinned["Pinned"] --> active["Active"]
   end
@@ -16,10 +16,12 @@ The list is a [project scope](#project-scope) and then a column of [shelves](#sh
 
 ## Project scope
 
-The picker at the top of the list. **All projects** shows every shelf as it is; choosing one project limits every shelf to that project.
+The picker at the top of the list. **All projects** shows every shelf as it is; ticking projects limits every shelf to those projects.
 
-- It lists every project, the personal one included, with a filter field. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
-- It is not saved. Each time the list mounts it starts on All projects, and it falls back to All projects when its project disappears.
+- It lists every project, the personal one included, with a filter field. A project ticks and unticks when clicked, or with Enter on the highlighted option, and the list follows at once; **Done** closes the picker. **All projects** clears the ticks. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
+- The scope applies to every shelf and to Clean. It does not limit thread search, which is bb's palette.
+- It is saved per window, in the browser's session storage: a reload keeps it, another window has its own, and a new window starts on All projects. A project that bb no longer lists drops out of the scope once bb has listed the projects, and a scope with no project left is All projects.
+- A project the scope leaves out that has a thread waiting on a question or an approval puts a **Needs you** mark on the picker's button, whose name then ends "Needs you in <projects>", and on its own row in the picker. The mark goes when the thread is answered.
 
 ## Shelves
 
@@ -118,7 +120,7 @@ One line: project name · title, then the children chip, the [port indicator](#w
 
 ### Slim row
 
-One line: project name · title, the [children chip](#children-chip) on a parent, and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". On a narrow row the project name gives way first, then the label or status, then the title down to 48 px, so the chip and the restore button stay whole at bb's default sidebar width; below about 200 px the row keeps nothing whole and never scrolls sideways. The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
+One line: project name · title, the [children chip](#children-chip) on a parent, and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". On a narrow row the project name gives way first, then the label or status, then the title down to 48 px, so the chip and the restore button stay whole at bb's default sidebar width; below about 200 px the row keeps nothing whole and never scrolls sideways. While a jump hint shows, its key keeps its width: the title has no floor and the hover buttons hide. The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
 
 | Shelf | Label | Restore button |
 |---|---|---|
@@ -219,4 +221,4 @@ The server rereads every non-archived thread's environment at most every 30 s, a
 
 ## Jump hints
 
-Holding Ctrl (⌘ on Mac) alone for 700 ms shows "Ctrl + n" or "⌘ n" in the status slot of the first nine rows. Shift, Alt, another key, release or losing focus cancels it. bb performs the jump.
+While bb's jump modifier is held, each row bb gives a jump key shows bb's own label for it in the status slot, such as "Ctrl + Shift + 1" on the web, where holding Ctrl shows them. bb decides when the hints show, which rows get them and the chord each names, and performs the jump: it numbers the first nine rows the list has drawn, in page order, so with the upper list holding fewer than nine, the keys reach on into the lower one. The list draws only the rows near the view, and always the upper list's first nine, so after scrolling, numbered rows can be out of view and rows in view can have no number. The slot widens while a hint is longer than it.

@@ -16,7 +16,7 @@ const threads = [
   makeThread({ id: "other", ...old }),
 ];
 
-function model(lifecycle: ModelInputs["lifecycle"], all = threads, scopeId: string | null = null) {
+function model(lifecycle: ModelInputs["lifecycle"], all = threads, scope: string[] = []) {
   return buildModel({
     threads: all,
     projects: PROJECTS,
@@ -24,7 +24,7 @@ function model(lifecycle: ModelInputs["lifecycle"], all = threads, scopeId: stri
     settings: { ...DEFAULT_SETTINGS, inactiveShelf: false },
     order: [],
     device: INITIAL_DEVICE_STATE,
-    scopeId,
+    scope,
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
@@ -78,7 +78,7 @@ describe("parentsToClose", () => {
 
   it("closes nothing for a root that came into scope with the project scope, whatever its mark did meanwhile", () => {
     const elsewhere = PROJECTS.find((project) => project.id !== threads[0]!.projectId)!.id;
-    const scoped = model({ p: settledRow(NOW - 2 * DAY, "manual") }, threads, elsewhere);
+    const scoped = model({ p: settledRow(NOW - 2 * DAY, "manual") }, threads, [elsewhere]);
     expect(scoped.rows.get("p")?.shelf).toBeNull();
     expect(parentsToClose(scoped, model({ p: settledRow(NOW - DAY, "manual") }), ["p", "c"])).toEqual([]);
   });

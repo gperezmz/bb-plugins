@@ -24,6 +24,7 @@ export function useListHarness(): void {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    sessionStorage.clear();
   });
 }
 

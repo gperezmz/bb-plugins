@@ -8,7 +8,8 @@ import type { Settings } from "@/shared/settings";
 import type { Commands } from "../commands/commands";
 import { heightsFor, type Heights } from "../model/heights";
 import type { ListItem, ListModel, RowView, Scene } from "../model/list-model";
-import { resolveScope } from "../model/scope";
+import { projectsNeedingYou, type Scope } from "../model/scope";
+import { scopeIn } from "./derive";
 import { isShelfCollapsed, type ActiveSort, type DeviceState } from "../storage/device-state";
 import { listStatusOf, type ListState, type ListStore } from "./list-store";
 
@@ -106,15 +107,25 @@ export function useRows(): ReadonlyMap<string, RowView> {
 
 const NO_ROW_MAP: ReadonlyMap<string, RowView> = new Map();
 
-/** The project scope in force and the projects it picks among. */
-export function useScope(): { scopeId: string | null; projects: readonly PluginSidebarProject[] } {
+/** The project scope in force, the projects it picks among, and those it leaves out that have a thread waiting on the person. */
+export function useScope(): { scope: Scope; projects: readonly PluginSidebarProject[]; needingYou: readonly string[] } {
   const store = useListStore();
-  const last = useRef<{ scopeId: string | null; projects: readonly PluginSidebarProject[] } | null>(null);
+  const last = useRef<{ scope: Scope; projects: readonly PluginSidebarProject[]; needingYou: readonly string[] } | null>(null);
   return useSelect(store, (state) => {
-    const { scopeId, host } = state.inputs;
-    const next = { scopeId: resolveScope(scopeId, host.projects), projects: host.projects };
+    const { host } = state.inputs;
+    const scope = scopeIn(state.inputs);
+    const needingYou = projectsNeedingYou(scope, host.threads);
     const previous = last.current;
-    if (previous !== null && previous.scopeId === next.scopeId && previous.projects === next.projects) return previous;
+    if (
+      previous !== null &&
+      previous.scope === scope &&
+      previous.projects === host.projects &&
+      previous.needingYou.length === needingYou.length &&
+      previous.needingYou.every((id, index) => id === needingYou[index])
+    ) {
+      return previous;
+    }
+    const next = { scope, projects: host.projects, needingYou };
     last.current = next;
     return next;
   });
