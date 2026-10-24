@@ -11,7 +11,7 @@ describe("a row", () => {
     });
     expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_none)).toEqual({ status: { kind: "absent" }, mismatch: null });
     expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_offline)).toEqual({ status: { kind: "unknown" }, mismatch: null });
-    expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_gone)).toEqual({ status: { kind: "absent" }, mismatch: null });
+    expect(statusOfRow(CAPTURED_PULL_REQUESTS.env_gone)).toEqual({ status: { kind: "gone" }, mismatch: null });
   });
 
   it("names where a row is out of shape, and a row left out", () => {

@@ -54,14 +54,13 @@ const pullRequestSchema = z.object({
 /** A pull request as GitHub PR Status reports it, with the fields the badge and the hover card read. */
 export type GitHubPullRequest = z.infer<typeof pullRequestSchema>;
 
-/** A pull request with the fields auto-settle reads. */
-export type SettlePullRequest = z.infer<typeof settlePullRequestSchema>;
-
 /** One environment's row, read. */
 export type PullRequestRow<PullRequest> =
   | { kind: "available"; pullRequest: PullRequest }
-  /** No pull request can be had: none for the branch, no git repository, or a workspace that is gone. */
+  /** No pull request can be had: none for the branch, or no git repository. */
   | { kind: "absent" }
+  /** The environment's workspace is gone, so no lookup will find its pull request again. */
+  | { kind: "gone" }
   /**
    * The plugin could not say, whatever the cause (offline, `gh` not logged in,
    * a stopped machine, a remote not on GitHub): no evidence either way.
@@ -90,7 +89,7 @@ function rowReader<PullRequest>(pullRequest: z.ZodMiniType<PullRequest>) {
       case "absent":
         return { kind: "absent" };
       case "unavailable":
-        return value.message.startsWith(WORKSPACE_GONE_MESSAGE) ? { kind: "absent" } : { kind: "failed" };
+        return value.message.startsWith(WORKSPACE_GONE_MESSAGE) ? { kind: "gone" } : { kind: "failed" };
     }
   };
 }

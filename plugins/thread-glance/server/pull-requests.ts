@@ -6,7 +6,7 @@ import type { BbPluginApi } from "@get-bb/plugin-sdk";
 // Full zod, unlike the rest of the plugin: `callRpc` types its output schema as a full zod type.
 import { z } from "zod";
 import { GITHUB_PR_STATUS_PLUGIN_ID, PULL_REQUESTS_MAX_KEYS, PULL_REQUESTS_METHOD, pullRequestRows } from "../shared/github-pr-status";
-import { statusOfRefusedCall, statusOfRow, type PullRequestStatus } from "./pull-request-status";
+import { statusOfRefusedCall, statusOfRow, UNKNOWN, type PullRequestStatus } from "./pull-request-status";
 
 export type { PullRequestStatus } from "./pull-request-status";
 
@@ -14,8 +14,6 @@ export interface PullRequests {
   /** The pull request of each of `environmentIds`, each of them a key of the result. */
   read(environmentIds: readonly string[]): Promise<ReadonlyMap<string, PullRequestStatus>>;
 }
-
-const UNKNOWN: PullRequestStatus = { kind: "unknown" };
 
 /**
  * Reads through `bb--github-pr-status`'s `pullRequests`, up to its 200 ids a

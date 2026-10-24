@@ -5,8 +5,14 @@ import { readSettleRow } from "../shared/github-pr-status";
 
 /** What bb answered for an environment's pull request. */
 export type PullRequestStatus =
-  /** No pull request can be had: none for the branch, no git repository, a workspace that is gone, or GitHub PR Status disabled or absent. */
+  /** No pull request can be had: none for the branch, no git repository, or GitHub PR Status disabled or absent. */
   | { kind: "absent" }
+  /**
+   * The environment's workspace is gone: no pull request will be found for it,
+   * so the quiet rule may settle its thread, but nothing it says returns a
+   * thread auto-settle settled, since the workspace going is no attention.
+   */
+  | { kind: "gone" }
   /** The lookup failed or the answer was out of shape: no evidence either way. */
   | { kind: "unknown" }
   | {
@@ -16,7 +22,7 @@ export type PullRequestStatus =
       updatedAt: number | null;
     };
 
-const UNKNOWN: PullRequestStatus = { kind: "unknown" };
+export const UNKNOWN: PullRequestStatus = { kind: "unknown" };
 const ABSENT: PullRequestStatus = { kind: "absent" };
 
 /** One row of an answer as a status, with the mismatch to log where the row is out of shape. */
@@ -29,6 +35,8 @@ export function statusOfRow(row: unknown): { status: PullRequestStatus; mismatch
     }
     case "absent":
       return { status: ABSENT, mismatch: null };
+    case "gone":
+      return { status: { kind: "gone" }, mismatch: null };
     case "failed":
       return { status: UNKNOWN, mismatch: null };
     case "mismatch":

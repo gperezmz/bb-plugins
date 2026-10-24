@@ -84,6 +84,8 @@ function decide(
   if (isExcluded(thread, row)) return auto ? "unsettle" : "keep";
   // A failed lookup is no evidence that no open pull request exists.
   if (pullRequest.kind === "unknown") return "keep";
+  // A workspace that went is no reason to return a thread settled while it was there.
+  if (pullRequest.kind === "gone" && auto) return "keep";
 
   const activityAt = lastActivityAt(thread);
   let should = false;
