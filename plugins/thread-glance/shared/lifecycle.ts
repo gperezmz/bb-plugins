@@ -27,11 +27,12 @@ export const lifecycleRowSchema = z.object({
   /** Set by Resume and Un-settle; lasts until the thread next starts a turn. */
   activeOverride: z.boolean(),
   /**
-   * The latest attention the thread had while a question waited below it (see
-   * `liftedIds`); attention up to this time does not count against the mark.
-   * Set on a row that carries a mark, and not itself a mark.
+   * The latest attention the thread had while a question held its mark (see
+   * `heldIds`); attention up to this time does not count against the mark.
+   * Set on a row that carries a mark, and not itself a mark; a row stored
+   * before it existed reads as null.
    */
-  heldAttentionAt: z.nullable(z.number()),
+  heldAttentionAt: z._default(z.nullable(z.number()), null),
 });
 export type LifecycleRow = z.infer<typeof lifecycleRowSchema>;
 
@@ -59,7 +60,7 @@ export function isEmptyRow(row: LifecycleRow): boolean {
   );
 }
 
-/** Whether two rows hold the same marks. */
+/** Whether two rows hold the same marks and the same held attention. */
 export function sameRow(left: LifecycleRow | null | undefined, right: LifecycleRow | null | undefined): boolean {
   const a = left ?? EMPTY_ROW;
   const b = right ?? EMPTY_ROW;
@@ -199,17 +200,22 @@ export function waitingBelow<T extends TreeThread & Pick<BusyInput, "hasPendingI
 export type HoldThread = TreeThread & Pick<ShelfThread, "latestAttentionAt" | "hasPendingInteraction">;
 
 /**
- * The ids among `rows` that a waiting question holds: the row carries a mark,
- * a question waits on a thread below its thread, and none on the thread
- * itself, whose own question is its own attention. `threads` are the ones a
- * user can answer for, as for `liftedIds`.
+ * The ids among `rows` whose mark a waiting question holds: the row carries a
+ * mark, and a question waits on a thread below its thread (or the thread's
+ * turn began while one did, `turnHeld`) and none on the thread itself, whose
+ * own question is its own attention. `threads` are the ones a user can answer
+ * for, as for `liftedIds`.
  */
-export function heldIds(rows: ReadonlyMap<string, LifecycleRow>, threads: readonly HoldThread[]): Set<string> {
+export function heldIds(
+  rows: ReadonlyMap<string, LifecycleRow>,
+  threads: readonly HoldThread[],
+  turnHeld: ReadonlySet<string> = new Set(),
+): Set<string> {
   const lifted = liftedIds(threads);
   const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const held = new Set<string>();
   for (const [threadId, row] of rows) {
-    if (hasMark(row) && lifted.has(threadId) && byId.get(threadId)?.hasPendingInteraction === false) held.add(threadId);
+    if (hasMark(row) && (lifted.has(threadId) || turnHeld.has(threadId)) && byId.get(threadId)?.hasPendingInteraction === false) held.add(threadId);
   }
   return held;
 }
@@ -232,9 +238,11 @@ export type MarkShelf = "active" | "parked" | "snoozed" | "settled";
  * Inactive split of Active:
  * 1. no row: Active;
  * 2. busy, or lifted by a question waiting below it: Active;
- * 3. parked: Parked, unless attention arrived after it was parked;
+ * 3. parked: Parked, unless attention arrived after it was parked and was not
+ *    held back by a waiting question;
  * 4. snoozed: Snoozed, unless it woke;
- * 5. settled: Settled, unless attention arrived after it was settled;
+ * 5. settled: Settled, unless attention arrived after it was settled and was
+ *    not held back by a waiting question;
  * 6. otherwise Active.
  */
 export function markShelf(
@@ -253,7 +261,8 @@ export function markShelf(
 
 /**
  * The mark attention has made stale: "parked" or "settled" when attention
- * arrived after it, so the server clears it and the thread is on the
+ * arrived after it that a waiting question did not hold back, so the server
+ * clears it and the thread is on the
  * automatic rules again. A snooze is not cleared this way; it becomes a Woke
  * marker.
  */

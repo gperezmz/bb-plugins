@@ -21,23 +21,33 @@ export function clearStaleRows(
   return lifecycle.putMany(clearStaleMarks(lifecycle.all(), threads));
 }
 
+/** A thread as the hold rules read it; the parent and the pending question are absent for a thread bb was only asked about. */
+export type HoldCandidate = Pick<ShelfThread, "latestAttentionAt"> & {
+  id: string;
+  parentThreadId?: string | null;
+  hasPendingInteraction?: boolean;
+};
+
 /**
- * The rows a waiting question holds, with the attention their threads just had
- * set aside: the marks of threads that have a question waiting below them stay
- * while it waits. `threads` are the visible ones; a thread that is missing a
- * field the rule reads is left out.
+ * The rows whose mark a waiting question holds, with the attention their
+ * threads just had set aside, and the ids of the threads held (`turnHeld`
+ * adds threads whose turn began while one waited). `threads` are the visible
+ * ones; a thread that is missing a field the rule reads is left out.
  */
 export function holdRows(
   rows: ReadonlyMap<string, LifecycleRow>,
-  threads: readonly (Pick<ShelfThread, "latestAttentionAt"> & { id: string; parentThreadId?: string | null; hasPendingInteraction?: boolean })[],
-): [string, LifecycleRow][] {
+  threads: readonly HoldCandidate[],
+  turnHeld: ReadonlySet<string> = new Set(),
+): { rows: [string, LifecycleRow][]; held: Set<string> } {
   const known = threads.filter((thread): thread is HoldThread => thread.parentThreadId !== undefined && thread.hasPendingInteraction !== undefined);
   const byId = new Map(known.map((thread) => [thread.id, thread]));
-  return [...heldIds(rows, known)].flatMap((threadId): [string, LifecycleRow][] => {
+  const held = heldIds(rows, known, turnHeld);
+  const changed = [...held].flatMap((threadId): [string, LifecycleRow][] => {
     const row = rows.get(threadId)!;
-    const held = holdAttention(row, byId.get(threadId)!.latestAttentionAt);
-    return held === row ? [] : [[threadId, held]];
+    const next = holdAttention(row, byId.get(threadId)!.latestAttentionAt);
+    return next === row ? [] : [[threadId, next]];
   });
+  return { rows: changed, held };
 }
 
 /**
@@ -49,17 +59,12 @@ export function holdRows(
  */
 export function reconcileState(
   stores: { lifecycle: LifecycleStore; order: OrderStore },
-  threads: readonly (Pick<ShelfThread, "latestAttentionAt" | "createdAt"> & {
-    id: string;
-    hidden: boolean;
-    parentThreadId?: string | null;
-    hasPendingInteraction?: boolean;
-  })[],
+  threads: readonly (HoldCandidate & Pick<ShelfThread, "createdAt"> & { hidden: boolean })[],
   archivedIds: ReadonlySet<string>,
 ): ReconcileResult {
   const live = new Set([...threads.map((thread) => thread.id), ...archivedIds]);
   const rows = new Set(stores.lifecycle.prune(live));
-  for (const threadId of stores.lifecycle.putMany(holdRows(stores.lifecycle.all(), threads.filter((thread) => !thread.hidden)))) rows.add(threadId);
+  for (const threadId of stores.lifecycle.putMany(holdRows(stores.lifecycle.all(), threads.filter((thread) => !thread.hidden)).rows)) rows.add(threadId);
   for (const threadId of clearStaleRows(stores.lifecycle, new Map(threads.map((thread) => [thread.id, thread])))) {
     rows.add(threadId);
   }

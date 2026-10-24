@@ -9,7 +9,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
 import { clearStaleRows, holdRows } from "./reconcile";
 import type { ThreadGateway } from "./threads";
-import { hasMark, heldIds, type LifecycleRow } from "../shared/lifecycle";
+import { hasMark, type LifecycleRow } from "../shared/lifecycle";
 
 /** The part of bb's thread payload the handlers read. */
 export interface EventThread {
@@ -44,6 +44,8 @@ export interface ThreadEvents {
 
 export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
   const { lifecycle, order, threads } = deps;
+  /** Marked threads that began a turn while a question held their mark; the turn's end is held too. In memory, so a restart ends the hold. */
+  const turnsHeld = new Set<string>();
 
   const addToOrder = (thread: EventThread) => {
     if (thread.visibility === "hidden") return;
@@ -74,16 +76,23 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
    * Sets aside the attention the marked threads among `ids` have while a
    * question waits below them, and returns those threads, which a turn in
    * their tree must not reopen. `thread` is the thread the event is about, with
-   * the attention it carries.
+   * the attention it carries; `turnHeld` names threads whose turn began while a
+   * question waited, which is held though it ended after the answer.
    */
-  async function holdWhileAsked(ids: readonly string[], thread: EventThread, changed: (threadIds: Iterable<string>) => void): Promise<Set<string>> {
+  async function holdWhileAsked(
+    ids: readonly string[],
+    thread: EventThread,
+    changed: (threadIds: Iterable<string>) => void,
+    turnHeld: ReadonlySet<string> = new Set(),
+  ): Promise<Set<string>> {
     const marked = new Map(ids.flatMap((id): [string, LifecycleRow][] => (hasMark(lifecycle.get(id)) ? [[id, lifecycle.get(id)!]] : [])));
     if (marked.size === 0) return new Set();
     const visible = (await threads.snapshot())
       .filter((listed) => !listed.hidden)
       .map((listed) => (listed.id === thread.id ? { ...listed, latestAttentionAt: Math.max(listed.latestAttentionAt, thread.latestAttentionAt) } : listed));
-    changed(lifecycle.putMany(holdRows(marked, visible)));
-    return heldIds(marked, visible);
+    const { rows, held } = holdRows(marked, visible, turnHeld);
+    changed(lifecycle.putMany(rows));
+    return held;
   }
 
   /** Clears the parked, snoozed or settled mark of each of `ancestors` that carries one and is not held. */
@@ -107,18 +116,20 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
         if (row?.activeOverride) changed(lifecycle.putMany([[thread.id, { ...row, activeOverride: false }]]));
         const ancestors = [...lifecycle.all().values()].some(hasMark) ? await ancestorsFrom(thread.parentThreadId) : [];
         const held = await holdWhileAsked([thread.id, ...ancestors], thread, changed);
+        if (held.has(thread.id)) turnsHeld.add(thread.id);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
         changed(reopen(ancestors, held));
       }),
 
     attention: (thread) =>
       deps.change(async (changed) => {
-        await holdWhileAsked([thread.id], thread, changed);
+        await holdWhileAsked([thread.id], thread, changed, turnsHeld.delete(thread.id) ? new Set([thread.id]) : undefined);
         changed(clearStaleRows(lifecycle, new Map([[thread.id, thread]])));
       }),
 
     archived: (thread) =>
       deps.change(async () => {
+        turnsHeld.delete(thread.id);
         deps.archived.archive(thread.id);
         removeFromOrder(thread.id);
       }),
@@ -133,6 +144,7 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
 
     deleted: (thread) =>
       deps.change(async (changed) => {
+        turnsHeld.delete(thread.id);
         deps.archived.unarchive(thread.id);
         removeFromOrder(thread.id);
         changed(lifecycle.forget([thread.id]));

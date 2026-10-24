@@ -222,6 +222,41 @@ describe("events", () => {
       else expect(after).toEqual({ ...before, heldAttentionAt: 21_000 });
     });
 
+    it("holds the end of a turn that began while the question waited, though the answer came before it ended", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = tree().map((thread) => (thread.id === "leaf" ? { ...thread, hasPendingInteraction: false } : thread));
+      const { harness } = await load(sdkWith(() => threads));
+      await harness.behavior.callRpc("park", { threadId: "root" });
+      const before = rowOf(await sync(harness), "root")!;
+      threads[2]!.hasPendingInteraction = true;
+      // bb's turn on the root starts while the child asks ...
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 12_000 }) });
+      // ... the user answers, and only then does the turn end.
+      threads[2]!.hasPendingInteraction = false;
+      threads[0]!.latestAttentionAt = 25_000;
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 25_000 }), lastAssistantText: null });
+      expect(rowOf(await sync(harness), "root")).toEqual({ ...before, heldAttentionAt: 25_000 });
+      // The next turn begins after the answer, so it clears the mark as before.
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 25_000 }) });
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "root", latestAttentionAt: 40_000 }), lastAssistantText: null });
+      expect(rowOf(await sync(harness), "root")).toBeNull();
+    });
+
+    it("leaves a marked root alone when a thread is created below it while a question waits, and reopens it otherwise", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = tree().map((thread) => (thread.id === "leaf" ? { ...thread, hasPendingInteraction: false } : thread));
+      const { harness } = await load(sdkWith(() => threads));
+      await harness.behavior.callRpc("park", { threadId: "root" });
+      threads[2]!.hasPendingInteraction = true;
+      await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "new", parentThreadId: "mid" }) });
+      expect(rowOf(await sync(harness), "root")).not.toBeNull();
+      threads[2]!.hasPendingInteraction = false;
+      await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "newer", parentThreadId: "mid" }) });
+      expect(rowOf(await sync(harness), "root")).toBeNull();
+    });
+
     it("keeps a settled mark, which a child's turn would clear, while a question waits below", async () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);
