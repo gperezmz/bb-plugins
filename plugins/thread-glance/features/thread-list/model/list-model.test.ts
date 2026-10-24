@@ -129,6 +129,11 @@ describe("shelves", () => {
         makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
       ];
       expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
+      const both = [
+        makeThread({ id: "asker", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+        makeThread({ id: "child", parentThreadId: "asker", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+      ];
+      expect(buildModel(inputs({ threads: both, settings: compactAll })).rows.get("asker")!.card).toBe("full");
       const working = buildModel(inputs({ threads, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
       expect(working.rows.get("ask")!.card).toBe("full");
     });

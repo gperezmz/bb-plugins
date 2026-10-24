@@ -195,6 +195,8 @@ export function cardKindOf(
   tree: TreeSignals,
   woke: WakeReason | null,
   display: CardSettings,
+  /** A question or approval waits below the thread, at any depth. */
+  questionBelow: boolean,
 ): CardKind {
   if (shelf === "snoozed" || shelf === "parked" || shelf === "settled") return "slim";
   if (shelf === "working") return "folded";
@@ -204,7 +206,7 @@ export function cardKindOf(
     case "compact-working":
       return isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou ? "folded" : "full";
     case "compact-all":
-      if (isFailed(thread) || (thread.hasPendingInteraction ? thread.isUnread : tree.needsYou)) return "full";
+      if (isFailed(thread) || (thread.hasPendingInteraction && thread.isUnread) || questionBelow) return "full";
       if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
       if (display.keepWokeAsFullCards && woke !== null) return "full";
       return "folded";
@@ -368,7 +370,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
       id: thread.id,
       thread,
       shelf,
-      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, woke, settings),
+      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, woke, settings, (children?.counts.needsYou ?? 0) > 0),
       lifecycle: lifecycle[thread.id] ?? null,
       woke,
       tree,
