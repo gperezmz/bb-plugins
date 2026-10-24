@@ -330,7 +330,7 @@ describe("the shelf headers", () => {
     }
   });
 
-  it("shrink the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
+  it("narrow the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
     await render(threads, { rows, settings: { workingShelf: true } });
     for (let width = 200; width >= 70; width -= 5) {
       await page.viewport(width, 600);

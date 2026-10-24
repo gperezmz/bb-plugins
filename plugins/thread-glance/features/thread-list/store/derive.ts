@@ -34,6 +34,8 @@ export interface ListInputs {
   lifecycle: Readonly<Record<string, LifecycleRow>>;
   /** Whether the rows can be drawn from: an answer, a cache, or a failed answer. */
   rowsReady: boolean;
+  /** Whether the rows are the server's, not the browser's cache or the defaults a failed answer leaves. */
+  rowsFromServer: boolean;
   settings: Settings;
   /** Manual order as the server holds it. */
   order: readonly string[];

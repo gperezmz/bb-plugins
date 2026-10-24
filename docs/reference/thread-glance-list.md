@@ -176,7 +176,7 @@ On a parent's card, whether a full card, a folded card or a slim row on Snoozed,
 
 Its tooltip reads "N child threads, 1 failed, 2 need you…".
 
-Opening the chip lists the children under the card. Which parents are open is saved on the device (the last 100 parents), so a tree opened on Settled is still open when the list loads again. Settling a thread folds the child lists of its whole tree; the lists stay closed until you open them again. A closed list still shows the path to the open thread and, with **Show children that need attention** on, children with a status.
+Opening the chip lists the children under the card. Which parents are open is saved on the device (the last 100 parents), so a tree opened on Settled is still open when the list loads again. Settling a thread closes the child lists of its whole tree; the lists stay closed until you open them again. A closed list still shows the path to the open thread and, with **Show children that need attention** on, children with a status.
 
 Child rows have their own marks, titles and status or age, and a disclosure for their own children, named "Grandchildren", "Great-grandchildren" and "Descendants". A child from another project carries its project icon. Children sort and are marked by the [Child threads settings](thread-glance-settings.md#child-threads).
 

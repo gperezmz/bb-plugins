@@ -11,11 +11,12 @@ import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
 import { resolveScope } from "../model/scope";
-import { parentsToFold } from "../model/settle-fold";
+import { parentsToClose } from "../model/settle-close";
 import {
   readDeviceState,
+  closeStoredParents,
   saveDeviceState,
-  withParentsFolded,
+  withParentsClosed,
   type DeviceState,
 } from "../storage/device-state";
 import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
@@ -130,12 +131,13 @@ const frames = {
 };
 
 /** The inputs the plugin's data gives, as it stands. */
-function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "settings" | "order"> {
+function dataInputs(): Pick<ListInputs, "lifecycle" | "rowsReady" | "rowsFromServer" | "settings" | "order"> {
   const data = pluginData.get();
   return {
     lifecycle: data.records.lifecycle,
     // An answer, a cache of earlier answers, or a failed answer: any of them is a list to draw.
     rowsReady: data.records.point !== null || data.cached || data.status === "failed",
+    rowsFromServer: data.records.point !== null,
     settings: pluginData.settings(),
     order: data.order?.value ?? NO_ORDER,
   };
@@ -200,13 +202,14 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         return;
       }
     }
-    // A settle folds the child lists of the tree it moves onto Settled, however it was made.
-    if (model !== null) {
-      const folded = parentsToFold(current.model, model, checked.device.expandedParents);
-      if (folded.length > 0) {
-        const device = withParentsFolded(checked.device, folded);
-        saveDeviceState(storage, checked.device, device);
-        commit({ ...checked, device });
+    // A settle closes the child lists of the tree it moves onto Settled, however it was made. Rows
+    // drawn from the browser's cache or before any answer are not the server's: a root they lack
+    // moves onto Settled when the answer comes, and nobody settled it then.
+    if (model !== null && current.inputs.rowsFromServer && checked.rowsFromServer) {
+      const closed = parentsToClose(current.model, model, checked.device.expandedParents);
+      if (closed.length > 0) {
+        closeStoredParents(storage, closed);
+        commit({ ...checked, device: withParentsClosed(checked.device, closed) });
         return;
       }
     }

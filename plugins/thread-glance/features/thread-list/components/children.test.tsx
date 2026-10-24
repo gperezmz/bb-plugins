@@ -241,4 +241,17 @@ describe("#337: the Children chip on Snoozed, Parked and Settled rows", () => {
     expect(chip("st").getAttribute("aria-expanded")).toBe("true");
     expect(childTitles()).toEqual(["First st", "Second st"]);
   });
+
+  it("does not close a tree that the server's first answer moves onto Settled from a cache without its row", async () => {
+    localStorage.setItem("thread-glance:cache.rows", JSON.stringify({}));
+    localStorage.setItem("thread-glance:expandedParents", JSON.stringify(["st"]));
+    const m = await mount({ ...shelves(), server: { ...shelves().server, holdSync: true } });
+    expect(screen.queryByText("Settled (1)", { selector: "button *" })).toBeNull();
+    await act(async () => m.server.releaseSync());
+    await flush();
+    fireEvent.click(screen.getByText("Settled (1)", { selector: "button *" }));
+    await flush();
+    expect(chip("st").getAttribute("aria-expanded")).toBe("true");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["st"]);
+  });
 });

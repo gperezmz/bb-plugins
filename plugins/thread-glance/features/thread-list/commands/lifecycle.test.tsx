@@ -269,7 +269,7 @@ describe("Settle (AC9)", () => {
     expect(describing(toastCall("Thread settled"))).toBe("Agent session stopped");
   });
 
-  it("folds the child lists of the tree it settles, and a list opened on Settled stays open", async () => {
+  it("closes the child lists of the tree it settles, and a list opened on Settled stays open", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const threads = [
       makeThread({ id: "p", title: "Parent", ...old }),
@@ -294,6 +294,34 @@ describe("Settle (AC9)", () => {
     fireEvent.click(chip("p"));
     await flush();
     expect(childTitles()).toEqual(["Child"]);
+  });
+
+  it("closes the child lists when another window or the auto-settle puts the tree on Settled", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
+  });
+
+  it("leaves what another window opened in the stored list when it closes a tree", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    localStorage.setItem("thread-glance:expandedParents", JSON.stringify(["p", "opened-elsewhere"]));
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["opened-elsewhere"]);
   });
 
   it("says when the Settle can no longer be undone", async () => {
