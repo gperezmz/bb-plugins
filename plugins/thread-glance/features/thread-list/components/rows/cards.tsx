@@ -119,16 +119,17 @@ function WokeMarker({ row }: { row: RowView }) {
 
 /**
  * The Status slot (80 px, right-aligned): one thing, or the jump hint while the
- * modifier is held. On hover a card that is not busy and not woke swaps it for
- * Snooze and Settle, and every card for Unpin and the thread menu. On touch
- * there is no hover, so Unpin stays beside the status.
+ * modifier is held, which widens the slot where bb's label is longer. On hover
+ * a card that is not busy and not woke swaps it for Snooze and Settle, and
+ * every card for Unpin and the thread menu. On touch there is no hover, so
+ * Unpin stays beside the status.
  */
 function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot; compact?: boolean }) {
   const hint = useJumpHint(row.id);
   const title = row.thread.displayTitle;
   const woke = row.woke !== null;
   return (
-    <div data-status-slot="" className="pointer-events-none relative flex h-5 w-20 shrink-0 items-center justify-end">
+    <div data-status-slot="" className={cn("pointer-events-none relative flex h-5 shrink-0 items-center justify-end", hint !== null ? "min-w-20" : "w-20")}>
       <div
         className={cn(
           "flex min-w-0 items-center justify-end gap-1 transition-opacity duration-150 motion-reduce:transition-none",

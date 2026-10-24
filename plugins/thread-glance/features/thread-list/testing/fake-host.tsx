@@ -9,6 +9,7 @@ import type {
   PluginSidebarProject,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
+  PluginSidebarThreadShortcut,
   PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { createFakeServer, type FakeServer, type FakeServerOptions } from "./fake-server";
@@ -158,6 +159,8 @@ export interface SlotExtras {
    * every call fail, as a disabled or absent plugin does.
    */
   pullRequests?: Record<string, unknown> | null;
+  /** The jump keys bb assigned, by thread id, as if its modifier were held. */
+  sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
   providers?: Partial<PluginProvidersState>;
   sdk?: Record<string, Record<string, unknown>>;
 }

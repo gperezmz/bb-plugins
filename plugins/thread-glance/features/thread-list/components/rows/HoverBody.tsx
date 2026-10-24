@@ -1,9 +1,10 @@
 // The Hover card's content: the thread's title, project, machine and branch,
-// its harness with model and reasoning level, the branch's pull request from
-// GitHub PR Status, the ports listening in its environment, and its subthreads.
+// its harness, its model and reasoning level on one line, the branch's pull
+// request from GitHub PR Status, the ports listening in its environment, and
+// its subthreads.
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { modelLines, type ModelState } from "../../model/harness";
+import { modelLine, type ModelState } from "../../model/harness";
 import { pullRequestFacts, pullRequestLabel, pullRequestTone } from "../../model/pull-request";
 import type { RowView } from "../../model/list-model";
 import { lookUpModel } from "../../sync/model-lookup";
@@ -98,7 +99,7 @@ export function HoverBody({ row }: { row: RowView }) {
   const project = useProject(thread.projectId);
   const harness = useHarnessName(thread.providerId);
   const status = useRowStatus(row);
-  const lines = modelLines(useModelState(row));
+  const model = modelLine(useModelState(row));
   const branch = thread.environment?.branchName;
   return (
     <div className="flex flex-col gap-2 text-xs">
@@ -118,8 +119,7 @@ export function HoverBody({ row }: { row: RowView }) {
             )}
           </span>
         </Line>
-        <Line label="Model">{lines.model}</Line>
-        <Line label="Reasoning">{lines.reasoning}</Line>
+        <Line label="Model">{model}</Line>
       </dl>
       <PullRequestSection environmentId={thread.environment?.id} />
       <PortsSection threadId={thread.id} environmentId={thread.environment?.id} />

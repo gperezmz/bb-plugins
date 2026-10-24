@@ -1,8 +1,9 @@
 // The rules of reordering apart from the pointer: when a press is a drag,
-// where the dragged unit goes, how fast the list scrolls near an edge, and
-// what a keyboard move announces.
+// where the dragged unit goes, how fast the list scrolls near an edge, how far
+// a row slides, and what a keyboard move announces.
 import { describe, expect, it } from "vitest";
-import type { ReorderList } from "./list-model";
+import type { Shelf } from "@/shared/lifecycle";
+import type { ListItem, ReorderList } from "./list-model";
 import {
   afterHover,
   AUTOSCROLL_EDGE_PX,
@@ -11,10 +12,14 @@ import {
   DRAG_THRESHOLD_PX,
   idsOfUnits,
   isDrag,
+  isToggleOnly,
   keyboardMove,
   moveKeyTo,
   orderAfterReorder,
   pinNeighbours,
+  rowPlaces,
+  slideDelta,
+  type DrawnItem,
 } from "./reorder";
 
 const press = { x: 100, y: 100, button: 0, pointerType: "mouse" };
@@ -104,5 +109,97 @@ describe("writes", () => {
   it("names the neighbours of a moved pin", () => {
     expect(pinNeighbours(["a", "b", "c"], "b")).toEqual({ previousThreadId: "a", nextThreadId: "c" });
     expect(pinNeighbours(["a", "b"], "a")).toEqual({ previousThreadId: null, nextThreadId: "b" });
+  });
+});
+
+describe("slideDelta", () => {
+  const header = (key: string, top: number): DrawnItem => ({ kind: "header", key, top });
+  const row = (id: string, top: number, under: string): DrawnItem => ({ kind: "row", id, header: under, top });
+  const delta = (before: DrawnItem[], after: DrawnItem[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
+  const ACTIVE = "shelf:active";
+
+  it("gives no slide to rows a shelf above pushes along with their header, opening or closing", () => {
+    const open = [header("shelf:pinned", 0), row("p", 28, "shelf:pinned"), header(ACTIVE, 100), row("a", 128, ACTIVE), row("b", 200, ACTIVE)];
+    const closed = [header("shelf:pinned", 0), header(ACTIVE, 28), row("a", 56, ACTIVE), row("b", 128, ACTIVE)];
+    expect(delta(open, closed, "a")).toBe(0);
+    expect(delta(open, closed, "b")).toBe(0);
+    expect(delta(closed, open, "b")).toBe(0);
+  });
+
+  it("gives no slide to a group's rows when a group above closes", () => {
+    const before = [header(ACTIVE, 0), header("group:x", 28), row("x1", 56, "group:x"), header("group:y", 128), row("y1", 156, "group:y")];
+    const after = [header(ACTIVE, 0), header("group:x", 28), header("group:y", 56), row("y1", 84, "group:y")];
+    expect(delta(before, after, "y1")).toBe(0);
+  });
+
+  it("slides a row by its move within its header, and a row under another header from where it was", () => {
+    const before = [header(ACTIVE, 0), row("a", 28, ACTIVE), row("b", 100, ACTIVE), header("shelf:settled", 172), row("s", 200, "shelf:settled")];
+    const after = [header(ACTIVE, 0), row("b", 28, ACTIVE), header("shelf:settled", 100), row("a", 128, "shelf:settled"), row("s", 160, "shelf:settled")];
+    expect(delta(before, after, "b")).toBe(72);
+    expect(delta(before, after, "a")).toBe(28 - 128);
+    expect(delta(before, after, "s")).toBe(28 - 60);
+  });
+
+  it("measures a row whose header is not drawn from the list's top", () => {
+    expect(rowPlaces([row("a", 10, ACTIVE)]).get("a")).toEqual({ header: ACTIVE, top: 10, belowHeader: 10 });
+  });
+});
+
+describe("isToggleOnly", () => {
+  const shelf = (name: string, collapsed: boolean): ListItem => ({ kind: "shelf", key: `shelf:${name}`, shelf: name as Shelf, count: 1, collapsed, spinning: false });
+  const group = (id: string, collapsed: boolean): ListItem => ({ kind: "group", key: `group:${id}`, projectId: id, count: 1, collapsed, headers: ["shelf:active"] });
+  const worktree = (id: string, projectId: string, collapsed: boolean): ListItem => ({
+    kind: "worktree",
+    key: `worktree:${id}`,
+    projectId,
+    environmentId: id,
+    branch: id,
+    count: 1,
+    collapsed,
+    urgency: null,
+    headers: ["shelf:active", `group:${projectId}`],
+  });
+  const row = (id: string, ...headers: string[]): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "active", headers });
+  const more: ListItem = { kind: "more", key: "more:settled", remaining: 5, next: 5 };
+  const ACTIVE = "shelf:active";
+
+  it("is true when only rows of a shelf or group that opened or closed come or go", () => {
+    expect(isToggleOnly([shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", ACTIVE)], [shelf("pinned", true), shelf("active", false), row("a", ACTIVE)])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", true), row("t", ACTIVE)], [shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x"), row("t", ACTIVE)])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x")], [shelf("active", true)])).toBe(true);
+    expect(isToggleOnly([shelf("settled", true)], [shelf("settled", false), row("s", "shelf:settled"), more])).toBe(true);
+  });
+
+  it("is true when a worktree group, or the project group around it, opens or closes", () => {
+    const open = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w1", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(open, [shelf("active", false), group("x", false), worktree("w", "x", true), row("x1", ACTIVE, "group:x")])).toBe(true);
+    expect(isToggleOnly(open, [shelf("active", false), group("x", true)])).toBe(true);
+  });
+
+  it("is true when only worktree headers are drawn or dropped around rows that keep their order", () => {
+    const flat = [shelf("active", false), group("x", false), row("w1", ACTIVE, "group:x"), row("w2", ACTIVE, "group:x"), row("x1", ACTIVE, "group:x")];
+    const regrouped = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w1", ACTIVE, "group:x", "worktree:w"), row("w2", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(flat, regrouped)).toBe(true);
+    expect(isToggleOnly(regrouped, flat)).toBe(true);
+    const reordered = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w2", ACTIVE, "group:x", "worktree:w"), row("w1", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(flat, reordered)).toBe(false);
+  });
+
+  it("is false when a group breaks up as its last row moves to the next shelf, the rows keeping their order", () => {
+    const working = (id: string): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "working", headers: ["shelf:working"] });
+    const before = [shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x"), row("x2", ACTIVE, "group:x"), shelf("working", false), working("w1")];
+    const after = [shelf("active", false), row("x1", ACTIVE), shelf("working", false), working("x2"), working("w1")];
+    expect(isToggleOnly(before, after)).toBe(false);
+  });
+
+  it("is false when a row leaves or moves with no shelf or group opening or closing", () => {
+    const active = [shelf("active", false), row("a", ACTIVE), row("x", ACTIVE), row("b", ACTIVE), shelf("settled", true)];
+    expect(isToggleOnly(active, [shelf("active", false), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);
+    expect(isToggleOnly(active, [shelf("active", false), row("x", ACTIVE), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);
+  });
+
+  it("is false when a row leaves in the same change as a shelf toggles", () => {
+    const before = [shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", ACTIVE), row("x", ACTIVE)];
+    expect(isToggleOnly(before, [shelf("pinned", true), shelf("active", false), row("a", ACTIVE)])).toBe(false);
   });
 });

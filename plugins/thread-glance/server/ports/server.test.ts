@@ -152,7 +152,7 @@ describe.each([
     ]);
 
     await harness.behavior.callRpc("settle", { threadId: "thr_abc123" });
-    const preview = (await harness.behavior.callRpc("previewClean", { projectId: null })) as { token: string; threads: unknown[] };
+    const preview = (await harness.behavior.callRpc("previewClean", { projectIds: [] })) as { token: string; threads: unknown[] };
     expect(preview.threads).toMatchObject([{ threadId: "thr_abc123", terminals: 1, ports: [{ port: 5173, process: "node" }] }]);
     const ran = await runClean(harness, preview.token);
     expect(ran, JSON.stringify(ran)).toMatchObject({ expired: false, closedTerminals: 1, portRequests: 1 });

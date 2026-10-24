@@ -17,7 +17,7 @@ function inputs(patch: Partial<ModelInputs> & Pick<ModelInputs, "threads">): Mod
     settings: DEFAULT_SETTINGS,
     order: [],
     device: INITIAL_DEVICE_STATE,
-    scopeId: null,
+    scope: [],
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
@@ -143,6 +143,18 @@ describe("Project mode", () => {
     expect(model.rows.get("b1")!.grouped).toBe(false);
   });
 
+  it("names on each row and group the headers it sits under, outermost first", () => {
+    const headers = (items: readonly ListItem[]) => items.flatMap((item) => (item.kind === "row" ? [`${item.threadId} ${item.headers.join(" ")}`] : item.kind === "group" ? [`${item.key} ${item.headers.join(" ")}`] : []));
+    expect(headers(buildModel(inputs({ threads, order, device: project })).upper)).toEqual([
+      "group:proj_a shelf:active",
+      "a1 shelf:active group:proj_a",
+      "a2 shelf:active group:proj_a",
+      "a3 shelf:active group:proj_a",
+      "b1 shelf:active",
+    ]);
+    expect(headers(buildModel(inputs({ threads, order })).upper)).toEqual(["a1 shelf:active", "b1 shelf:active", "a2 shelf:active", "a3 shelf:active"]);
+  });
+
   it("draws no group header outside Project mode", () => {
     const model = buildModel(inputs({ threads, order }));
     expect(model.upper.some((item) => item.kind === "group")).toBe(false);
@@ -186,6 +198,13 @@ describe("Group by worktree", () => {
     expect(model.rows.get("a1")!.inWorktree).toBe(true);
     expect(model.rows.get("a4")!.inWorktree).toBe(false);
     expect(model.shelves.active).toEqual(["a1", "a3", "a2", "a4", "a5", "a6"]);
+  });
+
+  it("names a worktree group's shelf and project group, and a row in it all three headers", () => {
+    const model = buildModel(inputs({ threads, order, device: project, settings: on }));
+    expect(model.upper.find((item) => item.kind === "worktree")).toMatchObject({ headers: ["shelf:active", "group:proj_a"] });
+    expect(model.upper.find((item) => item.kind === "row" && item.threadId === "a1")).toMatchObject({ headers: ["shelf:active", "group:proj_a", "worktree:env_x"] });
+    expect(model.upper.find((item) => item.kind === "row" && item.threadId === "a2")).toMatchObject({ headers: ["shelf:active", "group:proj_a"] });
   });
 
   it("leaves a thread alone in its worktree, threads in the project checkout, and child threads as they are", () => {
