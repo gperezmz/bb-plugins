@@ -91,7 +91,18 @@ describe("bb thread-glance prefs", () => {
     await plugin(host.bb);
     expect((await host.harness.behavior.runCli(["prefs", "get", "threadDisplay"])).stdout).toBe('"compact-working"');
     await host.harness.behavior.runCli(["prefs", "set", "hoursBeforeInactive", "12"]);
-    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "compact-working", hoursBeforeInactive: 12 });
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "compact-working", hoursBeforeInactive: 12, compactWorkingThreads: true });
+  });
+
+  it("stores the old compactWorkingThreads switch beside Thread display, so an earlier release still reads it", async () => {
+    const host = createFakePluginHost({ pluginId: "thread-glance" });
+    await plugin(host.bb);
+    const run = (value: string) => host.harness.behavior.runCli(["prefs", "set", "threadDisplay", value]);
+    await run("compact-all");
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "compact-all", compactWorkingThreads: true });
+    await run("full-cards");
+    expect(await host.bb.storage.kv.get("settings")).toMatchObject({ threadDisplay: "full-cards", compactWorkingThreads: false });
+    expect(JSON.parse((await host.harness.behavior.runCli(["prefs", "list", "--json"])).stdout ?? "")).not.toHaveProperty("compactWorkingThreads");
   });
 
   it("reads a bare word as a string and a JSON word as its value", async () => {

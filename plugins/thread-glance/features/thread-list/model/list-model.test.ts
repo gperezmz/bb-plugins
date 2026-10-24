@@ -128,13 +128,14 @@ describe("shelves", () => {
       expect(cards(model)).toEqual({ pin: "full", a: "folded" });
     });
 
-    it("keeps a woke thread full with Keep woke as full cards, until opening it clears its Woke marker", () => {
+    it("keeps a woke thread full with Keep woke as full cards, and folds it once its row is gone, as opening it leaves it", () => {
       const threads = [makeThread({ id: "woke", ...at(10 * HOUR) }), makeThread({ id: "a", ...at(1000) })];
       const lifecycle: Record<string, LifecycleRow> = { woke: snoozedRow(NOW - 60_000, NOW - 8 * HOUR) };
       expect(cards(buildModel(inputs({ threads, lifecycle, settings: compactAll })))).toEqual({ woke: "folded", a: "folded" });
       const keep = { ...compactAll, keepWokeAsFullCards: true };
       expect(cards(buildModel(inputs({ threads, lifecycle, settings: keep })))).toEqual({ woke: "full", a: "folded" });
-      expect(cards(buildModel(inputs({ threads, settings: keep })))).toEqual({ woke: "folded", a: "folded" });
+      const opened = {};
+      expect(cards(buildModel(inputs({ threads, lifecycle: opened, settings: keep })))).toEqual({ woke: "folded", a: "folded" });
     });
 
     it("leaves the keep options without effect under the other two displays", () => {

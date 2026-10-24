@@ -207,6 +207,19 @@ describe("AC17: the Folded card", () => {
     expect(card("a").getAttribute("data-card")).toBe("folded");
   });
 
+  it("folds a woke thread kept full under Compact all threads once opening it clears its Woke marker", async () => {
+    const old = { createdAt: NOW - 10 * HOUR, updatedAt: NOW - 10 * HOUR, latestAttentionAt: NOW - 10 * HOUR };
+    const m = await mount({
+      threads: [makeThread({ id: "woke", ...old })],
+      server: { rows: { woke: snoozedRow(NOW - MIN, NOW - 8 * HOUR) }, settings: { threadDisplay: "compact-all", keepWokeAsFullCards: true } },
+      activeThreadId: "woke",
+    });
+    await flush();
+    expect(m.server.calls.some((call) => call.method === "dismissWoke")).toBe(true);
+    expect(card("woke").querySelector("[data-woke]")).toBeNull();
+    expect(card("woke").getAttribute("data-card")).toBe("folded");
+  });
+
   it("draws every Working-shelf row folded", async () => {
     await mount({ threads: [makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" })], server: { settings: { workingShelf: true } } });
     expect(card("w").getAttribute("data-card")).toBe("folded");
