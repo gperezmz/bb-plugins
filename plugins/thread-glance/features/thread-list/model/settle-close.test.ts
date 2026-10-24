@@ -71,12 +71,15 @@ describe("parentsToClose", () => {
     expect(parentsToClose(model({ p: settledRow(NOW - DAY, "manual") }, busy), model({ p: settledRow(NOW, "manual") }), ["p"])).toEqual(["p"]);
   });
 
-  it("closes nothing for a root that came into scope with the project scope", () => {
-    const mark = { p: settledRow(NOW - DAY, "manual") };
+  it("closes nothing for a root that came into scope with the project scope, whatever its mark did meanwhile", () => {
     const elsewhere = PROJECTS.find((project) => project.id !== threads[0]!.projectId)!.id;
-    const scoped = model(mark, threads, elsewhere);
+    const scoped = model({ p: settledRow(NOW - 2 * DAY, "manual") }, threads, elsewhere);
     expect(scoped.rows.get("p")?.shelf).toBeNull();
-    expect(parentsToClose(scoped, model(mark), ["p", "c"])).toEqual([]);
+    expect(parentsToClose(scoped, model({ p: settledRow(NOW - DAY, "manual") }), ["p", "c"])).toEqual([]);
+  });
+
+  it("closes nothing for a root that was already Settled, though its mark changed", () => {
+    expect(parentsToClose(model({ p: settledRow(NOW - DAY, "auto") }), model({ p: settledRow(NOW, "manual") }), ["p"])).toEqual([]);
   });
 
   it("closes a root whose shelf was held, as a rename holds it, though its settle mark was already there", () => {
