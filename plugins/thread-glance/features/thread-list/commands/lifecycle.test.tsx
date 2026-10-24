@@ -324,6 +324,24 @@ describe("Settle (AC9)", () => {
     expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["opened-elsewhere"]);
   });
 
+  it("closes the child lists of a tree settled while its root was being renamed, when the rename ends", async () => {
+    const threads = [makeThread({ id: "p", title: "Parent", ...old }), makeThread({ id: "c", title: "Child", parentThreadId: "p", ...old })];
+    const chip = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"] [data-children-chip]`)!;
+    const m = await mount({ threads, server: quiet() });
+    fireEvent.click(chip("p"));
+    await flush();
+    fireEvent.doubleClick(document.querySelector("[data-card][data-thread-id=p] a")!);
+    await flush();
+    await act(async () => {
+      await m.server.setRow("p", settledRow(Date.now(), "auto"));
+    });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["p"]);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    await flush();
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
+  });
+
   it("says when the Settle can no longer be undone", async () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
     const m = await mount({ threads: [makeThread({ id: "a", ...old })], server: quiet() });

@@ -78,4 +78,11 @@ describe("parentsToClose", () => {
     expect(scoped.rows.get("p")?.shelf).toBeNull();
     expect(parentsToClose(scoped, model(mark), ["p", "c"])).toEqual([]);
   });
+
+  it("closes a root whose shelf was held, as a rename holds it, though its settle mark was already there", () => {
+    const mark = { p: settledRow(NOW - DAY, "manual") };
+    const held = model(mark, threads.map((thread) => (thread.id === "p" ? { ...thread, ...working } : thread)));
+    expect(parentsToClose(held, model(mark), ["p"])).toEqual([]);
+    expect(parentsToClose(held, model(mark), ["p"], new Map([["p", "active"]]))).toEqual(["p"]);
+  });
 });

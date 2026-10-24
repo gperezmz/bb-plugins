@@ -1,6 +1,7 @@
 // Which open child lists a settle closes: when a root is settled, the root and
 // every thread below it lose theirs. Pure.
 import { treeIds } from "@/shared/thread-tree";
+import type { Shelf } from "@/shared/lifecycle";
 import type { ListModel } from "./list-model";
 
 /**
@@ -8,11 +9,12 @@ import type { ListModel } from "./list-model";
  * had on another shelf, with every thread below them, where the root's
  * settle mark is not the one `previous` held: a settled thread that works
  * for a while and comes back, or one that is unpinned, was not settled again.
- * A model without a previous one, or a root it did not hold, closes nothing:
+ * A root whose shelf `held` kept in `previous`, as a rename does, may have been
+ * settled meanwhile, so it closes on the shelf change alone. A model without a previous one, or a root it did not hold, closes nothing:
  * a tree that is already Settled when the list loads keeps what was opened
  * there.
  */
-export function parentsToClose(previous: ListModel | null, next: ListModel, openParents: readonly string[]): string[] {
+export function parentsToClose(previous: ListModel | null, next: ListModel, openParents: readonly string[], held: ReadonlyMap<string, Shelf> = new Map()): string[] {
   if (previous === null || openParents.length === 0) return [];
   const open = new Set(openParents);
   const threads = [...next.rows.values()].map((row) => row.thread);
@@ -21,7 +23,7 @@ export function parentsToClose(previous: ListModel | null, next: ListModel, open
     if (row.shelf !== "settled") continue;
     const before = previous.rows.get(row.id);
     if (before === undefined || before.shelf === null || before.shelf === "settled") continue;
-    if ((before.lifecycle?.settledAt ?? null) === (row.lifecycle?.settledAt ?? null)) continue;
+    if (!held.has(row.id) && (before.lifecycle?.settledAt ?? null) === (row.lifecycle?.settledAt ?? null)) continue;
     for (const id of treeIds(threads, row.id)) if (open.has(id)) closed.add(id);
   }
   return [...closed];

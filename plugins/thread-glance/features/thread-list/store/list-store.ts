@@ -206,7 +206,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     // cache cut at its cap lacks the oldest Settled rows: those roots move onto Settled when the
     // answer comes, and nobody settled them then.
     if (model !== null && current.inputs.rowsComplete && checked.rowsComplete) {
-      const closed = parentsToClose(current.model, model, checked.device.expandedParents);
+      const closed = parentsToClose(current.model, model, checked.device.expandedParents, current.inputs.frozenShelves);
       if (closed.length > 0) {
         closeStoredParents(storage, closed);
         commit({ ...checked, device: withParentsClosed(checked.device, closed) });
