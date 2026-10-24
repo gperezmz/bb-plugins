@@ -7,7 +7,7 @@ import { modelDisplayName, reasoningLevelLabel, type CatalogModel } from "../mod
 export interface ModelAnswer {
   /** The catalog's display name, else the model's id; null when bb has none for the thread. */
   model: string | null;
-  /** The catalog's label for the level where it has one, else the level as bb reports it. */
+  /** The level's name as the Hover card shows it; null when no level is set. */
   reasoningLevel: string | null;
 }
 

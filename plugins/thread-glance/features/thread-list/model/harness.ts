@@ -3,7 +3,7 @@
 
 export type ModelState = { status: "loading" } | { status: "unavailable" } | { status: "ready"; model: string | null; reasoningLevel: string | null };
 
-/** The line the Hover card shows: the model's name then the capitalised level, as "GPT 6.1 Sol Medium". "Loading…", "Not set" or "Unavailable" stand in for what is missing; no level leaves the name alone. */
+/** The line the Hover card shows: the model's name then the level's name, as "GPT 6.1 Sol Medium". "Loading…", "Not set" or "Unavailable" stand in for what is missing; no level leaves the name alone. */
 export function modelLine(state: ModelState): string {
   switch (state.status) {
     case "loading":
@@ -12,9 +12,7 @@ export function modelLine(state: ModelState): string {
       return "Unavailable";
     case "ready": {
       if (state.model === null) return "Not set";
-      const level = state.reasoningLevel;
-      if (level === null || level === "" || level === "none") return state.model;
-      return `${state.model} ${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+      return state.reasoningLevel === null ? state.model : `${state.model} ${state.reasoningLevel}`;
     }
   }
 }
@@ -31,9 +29,9 @@ export function modelDisplayName(model: string, catalog: readonly CatalogModel[]
   return catalog.find((entry) => entry.model === model || entry.id === model)?.displayName ?? model;
 }
 
-/** The label the catalog gives the model's reasoning level, else the level itself. */
+/** The level's name for the line: the label the catalog gives the model's level, else the level capitalised; null when no level is set, which bb reports as null, "" or "none". */
 export function reasoningLevelLabel(model: string, level: string | null, catalog: readonly CatalogModel[]): string | null {
-  if (level === null) return null;
+  if (level === null || level === "" || level === "none") return null;
   const entry = catalog.find((candidate) => candidate.model === model || candidate.id === model);
-  return entry?.supportedReasoningEfforts?.find((effort) => effort.reasoningEffort === level)?.label ?? level;
+  return entry?.supportedReasoningEfforts?.find((effort) => effort.reasoningEffort === level)?.label ?? `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
 }
