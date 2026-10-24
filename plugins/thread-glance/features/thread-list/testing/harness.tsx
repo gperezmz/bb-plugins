@@ -1,7 +1,7 @@
 // The shared setup of the list's tests: the plugin app loaded once against
 // the fake host, and a `mount` that opens a window on a scenario.
 import { cleanup, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, vi } from "vitest";
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { flushListStores } from "../store/list-store";
 import { createFakeHost, loadWithFakeHost, mountList, serverState, type FakeHost, type ServerState, type SlotExtras } from "./fake-host";
@@ -21,6 +21,8 @@ export function useListHarness(): void {
     } as unknown as typeof ResizeObserver;
     app = await loadWithFakeHost();
   });
+  // jsdom never has focus; a window under test is one the person is looking at.
+  beforeEach(() => void vi.spyOn(document, "hasFocus").mockReturnValue(true));
   afterEach(() => {
     cleanup();
     localStorage.clear();

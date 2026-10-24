@@ -7,16 +7,16 @@ import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { share } from "./share";
 
 /** What waiting on a thread you can have seen. */
-export type SeenKind = "question" | "queued-failed";
+export type WaitKind = "question" | "queued-failed";
 
-type AttentionThread = Pick<PluginSidebarThread, "id" | "hasPendingInteraction" | "indicator">;
+type WaitingThread = Pick<PluginSidebarThread, "id" | "hasPendingInteraction" | "indicator">;
 
-/** The entry `seenAttention` keeps for `kind` on `threadId`. */
-export function seenKey(kind: SeenKind, threadId: string): string {
+/** The entry `seenWaits` keeps for `kind` on `threadId`. */
+export function seenKey(kind: WaitKind, threadId: string): string {
   return `${kind}:${threadId}`;
 }
 
-function waitingKeys(thread: AttentionThread): string[] {
+function waitingKeys(thread: WaitingThread): string[] {
   const keys: string[] = [];
   if (thread.hasPendingInteraction) keys.push(seenKey("question", thread.id));
   if (thread.indicator === "queued-failed") keys.push(seenKey("queued-failed", thread.id));
@@ -28,9 +28,9 @@ function waitingKeys(thread: AttentionThread): string[] {
  * question or failure no longer waits dropped, so the next one unfolds the
  * thread again. Returns `previous` itself when nothing changed.
  */
-export function seenAttention(
+export function seenWaits(
   previous: ReadonlySet<string>,
-  threads: readonly AttentionThread[],
+  threads: readonly WaitingThread[],
   activeThreadId: string | null,
 ): ReadonlySet<string> {
   const waiting = new Set(threads.flatMap(waitingKeys));

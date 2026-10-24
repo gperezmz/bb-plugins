@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS } from "@/shared/settings";
 import { parkedRow, settledRow, snoozedRow, type LifecycleRow } from "@/shared/lifecycle";
 import { INITIAL_DEVICE_STATE, withGroupCollapsed, withParentExpanded, withShelfCollapsed, withWorktreeCollapsed, type DeviceState } from "../storage/device-state";
 import { DAY, HOUR, makeThread, PROJECTS, working } from "@/testing/fixtures";
-import { seenKey } from "./attention-seen";
+import { seenKey } from "./waits-seen";
 import { buildModel, type ListItem, type ModelInputs } from "./list-model";
 
 const NOW = Date.now();
@@ -22,7 +22,7 @@ function inputs(patch: Partial<ModelInputs> & Pick<ModelInputs, "threads">): Mod
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
-    seenAttention: new Set(),
+    seenWaits: new Set(),
     now: NOW,
     compact: false,
     settledShown: 10,
@@ -131,23 +131,23 @@ describe("shelves", () => {
         makeThread({ id: "kid", parentThreadId: "parent", ...at(1000) }),
         makeThread({ id: "grandkid", parentThreadId: "kid", hasPendingInteraction: true, ...at(1000) }),
       ];
-      const seenAttention = new Set(["ask", "parent", "grandkid"].map((id) => seenKey("question", id)));
+      const seenWaits = new Set(["ask", "parent", "grandkid"].map((id) => seenKey("question", id)));
       expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ ask: "full", parent: "full" });
-      expect(cards(buildModel(inputs({ threads, seenAttention, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
+      expect(cards(buildModel(inputs({ threads, seenWaits, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
       const both = [
         makeThread({ id: "asker", hasPendingInteraction: true, ...at(1000) }),
         makeThread({ id: "child", parentThreadId: "asker", hasPendingInteraction: true, ...at(1000) }),
       ];
-      expect(buildModel(inputs({ threads: both, seenAttention: new Set([seenKey("question", "asker")]), settings: compactAll })).rows.get("asker")!.card).toBe("full");
-      const working = buildModel(inputs({ threads, seenAttention, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
+      expect(buildModel(inputs({ threads: both, seenWaits: new Set([seenKey("question", "asker")]), settings: compactAll })).rows.get("asker")!.card).toBe("full");
+      const working = buildModel(inputs({ threads, seenWaits, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
       expect(working.rows.get("ask")!.card).toBe("full");
     });
 
     it("unfolds a thread whose queued message failed until you open it, and again for a later failure", () => {
       const threads = [makeThread({ id: "qf", indicator: "queued-failed", ...at(1000) })];
       expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toEqual({ qf: "full" });
-      expect(cards(buildModel(inputs({ threads, seenAttention: new Set([seenKey("queued-failed", "qf")]), settings: compactAll })))).toEqual({ qf: "folded" });
-      expect(cards(buildModel(inputs({ threads, seenAttention: new Set([seenKey("question", "qf")]), settings: compactAll })))).toEqual({ qf: "full" });
+      expect(cards(buildModel(inputs({ threads, seenWaits: new Set([seenKey("queued-failed", "qf")]), settings: compactAll })))).toEqual({ qf: "folded" });
+      expect(cards(buildModel(inputs({ threads, seenWaits: new Set([seenKey("question", "qf")]), settings: compactAll })))).toEqual({ qf: "full" });
     });
 
     it("keeps pinned threads full with Keep pinned as full cards", () => {

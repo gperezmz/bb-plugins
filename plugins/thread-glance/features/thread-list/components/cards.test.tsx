@@ -8,6 +8,7 @@ import { parkedRow, settledRow, snoozedRow, type LifecycleRow } from "@/shared/l
 import { DAY, HOUR, makeProject, makeThread, PROJECTS, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { SWEEP_MS } from "../commands/sweep";
+import { storedKeyName } from "../storage/device-storage";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
@@ -244,6 +245,40 @@ describe("AC17: the Folded card", () => {
     expect(card("q").getAttribute("data-card")).toBe("folded");
     act(() => first.view.unmount());
     await mount({ threads: threads(), server: { settings: { threadDisplay: "compact-all" } }, activeThreadId: "other" });
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("does not count a thread open in a window you cannot see as opened, until you come back to it", async () => {
+    vi.mocked(document.hasFocus).mockReturnValue(false);
+    const m = await mount({
+      threads: [makeThread({ id: "q", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "q",
+    });
+    act(() => m.host.updateThread("q", { status: "idle", runtimeStatus: "idle", hasPendingInteraction: true, indicator: "waiting-for-input" }));
+    await flush();
+    expect(localStorage.getItem(storedKeyName("seenWaits"))).toBeNull();
+    vi.mocked(document.hasFocus).mockReturnValue(true);
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await flush();
+    act(() => m.host.updateProps({ activeThreadId: "other" }));
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("folds a question another window on the device opened, when that window stores it", async () => {
+    await mount({
+      threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "other",
+    });
+    expect(card("q").getAttribute("data-card")).toBe("full");
+    const key = storedKeyName("seenWaits");
+    act(() => {
+      localStorage.setItem(key, JSON.stringify(["question:q"]));
+      window.dispatchEvent(new StorageEvent("storage", { key }));
+    });
+    await flush();
     expect(card("q").getAttribute("data-card")).toBe("folded");
   });
 

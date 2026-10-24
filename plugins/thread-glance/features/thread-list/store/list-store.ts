@@ -9,7 +9,7 @@
 import type { BbNavigate, PluginBrowserBbSdk, PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
-import { seenAttention } from "../model/attention-seen";
+import { seenWaits } from "../model/waits-seen";
 import type { ListModel } from "../model/list-model";
 import { NO_MARKS, parentsToClose, settleMarksOf, type SettleMarks } from "../model/settle-close";
 import { share } from "../model/share";
@@ -17,10 +17,10 @@ import {
   readDeviceState,
   closeStoredParents,
   readPinnedProjects,
-  readSeenAttention,
+  readSeenWaits,
   saveDeviceState,
   withParentsClosed,
-  writeSeenAttention,
+  writeSeenWaits,
   type DeviceState,
 } from "../storage/device-state";
 import { CAPS, createDeviceStorage, storedKeyName, type DeviceStorage, type StorageLike } from "../storage/device-storage";
@@ -152,11 +152,18 @@ export interface ListStoreOptions {
   storage?: DeviceStorage;
   /** Where this window's scope is kept; null keeps none. Defaults to the browser's session storage. */
   windowStorage?: StorageLike | null;
+  /** Whether the person can see this window, so its open thread counts as opened. Defaults to the document being visible and focused. */
+  isLooking?: () => boolean;
+}
+
+function documentLooking(): boolean {
+  return typeof document === "undefined" || (document.visibilityState !== "hidden" && document.hasFocus());
 }
 
 export function createListStore(options: ListStoreOptions = {}): ListStore {
   const storage = options.storage ?? createDeviceStorage();
   const sessionStorage = options.windowStorage === undefined ? windowStorage() : options.windowStorage;
+  const isLooking = options.isLooking ?? documentLooking;
   pluginData.hydrate(storage);
   const inputs: ListInputs = {
     host: NO_HOST,
@@ -171,7 +178,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     settledShown: FIRST_SETTLED_SHOWN,
     frozenShelves: new Map(),
     drag: null,
-    seenAttention: readSeenAttention(storage),
+    seenWaits: readSeenWaits(storage),
   };
   const workingSince = createWorkingSince(storage);
   const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI });
@@ -188,14 +195,15 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const wokeClearAsked = new Set<string>();
   // Pinned threads whose lifecycle row this window has asked the server to clear.
   const pinClearAsked = new Set<string>();
-  // The questions and queued failures you have opened threads on (see `seenAttention`), kept in the
+  // The questions and queued failures you have opened threads on (see `seenWaits`), kept in the
   // device's storage and read from it each time, so a reload and every window on the device share
-  // them. Every list bb feeds is read as it comes, frame or not, so one that clears while no frame
-  // runs (a hidden window) is forgotten before the next one arrives.
+  // them. The open thread counts only while you can see the window, so one left open in a hidden or
+  // unfocused window does not fold its new question everywhere. Every list bb feeds is read as it
+  // comes, frame or not, so one that clears while no frame runs is forgotten before the next arrives.
   const updateSeen = (threads: HostData["threads"], activeThreadId: string | null): ReadonlySet<string> => {
-    const stored = readSeenAttention(storage);
-    const next = seenAttention(stored, threads, activeThreadId);
-    if (next !== stored) writeSeenAttention(storage, next);
+    const stored = readSeenWaits(storage);
+    const next = seenWaits(stored, threads, activeThreadId !== null && isLooking() ? activeThreadId : null);
+    if (next !== stored) writeSeenWaits(storage, next);
     return next;
   };
   // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
@@ -210,9 +218,9 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const commit = (next: ListInputs) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
-    const seen = next.host.status === "ready" ? updateSeen(next.host.threads, next.activeThreadId) : next.seenAttention;
-    const shared = share(next.seenAttention, seen);
-    const checked = scope === next.scope && shared === next.seenAttention ? next : { ...next, scope, seenAttention: shared };
+    const seen = next.host.status === "ready" ? updateSeen(next.host.threads, next.activeThreadId) : next.seenWaits;
+    const shared = share(next.seenWaits, seen);
+    const checked = scope === next.scope && shared === next.seenWaits ? next : { ...next, scope, seenWaits: shared };
     const current = api.getState();
     if (checked.scope !== current.inputs.scope) writeScope(sessionStorage, checked.scope);
     const model = derive(checked, current.model);
@@ -355,8 +363,11 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       mounted = true;
       attached.add(store);
       const unfollow = pluginData.subscribe(onData);
+      // Coming back to the window opens its open thread; another window's opening reaches this one.
+      const recheckSeen = () => commit(api.getState().inputs);
       // Another window's change of the pins reaches this one, so its next change builds on them rather than over them.
       const onStorage = (event: StorageEvent) => {
+        if (event.key === storedKeyName("seenWaits")) recheckSeen();
         if (event.key !== null && event.key !== storedKeyName("pinnedProjects")) return;
         const pinned = readPinnedProjects(storage);
         store.feed(({ device }) => {
@@ -365,6 +376,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         });
       };
       globalThis.addEventListener("storage", onStorage);
+      globalThis.addEventListener("focus", recheckSeen);
+      globalThis.document?.addEventListener("visibilitychange", recheckSeen);
       // What changed between the store's creation and its mount.
       store.feed(dataInputs);
       const requests = waiting;
@@ -381,6 +394,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       return () => {
         unfollow();
         globalThis.removeEventListener("storage", onStorage);
+        globalThis.removeEventListener("focus", recheckSeen);
+        globalThis.document?.removeEventListener("visibilitychange", recheckSeen);
         clock?.stop();
         clock = null;
         if (frame !== null) frames.cancel(frame);
