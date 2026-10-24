@@ -33,7 +33,7 @@ flowchart TB
 
 The **server machine** is the machine that runs the bb server and holds its data directory (`bb status` prints it as `Data dir`, for example `/var/lib/bb/.bb` on a server where bb runs as a service user). Every machine, the server machine included, runs bb's daemon, and all are listed under Settings → Machines. A backend always runs on the server machine; a host entry runs in the daemon of whichever machine the backend calls.
 
-All five rely on plugin APIs that bb marks experimental, and need bb 0.46 and plugin SDK 0.6.37 (`engines` in each `package.json`). A bb upgrade that renames one of those APIs can stop a plugin loading until the plugin is updated; `bb status` warns when an enabled plugin is not running.
+All five rely on plugin APIs that bb marks experimental, and need bb 0.46 and plugin SDK 0.6.37, Thread Glance bb 0.47 and plugin SDK 0.6.75 (`engines` in each `package.json`). A bb upgrade that renames one of those APIs can stop a plugin loading until the plugin is updated; `bb status` warns when an enabled plugin is not running.
 
 ## What the plugins follow in bb
 
