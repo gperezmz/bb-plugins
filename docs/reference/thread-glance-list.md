@@ -61,13 +61,13 @@ The server keeps a [lifecycle row](../../plugins/thread-glance/GLOSSARY.md) per 
 |---|---|---|
 | 1 | The thread is pinned | Pinned |
 | 2 | The thread has no lifecycle row | Active |
-| 3 | The thread is [busy](#busy-threads) | Active |
+| 3 | The thread is [busy](#busy-threads), or [lifted](#lifted-threads) | Active |
 | 4 | The thread is parked, and no attention arrived after the park | Parked |
 | 5 | The thread is snoozed, and has not woken | Snoozed |
 | 6 | The thread is settled, and no attention arrived after the settle | Settled |
 | 7 | Otherwise | Active |
 
-Attention that arrives after a park or a settle brings the thread back to Active and clears the park or settle mark. A snooze ends at its wake time or on attention, and the thread is then [woke](#woke).
+Attention that arrives after a park or a settle brings the thread back to Active and clears the park or settle mark, except attention set aside while a question waited below the thread (see [lifted threads](#lifted-threads)). A snooze ends at its wake time or on attention, and the thread is then [woke](#woke).
 
 Pin is bb's own action, so a window that sees a pinned thread with a lifecycle row asks the server to clear the row, and unpinning returns the thread to Active under these rules.
 
@@ -75,8 +75,8 @@ Of the threads left on Active:
 
 | Setting | Moves a thread to | When |
 |---|---|---|
-| **Working shelf** on | Working | Its tree is working, it is not woke and it does not need you |
-| **Inactive shelf** on | Inactive | It is not busy, it does not need you, it is not woke, and its latest activity (the latest of created, updated and attention) is **Hours before inactive** ago or more |
+| **Working shelf** on | Working | Its tree is working, it is not woke or lifted and it does not need you |
+| **Inactive shelf** on | Inactive | It is not busy, it does not need you, it is not woke or lifted, and its latest activity (the latest of created, updated and attention) is **Hours before inactive** ago or more |
 
 A row being renamed keeps its shelf until the rename ends.
 
@@ -94,9 +94,19 @@ A busy thread offers no Snooze, Park or Settle, and the server refuses all three
 
 A never-run thread with nothing queued is at rest, as bb's own list draws it: it can be snoozed, parked and settled, and auto-settle settles it once it has been quiet long enough. One whose first message waits to send, scheduled for later or not, is busy through that queued message but not working: it sits on Active with its Queued status, no spinner, and is left out of the Working shelf, the children chip's working count and Compact working threads.
 
+### Lifted threads
+
+A thread is lifted while a question or approval is pending on any thread below it, at any depth. A parked, snoozed or settled thread that is lifted is on Active, and a snoozed one shows as [woke](#woke). The lift changes none of the row's marks, and while the question waits the mark is held: turns in the thread's tree, including the turns bb's parent notifications start when a child asks, neither reopen the thread nor count as attention against its park, snooze or settle. Once no such question waits, whether it was answered or its thread was archived, deleted or interrupted, the thread returns to its shelf: a parked thread keeps its park time, a settled one stays settled, and a snoozed one returns to Snoozed with its wake time, unless that time has passed meanwhile, when it stays woke.
+
+The hold ends with the question, except for a turn that began while it waited: such a turn's end is held too, though the answer came first, until the plugin restarts. A turn that starts after the answer reopens the thread's ancestors and attention after it clears the mark, as at any other time; so with bb's parent notifications on, a child that finishes its turn after the answer notifies its parents, and that turn clears the mark. The attention set aside is kept in the row (`heldAttentionAt`, the latest of it) so that it survives a restart. The hold does not apply to a thread whose own question is pending: that question is its own attention.
+
+Park, Snooze and Settle on a lifted thread are refused, in the window at once and by the server, with "Cannot <action> while a child thread needs you: <title>", naming the thread that asks. A thread's own question is not a lift: it makes the thread [busy](#busy-threads), and new attention takes it off Parked and Settled as usual. Hidden threads and archived ones are not counted, and a thread that is not on the list ends the chain above it.
+
 ### Woke
 
 A snoozed thread wakes at its wake time or when attention arrives after the snooze. It is then on Active, in bold, with a **Woke** label and a **Dismiss Woke marker** button. Opening the thread, or dismissing the label, clears the marker. The marker is the same in every window and survives reloads. A woke thread offers no Snooze, and is never moved to Working or Inactive.
+
+A snoozed thread that is [lifted](#lifted-threads) and has not otherwise woken shows the same label, without the dismiss button: it leaves no marker to clear, since it returns to Snoozed when the question is gone.
 
 ## Cards and rows
 

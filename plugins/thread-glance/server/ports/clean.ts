@@ -8,6 +8,7 @@
 // typed into); the two share nothing. The module names no SDK.
 import { randomUUID } from "node:crypto";
 import { inBatches } from "../../shared/batches";
+import { liftedIds } from "../../shared/lifecycle";
 import type { PreviewCleanOutput, RunCleanOutput } from "../../shared/ports";
 import type { LifecycleStore } from "../lifecycle-store";
 import { isLiveTerminal, type ThreadRuntime } from "../runtime";
@@ -61,7 +62,8 @@ export function createClean(deps: CleanDeps): Clean {
   async function eligibleThreads(): Promise<{ eligible: ServerThread[] }> {
     const all = await deps.threads.snapshot();
     const at = now();
-    const failing = new Set(all.filter((thread) => !isCleanable(thread, lifecycle.get(thread.id), at)).map((thread) => thread.id));
+    const lifted = liftedIds(all.filter((thread) => !thread.hidden));
+    const failing = new Set(all.filter((thread) => !isCleanable(thread, lifecycle.get(thread.id), at, lifted.has(thread.id))).map((thread) => thread.id));
     const candidates = all.filter((thread) => !failing.has(thread.id));
     const environmentIds = [...new Set(all.flatMap((thread) => (thread.environmentId === null ? [] : [thread.environmentId])))];
     const { locations } = await engine.locate(environmentIds);

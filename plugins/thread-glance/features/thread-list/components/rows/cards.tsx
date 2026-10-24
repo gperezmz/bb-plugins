@@ -99,20 +99,23 @@ function WokeMarker({ row }: { row: RowView }) {
   return (
     <span data-woke="" className="flex shrink-0 items-center gap-0.5">
       <span className="text-[10px] font-semibold text-[color:var(--tg-working)]">Woke</span>
-      <Tip label="Dismiss Woke marker">
-        <button
-          type="button"
-          data-no-drag=""
-          aria-label="Dismiss Woke marker"
-          onClick={(event) => {
-            event.stopPropagation();
-            void commands.dismissWoke(row.id);
-          }}
-          className="pointer-events-auto flex size-4 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        >
-          <Icon name="X" aria-hidden className="size-3" />
-        </button>
-      </Tip>
+      {/* Woke by a waiting child leaves no marker in the row: it ends with the question, so there is none to dismiss. */}
+      {row.woke === "child" ? null : (
+        <Tip label="Dismiss Woke marker">
+          <button
+            type="button"
+            data-no-drag=""
+            aria-label="Dismiss Woke marker"
+            onClick={(event) => {
+              event.stopPropagation();
+              void commands.dismissWoke(row.id);
+            }}
+            className="pointer-events-auto flex size-4 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            <Icon name="X" aria-hidden className="size-3" />
+          </button>
+        </Tip>
+      )}
     </span>
   );
 }

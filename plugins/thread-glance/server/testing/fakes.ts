@@ -36,11 +36,11 @@ export function pinned(thread: ServerThread, pinnedAt = 5_000, pinSortKey: strin
   return { ...thread, isPinned: true, pinnedAt, pinSortKey };
 }
 
-/** A migrated database in memory. */
-export function memoryDatabase(): Database {
+/** A migrated database in memory; `upTo` stops after that many migrations, as an install from an earlier version stands. */
+export function memoryDatabase({ upTo = MIGRATIONS.length }: { upTo?: number } = {}): Database {
   const db = new BetterSqlite3(":memory:");
   db.transaction(() => {
-    for (const statement of MIGRATIONS) db.exec(statement);
+    for (const statement of MIGRATIONS.slice(0, upTo)) db.exec(statement);
   })();
   return db as unknown as Database;
 }

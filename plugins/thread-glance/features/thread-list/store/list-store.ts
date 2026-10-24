@@ -235,9 +235,9 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
         whenMounted(() => void store.edge.rpc.call("clearPinned", { threadId }).catch(() => undefined));
       }
       for (const threadId of [...pinClearAsked]) if (!model.pinnedWithRow.includes(threadId)) pinClearAsked.delete(threadId);
-      // Opening a woke thread clears its Woke marker.
+      // Opening a woke thread clears its Woke marker, except one a waiting child gives, which leaves none.
       const open = checked.activeThreadId === null ? undefined : model.rows.get(checked.activeThreadId);
-      if (open?.woke != null && !wokeClearAsked.has(open.id)) {
+      if (open?.woke != null && open.woke !== "child" && !wokeClearAsked.has(open.id)) {
         wokeClearAsked.add(open.id);
         whenMounted(() => void store.edge.rpc.call("dismissWoke", { threadId: open.id }).catch(() => undefined));
       }

@@ -3,6 +3,7 @@
 // are not mounted, and no row asks the server for anything.
 import { act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { activeRow } from "@/shared/lifecycle";
 import { makeThread } from "@/testing/fixtures";
 import { resetRowRenderCounts, rowRenderCounts } from "../testing/fake-host";
 import { PORTS_REFRESH_MS } from "../sync/ports-requests";
@@ -56,7 +57,7 @@ describe("AC30: the list at 2,000 threads", () => {
     const m = await mount({ threads, server: { order, settings: { inactiveShelf: false } } });
     resetRowRenderCounts();
     await act(async () => {
-      await m.server.setRow("t7", { settledAt: null, settledKind: null, parkedAt: null, snoozeUntil: null, snoozedAt: null, activeOverride: true });
+      await m.server.setRow("t7", activeRow());
     });
     await flush();
     expect([...rowRenderCounts().keys()]).toEqual(["t7"]);

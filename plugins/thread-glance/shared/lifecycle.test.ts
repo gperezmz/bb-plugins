@@ -4,10 +4,14 @@ import {
   activeRow,
   clearStaleMark,
   clearStaleMarks,
+  EMPTY_ROW,
+  heldIds,
+  holdAttention,
   hasManualMark,
   hasMark,
   isEmptyRow,
   isWoke,
+  liftedIds,
   markShelf,
   nextWakeAt,
   parkedRow,
@@ -19,6 +23,7 @@ import {
   staleMark,
   treeSignals,
   wakeReason,
+  waitingBelow,
   type ShelfOptions,
   type ShelfThread,
 } from "./lifecycle";
@@ -117,6 +122,118 @@ describe("markShelf (rules 1 to 6)", () => {
 
   it("puts everything else in Active (6)", () => {
     expect(markShelf(activeRow(), thread(), NOW)).toBe("active");
+  });
+});
+
+describe("a question waiting below (lifted)", () => {
+  it("puts a lifted thread in Active whatever its row says", () => {
+    for (const row of [parkedRow(NOW - HOUR), snoozedRow(NOW + HOUR, NOW - HOUR), settledRow(NOW - HOUR, "manual")]) {
+      expect(markShelf(row, thread(), NOW, true)).toBe("active");
+      expect(markShelf(row, thread(), NOW)).not.toBe("active");
+    }
+  });
+
+  it("shows a snoozed thread that still sleeps as woke by its child, and gives its row's own reason first", () => {
+    const row = snoozedRow(NOW + 5 * HOUR, NOW - HOUR);
+    expect(wakeReason(row, thread(), NOW, true)).toBe("child");
+    expect(isWoke(row, thread(), NOW, true)).toBe(true);
+    expect(wakeReason(row, thread(), NOW + 5 * HOUR, true)).toBe("time");
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW }), NOW, true)).toBe("attention");
+    expect(wakeReason(row, thread(), NOW, false)).toBeNull();
+  });
+
+  it("shows no marker on a thread that is not snoozed, however it is lifted", () => {
+    expect(wakeReason(parkedRow(1), thread(), NOW, true)).toBeNull();
+    expect(wakeReason(settledRow(1, "manual"), thread(), NOW, true)).toBeNull();
+    expect(wakeReason(null, thread(), NOW, true)).toBeNull();
+  });
+
+  it("returns a thread to its shelf with its row as it was once nothing waits below", () => {
+    const parked = parkedRow(NOW - 10 * HOUR);
+    const snoozed = snoozedRow(NOW + HOUR, NOW - HOUR);
+    expect(shelfOf(parked, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(parked, thread(), options({ lifted: false }))).toBe("parked");
+    expect(shelfOf(snoozed, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(snoozed, thread(), options())).toBe("snoozed");
+  });
+
+  it("keeps a lifted snoozed thread out of Working and Inactive", () => {
+    const row = snoozedRow(NOW + HOUR, NOW - 90 * HOUR);
+    expect(shelfOf(row, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(row, thread(), options({ lifted: true, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("active");
+    // A tree that is working without anything in it needing the user, as when the asker is a pinned child.
+    expect(shelfOf(null, thread(), options({ lifted: true, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("active");
+    expect(shelfOf(null, thread(), options({ lifted: false, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("working");
+    expect(shelfOf(null, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(null, thread(), options())).toBe("inactive");
+  });
+
+  it("names the threads with a question or approval waiting below them, not the asker itself", () => {
+    const tree = [
+      { id: "root", parentThreadId: null, ...thread() },
+      { id: "kid", parentThreadId: "root", ...thread() },
+      { id: "grandkid", parentThreadId: "kid", ...thread({ hasPendingInteraction: true }) },
+      { id: "other", parentThreadId: null, ...thread() },
+    ];
+    expect([...liftedIds(tree)].sort()).toEqual(["kid", "root"]);
+    expect(waitingBelow(tree, "root")?.id).toBe("grandkid");
+    expect(waitingBelow(tree, "kid")?.id).toBe("grandkid");
+    expect(waitingBelow(tree, "grandkid")).toBeUndefined();
+    expect(waitingBelow(tree, "other")).toBeUndefined();
+  });
+});
+
+describe("attention a waiting question holds back", () => {
+  const parked = parkedRow(NOW - 10 * HOUR);
+  const held = (until: number) => ({ ...parked, heldAttentionAt: until });
+
+  it("sets aside the attention a marked row is behind, and only that", () => {
+    expect(holdAttention(parked, NOW - 20 * HOUR)).toBe(parked);
+    expect(holdAttention(parked, NOW - HOUR)).toEqual(held(NOW - HOUR));
+    expect(holdAttention(held(NOW - HOUR), NOW - 2 * HOUR)).toEqual(held(NOW - HOUR));
+    expect(holdAttention(held(NOW - HOUR), NOW)).toEqual(held(NOW));
+    expect(holdAttention(activeRow(), NOW)).toEqual(activeRow());
+  });
+
+  it("keeps a parked or settled thread on its shelf through held attention, and not through later attention", () => {
+    const row = held(NOW - HOUR);
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("parked");
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - 30 * 60_000 }), NOW)).toBe("active");
+    const settled = { ...settledRow(NOW - 10 * HOUR, "manual"), heldAttentionAt: NOW - HOUR };
+    expect(markShelf(settled, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("settled");
+    expect(staleMark(settled, thread({ latestAttentionAt: NOW - HOUR }))).toBeNull();
+    expect(staleMark(settled, thread({ latestAttentionAt: NOW }))).toBe("settled");
+    expect(clearStaleMark(row, thread({ latestAttentionAt: NOW - HOUR }))).toBeNull();
+  });
+
+  it("keeps a snoozed thread asleep through held attention, so it returns to Snoozed with its wake time", () => {
+    const row = { ...snoozedRow(NOW + 5 * HOUR, NOW - 3 * HOUR), heldAttentionAt: NOW - HOUR };
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBeNull();
+    expect(markShelf(row, thread({ latestAttentionAt: NOW - HOUR }), NOW)).toBe("snoozed");
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW }), NOW)).toBe("attention");
+  });
+
+  it("holds only marked rows whose thread has a question waiting below and none on itself", () => {
+    const tree = [
+      { id: "root", parentThreadId: null, ...thread() },
+      { id: "kid", parentThreadId: "root", ...thread({ hasPendingInteraction: true }) },
+      { id: "own", parentThreadId: null, ...thread({ hasPendingInteraction: true }) },
+      { id: "own-kid", parentThreadId: "own", ...thread({ hasPendingInteraction: true }) },
+      { id: "plain", parentThreadId: null, ...thread() },
+    ];
+    const rows = new Map([
+      ["root", parked],
+      ["own", parked],
+      ["plain", parked],
+      ["kid", parked],
+      ["unmarked", activeRow()],
+    ]);
+    expect([...heldIds(rows, tree)]).toEqual(["root"]);
+  });
+
+  it("compares and empties rows by their marks, a held attention being none", () => {
+    expect(sameRow(parked, held(1))).toBe(false);
+    expect(isEmptyRow({ ...EMPTY_ROW, heldAttentionAt: 5 })).toBe(true);
   });
 });
 
