@@ -372,16 +372,12 @@ export function buildModel(inputs: ModelInputs): ListModel {
     const children = forest.children.get(thread.id) ?? null;
     const isExpanded = children !== null && expanded.has(thread.id);
     const woke = shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null;
+    const facts: CardFacts = { tree, woke, questionSeen: inputs.seenQuestionIds.has(thread.id), questionBelow: (children?.counts.needsYou ?? 0) > 0 };
     rows.set(thread.id, {
       id: thread.id,
       thread,
       shelf,
-      card: shelf === null ? "slim" : cardKindOf(
-              shelf,
-              thread,
-              { tree, woke, questionSeen: inputs.seenQuestionIds.has(thread.id), questionBelow: (children?.counts.needsYou ?? 0) > 0 },
-              settings,
-            ),
+      card: shelf === null ? "slim" : cardKindOf(shelf, thread, facts, settings),
       lifecycle: lifecycle[thread.id] ?? null,
       woke,
       tree,

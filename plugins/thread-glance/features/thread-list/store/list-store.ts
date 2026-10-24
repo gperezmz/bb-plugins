@@ -10,6 +10,7 @@ import type { BbNavigate, PluginBrowserBbSdk, PluginRpcClient } from "@get-bb/pl
 import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
+import { questionsSeen } from "../model/questions-seen";
 import { NO_MARKS, parentsToClose, settleMarksOf, type SettleMarks } from "../model/settle-close";
 import {
   readDeviceState,
@@ -24,7 +25,6 @@ import { readScope, windowStorage, writeScope } from "../storage/window-state";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, scopeIn, type HostData, type ListInputs } from "./derive";
-import { questionsSeen } from "../model/questions-seen";
 import { createStore, type StoreApi } from "./vanilla";
 import { createWorkingSince, type WorkingSince } from "./working-since";
 

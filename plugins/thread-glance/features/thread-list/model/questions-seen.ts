@@ -3,6 +3,7 @@
 // marks nothing when a question arrives, so the list keeps them itself, in
 // this window, until the question clears.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { share } from "./share";
 
 /**
  * `previous` with the open thread added while it asks, and every thread
@@ -17,5 +18,5 @@ export function questionsSeen(
   const asking = new Set(threads.flatMap((thread) => (thread.hasPendingInteraction ? [thread.id] : [])));
   const next = new Set([...previous].filter((id) => asking.has(id)));
   if (activeThreadId !== null && asking.has(activeThreadId)) next.add(activeThreadId);
-  return next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
+  return share<ReadonlySet<string>>(previous, next);
 }
