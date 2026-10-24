@@ -49,8 +49,6 @@ export interface AutoSettleDeps {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
-/** Pull request lookups in flight at once. */
-const PULL_REQUEST_CONCURRENCY = 4;
 
 type AutoSettings = Pick<Settings, "settleQuietThreads" | "daysBeforeAutoSettle" | "settleMergedPullRequests">;
 
@@ -86,6 +84,8 @@ function decide(
   if (isExcluded(thread, row)) return auto ? "unsettle" : "keep";
   // A failed lookup is no evidence that no open pull request exists.
   if (pullRequest.kind === "unknown") return "keep";
+  // Losing the way to ask is no reason to return a thread settled while it was there.
+  if (pullRequest.kind === "no-lookup" && auto) return "keep";
 
   const activityAt = lastActivityAt(thread);
   let should = false;
@@ -184,17 +184,6 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
   const warn = deps.warn ?? (() => undefined);
   const NOTHING: AutoSettleResult = { settled: [], unsettled: [] };
 
-  /** Reads the pull requests of `environmentIds`, a few at a time. */
-  async function readPullRequests(environmentIds: readonly string[]): Promise<Map<string, PullRequestStatus>> {
-    const found = new Map<string, PullRequestStatus>();
-    const queue = [...environmentIds];
-    const worker = async () => {
-      for (let id = queue.pop(); id !== undefined; id = queue.pop()) found.set(id, await deps.pullRequests.read(id));
-    };
-    await Promise.all(Array.from({ length: Math.min(PULL_REQUEST_CONCURRENCY, queue.length) }, worker));
-    return found;
-  }
-
   async function pass(): Promise<AutoSettleResult> {
     const started = await deps.settings.read();
     const first = await deps.threads.snapshot();
@@ -202,7 +191,7 @@ export function createAutoSettle(deps: AutoSettleDeps): AutoSettle {
     for (const thread of first) {
       if (thread.environmentId !== null && needsPullRequest(thread, lifecycle.get(thread.id))) environmentIds.add(thread.environmentId);
     }
-    const pullRequests = await readPullRequests([...environmentIds]);
+    const pullRequests = environmentIds.size === 0 ? new Map<string, PullRequestStatus>() : await deps.pullRequests.read([...environmentIds]);
     // Read before the change runs so that a scan never holds up other changes to records.
     const heldBack = await deps.heldBack(first);
 

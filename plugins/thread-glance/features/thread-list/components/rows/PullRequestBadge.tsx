@@ -1,10 +1,10 @@
-// The pull-request badge `#number` from bb, coloured by bb's attention, with
-// the title and label as its tooltip. It opens the pull request in a new tab.
-// Mounted only where a card shows it, so bb looks a pull request up only for
-// the cards that are drawn.
-import { experimental_useSidebarThreadPullRequest as usePullRequest } from "@get-bb/plugin-sdk/app";
+// The pull-request badge `#number` from GitHub PR Status, coloured by its
+// attention state, with the title and label as its tooltip. It opens the pull
+// request in a new tab. Mounted only where a card shows it, so a pull request
+// is looked up only for the cards that are drawn.
 import { cn } from "@/lib/utils";
 import { pullRequestLabel, pullRequestTone, pullRequestTooltip, type PullRequestTone } from "../../model/pull-request";
+import { usePullRequest } from "../../sync/pull-requests";
 import { Tip } from "./Tip";
 
 export const PULL_REQUEST_TONE_CLASS: Record<PullRequestTone, string> = {
@@ -14,8 +14,8 @@ export const PULL_REQUEST_TONE_CLASS: Record<PullRequestTone, string> = {
   muted: "text-muted-foreground",
 };
 
-export function PullRequestBadge({ threadId }: { threadId: string }) {
-  const { pullRequest } = usePullRequest(threadId);
+export function PullRequestBadge({ environmentId }: { environmentId: string | null | undefined }) {
+  const pullRequest = usePullRequest(environmentId);
   if (pullRequest === null) return null;
   return (
     <Tip label={pullRequestTooltip(pullRequest)}>
