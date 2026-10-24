@@ -12,7 +12,7 @@ import { isToggleOnly, type RowPlace } from "../model/reorder";
 import { keptIndexes, mountedIndexes, rangeKey, windowedNavValue, type NavTarget } from "../model/windowing";
 import { useHeights, useListStore, useRows, useSelect } from "../store/hooks";
 import { readRowPlaces, slideRows } from "./reorder/slide";
-import { GroupHeader, LoadMore, ShelfHeader } from "./ShelfParts";
+import { GroupHeader, LoadMore, ShelfHeader, WorktreeHeader } from "./ShelfParts";
 import { ThreadRow } from "./rows/ThreadRow";
 import { ViewTracker } from "./view-tracker";
 
@@ -101,12 +101,15 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
       case "group":
         content.push(<GroupHeader key={item.key} item={item} size={laid.size} />);
         break;
+      case "worktree":
+        content.push(<WorktreeHeader key={item.key} item={item} size={laid.size} />);
+        break;
       case "more":
         content.push(<LoadMore key={item.key} item={item} size={laid.size} />);
         break;
       case "row":
         content.push(
-          <div key={item.key} data-row-id={item.threadId} data-row-header={item.header} style={{ height: laid.size }} className="relative">
+          <div key={item.key} data-row-id={item.threadId} data-row-header={item.headers.at(-1)} style={{ height: laid.size }} className="relative">
             <ThreadRow threadId={item.threadId} />
           </div>,
         );

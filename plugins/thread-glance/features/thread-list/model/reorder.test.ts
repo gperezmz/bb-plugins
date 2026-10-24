@@ -147,25 +147,43 @@ describe("slideDelta", () => {
 
 describe("isToggleOnly", () => {
   const shelf = (name: string, collapsed: boolean): ListItem => ({ kind: "shelf", key: `shelf:${name}`, shelf: name as Shelf, count: 1, collapsed, spinning: false });
-  const group = (id: string, collapsed: boolean): ListItem => ({ kind: "group", key: `group:${id}`, projectId: id, count: 1, collapsed });
-  const row = (id: string, header: string): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "active", header });
+  const group = (id: string, collapsed: boolean): ListItem => ({ kind: "group", key: `group:${id}`, projectId: id, count: 1, collapsed, headers: ["shelf:active"] });
+  const worktree = (id: string, projectId: string, collapsed: boolean): ListItem => ({
+    kind: "worktree",
+    key: `worktree:${id}`,
+    projectId,
+    environmentId: id,
+    branch: id,
+    count: 1,
+    collapsed,
+    urgency: null,
+    headers: ["shelf:active", `group:${projectId}`],
+  });
+  const row = (id: string, ...headers: string[]): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "active", headers });
   const more: ListItem = { kind: "more", key: "more:settled", remaining: 5, next: 5 };
+  const ACTIVE = "shelf:active";
 
   it("is true when only rows of a shelf or group that opened or closed come or go", () => {
-    expect(isToggleOnly([shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", "shelf:active")], [shelf("pinned", true), shelf("active", false), row("a", "shelf:active")])).toBe(true);
-    expect(isToggleOnly([shelf("active", false), group("x", true), row("t", "shelf:active")], [shelf("active", false), group("x", false), row("x1", "group:x"), row("t", "shelf:active")])).toBe(true);
-    expect(isToggleOnly([shelf("active", false), group("x", false), row("x1", "group:x")], [shelf("active", true)])).toBe(true);
+    expect(isToggleOnly([shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", ACTIVE)], [shelf("pinned", true), shelf("active", false), row("a", ACTIVE)])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", true), row("t", ACTIVE)], [shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x"), row("t", ACTIVE)])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x")], [shelf("active", true)])).toBe(true);
     expect(isToggleOnly([shelf("settled", true)], [shelf("settled", false), row("s", "shelf:settled"), more])).toBe(true);
   });
 
+  it("is true when a worktree group, or the project group around it, opens or closes", () => {
+    const open = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w1", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(open, [shelf("active", false), group("x", false), worktree("w", "x", true), row("x1", ACTIVE, "group:x")])).toBe(true);
+    expect(isToggleOnly(open, [shelf("active", false), group("x", true)])).toBe(true);
+  });
+
   it("is false when a row leaves or moves with no shelf or group opening or closing", () => {
-    const active = [shelf("active", false), row("a", "shelf:active"), row("x", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)];
-    expect(isToggleOnly(active, [shelf("active", false), row("a", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)])).toBe(false);
-    expect(isToggleOnly(active, [shelf("active", false), row("x", "shelf:active"), row("a", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)])).toBe(false);
+    const active = [shelf("active", false), row("a", ACTIVE), row("x", ACTIVE), row("b", ACTIVE), shelf("settled", true)];
+    expect(isToggleOnly(active, [shelf("active", false), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);
+    expect(isToggleOnly(active, [shelf("active", false), row("x", ACTIVE), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);
   });
 
   it("is false when a row leaves in the same change as a shelf toggles", () => {
-    const before = [shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", "shelf:active"), row("x", "shelf:active")];
-    expect(isToggleOnly(before, [shelf("pinned", true), shelf("active", false), row("a", "shelf:active")])).toBe(false);
+    const before = [shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", ACTIVE), row("x", ACTIVE)];
+    expect(isToggleOnly(before, [shelf("pinned", true), shelf("active", false), row("a", ACTIVE)])).toBe(false);
   });
 });

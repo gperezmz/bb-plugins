@@ -16,17 +16,19 @@ import { sortByManualOrder } from "@/shared/manual-order";
 import type { Settings } from "@/shared/settings";
 import type { TreeSignals } from "@/shared/lifecycle";
 import { isShelfCollapsed, type DeviceState } from "../storage/device-state";
-import { buildForest, isFailed, type ChildrenInfo, type Forest } from "./forest";
+import { buildForest, isFailed, urgencyOfRoots, type ChildrenInfo, type Forest, type Urgency } from "./forest";
 import {
   canReorderActive,
   comparePinned,
   flattenEntries,
   groupByProject,
+  memberThreads,
   sortActive,
   sortParked,
   sortSettled,
   sortSnoozed,
   type ActiveEntry,
+  type GroupMember,
 } from "./ordering";
 
 /** Settled shows this many rows, then "Load N more" in pages. */
@@ -50,6 +52,8 @@ export interface RowView {
   tree: TreeSignals;
   /** The thread sits in a Project-mode group, whose header names the project. */
   grouped: boolean;
+  /** The thread sits in a worktree group inside its project's group, drawn one step in. */
+  inWorktree: boolean;
   focused: boolean;
   /** Another split pane shows the thread. */
   openElsewhere: boolean;
@@ -61,16 +65,33 @@ export interface RowView {
   expanded: boolean;
 }
 
-/** An entry of a shelf's list, as the list draws it. A row's `header` is the key of the shelf or group header it belongs to. */
+/**
+ * An entry of a shelf's list, as the list draws it. The `headers` of a row,
+ * group or worktree group are the keys of the shelf, group and worktree headers
+ * it sits under, outermost first.
+ */
 export type ListItem =
   | { kind: "shelf"; key: string; shelf: Shelf; count: number; collapsed: boolean; spinning: boolean }
-  | { kind: "group"; key: string; projectId: string; count: number; collapsed: boolean }
-  | { kind: "row"; key: string; threadId: string; shelf: Shelf; header: string }
+  | { kind: "group"; key: string; projectId: string; count: number; collapsed: boolean; headers: readonly string[] }
+  | {
+      kind: "worktree";
+      key: string;
+      projectId: string;
+      environmentId: string;
+      /** The branch the group is named by. */
+      branch: string;
+      count: number;
+      collapsed: boolean;
+      /** While collapsed, the most urgent thing in its threads and below them; null otherwise. */
+      urgency: Urgency | null;
+      headers: readonly string[];
+    }
+  | { kind: "row"; key: string; threadId: string; shelf: Shelf; headers: readonly string[] }
   | { kind: "more"; key: string; remaining: number; next: number };
 
 export type Scene = "all-clear" | "working";
 
-/** One draggable unit: a thread, or a project group moved by its header. */
+/** One draggable unit: a thread, or a project or worktree group moved by its header. */
 export interface ReorderUnit {
   key: string;
   /** The threads the unit holds, in order. */
@@ -97,7 +118,7 @@ export interface ListModel {
   shelves: Readonly<Record<Shelf, readonly string[]>>;
   /** The lists a drag or Alt+Arrow reorders, by list key. */
   reorderLists: ReadonlyMap<string, ReorderList>;
-  /** Each row's list and unit: a thread id or a group's `group:<projectId>` key. */
+  /** Each row's list and unit: a thread id, a project group's `group:<projectId>` key or a worktree group's `worktree:<environmentId>` key. */
   reorderOf: ReadonlyMap<string, { listKey: string; unitKey: string }>;
   /** Pinned threads with a lifecycle row, whose rows the server is asked to clear. */
   pinnedWithRow: readonly string[];
@@ -236,12 +257,20 @@ export function buildModel(inputs: ModelInputs): ListModel {
     for (const unit of pinnedOrdered) reorderOf.set(unit.key, { listKey: "pinned", unitKey: unit.key });
   }
 
-  let entries: ActiveEntry[] = device.activeSort === "project" ? groupByProject(activeThreads) : activeThreads.map((thread) => ({ kind: "thread", thread }));
+  let entries: ActiveEntry[] =
+    device.activeSort === "project" ? groupByProject(activeThreads, settings.groupByWorktree) : activeThreads.map((thread) => ({ kind: "thread", thread }));
   const groupKey = (projectId: string) => `group:${projectId}`;
+  const worktreeKey = (environmentId: string) => `worktree:${environmentId}`;
+  const threadUnit = (thread: PluginSidebarThread): ReorderUnit => ({ key: thread.id, ids: [thread.id], title: thread.displayTitle });
+  const memberUnit = (member: GroupMember): ReorderUnit =>
+    member.kind === "thread"
+      ? threadUnit(member.thread)
+      : { key: worktreeKey(member.environmentId), ids: member.threads.map((thread) => thread.id), title: member.branch };
+  const memberKey = (member: GroupMember) => (member.kind === "thread" ? member.thread.id : worktreeKey(member.environmentId));
   if (reorderable && entries.length > 0) {
     const units: ReorderUnit[] = entries.map((entry) =>
       entry.kind === "thread"
-        ? { key: entry.thread.id, ids: [entry.thread.id], title: entry.thread.displayTitle }
+        ? threadUnit(entry.thread)
         : { key: groupKey(entry.projectId), ids: entry.threads.map((thread) => thread.id), title: projectName(entry.projectId) },
     );
     const keys = previewKeys("active");
@@ -258,17 +287,33 @@ export function buildModel(inputs: ModelInputs): ListModel {
     entries = entries.map((entry) => {
       if (entry.kind !== "group") return entry;
       const listKey = groupKey(entry.projectId);
-      const memberUnits: ReorderUnit[] = entry.threads.map((thread) => ({ key: thread.id, ids: [thread.id], title: thread.displayTitle }));
+      const memberUnits = entry.members.map(memberUnit);
       const memberKeys = previewKeys(listKey);
       const orderedMembers = memberKeys === null ? memberUnits : followKeys(memberUnits, memberKeys);
+      const byKey = new Map(entry.members.map((member) => [memberKey(member), member]));
+      const members = orderedMembers.map((unit) => byKey.get(unit.key)!);
       reorderLists.set(listKey, { key: listKey, label: "Active", units: orderedMembers });
       for (const unit of orderedMembers) reorderOf.set(unit.key, { listKey, unitKey: unit.key });
       reorderOf.set(listKey, { listKey: "active", unitKey: listKey });
-      return { ...entry, threads: orderedMembers.map((unit) => forest.byId.get(unit.key)!) };
+      // A worktree group reorders its own threads among themselves.
+      const inside = members.map((member): GroupMember => {
+        if (member.kind !== "worktree") return member;
+        const innerKey = worktreeKey(member.environmentId);
+        const innerUnits = member.threads.map(threadUnit);
+        const innerKeys = previewKeys(innerKey);
+        const orderedInner = innerKeys === null ? innerUnits : followKeys(innerUnits, innerKeys);
+        reorderLists.set(innerKey, { key: innerKey, label: "Active", units: orderedInner });
+        for (const unit of orderedInner) reorderOf.set(unit.key, { listKey: innerKey, unitKey: unit.key });
+        return { ...member, threads: orderedInner.map((unit) => forest.byId.get(unit.key)!) };
+      });
+      return { ...entry, members: inside, threads: memberThreads(inside) };
     });
   }
   const activeOrder = flattenEntries(entries);
   const groupedProjects = new Set(entries.flatMap((entry) => (entry.kind === "group" ? [entry.projectId] : [])));
+  const worktreeThreadIds = new Set(
+    entries.flatMap((entry) => (entry.kind === "group" ? entry.members.flatMap((member) => (member.kind === "worktree" ? member.threads.map((thread) => thread.id) : [])) : [])),
+  );
 
   const shelves: Record<Shelf, string[]> = { ...EMPTY_SHELVES };
   shelves.pinned = pinned.map((thread) => thread.id);
@@ -297,6 +342,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
       woke: shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now) : null,
       tree,
       grouped: shelf === "active" && groupedProjects.has(thread.projectId),
+      inWorktree: shelf === "active" && worktreeThreadIds.has(thread.id),
       focused: thread.id === activeThreadId,
       openElsewhere: inputs.openElsewhereIds.has(thread.id) && thread.id !== activeThreadId,
       hasDraft: inputs.draftIds.has(thread.id),
@@ -344,19 +390,44 @@ export function buildModel(inputs: ModelInputs): ListModel {
       if (shelf === "active" && groupedProjects.size > 0) {
         for (const entry of entries) {
           if (entry.kind === "thread") {
-            if (!collapsed || keep(entry.thread.id)) items.push({ kind: "row", key: `row:${entry.thread.id}`, threadId: entry.thread.id, shelf, header: `shelf:${shelf}` });
+            if (!collapsed || keep(entry.thread.id)) items.push({ kind: "row", key: `row:${entry.thread.id}`, threadId: entry.thread.id, shelf, headers: [`shelf:${shelf}`] });
             continue;
           }
           const groupCollapsed = device.collapsedGroups.includes(entry.projectId);
           const shownThreads = entry.threads.filter((thread) => !(collapsed || groupCollapsed) || keep(thread.id));
           if (collapsed && shownThreads.length === 0) continue;
-          items.push({ kind: "group", key: groupKey(entry.projectId), projectId: entry.projectId, count: entry.threads.length, collapsed: groupCollapsed });
-          for (const thread of shownThreads) items.push({ kind: "row", key: `row:${thread.id}`, threadId: thread.id, shelf, header: groupKey(entry.projectId) });
+          items.push({ kind: "group", key: groupKey(entry.projectId), projectId: entry.projectId, count: entry.threads.length, collapsed: groupCollapsed, headers: [`shelf:${shelf}`] });
+          const shownIds = new Set(shownThreads.map((thread) => thread.id));
+          for (const member of entry.members) {
+            if (member.kind === "thread") {
+              if (shownIds.has(member.thread.id)) items.push({ kind: "row", key: `row:${member.thread.id}`, threadId: member.thread.id, shelf, headers: [`shelf:${shelf}`, groupKey(entry.projectId)] });
+              continue;
+            }
+            if (!member.threads.some((thread) => shownIds.has(thread.id))) continue;
+            const worktreeCollapsed = device.collapsedWorktrees.includes(member.environmentId);
+            items.push({
+              kind: "worktree",
+              key: worktreeKey(member.environmentId),
+              projectId: entry.projectId,
+              environmentId: member.environmentId,
+              branch: member.branch,
+              count: member.threads.length,
+              collapsed: worktreeCollapsed,
+              urgency: worktreeCollapsed ? urgencyOfRoots(member.threads, forest.children) : null,
+              headers: [`shelf:${shelf}`, groupKey(entry.projectId)],
+            });
+            // A collapsed worktree group keeps only the rows bb needs drawn: the open thread's and the one being renamed.
+            for (const thread of member.threads) {
+              if (shownIds.has(thread.id) && (!worktreeCollapsed || keptSet.has(thread.id))) {
+                items.push({ kind: "row", key: `row:${thread.id}`, threadId: thread.id, shelf, headers: [`shelf:${shelf}`, groupKey(entry.projectId), worktreeKey(member.environmentId)] });
+              }
+            }
+          }
         }
         continue;
       }
       const shown = shelf === "settled" && !collapsed ? ids.slice(0, inputs.settledShown) : ids;
-      for (const id of shown) if (!collapsed || keep(id)) items.push({ kind: "row", key: `row:${id}`, threadId: id, shelf, header: `shelf:${shelf}` });
+      for (const id of shown) if (!collapsed || keep(id)) items.push({ kind: "row", key: `row:${id}`, threadId: id, shelf, headers: [`shelf:${shelf}`] });
       if (shelf === "settled" && !collapsed && ids.length > shown.length) {
         const remaining = ids.length - shown.length;
         items.push({ kind: "more", key: "more:settled", remaining, next: Math.min(SETTLED_PAGE, remaining) });

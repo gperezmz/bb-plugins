@@ -36,14 +36,14 @@ export function rowPlaces(items: Iterable<DrawnItem>): Map<string, RowPlace> {
 
 /**
  * Whether going from `before` to `after` only opened or closed shelves or
- * groups: every item that came or went is a row of a shelf or group whose
- * open state changed, a group of a toggled Active (groups are Active's only),
- * or Settled's Load more.
- * Then nothing slides; any other change, such as a move or a row leaving for
- * another shelf, slides the rows it moves.
+ * groups: every row, group or worktree group that came or went sits under a
+ * shelf or group whose open state changed, and anything else that came or
+ * went is Settled's Load more. Then nothing slides; any other change, such as
+ * a move or a row leaving for another shelf, slides the rows it moves.
  */
 export function isToggleOnly(before: readonly ListItem[], after: readonly ListItem[]): boolean {
-  const openState = (items: readonly ListItem[]) => new Map(items.flatMap((item) => (item.kind === "shelf" || item.kind === "group" ? [[item.key, item.collapsed] as const] : [])));
+  const openState = (items: readonly ListItem[]) =>
+    new Map(items.flatMap((item) => (item.kind === "shelf" || item.kind === "group" || item.kind === "worktree" ? [[item.key, item.collapsed] as const] : [])));
   const was = openState(before);
   const toggled = new Set([...openState(after)].filter(([key, collapsed]) => was.has(key) && was.get(key) !== collapsed).map(([key]) => key));
   if (toggled.size === 0) return false;
@@ -51,9 +51,7 @@ export function isToggleOnly(before: readonly ListItem[], after: readonly ListIt
   const hadKeys = keysOf(before);
   const hasKeys = keysOf(after);
   const changed = [...before.filter((item) => !hasKeys.has(item.key)), ...after.filter((item) => !hadKeys.has(item.key))];
-  return changed.every(
-    (item) => (item.kind === "row" && (toggled.has(item.header) || toggled.has(`shelf:${item.shelf}`))) || (item.kind === "group" && toggled.has("shelf:active")) || item.kind === "more",
-  );
+  return changed.every((item) => (item.kind === "more" ? true : item.kind === "shelf" ? false : item.headers.some((key) => toggled.has(key))));
 }
 
 /**
