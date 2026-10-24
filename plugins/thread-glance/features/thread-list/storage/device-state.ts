@@ -135,6 +135,15 @@ function stringList(value: unknown, cap: number): string[] {
   return Array.isArray(value) ? lastDistinct(value.filter((entry): entry is string => typeof entry === "string"), cap) : [];
 }
 
+/** The questions and queued failures seen on this device (see `seenAttention`), as another window may have left them. */
+export function readSeenAttention(storage: DeviceStorage): ReadonlySet<string> {
+  return new Set(stringList(storage.read("seenAttention"), CAPS.seenAttention));
+}
+
+export function writeSeenAttention(storage: DeviceStorage, seen: ReadonlySet<string>): void {
+  storage.write("seenAttention", [...seen].slice(-CAPS.seenAttention));
+}
+
 /** The pinned projects saved in `storage`, which another window may have changed since this one read them. */
 export function readPinnedProjects(storage: DeviceStorage): readonly string[] {
   return stringList(storage.read("pinnedProjects"), CAPS.pinnedProjects);

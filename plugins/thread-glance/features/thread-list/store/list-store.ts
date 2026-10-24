@@ -9,15 +9,18 @@
 import type { BbNavigate, PluginBrowserBbSdk, PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
+import { seenAttention } from "../model/attention-seen";
 import type { ListModel } from "../model/list-model";
-import { questionsSeen } from "../model/questions-seen";
 import { NO_MARKS, parentsToClose, settleMarksOf, type SettleMarks } from "../model/settle-close";
+import { share } from "../model/share";
 import {
   readDeviceState,
   closeStoredParents,
   readPinnedProjects,
+  readSeenAttention,
   saveDeviceState,
   withParentsClosed,
+  writeSeenAttention,
   type DeviceState,
 } from "../storage/device-state";
 import { CAPS, createDeviceStorage, storedKeyName, type DeviceStorage, type StorageLike } from "../storage/device-storage";
@@ -168,7 +171,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     settledShown: FIRST_SETTLED_SHOWN,
     frozenShelves: new Map(),
     drag: null,
-    seenQuestionIds: new Set(),
+    seenAttention: readSeenAttention(storage),
   };
   const workingSince = createWorkingSince(storage);
   const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI });
@@ -185,10 +188,16 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const wokeClearAsked = new Set<string>();
   // Pinned threads whose lifecycle row this window has asked the server to clear.
   const pinClearAsked = new Set<string>();
-  // Threads opened while their own question waits (see `questionsSeen`). Every list bb feeds is read
-  // as it comes, frame or not, so a question that clears while no frame runs (a hidden window) is
-  // forgotten before the next one arrives.
-  let seenQuestions: ReadonlySet<string> = new Set();
+  // The questions and queued failures you have opened threads on (see `seenAttention`), kept in the
+  // device's storage and read from it each time, so a reload and every window on the device share
+  // them. Every list bb feeds is read as it comes, frame or not, so one that clears while no frame
+  // runs (a hidden window) is forgotten before the next one arrives.
+  const updateSeen = (threads: HostData["threads"], activeThreadId: string | null): ReadonlySet<string> => {
+    const stored = readSeenAttention(storage);
+    const next = seenAttention(stored, threads, activeThreadId);
+    if (next !== stored) writeSeenAttention(storage, next);
+    return next;
+  };
   // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
   let settleMarks: SettleMarks = NO_MARKS;
 
@@ -201,9 +210,9 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const commit = (next: ListInputs) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
-    if (next.host.status === "ready") seenQuestions = questionsSeen(seenQuestions, next.host.threads, next.activeThreadId);
-    const seenQuestionIds = seenQuestions;
-    const checked = scope === next.scope && seenQuestionIds === next.seenQuestionIds ? next : { ...next, scope, seenQuestionIds };
+    const seen = next.host.status === "ready" ? updateSeen(next.host.threads, next.activeThreadId) : next.seenAttention;
+    const shared = share(next.seenAttention, seen);
+    const checked = scope === next.scope && shared === next.seenAttention ? next : { ...next, scope, seenAttention: shared };
     const current = api.getState();
     if (checked.scope !== current.inputs.scope) writeScope(sessionStorage, checked.scope);
     const model = derive(checked, current.model);
@@ -299,7 +308,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       if (sameHost(next, host)) return;
       const first = host === NO_HOST;
       host = next;
-      if (next.status === "ready") seenQuestions = questionsSeen(seenQuestions, next.threads, null);
+      if (next.status === "ready") updateSeen(next.threads, null);
       // Nothing is drawn yet, so the first data is drawn at once.
       if (first) applyFrame();
       else requestFrame();

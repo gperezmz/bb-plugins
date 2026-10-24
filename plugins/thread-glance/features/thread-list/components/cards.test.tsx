@@ -238,6 +238,29 @@ describe("AC17: the Folded card", () => {
     }
   });
 
+  it("keeps a question you opened folded in a window opened later on the device", async () => {
+    const threads = () => [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })];
+    const first = await mount({ threads: threads(), server: { settings: { threadDisplay: "compact-all" } }, activeThreadId: "q" });
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+    act(() => first.view.unmount());
+    await mount({ threads: threads(), server: { settings: { threadDisplay: "compact-all" } }, activeThreadId: "other" });
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("folds a thread whose queued message failed once you open it, though the message still waits", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "qf", ...fresh, indicator: "queued-failed" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "other",
+    });
+    expect(card("qf").getAttribute("data-card")).toBe("full");
+    act(() => m.host.updateProps({ activeThreadId: "qf" }));
+    await flush();
+    act(() => m.host.updateProps({ activeThreadId: "other" }));
+    await flush();
+    expect(card("qf").getAttribute("data-card")).toBe("folded");
+  });
+
   it("unfolds a question that replaced the one you opened while no frame ran, as in a hidden window", async () => {
     const m = await mount({
       threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
