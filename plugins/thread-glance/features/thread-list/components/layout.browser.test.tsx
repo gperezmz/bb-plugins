@@ -450,4 +450,25 @@ describe("the slide of rows", () => {
     expect(slid).not.toContain("b1");
     expect(slid).not.toContain("b2");
   });
+
+  it("leaves still the rows a worktree header carries when a row above it in the project group leaves", async () => {
+    localStorage.setItem("thread-glance:activeSort", JSON.stringify("project"));
+    const worktree = { environment: { id: "env_x", branchName: "feat/x", isWorktree: true } };
+    const grouped = [
+      makeThread({ id: "a1", title: "Alpha one", projectId: "proj_a", ...at(5) }),
+      makeThread({ id: "a2", title: "Alpha two", projectId: "proj_a", ...at(6) }),
+      makeThread({ id: "w1", title: "Worktree one", projectId: "proj_a", ...worktree, ...at(7) }),
+      makeThread({ id: "w2", title: "Worktree two", projectId: "proj_a", ...worktree, ...at(8) }),
+    ];
+    await render(grouped, { settings: { inactiveShelf: false, groupByWorktree: true }, order: ["a1", "a2", "w1", "w2"] });
+    expect(document.querySelector('[data-group-key="worktree:env_x"]')).not.toBeNull();
+    slid.length = 0;
+    await userEvent.hover(screen.getByRole("link", { name: "Alpha one" }));
+    await userEvent.click(screen.getByRole("button", { name: "Snooze Alpha one" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Park thread" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Alpha one" })).toBeNull());
+    await waitFor(() => expect(slid).toContain("a2"));
+    expect(slid).not.toContain("w1");
+    expect(slid).not.toContain("w2");
+  });
 });

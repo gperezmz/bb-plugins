@@ -176,6 +176,15 @@ describe("isToggleOnly", () => {
     expect(isToggleOnly(open, [shelf("active", false), group("x", true)])).toBe(true);
   });
 
+  it("is true when only worktree headers are drawn or dropped around rows that keep their order", () => {
+    const flat = [shelf("active", false), group("x", false), row("w1", ACTIVE, "group:x"), row("w2", ACTIVE, "group:x"), row("x1", ACTIVE, "group:x")];
+    const regrouped = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w1", ACTIVE, "group:x", "worktree:w"), row("w2", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(flat, regrouped)).toBe(true);
+    expect(isToggleOnly(regrouped, flat)).toBe(true);
+    const reordered = [shelf("active", false), group("x", false), worktree("w", "x", false), row("w2", ACTIVE, "group:x", "worktree:w"), row("w1", ACTIVE, "group:x", "worktree:w"), row("x1", ACTIVE, "group:x")];
+    expect(isToggleOnly(flat, reordered)).toBe(false);
+  });
+
   it("is false when a row leaves or moves with no shelf or group opening or closing", () => {
     const active = [shelf("active", false), row("a", ACTIVE), row("x", ACTIVE), row("b", ACTIVE), shelf("settled", true)];
     expect(isToggleOnly(active, [shelf("active", false), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);
