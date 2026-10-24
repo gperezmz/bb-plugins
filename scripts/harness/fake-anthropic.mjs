@@ -10,6 +10,9 @@
 //   `Reply with exactly "X"` (a keep-warm, a check-in)  -> X
 //   `[fake: background]`                               -> a Bash `sleep 1800` run in the background
 //   `[fake: fail]`                                     -> HTTP 400, so the turn ends failed
+//   `[fake: ask]`                                      -> an AskUserQuestion, so the turn waits on a question
+//   `[fake: approve]`                                  -> a Bash `touch` that writes, so a turn not in full
+//                                                         permission mode waits on an approval
 //   `[fake: hold=N]`                                   -> the answer it would give, N seconds late
 //   `/compact`, or a summary request                    -> a short summary
 //   anything else, and every tool result                -> "OK"
@@ -116,6 +119,13 @@ function answerFor(body, text) {
   if (!isSmall(body) && /\[fake: background\]/.test(text)) {
     const input = { command: "sleep 1800", description: "Wait for the fake deploy", run_in_background: true };
     return { stop: "tool_use", tool: { name: "Bash", input } };
+  }
+  if (!isSmall(body) && /\[fake: ask\]/.test(text)) {
+    const question = { question: "Go on with the fake task?", header: "Go on", multiSelect: false, options: [{ label: "Yes", description: "Go on" }, { label: "No", description: "Stop here" }] };
+    return { stop: "tool_use", tool: { name: "AskUserQuestion", input: { questions: [question] } } };
+  }
+  if (!isSmall(body) && /\[fake: approve\]/.test(text)) {
+    return { stop: "tool_use", tool: { name: "Bash", input: { command: "touch fake-approval.txt", description: "Write the fake marker file" } } };
   }
   const exact = /reply with exactly "(.+)"/is.exec(text)?.[1];
   if (exact !== undefined) return { stop: "end_turn", text: exact.replace(/\\"/g, '"').replace(/\\\\/g, "\\") };
