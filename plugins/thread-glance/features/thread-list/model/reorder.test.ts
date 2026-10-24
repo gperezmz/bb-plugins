@@ -2,7 +2,8 @@
 // where the dragged unit goes, how fast the list scrolls near an edge, how far
 // a row slides, and what a keyboard move announces.
 import { describe, expect, it } from "vitest";
-import type { ReorderList } from "./list-model";
+import type { Shelf } from "@/shared/lifecycle";
+import type { ListItem, ReorderList } from "./list-model";
 import {
   afterHover,
   AUTOSCROLL_EDGE_PX,
@@ -11,14 +12,14 @@ import {
   DRAG_THRESHOLD_PX,
   idsOfUnits,
   isDrag,
+  isToggleOnly,
   keyboardMove,
   moveKeyTo,
   orderAfterReorder,
-  isReordered,
   pinNeighbours,
   rowPlaces,
   slideDelta,
-  type ListChild,
+  type DrawnItem,
 } from "./reorder";
 
 const press = { x: 100, y: 100, button: 0, pointerType: "mouse" };
@@ -112,9 +113,9 @@ describe("writes", () => {
 });
 
 describe("slideDelta", () => {
-  const header = (key: string, top: number): ListChild => ({ kind: "header", key, top });
-  const row = (id: string, top: number, under: string): ListChild => ({ kind: "row", id, header: under, top });
-  const delta = (before: ListChild[], after: ListChild[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
+  const header = (key: string, top: number): DrawnItem => ({ kind: "header", key, top });
+  const row = (id: string, top: number, under: string): DrawnItem => ({ kind: "row", id, header: under, top });
+  const delta = (before: DrawnItem[], after: DrawnItem[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
   const ACTIVE = "shelf:active";
 
   it("gives no slide to rows a shelf above pushes along with their header, opening or closing", () => {
@@ -144,15 +145,27 @@ describe("slideDelta", () => {
   });
 });
 
-describe("isReordered", () => {
-  it("is false when keys are only added or dropped, as opening, closing or loading more does", () => {
-    expect(isReordered(["shelf:a", "row:1", "row:2", "shelf:b", "row:3"], ["shelf:a", "shelf:b", "row:3"])).toBe(false);
-    expect(isReordered(["shelf:a", "group:x", "row:t", "group:y"], ["shelf:a", "group:x", "row:x1", "row:t", "group:y"])).toBe(false);
-    expect(isReordered(["row:1"], ["row:1"])).toBe(false);
+describe("isToggleOnly", () => {
+  const shelf = (name: string, collapsed: boolean): ListItem => ({ kind: "shelf", key: `shelf:${name}`, shelf: name as Shelf, count: 1, collapsed, spinning: false });
+  const group = (id: string, collapsed: boolean): ListItem => ({ kind: "group", key: `group:${id}`, projectId: id, count: 1, collapsed });
+  const row = (id: string, header: string): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "active", header });
+  const more: ListItem = { kind: "more", key: "more:settled", remaining: 5, next: 5 };
+
+  it("is true when only rows of a shelf or group that opened or closed come or go", () => {
+    expect(isToggleOnly([shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", "shelf:active")], [shelf("pinned", true), shelf("active", false), row("a", "shelf:active")])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", true), row("t", "shelf:active")], [shelf("active", false), group("x", false), row("x1", "group:x"), row("t", "shelf:active")])).toBe(true);
+    expect(isToggleOnly([shelf("active", false), group("x", false), row("x1", "group:x")], [shelf("active", true)])).toBe(true);
+    expect(isToggleOnly([shelf("settled", true)], [shelf("settled", false), row("s", "shelf:settled"), more])).toBe(true);
   });
 
-  it("is true when kept keys change order, as a move or a settle into an open shelf does", () => {
-    expect(isReordered(["row:1", "row:2", "row:3"], ["row:2", "row:1", "row:3"])).toBe(true);
-    expect(isReordered(["shelf:a", "row:1", "row:2", "shelf:s"], ["shelf:a", "row:2", "shelf:s", "row:1"])).toBe(true);
+  it("is false when a row leaves or moves with no shelf or group opening or closing", () => {
+    const active = [shelf("active", false), row("a", "shelf:active"), row("x", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)];
+    expect(isToggleOnly(active, [shelf("active", false), row("a", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)])).toBe(false);
+    expect(isToggleOnly(active, [shelf("active", false), row("x", "shelf:active"), row("a", "shelf:active"), row("b", "shelf:active"), shelf("settled", true)])).toBe(false);
+  });
+
+  it("is false when a row leaves in the same change as a shelf toggles", () => {
+    const before = [shelf("pinned", false), row("p", "shelf:pinned"), shelf("active", false), row("a", "shelf:active"), row("x", "shelf:active")];
+    expect(isToggleOnly(before, [shelf("pinned", true), shelf("active", false), row("a", "shelf:active")])).toBe(false);
   });
 });

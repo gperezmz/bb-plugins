@@ -143,6 +143,12 @@ describe("Project mode", () => {
     expect(model.rows.get("b1")!.grouped).toBe(false);
   });
 
+  it("names on each row the header it belongs to: its group's, or its shelf's for a lone row after a group", () => {
+    const headers = (items: readonly ListItem[]) => items.flatMap((item) => (item.kind === "row" ? [`${item.threadId} ${item.header}`] : []));
+    expect(headers(buildModel(inputs({ threads, order, device: project })).upper)).toEqual(["a1 group:proj_a", "a2 group:proj_a", "a3 group:proj_a", "b1 shelf:active"]);
+    expect(headers(buildModel(inputs({ threads, order })).upper)).toEqual(["a1 shelf:active", "b1 shelf:active", "a2 shelf:active", "a3 shelf:active"]);
+  });
+
   it("draws no group header outside Project mode", () => {
     const model = buildModel(inputs({ threads, order }));
     expect(model.upper.some((item) => item.kind === "group")).toBe(false);

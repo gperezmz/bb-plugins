@@ -36,12 +36,14 @@ const props: PluginThreadListProps = { activeThreadId: null, activeProjectId: nu
 
 async function render(threads: PluginSidebarThread[], server: FakeServerOptions = {}, listProps: Partial<PluginThreadListProps> = {}, height = 600, width = 360) {
   await page.viewport(width, height);
-  const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
-    rpc: createFakeServer(server).handlers as never,
+  // Attached, so the fake server's realtime signals reach the list, as a lifecycle call's do.
+  const fake = createFakeServer(server);
+  const slot = fake.attach(renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
+    rpc: fake.handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
     sdk: {} as never,
     realtimeConnectionState: "connected",
-  } as never);
+  } as never));
   await waitFor(() => expect(document.querySelector("[data-list-ready]")).not.toBeNull());
   await frames();
   return slot;
@@ -390,7 +392,6 @@ describe("the slide of rows", () => {
   const toggle = (shelf: string) => document.querySelector<HTMLElement>(`[data-shelf="${shelf}"] button[aria-expanded]`)!;
   // Every row animation the list starts, by row id: a slow frame cannot hide one that has already ended.
   const slid: string[] = [];
-  let restore = () => {};
   beforeAll(() => {
     const animate = Element.prototype.animate;
     Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
@@ -398,8 +399,7 @@ describe("the slide of rows", () => {
       if (id !== undefined) slid.push(id);
       return animate.apply(this, args);
     };
-    restore = () => void (Element.prototype.animate = animate);
-    return () => restore();
+    return () => void (Element.prototype.animate = animate);
   });
   const press = async (shelf: string) => {
     const was = toggle(shelf).getAttribute("aria-expanded");
@@ -428,5 +428,18 @@ describe("the slide of rows", () => {
     await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
     await waitFor(() => expect(slid.length).toBeGreaterThan(0));
     expect(new Set(slid).size).toBe(2);
+  });
+
+  it("slides the rows below a row that leaves for a closed shelf, and not the rows of the shelves below", async () => {
+    await render(threads, { rows, settings: { inactiveShelf: false } });
+    await press("snoozed");
+    slid.length = 0;
+    await userEvent.hover(screen.getByRole("link", { name: "Active two" }));
+    await userEvent.click(screen.getByRole("button", { name: "Snooze Active two" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Park thread" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Parked (3)" })).toBeTruthy());
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Active two" })).toBeNull());
+    await waitFor(() => expect(slid).toContain("a3"));
+    expect(slid).not.toContain("s1");
   });
 });

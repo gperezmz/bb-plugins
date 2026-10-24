@@ -3,10 +3,10 @@
 // thread id (`data-row-id`), the plugin's own row identity, so nothing else is
 // needed to follow a row from one position to the next. Places are read from
 // layout (`offsetTop`), so a slide still running does not shift them.
-import { rowPlaces, slideDelta, SLIDE_MS, type ListChild, type RowPlace } from "../../model/reorder";
+import { rowPlaces, slideDelta, SLIDE_MS, type DrawnItem, type RowPlace } from "../../model/reorder";
 
 /** The list's headers and rows, top to bottom, with their tops from the list's top; a row names its header in `data-row-header`. */
-function* childrenOf(container: HTMLElement): Generator<ListChild> {
+function* drawnItemsOf(container: HTMLElement): Generator<DrawnItem> {
   for (const element of container.children) {
     if (!(element instanceof HTMLElement)) continue;
     const { shelf, groupKey, rowId, rowHeader } = element.dataset;
@@ -18,7 +18,7 @@ function* childrenOf(container: HTMLElement): Generator<ListChild> {
 
 /** The place of each row of `container`, by row id; scrolling does not change them. */
 export function readRowPlaces(container: HTMLElement): Map<string, RowPlace> {
-  return rowPlaces(childrenOf(container));
+  return rowPlaces(drawnItemsOf(container));
 }
 
 /** Eases every row that moved from `before` further than its header carried it; none under reduced motion. */

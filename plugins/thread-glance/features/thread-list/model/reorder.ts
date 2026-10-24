@@ -2,7 +2,7 @@
 // becomes a drag, where the dragged unit goes, how fast the list scrolls, how
 // far a row slides, and what a keyboard move announces. Pure.
 import { applySubsetOrder, insertAtTop, moveByOne } from "@/shared/manual-order";
-import type { ListModel, ReorderList } from "./list-model";
+import type { ListItem, ListModel, ReorderList } from "./list-model";
 
 /** The pointer must move this far before a press becomes a drag. */
 export const DRAG_THRESHOLD_PX = 6;
@@ -13,8 +13,8 @@ export const AUTOSCROLL_MAX_PX = 14;
 /** The slide of the rows a drag moves aside. */
 export const SLIDE_MS = 150;
 
-/** One of a list's children, top to bottom: a shelf or group header, or a row with the key of the header it belongs to, each with its top in px from the list's top. */
-export type ListChild = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; header: string; top: number };
+/** One item of a list as drawn, top to bottom: a shelf or group header, or a row with the key of the header it belongs to, each with its top in px from the list's top. */
+export type DrawnItem = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; header: string; top: number };
 
 /** Where a row sits: the header it belongs to, its top from the list's top, and its top from that header's top. */
 export interface RowPlace {
@@ -23,28 +23,37 @@ export interface RowPlace {
   belowHeader: number;
 }
 
-/** The place of each row in `children`, by row id; a row whose header is not among them is measured from the list's top. */
-export function rowPlaces(children: Iterable<ListChild>): Map<string, RowPlace> {
+/** The place of each row in `items`, by row id; a row whose header is not among them is measured from the list's top. */
+export function rowPlaces(items: Iterable<DrawnItem>): Map<string, RowPlace> {
   const places = new Map<string, RowPlace>();
   const headerTops = new Map<string, number>();
-  for (const child of children) {
-    if (child.kind === "header") headerTops.set(child.key, child.top);
-    else places.set(child.id, { header: child.header, top: child.top, belowHeader: child.top - (headerTops.get(child.header) ?? 0) });
+  for (const item of items) {
+    if (item.kind === "header") headerTops.set(item.key, item.top);
+    else places.set(item.id, { header: item.header, top: item.top, belowHeader: item.top - (headerTops.get(item.header) ?? 0) });
   }
   return places;
 }
 
 /**
- * Whether the keys found in both `before` and `after` stand in another order:
- * a reorder, which slides rows. Opening or closing a shelf or group, or
- * loading more, only adds or drops keys, so nothing slides.
+ * Whether going from `before` to `after` only opened or closed shelves or
+ * groups: every item that came or went is a row of a shelf or group whose
+ * open state changed, a group of a toggled Active (groups are Active's only),
+ * or Settled's Load more.
+ * Then nothing slides; any other change, such as a move or a row leaving for
+ * another shelf, slides the rows it moves.
  */
-export function isReordered(before: readonly string[], after: readonly string[]): boolean {
-  const kept = new Set(after);
-  const was = before.filter((key) => kept.has(key));
-  const had = new Set(before);
-  const now = after.filter((key) => had.has(key));
-  return was.some((key, index) => key !== now[index]);
+export function isToggleOnly(before: readonly ListItem[], after: readonly ListItem[]): boolean {
+  const openState = (items: readonly ListItem[]) => new Map(items.flatMap((item) => (item.kind === "shelf" || item.kind === "group" ? [[item.key, item.collapsed] as const] : [])));
+  const was = openState(before);
+  const toggled = new Set([...openState(after)].filter(([key, collapsed]) => was.has(key) && was.get(key) !== collapsed).map(([key]) => key));
+  if (toggled.size === 0) return false;
+  const keysOf = (items: readonly ListItem[]) => new Set(items.map((item) => item.key));
+  const hadKeys = keysOf(before);
+  const hasKeys = keysOf(after);
+  const changed = [...before.filter((item) => !hasKeys.has(item.key)), ...after.filter((item) => !hadKeys.has(item.key))];
+  return changed.every(
+    (item) => (item.kind === "row" && (toggled.has(item.header) || toggled.has(`shelf:${item.shelf}`))) || (item.kind === "group" && toggled.has("shelf:active")) || item.kind === "more",
+  );
 }
 
 /**
