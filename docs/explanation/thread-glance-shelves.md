@@ -95,7 +95,7 @@ Active's default sort is an order you set. A sort by activity moves rows as work
 
 - **One list across projects and shelves.** Working and Inactive keep Active's order, so a thread that returns lands in its old slot. Pinned threads stay in the list, so unpinning returns a thread to its place.
 - **Other sorts do not rewrite it.** Recent activity and Date created only change what is shown, and turn off reordering in Active, so a glance at a different sort cannot scramble the order you made.
-- **Reordering a subset moves only that subset.** Dragging a project's thread in Project sort refills that group's places and leaves everything else where it was.
+- **Reordering a subset moves only that subset.** Dragging a project's thread in Project sort refills that group's places and leaves everything else where it was. A worktree group moves the same way: its threads take the places its threads held.
 
 ## What changed from 0.11.2
 
