@@ -5,14 +5,11 @@
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import { lastActivityAt, treeSignals, type TreeSignals } from "@/shared/lifecycle";
 import type { Settings } from "@/shared/settings";
+import { isListed } from "./listed";
+import { inScope, type Scope } from "./scope";
 
 /** Most steps up a parent chain before it is taken for a cycle. */
 const MAX_DEPTH = 64;
-
-/** Threads that make it onto the list: not archived and not hidden. */
-export function isListed(thread: PluginSidebarThread): boolean {
-  return !thread.isArchived && thread.archivedAt === null && !thread.isHidden;
-}
 
 /** A thread that failed: its last turn ended in an error nobody has read, or a queued message failed to send. */
 export function isFailed(thread: PluginSidebarThread): boolean {
@@ -95,17 +92,17 @@ export function childComparator(settings: Pick<Settings, "childOrder" | "childDi
 }
 
 /**
- * Builds the forest of `threads` for a project scope (`scopeId` null for all
+ * Builds the forest of `threads` for a project scope (empty for all
  * projects). Threads that are archived or hidden are left out.
  */
 export function buildForest(
   threads: readonly PluginSidebarThread[],
-  scopeId: string | null,
+  scope: Scope,
   settings: Pick<Settings, "childOrder" | "childDirection">,
 ): Forest {
   const byId = new Map<string, PluginSidebarThread>();
   for (const thread of threads) if (isListed(thread)) byId.set(thread.id, thread);
-  const inScope = (thread: PluginSidebarThread) => scopeId === null || thread.projectId === scopeId;
+  const inProjectScope = (thread: PluginSidebarThread) => inScope(scope, thread.projectId);
 
   // A thread sits under its parent when the parent is listed and in scope.
   const parentOf = new Map<string, string>();
@@ -113,7 +110,7 @@ export function buildForest(
     const parentId = thread.parentThreadId;
     if (parentId === null || thread.isPinned) continue;
     const parent = byId.get(parentId);
-    if (parent !== undefined && inScope(parent)) parentOf.set(thread.id, parentId);
+    if (parent !== undefined && inProjectScope(parent)) parentOf.set(thread.id, parentId);
   }
   // A parent chain that never ends has no root: its first thread becomes one.
   for (const id of [...parentOf.keys()]) {
@@ -138,7 +135,7 @@ export function buildForest(
   for (const list of childThreads.values()) list.sort(compare);
 
   const roots: PluginSidebarThread[] = [];
-  for (const thread of byId.values()) if (inScope(thread) && !parentOf.has(thread.id)) roots.push(thread);
+  for (const thread of byId.values()) if (inProjectScope(thread) && !parentOf.has(thread.id)) roots.push(thread);
 
   const children = new Map<string, ChildrenInfo>();
   const treeOf = new Map<string, TreeSignals>();

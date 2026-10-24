@@ -4,7 +4,7 @@ import type { PluginSidebarProject, PluginSidebarSplitLayout, PluginSidebarThrea
 import type { LifecycleRow, Shelf } from "@/shared/lifecycle";
 import type { Settings } from "@/shared/settings";
 import { buildModel, SETTLED_FIRST_PAGE, type DragPreview, type ListModel, type RowView } from "../model/list-model";
-import { resolveScope } from "../model/scope";
+import { resolveScope, type Scope } from "../model/scope";
 import { share } from "../model/share";
 import type { DeviceState } from "../storage/device-state";
 
@@ -41,8 +41,8 @@ export interface ListInputs {
   pendingOrder: readonly string[] | null;
   pinnedOverride: readonly string[] | null;
   device: DeviceState;
-  /** The project scope this mount chose; null for All projects. */
-  scopeId: string | null;
+  /** The project scope this window chose; empty for All projects. */
+  scope: Scope;
   now: number;
   settledShown: number;
   frozenShelves: ReadonlyMap<string, Shelf>;
@@ -58,6 +58,11 @@ function openElsewhere(layout: PluginSidebarSplitLayout | null): ReadonlySet<str
   return ids;
 }
 
+/** The scope in force: the chosen one without the projects bb no longer lists, once bb has listed them. */
+export function scopeIn(inputs: Pick<ListInputs, "scope" | "host">): Scope {
+  return resolveScope(inputs.scope, inputs.host.projects, inputs.host.status === "ready");
+}
+
 /** The model for `inputs`, or null while bb's threads or the server's rows are not there. */
 export function derive(inputs: ListInputs, previous: ListModel | null): ListModel | null {
   if (inputs.host.status !== "ready" || !inputs.rowsReady) return null;
@@ -68,7 +73,7 @@ export function derive(inputs: ListInputs, previous: ListModel | null): ListMode
     settings: inputs.settings,
     order: inputs.pendingOrder ?? inputs.order,
     device: inputs.device,
-    scopeId: resolveScope(inputs.scopeId, inputs.host.projects),
+    scope: scopeIn(inputs),
     activeThreadId: inputs.activeThreadId,
     draftIds: inputs.host.draftIds,
     openElsewhereIds: openElsewhere(inputs.host.splitLayout),
