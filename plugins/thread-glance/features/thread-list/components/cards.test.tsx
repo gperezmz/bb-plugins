@@ -303,6 +303,22 @@ describe("AC17: the Folded card", () => {
     expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(["question:q"]);
   });
 
+  it("keeps what another window saw on a thread this window does not list when this window writes", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "other",
+    });
+    const key = storedKeyName("seenWaits");
+    localStorage.setItem(key, JSON.stringify(["question:new"]));
+    // Opening q writes what this window has seen, from a list without "new".
+    act(() => m.host.updateProps({ activeThreadId: "q" }));
+    await flush();
+    act(() => m.host.updateThread("other", { title: "Renamed" }));
+    await flush();
+    expect(JSON.parse(localStorage.getItem(key) ?? "[]")).toEqual(["question:new", "question:q"]);
+  });
+
   it("does not write back another window's store while this window's list is behind it", async () => {
     await mount({
       threads: [makeThread({ id: "q", ...fresh }), makeThread({ id: "other", ...fresh })],
