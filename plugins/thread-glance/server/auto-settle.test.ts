@@ -120,6 +120,20 @@ describe("auto-settle examples (AC11)", () => {
 });
 
 describe("what a pass decides", () => {
+  it("settles a quiet thread whose workspace is gone, and keeps a thread it settled on a merge once the workspace goes", async () => {
+    const gone: PullRequestStatus = { kind: "no-lookup" };
+    const { autoSettle, lifecycle } = setup([withEnvironment(idleFor("quiet", 4), "env-quiet"), withEnvironment(idleFor("merged", 1), "env-merged")], {
+      rows: [["merged", settledRow(NOW - DAY / 2, "auto")]],
+      pullRequests: { "env-quiet": gone, "env-merged": gone },
+    });
+    expect(await autoSettle.run()).toEqual({ settled: ["quiet"], unsettled: [] });
+    expect(lifecycle.get("merged")).toEqual(settledRow(NOW - DAY / 2, "auto"));
+  });
+
+  it("keeps a thread idle less than the days whose workspace is gone", async () => {
+    const { autoSettle } = setup([withEnvironment(idleFor("a", 1), "env")], { pullRequests: { env: { kind: "no-lookup" } } });
+    expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
+  });
   it("settles a closed pull request only if it changed after the thread's last activity", async () => {
     const { autoSettle } = setup(
       [withEnvironment(idleFor("after", 1), "env-after"), withEnvironment(idleFor("before", 1), "env-before")],

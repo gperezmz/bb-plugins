@@ -1,6 +1,6 @@
 // The ports service through the plugin's RPCs, with the real host entry behind
 // a fake system and the SDK's fake plugin host: what AC2 and AC7 promise end
-// to end.
+// to end, and auto-settle reading GitHub PR Status through the SDK (#330).
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createHostEntry } from "../../host/handlers";
@@ -9,6 +9,7 @@ import { createFakeSystem, linuxListener, procStat, type FakeSystem } from "../.
 import plugin from "../../server";
 import { CHANNELS, type Versioned } from "../../shared/signals";
 import type { PortsSnapshot } from "../../shared/ports";
+import { CAPTURED_PULL_REQUESTS } from "../../testing/github-pr-status";
 import { listedThread, sdkWith } from "../testing/fakes";
 import { SETTLE_WAIT_MS } from "./clean";
 
@@ -46,8 +47,33 @@ function macos(): FakeSystem {
   });
 }
 
+/**
+ * bb's GitHub PR Status plugin, as `bb.sdk.plugins` reaches it: `answer` gives
+ * the rows for the environments asked, every one absent by default, and
+ * `enabled`, read at each call, false refuses every call as bb refuses a
+ * disabled plugin.
+ */
+function githubPrStatus(options: { answer?: (keys: string[]) => Record<string, unknown>; enabled?: boolean } = {}) {
+  const enabled = () => options.enabled ?? true;
+  const answer = options.answer ?? ((): Record<string, unknown> => ({}));
+  return {
+    async callRpc({ pluginId, method, input }: { pluginId: string; method: string; input: { keys: string[] } }) {
+      if (pluginId !== "bb--github-pr-status" || method !== "pullRequests") throw new Error(`unexpected ${pluginId}.${method}`);
+      if (!enabled()) throw new Error('HTTP 503: plugin "bb--github-pr-status" is not running (status: disabled)');
+      const rows = answer(input.keys);
+      return Object.fromEntries(input.keys.map((key) => [key, rows[key] ?? { outcome: "absent" }]));
+    },
+    async list() {
+      return { plugins: [{ id: "bb--github-pr-status", enabled: enabled() }] };
+    },
+  };
+}
+
 /** The plugin over a fake bb whose threads hold one idle thread, working in /work/app, and whose host entry is the real one over `system`. */
-async function load(system: FakeSystem, options: { threads?: ReturnType<typeof listedThread>[]; hostFails?: boolean } = {}) {
+async function load(
+  system: FakeSystem,
+  options: { threads?: ReturnType<typeof listedThread>[]; hostFails?: boolean; pullRequests?: Parameters<typeof githubPrStatus>[0] } = {},
+) {
   const environmentLookup = { fails: false };
   const kill = vi.fn();
   const entry = createHostEntry(createSystemProbe(system), kill);
@@ -57,6 +83,7 @@ async function load(system: FakeSystem, options: { threads?: ReturnType<typeof l
   ];
   const closes: string[] = [];
   const sdk = sdkWith(() => threads, () => [], {
+    plugins: githubPrStatus(options.pullRequests),
     environments: {
       async get({ environmentId }: { environmentId: string }) {
         if (environmentLookup.fails) throw new Error("bb is busy");
@@ -65,9 +92,6 @@ async function load(system: FakeSystem, options: { threads?: ReturnType<typeof l
       },
       async list() {
         return [];
-      },
-      async pullRequest() {
-        return { outcome: "absent" };
       },
     },
     terminals: {
@@ -290,5 +314,57 @@ describe("auto-settle hold-back (AC7)", () => {
   it("settles a quiet thread with no environment", async () => {
     const { harness } = await load(linux(), { hostFails: true, threads: [quiet("thr_free")] });
     expect(((await harness.behavior.callRpc("runAutoSettle", {})) as { settled: string[] }).settled).toEqual(["thr_free"]);
+  });
+});
+
+describe("#330: auto-settle reads GitHub PR Status through the SDK", () => {
+  const DAY = 24 * 60 * 60 * 1_000;
+  const quiet = (id: string, environmentId: string, days: number) =>
+    listedThread(id, {
+      environmentId,
+      environmentHostId: "host-1",
+      environmentPath: "/work/nothing-listens-here",
+      createdAt: Date.now() - days * DAY,
+      updatedAt: Date.now() - days * DAY,
+      latestAttentionAt: Date.now() - days * DAY,
+    });
+  const merged = () => ({
+    ...CAPTURED_PULL_REQUESTS.env_merged,
+    pullRequest: { ...CAPTURED_PULL_REQUESTS.env_merged.pullRequest, updatedAt: new Date().toISOString() },
+  });
+
+  it("AC2: settles a thread whose pull request merged, and keeps a quiet one whose lookup failed", async () => {
+    const { harness } = await load(linux(), {
+      threads: [quiet("thr_merged", "env-merged", 1), quiet("thr_offline", "env-offline", 9)],
+      pullRequests: { answer: () => ({ "env-merged": merged(), "env-offline": CAPTURED_PULL_REQUESTS.env_offline }) },
+    });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_merged"], unsettled: [] });
+  });
+
+  it("settles a quiet thread whose workspace is gone", async () => {
+    const { harness } = await load(linux(), { threads: [quiet("thr_gone", "env-gone", 9)], pullRequests: { answer: () => ({ "env-gone": CAPTURED_PULL_REQUESTS.env_gone }) } });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_gone"], unsettled: [] });
+  });
+
+  it("AC3: settles a quiet thread when GitHub PR Status is disabled", async () => {
+    const { harness } = await load(linux(), { threads: [quiet("thr_quiet", "env-quiet", 9)], pullRequests: { enabled: false } });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_quiet"], unsettled: [] });
+  });
+
+  it("keeps a thread it settled on a merge when GitHub PR Status is then disabled", async () => {
+    const status = { answer: () => ({ "env-merged": merged() }), enabled: true };
+    const { harness } = await load(linux(), { threads: [quiet("thr_merged", "env-merged", 1)], pullRequests: status });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: ["thr_merged"], unsettled: [] });
+    status.enabled = false;
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: [], unsettled: [] });
+  });
+
+  it("AC4: logs an answer out of shape to bb's log as an error and keeps the thread", async () => {
+    const { harness } = await load(linux(), { threads: [quiet("thr_quiet", "env-quiet", 9)], pullRequests: { answer: () => ({ "env-quiet": { outcome: "found" } }) } });
+    expect(await harness.behavior.callRpc("runAutoSettle", {})).toEqual({ settled: [], unsettled: [] });
+    expect(harness.inspection.logEntries).toContainEqual({
+      level: "error",
+      message: expect.stringMatching(/^GitHub PR Status answered environment env-quiet in a shape Thread Glance does not expect: outcome: /),
+    });
   });
 });

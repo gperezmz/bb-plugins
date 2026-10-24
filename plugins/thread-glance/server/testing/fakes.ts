@@ -130,6 +130,7 @@ export function listedThread(id: string, overrides: Partial<ListedThread> = {}):
     originKind: null,
     originPluginId: null,
     parentThreadId: null,
+    parentNotifications: "auto",
     pinSortKey: null,
     pinnedAt: null,
     projectId: "project-1",
@@ -259,9 +260,9 @@ export function createFakePullRequests(byEnvironment: Record<string, PullRequest
   const fake = {
     reads: [] as string[],
     byEnvironment,
-    async read(environmentId: string): Promise<PullRequestStatus> {
-      fake.reads.push(environmentId);
-      return fake.byEnvironment[environmentId] ?? { kind: "absent" };
+    async read(environmentIds: readonly string[]): Promise<ReadonlyMap<string, PullRequestStatus>> {
+      fake.reads.push(...environmentIds);
+      return new Map(environmentIds.map((id) => [id, fake.byEnvironment[id] ?? { kind: "absent" }]));
     },
   };
   return fake;
