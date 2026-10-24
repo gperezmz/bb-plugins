@@ -219,6 +219,25 @@ describe("AC17: the Folded card", () => {
     expect(card("q").getAttribute("data-card")).toBe("full");
   });
 
+  it("keeps a question you opened folded through a list bb reloads", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "q",
+    });
+    act(() => m.host.updateProps({ activeThreadId: "other" }));
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+    const { threads } = m.host.state();
+    for (const status of ["loading", "error"] as const) {
+      act(() => m.host.update({ status, threads: [] }));
+      await flush();
+      act(() => m.host.update({ status: "ready", threads }));
+      await flush();
+      expect(card("q").getAttribute("data-card")).toBe("folded");
+    }
+  });
+
   it("unfolds a question that replaced the one you opened while no frame ran, as in a hidden window", async () => {
     const m = await mount({
       threads: [makeThread({ id: "q", ...fresh, hasPendingInteraction: true, indicator: "waiting-for-input" }), makeThread({ id: "other", ...fresh })],
