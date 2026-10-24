@@ -24,7 +24,7 @@ The settings live in a bb settings section with a navigation strip and six group
 
 | Setting | Default | Does |
 |---|---|---|
-| Thread display (Experimental) | Full cards | Which Pinned, Active and Inactive threads draw as a [folded card](thread-glance-list.md#folded-card): **Full cards** folds none, **Compact working threads** the working ones, **Compact all threads** all of them. A thread that fails or needs you stays a full card. Settings saved before Thread display, with the old **Compact working threads** switch on, read as **Compact working threads** |
+| Thread display (Experimental) | Full cards | Which Pinned, Active and Inactive threads draw as a [folded card](thread-glance-list.md#folded-card): **Full cards** folds none, **Compact working threads** the working ones, **Compact all threads** all of them. A thread that fails or needs you unfolds to a full card, under **Compact all threads** until you open it or that clears ([folded card](thread-glance-list.md#folded-card)). Settings saved before Thread display, with the old **Compact working threads** switch on, read as **Compact working threads** |
 | Keep pinned as full cards | Off | Shown under **Compact all threads** only. Draws pinned threads as full cards |
 | Keep woke as full cards | Off | Shown under **Compact all threads** only. Draws a [woke](thread-glance-list.md#woke) thread as a full card until you open it |
 | Working shelf (Experimental) | Off | Moves threads whose tree is working to the [Working shelf](thread-glance-list.md#shelves) |
