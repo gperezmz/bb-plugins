@@ -3,6 +3,7 @@
 // store runs it when an input changes and keeps whatever did not change.
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
+  liftedIds,
   nextWakeAt,
   shelfOf,
   shouldClearForPin,
@@ -18,6 +19,7 @@ import type { TreeSignals } from "@/shared/lifecycle";
 import { isShelfCollapsed, type DeviceState } from "../storage/device-state";
 import type { Scope } from "./scope";
 import { buildForest, isFailed, urgencyOfRoots, type ChildrenInfo, type Forest, type Urgency } from "./forest";
+import { isListed } from "./listed";
 import {
   canReorderActive,
   comparePinned,
@@ -47,7 +49,7 @@ export interface RowView {
   shelf: Shelf | null;
   card: CardKind;
   lifecycle: LifecycleRow | null;
-  /** Why a snoozed thread woke; null while it sleeps and for any other thread. */
+  /** Why a snoozed thread shows as woke; null while it sleeps and for any other thread. */
   woke: WakeReason | null;
   /** What the thread's tree says: working somewhere below, a question pending somewhere. */
   tree: TreeSignals;
@@ -202,6 +204,8 @@ export function buildModel(inputs: ModelInputs): ListModel {
   const { settings, device, now, lifecycle, activeThreadId } = inputs;
   const forest = buildForest(inputs.threads, inputs.scope, settings);
   const rowOf = (id: string): LifecycleRow | null => lifecycle[id] ?? null;
+  // A question or approval waiting below a thread, at any depth, lifts it off its shelf; only threads on the list count.
+  const lifted = liftedIds(inputs.threads.filter(isListed));
 
   // Which shelf each root is on.
   const shelfById = new Map<string, Shelf>();
@@ -224,6 +228,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
         inactiveShelf: settings.inactiveShelf,
         hoursBeforeInactive: settings.hoursBeforeInactive,
         tree,
+        lifted: lifted.has(root.id),
       });
     shelfById.set(root.id, shelf);
     buckets[shelf].push(root);
@@ -340,7 +345,7 @@ export function buildModel(inputs: ModelInputs): ListModel {
       shelf,
       card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, settings.compactWorkingThreads),
       lifecycle: lifecycle[thread.id] ?? null,
-      woke: shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now) : null,
+      woke: shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null,
       tree,
       grouped: shelf === "active" && groupedProjects.has(thread.projectId),
       inWorktree: shelf === "active" && worktreeThreadIds.has(thread.id),

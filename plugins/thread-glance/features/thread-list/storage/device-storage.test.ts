@@ -87,6 +87,13 @@ describe("lists are capped", () => {
     expect(readOrderCache(device)).toHaveLength(2_000);
   });
 
+  it("reads a row cached before rows held attention, as one with none", () => {
+    const { storage } = limitedStorage(10_000);
+    const before = { settledAt: 5, settledKind: "manual", parkedAt: null, snoozeUntil: null, snoozedAt: null, activeOverride: false };
+    storage.setItem("thread-glance:cache.rows", JSON.stringify({ t1: before }));
+    expect(readRowsCache(createDeviceStorage(storage))).toEqual({ t1: { ...before, heldAttentionAt: null } });
+  });
+
   it("reads nothing bad from damaged values", () => {
     const { storage } = limitedStorage(10_000);
     storage.setItem("thread-glance:cache.rows", "{not json");

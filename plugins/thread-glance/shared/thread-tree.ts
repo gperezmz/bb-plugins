@@ -34,6 +34,20 @@ export function treeIds(threads: readonly TreeThread[], rootId: string): string[
   return [rootId, ...descendantIds(threads, rootId)];
 }
 
+/**
+ * The ids of the threads with a thread below them, at any depth, for which
+ * `pick` holds; a thread that satisfies `pick` itself is in only when another
+ * below it also does. Parents `threads` does not list end a chain.
+ */
+export function idsAbove<T extends TreeThread>(threads: readonly T[], pick: (thread: T) => boolean): Set<string> {
+  const byId = new Map<string, TreeThread>(threads.map((thread) => [thread.id, thread]));
+  const above = new Set<string>();
+  for (const thread of threads) {
+    if (pick(thread)) for (const id of ancestorIds(byId, thread.id)) above.add(id);
+  }
+  return above;
+}
+
 /** The ids above `threadId`, nearest first, as far as `byId` knows the parents. A parent cycle ends where it closes. */
 export function ancestorIds(byId: ReadonlyMap<string, TreeThread>, threadId: string): string[] {
   const found: string[] = [];

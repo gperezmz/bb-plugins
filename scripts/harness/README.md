@@ -19,6 +19,8 @@ scripts/harness/run-env.test.sh
 - `Reply with exactly "X"` gets `X`.
 - `[fake: background]` gets a Bash `sleep 1800` run in the background.
 - `[fake: fail]` gets HTTP 400, so the turn ends in error.
+- `[fake: ask]` gets an AskUserQuestion, so the turn waits on a question until it is answered (`bb thread interactions answer`).
+- `[fake: approve]` gets a Bash `touch fake-approval.txt`. It waits on an approval only where the instance's Claude Code settings have an ask rule for it (`permissions.ask: ["Bash(touch:*)"]`); under `accept-edits` or auto mode it runs without asking, which a drive on bb 0.47.1 showed.
 - `[fake: hold=N]` delays its answer by N seconds.
 - `/compact`, or a request for a summary, gets a short summary.
 - Anything else, including a tool result, gets `OK`.

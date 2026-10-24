@@ -4,6 +4,7 @@
 // else; each runs against the store's edge when it is called.
 import { toast } from "sonner";
 import type { Shelf } from "@/shared/lifecycle";
+import { waitingChildTitle } from "../model/forest";
 import { SETTLED_PAGE } from "../model/list-model";
 import type { Scope } from "../model/scope";
 import {
@@ -148,6 +149,10 @@ export function createCommands(store: ListStore): Commands {
   const lifecycle = createLifecycleCommands({
     rpc: () => store.edge.rpc,
     thread: (threadId) => store.getState().model?.rows.get(threadId)?.thread ?? null,
+    childWaiting: (threadId) => {
+      const rows = store.getState().model?.rows;
+      return rows === undefined ? null : waitingChildTitle([...rows.values()].map((row) => row.thread), threadId);
+    },
   });
   return { ...own, ...lifecycle, ...createReorderCommands(store), ...createPortCommands(() => store.edge.rpc) };
 }

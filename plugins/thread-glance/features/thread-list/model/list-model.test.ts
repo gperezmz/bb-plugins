@@ -93,6 +93,71 @@ describe("shelves", () => {
   });
 });
 
+describe("a question waiting below a root", () => {
+  const family = (grandchild: Partial<Parameters<typeof makeThread>[0]> = { hasPendingInteraction: true }) => [
+    makeThread({ id: "root", ...at(10 * HOUR) }),
+    makeThread({ id: "kid", parentThreadId: "root", ...at(10 * HOUR) }),
+    makeThread({ id: "grandkid", parentThreadId: "kid", ...at(10 * HOUR), ...grandchild }),
+  ];
+  const away = (ago = 5 * HOUR) => ({ parked: parkedRow(NOW - ago), settled: settledRow(NOW - ago, "manual") });
+
+  it("lifts a parked or settled root to Active, and puts it back on its shelf, row unchanged, once the question is answered", () => {
+    for (const [shelf, row] of [["parked", away().parked], ["settled", away().settled]] as const) {
+      const lifecycle = { root: row };
+      const lifted = buildModel(inputs({ threads: family(), lifecycle }));
+      expect(lifted.shelves.active).toEqual(["root"]);
+      expect(lifted.rows.get("root")!.woke).toBeNull();
+      const answered = buildModel(inputs({ threads: family({ hasPendingInteraction: false }), lifecycle }));
+      expect(answered.shelves[shelf]).toEqual(["root"]);
+      expect(answered.shelves.active).toEqual([]);
+    }
+  });
+
+  it("lifts a snoozed root as woke, and returns it to Snoozed, or leaves it woke once its time has passed", () => {
+    const lifecycle = { root: snoozedRow(NOW + 5 * HOUR, NOW - 8 * HOUR) };
+    const lifted = buildModel(inputs({ threads: family(), lifecycle }));
+    expect(lifted.shelves.active).toEqual(["root"]);
+    expect(lifted.rows.get("root")!.woke).toBe("child");
+    const answered = buildModel(inputs({ threads: family({ hasPendingInteraction: false }), lifecycle }));
+    expect(answered.shelves.snoozed).toEqual(["root"]);
+    const late = buildModel(inputs({ threads: family({ hasPendingInteraction: false }), lifecycle, now: NOW + 6 * HOUR }));
+    expect(late.shelves.active).toEqual(["root"]);
+    expect(late.rows.get("root")!.woke).toBe("time");
+  });
+
+  it("returns a root to its shelf once the question is answered, though its thread had attention while it waited", () => {
+    const quiet = family({ hasPendingInteraction: false });
+    const threads = [makeThread({ id: "root", createdAt: NOW - 10 * HOUR, updatedAt: NOW - HOUR, latestAttentionAt: NOW - HOUR }), ...quiet.slice(1)];
+    const hold = (row: LifecycleRow) => ({ ...row, heldAttentionAt: NOW - HOUR });
+    const lifecycle = { root: hold(parkedRow(NOW - 5 * HOUR)) };
+    expect(buildModel(inputs({ threads, lifecycle })).shelves.parked).toEqual(["root"]);
+    expect(buildModel(inputs({ threads, lifecycle: { root: parkedRow(NOW - 5 * HOUR) } })).shelves.parked).toEqual([]);
+    const settled = { root: hold(settledRow(NOW - 5 * HOUR, "manual")) };
+    expect(buildModel(inputs({ threads, lifecycle: settled })).shelves.settled).toEqual(["root"]);
+    const snoozed = { root: hold(snoozedRow(NOW + 5 * HOUR, NOW - 5 * HOUR)) };
+    expect(buildModel(inputs({ threads, lifecycle: snoozed })).shelves.snoozed).toEqual(["root"]);
+  });
+
+  it("counts an approval below a pinned child, and not a question of an archived or hidden thread", () => {
+    const lifecycle = { root: away().parked };
+    const pinnedAsker = family({ hasPendingInteraction: true, isPinned: true, pinnedAt: NOW });
+    expect(buildModel(inputs({ threads: pinnedAsker, lifecycle })).shelves.active).toEqual(["root"]);
+    const archived = family({ hasPendingInteraction: true, isArchived: true, archivedAt: NOW });
+    expect(buildModel(inputs({ threads: archived, lifecycle })).shelves.parked).toEqual(["root"]);
+    const hidden = family({ hasPendingInteraction: true, isHidden: true });
+    expect(buildModel(inputs({ threads: hidden, lifecycle })).shelves.parked).toEqual(["root"]);
+  });
+
+  it("leaves a root with its own question to its own attention", () => {
+    const lifecycle = { root: parkedRow(NOW - 30 * HOUR) };
+    const threads = [makeThread({ id: "root", hasPendingInteraction: true, ...at(HOUR) })];
+    expect(buildModel(inputs({ threads, lifecycle })).shelves.active).toEqual(["root"]);
+    const answered = [makeThread({ id: "root", ...at(HOUR) })];
+    // Its attention moved past the park, so the mark is stale and the thread stays in Active.
+    expect(buildModel(inputs({ threads: answered, lifecycle })).shelves.active).toEqual(["root"]);
+  });
+});
+
 describe("collapsed shelves", () => {
   const threads = [
     makeThread({ id: "i1", ...at(8 * HOUR) }),

@@ -7,11 +7,12 @@ import type { EnvironmentLocation } from "./environments";
 /**
  * Whether the thread passes Clean's test: on the Settled shelf by the shared
  * shelf rule (so unpinned, not busy and without attention since it settled),
- * and not hidden. Callers pass the non-archived threads.
+ * and not hidden. Callers pass the non-archived threads, and whether a
+ * question waits below the thread, which lifts it off Settled.
  */
-export function isCleanable(thread: ServerThread, row: LifecycleRow | null, now: number): boolean {
+export function isCleanable(thread: ServerThread, row: LifecycleRow | null, now: number, lifted = false): boolean {
   if (thread.hidden || thread.archived || isBusy(thread)) return false;
-  return shelfOf(row, thread, { now, workingShelf: false, inactiveShelf: false, hoursBeforeInactive: 1 }) === "settled";
+  return shelfOf(row, thread, { now, workingShelf: false, inactiveShelf: false, hoursBeforeInactive: 1, lifted }) === "settled";
 }
 
 /** A workspace as threads compare it: the machine and the path without a trailing slash. */

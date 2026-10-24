@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLEAN_NOTHING_TEXT } from "../../shared/ports";
 import { settledRow } from "../../shared/lifecycle";
-import { terminal } from "../testing/fakes";
+import { makeServerThread, terminal } from "../testing/fakes";
 import { MAX_STORED_PREVIEWS, PREVIEW_TTL_MS } from "./preview-store";
 import { SETTLE_WAIT_MS } from "./clean";
 import { createPortsWorld, settled, SETTLED_AT, type PortsWorld } from "./testing/world";
@@ -79,6 +79,12 @@ describe("previewClean (AC8)", () => {
     ] as const)("%s", async (_name, overrides) => {
       const w = world();
       w.threads.threads.set("thr_a", { ...w.threads.threads.get("thr_a")!, ...overrides });
+      expect(idsIn(await w.clean.preview([]))).toEqual(["thr_b"]);
+    });
+
+    it("a thread with a question waiting below it, which lifts it off Settled", async () => {
+      const w = world();
+      w.threads.threads.set("thr_q", makeServerThread("thr_q", { parentThreadId: "thr_a", hasPendingInteraction: true }));
       expect(idsIn(await w.clean.preview([]))).toEqual(["thr_b"]);
     });
 
