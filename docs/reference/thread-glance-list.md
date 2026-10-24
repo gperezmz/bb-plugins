@@ -141,7 +141,7 @@ One line: project name · title, then the children chip, the [port indicator](#w
 |---|---|---|
 | Full cards | Nothing on Pinned, Active or Inactive | |
 | Compact working threads | Working threads | When the work ends, fails or needs you |
-| Compact all threads | Every Pinned, Active and Inactive thread, unless **Keep pinned as full cards** or **Keep woke as full cards** keeps it full | When it fails or asks you something, until you open it or that clears (a question you opened stays folded in that window only); while a question waits below it, until the question clears. A turn ending leaves it folded |
+| Compact all threads | Every Pinned, Active and Inactive thread, unless **Keep pinned as full cards** or **Keep woke as full cards** keeps it full | When a turn fails, until you open it; when it asks you something, until you open it or the question clears (a question you opened stays folded in that window only); when a queued message fails to send, until it sends or is deleted, opened or not; while a question waits below it, until the question clears. A turn ending leaves it folded |
 
 ### Slim row
 

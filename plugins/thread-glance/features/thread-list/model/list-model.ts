@@ -198,9 +198,10 @@ export interface CardFacts {
 /**
  * The card a top-level row is drawn as. On Pinned, Active and Inactive a
  * thread that failed or needs you is a Full card whatever Thread display says.
- * Under Compact all threads it folds again once you open it or the failure or
- * question clears; a question waiting below it keeps it full until that
- * question clears.
+ * Under Compact all threads it folds again once you open it or its question
+ * clears, but a queued send failure keeps it full until the message sends or
+ * is deleted, since opening does not clear it; a question waiting below it
+ * keeps it full until that question clears.
  */
 export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, facts: CardFacts, display: CardSettings): CardKind {
   const { tree, woke } = facts;
