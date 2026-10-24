@@ -380,4 +380,51 @@ describe("Notify parent in the window (AC1, AC2)", () => {
     await act(async () => stale.resolve({ id: "c1", parentNotifications: "stuck" }));
     expect(second.data!.notify.values.has("c1")).toBe(false);
   });
+
+  it("shows the last pick when an earlier pick's answer arrives after it", async () => {
+    const answers = new Map<string, ReturnType<typeof deferred<{ id: string; parentNotifications: string }>>>();
+    const update = vi.fn((args: { threadId: string; parentNotifications: string }) => {
+      const answer = deferred<{ id: string; parentNotifications: string }>();
+      answers.set(args.parentNotifications, answer);
+      return answer.promise;
+    });
+    const get = vi.fn(async () => ({ id: "c1", parentNotifications: "auto" }));
+    const view = mountData({ threads: { get, update } }, ["c1"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c1")).toBe("auto"));
+
+    let picks: Promise<void>[] = [];
+    await act(async () => {
+      picks = ["off", "stuck"].map((value) => itemFor(child, view.data!)!.run({ value, requestRename: () => {} }) as Promise<void>);
+    });
+    await act(async () => answers.get("stuck")!.resolve({ id: "c1", parentNotifications: "stuck" }));
+    await act(async () => answers.get("off")!.resolve({ id: "c1", parentNotifications: "off" }));
+    await act(async () => void (await Promise.all(picks)));
+    expect(view.data!.notify.values.get("c1")).toBe("stuck");
+  });
+
+  it("drops a pick's answer that arrives after the menu data unmounted", async () => {
+    const answer = deferred<{ id: string; parentNotifications: string }>();
+    const first = mountData({ threads: { get: async () => ({ id: "c1", parentNotifications: "auto" }), update: () => answer.promise } }, ["c1"]);
+    await waitFor(() => expect(first.data!.notify.values.get("c1")).toBe("auto"));
+    let pick: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pick = itemFor(child, first.data!)!.run({ value: "off", requestRename: () => {} }) as Promise<void>;
+    });
+    cleanup();
+
+    const second = mountData({ threads: { get: () => new Promise(() => {}) } }, ["c1"]);
+    await waitFor(() => expect(second.data).toBeDefined());
+    await act(async () => answer.resolve({ id: "c1", parentNotifications: "off" }));
+    await act(async () => void (await pick));
+    expect(second.data!.notify.values.has("c1")).toBe(false);
+  });
+
+  it("shows the threads that were read when another thread read with them could not be", async () => {
+    const get = vi.fn(async ({ threadId }: { threadId: string }) =>
+      threadId === "c1" ? Promise.reject(new Error("gone")) : { id: threadId, parentNotifications: "off" },
+    );
+    const view = mountData({ threads: { get } }, ["c1", "c2"]);
+    await waitFor(() => expect(view.data!.notify.values.get("c2")).toBe("off"));
+    expect(view.data!.notify.values.has("c1")).toBe(false);
+  });
 });
