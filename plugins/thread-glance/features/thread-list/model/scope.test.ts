@@ -101,6 +101,13 @@ describe("the projects a scope leaves out that need you", () => {
     expect(projectsNeedingYou(["proj_personal"], [parent, child])).toEqual(["proj_b"]);
   });
 
+  it("marks a waiting thread two levels below the scope, whose own parent is out of it", () => {
+    const grandparent = makeThread({ id: "g", projectId: "proj_a" });
+    const parent = makeThread({ id: "p", projectId: "proj_personal", parentThreadId: "g" });
+    const child = makeThread({ id: "c", projectId: "proj_b", parentThreadId: "p", hasPendingInteraction: true });
+    expect(projectsNeedingYou(["proj_a"], [grandparent, parent, child])).toEqual(["proj_b"]);
+  });
+
   it("lists none for a project in the scope, a project without a waiting thread, or All projects", () => {
     expect(projectsNeedingYou(["proj_a", "proj_b"], threads)).toEqual([]);
     expect(projectsNeedingYou([], threads)).toEqual([]);
