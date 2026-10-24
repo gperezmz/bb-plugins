@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow, type LifecycleRow } from "../shared/lifecycle";
-import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, TREE_CHANGED } from "../shared/messages";
+import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, TREE_CHANGED } from "../shared/messages";
 import { createLifecycleActions, type ChangeRecords } from "./actions";
 import { createLifecycleStore, type LifecycleStore } from "./lifecycle-store";
 import type { ReclaimTarget } from "./reclaim";
@@ -91,6 +91,36 @@ describe("snooze", () => {
 
   it("refuses a thread bb no longer has", async () => {
     await expect(actions.snooze("gone", NOW + HOUR)).rejects.toThrow("Thread is no longer available");
+  });
+
+  describe("with a question waiting below", () => {
+    const family = (grandchild: Partial<ReturnType<typeof makeServerThread>> = {}) => [
+      makeServerThread("parent", { title: "Parent" }),
+      makeServerThread("child", { parentThreadId: "parent", title: "Child" }),
+      makeServerThread("grandchild", { parentThreadId: "child", title: "Grandchild", hasPendingInteraction: true, ...grandchild }),
+    ];
+
+    it("refuses to snooze or park a thread, naming the asker, however deep, and changes nothing", async () => {
+      actions = build(family());
+      await expect(actions.snooze("parent", NOW + HOUR)).rejects.toThrow(childNeedsYouRefusal("snooze", "Grandchild"));
+      await expect(actions.park("parent")).rejects.toThrow(childNeedsYouRefusal("park", "Grandchild"));
+      await expect(actions.park("child")).rejects.toThrow(childNeedsYouRefusal("park", "Grandchild"));
+      expect(lifecycle.all().size).toBe(0);
+      expect(reclaimed).toEqual([]);
+    });
+
+    it("still parks the asker's own sibling branch, and the parent once the question is answered", async () => {
+      actions = build([...family(), makeServerThread("other")]);
+      await expect(actions.park("other")).resolves.toBeDefined();
+      fake.threads.set("grandchild", { ...fake.threads.get("grandchild")!, hasPendingInteraction: false });
+      await expect(actions.park("parent")).resolves.toBeDefined();
+      expect(lifecycle.get("parent")).toEqual(parkedRow(NOW));
+    });
+
+    it("does not count a hidden helper, which nobody answers from the list", async () => {
+      actions = build(family({ hidden: true }));
+      await expect(actions.park("parent")).resolves.toBeDefined();
+    });
   });
 });
 
@@ -203,6 +233,15 @@ describe("settle", () => {
     threads[1] = makeServerThread("child", { parentThreadId: "parent", title: "Child task", status: "active" });
     actions = build(threads);
     await expect(actions.settle("parent")).rejects.toThrow("Cannot settle while Child task is working or waiting for input");
+    expect(lifecycle.all().size).toBe(0);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("refuses when a question waits below, naming the asker, and changes nothing", async () => {
+    const threads = tree();
+    threads[2] = makeServerThread("grandchild", { parentThreadId: "child", title: "Grandchild", hasPendingInteraction: true });
+    actions = build(threads);
+    await expect(actions.settle("parent")).rejects.toThrow(childNeedsYouRefusal("settle", "Grandchild"));
     expect(lifecycle.all().size).toBe(0);
     expect(fake.calls).toEqual([]);
   });

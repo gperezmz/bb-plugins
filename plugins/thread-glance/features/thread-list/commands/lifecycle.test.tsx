@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activeRow, parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
-import { busyRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
+import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED } from "@/shared/messages";
 import { DAY, HOUR, makeThread, working } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { createLifecycleCommands, lifecycleHostOf } from "./lifecycle";
@@ -194,6 +194,58 @@ describe("Woke and Wake now (AC6)", () => {
     await flush();
     expect(callsOf(m, "dismissWoke")).toHaveLength(1);
     expect(screen.queryByText("Woke")).toBeNull();
+  });
+});
+
+describe("A child's question lifts its parent (#332)", () => {
+  const family = (asking: boolean) => [
+    makeThread({ id: "root", title: "Root", ...old }),
+    makeThread({ id: "kid", title: "Kid", parentThreadId: "root", ...old }),
+    makeThread({ id: "grandkid", title: "Grandkid", parentThreadId: "kid", ...old, hasPendingInteraction: asking }),
+  ];
+
+  it("brings a parked root back to Active while a grandchild asks, and parks it again, row untouched, after the answer", async () => {
+    const row = parkedRow(NOW - HOUR);
+    const m = await mount({ threads: family(true), server: { rows: { root: row } } });
+    expect(shelfOfRow("root")).toBe("active");
+    m.host.updateThread("grandkid", { hasPendingInteraction: false });
+    await flush();
+    expect(shelfOfRow("root")).toBeUndefined();
+    expect(screen.getByRole("button", { name: "Parked (1)" })).toBeTruthy();
+    expect(m.server.rows.get("root")).toEqual(row);
+  });
+
+  it("shows a snoozed root as woke with nothing to dismiss, and opening it asks the server for nothing", async () => {
+    const m = await mount({ threads: family(true), server: { rows: { root: snoozedRow(NOW + 2 * HOUR, NOW - HOUR) } } });
+    expect(shelfOfRow("root")).toBe("active");
+    expect(screen.getAllByText("Woke")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Dismiss Woke marker" })).toBeNull();
+    m.host.updateProps({ activeThreadId: "root" });
+    await flush();
+    await act(async () => {});
+    await flush();
+    expect(callsOf(m, "dismissWoke")).toHaveLength(0);
+    expect(m.server.rows.has("root")).toBe(true);
+  });
+
+  it("refuses at once to park, snooze or settle the root, saying a child needs you, and asks the server for nothing", async () => {
+    const call = vi.fn();
+    const threads = family(true);
+    const host = lifecycleHostOf(
+      { call } as never,
+      (id) => threads.find((thread) => thread.id === id) ?? null,
+      (id) => (id === "root" ? "Grandkid" : null),
+    );
+    const lifecycle = createLifecycleCommands(host);
+    await lifecycle.park("root");
+    await lifecycle.snooze("root", NOW + HOUR);
+    await lifecycle.settle("root");
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([
+      childNeedsYouRefusal("park", "Grandkid"),
+      childNeedsYouRefusal("snooze", "Grandkid"),
+      childNeedsYouRefusal("settle", "Grandkid"),
+    ]);
+    expect(call).not.toHaveBeenCalled();
   });
 });
 

@@ -43,8 +43,12 @@ One entry of the snooze shortcuts setting: an optional label and either a durati
 _Avoid_: Snooze option
 
 **Woke**:
-The state of a thread back from a snooze, at its wake time or on new attention, until you open it or dismiss its marker. It is on Active, in bold, with a Woke label, and is the same in every window and after a reload.
+The state of a thread back from a snooze, at its wake time or on new attention, until you open it or dismiss its marker; a snoozed thread is also woke while it is a lifted thread, with no marker to dismiss. It is on Active, in bold, with a Woke label, and is the same in every window and after a reload.
 _Avoid_: Awake, unsnoozed
+
+**Lifted thread**:
+A thread with a question or approval waiting on a thread below it, at any depth. It sits on Active, cannot be snoozed, parked or settled, and goes back to its shelf with its lifecycle row unchanged once no such question waits, answered or not.
+_Avoid_: Surfaced thread, raised thread
 
 **Parked thread**:
 A thread you have set aside while someone else replies. It sits on Parked, showing how long it has waited, until attention returns it to Active or you resume it.

@@ -3,6 +3,7 @@
 // apply the rules.
 import * as z from "zod/mini";
 import { hasQueuedMessage, isBusy, isWorking, type BusyInput } from "./busy";
+import { descendantIds, idsAbove, type TreeThread } from "./thread-tree";
 
 const HOUR_MS = 60 * 60_000;
 
@@ -119,22 +120,30 @@ export function hasNewAttention(since: number, latestAttentionAt: number): boole
   return latestAttentionAt > since;
 }
 
-export type WakeReason = "time" | "attention";
+/**
+ * Why a snoozed thread shows as woke. "time" and "attention" are kept in its
+ * row until the thread is opened or the marker dismissed; "child" lasts only
+ * while a question waits below it (see `liftedIds`) and leaves no mark.
+ */
+export type WakeReason = "time" | "attention" | "child";
 
 /**
  * Why a snoozed thread has woken, or null while it still sleeps (and for a
  * row that is not a snooze): its wake time has come, or attention arrived
  * after the snooze was set. The row stays until the thread is opened or the
- * marker dismissed, so every window and a reload read the same answer.
+ * marker dismissed, so every window and a reload read the same answer. A
+ * `lifted` thread that would still sleep shows as woke by "child".
  */
 export function wakeReason(
   row: LifecycleRow | null | undefined,
   thread: Pick<ShelfThread, "latestAttentionAt">,
   now: number,
+  lifted = false,
 ): WakeReason | null {
   if (row == null || row.snoozeUntil === null) return null;
   if (row.snoozedAt !== null && hasNewAttention(row.snoozedAt, thread.latestAttentionAt)) return "attention";
-  return row.snoozeUntil <= now ? "time" : null;
+  if (row.snoozeUntil <= now) return "time";
+  return lifted ? "child" : null;
 }
 
 /** Whether the thread has a Woke marker. */
@@ -142,8 +151,32 @@ export function isWoke(
   row: LifecycleRow | null | undefined,
   thread: Pick<ShelfThread, "latestAttentionAt">,
   now: number,
+  lifted = false,
 ): boolean {
-  return wakeReason(row, thread, now) !== null;
+  return wakeReason(row, thread, now, lifted) !== null;
+}
+
+/**
+ * The ids of the threads with a question or approval pending somewhere below
+ * them, at any depth: the threads a waiting child lifts. `threads` are the
+ * ones a user can answer for, so those archived, deleted or hidden are left
+ * out by the caller, and a chain ends at a parent it does not list.
+ */
+export function liftedIds(threads: readonly (TreeThread & Pick<BusyInput, "hasPendingInteraction">)[]): Set<string> {
+  return idsAbove(threads, (thread) => thread.hasPendingInteraction);
+}
+
+/**
+ * A thread below `threadId`, at any depth, with a question or approval
+ * pending, or undefined. `threads` are the ones a user can answer for, as for
+ * `liftedIds`.
+ */
+export function waitingBelow<T extends TreeThread & Pick<BusyInput, "hasPendingInteraction">>(
+  threads: readonly T[],
+  threadId: string,
+): T | undefined {
+  const below = new Set(descendantIds(threads, threadId));
+  return threads.find((thread) => below.has(thread.id) && thread.hasPendingInteraction);
 }
 
 /** The shelves the row's marks alone can put a thread on. */
@@ -153,7 +186,7 @@ export type MarkShelf = "active" | "parked" | "snoozed" | "settled";
  * The shelf rules 1 to 6, without pinning and without the Working and
  * Inactive split of Active:
  * 1. no row: Active;
- * 2. busy: Active;
+ * 2. busy, or lifted by a question waiting below it: Active;
  * 3. parked: Parked, unless attention arrived after it was parked;
  * 4. snoozed: Snoozed, unless it woke;
  * 5. settled: Settled, unless attention arrived after it was settled;
@@ -163,9 +196,10 @@ export function markShelf(
   row: LifecycleRow | null | undefined,
   thread: ShelfThread,
   now: number,
+  lifted = false,
 ): MarkShelf {
   if (row == null) return "active";
-  if (isBusy(thread)) return "active";
+  if (lifted || isBusy(thread)) return "active";
   if (row.parkedAt !== null && !hasNewAttention(row.parkedAt, thread.latestAttentionAt)) return "parked";
   if (row.snoozeUntil !== null && !isWoke(row, thread, now)) return "snoozed";
   if (row.settledAt !== null && !hasNewAttention(row.settledAt, thread.latestAttentionAt)) return "settled";
@@ -233,6 +267,8 @@ export interface ShelfOptions {
   hoursBeforeInactive: number;
   /** The thread's tree; absent, the thread alone is its tree. */
   tree?: TreeSignals;
+  /** A question or approval waits below the thread (see `liftedIds`); its row does not put it away meanwhile. */
+  lifted?: boolean;
 }
 
 /** The latest of created, updated and latest attention: a thread's last activity. */
@@ -246,17 +282,20 @@ export function lastActivityAt(thread: Pick<ShelfThread, "createdAt" | "updatedA
  * Working when the setting is on and its tree is working, unless it is woke or
  * something in the tree needs the user; or to Inactive when the setting is on,
  * it is not busy and has had no activity for the hours set, unless it needs
- * the user or is woke.
+ * the user or is woke. A lifted thread has a question waiting below it, so it
+ * stays in Active, off both.
  */
 export function shelfOf(row: LifecycleRow | null | undefined, thread: ShelfThread, options: ShelfOptions): Shelf {
   if (thread.isPinned) return "pinned";
-  const marked = markShelf(row, thread, options.now);
+  const lifted = options.lifted ?? false;
+  const marked = markShelf(row, thread, options.now, lifted);
   if (marked !== "active") return marked;
-  const woke = isWoke(row, thread, options.now);
+  const woke = isWoke(row, thread, options.now, lifted);
   const tree = options.tree ?? treeSignals([thread]);
-  if (options.workingShelf && tree.working && !woke && !tree.needsYou) return "working";
+  if (options.workingShelf && tree.working && !woke && !tree.needsYou && !lifted) return "working";
   if (
     options.inactiveShelf &&
+    !lifted &&
     !isBusy(thread) &&
     !woke &&
     !thread.hasPendingInteraction &&

@@ -9,6 +9,11 @@ export function busyRefusal(action: GatedAction, title: string): string {
   return `Cannot ${action} while ${title} is working or waiting for input`;
 }
 
+/** The refusal for a thread with a question or approval waiting below it. */
+export function childNeedsYouRefusal(action: GatedAction, title: string): string {
+  return `Cannot ${action} while a child thread needs you: ${title}`;
+}
+
 export const TREE_CHANGED = "Thread tree changed while settling. Try again.";
 export const SETTLE_UNDO_GONE = "This Settle can no longer be undone. Use Un-settle instead.";
 export const THREAD_GONE = "Thread is no longer available";

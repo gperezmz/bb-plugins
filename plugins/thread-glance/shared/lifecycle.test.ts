@@ -8,6 +8,7 @@ import {
   hasMark,
   isEmptyRow,
   isWoke,
+  liftedIds,
   markShelf,
   nextWakeAt,
   parkedRow,
@@ -19,6 +20,7 @@ import {
   staleMark,
   treeSignals,
   wakeReason,
+  waitingBelow,
   type ShelfOptions,
   type ShelfThread,
 } from "./lifecycle";
@@ -117,6 +119,61 @@ describe("markShelf (rules 1 to 6)", () => {
 
   it("puts everything else in Active (6)", () => {
     expect(markShelf(activeRow(), thread(), NOW)).toBe("active");
+  });
+});
+
+describe("a question waiting below (lifted)", () => {
+  it("puts a lifted thread in Active whatever its row says", () => {
+    for (const row of [parkedRow(NOW - HOUR), snoozedRow(NOW + HOUR, NOW - HOUR), settledRow(NOW - HOUR, "manual")]) {
+      expect(markShelf(row, thread(), NOW, true)).toBe("active");
+      expect(markShelf(row, thread(), NOW)).not.toBe("active");
+    }
+  });
+
+  it("shows a snoozed thread that still sleeps as woke by its child, and gives its row's own reason first", () => {
+    const row = snoozedRow(NOW + 5 * HOUR, NOW - HOUR);
+    expect(wakeReason(row, thread(), NOW, true)).toBe("child");
+    expect(isWoke(row, thread(), NOW, true)).toBe(true);
+    expect(wakeReason(row, thread(), NOW + 5 * HOUR, true)).toBe("time");
+    expect(wakeReason(row, thread({ latestAttentionAt: NOW }), NOW, true)).toBe("attention");
+    expect(wakeReason(row, thread(), NOW, false)).toBeNull();
+  });
+
+  it("shows no marker on a thread that is not snoozed, however it is lifted", () => {
+    expect(wakeReason(parkedRow(1), thread(), NOW, true)).toBeNull();
+    expect(wakeReason(settledRow(1, "manual"), thread(), NOW, true)).toBeNull();
+    expect(wakeReason(null, thread(), NOW, true)).toBeNull();
+  });
+
+  it("returns a thread to its shelf with its row as it was once nothing waits below", () => {
+    const parked = parkedRow(NOW - 10 * HOUR);
+    const snoozed = snoozedRow(NOW + HOUR, NOW - HOUR);
+    expect(shelfOf(parked, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(parked, thread(), options({ lifted: false }))).toBe("parked");
+    expect(shelfOf(snoozed, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(snoozed, thread(), options())).toBe("snoozed");
+  });
+
+  it("keeps a lifted snoozed thread out of Working and Inactive", () => {
+    const row = snoozedRow(NOW + HOUR, NOW - 90 * HOUR);
+    expect(shelfOf(row, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(row, thread(), options({ lifted: true, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("active");
+    expect(shelfOf(null, thread(), options({ lifted: true }))).toBe("active");
+    expect(shelfOf(null, thread(), options())).toBe("inactive");
+  });
+
+  it("names the threads with a question or approval waiting below them, not the asker itself", () => {
+    const tree = [
+      { id: "root", parentThreadId: null, ...thread() },
+      { id: "kid", parentThreadId: "root", ...thread() },
+      { id: "grandkid", parentThreadId: "kid", ...thread({ hasPendingInteraction: true }) },
+      { id: "other", parentThreadId: null, ...thread() },
+    ];
+    expect([...liftedIds(tree)].sort()).toEqual(["kid", "root"]);
+    expect(waitingBelow(tree, "root")?.id).toBe("grandkid");
+    expect(waitingBelow(tree, "kid")?.id).toBe("grandkid");
+    expect(waitingBelow(tree, "grandkid")).toBeUndefined();
+    expect(waitingBelow(tree, "other")).toBeUndefined();
   });
 });
 
