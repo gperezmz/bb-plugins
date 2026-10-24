@@ -245,6 +245,18 @@ the pointer, so those verbs run on the desktop viewport.
   options. `options[].needsYou` is the Needs you mark. `--filter dri` types into the filter
   first (`options` only `drives`); `--filter zzz` leaves none and `empty`
   reads `No projects match.`
+- **A thread that needs you**: the fake API's `[fake: background]` run of
+  `sleep` is approved automatically, so no thread waits. Before the spawn,
+  write `{"permissions":{"ask":["Bash(sleep:*)","Bash"]}}` to
+  `.claude/settings.json` in the project's source directory, and spawn in
+  that checkout, as `DBP_IN_SPAWN=1 drive-bb-plugins bb --run <run> <label> --
+  thread spawn --project <id> --provider claude-code --model
+  "claude-opus-5-5[1m]" --machine <host> --environment-provider
+  project-checkout --permission-mode accept-edits --json --prompt "run it
+  [fake: background]"`. About 15 s later `bb thread interactions list
+  <thread> --json` holds one `pending` entry and the row reads `Needs you`;
+  `bb thread interactions deny <interaction> <thread>` answers it. A
+  worktree thread does not see an uncommitted settings file.
 - **Scenes** (`list`): `scope Personal` on a run whose threads are all in
   `drives` prints `after.scene.name` `all-clear`. The Working scene needs the
   Working shelf on and nothing but working roots in scope: archive every other
