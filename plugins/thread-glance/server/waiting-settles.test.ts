@@ -159,34 +159,30 @@ describe("a waiting settle", () => {
     expect(lifecycle.get("child")).toEqual(parkedRow(SINCE - 5));
   });
 
-  it("unpins the tree's pins from before it was chosen when it lands, and waits on when bb refuses", async () => {
+  it("unpins the tree's pins from before it was chosen when it lands", async () => {
     fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
     idle("child");
+    await waiting.check();
+    expect(fake.calls).toEqual([]);
+    clock += IDLE_GRACE_MS;
+    await waiting.check();
+    expect(fake.calls).toEqual(["unpin parent"]);
+    expect(lifecycle.get("parent")?.settledKind).toBe("manual");
+  });
+
+  it("settles the tree when bb refuses an unpin partway through it, the refused thread keeping its pin", async () => {
+    fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
+    fake.threads.set("child", pinned({ ...fake.threads.get("child")!, status: "idle" }, SINCE - 10));
     fake.failUnpin.add("parent");
     await waiting.check();
     clock += IDLE_GRACE_MS;
     await waiting.check();
-    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
-    expect(warnings).toEqual([expect.stringMatching(/could not unpin/)]);
-    fake.failUnpin.clear();
-    await waiting.check();
-    expect(fake.calls).toEqual(["unpin parent", "unpin parent"]);
-    expect(lifecycle.get("parent")?.settledKind).toBe("manual");
-  });
-
-  it("settles at the next check when bb refuses an unpin partway through the tree, without pinning again", async () => {
-    fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
-    fake.threads.set("child", pinned({ ...fake.threads.get("child")!, status: "idle" }, SINCE - 10));
-    fake.failUnpin.add("child");
-    await waiting.check();
-    clock += IDLE_GRACE_MS;
-    await waiting.check();
     expect(fake.calls).toEqual(["unpin parent", "unpin child"]);
-    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
-    fake.failUnpin.clear();
-    await waiting.check();
-    expect(fake.calls).toEqual(["unpin parent", "unpin child", "unpin child"]);
+    expect(fake.threads.get("parent")?.isPinned).toBe(true);
+    expect(fake.threads.get("child")?.isPinned).toBe(false);
+    expect(lifecycle.get("parent")?.settledKind).toBe("manual");
     expect(lifecycle.get("child")?.settledKind).toBe("manual");
+    expect(warnings).toEqual([expect.stringMatching(/could not unpin parent/)]);
   });
 
   it("does not end on the first message of a thread being spawned, which bb records as the user's, though it already runs", async () => {

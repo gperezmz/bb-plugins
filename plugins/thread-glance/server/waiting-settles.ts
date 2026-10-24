@@ -152,16 +152,14 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
   }
 
   /**
-   * Unpins the tree's pinned threads for its settle; false, with a warning, when bb refused one. The pins it took stay
-   * off: the next check settles the tree, and a pin put back would read as one made since the settle was chosen.
+   * Unpins the tree's pinned threads for its settle, each it can. One bb refuses stays pinned, with a warning: it is
+   * settled with the rest, and its pin wins over its row as any pin does, so the wait never holds a tree whose pins
+   * were half taken.
    */
-  async function unpinAll(tree: readonly ServerThread[]): Promise<boolean> {
-    try {
-      for (const thread of tree) if (thread.isPinned) await threads.unpin(thread.id);
-      return true;
-    } catch (error) {
-      warn(`could not unpin a waiting settle's tree, so it settles later: ${errorMessage(error)}`);
-      return false;
+  async function unpinAll(tree: readonly ServerThread[]): Promise<void> {
+    for (const thread of tree) {
+      if (!thread.isPinned) continue;
+      await threads.unpin(thread.id).catch((error) => warn(`could not unpin ${thread.id} for its settle: ${errorMessage(error)}`));
     }
   }
 
@@ -210,7 +208,8 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
         const settledAt = now();
         for (const [rootId, since] of lands) {
           const tree = treeOf(fresh, freshById, rootId);
-          if (tree === null || waitingSettleVerdict(tree, since).kind !== "land" || !(await unpinAll(tree))) continue;
+          if (tree === null || waitingSettleVerdict(tree, since).kind !== "land") continue;
+          await unpinAll(tree);
           idleSince.delete(rootId);
           for (const thread of tree) {
             entries.push([thread.id, settledRow(settledAt, "manual")]);

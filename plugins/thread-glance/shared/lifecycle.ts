@@ -136,9 +136,9 @@ export function hasMark(row: LifecycleRow | null | undefined): boolean {
 }
 
 /**
- * Whether the row holds what the user chose by hand: a manual settle or the
- * active override, the marks, or a waiting settle, which is no mark. Auto-settle
- * leaves such a thread alone.
+ * Whether the row holds what the user chose by hand: a manual settle, the
+ * active override or a waiting settle (the last two `hasMark` does not
+ * count). Auto-settle leaves such a thread alone.
  */
 export function hasManualMark(row: LifecycleRow | null | undefined): boolean {
   return row != null && (row.settledKind === "manual" || row.activeOverride || isWaitingSettle(row));
