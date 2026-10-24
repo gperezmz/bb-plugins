@@ -17,7 +17,7 @@ stateDiagram-v2
 
 What each action does, where it is offered, and what the keyboard and the pointer reach. Why the lifecycle has these three verbs is in [why the list keeps threads on shelves](../explanation/thread-glance-shelves.md); the shelves and rows are in [the list](thread-glance-list.md). Sources: [`shared/contract.ts`](../../plugins/thread-glance/shared/contract.ts) for the actions the server answers, [`shared/snooze.ts`](../../plugins/thread-glance/shared/snooze.ts) for presets, [`features/thread-list/commands/`](../../plugins/thread-glance/features/thread-list/commands/) for what a click does and [`model/reorder.ts`](../../plugins/thread-glance/features/thread-list/model/reorder.ts) for reordering.
 
-Snooze, Park and Settle are offered only for a thread that is not [busy](thread-glance-list.md#busy-threads), and the server checks again when the action arrives: it refuses a busy thread, so a thread that started a turn after its menu opened changes nothing and shows the error. A thread that is [lifted](thread-glance-list.md#lifted-threads) keeps the actions in its menu, and Park, Snooze and Settle on it are refused, in the window at once and by the server, with "Cannot <action> while a child thread needs you: <title>".
+Snooze and Park are offered only for a thread that is not [busy](thread-glance-list.md#busy-threads), and the server checks again when the action arrives: it refuses a busy thread, so a thread that started a turn after its menu opened changes nothing and shows the error. Settle is offered on a busy thread too, and [waits](#waiting-settle) for its tree, except on a thread with a question or approval of its own, which it refuses with "Cannot settle while <title> is working or waiting for input". A thread that is [lifted](thread-glance-list.md#lifted-threads) keeps the actions in its menu, and Park, Snooze and Settle on it are refused, in the window at once and by the server, with "Cannot <action> while a child thread needs you: <title>".
 
 ## Snooze
 
@@ -64,14 +64,28 @@ The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button
 
 ## Settle
 
-**Settle**, on the card's hover actions and in the thread menu, including the slim rows of Parked and Snoozed.
+**Settle**, on the card's hover actions and in the thread menu, including the slim rows of Parked and Snoozed. On a busy card the hover actions are Settle alone.
 
-1. Unless reduced motion is on, a 520 ms sweep plays across the thread's card whenever the card is drawn; otherwise the thread settles at once.
-2. The settle covers the whole thread tree under the thread. If a question or approval is pending on any thread below it, it fails with "Cannot settle while a child thread needs you: <title>"; if any other thread in it is busy, it fails with "Cannot settle while <title> is working or waiting for input".
+1. Unless reduced motion is on, a 520 ms sweep plays across the thread's card whenever the card is drawn and no thread in its tree is busy; otherwise the thread settles at once.
+2. The settle covers the whole thread tree under the thread. If a question or approval is pending on any thread below it, it fails with "Cannot settle while a child thread needs you: <title>", and on the thread itself with "Cannot settle while <title> is working or waiting for input". If any other thread in the tree is busy, the settle [waits](#waiting-settle) instead.
 3. It unpins the tree's pinned threads and marks every thread in the tree settled. If the tree changed meanwhile, it fails with "Thread tree changed while settling. Try again." and restores any pins it removed.
 4. Each thread is [reclaimed](#reclaim).
 
 The toast reads "Thread settled", plus what was reclaimed, with **Undo**, for 4 s, or 10 s with a reclaim note. A settle of a thread that owns ports then asks to [close them](#close-a-settled-threads-ports). The server keeps the settle's snapshot in memory until Undo can no longer be pressed. **Undo** restores each thread's previous shelf where nothing changed since and toasts "Settling undone". If the snapshot is gone, as after a plugin restart, the toast reads "This Settle can no longer be undone. Use Un-settle instead."
+
+### Waiting settle
+
+A Settle of a tree with a [busy](thread-glance-list.md#busy-threads) thread in it, a lone busy thread included, unpins the tree's pinned threads and leaves a waiting settle on the thread, which the server keeps, so every window shows it and it outlasts a reload. The toast reads "Waiting to settle" and "Settles once no thread in its tree is busy", with **Undo**, which ends the wait and pins the threads again. The card shows **Settling** in its status slot, with a button to cancel, and the thread menu offers **Cancel settle**.
+
+The server settles the tree, as step 3 above does, once no thread in it has been busy for 5 s; it looks on every thread event and every 5 s while a settle waits. A child's turn that ends, and an agent's message or spawn, leave it waiting. These end it, leaving the tree where it is:
+
+- a message you send to a thread in the tree, or a child you start in it;
+- a pin of a thread in the tree;
+- a question or approval on a visible thread in the tree;
+- a turn in the tree that fails or is interrupted;
+- the card's cancel, or **Cancel settle**.
+
+A settle that lands has no toast and no Undo; Un-settle returns the thread.
 
 **Un-settle**, the Settled slim row's button and the thread menu's item, returns the thread to Active, returns its settled descendants to the automatic rules and reopens its ancestors. The toast reads "Thread returned to Active", with **Undo** (settle).
 
@@ -139,8 +153,9 @@ Thread Glance adds its actions to bb's thread menu, which appears on a row's **â
 | | **Wake now** | The thread is snoozed |
 | | **Park thread** | The thread is not busy |
 | | **Resume** | The thread is parked |
-| | **Settle** | The thread is not busy |
+| | **Settle** | The thread has no question or approval of its own, is not settled and has no waiting settle |
 | | **Un-settle** | The thread is settled |
+| | **Cancel settle** | The thread has a [waiting settle](#waiting-settle) |
 | After the lifecycle actions | **Notify parent â–¸** | The thread has a parent and is not a fork |
 | Beside bb's Copy thread link | **Copy branch** | The thread has a branch |
 | | **Copy thread ID** | Always |

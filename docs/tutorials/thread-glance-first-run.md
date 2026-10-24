@@ -36,7 +36,7 @@ Open the clock menu on another thread that is not working and choose **Park thre
 
 Hover a card and click **Settle**. The card sweeps across and the thread moves to **Settled**, with the toast "Thread settled" and **Undo**. Click **Undo**: the thread goes back to the shelf it was on.
 
-Settle it again, and let the toast go. Open **Settled** and click **Un-settle** on its row to return it to Active. A settle covers the thread's whole tree, so a parent with a working child refuses: "Cannot settle while <child title> is working or waiting for input". The [children chip](../reference/thread-glance-list.md#children-chip) on a parent's card is where the child list opens.
+Settle it again, and let the toast go. Open **Settled** and click **Un-settle** on its row to return it to Active. A settle covers the thread's whole tree, so a parent with a working child shows **Settling** on its card and settles once the child is done; the card's cancel button calls it off. The [children chip](../reference/thread-glance-list.md#children-chip) on a parent's card is where the child list opens.
 
 ## 6. Put Active in your own order and change a setting
 
