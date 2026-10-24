@@ -171,7 +171,8 @@ export const notifyParentAction: Builder = (thread, data) => {
       items: NOTIFY_CHOICES.map((choice) => ({ id: choice.id, label: choice.label, selected: choice.id === current })),
     },
     run: ({ value }) => {
-      if (!isParentNotifications(value) || value === current) return;
+      // The pick is written even when it is the value shown: the menu's value may be older than bb's.
+      if (!isParentNotifications(value)) return;
       return data.notify.set(thread.id, value);
     },
   };

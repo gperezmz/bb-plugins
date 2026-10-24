@@ -273,10 +273,15 @@ describe("Notify parent (AC1, AC2)", () => {
     expect(notify.set).toHaveBeenCalledExactlyOnceWith("t1", "stuck");
   });
 
-  it("changes nothing for the value already set, or for a pick that is none of bb's values", async () => {
+  it("writes the pick even when it is the value shown, since the menu's value may be older than bb's", async () => {
+    const { data, notify } = menuData([child], { notifications: { t1: "stuck" } });
+    await run(notifyParentAction(targetOf(child), data)!, "stuck");
+    expect(notify.set).toHaveBeenCalledExactlyOnceWith("t1", "stuck");
+  });
+
+  it("changes nothing for a pick that is none of bb's values", async () => {
     const { data, notify } = menuData([child], { notifications: { t1: "stuck" } });
     const action = notifyParentAction(targetOf(child), data)!;
-    await run(action, "stuck");
     await run(action, "loud");
     await run(action);
     expect(notify.set).not.toHaveBeenCalled();

@@ -13,7 +13,7 @@ import { readSnoozePresets } from "@/shared/snooze";
 import { messageOf } from "@/lib/error-message";
 import { menuFactsOf, shareFacts, type MenuFacts } from "./model/facts";
 import type { MenuData, MenuPorts, MenuProject } from "./model/menu";
-import { canNotifyParent, type ParentNotifications } from "./model/notify";
+import type { ParentNotifications } from "./model/notify";
 import { setParentNotifications, useParentNotifications } from "./notify-state";
 import { useMachines, useMinuteClock } from "./window-state";
 import { useLifecycleCommands } from "./use-lifecycle-commands";
@@ -82,10 +82,7 @@ export function useMenuData({ threadIds }: PluginThreadActionDataInput): MenuDat
     }
     return map;
   }, [sidebar.projects]);
-  const notifiable = useMemo(() => threadIds.filter((id) => {
-    const thread = byId.get(id);
-    return thread !== undefined && canNotifyParent(thread);
-  }), [threadIds, byId]);
+  const notifiable = useMemo(() => threadIds.filter((id) => facts.get(id)?.notifiable === true), [threadIds, facts]);
   const values = useParentNotifications(sdk, notifiable);
   const notify = useMemo(
     () => ({

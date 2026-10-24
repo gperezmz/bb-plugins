@@ -347,4 +347,37 @@ describe("Notify parent in the window (AC1, AC2)", () => {
     await waitFor(() => expect(get).toHaveBeenCalledTimes(3));
     expect(get).toHaveBeenLastCalledWith({ threadId: "c1" });
   });
+
+  /** A promise the test settles by hand. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  }
+
+  it("keeps a pick shown when the read it overtook answers afterwards with the old value", async () => {
+    const read = deferred<{ id: string; parentNotifications: string }>();
+    const update = vi.fn(async (args: { threadId: string; parentNotifications: string }) => ({ id: args.threadId, parentNotifications: args.parentNotifications }));
+    const view = mountData({ threads: { get: () => read.promise, update } }, ["c1"]);
+    await waitFor(() => expect(view.data).toBeDefined());
+
+    await act(async () => {
+      await itemFor(child, view.data!)!.run({ value: "off", requestRename: () => {} });
+    });
+    expect(view.data!.notify.values.get("c1")).toBe("off");
+    await act(async () => read.resolve({ id: "c1", parentNotifications: "auto" }));
+    expect(view.data!.notify.values.get("c1")).toBe("off");
+  });
+
+  it("drops a read that answers after the menu data unmounted, and starts again from nothing", async () => {
+    const stale = deferred<{ id: string; parentNotifications: string }>();
+    const first = mountData({ threads: { get: () => stale.promise } }, ["c1"]);
+    await waitFor(() => expect(first.data).toBeDefined());
+    cleanup();
+
+    const second = mountData({ threads: { get: () => new Promise(() => {}) } }, ["c1"]);
+    await waitFor(() => expect(second.data).toBeDefined());
+    await act(async () => stale.resolve({ id: "c1", parentNotifications: "stuck" }));
+    expect(second.data!.notify.values.has("c1")).toBe(false);
+  });
 });

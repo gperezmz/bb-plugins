@@ -17,10 +17,14 @@ let users = 0;
 let epoch = 0;
 const listeners = new Set<() => void>();
 
+function notifyListeners(): void {
+  for (const notify of [...listeners]) notify();
+}
+
 function store(threadId: string, value: ParentNotifications): void {
   if (values.get(threadId) === value) return;
   values = new Map(values).set(threadId, value);
-  for (const notify of [...listeners]) notify();
+  notifyListeners();
 }
 
 function nextVersion(threadId: string): number {
@@ -29,20 +33,33 @@ function nextVersion(threadId: string): number {
   return version;
 }
 
-/** Reads bb's setting for a thread; one that cannot be read stays unknown. */
-function read(sdk: PluginBrowserBbSdk, threadId: string): void {
+/**
+ * Reads bb's setting for threads, and shows them all at once so the menus are
+ * drawn again once, not once per thread. One that cannot be read stays unknown.
+ */
+function read(sdk: PluginBrowserBbSdk, threadIds: readonly string[]): void {
   const stretch = epoch;
-  const version = nextVersion(threadId);
-  Promise.resolve()
-    .then(() => sdk.threads.get({ threadId }))
-    .then(
-      (found) => {
-        if (stretch !== epoch || versions.get(threadId) !== version) return;
-        if ("thread" in found || !isParentNotifications(found.parentNotifications)) return;
-        store(threadId, found.parentNotifications);
-      },
-      () => {},
-    );
+  const reads = threadIds.map((threadId) => ({ threadId, version: nextVersion(threadId) }));
+  Promise.all(
+    reads.map(({ threadId }) =>
+      Promise.resolve()
+        .then(() => sdk.threads.get({ threadId }))
+        .then(
+          (found) => ("thread" in found || !isParentNotifications(found.parentNotifications) ? null : found.parentNotifications),
+          () => null,
+        ),
+    ),
+  ).then((answers) => {
+    if (stretch !== epoch) return;
+    const next = new Map(values);
+    reads.forEach(({ threadId, version }, index) => {
+      const answer = answers[index];
+      if (answer !== null && answer !== undefined && versions.get(threadId) === version) next.set(threadId, answer);
+    });
+    if (reads.every(({ threadId }) => next.get(threadId) === values.get(threadId))) return;
+    values = next;
+    notifyListeners();
+  });
 }
 
 /** Sets bb's setting for a thread and, once bb has taken it, shows it. Rejects when bb refuses. */
@@ -73,7 +90,8 @@ export function useParentNotifications(sdk: PluginBrowserBbSdk, threadIds: reado
   const key = threadIds.join("\n");
   useEffect(() => {
     const next = new Set(threadIds);
-    for (const threadId of next) if (!requested.has(threadId)) read(sdk, threadId);
+    const entering = [...next].filter((threadId) => !requested.has(threadId));
+    if (entering.length > 0) read(sdk, entering);
     requested = next;
     // `key` stands for `threadIds`, whose identity moves with every sidebar update.
     // eslint-disable-next-line react-hooks/exhaustive-deps

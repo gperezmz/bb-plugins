@@ -170,7 +170,7 @@ Chooses which of the thread's turn outcomes wake its parent. It sets bb's own pe
 | **Only when stuck** | `stuck` | Only failures, interruptions and blockers |
 | **Off** | `off` | Nothing |
 
-The thread's current value is shown as chosen, and named under the item's label. It is read from bb when the thread's menu is first shown, and again each time the thread comes back into view after leaving it, so a change made elsewhere appears then. Until it has been read, or if it could not be read, no item is chosen. Choosing a different item changes bb's setting and then shows it chosen; if bb refuses, a toast shows its message and the old value stays.
+The thread's current value is shown as chosen, and named under the item's label. It is read from bb when the thread first comes into view among those whose menus bb may show (the sidebar's rows on screen, the open thread's header), and again each time it comes back into view after leaving it, so a change made elsewhere appears then. Until it has been read, or if it could not be read, no item is chosen. Choosing an item sets bb's setting, even the one shown as chosen, since the value shown may be older than bb's, and then shows it chosen; if bb refuses, a toast shows its message and the old value stays.
 
 It is not offered on a thread with no parent, nor on a fork, whose outcomes bb never reports to its parent.
 

@@ -1,4 +1,4 @@
-// What the thread menu needs to know about a thread to decide which lifecycle
+// What the thread menu needs to know about a thread to decide which of its
 // actions to offer: a few flags worked out by the shared rules, so the menu's
 // data keeps its identity while a thread changes in ways the menu ignores.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
