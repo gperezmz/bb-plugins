@@ -331,6 +331,25 @@ describe("the jump hints on a hovered slim row with a Children chip", () => {
   });
 });
 
+describe("the jump hints over a focused slim row button", () => {
+  it("keeps the focused button in the layout, so holding the jump modifier does not drop focus", async () => {
+    const threads = [makeThread({ id: "pk", title: "A parked thread", ...old })];
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, 249, { pk: { label: "Ctrl + 1", ariaKeyshortcuts: "Control+1" } });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    const row = document.querySelector<HTMLElement>('[data-card][data-thread-id="pk"]')!;
+    const restore = row.querySelector<HTMLElement>("[data-slim-actions] button")!;
+    // A keyboard user reaches the buttons through the row's link, whose focus shows them.
+    row.querySelector<HTMLElement>("a")!.focus();
+    await frames();
+    restore.focus();
+    await userEvent.hover(row);
+    await frames();
+    expect(restore.getBoundingClientRect().width).toBeGreaterThan(0);
+    expect(document.activeElement).toBe(restore);
+  });
+});
+
 describe("a card takes the pointer", () => {
   const threads = [
     makeThread({ id: "full", title: "Full card", ...at(5), isPinned: true, pinnedAt: NOW }),

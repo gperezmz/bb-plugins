@@ -254,7 +254,7 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
   if (hint !== null) right = <JumpHint label={hint} />;
   else if (settled) right = <StatusView status={status} className="w-auto" />;
   else if (label !== null) right = <span className="min-w-0 truncate text-[10px] text-muted-foreground tabular-nums">{label}</span>;
-  // The jump hint keeps its width, so its key is never cut: while it shows, the title has no floor and the hover buttons give way.
+  // The jump hint keeps its width, so its key is never cut: while it shows, the title has no floor and the hover buttons give way, unless one holds focus.
   const squeezable = hint === null && right !== null;
   return (
     <div className="@container pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
@@ -273,7 +273,7 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
         data-slim-actions=""
         className={cn(
           "flex shrink-0 items-center gap-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex [@media(hover:hover)]:group-focus-within/card:flex",
-          hint !== null && "[@media(hover:hover)]:group-hover/card:hidden [@media(hover:hover)]:group-focus-within/card:hidden",
+          hint !== null && "[@media(hover:hover)]:group-hover/card:not-focus-within:hidden",
         )}
       >
         {restore === null ? null : (
