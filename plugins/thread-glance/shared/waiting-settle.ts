@@ -2,6 +2,7 @@
 // thread in it was busy. Pure: the server reads bb's threads and the turns
 // they ran since the settle was chosen, and asks this what becomes of it.
 import { isBusy, type BusyInput } from "./busy";
+import { pinnedAfter } from "./lifecycle";
 
 /** What the rule reads from a thread of the tree. */
 export interface WaitingTreeThread extends BusyInput {
@@ -59,7 +60,7 @@ export function waitingSettleVerdict(
   since: number,
   turns: readonly TurnRecord[] = [],
 ): WaitingSettleVerdict {
-  if (tree.some((thread) => thread.pinnedAt !== null && thread.pinnedAt > since)) return { kind: "end", reason: "pinned" };
+  if (tree.some((thread) => pinnedAfter(thread, since))) return { kind: "end", reason: "pinned" };
   if (tree.some((thread) => !thread.hidden && thread.hasPendingInteraction)) return { kind: "end", reason: "needs-you" };
   if (tree.some((thread) => thread.queuedWork === "failed")) return { kind: "end", reason: "failed" };
   const ended = endingTurn(turns, since);

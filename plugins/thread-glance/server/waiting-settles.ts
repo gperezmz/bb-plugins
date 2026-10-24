@@ -55,7 +55,7 @@ export interface WaitingSettles {
 
 export interface WaitingSettlesDeps {
   lifecycle: LifecycleStore;
-  threads: Pick<ThreadGateway, "snapshot" | "turnsSince" | "unpin">;
+  threads: Pick<ThreadGateway, "snapshot" | "turnsSince" | "unpin" | "pin">;
   reclaim: Reclaimer;
   change: ChangeRecords;
   now?: () => number;
@@ -80,7 +80,7 @@ function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
 /** The waiting rows: thread id and the time its settle was chosen. */
 function waitingRows(lifecycle: LifecycleStore): [string, number][] {
   return [...lifecycle.all()].flatMap(([threadId, row]): [string, number][] =>
-    isWaitingSettle(row) ? [[threadId, row.waitingSettleAt!]] : [],
+    isWaitingSettle(row) ? [[threadId, row.waitingSettleAt]] : [],
   );
 }
 
@@ -129,7 +129,11 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     if (tree === null) return "gone";
     const inTree = new Set(tree.map((thread) => thread.id));
     const touched = events.filter((event) => inTree.has(event.threadId));
-    const reported = touched.flatMap((event) => event.turns ?? []);
+    // A never-run thread's queued message is the first of a spawn, which bb records as the user's whoever spawned it.
+    const spawning = (threadId: string) => byId.get(threadId)?.status === "pending";
+    const reported = touched.flatMap((event) =>
+      (event.turns ?? []).filter((turn) => !(turn.kind === "requested" && turn.byUser && spawning(event.threadId))),
+    );
     let verdict = waitingSettleVerdict(tree, since, reported);
     const toRead = [...new Set(touched.filter((event) => event.turns === undefined).map((event) => event.threadId))];
     if (verdict.kind === "wait" && toRead.length > 0) {
@@ -143,13 +147,21 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     return waitingSettleVerdict(tree, since, [...reported, ...turns]);
   }
 
-  /** Unpins the tree's pinned threads for its settle; false, with a warning, when bb refused one. */
+  /** Unpins the tree's pinned threads for its settle; false, with a warning and the pins it took put back, when bb refused one. */
   async function unpinAll(tree: readonly ServerThread[]): Promise<boolean> {
+    const unpinned: string[] = [];
     try {
-      for (const thread of tree) if (thread.isPinned) await threads.unpin(thread.id);
+      for (const thread of tree) {
+        if (!thread.isPinned) continue;
+        await threads.unpin(thread.id);
+        unpinned.push(thread.id);
+      }
       return true;
     } catch (error) {
       warn(`could not unpin a waiting settle's tree, so it settles later: ${errorMessage(error)}`);
+      for (const threadId of unpinned) {
+        await threads.pin(threadId).catch((pinError) => warn(`could not pin ${threadId} again: ${errorMessage(pinError)}`));
+      }
       return false;
     }
   }
@@ -186,7 +198,10 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
       const still = ([threadId, since]: [string, number]) => lifecycle.get(threadId)?.waitingSettleAt === since;
       const entries: (readonly [string, LifecycleRow | null])[] = ending
         .filter(still)
-        .map(([threadId]) => [threadId, withoutWaitingSettle(lifecycle.get(threadId)!)] as const);
+        .flatMap(([threadId]) => {
+          const row = lifecycle.get(threadId);
+          return row === null ? [] : [[threadId, withoutWaitingSettle(row)] as const];
+        });
       const lands = landing.filter(still);
       const landed: string[] = [];
       if (lands.length > 0) {

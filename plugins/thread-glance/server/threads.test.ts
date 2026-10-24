@@ -9,12 +9,14 @@ const completed = (createdAt: number, status: string, seq = createdAt) =>
   ({ id: `c${seq}`, seq, threadId: "t", scope: { kind: "thread" }, type: "turn/completed", createdAt, data: { status } }) as unknown as Row;
 
 describe("toTurnRecord", () => {
-  it("reads a request as the user's only with no sender thread and no retry", () => {
-    expect(toTurnRecord(requested(5, { initiator: "user", senderThreadId: null }))).toEqual({ kind: "requested", at: 5, byUser: true });
+  it("reads a request as the user's only for a message told with no sender thread and no retry, never a spawn", () => {
+    expect(toTurnRecord(requested(5, { source: "tell", initiator: "user", senderThreadId: null }))).toEqual({ kind: "requested", at: 5, byUser: true });
     expect(toTurnRecord(requested(5, { initiator: "user", senderThreadId: "thr_agent" }))).toMatchObject({ byUser: false });
-    expect(toTurnRecord(requested(5, { initiator: "agent", senderThreadId: "thr_agent" }))).toMatchObject({ byUser: false });
+    expect(toTurnRecord(requested(5, { source: "tell", initiator: "agent", senderThreadId: "thr_agent" }))).toMatchObject({ byUser: false });
+    // bb records an agent's spawn just as it would the user's: initiator "user", no sender.
+    expect(toTurnRecord(requested(5, { source: "spawn", initiator: "user", senderThreadId: null, target: { kind: "thread-start" } }))).toMatchObject({ byUser: false });
     expect(toTurnRecord(requested(5, { initiator: "system", senderThreadId: null }))).toMatchObject({ byUser: false });
-    expect(toTurnRecord(requested(5, { initiator: "user", senderThreadId: null, retryAttempt: 1 }))).toMatchObject({ byUser: false });
+    expect(toTurnRecord(requested(5, { source: "tell", initiator: "user", senderThreadId: null, retryAttempt: 1 }))).toMatchObject({ byUser: false });
   });
 
   it("reads how a turn ended", () => {
@@ -25,7 +27,7 @@ describe("toTurnRecord", () => {
 
 describe("turnsSince", () => {
   it("pages back through bb's turn events, newest first, until one from before the time", async () => {
-    const all = [completed(30, "completed", 6), requested(25, { initiator: "user", senderThreadId: null }, 5), completed(20, "interrupted", 4), requested(10, { initiator: "agent", senderThreadId: "a" }, 3)];
+    const all = [completed(30, "completed", 6), requested(25, { source: "tell", initiator: "user", senderThreadId: null }, 5), completed(20, "interrupted", 4), requested(10, { initiator: "agent", senderThreadId: "a" }, 3)];
     const asked: unknown[] = [];
     const sdk = {
       threads: {

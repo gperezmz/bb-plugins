@@ -174,6 +174,24 @@ describe("a waiting settle", () => {
     expect(lifecycle.get("parent")?.settledKind).toBe("manual");
   });
 
+  it("puts back the pins it took when bb refuses one partway through the tree", async () => {
+    fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
+    fake.threads.set("child", pinned({ ...fake.threads.get("child")!, status: "idle" }, SINCE - 10));
+    fake.failUnpin.add("child");
+    await waiting.check();
+    clock += IDLE_GRACE_MS;
+    await waiting.check();
+    expect(fake.calls).toEqual(["unpin parent", "unpin child", "pin parent"]);
+    expect(fake.threads.get("parent")?.isPinned).toBe(true);
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+  });
+
+  it("does not end on the first message of a thread being spawned, which bb records as the user's", async () => {
+    fake.threads.set("spawned", makeServerThread("spawned", { parentThreadId: "parent", status: "pending", queuedWork: "waiting" }));
+    await waiting.check({ threadId: "spawned", turns: [{ kind: "requested", at: SINCE + 10, byUser: true }] });
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+  });
+
   it("gives the thread back the marks it had when it ends", async () => {
     lifecycle.putMany([["parent", waitingSettleRow(SINCE, parkedRow(SINCE - 5))]]);
     fake.threads.set("child", { ...fake.threads.get("child")!, hasPendingInteraction: true });

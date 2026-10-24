@@ -287,7 +287,7 @@ describe("settle", () => {
       expect(fake.threads.get("grandchild")?.isPinned).toBe(true);
     });
 
-    it("waits when the tree turns busy between the two reads, giving back the pins it took", async () => {
+    it("waits when the tree turns busy between the two reads, giving back the pins it took at once", async () => {
       const threads = tree();
       threads[2] = pinned(threads[2]!);
       actions = build(threads);
@@ -297,9 +297,9 @@ describe("settle", () => {
       const result = await actions.settle("parent");
       expect(result.waiting).toBe(true);
       expect(lifecycle.get("child")).toBeNull();
-      expect(result.changes.find((entry) => entry.threadId === "grandchild")?.unpinned).toBe(true);
-      await actions.undoLifecycle(result.changes);
+      expect(fake.calls.slice(0, 2)).toEqual(["unpin grandchild", "pin grandchild"]);
       expect(fake.threads.get("grandchild")?.isPinned).toBe(true);
+      expect(result.changes).toEqual([{ threadId: "parent", before: null, after: waitingSettleRow(NOW), unpinned: false }]);
     });
 
     it("keeps the thread's park under the wait, and Cancel gives the thread back parked", async () => {

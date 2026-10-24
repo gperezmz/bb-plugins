@@ -9,7 +9,7 @@ import type { LifecycleStore } from "./lifecycle-store";
 import type { OrderStore } from "./order-store";
 import { clearStaleRows, holdRows } from "./reconcile";
 import type { ThreadGateway } from "./threads";
-import { hasMark, waitingSettleRow, type LifecycleRow } from "../shared/lifecycle";
+import { hasMark, isWaitingSettle, waitingSettleRow, type LifecycleRow } from "../shared/lifecycle";
 
 /** The part of bb's thread payload the handlers read. */
 export interface EventThread {
@@ -103,8 +103,8 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
     return lifecycle.putMany(
       ancestors.flatMap((id): [string, LifecycleRow | null][] => {
         const row = lifecycle.get(id);
-        if (!hasMark(row) || held.has(id)) return [];
-        return [[id, row!.waitingSettleAt === null ? null : waitingSettleRow(row!.waitingSettleAt)]];
+        if (row === null || !hasMark(row) || held.has(id)) return [];
+        return [[id, isWaitingSettle(row) ? waitingSettleRow(row.waitingSettleAt) : null]];
       }),
     );
   }

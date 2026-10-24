@@ -137,13 +137,23 @@ describe("lifecycle actions over RPC", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       vi.setSystemTime(10_000);
       const turns: Record<string, { type: string; createdAt: number; data: Record<string, unknown> }[]> = {};
-      const { harness } = await load(sdkWith(family, undefined, eventsOf(turns)));
+      const threads = family();
+      const { harness } = await load(sdkWith(() => threads, undefined, eventsOf(turns)));
       await harness.behavior.callRpc("settle", { threadId: "parent" });
       // An agent's message to the parent leaves it waiting.
-      turns.parent = [{ type: "client/turn/requested", createdAt: 11_000, data: { initiator: "agent", senderThreadId: "child" } }];
+      turns.parent = [{ type: "client/turn/requested", createdAt: 11_000, data: { source: "tell", initiator: "agent", senderThreadId: "child" } }];
       await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "parent" }) });
       await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
-      turns.parent.unshift({ type: "client/turn/requested", createdAt: 12_000, data: { initiator: "user", senderThreadId: null } });
+      // An agent's spawn, as bb records it: the user's, with no sender. It leaves the wait, as does the spawn's first message queued.
+      threads.push(listedThread("spawned", { parentThreadId: "parent", status: "pending" }));
+      turns.spawned = [{ type: "client/turn/requested", createdAt: 11_500, data: { source: "spawn", initiator: "user", senderThreadId: null, target: { kind: "thread-start" } } }];
+      await harness.behavior.emitThreadEvent("thread.created", { thread: makeThreadResponse({ id: "spawned", parentThreadId: "parent" }) });
+      await harness.behavior.emitThreadEvent("message.queued", {
+        entry: makeQueueEntry({ threadId: "spawned", initiator: "user", senderThreadId: null, createdAt: 11_500 }),
+      });
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "spawned", parentThreadId: "parent" }) });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
+      turns.parent.unshift({ type: "client/turn/requested", createdAt: 12_000, data: { source: "tell", initiator: "user", senderThreadId: null } });
       await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "parent" }) });
       await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
       await harness.behavior.callRpc("settle", { threadId: "parent" });
@@ -194,6 +204,24 @@ describe("lifecycle actions over RPC", () => {
       await harness.behavior.emitThreadEvent("message.queued", {
         entry: makeQueueEntry({ threadId: "child", initiator: "user", senderThreadId: null, createdAt: 11_000 }),
       });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
+    });
+
+    it("keeps the wait when a message the user had queued before choosing Settle is sent", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = [listedThread("parent"), listedThread("child", { parentThreadId: "parent", queuedWork: "waiting" })];
+      const turns: Record<string, { type: string; createdAt: number; data: Record<string, unknown> }[]> = {};
+      const { harness } = await load(sdkWith(() => threads, undefined, eventsOf(turns)));
+      expect(((await harness.behavior.callRpc("settle", { threadId: "parent" })) as { waiting: boolean }).waiting).toBe(true);
+      // bb sends the queued message once the child is free: a turn the user asked for, recorded after the settle.
+      turns.child = [{ type: "client/turn/requested", createdAt: 12_000, data: { source: "tell", initiator: "user", senderThreadId: null } }];
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }) });
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "parent" }), lastAssistantText: null });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
+      // The same turn on the parent, which had nothing queued, is the user's own.
+      turns.parent = [{ type: "client/turn/requested", createdAt: 13_000, data: { source: "tell", initiator: "user", senderThreadId: null } }];
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "parent" }) });
       await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
     });
 

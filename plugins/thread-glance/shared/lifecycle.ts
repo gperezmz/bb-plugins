@@ -113,8 +113,16 @@ export function withoutWaitingSettle(row: LifecycleRow): LifecycleRow | null {
 }
 
 /** Whether the row holds a waiting settle. */
-export function isWaitingSettle(row: LifecycleRow | null | undefined): boolean {
+export function isWaitingSettle(row: LifecycleRow | null | undefined): row is LifecycleRow & { waitingSettleAt: number } {
   return row != null && row.waitingSettleAt !== null;
+}
+
+/**
+ * Whether the thread was pinned after `at`: a pin that ends a settle waiting
+ * since then, where an older pin waits to be undone when the settle lands.
+ */
+export function pinnedAfter(thread: { pinnedAt: number | null }, at: number): boolean {
+  return thread.pinnedAt !== null && thread.pinnedAt > at;
 }
 
 /** The row Resume and Un-settle write. */
@@ -327,7 +335,7 @@ export function shouldClearForPin(
   thread: Pick<ShelfThread, "isPinned"> & { pinnedAt: number | null },
 ): boolean {
   if (!thread.isPinned || row == null) return false;
-  return !(isWaitingSettle(row) && thread.pinnedAt !== null && thread.pinnedAt <= row.waitingSettleAt!);
+  return !isWaitingSettle(row) || pinnedAfter(thread, row.waitingSettleAt);
 }
 
 /** What a thread's tree says about the thread's own shelf. */

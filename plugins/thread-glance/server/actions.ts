@@ -298,14 +298,10 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
           refuseChildWaiting("settle", second, threadId);
           refuseNeedsYou("settle", secondById.get(threadId)!);
           if (waitedFor || current.some((thread) => isBusy(thread))) {
-            const isUnpinned = (id: string) => unpinned.some((u) => u.id === id);
-            const changes = write(
-              [
-                [threadId, waitingSettleRow(now(), lifecycle.get(threadId)), isUnpinned(threadId)] as const,
-                ...unpinned.filter((u) => u.id !== threadId).map((u) => [u.id, lifecycle.get(u.id), true] as const),
-              ],
-              changed,
-            );
+            // The tree turned busy after its pins were taken for a settle at once: they go back, as for a tree that waited from the start.
+            const failed = await restorePins(unpinned, first, rowsBefore);
+            if (failed.length > 0) warn(`could not restore pins for: ${failed.join(", ")}`);
+            const changes = write([[threadId, waitingSettleRow(now(), lifecycle.get(threadId))]], changed);
             deps.onWaiting?.(threadId, current);
             return { waiting: true as const, changes, entries: [] };
           }
