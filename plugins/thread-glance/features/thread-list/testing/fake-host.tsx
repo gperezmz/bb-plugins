@@ -7,7 +7,6 @@ import { installTestPluginRuntime, loadPluginApp, renderSlot, type RenderedSlot 
 import type {
   PluginProvidersState,
   PluginSidebarProject,
-  PluginSidebarPullRequest,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
   PluginThreadListProps,
@@ -153,7 +152,12 @@ function fakeHooks(testRuntime: Runtime): Runtime {
 
 /** What a test adds to bb's side of the slot: pull requests, providers, and SDK areas the list calls. */
 export interface SlotExtras {
-  sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
+  /**
+   * GitHub PR Status's `pullRequests` rows by environment id, as the plugin
+   * answers them; an environment not listed has no pull request. Null makes
+   * every call fail, as a disabled or absent plugin does.
+   */
+  pullRequests?: Record<string, unknown> | null;
   providers?: Partial<PluginProvidersState>;
   sdk?: Record<string, Record<string, unknown>>;
 }
@@ -238,6 +242,16 @@ function comparePinKeys(a: PluginSidebarThread, b: PluginSidebarThread): number 
 export function mountList(loaded: PluginApp, server: ServerState, slot: SlotExtras = {}): RenderedSlot {
   const List = loaded.threadLists[0]!.component as ComponentType<PluginThreadListProps>;
   const Window = () => <List {...useHost((state) => state.props)} />;
-  const { sdk, ...options } = slot;
-  return server.attach(renderSlot({ component: Window }, {}, { rpc: server.handlers as never, sdk: sdkFakes(sdk), realtimeConnectionState: "connected", ...options }));
+  const { sdk, pullRequests = {}, ...options } = slot;
+  // bb's test runtime answers every plugin's RPC from these handlers, GitHub PR Status's among them.
+  const rpc = { ...server.handlers, pullRequests: githubPrStatus(pullRequests) };
+  return server.attach(renderSlot({ component: Window }, {}, { rpc: rpc as never, sdk: sdkFakes(sdk), realtimeConnectionState: "connected", ...options }));
+}
+
+/** GitHub PR Status's `pullRequests`, answering from `rows`. */
+function githubPrStatus(rows: Record<string, unknown> | null) {
+  return async ({ keys }: { keys: string[] }) => {
+    if (rows === null) throw new Error('plugin "bb--github-pr-status" is not running (status: disabled)');
+    return Object.fromEntries(keys.map((key) => [key, rows[key] ?? { outcome: "absent" }]));
+  };
 }
