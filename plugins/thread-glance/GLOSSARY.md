@@ -59,7 +59,7 @@ A thread on Settled, put there by you or automatically after it went quiet or it
 _Avoid_: Older thread, done thread
 
 **Inactive thread**:
-A thread left on Active that is not busy, does not need you, is not woke, and has had no activity for the hours before inactive. It sits on Inactive.
+A thread left on Active that is not busy, does not need you, is not woke or lifted, and has had no activity for the hours before inactive. It sits on Inactive.
 _Avoid_: Stale thread, dormant thread
 
 **Manual order**:

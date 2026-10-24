@@ -228,6 +228,22 @@ describe("A child's question lifts its parent (#332)", () => {
     expect(m.server.rows.has("root")).toBe(true);
   });
 
+  it("refuses a Park or Settle pressed on the list's own card, saying a child needs you, and asks the server for nothing", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
+    const m = await mount({ threads: family(true), server: quiet() });
+    await chooseFromClockMenu("Root", "Park thread");
+    await settleFromCard("Root");
+    expect(toasts.error.mock.calls.map((entry) => entry[0])).toEqual([childNeedsYouRefusal("park", "Grandkid"), childNeedsYouRefusal("settle", "Grandkid")]);
+    expect(callsOf(m, "park")).toHaveLength(0);
+    expect(callsOf(m, "settle")).toHaveLength(0);
+    m.host.updateThread("grandkid", { hasPendingInteraction: false });
+    await flush();
+    toasts.error.mockClear();
+    await chooseFromClockMenu("Root", "Park thread");
+    expect(toasts.error).not.toHaveBeenCalled();
+    expect(callsOf(m, "park")).toHaveLength(1);
+  });
+
   it("refuses at once to park, snooze or settle the root, saying a child needs you, and asks the server for nothing", async () => {
     const call = vi.fn();
     const threads = family(true);

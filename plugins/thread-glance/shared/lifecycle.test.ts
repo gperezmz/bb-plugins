@@ -158,6 +158,9 @@ describe("a question waiting below (lifted)", () => {
     const row = snoozedRow(NOW + HOUR, NOW - 90 * HOUR);
     expect(shelfOf(row, thread(), options({ lifted: true }))).toBe("active");
     expect(shelfOf(row, thread(), options({ lifted: true, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("active");
+    // A tree that is working without anything in it needing the user, as when the asker is a pinned child.
+    expect(shelfOf(null, thread(), options({ lifted: true, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("active");
+    expect(shelfOf(null, thread(), options({ lifted: false, workingShelf: true, tree: { working: true, needsYou: false } }))).toBe("working");
     expect(shelfOf(null, thread(), options({ lifted: true }))).toBe("active");
     expect(shelfOf(null, thread(), options())).toBe("inactive");
   });

@@ -268,6 +268,15 @@ describe("settle", () => {
     expect(fake.threads.get("parent")?.isPinned).toBe(true);
   });
 
+  it("refuses with the child-needs-you text when a question arrives between the two reads of the tree", async () => {
+    actions = build(tree());
+    fake.beforeSnapshot = (call) => {
+      if (call === 2) fake.threads.set("grandchild", { ...fake.threads.get("grandchild")!, hasPendingInteraction: true });
+    };
+    await expect(actions.settle("parent")).rejects.toThrow(childNeedsYouRefusal("settle", "Grandchild"));
+    expect(lifecycle.all().size).toBe(0);
+  });
+
   it("refuses with the tree-changed text when new attention arrived meanwhile", async () => {
     actions = build(tree());
     fake.beforeSnapshot = (call) => {

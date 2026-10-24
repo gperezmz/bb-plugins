@@ -146,7 +146,7 @@ export function wakeReason(
   return lifted ? "child" : null;
 }
 
-/** Whether the thread has a Woke marker. */
+/** Whether the thread shows as woke: its Woke marker is up, or it is `lifted` and snoozed. */
 export function isWoke(
   row: LifecycleRow | null | undefined,
   thread: Pick<ShelfThread, "latestAttentionAt">,

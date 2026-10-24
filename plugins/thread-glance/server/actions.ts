@@ -102,11 +102,11 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
 
   const byIdOf = (snapshot: readonly ServerThread[]) => new Map(snapshot.map((thread) => [thread.id, thread]));
 
-  async function requireThread(threadId: string): Promise<{ thread: ServerThread; byId: Map<string, ServerThread> }> {
-    const byId = byIdOf(await threads.snapshot());
-    const thread = byId.get(threadId);
+  async function requireThread(threadId: string): Promise<{ thread: ServerThread; snapshot: ServerThread[] }> {
+    const snapshot = await threads.snapshot();
+    const thread = byIdOf(snapshot).get(threadId);
     if (thread === undefined) throw new Error(THREAD_GONE);
-    return { thread, byId };
+    return { thread, snapshot };
   }
 
   /** Refuses the action when a thread is busy. */
@@ -155,9 +155,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
     const changes = await change(async (changed) => {
       const at = now();
       check?.(at);
-      const snapshot = await threads.snapshot();
-      const thread = byIdOf(snapshot).get(threadId);
-      if (thread === undefined) throw new Error(THREAD_GONE);
+      const { thread, snapshot } = await requireThread(threadId);
       refuseBusy(action, [thread]);
       refuseChildWaiting(action, snapshot, threadId);
       if (thread.isPinned) await threads.unpin(threadId);

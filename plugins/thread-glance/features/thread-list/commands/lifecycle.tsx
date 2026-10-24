@@ -70,7 +70,7 @@ export function lifecycleHostOf(
 export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands {
   const rpc = host.rpc;
   /** Refuses at once a gated action on a thread this window sees busy or with a child waiting on the user; the server checks again. */
-  const refuseIfBusy = (action: GatedAction, threadId: string): boolean => {
+  const refuseGated = (action: GatedAction, threadId: string): boolean => {
     const waiting = host.childWaiting?.(threadId) ?? null;
     if (waiting !== null) {
       toast.error(childNeedsYouRefusal(action, waiting));
@@ -105,7 +105,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
 
   const commands: LifecycleCommands = {
     async snooze(threadId, until) {
-      if (refuseIfBusy("snooze", threadId)) return;
+      if (refuseGated("snooze", threadId)) return;
       dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("snooze", { threadId, until }));
       if (result === null) return;
@@ -124,7 +124,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async park(threadId) {
-      if (refuseIfBusy("park", threadId)) return;
+      if (refuseGated("park", threadId)) return;
       dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("park", { threadId }));
       if (result === null) return;
@@ -145,7 +145,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async settle(threadId) {
-      if (refuseIfBusy("settle", threadId)) return;
+      if (refuseGated("settle", threadId)) return;
       if (isSweeping(threadId)) return;
       dismissPortsPrompt(threadId);
       if (isCardDrawn(threadId) && !prefersReducedMotion()) await playSweep(threadId);
