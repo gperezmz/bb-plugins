@@ -6,7 +6,7 @@ import { useId, useState } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { ALL_PROJECTS_SCOPE, filterScopeOptions, moveHighlight, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject, type ScopeOption } from "../model/scope";
+import { ALL_PROJECTS_SCOPE, filterScopeOptions, firstSelectedIndex, isOptionSelected, moveHighlight, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject, type ScopeOption } from "../model/scope";
 import { useCommands, useScope } from "../store/hooks";
 
 function NeedsYouMark() {
@@ -26,7 +26,6 @@ export function ProjectScope() {
   const listId = useId();
   const options = filterScopeOptions(scopeOptions(projects), query);
 
-  const isSelected = (option: ScopeOption) => (option.id === null ? scope.length === 0 : scope.includes(option.id));
   const choose = (option: ScopeOption) => {
     commands.setScope(option.id === null ? ALL_PROJECTS_SCOPE : toggleProject(scope, option.id));
   };
@@ -34,7 +33,7 @@ export function ProjectScope() {
     setOpen(next);
     if (next) {
       setQuery("");
-      setHighlight(Math.max(0, scopeOptions(projects).findIndex((option) => option.id !== null && scope.includes(option.id))));
+      setHighlight(firstSelectedIndex(scope, scopeOptions(projects)));
     }
   };
 
@@ -86,14 +85,14 @@ export function ProjectScope() {
                 key={option.id ?? "all"}
                 id={`${listId}-${index}`}
                 role="option"
-                aria-selected={isSelected(option)}
+                aria-selected={isOptionSelected(scope, option)}
                 onMouseEnter={() => setHighlight(index)}
                 onClick={() => choose(option)}
                 className={cn("flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm", index === highlight && "bg-sidebar-accent")}
               >
                 <span className="min-w-0 flex-1 truncate">{option.name}</span>
                 {option.id !== null && needingYou.includes(option.id) ? <NeedsYouMark /> : null}
-                {isSelected(option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
+                {isOptionSelected(scope, option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
               </div>
             ))}
             {options.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No projects match.</p> : null}

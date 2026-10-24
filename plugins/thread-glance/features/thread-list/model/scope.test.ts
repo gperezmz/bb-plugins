@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
-import { ALL_PROJECTS, filterScopeOptions, inScope, moveHighlight, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
+import { ALL_PROJECTS, filterScopeOptions, firstSelectedIndex, inScope, isOptionSelected, moveHighlight, projectsNeedingYou, resolveScope, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject } from "./scope";
 
 describe("the project scope", () => {
   it("lists All projects, then every project including the personal one, by name", () => {
@@ -39,6 +39,21 @@ describe("the project scope", () => {
     expect(scopeLabel(["proj_zzz"], PROJECTS)).toBe(ALL_PROJECTS.name);
   });
 
+  it("ticks All projects while the scope is empty and a project while it is in the scope", () => {
+    const [all, alpha, beta] = scopeOptions(PROJECTS);
+    expect(isOptionSelected([], all!)).toBe(true);
+    expect(isOptionSelected([], alpha!)).toBe(false);
+    expect(isOptionSelected(["proj_a"], all!)).toBe(false);
+    expect(isOptionSelected(["proj_a"], alpha!)).toBe(true);
+    expect(isOptionSelected(["proj_a"], beta!)).toBe(false);
+  });
+
+  it("starts the highlight on the first project in the scope, else on All projects", () => {
+    const options = scopeOptions(PROJECTS);
+    expect(firstSelectedIndex([], options)).toBe(0);
+    expect(firstSelectedIndex(["proj_b", "proj_personal"], options)).toBe(2);
+  });
+
   it("filters by name, ignoring case", () => {
     const options = scopeOptions([...PROJECTS, makeProject("g", "Gamma")]);
     expect(filterScopeOptions(options, "  GAM ").map((option) => option.name)).toEqual(["Gamma"]);
@@ -67,6 +82,14 @@ describe("the projects a scope leaves out that need you", () => {
   it("lists the left-out projects with a waiting thread, once each", () => {
     expect(projectsNeedingYou(["proj_personal"], threads)).toEqual(["proj_a", "proj_b"]);
     expect(projectsNeedingYou(["proj_a"], threads)).toEqual(["proj_b"]);
+  });
+
+  it("lists none for a project whose waiting thread is archived or hidden", () => {
+    const unlisted = [
+      makeThread({ id: "x1", projectId: "proj_a", hasPendingInteraction: true, isArchived: true }),
+      makeThread({ id: "x2", projectId: "proj_b", hasPendingInteraction: true, isHidden: true }),
+    ];
+    expect(projectsNeedingYou(["proj_personal"], unlisted)).toEqual([]);
   });
 
   it("lists none for a project in the scope, a project without a waiting thread, or All projects", () => {

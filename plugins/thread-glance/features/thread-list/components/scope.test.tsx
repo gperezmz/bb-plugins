@@ -142,7 +142,8 @@ describe("AC2: the scope is kept per window", () => {
 
   it("keeps a project that bb has not listed yet when the window reloads, and drops it once bb has", async () => {
     sessionStorage.setItem("thread-glance:scope", JSON.stringify(["proj_a", "proj_gone"]));
-    await mount({ threads: threads(), server: { rows } });
+    // A thread is open, so the list commits once before bb's data is there.
+    await mount({ threads: threads(), activeThreadId: "a1", server: { rows } });
     expect(scopeButton("Alpha")).toBeTruthy();
     expect(titles()).toEqual(["Alpha active"]);
     expect(JSON.parse(sessionStorage.getItem("thread-glance:scope")!)).toEqual(["proj_a"]);

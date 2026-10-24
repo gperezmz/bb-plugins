@@ -1,6 +1,7 @@
 // The project scope picker: the scope itself, its options, the marks for the
 // projects left out, the filter field and the keyboard moves. Pure.
 import type { PluginSidebarProject, PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import { isListed } from "./listed";
 
 /** The projects the list is limited to; empty is All projects. */
 export type Scope = readonly string[];
@@ -44,6 +45,16 @@ export function inScope(scope: Scope, projectId: string): boolean {
   return scope.length === 0 || scope.includes(projectId);
 }
 
+/** Whether the picker shows `option` ticked: All projects while the scope is empty, a project while it is in the scope. */
+export function isOptionSelected(scope: Scope, option: ScopeOption): boolean {
+  return option.id === null ? scope.length === 0 : scope.includes(option.id);
+}
+
+/** The option the highlight starts on when the picker opens: the first project in the scope, else All projects. */
+export function firstSelectedIndex(scope: Scope, options: readonly ScopeOption[]): number {
+  return Math.max(0, options.findIndex((option) => option.id !== null && scope.includes(option.id)));
+}
+
 /** The options whose name contains `query`, ignoring case; All projects matches by its name too. */
 export function filterScopeOptions(options: readonly ScopeOption[], query: string): ScopeOption[] {
   const needle = query.trim().toLowerCase();
@@ -74,13 +85,14 @@ export function scopeLabel(scope: Scope, projects: readonly PluginSidebarProject
 }
 
 /**
- * The projects `scope` leaves out that have a thread waiting on the person (a
- * question or an approval), by id. Nothing is left out of All projects.
+ * The projects `scope` leaves out that have a listed thread waiting on the
+ * person (a question or an approval), by id: widening the scope shows the
+ * thread. Nothing is left out of All projects.
  */
 export function projectsNeedingYou(scope: Scope, threads: readonly PluginSidebarThread[]): readonly string[] {
   if (scope.length === 0) return NONE;
   const ids = new Set<string>();
-  for (const thread of threads) if (thread.hasPendingInteraction && !scope.includes(thread.projectId)) ids.add(thread.projectId);
+  for (const thread of threads) if (thread.hasPendingInteraction && isListed(thread) && !scope.includes(thread.projectId)) ids.add(thread.projectId);
   return ids.size === 0 ? NONE : [...ids].sort();
 }
 

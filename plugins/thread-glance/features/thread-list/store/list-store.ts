@@ -54,8 +54,6 @@ export interface Edge {
 export interface ListStore extends StoreApi<ListState> {
   edge: Edge;
   storage: DeviceStorage;
-  /** The browser storage of this window, which keeps the project scope. */
-  windowStorage: StorageLike | null;
   /** When each working thread was first seen working, for the Status slot's elapsed time. */
   workingSince: WorkingSince;
   /** bb's list data, applied on the next animation frame. */
@@ -268,7 +266,6 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     ...api,
     edge: UNSET_EDGE,
     storage,
-    windowStorage: sessionStorage,
     workingSince,
 
     feedHost(next) {

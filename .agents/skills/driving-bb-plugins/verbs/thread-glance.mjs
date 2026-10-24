@@ -596,8 +596,8 @@ export const verbs = {
         .evaluateAll((els) => els.map((e) => ({ name: e.textContent.trim(), selected: e.getAttribute("aria-selected") === "true", needsYou: e.querySelector('[aria-label="Needs you"]') !== null })));
       const empty = options.length === 0 ? (await listbox.innerText().catch(() => "")).trim() || null : null;
       await capture("picker", "the project picker");
-      for (const name of args) await listbox.getByRole("option", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( Needs you)?$`) }).click();
-      await page.getByRole("button", { name: "Done" }).click();
+      for (const name of args) await listbox.getByRole("option", { name: new RegExp(`^${esc(name)}( Needs you)?$`) }).click();
+      await page.getByRole("button", { name: "Done", exact: true }).click();
       await sleep(300);
       const after = await readList(page);
       await capture("after", `scope ${args.join(", ") || "(unchanged)"}`);
@@ -804,7 +804,8 @@ export const verbs = {
       await ready(page, url);
       if (flags.scope) {
         await scopeButton(page).click();
-        await page.getByRole("option", { name: flags.scope, exact: true }).click();
+        await page.getByRole("option", { name: new RegExp(`^${esc(flags.scope)}( Needs you)?$`) }).click();
+        await page.getByRole("button", { name: "Done", exact: true }).click();
       }
       const clean = page.getByRole("button", { name: "Close terminals and ports of settled threads" });
       const collapsedWhenPressed = (await page.locator('[data-shelf="settled"] button[aria-expanded]').getAttribute("aria-expanded")) === "false";
