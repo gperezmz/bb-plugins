@@ -17,7 +17,7 @@ stateDiagram-v2
 
 What each action does, where it is offered, and what the keyboard and the pointer reach. Why the lifecycle has these three verbs is in [why the list keeps threads on shelves](../explanation/thread-glance-shelves.md); the shelves and rows are in [the list](thread-glance-list.md). Sources: [`shared/contract.ts`](../../plugins/thread-glance/shared/contract.ts) for the actions the server answers, [`shared/snooze.ts`](../../plugins/thread-glance/shared/snooze.ts) for presets, [`features/thread-list/commands/`](../../plugins/thread-glance/features/thread-list/commands/) for what a click does and [`model/reorder.ts`](../../plugins/thread-glance/features/thread-list/model/reorder.ts) for reordering.
 
-Snooze, Park and Settle are offered only for a thread that is not [busy](thread-glance-list.md#busy-threads), and the server checks again when the action arrives: it refuses a busy thread, so a thread that started a turn after its menu opened changes nothing and shows the error.
+Snooze, Park and Settle are offered only for a thread that is not [busy](thread-glance-list.md#busy-threads), and the server checks again when the action arrives: it refuses a busy thread, so a thread that started a turn after its menu opened changes nothing and shows the error. A thread that is [lifted](thread-glance-list.md#lifted-threads) keeps the actions in its menu, and Park, Snooze and Settle on it are refused, in the window at once and by the server, with "Cannot <action> while a child thread needs you: <title>".
 
 ## Snooze
 
@@ -67,7 +67,7 @@ The Snoozed shelf sorts by soonest wake. **Wake**, the Snoozed slim row's button
 **Settle**, on the card's hover actions and in the thread menu, including the slim rows of Parked and Snoozed.
 
 1. Unless reduced motion is on, a 520 ms sweep plays across the thread's card whenever the card is drawn; otherwise the thread settles at once.
-2. The settle covers the whole thread tree under the thread. If any thread in it is busy, it fails with "Cannot settle while <title> is working or waiting for input".
+2. The settle covers the whole thread tree under the thread. If a question or approval is pending on any thread below it, it fails with "Cannot settle while a child thread needs you: <title>"; if any other thread in it is busy, it fails with "Cannot settle while <title> is working or waiting for input".
 3. It unpins the tree's pinned threads and marks every thread in the tree settled. If the tree changed meanwhile, it fails with "Thread tree changed while settling. Try again." and restores any pins it removed.
 4. Each thread is [reclaimed](#reclaim).
 
@@ -86,7 +86,7 @@ After a park, snooze or settle, and only while the thread is still unpinned, not
 
 The note joins "Agent session stopped", "closed N terminals nobody used" and "N terminals left running" with " · ", for example "Agent session stopped · closed 1 terminal nobody used · 1 terminal left running". It is shown in the toast.
 
-When a thread is archived from any bb menu, its runtime and its idle children's runtimes are stopped; a working child is left alone. When a child thread is created or starts a turn, its parked, snoozed or settled ancestors are reopened to Active.
+When a thread is archived from any bb menu, its runtime and its idle children's runtimes are stopped; a working child is left alone. When a child thread is created or starts a turn, its parked, snoozed or settled ancestors are reopened to Active, except those [lifted](thread-glance-list.md#lifted-threads) by a question waiting below them.
 
 ## Ports
 
@@ -117,7 +117,7 @@ If the ports cannot be looked up after the settle, the toast reads "Thread settl
 
 **Clean**, a broom icon on the Settled shelf's header even while it is collapsed, is labelled "Close terminals and ports of settled threads", with the tooltip "Close terminals and ports of settled threads (threads stay in Settled)". It opens **Clean settled resources?**, a preview of the settled threads in the list's project scope:
 
-- A thread is included when it is still settled, not hidden, unpinned, not busy and has had no attention since it settled. A thread sharing a workspace with any thread that fails that test, or whose workspace cannot be resolved, is left out without a word.
+- A thread is included when it is still settled, not hidden, unpinned, not busy, not [lifted](thread-glance-list.md#lifted-threads) and has had no attention since it settled. A thread sharing a workspace with any thread that fails that test, or whose workspace cannot be resolved, is left out without a word.
 - Each included thread lists its running or starting terminals, typed into or not, and its owned ports, with **Open**, which opens the thread and closes the dialog.
 - The dialog warns "This closes terminals even if you typed into them." and "A port process may need time to exit after its shutdown request." With nothing to close it reads "No live terminals or thread-owned listening ports found."
 
@@ -141,6 +141,7 @@ Thread Glance adds its actions to bb's thread menu, which appears on a row's **�
 | | **Resume** | The thread is parked |
 | | **Settle** | The thread is not busy |
 | | **Un-settle** | The thread is settled |
+| After the lifecycle actions | **Notify parent ▸** | The thread has a parent and is not a fork |
 | Beside bb's Copy thread link | **Copy branch** | The thread has a branch |
 | | **Copy thread ID** | Always |
 
@@ -158,6 +159,20 @@ Opens a search dialog.
 - Choosing a parent unpins a pinned thread, with a note saying so. **None** keeps the pin.
 
 Toasts read "Parent updated", "Parent removed" or "Parent updated, but unpinning could not be confirmed".
+
+### Notify parent ▸
+
+Chooses which of the thread's turn outcomes wake its parent. It sets bb's own per-thread setting, `parentNotifications`; Thread Glance stores nothing for it, so the choice is the same in bb's thread view and `bb thread update`.
+
+| Item | bb's value | Wakes the parent for |
+|---|---|---|
+| **All outcomes** | `auto` | Every finished turn, failure and blocker |
+| **Only when stuck** | `stuck` | Only failures, interruptions and blockers |
+| **Off** | `off` | Nothing |
+
+The thread's current value is shown as chosen, and named under the item's label. It is read from bb when the thread first comes into view among those whose menus bb may show (the sidebar's rows on screen, the open thread's header), and again each time it comes back into view after leaving it, so a change made elsewhere appears then. Until it has been read, or if it could not be read, no item is chosen. Choosing an item sets bb's setting, even the one shown as chosen, since the value shown may be older than bb's, and then shows it chosen; if bb refuses, a toast shows its message and the old value stays.
+
+It is not offered on a thread with no parent, nor on a fork, whose outcomes bb never reports to its parent.
 
 ### Project ▸
 

@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { isBusy } from "@/shared/busy";
-import { busyRefusal, type GatedAction } from "@/shared/messages";
+import { busyRefusal, childNeedsYouRefusal, type GatedAction } from "@/shared/messages";
 import { formatWakeTime } from "@/shared/snooze";
 import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { ActionOutput, Change, RpcContract } from "@/shared/contract";
@@ -54,17 +54,28 @@ export interface LifecycleHost {
    * thread; null when it is not known, and the server's check stands alone.
    */
   thread(threadId: string): (Parameters<typeof isBusy>[0] & { displayTitle: string }) | null;
+  /** The title of a thread below this one that has a question or approval waiting, or null; absent, the server's check stands alone. */
+  childWaiting?(threadId: string): string | null;
 }
 
 /** A host for code outside the list: the window's RPC client, and the thread lookup it can offer. */
-export function lifecycleHostOf(rpc: PluginRpcClient<RpcContract>, thread: LifecycleHost["thread"] = () => null): LifecycleHost {
-  return { rpc: () => rpc, thread };
+export function lifecycleHostOf(
+  rpc: PluginRpcClient<RpcContract>,
+  thread: LifecycleHost["thread"] = () => null,
+  childWaiting?: LifecycleHost["childWaiting"],
+): LifecycleHost {
+  return { rpc: () => rpc, thread, childWaiting };
 }
 
 export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands {
   const rpc = host.rpc;
-  /** Refuses at once a gated action on a thread this window sees busy; the server checks again. */
-  const refuseIfBusy = (action: GatedAction, threadId: string): boolean => {
+  /** Refuses at once a gated action on a thread this window sees busy or with a child waiting on the user; the server checks again. */
+  const refuseGated = (action: GatedAction, threadId: string): boolean => {
+    const waiting = host.childWaiting?.(threadId) ?? null;
+    if (waiting !== null) {
+      toast.error(childNeedsYouRefusal(action, waiting));
+      return true;
+    }
     const thread = host.thread(threadId);
     if (thread === null || !isBusy(thread)) return false;
     toast.error(busyRefusal(action, thread.displayTitle));
@@ -94,7 +105,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
 
   const commands: LifecycleCommands = {
     async snooze(threadId, until) {
-      if (refuseIfBusy("snooze", threadId)) return;
+      if (refuseGated("snooze", threadId)) return;
       dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("snooze", { threadId, until }));
       if (result === null) return;
@@ -113,7 +124,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async park(threadId) {
-      if (refuseIfBusy("park", threadId)) return;
+      if (refuseGated("park", threadId)) return;
       dismissPortsPrompt(threadId);
       const result = await run(() => rpc().call("park", { threadId }));
       if (result === null) return;
@@ -134,7 +145,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
     },
 
     async settle(threadId) {
-      if (refuseIfBusy("settle", threadId)) return;
+      if (refuseGated("settle", threadId)) return;
       if (isSweeping(threadId)) return;
       dismissPortsPrompt(threadId);
       if (isCardDrawn(threadId) && !prefersReducedMotion()) await playSweep(threadId);

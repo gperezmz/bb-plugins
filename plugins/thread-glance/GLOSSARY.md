@@ -33,7 +33,7 @@ One of the sections of Thread Glance's list that a thread sits on by its lifecyc
 _Avoid_: Bucket, lane
 
 **Lifecycle row**:
-What Thread Glance's server keeps for a thread that is not simply Active: when it was settled and whether by you or automatically, when it was parked, when it was snoozed and until when, and an active override. A thread without one is Active.
+What Thread Glance's server keeps for a thread that is not simply Active: when it was settled and whether by you or automatically, when it was parked, when it was snoozed and until when, an active override, and the attention a hold set aside. A thread without one is Active.
 _Avoid_: Thread state, status record
 
 The active override is set by Resume and Un-settle and lasts until the thread next starts a turn; it also stops automatic settling from touching the thread.
@@ -43,8 +43,16 @@ One entry of the snooze shortcuts setting: an optional label and either a durati
 _Avoid_: Snooze option
 
 **Woke**:
-The state of a thread back from a snooze, at its wake time or on new attention, until you open it or dismiss its marker. It is on Active, in bold, with a Woke label, and is the same in every window and after a reload.
+The state of a thread back from a snooze, at its wake time or on new attention, until you open it or dismiss its marker; a snoozed thread is also woke while it is a lifted thread, with no marker to dismiss. It is on Active, in bold, with a Woke label, and is the same in every window and after a reload.
 _Avoid_: Awake, unsnoozed
+
+**Lifted thread**:
+A thread with a question or approval waiting on a thread below it, at any depth. It sits on Active, cannot be snoozed, parked or settled, and goes back to its shelf with the marks of its lifecycle row kept once no such question waits, answered or not; its mark is held meanwhile.
+_Avoid_: Surfaced thread, raised thread
+
+**Hold**:
+What keeps the park, snooze or settle mark of a lifted thread while the question waits: turns in its tree neither reopen it nor count as attention against it, and the attention it has meanwhile is set aside in its lifecycle row. It is the mark that is held, never the thread.
+_Avoid_: Freeze, suspend
 
 **Parked thread**:
 A thread you have set aside while someone else replies. It sits on Parked, showing how long it has waited, until attention returns it to Active or you resume it.
@@ -55,7 +63,7 @@ A thread on Settled, put there by you or automatically after it went quiet or it
 _Avoid_: Older thread, done thread
 
 **Inactive thread**:
-A thread left on Active that is not busy, does not need you, is not woke, and has had no activity for the hours before inactive. It sits on Inactive.
+A thread left on Active that is not busy, does not need you, is not woke or lifted, and has had no activity for the hours before inactive. It sits on Inactive.
 _Avoid_: Stale thread, dormant thread
 
 **Manual order**:
@@ -154,6 +162,7 @@ _Avoid_: Placeholder, chunk, filler
 
 ## Flagged ambiguities
 
+- "Held thread" is only an avoid-word for a parked thread; a lifted thread's mark is held, not the thread.
 - "Active thread" is a thread on the Active shelf; the thread in the pane that has focus is the focused thread.
 - The settings page spells its labels in US English ("Project colors", "Thread behavior"); the docs name those labels as they read and write colour otherwise.
 - "Thread ports" and "thread-owned ports" appear only in the settle prompt's messages, worded as the spec gives them; they mean owned ports.

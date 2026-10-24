@@ -7,6 +7,7 @@ import type { LifecycleRow } from "@/shared/lifecycle";
 import { readSnoozePresets } from "@/shared/snooze";
 import { menuFactsOf } from "./facts";
 import type { MenuData, MenuPorts, MenuProject } from "./menu";
+import type { ParentNotifications } from "./notify";
 
 export function targetOf(thread: PluginSidebarThread): PluginThreadActionTarget {
   return {
@@ -56,6 +57,8 @@ export interface DataOptions {
   presets?: string;
   rows?: Record<string, LifecycleRow>;
   machines?: MenuData["machines"];
+  /** bb's `parentNotifications` for the threads the window has read. */
+  notifications?: Record<string, ParentNotifications>;
 }
 
 /** The menu's data for `threads`, with fake commands and ports. */
@@ -63,6 +66,7 @@ export function menuData(threads: readonly PluginSidebarThread[], options: DataO
   const now = options.now ?? Date.now();
   const commands = fakeCommands();
   const ports = fakePorts();
+  const notify = { values: new Map(Object.entries(options.notifications ?? {})), set: vi.fn(async () => {}) };
   const data: MenuData = {
     now,
     facts: new Map(threads.map((thread) => [thread.id, menuFactsOf(thread, options.rows?.[thread.id] ?? null, now)])),
@@ -70,7 +74,8 @@ export function menuData(threads: readonly PluginSidebarThread[], options: DataO
     presets: readSnoozePresets(options.presets ?? ""),
     machines: options.machines ?? { count: 1 },
     commands: commands as unknown as LifecycleCommands,
+    notify: notify as MenuData["notify"],
     ports: ports as unknown as MenuPorts,
   };
-  return { data, commands, ports };
+  return { data, commands, ports, notify };
 }
