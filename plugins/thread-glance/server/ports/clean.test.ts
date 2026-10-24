@@ -246,12 +246,12 @@ describe("runClean (AC8)", () => {
   });
 
   describe("checks again before each terminal and port", () => {
-    it("skips a thread that is no longer settled, naming it by title, and closes nothing of it", async () => {
+    it("skips a thread that is no longer settled, naming it, and closes nothing of it", async () => {
       const w = world();
       const preview = await w.clean.preview([]);
       w.lifecycle.putMany([["thr_a", null]]);
       const result = await w.clean.run(preview.token);
-      expect(result.issues).toEqual(["Alpha: skipped, it is no longer settled or its workspace is shared"]);
+      expect(result.issues).toEqual([{ threadId: "thr_a", title: "Alpha", text: "skipped, it is no longer settled or its workspace is shared" }]);
       expect(result.closedTerminals).toBe(1);
       expect(result.portRequests).toBe(1);
       expect(w.runtime.forceClosed).toEqual(["t-b1"]);
@@ -266,7 +266,7 @@ describe("runClean (AC8)", () => {
       };
       const result = await w.clean.run(preview.token);
       expect(w.runtime.forceClosed).toEqual(["t-a1", "t-b1"]);
-      expect(result.issues).toEqual(["Alpha: skipped, it is no longer settled or its workspace is shared"]);
+      expect(result.issues).toEqual([{ threadId: "thr_a", title: "Alpha", text: "skipped, it is no longer settled or its workspace is shared" }]);
       expect(w.host.signals.map((signal) => signal.port)).toEqual([4000]);
     });
 
@@ -277,8 +277,8 @@ describe("runClean (AC8)", () => {
       w.threads.threads.set("thr_x", settled("thr_x", "env-b", { title: "Newcomer" }));
       const result = await w.clean.run(preview.token);
       expect(result.issues.sort()).toEqual([
-        "Alpha: skipped, it is no longer settled or its workspace is shared",
-        "Beta: skipped, it is no longer settled or its workspace is shared",
+        { threadId: "thr_a", title: "Alpha", text: "skipped, it is no longer settled or its workspace is shared" },
+        { threadId: "thr_b", title: "Beta", text: "skipped, it is no longer settled or its workspace is shared" },
       ]);
       expect(w.runtime.forceClosed).toEqual([]);
       expect(w.host.signals).toEqual([]);
@@ -302,7 +302,7 @@ describe("runClean (AC8)", () => {
     describe("a thread with owned ports", () => {
       /** Thread A has two ports and no terminal. */
       const portsOnly = () => world({ terminals: {} });
-      const skip = "Alpha: skipped, it is no longer settled or its workspace is shared";
+      const skip = { threadId: "thr_a", title: "Alpha", text: "skipped, it is no longer settled or its workspace is shared" };
 
       it("is not signalled when it is un-settled after the preview", async () => {
         const w = portsOnly();
@@ -361,12 +361,12 @@ describe("runClean (AC8)", () => {
     });
   });
 
-  describe("issues name the thread by title", () => {
+  describe("issues name the thread", () => {
     it("a terminal bb would not close", async () => {
       const w = world();
       const preview = await w.clean.preview([]);
       w.runtime.closeForce = async () => false;
-      expect((await w.clean.run(preview.token)).issues).toContain("Alpha: a terminal could not be closed");
+      expect((await w.clean.run(preview.token)).issues).toContainEqual({ threadId: "thr_a", title: "Alpha", text: "a terminal could not be closed" });
     });
 
     it("a port that could not be stopped", async () => {
@@ -374,7 +374,7 @@ describe("runClean (AC8)", () => {
       const preview = await w.clean.preview([]);
       w.host.signalResult = (signal) => (signal.port === 4000 ? "failed" : "sent");
       const result = await w.clean.run(preview.token);
-      expect(result.issues).toEqual(["Beta: port 4000 could not be stopped"]);
+      expect(result.issues).toEqual([{ threadId: "thr_b", title: "Beta", text: "port 4000 could not be stopped" }]);
       expect(result.portRequests).toBe(1);
     });
 
@@ -384,7 +384,7 @@ describe("runClean (AC8)", () => {
       w.clock.advance(60_000);
       w.host.machines.set("h1", new Error("offline"));
       const result = await w.clean.run(preview.token);
-      expect(result.issues).toEqual(["Alpha: its ports could not be checked", "Beta: its ports could not be checked"]);
+      expect(result.issues).toEqual([{ threadId: "thr_a", title: "Alpha", text: "its ports could not be checked" }, { threadId: "thr_b", title: "Beta", text: "its ports could not be checked" }]);
       expect(result.closedTerminals).toBe(3);
       expect(w.host.signals).toEqual([]);
     });
@@ -398,7 +398,7 @@ describe("runClean (AC8)", () => {
         return original(id);
       };
       const result = await w.clean.run(preview.token);
-      expect(result.issues).toEqual(["Alpha: could not be cleaned"]);
+      expect(result.issues).toEqual([{ threadId: "thr_a", title: "Alpha", text: "could not be cleaned" }]);
       expect(w.runtime.forceClosed).toEqual(["t-b1"]);
     });
   });

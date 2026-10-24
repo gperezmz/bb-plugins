@@ -12,12 +12,13 @@ type ThreadOverrides = Omit<Partial<PluginSidebarThread>, "activity" | "environm
 /** A read, idle root thread in `proj_a`, created at T0. */
 export function makeThread(overrides: ThreadOverrides): PluginSidebarThread {
   const { activity, environment, ...rest } = overrides;
-  const title = rest.title ?? `Thread ${overrides.id}`;
+  // `title: null` is an unnamed thread; bb shows it by its short id, which `Thread <id>` stands in for here.
+  const title = rest.title === null ? null : (rest.title ?? `Thread ${overrides.id}`);
   return {
     projectId: "proj_a",
     title,
     titleFallback: null,
-    displayTitle: rest.displayTitle ?? title,
+    displayTitle: rest.displayTitle ?? title ?? `Thread ${overrides.id}`,
     parentThreadId: null,
     lifecycleOwnerThreadId: null,
     sourceThreadId: null,

@@ -18,7 +18,7 @@ describe("parent options", () => {
 
   it("lists None first, even with a search that matches nothing", () => {
     const threads = [subject, makeThread({ id: "x", title: "Other" })];
-    expect(options(subject, threads)[0]).toEqual({ id: null, label: NO_PARENT_LABEL, checked: true });
+    expect(options(subject, threads)[0]).toEqual({ id: null, label: NO_PARENT_LABEL, prefix: "", checked: true });
     expect(labels(options(subject, threads, { query: "zzz" }))).toEqual([NO_PARENT_LABEL]);
   });
 
@@ -42,7 +42,7 @@ describe("parent options", () => {
     const thread = makeThread({ id: "me", title: "Me", parentThreadId: "old" });
     const archived = makeThread({ id: "old", title: "Old parent", isArchived: true, archivedAt: 1 });
     const fromList = options(thread, [thread, archived]);
-    expect(fromList.find((option) => option.id === "old")).toEqual({ id: "old", label: "Old parent", checked: true });
+    expect(fromList.find((option) => option.id === "old")).toEqual({ id: "old", label: "Old parent", prefix: "", checked: true });
     expect(fromList[0]!.checked).toBe(false);
     const fetched = options(thread, [thread], { currentParent: archived });
     expect(fetched.find((option) => option.id === "old")?.checked).toBe(true);

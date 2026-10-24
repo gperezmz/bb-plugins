@@ -3,7 +3,7 @@
 // dropped on a compact viewport. The popover closes when the thread changes or
 // its last child goes away.
 import { useState } from "react";
-import { experimental_useSidebarThreads as useSidebarThreads, useBbNavigate } from "@get-bb/plugin-sdk/app";
+import { experimental_useSidebarThreads as useSidebarThreads, ThreadTitle, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import type { PluginSidebarThread, PluginThreadHeaderActionProps } from "@get-bb/plugin-sdk/app";
 import { CompactViewportContext } from "@/components/ui/hooks/use-compact-viewport";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -32,7 +32,7 @@ function ChildItem({ child, onOpen }: { child: PluginSidebarThread; onOpen(): vo
         className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChildMark threadId={child.id} providerId={child.providerId} style={childIcon} />
-        <span className={cn("min-w-0 flex-1 truncate", child.isUnread && "font-semibold")}>{child.displayTitle}</span>
+        <span className={cn("min-w-0 flex-1 truncate", child.isUnread && "font-semibold")}><ThreadTitle threadId={child.id} /></span>
         <StatusView status={status} className="w-auto shrink-0" />
       </button>
     </li>

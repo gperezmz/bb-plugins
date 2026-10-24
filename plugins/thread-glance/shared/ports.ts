@@ -159,11 +159,12 @@ export const runCleanOutputSchema = z.strictObject({
   portRequests: z.number(),
   /** Ports that still listened after the request and a 750 ms wait. */
   stillListening: z.array(portSchema),
-  /** Problems, each naming its thread by title. */
-  issues: z.array(z.string()),
+  /** Problems, each naming the thread it came from; the app draws the thread's title before the text, and `title` as stored for a thread bb no longer lists. */
+  issues: z.array(z.strictObject({ threadId: z.string(), title: z.string(), text: z.string() })),
 });
 export type PreviewCleanOutput = z.infer<typeof previewCleanOutputSchema>;
 export type RunCleanOutput = z.infer<typeof runCleanOutputSchema>;
+export type CleanIssue = RunCleanOutput["issues"][number];
 
 // --- Texts the app shows for the settle prompt (the server's outcomes map to these). ---
 
