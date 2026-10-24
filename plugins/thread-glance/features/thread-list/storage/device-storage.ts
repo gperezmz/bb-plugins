@@ -17,7 +17,7 @@ export const CAPS = {
   lifecycleRows: 500,
   /** Ids of the manual order cached for the first draw. */
   orderIds: 2_000,
-  /** Questions and queued failures seen on threads that still wait (see `seenWaits`). */
+  /** Questions and queued failures seen on this device, newest kept; the cap drops those of threads no window lists any more (see `seenWaits`). */
   seenWaits: 500,
 } as const;
 
