@@ -10,6 +10,7 @@ import {
   copyBranchAction,
   copyThreadIdAction,
   MACHINES_FAILED,
+  notifyParentAction,
   parentAction,
   parkAction,
   PICK_CHOICE,
@@ -234,5 +235,50 @@ describe("Project (AC22)", () => {
     const addPath = action.choices!.items.find((item) => item.label === "Add local path")!;
     expect(addPath.disabled).toBe(true);
     expect(action.choices!.hint).toBe(MACHINES_FAILED);
+  });
+});
+
+describe("Notify parent (AC1, AC2)", () => {
+  const child = makeThread({ id: "t1", parentThreadId: "p1" });
+  const fork = makeThread({ id: "t1", parentThreadId: "p1", originKind: "fork", sourceThreadId: "p1" });
+  const run = (action: NonNullable<ReturnType<typeof notifyParentAction>>, value?: string) =>
+    action.run({ ...(value === undefined ? {} : { value }), requestRename: () => {} });
+
+  it("is not offered on a thread with no parent or on a fork", () => {
+    for (const thread of [idle, fork]) expect(notifyParentAction(targetOf(thread), menuData([thread]).data)).toBeNull();
+  });
+
+  it("offers all outcomes, only when stuck and off on a child, with none chosen until bb's value is read", () => {
+    const action = notifyParentAction(targetOf(child), menuData([child]).data)!;
+    expect(action.label).toBe("Notify parent");
+    expect(action.detail).toBeUndefined();
+    expect(action.choices!.items.map((item) => [item.id, item.label, item.selected])).toEqual([
+      ["auto", "All outcomes", false],
+      ["stuck", "Only when stuck", false],
+      ["off", "Off", false],
+    ]);
+  });
+
+  it("shows bb's current value as chosen and names it in the detail", () => {
+    for (const [value, label] of [["auto", "All outcomes"], ["stuck", "Only when stuck"], ["off", "Off"]] as const) {
+      const action = notifyParentAction(targetOf(child), menuData([child], { notifications: { t1: value } }).data)!;
+      expect(action.detail).toBe(label);
+      expect(action.choices!.items.filter((item) => item.selected).map((item) => item.id)).toEqual([value]);
+    }
+  });
+
+  it("sets bb's setting for the thread to the pick", async () => {
+    const { data, notify } = menuData([child], { notifications: { t1: "auto" } });
+    await run(notifyParentAction(targetOf(child), data)!, "stuck");
+    expect(notify.set).toHaveBeenCalledExactlyOnceWith("t1", "stuck");
+  });
+
+  it("changes nothing for the value already set, or for a pick that is none of bb's values", async () => {
+    const { data, notify } = menuData([child], { notifications: { t1: "stuck" } });
+    const action = notifyParentAction(targetOf(child), data)!;
+    await run(action, "stuck");
+    await run(action, "loud");
+    await run(action);
+    expect(notify.set).not.toHaveBeenCalled();
   });
 });

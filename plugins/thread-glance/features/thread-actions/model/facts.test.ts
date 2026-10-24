@@ -8,10 +8,17 @@ describe("menu facts", () => {
   it("reads busy, woke, the shelf the row alone gives, and the branch", () => {
     const now = 10_000_000;
     const thread = makeThread({ id: "t", environment: { branchName: "feat/x" }, latestAttentionAt: 1 });
-    expect(menuFactsOf(thread, null, now)).toEqual({ busy: false, woke: false, mark: "active", branch: "feat/x" });
+    expect(menuFactsOf(thread, null, now)).toEqual({ busy: false, woke: false, mark: "active", branch: "feat/x", notifiable: false });
     expect(menuFactsOf(thread, snoozedRow(now + 1000, now - 5), now).mark).toBe("snoozed");
     expect(menuFactsOf(thread, snoozedRow(now - 1, now - 5), now)).toMatchObject({ woke: true, mark: "active" });
     expect(menuFactsOf(makeThread({ id: "t", ...working }), null, now).busy).toBe(true);
+  });
+
+  it("reads a child as notifiable and a root thread or a fork as not", () => {
+    const facts = (overrides: Partial<Parameters<typeof makeThread>[0]>) => menuFactsOf(makeThread({ id: "t", ...overrides }), null, 1).notifiable;
+    expect(facts({ parentThreadId: "p" })).toBe(true);
+    expect(facts({})).toBe(false);
+    expect(facts({ parentThreadId: "p", originKind: "fork" })).toBe(false);
   });
 
   it("shares the previous map and entries while nothing they hold changed", () => {

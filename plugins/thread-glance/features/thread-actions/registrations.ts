@@ -7,13 +7,15 @@
 // environment 10, Copy thread link 20, Mark read or unread 30, Pin 40,
 // Rename 60. So Parent… and Project follow Open in split by registering in
 // `open` without an order; Copy branch and Copy thread ID follow Copy thread
-// link at 21 and 22; and the lifecycle actions follow Pin at 41 to 46.
+// link at 21 and 22; the lifecycle actions follow Pin at 41 to 46; and Notify
+// parent follows them at 50, ahead of Rename.
 import { experimental_THREAD_ACTION_GROUPS as GROUPS } from "@get-bb/plugin-sdk/app";
 import type { PluginAppBuilder } from "@get-bb/plugin-sdk/app";
 import { useMenuData } from "./data";
 import {
   copyBranchAction,
   copyThreadIdAction,
+  notifyParentAction,
   parentAction,
   parkAction,
   projectAction,
@@ -47,6 +49,7 @@ export const THREAD_MENU_ENTRIES: readonly Entry[] = [
   { id: "resume", title: "Resume", icon: "Play", group: GROUPS.organize, order: 44, build: resumeAction },
   { id: "settle", title: "Settle", icon: "thread-glance-meditation", group: GROUPS.organize, order: 45, build: settleAction },
   { id: "unsettle", title: "Un-settle", icon: "Undo", group: GROUPS.organize, order: 46, build: unsettleAction },
+  { id: "notify-parent", title: "Notify parent", icon: "BellDot", group: GROUPS.organize, order: 50, build: notifyParentAction },
 ];
 
 /** Adds Thread Glance's actions to bb's thread menu. */
