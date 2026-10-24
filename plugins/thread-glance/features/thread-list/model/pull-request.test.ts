@@ -1,18 +1,17 @@
-import type { PluginSidebarPullRequest } from "@get-bb/plugin-sdk/app";
 import { describe, expect, it } from "vitest";
+import type { GitHubPullRequest } from "@/shared/github-pr-status";
 import { pullRequestFacts, pullRequestLabel, pullRequestTone, pullRequestTooltip } from "./pull-request";
 
-type Attention = PluginSidebarPullRequest["attention"];
+type Attention = GitHubPullRequest["attention"];
 
-const pr = (patch: Partial<PluginSidebarPullRequest> = {}): PluginSidebarPullRequest => ({
-  experimental_autoMerge: false,
-  experimental_inMergeQueue: null,
-  experimental_checks: { state: "failing" },
-  experimental_review: { state: "review_requested" },
-  experimental_mergeability: { state: "mergeable" },
+const pr = (patch: Partial<GitHubPullRequest> = {}): GitHubPullRequest => ({
+  checks: { state: "failing" },
+  review: { state: "review_requested" },
+  mergeability: { state: "mergeable" },
   number: 7,
   title: "Add shelves",
   url: "https://example.test/pr/7",
+  updatedAt: "2026-10-24T12:00:00Z",
   state: "open",
   attention: "checks_failed",
   ...patch,
