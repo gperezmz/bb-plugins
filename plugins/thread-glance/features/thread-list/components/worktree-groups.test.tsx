@@ -101,6 +101,13 @@ describe("AC1: Group by worktree groups root threads that share a worktree under
     await flush();
     expect(toasts.error).toHaveBeenCalledWith("Could not change Group by worktree");
     expect(groupButton()?.getAttribute("aria-pressed")).toBe("true");
+    // A failed save leaves the button usable: the next click writes again.
+    await act(async () => {
+      fireEvent.click(groupButton()!);
+    });
+    await flush();
+    expect(m.server.calls.filter((call) => call.method === "writeSettings").at(-1)?.input).toEqual({ patch: { groupByWorktree: false } });
+    expect(groupButton()?.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("follows the setting from another window, such as the settings page or bb thread-glance prefs", async () => {
