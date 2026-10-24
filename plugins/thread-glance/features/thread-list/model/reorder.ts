@@ -37,11 +37,11 @@ export function rowPlaces(items: Iterable<DrawnItem>): Map<string, RowPlace> {
 /**
  * Whether going from `before` to `after` only opened or closed shelves or
  * groups, or only drew or dropped group headers around rows that kept their
- * order and their shelves (Group by worktree turned on or off). The first holds when every row,
- * group or worktree group that came or went sits under a shelf or group whose
- * open state changed, and anything else that came or went is Settled's Load
- * more. Then nothing slides; any other change, such as a move or a row leaving
- * for another shelf, slides the rows it moves.
+ * order and their shelves (Group by worktree turned on or off). The first
+ * holds when every row, group or worktree group that came or went sits under
+ * a shelf or group whose open state changed, and anything else that came or
+ * went is Settled's Load more. Then nothing slides; any other change, such as
+ * a move or a row leaving for another shelf, slides the rows it moves.
  */
 export function isToggleOnly(before: readonly ListItem[], after: readonly ListItem[]): boolean {
   const openState = (items: readonly ListItem[]) =>
