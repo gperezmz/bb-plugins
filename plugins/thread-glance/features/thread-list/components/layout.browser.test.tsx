@@ -221,11 +221,25 @@ describe("the cards' lines", () => {
       const boss = await hovered(249, shelf);
       const chip = boss.querySelector<HTMLElement>("[data-children-chip]")!;
       expect(chip.getBoundingClientRect().width).toBeGreaterThanOrEqual(34);
-      expect(whole(chip)).toBe(true);
+      expect([chip, ...chip.querySelectorAll<HTMLElement>("*")].every(whole)).toBe(true);
       const restore = boss.querySelector<HTMLElement>("[data-slim-actions] button")!;
       expect(whole(restore)).toBe(true);
+      // The project name is the first to give way.
+      const name = boss.querySelector<HTMLElement>("[data-project-name]")!.parentElement!;
+      expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
       expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
       expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+    });
+
+    it("cuts a hovered Parked row's label from its end, never from its start", async () => {
+      for (const width of [249, 256, 262, 280]) {
+        const boss = await hovered(width, "Parked");
+        const label = [...boss.querySelectorAll<HTMLElement>("span")].find((el) => el.children.length === 0 && el.textContent?.startsWith("Waiting"))!;
+        const wrapper = label.parentElement!;
+        expect(label.getBoundingClientRect().left, `at ${width} px`).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left - 0.5);
+        cleanup();
+        localStorage.clear();
+      }
     });
 
     it.each(["Parked", "Settled"] as const)("does not overflow a hovered %s row at the narrowest sidebar width", async (shelf) => {
