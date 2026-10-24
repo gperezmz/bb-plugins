@@ -221,4 +221,4 @@ The server rereads every non-archived thread's environment at most every 30 s, a
 
 ## Jump hints
 
-Holding Ctrl (⌘ on Mac) alone for 700 ms shows "Ctrl + n" or "⌘ n" in the status slot of the first nine rows. Shift, Alt, another key, release or losing focus cancels it. bb performs the jump.
+While bb's jump modifier is held, each row bb gives a jump key shows bb's own label for it in the status slot, such as "Ctrl + Shift + 1" on the web, where holding Ctrl shows them. bb decides when the hints show, which rows get them and the chord each names, and performs the jump: it numbers the first nine rows the list has drawn, in page order, so with the upper list holding fewer than nine, the keys reach on into the lower one. The list draws only the rows near the view, and always the upper list's first nine, so after scrolling, numbered rows can be out of view and rows in view can have no number. The slot widens while a hint is longer than it.
