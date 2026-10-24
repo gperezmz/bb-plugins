@@ -1,13 +1,13 @@
 // The Hover card's content: the thread's title, project, machine and branch,
 // its harness with model and reasoning level, the branch's pull request from
-// bb, the ports listening in its environment, and its subthreads.
+// GitHub PR Status, the ports listening in its environment, and its subthreads.
 import { useEffect, useState } from "react";
-import { experimental_useSidebarThreadPullRequest as usePullRequest } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { modelLines, type ModelState } from "../../model/harness";
 import { pullRequestFacts, pullRequestLabel, pullRequestTone } from "../../model/pull-request";
 import type { RowView } from "../../model/list-model";
 import { lookUpModel } from "../../sync/model-lookup";
+import { usePullRequest } from "../../sync/pull-requests";
 import { useCommands, useListStore, useProject, useRowsOf } from "../../store/hooks";
 import { HarnessLogo, useHarnessName } from "./HarnessLogo";
 import { PortsSection } from "./PortsSection";
@@ -43,8 +43,8 @@ function useModelState(row: RowView): ModelState {
   return state;
 }
 
-function PullRequestSection({ threadId }: { threadId: string }) {
-  const { pullRequest } = usePullRequest(threadId);
+function PullRequestSection({ environmentId }: { environmentId: string | null | undefined }) {
+  const pullRequest = usePullRequest(environmentId);
   if (pullRequest === null) return null;
   const facts = pullRequestFacts(pullRequest);
   return (
@@ -121,7 +121,7 @@ export function HoverBody({ row }: { row: RowView }) {
         <Line label="Model">{lines.model}</Line>
         <Line label="Reasoning">{lines.reasoning}</Line>
       </dl>
-      <PullRequestSection threadId={thread.id} />
+      <PullRequestSection environmentId={thread.environment?.id} />
       <PortsSection threadId={thread.id} environmentId={thread.environment?.id} />
       {row.children === null ? null : <Subthreads ids={row.children.ids} />}
     </div>

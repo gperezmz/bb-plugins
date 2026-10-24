@@ -143,7 +143,7 @@ With **Project colors** on, a 2 px stripe at a row's left edge shows the project
 
 ### Pull request badge
 
-`#number` comes from bb for the thread's branch. Its colour follows bb's attention, as the [hover card](#hover-card) colours its label. Its tooltip is the pull request's title and label, and it opens the pull request in a new tab.
+`#number` comes from bb's bundled GitHub PR Status plugin for the thread's environment. Its colour follows the pull request's attention state, as the [hover card](#hover-card) colours its label. No badge shows while no status can be had: no pull request, a lookup that failed, GitHub PR Status disabled or not installed. Its tooltip is the pull request's title and label, and it opens the pull request in a new tab.
 
 ## Status slot
 
@@ -188,7 +188,7 @@ Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms
 
 - the title, project, machine and branch;
 - the harness with its status glyph, model and reasoning level, loaded from bb: "Loading…", "Not set" or "Unavailable";
-- the branch's pull request from bb, when it has one: `#number` and title, linking to it, with bb's attention as its label and its checks, review and mergeability on one line. No pull request, no section;
+- the branch's pull request from GitHub PR Status, when it has one: `#number` and title, linking to it, with its attention state as its label and its checks, review and mergeability on one line. No pull request, no section;
 - "Subthreads (N)", with a toggle listing the direct children, each opening that child;
 - "Workspace ports (N)", when the thread's environment has listeners ([Workspace ports](#workspace-ports)).
 
@@ -196,7 +196,7 @@ Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms
 |---|---|
 | Merged | Violet |
 | Blocked, Changes requested, Checks failed, Conflicts, Closed | Red |
-| Open (when bb reports no attention) | Emerald |
+| Open (when GitHub PR Status reports no attention state) | Emerald |
 | Draft, Checks pending, Ready to merge, In merge queue, Review requested | Muted |
 
 ## Workspace ports
