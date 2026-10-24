@@ -185,6 +185,10 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const wokeClearAsked = new Set<string>();
   // Pinned threads whose lifecycle row this window has asked the server to clear.
   const pinClearAsked = new Set<string>();
+  // Threads opened while their own question waits (see `questionsSeen`). Every list bb feeds is read
+  // as it comes, frame or not, so a question that clears while no frame runs (a hidden window) is
+  // forgotten before the next one arrives.
+  let seenQuestions: ReadonlySet<string> = new Set();
   // Each root's settle mark as of the last model it was not held on a shelf in, for the settle close.
   let settleMarks: SettleMarks = NO_MARKS;
 
@@ -197,7 +201,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const commit = (next: ListInputs) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
-    const seenQuestionIds = questionsSeen(next.seenQuestionIds, next.host.threads, next.activeThreadId);
+    if (next.host.status === "ready") seenQuestions = questionsSeen(seenQuestions, next.host.threads, next.activeThreadId);
+    const seenQuestionIds = seenQuestions;
     const checked = scope === next.scope && seenQuestionIds === next.seenQuestionIds ? next : { ...next, scope, seenQuestionIds };
     const current = api.getState();
     if (checked.scope !== current.inputs.scope) writeScope(sessionStorage, checked.scope);
@@ -294,6 +299,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       if (sameHost(next, host)) return;
       const first = host === NO_HOST;
       host = next;
+      if (next.status === "ready") seenQuestions = questionsSeen(seenQuestions, next.threads, null);
       // Nothing is drawn yet, so the first data is drawn at once.
       if (first) applyFrame();
       else requestFrame();
