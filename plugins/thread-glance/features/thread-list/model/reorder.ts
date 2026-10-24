@@ -1,8 +1,8 @@
 // The rules of reordering, apart from the pointer and the DOM: when a press
-// becomes a drag, where the dragged unit goes, how fast the list scrolls, and
-// what a keyboard move announces. Pure.
+// becomes a drag, where the dragged unit goes, how fast the list scrolls, how
+// far a row slides, and what a keyboard move announces. Pure.
 import { applySubsetOrder, insertAtTop, moveByOne } from "@/shared/manual-order";
-import type { ListModel, ReorderList } from "./list-model";
+import type { ListItem, ListModel, ReorderList } from "./list-model";
 
 /** The pointer must move this far before a press becomes a drag. */
 export const DRAG_THRESHOLD_PX = 6;
@@ -12,6 +12,65 @@ export const AUTOSCROLL_EDGE_PX = 48;
 export const AUTOSCROLL_MAX_PX = 14;
 /** The slide of the rows a drag moves aside. */
 export const SLIDE_MS = 150;
+
+/** One item of a list as drawn, top to bottom: a shelf or group header, or a row with the key of the header it belongs to, each with its top in px from the list's top. */
+export type DrawnItem = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; header: string; top: number };
+
+/** Where a row sits: the header it belongs to, its top from the list's top, and its top from that header's top. */
+export interface RowPlace {
+  header: string;
+  top: number;
+  belowHeader: number;
+}
+
+/** The place of each row in `items`, by row id; a row whose header is not among them is measured from the list's top. */
+export function rowPlaces(items: Iterable<DrawnItem>): Map<string, RowPlace> {
+  const places = new Map<string, RowPlace>();
+  const headerTops = new Map<string, number>();
+  for (const item of items) {
+    if (item.kind === "header") headerTops.set(item.key, item.top);
+    else places.set(item.id, { header: item.header, top: item.top, belowHeader: item.top - (headerTops.get(item.header) ?? 0) });
+  }
+  return places;
+}
+
+/**
+ * Whether going from `before` to `after` only opened or closed shelves or
+ * groups, or only drew or dropped group headers around rows that kept their
+ * order and their shelves (Group by worktree turned on or off). The first
+ * holds when every row, group or worktree group that came or went sits under
+ * a shelf or group whose open state changed, and anything else that came or
+ * went is Settled's Load more. Then nothing slides; any other change, such as
+ * a move or a row leaving for another shelf, slides the rows it moves.
+ */
+export function isToggleOnly(before: readonly ListItem[], after: readonly ListItem[]): boolean {
+  const openState = (items: readonly ListItem[]) =>
+    new Map(items.flatMap((item) => (item.kind === "shelf" || item.kind === "group" || item.kind === "worktree" ? [[item.key, item.collapsed] as const] : [])));
+  const was = openState(before);
+  const toggled = new Set([...openState(after)].filter(([key, collapsed]) => was.has(key) && was.get(key) !== collapsed).map(([key]) => key));
+  const keysOf = (items: readonly ListItem[]) => new Set(items.map((item) => item.key));
+  const hadKeys = keysOf(before);
+  const hasKeys = keysOf(after);
+  const changed = [...before.filter((item) => !hasKeys.has(item.key)), ...after.filter((item) => !hadKeys.has(item.key))];
+  if (changed.length > 0 && changed.every((item) => item.kind === "group" || item.kind === "worktree")) {
+    const rowKeys = (items: readonly ListItem[]) => items.flatMap((item) => (item.kind === "row" ? [`${item.key}@${item.shelf}`] : [])).join(" ");
+    if (rowKeys(before) === rowKeys(after)) return true;
+  }
+  if (toggled.size === 0) return false;
+  return changed.every((item) => (item.kind === "more" ? true : item.kind === "shelf" ? false : item.headers.some((key) => toggled.has(key))));
+}
+
+/**
+ * How far a row slides into its new place, in px from it: the distance it
+ * moved that its header did not carry it. A row under the same header as
+ * before slides only by its move within that header, so rows a shelf or group
+ * opening or closing pushes along move with their header and do not slide; a
+ * row now under another header slides from where it was. A group dragged past
+ * another carries its rows, so they do not slide either.
+ */
+export function slideDelta(was: RowPlace, now: RowPlace): number {
+  return was.header === now.header ? was.belowHeader - now.belowHeader : was.top - now.top;
+}
 
 export interface PressStart {
   x: number;
