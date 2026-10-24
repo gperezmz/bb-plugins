@@ -2,6 +2,7 @@
 // menu and from bb's thread menu alike. A calendar that starts on Monday, a
 // time field and a preview of when the thread wakes.
 import { useEffect, useState } from "react";
+import { ThreadTitle } from "@get-bb/plugin-sdk/app";
 import { DayPicker } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,7 +34,7 @@ const CALENDAR_CLASSES = {
 
 export function SnoozeDialog({ threadId, onClose }: { threadId: string; onClose(): void }) {
   const { threads, commands } = useDialogContext();
-  const title = threads.find((thread) => thread.id === threadId)?.displayTitle ?? "this thread";
+  const listed = threads.some((thread) => thread.id === threadId);
   const [now, setNow] = useState(() => Date.now());
   const [form, setForm] = useState<PickerForm>(() => initialPicker(new Date()));
   useEffect(() => {
@@ -58,7 +59,7 @@ export function SnoozeDialog({ threadId, onClose }: { threadId: string; onClose(
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>Snooze until</DialogTitle>
-          <DialogDescription className="truncate">{title}</DialogDescription>
+          <DialogDescription className="truncate">{listed ? <ThreadTitle threadId={threadId} /> : "this thread"}</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-3"

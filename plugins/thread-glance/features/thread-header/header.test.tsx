@@ -120,3 +120,26 @@ describe("AC23: the Children button", () => {
     expect(view.container.textContent).toBe("");
   });
 });
+
+describe("titles with mentions (#342)", () => {
+  const mentioned = () => [
+    makeThread({ id: "p", title: "Plan @project:proj_a", displayTitle: "Plan Alpha" }),
+    makeThread({ id: "c1", title: "Fix @thread:p", displayTitle: "Fix Plan Alpha", parentThreadId: "p" }),
+  ];
+
+  it("draws the parent's title through bb's ThreadTitle, and names the button by the plain one", () => {
+    show(ParentButton, "c1", mentioned());
+    const button = screen.getByRole("button", { name: "Back to parent: Plan Alpha" });
+    expect(button.querySelector('[data-thread-title="p"]')?.textContent).toBe("Plan Alpha");
+    expect(button.textContent).not.toContain("@project");
+  });
+
+  it("draws each child's title through bb's ThreadTitle in the popover", async () => {
+    show(ChildrenButton, "p", mentioned());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "1 child" }));
+    });
+    const popover = screen.getByRole("region", { name: "Child threads" });
+    expect(popover.querySelector('[data-thread-title="c1"]')?.textContent).toBe("Fix Plan Alpha");
+  });
+});

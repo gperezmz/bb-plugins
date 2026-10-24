@@ -1,10 +1,11 @@
 // What a row draws inside its frame, by card kind: the Full card's three
 // lines, the Folded card's one, and the Slim row's one with the shelf's label
 // and restore button. The frame (stripe, link, sweep, menus) is `ThreadRow`.
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, ThreadTitle } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { RowView } from "../../model/list-model";
+import { storedTitle } from "../../model/title";
 import type { ProjectColour } from "../../model/project-colour";
 import { restoreAction, shelfLabel } from "../../model/shelf-label";
 import type { StatusSlot } from "../../model/status-slot";
@@ -50,7 +51,7 @@ function Title({ row, editing, className, editorClassName }: { row: RowView; edi
   if (editing) {
     return (
       <RenameEditor
-        initial={thread.displayTitle}
+        initial={storedTitle(thread)}
         label={`Rename ${thread.displayTitle}`}
         onSave={(title) => void commands.rename(thread.id, title)}
         onDone={commands.endRename}
@@ -62,7 +63,7 @@ function Title({ row, editing, className, editorClassName }: { row: RowView; edi
   const muted = !bold && thread.indicator === "none";
   return (
     <span data-title="" className={cn("min-w-0 flex-1 truncate text-sm", bold && "font-semibold", muted && "text-muted-foreground", className)}>
-      {thread.displayTitle}
+      <ThreadTitle threadId={thread.id} />
     </span>
   );
 }

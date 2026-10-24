@@ -157,8 +157,14 @@ With **Project colors** on, a 2 px stripe at a row's left edge shows the project
 - Unread titles are bold; read idle titles are muted.
 - The open thread's row is highlighted, and a row open in another pane is tinted.
 - The **Unpin** button shows on hover, always on touch.
-- Double-click renames inline. The field keeps focus until you leave it, however long bb takes to open the thread; leaving is a click outside it or Tab, and switching to another window is not. Enter or leaving the field saves a trimmed, changed title; Escape cancels.
+- Double-click renames inline. The field holds the stored title, [mentions](#titles-with-mentions) as typed. It keeps focus until you leave it, however long bb takes to open the thread; leaving is a click outside it or Tab, and switching to another window is not. Enter or leaving the field saves a trimmed, changed title; Escape cancels.
 - Inside a project group on Active, a card hides its project line ([Project sort](thread-glance-actions.md#active-sort)).
+
+### Titles with mentions
+
+A title can mention a project, a section or a thread (`@project:`, `@section:` and `@thread:`). Wherever Thread Glance shows a title, it draws bb's resolved name with bb's mention chip, as bb's own lists do: on rows, in the child lists and the [hover card](#hover-card), in the thread header's Parent and Children buttons, in the Snooze and Parent dialogs, in the Clean dialog, and in the toast that refuses Park, Snooze or Settle on a thread. Text that is only read aloud or announced, such as a button's name and the reorder announcement, uses the same name as plain text. File mentions are not drawn as chips.
+
+A thread that bb no longer lists has no name to resolve: an archived current parent in the Parent dialog, or a thread in the Clean dialog that was archived since the preview, shows its title as stored. A refusal that the server sends after the window's own check, because the thread changed in between, also names the thread by its title as stored.
 
 ### Pull request badge
 

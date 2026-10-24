@@ -5,9 +5,10 @@
 // A settle ends by offering to close the thread's ports (./ports-prompt), and
 // every command on the thread dismisses that offer.
 import type { ReactNode } from "react";
+import { ThreadTitle } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { isBusy } from "@/shared/busy";
-import { busyRefusal, childNeedsYouRefusal, type GatedAction } from "@/shared/messages";
+import { busyRefusalParts, childNeedsYouRefusalParts, type GatedAction, type RefusalParts } from "@/shared/messages";
 import { formatWakeTime } from "@/shared/snooze";
 import type { PluginRpcClient } from "@get-bb/plugin-sdk/app";
 import type { ActionOutput, Change, RpcContract } from "@/shared/contract";
@@ -46,6 +47,17 @@ function describe(first: string | null, note: string | null): ReactNode {
   );
 }
 
+/** A refusal's toast: its text around the title of the thread it names, drawn as bb draws a title. */
+function refusal([before, after]: RefusalParts, threadId: string): ReactNode {
+  return (
+    <>
+      {before}
+      <ThreadTitle threadId={threadId} />
+      {after}
+    </>
+  );
+}
+
 /** What the lifecycle commands need of the window they run in. */
 export interface LifecycleHost {
   rpc(): PluginRpcClient<RpcContract>;
@@ -53,8 +65,8 @@ export interface LifecycleHost {
    * The thread as this window sees it, for the client-side gate on a busy
    * thread; null when it is not known, and the server's check stands alone.
    */
-  thread(threadId: string): (Parameters<typeof isBusy>[0] & { displayTitle: string }) | null;
-  /** The title of a thread below this one that has a question or approval waiting, or null; absent, the server's check stands alone. */
+  thread(threadId: string): Parameters<typeof isBusy>[0] | null;
+  /** The id of a thread below this one that has a question or approval waiting, or null; absent, the server's check stands alone. */
   childWaiting?(threadId: string): string | null;
 }
 
@@ -73,12 +85,12 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
   const refuseGated = (action: GatedAction, threadId: string): boolean => {
     const waiting = host.childWaiting?.(threadId) ?? null;
     if (waiting !== null) {
-      toast.error(childNeedsYouRefusal(action, waiting));
+      toast.error(refusal(childNeedsYouRefusalParts(action), waiting));
       return true;
     }
     const thread = host.thread(threadId);
     if (thread === null || !isBusy(thread)) return false;
-    toast.error(busyRefusal(action, thread.displayTitle));
+    toast.error(refusal(busyRefusalParts(action), threadId));
     return true;
   };
   const fail = (error: unknown) => {

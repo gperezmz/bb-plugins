@@ -2,6 +2,7 @@
 // (AC5, menu half), and a Park chosen after the thread started a turn (AC7).
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThread, working } from "@/testing/fixtures";
+import { toastText } from "@/testing/toast-text";
 import { createLifecycleCommands, lifecycleHostOf } from "@/features/thread-list";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { busyRefusal } from "@/shared/messages";
@@ -186,7 +187,7 @@ describe("a thread that starts a turn after its menu opened (AC7)", () => {
     await action.run({ requestRename: () => {} });
 
     expect(rpc.call).not.toHaveBeenCalled();
-    expect(toasts.error).toHaveBeenCalledWith(busyRefusal("park", "Idle thread"));
+    expect(toasts.error.mock.calls.map((call) => toastText(call[0], { t1: "Idle thread" }))).toEqual([busyRefusal("park", "Idle thread")]);
     expect(toasts.success).not.toHaveBeenCalled();
   });
 });

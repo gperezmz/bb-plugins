@@ -2,7 +2,7 @@
 // parent, or none. The change goes to bb's API from the browser, as bb's own
 // list does.
 import { useEffect, useMemo, useState } from "react";
-import { experimental_Icon as Icon, useSdk } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, ThreadTitle, useSdk } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -59,6 +59,7 @@ export function ParentDialog({ threadId, onClose }: { threadId: string; onClose(
     [thread, threads, archivedParent, projectNames, query],
   );
   const activeIndex = Math.min(active, options.length - 1);
+  const listedIds = useMemo(() => new Set(threads.map((candidate) => candidate.id)), [threads]);
 
   /** A thread's parent: from the list, else read from bb, which also knows archived threads; null where it cannot be read. */
   const parentOf = async (id: string): Promise<string | null> => {
@@ -114,7 +115,7 @@ export function ParentDialog({ threadId, onClose }: { threadId: string; onClose(
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Parent</DialogTitle>
-          <DialogDescription className="truncate">{thread?.displayTitle ?? "This thread"}</DialogDescription>
+          <DialogDescription className="truncate">{thread === undefined ? "This thread" : <ThreadTitle threadId={thread.id} />}</DialogDescription>
         </DialogHeader>
         <Input
           role="combobox"
@@ -146,7 +147,17 @@ export function ParentDialog({ threadId, onClose }: { threadId: string; onClose(
               onMouseMove={() => setActive(index)}
               onClick={() => void choose(option)}
             >
-              <span className="min-w-0 flex-1 truncate">{option.label}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {/* An archived current parent is not among the threads bb lists, which ThreadTitle draws nothing for. */}
+                {option.id !== null && listedIds.has(option.id) ? (
+                  <>
+                    {option.prefix}
+                    <ThreadTitle threadId={option.id} />
+                  </>
+                ) : (
+                  option.label
+                )}
+              </span>
               {option.checked ? <Icon name="Check" className="size-4 shrink-0" /> : null}
             </li>
           ))}

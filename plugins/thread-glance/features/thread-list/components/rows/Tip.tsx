@@ -11,8 +11,8 @@ export function Tip({
   side = "top",
   className,
 }: {
-  /** The tooltip's text; null draws no tooltip. */
-  label: string | null;
+  /** The tooltip's content; null draws no tooltip. */
+  label: ReactNode;
   children: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
   className?: string;

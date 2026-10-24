@@ -3,6 +3,7 @@
 // request from GitHub PR Status, the ports listening in its environment, and
 // its subthreads.
 import { useEffect, useState } from "react";
+import { ThreadTitle } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { modelLine, type ModelState } from "../../model/harness";
 import { pullRequestFacts, pullRequestLabel, pullRequestTone } from "../../model/pull-request";
@@ -84,7 +85,7 @@ function Subthreads({ ids }: { ids: readonly string[] }) {
                 onClick={() => commands.open(child.id)}
                 className="w-full truncate text-left text-muted-foreground outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {child.thread.displayTitle}
+                <ThreadTitle threadId={child.id} />
               </button>
             </li>
           ))}
@@ -103,7 +104,9 @@ export function HoverBody({ row }: { row: RowView }) {
   const branch = thread.environment?.branchName;
   return (
     <div className="flex flex-col gap-2 text-xs">
-      <p className="text-sm leading-snug font-medium break-words">{thread.displayTitle}</p>
+      <p className="text-sm leading-snug font-medium break-words">
+        <ThreadTitle threadId={thread.id} />
+      </p>
       <dl className="flex flex-col gap-1">
         <Line label="Project">{project?.name ?? thread.projectId}</Line>
         {thread.host === null ? null : <Line label="Machine">{thread.host.name}</Line>}
