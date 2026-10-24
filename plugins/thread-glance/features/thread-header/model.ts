@@ -22,6 +22,9 @@ export function childrenLabel(children: readonly PluginSidebarThread[]): string 
   return `${children.length} ${children.length === 1 ? "child" : "children"}`;
 }
 
+/** What the parent button says before the parent's title. */
+export const BACK_TO_PARENT = "Back to parent: ";
+
 export function backToParentLabel(parent: Pick<PluginSidebarThread, "displayTitle">): string {
-  return `Back to parent: ${parent.displayTitle}`;
+  return `${BACK_TO_PARENT}${parent.displayTitle}`;
 }

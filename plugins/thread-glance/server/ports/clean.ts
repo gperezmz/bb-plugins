@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 import { inBatches } from "../../shared/batches";
 import { liftedIds } from "../../shared/lifecycle";
-import type { PreviewCleanOutput, RunCleanOutput } from "../../shared/ports";
+import type { CleanIssue, PreviewCleanOutput, RunCleanOutput } from "../../shared/ports";
 import type { LifecycleStore } from "../lifecycle-store";
 import { isLiveTerminal, type ThreadRuntime } from "../runtime";
 import type { ServerThread, ThreadGateway } from "../threads";
@@ -48,6 +48,8 @@ export interface CleanDeps {
   wait?: (ms: number) => Promise<void>;
   warn?: (message: string) => void;
 }
+
+const issueOf = (thread: StoredPreviewThread, text: string): CleanIssue => ({ threadId: thread.threadId, title: thread.title, text });
 
 const EXPIRED: RunCleanOutput = { expired: true, closedTerminals: 0, portRequests: 0, stillListening: [], issues: [] };
 
@@ -118,7 +120,7 @@ export function createClean(deps: CleanDeps): Clean {
       let closedTerminals = 0;
       let portRequests = 0;
       const requested = new Map<number, { environmentId: string; pid: number; startedAt: number }>();
-      const issues: string[] = [];
+      const issues: CleanIssue[] = [];
 
       /** Whether the thread, and every thread sharing its workspace, still passes, in its environment. */
       async function stillClean(thread: StoredPreviewThread): Promise<boolean> {
@@ -127,7 +129,7 @@ export function createClean(deps: CleanDeps): Clean {
       }
 
       const skipped = (thread: StoredPreviewThread) =>
-        issues.push(`${thread.title}: skipped, it is no longer settled or its workspace is shared`);
+        issues.push(issueOf(thread, "skipped, it is no longer settled or its workspace is shared"));
 
       threads: for (const thread of preview.threads) {
         try {
@@ -139,18 +141,18 @@ export function createClean(deps: CleanDeps): Clean {
             const current = await runtime.terminal(terminalId);
             if (current === undefined || !isLiveTerminal(current)) continue;
             if (await runtime.closeForce(terminalId)) closedTerminals += 1;
-            else issues.push(`${thread.title}: a terminal could not be closed`);
+            else issues.push(issueOf(thread, "a terminal could not be closed"));
           }
 
           if (thread.ports.length === 0) continue;
           const view = await engine.read({ fresh: true });
           if (!isScannable(view, thread.environmentId)) {
-            issues.push(`${thread.title}: its ports could not be checked`);
+            issues.push(issueOf(thread, "its ports could not be checked"));
             continue;
           }
           const location = view.locations.get(thread.environmentId);
           if (location === undefined) {
-            issues.push(`${thread.title}: its workspace could not be found`);
+            issues.push(issueOf(thread, "its workspace could not be found"));
             continue;
           }
           // A process serving two ports is signalled once, and both ports are then expected to close.
@@ -174,11 +176,11 @@ export function createClean(deps: CleanDeps): Clean {
                 }
               }
             } else if (result === "failed") {
-              issues.push(`${thread.title}: port ${target.port} could not be stopped`);
+              issues.push(issueOf(thread, `port ${target.port} could not be stopped`));
             }
           }
         } catch {
-          issues.push(`${thread.title}: could not be cleaned`);
+          issues.push(issueOf(thread, "could not be cleaned"));
         }
       }
 

@@ -5,6 +5,7 @@
 import { toast } from "sonner";
 import type { Shelf } from "@/shared/lifecycle";
 import { waitingChildTitle } from "../model/forest";
+import { storedTitle } from "../model/title";
 import { SETTLED_PAGE } from "../model/list-model";
 import type { Scope } from "../model/scope";
 import {
@@ -128,7 +129,7 @@ export function createCommands(store: ListStore): Commands {
       dismissPortsPrompt(threadId);
       const row = store.getState().model?.rows.get(threadId);
       const next = title.trim();
-      if (row === undefined || next === "" || next === row.thread.displayTitle) return;
+      if (row === undefined || next === "" || next === storedTitle(row.thread)) return;
       try {
         await store.edge.sdk.threads.update({ threadId, title: next });
       } catch {

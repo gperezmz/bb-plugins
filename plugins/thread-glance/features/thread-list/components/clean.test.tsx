@@ -128,7 +128,7 @@ describe("AC8: the dialog", () => {
     await press("Clean resources");
     const busy = within(dialog()).getByRole("button", { name: "Cleaning..." }) as HTMLButtonElement;
     expect(busy.disabled).toBe(true);
-    await act(async () => finish(result({ stillListening: [5173, 3000], issues: ["Dev server: could not close a terminal"] })));
+    await act(async () => finish(result({ stillListening: [5173, 3000], issues: [{ threadId: "a", title: "Dev server", text: "could not close a terminal" }] })));
     await flush();
     expect(calls(m, "runClean").map((call) => call.input)).toEqual([{ token: "tok-1" }]);
     const box = dialog();

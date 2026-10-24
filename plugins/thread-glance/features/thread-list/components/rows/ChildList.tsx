@@ -2,7 +2,7 @@
 // status or age, and a disclosure for its own children. A child of another
 // project carries its project icon.
 import { memo } from "react";
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
+import { experimental_Icon as Icon, ThreadTitle } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
 import { disclosureName } from "../../model/children-chip";
 import type { RowView } from "../../model/list-model";
@@ -56,7 +56,7 @@ const ChildRow = memo(function ChildRow({ child, depth, parentProjectId }: { chi
             <ChildMark threadId={child.id} providerId={thread.providerId} style={childIcon} />
             {otherProject ? <ProjectMark projectId={thread.projectId} name={project?.name ?? thread.projectId} colour={colour} className="size-3" /> : null}
             <span className={cn("min-w-0 flex-1 truncate", thread.isUnread && "font-semibold", !thread.isUnread && thread.indicator === "none" && "text-muted-foreground")}>
-              {thread.displayTitle}
+              <ThreadTitle threadId={thread.id} />
             </span>
           </a>
           <StatusView status={status} className="w-auto shrink-0" />
