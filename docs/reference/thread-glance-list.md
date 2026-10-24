@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TB
-  scope["Project scope: All projects, or the ticked projects"]
+  scope["Project scope and pinned projects: All projects, or the ticked projects"]
   subgraph upper["Upper group"]
     pinned["Pinned"] --> active["Active"]
   end
@@ -19,9 +19,18 @@ The list is a [project scope](#project-scope) and then a column of [shelves](#sh
 The picker at the top of the list. **All projects** shows every shelf as it is; ticking projects limits every shelf to those projects.
 
 - It lists every project, the personal one included, with a filter field. A project ticks and unticks when clicked, or with Enter on the highlighted option, and the list follows at once; **Done** closes the picker. **All projects** clears the ticks. The arrow keys move through the options and wrap, and Home and End jump to the first and last.
+- Each project's row also has a pin button, labelled "Pin <project>" or "Unpin <project>", which sets the project among the [pinned projects](#pinned-projects) without ticking it. **All projects** has none.
 - The scope applies to every shelf and to Clean. It does not limit thread search, which is bb's palette.
 - It is saved per window, in the browser's session storage: a reload keeps it, another window has its own, and a new window starts on All projects. A project that bb no longer lists drops out of the scope once bb has listed the projects, and a scope with no project left is All projects.
 - A project the scope leaves out that has a thread waiting on a question or an approval puts a **Needs you** mark on the picker's button, whose name then ends "Needs you in <projects>", and on its own row in the picker. The mark goes when the thread is answered.
+
+### Pinned projects
+
+A project pinned from the picker is drawn as its [project mark](thread-glance-settings.md#project-appearance) in a row of icons under the picker's button, in the order the projects were pinned. The row is drawn while a project is pinned or the scope limits the list.
+
+- Clicking a pin puts its project in the scope when it is out, and takes it out when it is in, exactly as ticking it in the picker does: a scope that is left empty is All projects. A pin in the scope is pressed, and a pin the scope leaves out that has a thread waiting on a question or an approval carries the **Needs you** mark, its name ending ". Needs you".
+- **Reset**, an icon with no text at the end of the row and drawn only while the scope limits the list, makes the scope All projects. It leaves the pins.
+- Pins are saved per device, in the browser's `localStorage`, up to 50, and a change in one window reaches the others on the device at once. A pin whose project bb no longer lists is not drawn and is kept, in case the project returns.
 
 ## Shelves
 
