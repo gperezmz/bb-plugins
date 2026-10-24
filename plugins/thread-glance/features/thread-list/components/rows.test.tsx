@@ -143,14 +143,15 @@ describe("the Working scene", () => {
 describe("the slide of rows a reorder moves aside", () => {
   const container = () => {
     const root = document.createElement("div");
-    root.innerHTML = '<div data-shelf="active"></div><div data-row-id="a"></div><div data-row-id="b"></div>';
+    root.innerHTML = '<div data-shelf="active"></div><div data-row-id="a" data-row-header="shelf:active"></div><div data-row-id="b" data-row-header="shelf:active"></div>';
     document.body.append(root);
     return root;
   };
   // Places are read from layout, which jsdom does not do.
   const place = (root: HTMLElement, tops: Record<string, number>) => {
-    for (const element of root.querySelectorAll<HTMLElement>("[data-row-id], [data-shelf]")) {
-      Object.defineProperty(element, "offsetTop", { configurable: true, value: tops[element.dataset.rowId ?? `shelf:${element.dataset.shelf}`]! });
+    for (const element of root.querySelectorAll<HTMLElement>("[data-row-id], [data-shelf], [data-group-key]")) {
+      const key = element.dataset.rowId ?? element.dataset.groupKey ?? `shelf:${element.dataset.shelf}`;
+      Object.defineProperty(element, "offsetTop", { configurable: true, value: tops[key]! });
     }
   };
 
@@ -176,5 +177,20 @@ describe("the slide of rows a reorder moves aside", () => {
     place(root, { "shelf:active": 200, a: 200, b: 300 });
     slideRows(root, before, false);
     expect(animations).toEqual([]);
+  });
+
+  it("leaves a group's rows still when its header carries them", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<div data-shelf="active"></div><div data-group-key="group:x"></div><div data-row-id="x1" data-row-header="group:x"></div>' +
+      '<div data-group-key="group:y"></div><div data-row-id="y1" data-row-header="group:y"></div>';
+    document.body.append(root);
+    const animated: string[] = [];
+    for (const element of root.querySelectorAll<HTMLElement>("[data-row-id]")) element.animate = (() => void animated.push(element.dataset.rowId!)) as never;
+    place(root, { "shelf:active": 0, "group:x": 28, x1: 56, "group:y": 128, y1: 156 });
+    const before = readRowPlaces(root);
+    place(root, { "shelf:active": 0, "group:x": 100, x1: 128, "group:y": 28, y1: 56 });
+    slideRows(root, before, false);
+    expect(animated).toEqual([]);
   });
 });

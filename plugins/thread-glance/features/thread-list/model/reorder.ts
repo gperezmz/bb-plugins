@@ -13,28 +13,38 @@ export const AUTOSCROLL_MAX_PX = 14;
 /** The slide of the rows a drag moves aside. */
 export const SLIDE_MS = 150;
 
-/** One of a list's children, top to bottom: a shelf or group header, or a row, with its top in px from the list's top. */
-export type ListUnit = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; top: number };
+/** One of a list's children, top to bottom: a shelf or group header, or a row with the key of the header it belongs to, each with its top in px from the list's top. */
+export type ListChild = { kind: "header"; key: string; top: number } | { kind: "row"; id: string; header: string; top: number };
 
-/** Where a row sits: under which header, its top from the list's top, and its top from that header's top. */
+/** Where a row sits: the header it belongs to, its top from the list's top, and its top from that header's top. */
 export interface RowPlace {
-  header: string | null;
+  header: string;
   top: number;
   belowHeader: number;
 }
 
-/** The place of each row in `units`, by row id. */
-export function rowPlaces(units: Iterable<ListUnit>): Map<string, RowPlace> {
+/** The place of each row in `children`, by row id; a row whose header is not among them is measured from the list's top. */
+export function rowPlaces(children: Iterable<ListChild>): Map<string, RowPlace> {
   const places = new Map<string, RowPlace>();
-  let header: string | null = null;
-  let headerTop = 0;
-  for (const unit of units) {
-    if (unit.kind === "header") {
-      header = unit.key;
-      headerTop = unit.top;
-    } else places.set(unit.id, { header, top: unit.top, belowHeader: unit.top - headerTop });
+  const headerTops = new Map<string, number>();
+  for (const child of children) {
+    if (child.kind === "header") headerTops.set(child.key, child.top);
+    else places.set(child.id, { header: child.header, top: child.top, belowHeader: child.top - (headerTops.get(child.header) ?? 0) });
   }
   return places;
+}
+
+/**
+ * Whether the keys found in both `before` and `after` stand in another order:
+ * a reorder, which slides rows. Opening or closing a shelf or group, or
+ * loading more, only adds or drops keys, so nothing slides.
+ */
+export function isReordered(before: readonly string[], after: readonly string[]): boolean {
+  const kept = new Set(after);
+  const was = before.filter((key) => kept.has(key));
+  const had = new Set(before);
+  const now = after.filter((key) => had.has(key));
+  return was.some((key, index) => key !== now[index]);
 }
 
 /**
@@ -42,7 +52,8 @@ export function rowPlaces(units: Iterable<ListUnit>): Map<string, RowPlace> {
  * moved that its header did not carry it. A row under the same header as
  * before slides only by its move within that header, so rows a shelf or group
  * opening or closing pushes along move with their header and do not slide; a
- * row now under another header slides from where it was.
+ * row now under another header slides from where it was. A group dragged past
+ * another carries its rows, so they do not slide either.
  */
 export function slideDelta(was: RowPlace, now: RowPlace): number {
   return was.header === now.header ? was.belowHeader - now.belowHeader : was.top - now.top;

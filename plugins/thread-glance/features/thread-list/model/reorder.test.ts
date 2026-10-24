@@ -14,10 +14,11 @@ import {
   keyboardMove,
   moveKeyTo,
   orderAfterReorder,
+  isReordered,
   pinNeighbours,
   rowPlaces,
   slideDelta,
-  type ListUnit,
+  type ListChild,
 } from "./reorder";
 
 const press = { x: 100, y: 100, button: 0, pointerType: "mouse" };
@@ -111,33 +112,47 @@ describe("writes", () => {
 });
 
 describe("slideDelta", () => {
-  const header = (key: string, top: number): ListUnit => ({ kind: "header", key, top });
-  const row = (id: string, top: number): ListUnit => ({ kind: "row", id, top });
-  const delta = (before: ListUnit[], after: ListUnit[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
+  const header = (key: string, top: number): ListChild => ({ kind: "header", key, top });
+  const row = (id: string, top: number, under: string): ListChild => ({ kind: "row", id, header: under, top });
+  const delta = (before: ListChild[], after: ListChild[], id: string) => slideDelta(rowPlaces(before).get(id)!, rowPlaces(after).get(id)!);
+  const ACTIVE = "shelf:active";
 
   it("gives no slide to rows a shelf above pushes along with their header, opening or closing", () => {
-    const open = [header("shelf:pinned", 0), row("p", 28), header("shelf:active", 100), row("a", 128), row("b", 200)];
-    const closed = [header("shelf:pinned", 0), header("shelf:active", 28), row("a", 56), row("b", 128)];
+    const open = [header("shelf:pinned", 0), row("p", 28, "shelf:pinned"), header(ACTIVE, 100), row("a", 128, ACTIVE), row("b", 200, ACTIVE)];
+    const closed = [header("shelf:pinned", 0), header(ACTIVE, 28), row("a", 56, ACTIVE), row("b", 128, ACTIVE)];
     expect(delta(open, closed, "a")).toBe(0);
     expect(delta(open, closed, "b")).toBe(0);
     expect(delta(closed, open, "b")).toBe(0);
   });
 
-  it("gives no slide to rows under a group a group above pushes along", () => {
-    const before = [header("shelf:active", 0), header("group:x", 28), row("x1", 56), header("group:y", 128), row("y1", 156)];
-    const after = [header("shelf:active", 0), header("group:x", 28), header("group:y", 56), row("y1", 84)];
+  it("gives no slide to a group's rows when a group above closes", () => {
+    const before = [header(ACTIVE, 0), header("group:x", 28), row("x1", 56, "group:x"), header("group:y", 128), row("y1", 156, "group:y")];
+    const after = [header(ACTIVE, 0), header("group:x", 28), header("group:y", 56), row("y1", 84, "group:y")];
     expect(delta(before, after, "y1")).toBe(0);
   });
 
   it("slides a row by its move within its header, and a row under another header from where it was", () => {
-    const before = [header("shelf:active", 0), row("a", 28), row("b", 100), header("shelf:settled", 172), row("s", 200)];
-    const after = [header("shelf:active", 0), row("b", 28), header("shelf:settled", 100), row("a", 128), row("s", 160)];
+    const before = [header(ACTIVE, 0), row("a", 28, ACTIVE), row("b", 100, ACTIVE), header("shelf:settled", 172), row("s", 200, "shelf:settled")];
+    const after = [header(ACTIVE, 0), row("b", 28, ACTIVE), header("shelf:settled", 100), row("a", 128, "shelf:settled"), row("s", 160, "shelf:settled")];
     expect(delta(before, after, "b")).toBe(72);
     expect(delta(before, after, "a")).toBe(28 - 128);
     expect(delta(before, after, "s")).toBe(28 - 60);
   });
 
-  it("measures rows above the first header from the list's top", () => {
-    expect(rowPlaces([row("a", 10)]).get("a")).toEqual({ header: null, top: 10, belowHeader: 10 });
+  it("measures a row whose header is not drawn from the list's top", () => {
+    expect(rowPlaces([row("a", 10, ACTIVE)]).get("a")).toEqual({ header: ACTIVE, top: 10, belowHeader: 10 });
+  });
+});
+
+describe("isReordered", () => {
+  it("is false when keys are only added or dropped, as opening, closing or loading more does", () => {
+    expect(isReordered(["shelf:a", "row:1", "row:2", "shelf:b", "row:3"], ["shelf:a", "shelf:b", "row:3"])).toBe(false);
+    expect(isReordered(["shelf:a", "group:x", "row:t", "group:y"], ["shelf:a", "group:x", "row:x1", "row:t", "group:y"])).toBe(false);
+    expect(isReordered(["row:1"], ["row:1"])).toBe(false);
+  });
+
+  it("is true when kept keys change order, as a move or a settle into an open shelf does", () => {
+    expect(isReordered(["row:1", "row:2", "row:3"], ["row:2", "row:1", "row:3"])).toBe(true);
+    expect(isReordered(["shelf:a", "row:1", "row:2", "shelf:s"], ["shelf:a", "row:2", "shelf:s", "row:1"])).toBe(true);
   });
 });

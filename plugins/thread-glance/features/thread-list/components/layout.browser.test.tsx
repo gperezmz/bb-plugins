@@ -375,3 +375,58 @@ describe("the shelf headers", () => {
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
   });
 });
+
+describe("the slide of rows", () => {
+  const threads = [
+    makeThread({ id: "p", title: "Pinned one", ...at(4), isPinned: true, pinnedAt: NOW }),
+    makeThread({ id: "a1", title: "Active one", ...at(5) }),
+    makeThread({ id: "a2", title: "Active two", ...at(6) }),
+    makeThread({ id: "a3", title: "Active three", ...at(7) }),
+    makeThread({ id: "s1", title: "Snoozed one", ...old }),
+    makeThread({ id: "k1", title: "Parked one", ...old }),
+    makeThread({ id: "k2", title: "Parked two", ...old }),
+  ];
+  const rows = { s1: snoozedRow(NOW + 3_600_000, NOW - 1000), k1: parkedRow(NOW - 1000), k2: parkedRow(NOW - 2000) };
+  const toggle = (shelf: string) => document.querySelector<HTMLElement>(`[data-shelf="${shelf}"] button[aria-expanded]`)!;
+  // Every row animation the list starts, by row id: a slow frame cannot hide one that has already ended.
+  const slid: string[] = [];
+  let restore = () => {};
+  beforeAll(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+      const id = (this as HTMLElement).dataset?.rowId;
+      if (id !== undefined) slid.push(id);
+      return animate.apply(this, args);
+    };
+    restore = () => void (Element.prototype.animate = animate);
+    return () => restore();
+  });
+  const press = async (shelf: string) => {
+    const was = toggle(shelf).getAttribute("aria-expanded");
+    await userEvent.click(toggle(shelf));
+    await waitFor(() => expect(toggle(shelf).getAttribute("aria-expanded")).not.toBe(was));
+    await frames();
+  };
+
+  it("slides no row when a shelf opens or closes", async () => {
+    await render(threads, { rows, settings: { inactiveShelf: false } });
+    await press("snoozed");
+    await press("parked");
+    slid.length = 0;
+    for (const shelf of ["pinned", "active", "snoozed", "parked"]) {
+      await press(shelf);
+      await press(shelf);
+    }
+    expect(slid).toEqual([]);
+  });
+
+  it("slides the rows a keyboard move swaps", async () => {
+    await render(threads, { rows, settings: { inactiveShelf: false } });
+    slid.length = 0;
+    const first = document.querySelector<HTMLElement>('[data-shelf="active"] ~ [data-row-id] a[data-sidebar-thread-id]')!;
+    first.focus();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    await waitFor(() => expect(slid.length).toBeGreaterThan(0));
+    expect(new Set(slid).size).toBe(2);
+  });
+});

@@ -8,7 +8,7 @@ import { useMediaQuery } from "@/components/ui/hooks/use-media-query";
 import { layoutItems } from "../model/layout";
 import type { ListItem } from "../model/list-model";
 import { REDUCED_MOTION_QUERY } from "../model/motion";
-import type { RowPlace } from "../model/reorder";
+import { isReordered, type RowPlace } from "../model/reorder";
 import { keptIndexes, mountedIndexes, rangeKey, windowedNavValue, type NavTarget } from "../model/windowing";
 import { useHeights, useListStore, useRows, useSelect } from "../store/hooks";
 import { readRowPlaces, slideRows } from "./reorder/slide";
@@ -62,14 +62,14 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
     };
   }, []);
 
-  // The rows slide from where they were to where the new order puts them, as
-  // far as their header did not carry them.
+  // After a reorder, the rows slide from where they were to where the new
+  // order puts them, as far as their header did not carry them.
   const places = useRef<Map<string, RowPlace>>(new Map());
   const rowOrder = items.map((item) => item.key).join(" ");
   const lastOrder = useRef(rowOrder);
   useLayoutEffect(() => {
     const list = root.current!;
-    if (lastOrder.current !== rowOrder) slideRows(list, places.current, reduced);
+    if (lastOrder.current !== rowOrder && isReordered(lastOrder.current.split(" "), rowOrder.split(" "))) slideRows(list, places.current, reduced);
     lastOrder.current = rowOrder;
     places.current = readRowPlaces(list);
     // What is above the list, or the list's own size, may have moved the view.
@@ -105,7 +105,7 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
         break;
       case "row":
         content.push(
-          <div key={item.key} data-row-id={item.threadId} style={{ height: laid.size }} className="relative">
+          <div key={item.key} data-row-id={item.threadId} data-row-header={item.header} style={{ height: laid.size }} className="relative">
             <ThreadRow threadId={item.threadId} />
           </div>,
         );
