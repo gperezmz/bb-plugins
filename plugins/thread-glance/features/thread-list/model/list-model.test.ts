@@ -21,6 +21,7 @@ function inputs(patch: Partial<ModelInputs> & Pick<ModelInputs, "threads">): Mod
     activeThreadId: null,
     draftIds: new Set(),
     openElsewhereIds: new Set(),
+    seenQuestionIds: new Set(),
     now: NOW,
     compact: false,
     settledShown: 10,
@@ -113,7 +114,7 @@ describe("shelves", () => {
       const threads = [
         makeThread({ id: "err", indicator: "unread-error", isUnread: true, ...at(1000) }),
         makeThread({ id: "queued", indicator: "queued-failed", ...at(1000) }),
-        makeThread({ id: "ask", hasPendingInteraction: true, isUnread: true, ...at(1000) }),
+        makeThread({ id: "ask", hasPendingInteraction: true, ...at(1000) }),
         makeThread({ id: "parent", ...at(1000) }),
         makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, ...at(1000) }),
       ];
@@ -124,17 +125,20 @@ describe("shelves", () => {
 
     it("folds a thread asking you once you open it, while the question still waits, but not its parent", () => {
       const threads = [
-        makeThread({ id: "ask", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+        makeThread({ id: "ask", hasPendingInteraction: true, ...at(1000) }),
         makeThread({ id: "parent", ...at(1000) }),
-        makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+        makeThread({ id: "kid", parentThreadId: "parent", ...at(1000) }),
+        makeThread({ id: "grandkid", parentThreadId: "kid", hasPendingInteraction: true, ...at(1000) }),
       ];
-      expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
+      const seenQuestionIds = new Set(["ask", "parent", "grandkid"]);
+      expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ ask: "full", parent: "full" });
+      expect(cards(buildModel(inputs({ threads, seenQuestionIds, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
       const both = [
-        makeThread({ id: "asker", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
-        makeThread({ id: "child", parentThreadId: "asker", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+        makeThread({ id: "asker", hasPendingInteraction: true, ...at(1000) }),
+        makeThread({ id: "child", parentThreadId: "asker", hasPendingInteraction: true, ...at(1000) }),
       ];
-      expect(buildModel(inputs({ threads: both, settings: compactAll })).rows.get("asker")!.card).toBe("full");
-      const working = buildModel(inputs({ threads, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
+      expect(buildModel(inputs({ threads: both, seenQuestionIds: new Set(["asker"]), settings: compactAll })).rows.get("asker")!.card).toBe("full");
+      const working = buildModel(inputs({ threads, seenQuestionIds, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
       expect(working.rows.get("ask")!.card).toBe("full");
     });
 

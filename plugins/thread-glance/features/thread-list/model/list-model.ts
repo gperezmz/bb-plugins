@@ -150,6 +150,8 @@ export interface ModelInputs {
   draftIds: ReadonlySet<string>;
   /** Threads other split panes show. */
   openElsewhereIds: ReadonlySet<string>;
+  /** Threads opened while their own question waits, until it clears (see `questionsSeen`). */
+  seenQuestionIds: ReadonlySet<string>;
   now: number;
   compact: boolean;
   /** Settled rows shown. */
@@ -182,22 +184,26 @@ function shelfVisible(shelf: Shelf, settings: Settings): boolean {
 /** What Thread display says of the cards. */
 export type CardSettings = Pick<Settings, "threadDisplay" | "keepPinnedAsFullCards" | "keepWokeAsFullCards">;
 
+/** What a card's kind reads of the thread beyond bb's own record of it. */
+export interface CardFacts {
+  tree: TreeSignals;
+  /** Why a snoozed thread shows as woke, or null. */
+  woke: WakeReason | null;
+  /** You have opened the thread while its own question waits (see `questionsSeen`). */
+  questionSeen: boolean;
+  /** A question or approval waits below the thread, at any depth. */
+  questionBelow: boolean;
+}
+
 /**
  * The card a top-level row is drawn as. On Pinned, Active and Inactive a
  * thread that failed or needs you is a Full card whatever Thread display says.
- * Under Compact all threads it folds again once you open it, which reads its
- * failure and its own question, or once the failure or question clears; a
- * question waiting below it keeps it full until that question clears.
+ * Under Compact all threads it folds again once you open it or the failure or
+ * question clears; a question waiting below it keeps it full until that
+ * question clears.
  */
-export function cardKindOf(
-  shelf: Shelf,
-  thread: PluginSidebarThread,
-  tree: TreeSignals,
-  woke: WakeReason | null,
-  display: CardSettings,
-  /** A question or approval waits below the thread, at any depth. */
-  questionBelow: boolean,
-): CardKind {
+export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, facts: CardFacts, display: CardSettings): CardKind {
+  const { tree, woke } = facts;
   if (shelf === "snoozed" || shelf === "parked" || shelf === "settled") return "slim";
   if (shelf === "working") return "folded";
   switch (display.threadDisplay) {
@@ -206,7 +212,7 @@ export function cardKindOf(
     case "compact-working":
       return isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou ? "folded" : "full";
     case "compact-all":
-      if (isFailed(thread) || (thread.hasPendingInteraction && thread.isUnread) || questionBelow) return "full";
+      if (isFailed(thread) || (thread.hasPendingInteraction && !facts.questionSeen) || facts.questionBelow) return "full";
       if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
       if (display.keepWokeAsFullCards && woke !== null) return "full";
       return "folded";
@@ -370,7 +376,12 @@ export function buildModel(inputs: ModelInputs): ListModel {
       id: thread.id,
       thread,
       shelf,
-      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, woke, settings, (children?.counts.needsYou ?? 0) > 0),
+      card: shelf === null ? "slim" : cardKindOf(
+              shelf,
+              thread,
+              { tree, woke, questionSeen: inputs.seenQuestionIds.has(thread.id), questionBelow: (children?.counts.needsYou ?? 0) > 0 },
+              settings,
+            ),
       lifecycle: lifecycle[thread.id] ?? null,
       woke,
       tree,

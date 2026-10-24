@@ -49,6 +49,8 @@ export interface ListInputs {
   settledShown: number;
   frozenShelves: ReadonlyMap<string, Shelf>;
   drag: DragPreview | null;
+  /** Threads opened in this window while their own question waits, until it clears (see `questionsSeen`). */
+  seenQuestionIds: ReadonlySet<string>;
 }
 
 export const FIRST_SETTLED_SHOWN = SETTLED_FIRST_PAGE;
@@ -79,6 +81,7 @@ export function derive(inputs: ListInputs, previous: ListModel | null): ListMode
     activeThreadId: inputs.activeThreadId,
     draftIds: inputs.host.draftIds,
     openElsewhereIds: openElsewhere(inputs.host.splitLayout),
+    seenQuestionIds: inputs.seenQuestionIds,
     now: inputs.now,
     compact: inputs.compact,
     settledShown: inputs.settledShown,

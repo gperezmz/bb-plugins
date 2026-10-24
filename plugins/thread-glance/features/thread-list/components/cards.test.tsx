@@ -178,18 +178,14 @@ describe("AC17: the Folded card", () => {
     });
     act(() => {
       m.host.updateThread("w", { status: "idle", runtimeStatus: "idle", indicator: "unread-error" });
-      m.host.updateThread("q", { hasPendingInteraction: true, isUnread: true, indicator: "waiting-for-input" });
+      m.host.updateThread("q", { hasPendingInteraction: true, indicator: "waiting-for-input" });
     });
     await flush();
     expect(card("w").getAttribute("data-card")).toBe("full");
     expect(card("q").getAttribute("data-card")).toBe("full");
-    // Opening the thread reads it; the question still waits.
-    act(() => m.host.updateThread("q", { isUnread: false }));
+    act(() => m.host.updateProps({ activeThreadId: "q" }));
     await flush();
     expect(card("q").getAttribute("data-card")).toBe("folded");
-    act(() => m.host.updateThread("q", { isUnread: true }));
-    await flush();
-    expect(card("q").getAttribute("data-card")).toBe("full");
     act(() => {
       m.host.updateThread("w", { indicator: "none" });
       m.host.updateThread("q", { hasPendingInteraction: false, indicator: "none" });
@@ -197,6 +193,30 @@ describe("AC17: the Folded card", () => {
     await flush();
     expect(card("w").getAttribute("data-card")).toBe("folded");
     expect(card("q").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("unfolds a thread you had read once it asks, folds it while you have opened it, and unfolds it for its next question", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "q", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "other", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+      activeThreadId: "q",
+    });
+    act(() => m.host.updateProps({ activeThreadId: "other" }));
+    await flush();
+    const ask = () => act(() => m.host.updateThread("q", { status: "idle", runtimeStatus: "idle", hasPendingInteraction: true, isUnread: false, indicator: "waiting-for-input" }));
+    ask();
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("full");
+    act(() => m.host.updateProps({ activeThreadId: "q" }));
+    await flush();
+    act(() => m.host.updateProps({ activeThreadId: "other" }));
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+    act(() => m.host.updateThread("q", { hasPendingInteraction: false, indicator: "none" }));
+    await flush();
+    ask();
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("full");
   });
 
   it("keeps pinned and woke threads full under Compact all threads with the keep options on", async () => {

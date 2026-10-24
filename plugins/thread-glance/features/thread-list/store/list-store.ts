@@ -24,6 +24,7 @@ import { readScope, windowStorage, writeScope } from "../storage/window-state";
 import { isWorking } from "@/shared/busy";
 import { startClock, type Clock } from "./clock";
 import { derive, FIRST_SETTLED_SHOWN, NO_HOST, scopeIn, type HostData, type ListInputs } from "./derive";
+import { questionsSeen } from "../model/questions-seen";
 import { createStore, type StoreApi } from "./vanilla";
 import { createWorkingSince, type WorkingSince } from "./working-since";
 
@@ -167,6 +168,7 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
     settledShown: FIRST_SETTLED_SHOWN,
     frozenShelves: new Map(),
     drag: null,
+    seenQuestionIds: new Set(),
   };
   const workingSince = createWorkingSince(storage);
   const api = createStore<ListState>({ inputs, model: null, ui: CLOSED_UI });
@@ -195,7 +197,8 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
   const commit = (next: ListInputs) => {
     // A project scope drops the projects that are gone, and the window keeps what is left.
     const scope = scopeIn(next);
-    const checked = scope === next.scope ? next : { ...next, scope };
+    const seenQuestionIds = questionsSeen(next.seenQuestionIds, next.host.threads, next.activeThreadId);
+    const checked = scope === next.scope && seenQuestionIds === next.seenQuestionIds ? next : { ...next, scope, seenQuestionIds };
     const current = api.getState();
     if (checked.scope !== current.inputs.scope) writeScope(sessionStorage, checked.scope);
     const model = derive(checked, current.model);
