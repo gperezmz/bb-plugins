@@ -4,7 +4,7 @@
 // scope limits the list.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { cn } from "@/lib/utils";
-import { ALL_PROJECTS_SCOPE, pinnedProjectLabel, toggleProject, type PinnedProject } from "../model/scope";
+import { ALL_PROJECTS_SCOPE, pinnedProjectLabel, toggleProject, type PinnedProject, type Scope } from "../model/scope";
 import { ProjectMark } from "../project/ProjectMark";
 import { useProjectColour } from "../project/use-project-colour";
 import { useProjectIds } from "../project/use-project-ids";
@@ -15,9 +15,9 @@ import { Tip } from "./rows/Tip";
 export const ICON_BUTTON =
   "relative flex size-7 shrink-0 items-center justify-center rounded-md outline-none hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring";
 
-function PinnedProject({ pin, selected, needsYou }: { pin: PinnedProject; selected: boolean; needsYou: boolean }) {
+function PinnedProjectButton({ pin, scope, needsYou }: { pin: PinnedProject; scope: Scope; needsYou: boolean }) {
   const commands = useCommands();
-  const { scope } = useScope();
+  const selected = scope.includes(pin.id);
   const colour = useProjectColour(pin.id, useProjectIds());
   return (
     <Tip label={pin.name}>
@@ -43,7 +43,7 @@ export function PinnedProjects() {
   return (
     <div role="group" aria-label="Pinned projects" className="flex flex-wrap items-center gap-1 px-1.5 pb-1">
       {pins.map((pin) => (
-        <PinnedProject key={pin.id} pin={pin} selected={scope.includes(pin.id)} needsYou={needingYou.includes(pin.id)} />
+        <PinnedProjectButton key={pin.id} pin={pin} scope={scope} needsYou={needingYou.includes(pin.id)} />
       ))}
       {scope.length > 0 ? (
         <Tip label="Reset">

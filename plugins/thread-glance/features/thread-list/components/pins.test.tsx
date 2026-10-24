@@ -154,13 +154,26 @@ describe("pins follow another window on the device", () => {
     expect(JSON.parse(localStorage.getItem("thread-glance:pinnedProjects")!)).toEqual(["proj_b", "proj_personal", "proj_a"]);
   });
 
-  it("drops a pin another window removed, and ignores a change to another key", async () => {
+  it("drops a pin another window removed, and follows its clearing of the storage", async () => {
     await mount({ threads: threads() });
-    await pin("Alpha");
-    window.dispatchEvent(new StorageEvent("storage", { key: "thread-glance:activeSort", storageArea: localStorage }));
-    otherWindowPins([]);
+    await pin("Alpha", "Beta");
+    otherWindowPins(["proj_a"]);
+    await flush();
+    expect(pinned()).toEqual(["Alpha"]);
+    localStorage.clear();
+    window.dispatchEvent(new StorageEvent("storage", { key: null, storageArea: localStorage }));
     await flush();
     expect(pinsRow()).toBeNull();
+  });
+
+  it("reads the pins only on a change to their key", async () => {
+    await mount({ threads: threads() });
+    await pin("Alpha");
+    // Written without an event for it, as a change this window has not been told of.
+    localStorage.setItem("thread-glance:pinnedProjects", JSON.stringify(["proj_a", "proj_b"]));
+    window.dispatchEvent(new StorageEvent("storage", { key: "thread-glance:activeSort", storageArea: localStorage }));
+    await flush();
+    expect(pinned()).toEqual(["Alpha"]);
   });
 });
 
