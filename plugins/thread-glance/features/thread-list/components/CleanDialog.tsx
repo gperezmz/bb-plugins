@@ -90,9 +90,9 @@ function CleanContent() {
   const view = cleanView(state);
   const { preview } = view;
   const { threads } = useSidebarThreads();
+  const listed = new Map(threads.map((thread) => [thread.id, thread]));
   /** A thread's title as bb draws it; the stored one for a thread bb no longer lists, which it draws nothing for. */
-  const titleOf = (threadId: string, stored: string): ReactNode =>
-    threads.some((thread) => thread.id === threadId) ? <ThreadTitle threadId={threadId} /> : stored;
+  const titleOf = (threadId: string, stored: string): ReactNode => (listed.has(threadId) ? <ThreadTitle threadId={threadId} /> : stored);
   return (
     // Escape would close the dialog on a run that is going; the result would then have nowhere to show.
     <AlertDialogContent className="max-w-md" onEscapeKeyDown={(event) => !view.dismissible && event.preventDefault()}>
@@ -126,7 +126,7 @@ function CleanContent() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    aria-label={`Open ${threads.find((listed) => listed.id === thread.threadId)?.displayTitle ?? thread.title}`}
+                    aria-label={`Open ${listed.get(thread.threadId)?.displayTitle ?? thread.title}`}
                     onClick={() => {
                       commands.open(thread.threadId);
                       commands.closeClean();

@@ -84,6 +84,19 @@ describe("renaming a title with a mention", () => {
     expect(updates(m)).toEqual([]);
   });
 
+  it("opens an unnamed thread on what bb shows for it, and saves nothing until it is changed", async () => {
+    const m = await mount({ threads: [makeThread({ id: "a", title: null, ...fresh })] });
+    fireEvent.doubleClick(card("a").querySelector("a")!);
+    await flush();
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("Thread a");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    await flush();
+    expect(updates(m)).toEqual([]);
+  });
+
   it("draws the chip again once the saved title comes back", async () => {
     const m = await mount({ threads: [mentioned()] });
     fireEvent.doubleClick(card("a").querySelector("a")!);

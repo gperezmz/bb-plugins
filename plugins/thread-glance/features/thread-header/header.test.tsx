@@ -134,6 +134,14 @@ describe("titles with mentions (#342)", () => {
     expect(button.textContent).not.toContain("@project");
   });
 
+  it("draws the parent's title through bb's ThreadTitle in the tooltip too", async () => {
+    show(ParentButton, "c1", mentioned(), true);
+    await act(async () => void fireEvent.focus(screen.getByRole("button", { name: "Back to parent: Plan Alpha" })));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip.textContent).toContain("Back to parent: Plan Alpha");
+    expect(tooltip.querySelector('[data-thread-title="p"]')?.textContent).toBe("Plan Alpha");
+  });
+
   it("draws each child's title through bb's ThreadTitle in the popover", async () => {
     show(ChildrenButton, "p", mentioned());
     await act(async () => {

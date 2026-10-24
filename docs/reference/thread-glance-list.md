@@ -166,7 +166,7 @@ A title can mention a project, a section or a thread (`@project:`, `@section:` a
 
 Text that is only read aloud or announced, such as a button's name and the reorder announcement, uses the same name as plain text, and so does a refusal toast: bb's toasts are drawn outside the sidebar, where bb's chip cannot be drawn.
 
-A thread that bb no longer lists has no name to resolve: an archived current parent in the Parent dialog, or a thread in the Clean dialog that was archived since the preview, shows its title as stored. So does a refusal that the server sends after the window's own check, because the thread changed in between.
+A thread that bb no longer lists has no name to resolve: an archived current parent in the Parent dialog, or a thread in the Clean dialog that was archived since the preview, shows its title as stored. So do the texts the server writes: a refusal it sends after the window's own check, because the thread changed in between, and the failure that lists the pins a failed Settle could not put back.
 
 ### Pull request badge
 

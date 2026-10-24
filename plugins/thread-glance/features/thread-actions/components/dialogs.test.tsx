@@ -90,6 +90,19 @@ describe("Snooze until (AC5)", () => {
   const snoozeButton = () => within(screen.getByRole("dialog")).getByRole("button", { name: "Snooze" });
   const setTime = (value: string) => act(() => void fireEvent.change(screen.getByLabelText("Time"), { target: { value } }));
 
+  it("names the thread under the heading by bb's ThreadTitle, and says 'this thread' for one bb does not list", () => {
+    const mentioned = makeThread({ id: "t1", title: "Subject @project:proj_a", displayTitle: "Subject Alpha" });
+    mountDialogs({ threads: [mentioned] });
+    act(() => requestSnoozePicker("t1"));
+    expect(screen.getByRole("dialog", { name: "Snooze until" }).querySelector('[data-thread-title="t1"]')?.textContent).toBe("Subject Alpha");
+    cleanup();
+    mountDialogs({ threads: [] });
+    act(() => requestSnoozePicker("t1"));
+    const dialog = screen.getByRole("dialog", { name: "Snooze until" });
+    expect(dialog.textContent).toContain("this thread");
+    expect(dialog.querySelector("[data-thread-title]")).toBeNull();
+  });
+
   it("starts on tomorrow 09:00 with a preview, and snoozes until then", async () => {
     const { calls } = open();
     expect(screen.getByRole("dialog", { name: "Snooze until" })).toBeTruthy();

@@ -65,14 +65,10 @@ export function parentOptions({ thread, threads, currentParent, projectNames, qu
       const sameB = b.projectId === thread.projectId ? 0 : 1;
       return sameA - sameB || lastActivityAt(b) - lastActivityAt(a) || a.id.localeCompare(b.id);
     })
-    .map(
-      (candidate): ParentOption => ({
-        id: candidate.id,
-        label: `${prefixOf(candidate)}${candidate.displayTitle}`,
-        prefix: prefixOf(candidate),
-        checked: candidate.id === thread.parentThreadId,
-      }),
-    )
+    .map((candidate): ParentOption => {
+      const prefix = prefixOf(candidate);
+      return { id: candidate.id, label: `${prefix}${candidate.displayTitle}`, prefix, checked: candidate.id === thread.parentThreadId };
+    })
     .filter((option) => needle === "" || option.label.toLowerCase().includes(needle));
   return [{ id: null, label: NO_PARENT_LABEL, prefix: "", checked: thread.parentThreadId === null }, ...options];
 }
