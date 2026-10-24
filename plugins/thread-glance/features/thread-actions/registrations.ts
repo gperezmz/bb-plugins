@@ -8,7 +8,7 @@
 // Rename 60. So Parent… and Project follow Open in split by registering in
 // `open` without an order; Copy branch and Copy thread ID follow Copy thread
 // link at 21 and 22; the lifecycle actions follow Pin at 41 to 46; and Notify
-// parent follows them at 50 (order 50).
+// parent follows them at 50.
 import { experimental_THREAD_ACTION_GROUPS as GROUPS } from "@get-bb/plugin-sdk/app";
 import type { PluginAppBuilder } from "@get-bb/plugin-sdk/app";
 import { useMenuData } from "./data";
