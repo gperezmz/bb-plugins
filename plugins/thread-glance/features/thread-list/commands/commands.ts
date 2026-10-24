@@ -10,14 +10,18 @@ import {
   withGroupCollapsed,
   withParentExpanded,
   withShelfCollapsed,
+  withWorktreeCollapsed,
   isShelfCollapsed,
   type ActiveSort,
 } from "../storage/device-state";
 import type { ListStore } from "../store/list-store";
+import { pluginData } from "../sync";
 import { createLifecycleCommands, type LifecycleCommands } from "./lifecycle";
 import { dismissPortsPrompt } from "./ports-prompt";
 import { createPortCommands, type PortCommands } from "./ports";
 import { createReorderCommands, type ReorderCommands } from "./reorder";
+
+export const GROUP_BY_WORKTREE_FAILED = "Could not change Group by worktree";
 
 export interface ListCommands {
   /** Opens a thread; `split` asks for bb's split placement. */
@@ -26,6 +30,10 @@ export interface ListCommands {
   setActiveSort(sort: ActiveSort): void;
   /** Collapses or opens a Project-mode group. */
   setGroupCollapsed(projectId: string, collapsed: boolean): void;
+  /** Collapses or opens a worktree group inside a Project-mode group. */
+  setWorktreeCollapsed(environmentId: string, collapsed: boolean): void;
+  /** Flips the Group by worktree setting for every window; a click while the last flip is still being saved is ignored. */
+  toggleGroupByWorktree(): Promise<void>;
   /** Opens or closes a parent's child list on this device. */
   setExpanded(parentId: string, expanded: boolean): void;
   /** Picks the project scope (null for All projects) for this mount of the list. */
@@ -46,6 +54,7 @@ export interface ListCommands {
 export type Commands = ListCommands & LifecycleCommands & ReorderCommands & PortCommands;
 
 export function createCommands(store: ListStore): Commands {
+  let savingGroupByWorktree = false;
   const own: ListCommands = {
     open(threadId, options) {
       dismissPortsPrompt(threadId);
@@ -63,6 +72,23 @@ export function createCommands(store: ListStore): Commands {
 
     setGroupCollapsed(projectId, collapsed) {
       store.updateDevice((device) => withGroupCollapsed(device, projectId, collapsed));
+    },
+
+    setWorktreeCollapsed(environmentId, collapsed) {
+      store.updateDevice((device) => withWorktreeCollapsed(device, environmentId, collapsed));
+    },
+
+    async toggleGroupByWorktree() {
+      if (savingGroupByWorktree) return;
+      savingGroupByWorktree = true;
+      try {
+        const on = !store.getState().inputs.settings.groupByWorktree;
+        pluginData.settingsSignal(await store.edge.rpc.call("writeSettings", { patch: { groupByWorktree: on } }));
+      } catch {
+        toast.error(GROUP_BY_WORKTREE_FAILED);
+      } finally {
+        savingGroupByWorktree = false;
+      }
     },
 
     setExpanded(parentId, expanded) {

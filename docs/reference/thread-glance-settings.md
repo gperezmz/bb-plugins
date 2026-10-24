@@ -29,6 +29,7 @@ The settings live in a bb settings section with a navigation strip and six group
 | Inactive shelf | On | Moves threads with no activity for **Hours before inactive** to the Inactive shelf |
 | Hours before inactive | 6 | Whole hours, 1 to 720 |
 | Dock shelves to the bottom (Experimental) | Off | Puts the lower group at the bottom of the sidebar's viewport |
+| Group by worktree | Off | Under the [Project sort](thread-glance-actions.md#active-sort), groups the root threads that share a worktree under its branch. Active's header has the same switch while the sort is Project |
 
 ### Project appearance
 
@@ -95,6 +96,7 @@ These are not settings and are not on the page. Each belongs to the browser it w
 | Shelf collapse | Which shelves are open. By default Pinned, Active and Working are open |
 | Active sort | The [Active sort](thread-glance-actions.md#active-sort) |
 | Project group collapse | The collapsed project groups, up to 200 |
+| Worktree group collapse | The collapsed [worktree groups](thread-glance-actions.md#active-sort), up to 200 |
 | Open child lists | The last 100 parents whose [children chip](thread-glance-list.md#children-chip) you opened |
 | Port link machine | The [port link machine](#this-device), the only one of these on the page |
 | Caches | The manual order (up to 2,000 ids), project colours and icons, up to 500 lifecycle rows and the settings, so the first draw does not wait for the server |
@@ -118,7 +120,7 @@ A new install starts from the defaults above, with every thread on Active and no
 | `set <key> <value> [--json]` | Validates as the page does and stores one value; the value is JSON, and a bare word is a string |
 | `reset <key> [--json]` | Restores the default |
 
-The keys are the 15 fields of the record, such as `hoursBeforeInactive`, `snoozeShortcuts`, `daysBeforeAutoSettle` and `childOrder`. A value the page would refuse fails with `invalid_preference_value` and a hint describing the key, and the stored value stays. A key that is not a field, including a key of 0.11.2, fails with `unknown_preference`, and the hint lists the current keys.
+The keys are the 16 fields of the record, such as `hoursBeforeInactive`, `snoozeShortcuts`, `daysBeforeAutoSettle`, `groupByWorktree` and `childOrder`. A value the page would refuse fails with `invalid_preference_value` and a hint describing the key, and the stored value stays. A key that is not a field, including a key of 0.11.2, fails with `unknown_preference`, and the hint lists the current keys.
 
 Snoozing, parking, settling and reordering a thread are not settings, and neither is anything [kept on this device](#kept-on-this-device); the command cannot change them.
 

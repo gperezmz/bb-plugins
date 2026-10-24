@@ -12,6 +12,7 @@ import {
   saveDeviceState,
   withGroupCollapsed,
   withParentExpanded,
+  withWorktreeCollapsed,
   writeOrderCache,
   writeRowsCache,
 } from "./device-state";
@@ -56,6 +57,19 @@ describe("lists are capped", () => {
     const device = createDeviceStorage(storage);
     device.write("expandedParents", Array.from({ length: 400 }, (_, index) => `t${index}`));
     expect(readDeviceState(device).expandedParents).toHaveLength(100);
+  });
+
+  it("keeps collapsed worktree groups on the device, capped like collapsed project groups", () => {
+    let state = INITIAL_DEVICE_STATE;
+    for (let index = 0; index < 250; index += 1) state = withWorktreeCollapsed(state, `env${index}`, true);
+    expect(state.collapsedWorktrees).toHaveLength(CAPS.collapsedWorktrees);
+    expect(withWorktreeCollapsed(state, "env249", true)).toBe(state);
+    expect(withWorktreeCollapsed(state, "env249", false).collapsedWorktrees).not.toContain("env249");
+    const { storage } = limitedStorage(1_000_000);
+    const device = createDeviceStorage(storage);
+    device.write("collapsedWorktrees", ["env_x", "env_y"]);
+    expect(readDeviceState(device).collapsedWorktrees).toEqual(["env_x", "env_y"]);
+    expect(readDeviceState(createDeviceStorage(limitedStorage(1_000_000).storage)).collapsedWorktrees).toEqual([]);
   });
 
   it("caches at most 500 lifecycle rows, keeping the most recently marked, and 2,000 ids of the order", () => {
