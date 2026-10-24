@@ -185,36 +185,24 @@ describe("AC19: Jump hints", () => {
     Array.from({ length: 11 }, (_, index) =>
       makeThread({ id: `t${index}`, title: `T${index}`, createdAt: NOW - (index + 1) * MIN, updatedAt: NOW - (index + 1) * MIN, latestAttentionAt: NOW - (index + 1) * MIN }),
     );
-  const hints = () => [...document.querySelectorAll("[data-jump-hint]")].map((hint) => hint.textContent);
-  const press = (type: "keydown" | "keyup", init: KeyboardEventInit) => act(() => void window.dispatchEvent(new KeyboardEvent(type, init)));
+  const hints = () =>
+    [...document.querySelectorAll("[data-jump-hint]")].map((hint) => ({ row: hint.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId, label: hint.textContent }));
+  const shortcut = (n: number) => ({ label: `Ctrl + Shift + ${n}`, ariaKeyshortcuts: `Control+Shift+${n}` });
 
-  it("labels the first nine rows after Ctrl is held alone for 700 ms, and clears on release", async () => {
-    await mount({ threads: threads(), server: { order: threads().map((thread) => thread.id) } });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    press("keydown", { key: "Control", ctrlKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(699)));
-    expect(hints()).toEqual([]);
-    await act(async () => void (await vi.advanceTimersByTimeAsync(1)));
-    expect(hints()).toEqual(Array.from({ length: 9 }, (_, index) => `Ctrl + ${index + 1}`));
-    press("keyup", { key: "Control" });
-    expect(hints()).toEqual([]);
+  it("shows on each row the jump key bb assigned it, in bb's label", async () => {
+    // bb numbers the rows; a key it gives out of list order is still drawn on its own row.
+    await mount({ threads: threads(), server: { order: threads().map((thread) => thread.id) }, slot: { sidebarShortcuts: { t0: shortcut(1), t1: shortcut(2), t3: shortcut(3) } } });
+    expect(hints()).toEqual([
+      { row: "t0", label: "Ctrl + Shift + 1" },
+      { row: "t1", label: "Ctrl + Shift + 2" },
+      { row: "t3", label: "Ctrl + Shift + 3" },
+    ]);
   });
 
-  it("cancels on another key, on Shift and on blur", async () => {
+  it("shows none while bb assigns none", async () => {
     await mount({ threads: threads() });
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    press("keydown", { key: "Control", ctrlKey: true });
-    press("keydown", { key: "a", ctrlKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
     expect(hints()).toEqual([]);
-    press("keydown", { key: "Control", ctrlKey: true, shiftKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(1_000)));
-    expect(hints()).toEqual([]);
-    press("keydown", { key: "Control", ctrlKey: true });
-    await act(async () => void (await vi.advanceTimersByTimeAsync(700)));
-    expect(hints()).toHaveLength(9);
-    act(() => void window.dispatchEvent(new Event("blur")));
-    expect(hints()).toEqual([]);
+    expect(document.querySelectorAll("[data-status-slot]").length).toBeGreaterThan(0);
   });
 });
 

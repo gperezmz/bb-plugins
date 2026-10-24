@@ -10,6 +10,7 @@ import type {
   PluginSidebarPullRequest,
   PluginSidebarSplitLayout,
   PluginSidebarThread,
+  PluginSidebarThreadShortcut,
   PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { createFakeServer, type FakeServer, type FakeServerOptions } from "./fake-server";
@@ -154,6 +155,8 @@ function fakeHooks(testRuntime: Runtime): Runtime {
 /** What a test adds to bb's side of the slot: pull requests, providers, and SDK areas the list calls. */
 export interface SlotExtras {
   sidebarPullRequests?: Record<string, PluginSidebarPullRequest>;
+  /** The jump keys bb assigned, by thread id, as if its modifier were held. */
+  sidebarShortcuts?: Record<string, PluginSidebarThreadShortcut>;
   providers?: Partial<PluginProvidersState>;
   sdk?: Record<string, Record<string, unknown>>;
 }
