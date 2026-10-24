@@ -121,12 +121,22 @@ The faint line across a shelf's header from its chevron to its controls or right
 _Avoid_: Divider, hairline
 
 **Full card**:
-A row of three lines: the project's icon and name with the status slot, the title, and the branch with the children chip, pull request badge and harness logo. Used on Pinned, Active and Inactive, and for a working thread unless it is folded.
+A row of three lines: the project's icon and name with the status slot, the title, and the branch with the children chip, pull request badge and harness logo. Used on Pinned, Active and Inactive unless Thread display folds the thread.
 _Avoid_: Big row, expanded row
 
 **Folded card**:
-A row of one line: project name and title, the children chip, an unpin button and the live status. Used for working threads while compacting working threads is on and for every row of Working; it unfolds when the work ends, fails or needs you.
+A row of one line: project name and title, the children chip, an unpin button and the live status. Used for every row of Working and for the threads Thread display folds; it unfolds when the thread fails or needs you, and under Compact working threads also when its work ends.
 _Avoid_: Compact row, collapsed card
+
+**Thread display**:
+The setting that says which Pinned, Active and Inactive threads draw as folded cards: Full cards folds none, Compact working threads folds the working ones, Compact all threads folds all of them.
+_Avoid_: Compacting working threads, compact mode
+
+**Keep pinned as full cards**:
+Under Compact all threads, pinned threads draw as full cards. It shows only under Compact all threads.
+
+**Keep woke as full cards**:
+Under Compact all threads, a woke thread draws as a full card until you open it. It shows only under Compact all threads.
 
 **Slim row**:
 A one-line row, 32 px tall, showing project name, title, the children chip and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.

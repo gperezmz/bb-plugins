@@ -7,6 +7,12 @@ import { readSnoozePresets } from "@/shared/snooze";
 import { Group, NumberRow, Row, SelectRow, SwitchRow, Select } from "./Fields";
 import type { Form } from "./form";
 
+export const THREAD_DISPLAY_CHOICES: readonly { value: Settings["threadDisplay"]; label: string }[] = [
+  { value: "full-cards", label: "Full cards" },
+  { value: "compact-working", label: "Compact working threads" },
+  { value: "compact-all", label: "Compact all threads" },
+];
+
 export const CHILD_ORDER_CHOICES: readonly { value: Settings["childOrder"]; label: string }[] = [
   { value: "created", label: "Date created" },
   { value: "activity", label: "Last activity" },
@@ -24,13 +30,34 @@ export function SidebarLayout({ form }: { form: Form }) {
   const { values, errors, edit } = form;
   return (
     <Group id="tg-sidebar-layout" title="Sidebar layout">
-      <SwitchRow
-        label="Compact working threads"
+      <SelectRow
+        label="Thread display"
         experimental
-        description="Draw working threads as a one-line folded card."
-        checked={values.compactWorkingThreads === true}
-        onChange={(on) => edit("compactWorkingThreads", on)}
+        description={
+          values.threadDisplay === "compact-all"
+            ? "Draw every Pinned, Active and Inactive thread as a one-line folded card, its branch, pull request and harness in the hover card. A thread that fails or needs you unfolds."
+            : "Which Pinned, Active and Inactive threads draw as a one-line folded card. A thread that fails or needs you unfolds."
+        }
+        value={values.threadDisplay as Settings["threadDisplay"]}
+        choices={THREAD_DISPLAY_CHOICES}
+        onChange={(value) => edit("threadDisplay", value)}
       />
+      {values.threadDisplay === "compact-all" ? (
+        <>
+          <SwitchRow
+            label="Keep pinned as full cards"
+            description="Draw pinned threads as full cards."
+            checked={values.keepPinnedAsFullCards === true}
+            onChange={(on) => edit("keepPinnedAsFullCards", on)}
+          />
+          <SwitchRow
+            label="Keep woke as full cards"
+            description="Draw a thread back from a snooze as a full card until you open it."
+            checked={values.keepWokeAsFullCards === true}
+            onChange={(on) => edit("keepWokeAsFullCards", on)}
+          />
+        </>
+      ) : null}
       <SwitchRow
         label="Working shelf"
         experimental

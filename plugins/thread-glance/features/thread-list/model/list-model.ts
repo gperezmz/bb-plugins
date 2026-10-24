@@ -179,12 +179,34 @@ function shelfVisible(shelf: Shelf, settings: Settings): boolean {
   return shelf !== "working" || settings.workingShelf;
 }
 
-/** The card a top-level row is drawn as. */
-export function cardKindOf(shelf: Shelf, thread: PluginSidebarThread, tree: TreeSignals, compactWorking: boolean): CardKind {
+/** What Thread display says of the cards. */
+export type CardSettings = Pick<Settings, "threadDisplay" | "keepPinnedAsFullCards" | "keepWokeAsFullCards">;
+
+/**
+ * The card a top-level row is drawn as. On Pinned, Active and Inactive a
+ * thread that failed or needs you is a Full card whatever Thread display says,
+ * and folds again once you open it or the failure or question clears.
+ */
+export function cardKindOf(
+  shelf: Shelf,
+  thread: PluginSidebarThread,
+  tree: TreeSignals,
+  woke: WakeReason | null,
+  display: CardSettings,
+): CardKind {
   if (shelf === "snoozed" || shelf === "parked" || shelf === "settled") return "slim";
   if (shelf === "working") return "folded";
-  const working = isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou;
-  return compactWorking && working ? "folded" : "full";
+  if (thread.hasPendingInteraction || isFailed(thread) || tree.needsYou) return "full";
+  switch (display.threadDisplay) {
+    case "full-cards":
+      return "full";
+    case "compact-working":
+      return isWorking(thread) ? "folded" : "full";
+    case "compact-all":
+      if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
+      if (display.keepWokeAsFullCards && woke !== null) return "full";
+      return "folded";
+  }
 }
 
 /** Whether a child shows in a closed child list for having a status. */
@@ -339,13 +361,14 @@ export function buildModel(inputs: ModelInputs): ListModel {
     const tree = forest.treeOf.get(thread.id) ?? { working: isWorking(thread), needsYou: thread.hasPendingInteraction };
     const children = forest.children.get(thread.id) ?? null;
     const isExpanded = children !== null && expanded.has(thread.id);
+    const woke = shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null;
     rows.set(thread.id, {
       id: thread.id,
       thread,
       shelf,
-      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, settings.compactWorkingThreads),
+      card: shelf === null ? "slim" : cardKindOf(shelf, thread, tree, woke, settings),
       lifecycle: lifecycle[thread.id] ?? null,
-      woke: shelf === "active" ? wakeReason(lifecycle[thread.id], thread, now, lifted.has(thread.id)) : null,
+      woke,
       tree,
       grouped: shelf === "active" && groupedProjects.has(thread.projectId),
       inWorktree: shelf === "active" && worktreeThreadIds.has(thread.id),

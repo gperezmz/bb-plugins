@@ -404,7 +404,7 @@ describe("one pass at a time", () => {
 
   it("starts a pass for a change to an auto-settle setting and for no other", async () => {
     const { autoSettle, threads, lifecycle } = setup([idleFor("a", 9)]);
-    autoSettle.onSettingsChanged(["compactWorkingThreads"]);
+    autoSettle.onSettingsChanged(["threadDisplay"]);
     await Promise.resolve();
     expect(threads.snapshots).toBe(0);
     autoSettle.onSettingsChanged(["settleQuietThreads"]);

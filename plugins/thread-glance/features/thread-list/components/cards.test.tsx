@@ -129,7 +129,7 @@ describe("AC17: the Folded card", () => {
   it("folds a working thread to one line with Compact working threads on, and unfolds when the turn ends", async () => {
     const m = await mount({
       threads: [makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "i", ...fresh })],
-      server: { settings: { compactWorkingThreads: true } },
+      server: { settings: { threadDisplay: "compact-working" } },
     });
     expect(card("w").getAttribute("data-card")).toBe("folded");
     expect(card("i").getAttribute("data-card")).toBe("full");
@@ -144,11 +144,67 @@ describe("AC17: the Folded card", () => {
   it("unfolds when the thread needs you or fails", async () => {
     const m = await mount({
       threads: [makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" })],
-      server: { settings: { compactWorkingThreads: true } },
+      server: { settings: { threadDisplay: "compact-working" } },
     });
     act(() => m.host.updateThread("w", { hasPendingInteraction: true, indicator: "waiting-for-input" }));
     await flush();
     expect(card("w").getAttribute("data-card")).toBe("full");
+  });
+
+  it("folds every Pinned, Active and Inactive thread under Compact all threads, and a turn ending leaves it folded", async () => {
+    const old = { createdAt: NOW - DAY, updatedAt: NOW - DAY, latestAttentionAt: NOW - DAY };
+    const m = await mount({
+      threads: [
+        makeThread({ id: "pin", ...fresh, isPinned: true, pinnedAt: NOW }),
+        makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }),
+        makeThread({ id: "i", ...old }),
+      ],
+      server: { settings: { threadDisplay: "compact-all" } },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Inactive (1)" }));
+    await flush();
+    for (const id of ["pin", "w", "i"]) expect(card(id).getAttribute("data-card")).toBe("folded");
+    expect(card("i").getAttribute("data-shelf-of")).toBe("inactive");
+    expect(card("pin").style.height).toBe("32px");
+    act(() => m.host.updateThread("w", { status: "idle", runtimeStatus: "idle", indicator: "unread-success" }));
+    await flush();
+    expect(card("w").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("unfolds a thread that fails or needs you under Compact all threads until that clears", async () => {
+    const m = await mount({
+      threads: [makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "q", ...fresh })],
+      server: { settings: { threadDisplay: "compact-all" } },
+    });
+    act(() => {
+      m.host.updateThread("w", { status: "idle", runtimeStatus: "idle", indicator: "unread-error" });
+      m.host.updateThread("q", { hasPendingInteraction: true, indicator: "waiting-for-input" });
+    });
+    await flush();
+    expect(card("w").getAttribute("data-card")).toBe("full");
+    expect(card("q").getAttribute("data-card")).toBe("full");
+    act(() => {
+      m.host.updateThread("w", { indicator: "none" });
+      m.host.updateThread("q", { hasPendingInteraction: false, indicator: "none" });
+    });
+    await flush();
+    expect(card("w").getAttribute("data-card")).toBe("folded");
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+  });
+
+  it("keeps pinned and woke threads full under Compact all threads with the keep options on", async () => {
+    const old = { createdAt: NOW - 10 * HOUR, updatedAt: NOW - 10 * HOUR, latestAttentionAt: NOW - 10 * HOUR };
+    await mount({
+      threads: [makeThread({ id: "pin", ...fresh, isPinned: true, pinnedAt: NOW }), makeThread({ id: "woke", ...old }), makeThread({ id: "a", ...fresh })],
+      server: {
+        rows: { woke: snoozedRow(NOW - MIN, NOW - 8 * HOUR) },
+        settings: { threadDisplay: "compact-all", keepPinnedAsFullCards: true, keepWokeAsFullCards: true },
+      },
+    });
+    expect(card("pin").getAttribute("data-card")).toBe("full");
+    expect(card("woke").getAttribute("data-card")).toBe("full");
+    expect(card("woke").querySelector("[data-woke]")).not.toBeNull();
+    expect(card("a").getAttribute("data-card")).toBe("folded");
   });
 
   it("draws every Working-shelf row folded", async () => {

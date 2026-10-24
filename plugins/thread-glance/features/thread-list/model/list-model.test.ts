@@ -85,11 +85,64 @@ describe("shelves", () => {
     const plain = buildModel(inputs({ threads, lifecycle }));
     expect(plain.rows.get("w")!.card).toBe("full");
     expect(plain.rows.get("pk")!.card).toBe("slim");
-    const compact = buildModel(inputs({ threads, lifecycle, settings: { ...DEFAULT_SETTINGS, compactWorkingThreads: true } }));
+    const compact = buildModel(inputs({ threads, lifecycle, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
     expect(compact.rows.get("w")!.card).toBe("folded");
     expect(compact.rows.get("a")!.card).toBe("full");
     const shelf = buildModel(inputs({ threads, lifecycle, settings: { ...DEFAULT_SETTINGS, workingShelf: true } }));
     expect(shelf.rows.get("w")!.card).toBe("folded");
+  });
+  describe("under Compact all threads", () => {
+    const compactAll = { ...DEFAULT_SETTINGS, threadDisplay: "compact-all" as const };
+    const cards = (model: ReturnType<typeof buildModel>) => Object.fromEntries([...model.rows.values()].map((row) => [row.id, row.card]));
+
+    it("folds every Pinned, Active and Inactive thread, done or idle, and keeps the lower shelves slim", () => {
+      const threads = [
+        makeThread({ id: "pin", isPinned: true, pinnedAt: NOW, ...at(1000) }),
+        makeThread({ id: "w", ...working, ...at(1000) }),
+        makeThread({ id: "done", indicator: "unread-success", isUnread: true, ...at(1000) }),
+        makeThread({ id: "idle", ...at(1000) }),
+        makeThread({ id: "old", ...at(7 * HOUR) }),
+        makeThread({ id: "pk", ...at(DAY) }),
+      ];
+      const model = buildModel(inputs({ threads, lifecycle: { pk: parkedRow(NOW - 1000) }, settings: compactAll }));
+      expect(model.shelves.inactive).toEqual(["old"]);
+      expect(cards(model)).toEqual({ pin: "folded", w: "folded", done: "folded", idle: "folded", old: "folded", pk: "slim" });
+    });
+
+    it("unfolds a thread that failed or needs you, itself or below it, and folds it again once that clears", () => {
+      const threads = [
+        makeThread({ id: "err", indicator: "unread-error", isUnread: true, ...at(1000) }),
+        makeThread({ id: "queued", indicator: "queued-failed", ...at(1000) }),
+        makeThread({ id: "ask", hasPendingInteraction: true, ...at(1000) }),
+        makeThread({ id: "parent", ...at(1000) }),
+        makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, ...at(1000) }),
+      ];
+      expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ err: "full", queued: "full", ask: "full", parent: "full" });
+      const cleared = threads.map((thread) => makeThread({ ...thread, indicator: "none", isUnread: false, hasPendingInteraction: false }));
+      expect(cards(buildModel(inputs({ threads: cleared, settings: compactAll })))).toMatchObject({ err: "folded", queued: "folded", ask: "folded", parent: "folded" });
+    });
+
+    it("keeps pinned threads full with Keep pinned as full cards", () => {
+      const threads = [makeThread({ id: "pin", isPinned: true, pinnedAt: NOW, ...at(1000) }), makeThread({ id: "a", ...at(1000) })];
+      const model = buildModel(inputs({ threads, settings: { ...compactAll, keepPinnedAsFullCards: true } }));
+      expect(cards(model)).toEqual({ pin: "full", a: "folded" });
+    });
+
+    it("keeps a woke thread full with Keep woke as full cards, until opening it clears its Woke marker", () => {
+      const threads = [makeThread({ id: "woke", ...at(10 * HOUR) }), makeThread({ id: "a", ...at(1000) })];
+      const lifecycle: Record<string, LifecycleRow> = { woke: snoozedRow(NOW - 60_000, NOW - 8 * HOUR) };
+      expect(cards(buildModel(inputs({ threads, lifecycle, settings: compactAll })))).toEqual({ woke: "folded", a: "folded" });
+      const keep = { ...compactAll, keepWokeAsFullCards: true };
+      expect(cards(buildModel(inputs({ threads, lifecycle, settings: keep })))).toEqual({ woke: "full", a: "folded" });
+      expect(cards(buildModel(inputs({ threads, settings: keep })))).toEqual({ woke: "folded", a: "folded" });
+    });
+
+    it("leaves the keep options without effect under the other two displays", () => {
+      const threads = [makeThread({ id: "pin", isPinned: true, pinnedAt: NOW, ...working, ...at(1000) })];
+      const keepBoth = { keepPinnedAsFullCards: true, keepWokeAsFullCards: true };
+      expect(cards(buildModel(inputs({ threads, settings: { ...DEFAULT_SETTINGS, ...keepBoth, threadDisplay: "compact-working" } })))).toEqual({ pin: "folded" });
+      expect(cards(buildModel(inputs({ threads, settings: { ...DEFAULT_SETTINGS, ...keepBoth } })))).toEqual({ pin: "full" });
+    });
   });
 });
 
@@ -370,7 +423,7 @@ describe("sorts turn reordering off in Active", () => {
 describe("never-run threads", () => {
   const idleNeverRun = makeThread({ id: "n", status: "pending", ...at(1000) });
   const scheduled = makeThread({ id: "s", status: "pending", queuedWork: "waiting", ...at(1000) });
-  const settings = { ...DEFAULT_SETTINGS, workingShelf: true, compactWorkingThreads: true };
+  const settings = { ...DEFAULT_SETTINGS, workingShelf: true, threadDisplay: "compact-working" as const };
 
   it("keeps a never-run thread off the Working shelf and its card full, with or without a queued first message", () => {
     const model = buildModel(inputs({ threads: [idleNeverRun, scheduled], settings }));

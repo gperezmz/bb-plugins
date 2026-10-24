@@ -13,7 +13,9 @@ import {
 describe("settings defaults", () => {
   it("are the spec's, with Inactive on", () => {
     expect(DEFAULT_SETTINGS).toEqual({
-      compactWorkingThreads: false,
+      threadDisplay: "full-cards",
+      keepPinnedAsFullCards: false,
+      keepWokeAsFullCards: false,
       workingShelf: false,
       inactiveShelf: true,
       hoursBeforeInactive: 6,
@@ -92,6 +94,13 @@ describe("readSettings", () => {
     });
     expect(readSettings(undefined)).toEqual(DEFAULT_SETTINGS);
     expect(readSettings([])).toEqual(DEFAULT_SETTINGS);
+  });
+  it("carries the compacting working threads switch over into Thread display", () => {
+    expect(readSettings({ compactWorkingThreads: true }).threadDisplay).toBe("compact-working");
+    expect(readSettings({ compactWorkingThreads: false }).threadDisplay).toBe("full-cards");
+    expect(readSettings({ workingShelf: true }).threadDisplay).toBe("full-cards");
+    expect(readSettings({ compactWorkingThreads: true, threadDisplay: "compact-all" }).threadDisplay).toBe("compact-all");
+    expect(readSettings({ compactWorkingThreads: true })).not.toHaveProperty("compactWorkingThreads");
   });
 });
 
