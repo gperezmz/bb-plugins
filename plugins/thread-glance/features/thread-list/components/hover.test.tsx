@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { PluginSidebarPullRequest } from "@get-bb/plugin-sdk/app";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSnoozePickerRequests } from "../commands/snooze-picker-request";
+import { parkedRow, settledRow } from "@/shared/lifecycle";
 import { makeThread } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 import { forgetModelLookups } from "../sync/model-lookup";
@@ -187,6 +188,7 @@ describe("AC19: Jump hints", () => {
     );
   const hints = () =>
     [...document.querySelectorAll("[data-jump-hint]")].map((hint) => ({ row: hint.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId, label: hint.textContent }));
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
   const shortcut = (n: number) => ({ label: `Ctrl + Shift + ${n}`, ariaKeyshortcuts: `Control+Shift+${n}` });
 
   it("shows on each row the jump key bb assigned it, in bb's label", async () => {
@@ -197,6 +199,29 @@ describe("AC19: Jump hints", () => {
       { row: "t1", label: "Ctrl + Shift + 2" },
       { row: "t3", label: "Ctrl + Shift + 3" },
     ]);
+    // The hint stands in place of the status; a row bb gave no key keeps its status.
+    for (const id of ["t0", "t1", "t3"]) expect(card(id).querySelector("[data-status]")).toBeNull();
+    expect(card("t2").querySelector("[data-status]")).not.toBeNull();
+  });
+
+  it("shows bb's label in place of a Slim row's status and shelf label", async () => {
+    const DAY = 24 * 60 * MIN;
+    const old = { createdAt: NOW - 5 * DAY, updatedAt: NOW - 4 * DAY, latestAttentionAt: NOW - 4 * DAY };
+    await mount({
+      threads: [makeThread({ id: "parked", ...old }), makeThread({ id: "settled", ...old }), makeThread({ id: "settled2", ...old })],
+      server: { rows: { parked: parkedRow(NOW - 2 * DAY), settled: settledRow(NOW - DAY, "manual"), settled2: settledRow(NOW - DAY, "manual") }, settings: { inactiveShelf: false } },
+      slot: { sidebarShortcuts: { parked: shortcut(1), settled: shortcut(2) } },
+    });
+    for (const label of ["Parked (1)", "Settled (2)"]) fireEvent.click(screen.getByRole("button", { name: label }));
+    await flush();
+    expect(hints()).toEqual([
+      { row: "parked", label: "Ctrl + Shift + 1" },
+      { row: "settled", label: "Ctrl + Shift + 2" },
+    ]);
+    expect(card("parked").getAttribute("data-card")).toBe("slim");
+    expect(card("parked").textContent).not.toContain("2d");
+    expect(card("settled").querySelector("[data-status]")).toBeNull();
+    expect(card("settled2").querySelector("[data-status]")).not.toBeNull();
   });
 
   it("shows none while bb assigns none", async () => {
