@@ -48,6 +48,8 @@ const fields = {
   dockShelves: flag,
   /** Project colours. */
   projectColours: flag,
+  /** Under the Project sort, root threads sharing a bb worktree sit in a group named by its branch. */
+  groupByWorktree: flag,
   /** Where stripes show: Full and collapsed mode, Full mode only, or Grouped projects only. */
   stripesIn: choice(STRIPE_CHOICES),
   /** The snooze presets, as comma-separated text (see snooze.ts). */
@@ -86,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = Object.freeze({
   hoursBeforeInactive: 6,
   dockShelves: false,
   projectColours: false,
+  groupByWorktree: false,
   stripesIn: "full-and-collapsed",
   snoozeShortcuts: DEFAULT_SNOOZE_SHORTCUTS,
   settleQuietThreads: true,
@@ -105,6 +108,7 @@ export const SETTING_DESCRIPTIONS: Record<SettingKey, string> = {
   hoursBeforeInactive: `Hours without activity before a thread moves to the Inactive shelf. A whole number, ${HOURS_BEFORE_INACTIVE_RANGE.min} to ${HOURS_BEFORE_INACTIVE_RANGE.max}.`,
   dockShelves: "Keep the lower shelves at the bottom of the sidebar. true or false.",
   projectColours: "Give each project a colour, shown on its name, stripe and monogram. true or false.",
+  groupByWorktree: "Under the Project sort on Active, group root threads that share a worktree under its branch. true or false.",
   stripesIn: `Where the project's stripe shows: ${STRIPE_CHOICES.join(", ")}. "full-and-collapsed" is Full and collapsed mode, "full" Full mode only, "grouped" Grouped projects only.`,
   snoozeShortcuts: `The snooze presets, comma-separated text: durations (1h, 2d) or times (evening@18:00, tomorrow, next-week@09:00), each optionally named as Label=value. At most ${MAX_SNOOZE_ENTRIES} entries.`,
   settleQuietThreads: "Settle a thread with no open pull request once it has been quiet for daysBeforeAutoSettle days. true or false.",

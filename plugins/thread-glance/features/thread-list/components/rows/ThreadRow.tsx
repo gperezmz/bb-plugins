@@ -53,7 +53,7 @@ function RowBody({ row, split }: { row: RowView; split: ReturnType<typeof useSid
   const stripe = colour !== null && stripeShown(stripesIn, row.card === "full" ? "full" : "collapsed") ? colour : null;
   const tinted = row.focused ? "tg-row-open" : row.openElsewhere ? "tg-row-elsewhere" : "";
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div className={cn("flex h-full min-w-0 flex-col", row.inWorktree && "pl-3")}>
       <HoverCard open={hoverOpen && !editing && !dragged} openDelay={250} closeDelay={300} onOpenChange={(open) => setHoverCardOpen(threadId, open)}>
         {/* The menu wraps the card's element: the hover card draws none, so a menu around it would reach no DOM node. */}
         <RowContextMenu thread={row.thread} disabled={editing} dragging={dragged}>

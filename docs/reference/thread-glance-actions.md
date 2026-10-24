@@ -190,6 +190,8 @@ Working and Inactive keep Active's manual order, so a returning thread lands in 
 
 In **Project** mode a project with at least two Active threads gets a header, and other projects' threads stay as lone rows. The header shows the project's icon, its name in the project colour, its count and a chevron. A group sits where its first thread sits, and moving the header moves the group. Collapsing a group is saved on the device, and a collapsed group keeps the open thread and any thread that needs attention. Cards inside a group hide their project line.
 
+With **Group by worktree** on, the Project sort goes one level further. Root threads of a project group that run in the same bb worktree, two or more, sit together under a worktree header one step in, named by its branch and showing its count and a chevron. A thread alone in its worktree, a thread in the project's own checkout and a child thread show as they do without the setting. A worktree group sits where its first thread sits in its project, and moving its header moves its threads in the manual order, while dragging a thread inside it moves only that group's threads. Collapsing it is saved on the device and keeps only the open thread; while collapsed, its header shows the mark of the most urgent state in its threads and below them, as the [children chip](thread-glance-list.md#children-chip) does. The setting is in the [settings](thread-glance-settings.md#sidebar-layout) and, while the sort is Project, on Active's header, and it applies to every window.
+
 ## Reordering
 
 | | Pointer | Keyboard |
