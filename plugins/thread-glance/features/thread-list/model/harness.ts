@@ -3,23 +3,19 @@
 
 export type ModelState = { status: "loading" } | { status: "unavailable" } | { status: "ready"; model: string | null; reasoningLevel: string | null };
 
-export interface ModelLines {
-  model: string;
-  reasoning: string;
-}
-
-/** The two lines the Hover card shows: "Loading…", "Not set" or "Unavailable" stand in for what is missing. */
-export function modelLines(state: ModelState): ModelLines {
+/** The line the Hover card shows: the model's name then the capitalised level, as "GPT 6.1 Sol Medium". "Loading…", "Not set" or "Unavailable" stand in for what is missing; no level leaves the name alone. */
+export function modelLine(state: ModelState): string {
   switch (state.status) {
     case "loading":
-      return { model: "Loading…", reasoning: "Loading…" };
+      return "Loading…";
     case "unavailable":
-      return { model: "Unavailable", reasoning: "Unavailable" };
-    case "ready":
-      return {
-        model: state.model ?? "Not set",
-        reasoning: state.reasoningLevel === null || state.reasoningLevel === "none" ? "Not set" : state.reasoningLevel,
-      };
+      return "Unavailable";
+    case "ready": {
+      if (state.model === null) return "Not set";
+      const level = state.reasoningLevel;
+      if (level === null || level === "" || level === "none") return state.model;
+      return `${state.model} ${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+    }
   }
 }
 

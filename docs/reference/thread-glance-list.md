@@ -187,7 +187,7 @@ Child rows have their own marks, titles and status or age, and a disclosure for 
 Opens 250 ms after the pointer rests on a row, never on touch, and closes 300 ms after the pointer leaves. Keyboard focus opens it at once. One card is open at a time, on the right of the row, 256 px wide. It shows:
 
 - the title, project, machine and branch;
-- the harness with its status glyph, model and reasoning level, loaded from bb: "Loading…", "Not set" or "Unavailable";
+- the harness with its status glyph, then the model and reasoning level on one line as bb names them, such as "GPT 6.1 Sol Medium", loaded from bb. A model bb has no display name for shows its id; no level leaves the name alone; "Loading…", "Not set" or "Unavailable" stand in for what is missing;
 - the branch's pull request from GitHub PR Status, when it has one: `#number` and title, linking to it, with its attention state as its label and its checks, review and mergeability on one line. No pull request, no section;
 - "Subthreads (N)", with a toggle listing the direct children, each opening that child;
 - "Workspace ports (N)", when the thread's environment has listeners ([Workspace ports](#workspace-ports)).

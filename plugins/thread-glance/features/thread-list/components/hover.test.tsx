@@ -91,13 +91,13 @@ describe("AC19: the Hover card", () => {
     });
     await focusWithKeyboard(anchor("a"));
     const hover = document.querySelector<HTMLElement>("[data-hover-card]")!;
-    expect(within(hover).getAllByText("Loading…")).toHaveLength(2);
+    expect(within(hover).getAllByText("Loading…")).toHaveLength(1);
     expect(hover.querySelector("[data-harness=claude-code]")).not.toBeNull();
     expect(hover.querySelector("[title=Failed]")).not.toBeNull();
     await act(async () => release({ model: "claude-x", reasoningLevel: "high" }));
     await flush();
-    expect(hover.textContent).toContain("Claude X");
-    expect(hover.textContent).toContain("high");
+    expect(within(hover).getByText("Claude X High")).toBeTruthy();
+    expect(hover.textContent).not.toContain("Reasoning");
   });
 
   it("says Not set when bb has no model and Unavailable when it cannot be loaded", async () => {
@@ -115,10 +115,10 @@ describe("AC19: the Hover card", () => {
       },
     });
     await focusWithKeyboard(anchor("a"));
-    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Not set")).toHaveLength(2);
+    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Not set")).toHaveLength(1);
     await focusWithKeyboard(anchor("b"));
     await flush();
-    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Unavailable")).toHaveLength(2);
+    expect(within(document.querySelector<HTMLElement>("[data-hover-card]")!).getAllByText("Unavailable")).toHaveLength(1);
   });
 
   it("shows the branch's pull request with its attention state, in red when checks failed", async () => {
