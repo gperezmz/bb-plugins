@@ -3,27 +3,35 @@
 
 export type ModelState = { status: "loading" } | { status: "unavailable" } | { status: "ready"; model: string | null; reasoningLevel: string | null };
 
-export interface ModelLines {
-  model: string;
-  reasoning: string;
-}
-
-/** The two lines the Hover card shows: "Loading…", "Not set" or "Unavailable" stand in for what is missing. */
-export function modelLines(state: ModelState): ModelLines {
+/** The line the Hover card shows: the model's name then the level's name, as "GPT 6.1 Sol Medium". "Loading…", "Not set" or "Unavailable" stand in for what is missing; no level leaves the name alone. */
+export function modelLine(state: ModelState): string {
   switch (state.status) {
     case "loading":
-      return { model: "Loading…", reasoning: "Loading…" };
+      return "Loading…";
     case "unavailable":
-      return { model: "Unavailable", reasoning: "Unavailable" };
-    case "ready":
-      return {
-        model: state.model ?? "Not set",
-        reasoning: state.reasoningLevel === null || state.reasoningLevel === "none" ? "Not set" : state.reasoningLevel,
-      };
+      return "Unavailable";
+    case "ready": {
+      if (state.model === null) return "Not set";
+      return state.reasoningLevel === null ? state.model : `${state.model} ${state.reasoningLevel}`;
+    }
   }
 }
 
+export interface CatalogModel {
+  id: string;
+  model: string;
+  displayName: string;
+  supportedReasoningEfforts?: readonly { reasoningEffort: string; label?: string }[];
+}
+
 /** The model's display name from the provider's catalog, else its id. */
-export function modelDisplayName(model: string, catalog: readonly { id: string; model: string; displayName: string }[]): string {
+export function modelDisplayName(model: string, catalog: readonly CatalogModel[]): string {
   return catalog.find((entry) => entry.model === model || entry.id === model)?.displayName ?? model;
+}
+
+/** The level's name for the line: the label the catalog gives the model's level, else the level capitalised; null when no level is set, which bb reports as null, "" or "none". */
+export function reasoningLevelLabel(model: string, level: string | null, catalog: readonly CatalogModel[]): string | null {
+  if (level === null || level === "" || level === "none") return null;
+  const entry = catalog.find((candidate) => candidate.model === model || candidate.id === model);
+  return entry?.supportedReasoningEfforts?.find((effort) => effort.reasoningEffort === level)?.label ?? `${level.charAt(0).toUpperCase()}${level.slice(1)}`;
 }
