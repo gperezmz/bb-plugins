@@ -97,7 +97,7 @@ These are not settings and are not on the page. Each belongs to the browser it w
 | Active sort | The [Active sort](thread-glance-actions.md#active-sort) |
 | Project group collapse | The collapsed project groups, up to 200 |
 | Worktree group collapse | The collapsed [worktree groups](thread-glance-actions.md#active-sort), up to 200 |
-| Open child lists | The last 100 parents whose [children chip](thread-glance-list.md#children-chip) you opened |
+| Open child lists | The last 100 parents whose [children chip](thread-glance-list.md#children-chip) you opened; a settle closes them |
 | Port link machine | The [port link machine](#this-device), the only one of these on the page |
 | Caches | The manual order (up to 2,000 ids), project colours and icons, up to 500 lifecycle rows and the settings, so the first draw does not wait for the server |
 

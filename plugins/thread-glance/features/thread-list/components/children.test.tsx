@@ -2,7 +2,8 @@
 // AC18: the Children chip on a parent's card, and the child lists under it.
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { makeThread, PROJECTS } from "@/testing/fixtures";
+import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
+import { DAY, HOUR, makeThread, PROJECTS } from "@/testing/fixtures";
 import { flush, mount, useListHarness } from "../testing/harness";
 
 useListHarness();
@@ -190,5 +191,81 @@ describe("AC18: child rows", () => {
     await flush();
     fireEvent.click(within(childRow("c3")).getByRole("link"));
     expect(m.view.navigateCalls.at(-1)).toEqual({ method: "toThread", threadId: "c3" });
+  });
+});
+
+describe("#337: the Children chip on Snoozed, Parked and Settled rows", () => {
+  const quietFamily = (parentId: string) => [
+    makeThread({ id: parentId, title: `Parent ${parentId}`, ...at(60 * 24 * 3) }),
+    makeThread({ id: `${parentId}1`, title: `First ${parentId}`, parentThreadId: parentId, ...at(60 * 24 * 3) }),
+    makeThread({ id: `${parentId}2`, title: `Second ${parentId}`, parentThreadId: parentId, ...at(60 * 24 * 3) }),
+  ];
+  const shelves = () => ({
+    threads: [...quietFamily("sn"), ...quietFamily("pk"), ...quietFamily("st")],
+    server: {
+      rows: {
+        sn: snoozedRow(NOW + 2 * HOUR, NOW - HOUR),
+        pk: parkedRow(NOW - 2 * DAY),
+        st: settledRow(NOW - 2 * DAY, "manual"),
+      },
+    },
+  });
+  const openShelves = async () => {
+    for (const label of ["Snoozed (1)", "Parked (1)", "Settled (1)"]) fireEvent.click(screen.getByText(label, { selector: "button *" }));
+    await flush();
+  };
+
+  it("shows the chip on a slim row of each shelf and opens the children under it", async () => {
+    await mount(shelves());
+    await openShelves();
+    for (const id of ["sn", "pk", "st"]) {
+      expect(card(id).getAttribute("data-card")).toBe("slim");
+      expect(chip(id).getAttribute("aria-label")).toBe("2 child threads");
+      expect(chip(id).getAttribute("aria-expanded")).toBe("false");
+    }
+    expect(childTitles()).toEqual([]);
+    fireEvent.click(chip("pk"));
+    await flush();
+    expect(chip("pk").getAttribute("aria-expanded")).toBe("true");
+    expect(childTitles()).toEqual(["First pk", "Second pk"]);
+  });
+
+  it("keeps what is expanded on Settled when the list loads again on this device", async () => {
+    const first = await mount(shelves());
+    await openShelves();
+    fireEvent.click(chip("st"));
+    await flush();
+    expect(childTitles()).toEqual(["First st", "Second st"]);
+    first.view.unmount();
+    await mount(shelves());
+    expect(chip("st").getAttribute("aria-expanded")).toBe("true");
+    expect(childTitles()).toEqual(["First st", "Second st"]);
+  });
+
+  // A cache at its cap has cut the oldest Settled rows, so a root it lacks was not settled just now.
+  const fullCache = () => Object.fromEntries(Array.from({ length: 500 }, (_, index) => [`x${index}`, settledRow(NOW - DAY - index, "manual")]));
+  const openSettled = async (m: Awaited<ReturnType<typeof mount>>) => {
+    await act(async () => m.server.releaseSync());
+    await flush();
+    fireEvent.click(screen.getByText("Settled (1)", { selector: "button *" }));
+    await flush();
+  };
+
+  it("does not close a tree that the server's first answer moves onto Settled from a cache cut at its cap", async () => {
+    localStorage.setItem("thread-glance:cache.rows", JSON.stringify(fullCache()));
+    localStorage.setItem("thread-glance:expandedParents", JSON.stringify(["st"]));
+    const m = await mount({ ...shelves(), server: { ...shelves().server, holdSync: true } });
+    await openSettled(m);
+    expect(chip("st").getAttribute("aria-expanded")).toBe("true");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual(["st"]);
+  });
+
+  it("closes a tree that settled while the list was closed on this device, when a complete cache meets the server's answer", async () => {
+    localStorage.setItem("thread-glance:cache.rows", JSON.stringify({}));
+    localStorage.setItem("thread-glance:expandedParents", JSON.stringify(["st"]));
+    const m = await mount({ ...shelves(), server: { ...shelves().server, holdSync: true } });
+    await openSettled(m);
+    expect(chip("st").getAttribute("aria-expanded")).toBe("false");
+    expect(JSON.parse(localStorage.getItem("thread-glance:expandedParents")!)).toEqual([]);
   });
 });

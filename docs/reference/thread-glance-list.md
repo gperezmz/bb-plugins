@@ -139,7 +139,7 @@ One line: project name · title, then the children chip, the [port indicator](#w
 
 ### Slim row
 
-One line: project name · title and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
+One line: project name · title, the [children chip](#children-chip) on a parent, and the shelf's label, with a button to restore the thread. The button shows on hover, always on touch; a screen reader hears it as "Resume thread", "Wake thread now" or "Un-settle thread". On a narrow row the project name gives way first, then the label or status, then the title down to 48 px, so the chip and the restore button stay whole at bb's default sidebar width; below about 200 px the row keeps nothing whole and never scrolls sideways. While a jump hint shows, its key keeps its width: the title has no floor and the hover buttons hide; where one holds keyboard focus the buttons stay and the hint hides instead. The thread's other actions are in the [thread menu](thread-glance-actions.md#thread-menu).
 
 | Shelf | Label | Restore button |
 |---|---|---|
@@ -188,7 +188,7 @@ Colours follow bb's theme, light or dark, not the operating system's.
 
 ## Children chip
 
-On a parent's card:
+On a parent's card, whether a full card, a folded card or a slim row on Snoozed, Parked or Settled:
 
 - the number of its direct, non-archived children;
 - up to three child marks;
@@ -197,7 +197,7 @@ On a parent's card:
 
 Its tooltip reads "N child threads, 1 failed, 2 need you…".
 
-Opening the chip lists the children under the card. Which parents are open is saved on the device (the last 100 parents). A closed list still shows the path to the open thread and, with **Show children that need attention** on, children with a status.
+Opening the chip lists the children under the card. Which parents are open is saved on the device (the last 100 parents), so a tree opened on Settled is still open when the list loads again. Settling a thread closes the child lists of its whole tree; the lists stay closed until you open them again. A closed list still shows the path to the open thread and, with **Show children that need attention** on, children with a status.
 
 Child rows have their own marks, titles and status or age, and a disclosure for their own children, named "Grandchildren", "Great-grandchildren" and "Descendants". A child from another project carries its project icon. Children sort and are marked by the [Child threads settings](thread-glance-settings.md#child-threads).
 

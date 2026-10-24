@@ -25,7 +25,7 @@ export const NO_HOST: HostData = {
   splitLayout: null,
 };
 
-/** Everything the model is built from. */
+/** Everything the model is built from, and what the store checks before it publishes one. */
 export interface ListInputs {
   host: HostData;
   activeThreadId: string | null;
@@ -34,6 +34,8 @@ export interface ListInputs {
   lifecycle: Readonly<Record<string, LifecycleRow>>;
   /** Whether the rows can be drawn from: an answer, a cache, or a failed answer. */
   rowsReady: boolean;
+  /** Whether the rows hold every mark there is: the server's, or a cache short of its cap; a cut cache or the defaults a failed answer leaves do not. */
+  rowsComplete: boolean;
   settings: Settings;
   /** Manual order as the server holds it. */
   order: readonly string[];
