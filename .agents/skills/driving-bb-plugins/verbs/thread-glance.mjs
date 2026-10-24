@@ -1402,6 +1402,86 @@ export const verbs = {
     },
   },
 
+  stillness: {
+    usage:
+      "[--expand <title>] [--load-all]: open every collapsed shelf, then close and reopen each shelf in turn, scrolling its header to the middle of the view and sampling where every mounted shelf header and row is for 30 frames after each press; `moved` lists each one still moving after the first frame (a jump that slides back) with its `path`, its top before the press and at each frame, and `jumps` counts them. --load-all presses Settled's Load more until it is gone, --expand presses that row's children chip before the sweep",
+    valued: ["expand"],
+    async run({ page, url, capture, flags }) {
+      await ready(page, url);
+      // Every shelf open first, so each toggle has rows above and below it.
+      for (const name of SHELVES) if ((await page.locator(`[data-shelf="${name}"]`).count()) > 0) await openShelf(page, name);
+      if (flags["load-all"]) {
+        for (let button = page.getByRole("button", { name: /^Load \d+ more$/ }); (await button.count()) > 0; ) {
+          await button.scrollIntoViewIfNeeded();
+          await button.click();
+          await sleep(400);
+        }
+      }
+      if (flags.expand) {
+        const chip = cardOf(page, flags.expand).locator("[data-children-chip]");
+        await (await reveal(page, flags.expand)).scrollIntoViewIfNeeded();
+        await chip.click();
+        await cardOf(page, flags.expand).locator('[data-children-chip][aria-expanded="true"]').waitFor();
+        await sleep(400);
+      }
+      await page.evaluate(() => (document.querySelector("[data-scroller]") ?? document.scrollingElement).scrollTo(0, 0));
+      await frames(page);
+      await sleep(300);
+      const dock = await page.evaluate(() => document.querySelector("[data-list-ready]")?.getAttribute("data-dock") ?? null);
+      await capture("before", `every shelf open${flags["load-all"] ? ", Settled fully loaded" : ""}${flags.expand ? `, ${flags.expand}'s children open` : ""}`);
+      const shelves = await page.locator("[data-shelf]").evaluateAll((els) => els.map((e) => e.dataset.shelf));
+      const toggles = [];
+      // One press: sample before it, press, then sample each frame; positions are client px, transforms included.
+      const press = (name) =>
+        page.evaluate(async (shelf) => {
+          const sample = () => {
+            const at = {};
+            for (const el of document.querySelectorAll("[data-item-list] [data-shelf], [data-item-list] [data-row-id]")) {
+              at[el.dataset.shelf !== undefined ? `shelf:${el.dataset.shelf}` : `row:${el.dataset.rowId}`] = el.getBoundingClientRect().top;
+            }
+            return at;
+          };
+          const button = document.querySelector(`[data-shelf="${shelf}"] button[aria-expanded]`);
+          const from = button.getAttribute("aria-expanded") === "true" ? "open" : "closed";
+          const samples = [sample()];
+          button.click();
+          for (let i = 0; i < 30; i++) {
+            await new Promise((r) => requestAnimationFrame(r));
+            samples.push(sample());
+          }
+          const last = samples[samples.length - 1];
+          const titles = {};
+          for (const el of document.querySelectorAll("[data-item-list] [data-row-id]")) titles[`row:${el.dataset.rowId}`] = el.querySelector("a[data-sidebar-thread-id]")?.getAttribute("aria-label") ?? el.innerText.split("\n")[0];
+          const moved = [];
+          for (const key of Object.keys(last)) {
+            if (key === `shelf:${shelf}`) continue;
+            // From the first frame after the press on, a still element stays where it ends.
+            let drift = 0;
+            for (const s of samples.slice(1)) if (s[key] !== undefined) drift = Math.max(drift, Math.abs(s[key] - last[key]));
+            if (drift > 0.5) moved.push({ key, title: titles[key] ?? null, drift: Math.round(drift), path: samples.map((s) => (s[key] === undefined ? null : Math.round(s[key]))) });
+          }
+          return { shelf, from, to: from === "open" ? "closed" : "open", moved };
+        }, name);
+      // The pressed header in the middle of the view, so the rows on both sides of it are mounted and on screen.
+      const centre = async (name) => {
+        await page.locator(`[data-shelf="${name}"]`).evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await frames(page);
+        await sleep(300);
+      };
+      for (const name of shelves) {
+        await centre(name);
+        toggles.push(await press(name));
+        await sleep(200);
+        await capture(`${name}-${toggles.at(-1).to}`, `${toggles.at(-1).to === "open" ? "open" : "close"} ${name}`);
+        await centre(name);
+        toggles.push(await press(name));
+        await sleep(200);
+      }
+      await capture("after", "every shelf toggled twice");
+      return { dock, shelves, jumps: toggles.reduce((n, t) => n + t.moved.length, 0), toggles };
+    },
+  },
+
   appearance: {
     usage: "<project> [--colour <#rrggbb>] [--reset] [--icon <file>] [--automatic]: on the settings page's Customize a project, choose <project>, then type a colour, press Reset, upload an icon or press Use automatic; the preview, the source line and any alert, the server's appearance record, and the project's rows in the list after",
     valued: ["colour", "icon"],

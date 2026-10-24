@@ -23,7 +23,8 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
 - `cards`: the full, folded and slim rows, their status slot, port indicator
   and buttons.
 - `children`: the chip that opens a parent's child list.
-- `shelf`: opening and collapsing a shelf; Active's sort; Settled's Load more.
+- `shelf`: opening and collapsing a shelf, which leaves every other shelf still;
+  Active's sort; Settled's Load more.
 - `scope`: limiting every shelf to one project.
 - `hover`: the hover card on a row.
 - `actions`: Snooze (presets or a picked time), Park, Resume, Wake, Settle,
@@ -224,6 +225,16 @@ the pointer, so those verbs run on the desktop viewport.
   `thread-glance more` opens Settled and presses `Load N more`: `before`
   reads `Load 23 more` and 10 settled for 33, the step `loadMore` null and 33.
   `--times <n>` presses it again.
+- **Stillness** (`shelf`): with a thread on each shelf (settle, park and
+  snooze ids from `seed.json` through the RPC, `thread pin` some, and
+  `spawn … --hold 3000` with `prefs set workingShelf true`),
+  `thread-glance stillness --load-all` opens every shelf, then closes and
+  reopens each in turn, and prints `jumps` 0 with every `toggles[].moved`
+  empty: no other header or row is still moving after the frame the press
+  draws in. `--expand "<title>"` opens a parent's children first, a row
+  grown taller; run it again after `prefs set dockShelves true` for the
+  docked list. A `moved` entry's `path` is its top before the press and at
+  each frame after it.
 - **Active sort** (`sort`): `thread-glance sort "Recent activity"` re-orders
   `after.order` and stores `activeSort` `activity`; `Project` adds a `groups`
   header (`Collapse drives group`) for a project with two Active threads;
@@ -470,7 +481,8 @@ says.
   fresh, so it does not wait.
 - A snooze, park or settle toast lasts 4 to 10 s, and the ports prompt stays
   until answered, so read `toasts` in the same verb that acted.
-- Settle's 520 ms sweep and the list's slide on reorder are animations: the
+- Settle's 520 ms sweep and the list's slide on reorder are animations (a
+  shelf opening or closing slides nothing): the
   verbs wait about 300 ms before reading, so a read taken sooner may miss a
   new shelf header.
 - Manual order holds every non-pinned thread across projects; the verb's
