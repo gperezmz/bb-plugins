@@ -49,7 +49,7 @@ The same holds when a child is created or starts a turn: its parked, snoozed or 
 
 ## Automatic settle
 
-Settling by hand does not scale across dozens of threads, so a server pass settles the ones that are over, every 5 minutes, when a list mounts and when one of its settings changes. It follows what bb knows of a thread's pull request:
+Settling by hand does not scale across dozens of threads, so a server pass settles the ones that are over, every 5 minutes, when a list mounts and when one of its settings changes. It follows a thread's pull request as bb's bundled GitHub PR Status plugin reports it for the thread's environment:
 
 ```mermaid
 flowchart TD
@@ -59,14 +59,16 @@ flowchart TD
   pr -->|"closed, or merged with the merge setting on, and changed after the thread's last activity"| settle["Settle"]
   pr -->|open or draft| stay["Stays"]
   pr -->|cannot be read| nothing["Nothing changes"]
-  pr -->|none| quiet{"Settle quiet threads on, and last activity older than the days setting?"}
+  pr -->|"nothing left to ask, and auto-settled"| nothing
+  pr -->|"none, or nothing left to ask"| quiet{"Settle quiet threads on, and last activity older than the days setting?"}
   quiet -->|yes| settle
   quiet -->|no| stay
 ```
 
 - A closed pull request always counts; a merged one counts with **Settle merged pull requests** on. The pull request must have changed after the thread's last activity, so a thread you went back to after the merge is not settled over your head.
 - An open or draft pull request keeps the thread, however old, since the work is not over.
-- If bb cannot read the pull request, nothing changes: a wrong guess would hide a live thread.
+- If GitHub PR Status cannot say, nothing changes: a wrong guess would hide a live thread. That covers a machine that is offline, `gh` not logged in, a remote not on GitHub, and an answer in a shape Thread Glance does not expect, which it also logs as an error; the next pass asks again.
+- With GitHub PR Status disabled or not installed, or the thread's workspace gone, nothing is left to ask, so the thread counts as having no pull request and the quiet rule may settle it. A thread already auto-settled stays settled then, as when a worktree is removed after its merge: losing the way to ask does not undo what settled it.
 - A thread with a manual mark (a manual settle, or the active override Resume and Un-settle set) is left alone, because you decided.
 - A parent settles only when its whole tree is settled or settling.
 - A pass that started under older settings is thrown away, and only one runs at a time with one more queued, so changing a setting never settles by the old one.

@@ -194,7 +194,7 @@ function FullCard({ row, editing, projectName, colour }: CardProps) {
       ) : null}
       <PortIndicator environmentId={thread.environment?.id} />
       <Counts row={row} />
-      <PullRequestBadge threadId={row.id} />
+      <PullRequestBadge environmentId={thread.environment?.id} />
       <HarnessLogo providerId={thread.providerId} />
     </div>
   );
