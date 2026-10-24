@@ -184,8 +184,10 @@ export type CardSettings = Pick<Settings, "threadDisplay" | "keepPinnedAsFullCar
 
 /**
  * The card a top-level row is drawn as. On Pinned, Active and Inactive a
- * thread that failed or needs you is a Full card whatever Thread display says,
- * and folds again once you open it or the failure or question clears.
+ * thread that failed or needs you is a Full card whatever Thread display says.
+ * Under Compact all threads it folds again once you open it, which reads its
+ * failure and its own question, or once the failure or question clears; a
+ * question waiting below it keeps it full until that question clears.
  */
 export function cardKindOf(
   shelf: Shelf,
@@ -196,13 +198,13 @@ export function cardKindOf(
 ): CardKind {
   if (shelf === "snoozed" || shelf === "parked" || shelf === "settled") return "slim";
   if (shelf === "working") return "folded";
-  if (thread.hasPendingInteraction || isFailed(thread) || tree.needsYou) return "full";
   switch (display.threadDisplay) {
     case "full-cards":
       return "full";
     case "compact-working":
-      return isWorking(thread) ? "folded" : "full";
+      return isWorking(thread) && !thread.hasPendingInteraction && !isFailed(thread) && !tree.needsYou ? "folded" : "full";
     case "compact-all":
+      if (isFailed(thread) || (thread.hasPendingInteraction ? thread.isUnread : tree.needsYou)) return "full";
       if (display.keepPinnedAsFullCards && shelf === "pinned") return "full";
       if (display.keepWokeAsFullCards && woke !== null) return "full";
       return "folded";

@@ -113,13 +113,24 @@ describe("shelves", () => {
       const threads = [
         makeThread({ id: "err", indicator: "unread-error", isUnread: true, ...at(1000) }),
         makeThread({ id: "queued", indicator: "queued-failed", ...at(1000) }),
-        makeThread({ id: "ask", hasPendingInteraction: true, ...at(1000) }),
+        makeThread({ id: "ask", hasPendingInteraction: true, isUnread: true, ...at(1000) }),
         makeThread({ id: "parent", ...at(1000) }),
         makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, ...at(1000) }),
       ];
       expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ err: "full", queued: "full", ask: "full", parent: "full" });
       const cleared = threads.map((thread) => makeThread({ ...thread, indicator: "none", isUnread: false, hasPendingInteraction: false }));
       expect(cards(buildModel(inputs({ threads: cleared, settings: compactAll })))).toMatchObject({ err: "folded", queued: "folded", ask: "folded", parent: "folded" });
+    });
+
+    it("folds a thread asking you once you open it, while the question still waits, but not its parent", () => {
+      const threads = [
+        makeThread({ id: "ask", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+        makeThread({ id: "parent", ...at(1000) }),
+        makeThread({ id: "kid", parentThreadId: "parent", hasPendingInteraction: true, isUnread: false, ...at(1000) }),
+      ];
+      expect(cards(buildModel(inputs({ threads, settings: compactAll })))).toMatchObject({ ask: "folded", parent: "full" });
+      const working = buildModel(inputs({ threads, settings: { ...DEFAULT_SETTINGS, threadDisplay: "compact-working" } }));
+      expect(working.rows.get("ask")!.card).toBe("full");
     });
 
     it("keeps pinned threads full with Keep pinned as full cards", () => {

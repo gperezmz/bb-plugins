@@ -171,17 +171,24 @@ describe("AC17: the Folded card", () => {
     expect(card("w").getAttribute("data-card")).toBe("folded");
   });
 
-  it("unfolds a thread that fails or needs you under Compact all threads until that clears", async () => {
+  it("unfolds a thread that fails or needs you under Compact all threads until you open it or that clears", async () => {
     const m = await mount({
       threads: [makeThread({ id: "w", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "q", ...fresh })],
       server: { settings: { threadDisplay: "compact-all" } },
     });
     act(() => {
       m.host.updateThread("w", { status: "idle", runtimeStatus: "idle", indicator: "unread-error" });
-      m.host.updateThread("q", { hasPendingInteraction: true, indicator: "waiting-for-input" });
+      m.host.updateThread("q", { hasPendingInteraction: true, isUnread: true, indicator: "waiting-for-input" });
     });
     await flush();
     expect(card("w").getAttribute("data-card")).toBe("full");
+    expect(card("q").getAttribute("data-card")).toBe("full");
+    // Opening the thread reads it; the question still waits.
+    act(() => m.host.updateThread("q", { isUnread: false }));
+    await flush();
+    expect(card("q").getAttribute("data-card")).toBe("folded");
+    act(() => m.host.updateThread("q", { isUnread: true }));
+    await flush();
     expect(card("q").getAttribute("data-card")).toBe("full");
     act(() => {
       m.host.updateThread("w", { indicator: "none" });
