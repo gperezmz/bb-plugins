@@ -18,7 +18,7 @@ retire_when: "bb marks a thread unread when a question or approval arrives, or c
 
 ## Problem
 
-Under **Compact all threads**, a thread that fails or needs you stays a full card "until you open it or the failure or question clears" (#335, AC1). bb offers no "opened" signal for a question, and does not clear a failed queued send on open. The build went looking for one and then built far more memory than the issue asked for: twelve review rounds, and five verifiers per the operator, before the extra memory was reverted.
+Under **Compact all threads**, a thread that fails or needs you stays a full card "until you open it or the failure or question clears" (#335, AC1). bb offers no "opened" signal for a question, and does not clear a failed queued send on open. The build went looking for one and then built far more memory than the issue asked for: twelve review rounds, and five verifier threads (four took verdicts, the fifth was stopped on the operator's order before any), before the extra memory was reverted.
 
 ## Symptoms
 
