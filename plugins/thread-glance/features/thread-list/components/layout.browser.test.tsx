@@ -7,11 +7,11 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarProject, PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
-import { makeThread, PROJECTS } from "@/testing/fixtures";
+import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -41,13 +41,14 @@ async function render(
   height = 600,
   width = 360,
   sidebarShortcuts: Record<string, PluginSidebarThreadShortcut> = {},
+  projects: PluginSidebarProject[] = PROJECTS,
 ) {
   await page.viewport(width, height);
   // Attached, so the fake server's realtime signals reach the list, as a lifecycle call's do.
   const fake = createFakeServer(server);
   const slot = fake.attach(renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
     rpc: fake.handlers as never,
-    sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
+    sidebarThreads: { status: "ready", threads, projects, sections: [] },
     sdk: {} as never,
     realtimeConnectionState: "connected",
     sidebarShortcuts,
@@ -190,6 +191,102 @@ describe("the cards' lines", () => {
     expect(chip.scrollWidth).toBeLessThanOrEqual(chip.clientWidth);
   });
 
+  it("keeps a slim row's title readable beside the Children chip at the default sidebar width", async () => {
+    const family = [
+      makeThread({ id: "boss", title: "boss", ...old }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "boss", ...old }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "boss", ...old }),
+      makeThread({ id: "k3", title: "kid three", parentThreadId: "boss", ...old }),
+    ];
+    await render(family, { rows: { boss: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, 255);
+    screen.getByRole("button", { name: "Parked (1)" }).click();
+    await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+    await frames();
+    const boss = card("boss");
+    expect(boss.dataset.card).toBe("slim");
+    expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
+    expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+    expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+  });
+
+  describe("a hovered slim row with a Children chip", () => {
+    const family = (id: string) => [
+      makeThread({ id, title: "Investigate flaky checkout tests on CI", ...old }),
+      makeThread({ id: `${id}1`, title: "kid one", parentThreadId: id, ...old }),
+      makeThread({ id: `${id}2`, title: "kid two", parentThreadId: id, ...old }),
+    ];
+    const hovered = async (width: number, shelf: "Parked" | "Settled") => {
+      const rows = shelf === "Parked" ? { boss: parkedRow(NOW - 86_400_000) } : { boss: settledRow(NOW - 86_400_000, "manual") };
+      await render(family("boss"), { rows, settings: { inactiveShelf: false } }, {}, 600, width);
+      screen.getByRole("button", { name: `${shelf} (1)` }).click();
+      await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+      await frames();
+      const boss = card("boss");
+      await userEvent.hover(boss);
+      await frames();
+      return boss;
+    };
+    const whole = (el: HTMLElement) => el.scrollWidth <= el.clientWidth;
+
+    it.each(["Parked", "Settled"] as const)("keeps the chip and the restore button whole on a hovered %s row at the default sidebar width, the project name giving way first", async (shelf) => {
+      const boss = await hovered(249, shelf);
+      const chip = boss.querySelector<HTMLElement>("[data-children-chip]")!;
+      expect(chip.getBoundingClientRect().width).toBeGreaterThanOrEqual(34);
+      expect([chip, ...chip.querySelectorAll<HTMLElement>("*")].every(whole)).toBe(true);
+      const restore = boss.querySelector<HTMLElement>("[data-slim-actions] button")!;
+      expect(whole(restore)).toBe(true);
+      // The project name is the first to give way.
+      const name = boss.querySelector<HTMLElement>("[data-project-name]")!.parentElement!;
+      expect(name.scrollWidth).toBeGreaterThan(name.clientWidth);
+      expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+      expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+    });
+
+    it("keeps a Snoozed row's two-digit label whole at rest at the default width, a long project name giving way", async () => {
+      const long = makeProject("proj_long", "platform-infrastructure-monorepo");
+      const threads = family("boss").map((thread) => ({ ...thread, projectId: long.id }));
+      await render(threads, { rows: { boss: snoozedRow(NOW + 40 * 86_400_000, NOW - 1000) }, settings: { inactiveShelf: false } }, {}, 600, 249, {}, [long]);
+      screen.getByRole("button", { name: "Snoozed (1)" }).click();
+      await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+      await frames();
+      // An earlier test may have left the pointer over this row.
+      await userEvent.hover(document.body);
+      await frames();
+      const label = [...card("boss").querySelectorAll<HTMLElement>("span")].find((el) => el.children.length === 0 && /^\d+d$/.test(el.textContent ?? ""))!;
+      expect(label.textContent).toBe("40d");
+      expect(whole(label)).toBe(true);
+    });
+
+    it.each([249, 169])("leaves a parent row's title room at rest at %s px, and its rename editor at least 48 px at the default width", async (width) => {
+      const boss = await hovered(width, "Parked");
+      await userEvent.unhover(boss);
+      await frames();
+      expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(width === 249 ? 48 : 20);
+      if (width !== 249) return;
+      boss.querySelector<HTMLElement>("a")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      await frames();
+      const editor = boss.querySelector<HTMLElement>("input")!;
+      expect(editor.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+    });
+
+    it("cuts a hovered Parked row's label from its end, never from its start", async () => {
+      for (const width of [249, 256, 262, 280]) {
+        const boss = await hovered(width, "Parked");
+        const label = [...boss.querySelectorAll<HTMLElement>("span")].find((el) => el.children.length === 0 && el.textContent?.startsWith("Waiting"))!;
+        const wrapper = label.parentElement!;
+        expect(label.getBoundingClientRect().left, `at ${width} px`).toBeGreaterThanOrEqual(wrapper.getBoundingClientRect().left - 0.5);
+        cleanup();
+        localStorage.clear();
+      }
+    });
+
+    it.each(["Parked", "Settled"] as const)("does not overflow a hovered %s row at the narrowest sidebar width", async (shelf) => {
+      const boss = await hovered(169, shelf);
+      expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
+      expect(boss.querySelector("[data-children-chip]")).not.toBeNull();
+    });
+  });
+
   it("puts the Status slot at 80 px at the right edge of the card's first line", async () => {
     await draw(false);
     const slot = card("full").querySelector<HTMLElement>("[data-status-slot]")!;
@@ -234,6 +331,72 @@ describe("the jump hints", () => {
     expect(hint.getBoundingClientRect().right).toBeLessThanOrEqual(card("pk").getBoundingClientRect().right);
     expect(hint.scrollWidth).toBeLessThanOrEqual(hint.clientWidth);
     expect(card("pk").scrollWidth).toBeLessThanOrEqual(card("pk").clientWidth);
+  });
+});
+
+describe("the jump hints on a hovered slim row with a Children chip", () => {
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+  const long = { label: "Ctrl + Alt + Shift + 1", ariaKeyshortcuts: "Control+Alt+Shift+1" };
+  const usual = { label: "Ctrl + 1", ariaKeyshortcuts: "Control+1" };
+
+  it.each([
+    [249, long],
+    [169, usual],
+  ])("keeps the row within its width and the hint whole at %s px", async (width, hintBinding) => {
+    const threads = [
+      makeThread({ id: "pk", title: "A parked thread with a long title", ...old }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "pk", ...old }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "pk", ...old }),
+    ];
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, width, { pk: hintBinding });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    await userEvent.hover(card("pk"));
+    await frames();
+    const row = card("pk");
+    const hint = row.querySelector<HTMLElement>("[data-jump-hint]")!;
+    expect(hint.scrollWidth).toBeLessThanOrEqual(hint.clientWidth);
+    expect(hint.getBoundingClientRect().right).toBeLessThanOrEqual(row.getBoundingClientRect().right);
+    expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+  });
+});
+
+describe("the jump hints over a keyboard-focused slim row", () => {
+  it.each([249, 169])("keeps the row within its width at %s px", async (width) => {
+    const threads = [
+      makeThread({ id: "pk", title: "A parked thread with a long title", ...old }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "pk", ...old }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "pk", ...old }),
+    ];
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, width, { pk: { label: "Ctrl + Shift + 5", ariaKeyshortcuts: "Control+Shift+5" } });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    const row = document.querySelector<HTMLElement>('[data-card][data-thread-id="pk"]')!;
+    row.querySelector<HTMLElement>("a")!.focus();
+    await frames();
+    row.querySelector<HTMLElement>("[data-slim-actions] button")!.focus();
+    await userEvent.hover(row);
+    await frames();
+    expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+  });
+});
+
+describe("the jump hints over a focused slim row button", () => {
+  it("keeps the focused button in the layout, so holding the jump modifier does not drop focus", async () => {
+    const threads = [makeThread({ id: "pk", title: "A parked thread", ...old })];
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, 249, { pk: { label: "Ctrl + 1", ariaKeyshortcuts: "Control+1" } });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    const row = document.querySelector<HTMLElement>('[data-card][data-thread-id="pk"]')!;
+    const restore = row.querySelector<HTMLElement>("[data-slim-actions] button")!;
+    // A keyboard user reaches the buttons through the row's link, whose focus shows them.
+    row.querySelector<HTMLElement>("a")!.focus();
+    await frames();
+    restore.focus();
+    await userEvent.hover(row);
+    await frames();
+    expect(restore.getBoundingClientRect().width).toBeGreaterThan(0);
+    expect(document.activeElement).toBe(restore);
   });
 });
 
@@ -376,7 +539,7 @@ describe("the shelf headers", () => {
     }
   });
 
-  it("shrink the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
+  it("narrow the rule to nothing before a name truncates, which truncates where it did without the rule", async () => {
     await render(threads, { rows, settings: { workingShelf: true } });
     for (let width = 200; width >= 70; width -= 5) {
       await page.viewport(width, 600);

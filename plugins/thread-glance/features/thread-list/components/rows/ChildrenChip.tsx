@@ -10,7 +10,7 @@ import { ChildMark } from "./ChildMark";
 import { Tip } from "./Tip";
 import { UrgencyGlyph } from "./UrgencyGlyph";
 
-export function ChildrenChip({ parentId, info, expanded }: { parentId: string; info: ChildrenInfo; expanded: boolean }) {
+export function ChildrenChip({ parentId, info, expanded, className }: { parentId: string; info: ChildrenInfo; expanded: boolean; className?: string }) {
   const commands = useCommands();
   const { childIcon } = useSettings();
   const marks = useRowsOf(chipMarkIds(info.ids));
@@ -27,7 +27,10 @@ export function ChildrenChip({ parentId, info, expanded }: { parentId: string; i
           event.stopPropagation();
           commands.setExpanded(parentId, !expanded);
         }}
-        className="pointer-events-auto flex h-4 min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 text-[10px] tabular-nums outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className={cn(
+          "pointer-events-auto flex h-4 min-w-0 items-center gap-1 overflow-hidden rounded-md px-1 text-[10px] tabular-nums outline-none hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+          className,
+        )}
       >
         <span className="shrink-0">{info.ids.length}</span>
         <span className="flex min-w-0 items-center overflow-hidden -space-x-1">
