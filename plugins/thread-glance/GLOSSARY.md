@@ -88,6 +88,10 @@ _Avoid_: Link host, port host
 The picker at the top of Thread Glance's list that limits every shelf to the projects ticked in it, or to all of them when none is. It is saved per window: a reload keeps it, another window has its own, and a new window starts on All projects. It marks a project left out of it that has a thread needing you.
 _Avoid_: Project filter
 
+**Pinned project**:
+A project you pinned from the Project scope picker, drawn as its icon in a row above the list, where a click puts it in the scope or takes it out. It is saved per device and stays when the scope is reset; it is not a pinned thread, which sits on the Pinned shelf.
+_Avoid_: Favourite project, project shortcut
+
 **Project colour**:
 The colour a project has while project colours are on: soft and automatic from the project's id, or an override picked in settings. It colours the project's name, its stripe and its monogram.
 _Avoid_: Project theme

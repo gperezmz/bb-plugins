@@ -1,13 +1,14 @@
 // The project scope picker: All projects, or the projects ticked in it,
-// filtering every shelf. A tick applies at once and Done closes the picker.
-// The window keeps the scope across reloads; a project left out that has a
+// filtering every shelf. A tick applies at once and Done closes the picker;
+// each project's row also pins it above the list. The window keeps the scope
+// across reloads, the device the pins; a project left out that has a
 // thread waiting on the person marks the button and its own row.
 import { useId, useState } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { ALL_PROJECTS_SCOPE, filterScopeOptions, firstSelectedIndex, isOptionSelected, moveHighlight, scopeButtonLabel, scopeLabel, scopeOptions, toggleProject, type ScopeOption } from "../model/scope";
-import { useCommands, useScope } from "../store/hooks";
+import { useCommands, usePinnedIds, useScope } from "../store/hooks";
 
 function NeedsYouMark() {
   return (
@@ -17,9 +18,25 @@ function NeedsYouMark() {
   );
 }
 
+/** A picker row's pin: pins the project above the list, or unpins it. */
+function PinButton({ projectId, name, pinned }: { projectId: string; name: string; pinned: boolean }) {
+  const commands = useCommands();
+  return (
+    <button
+      type="button"
+      aria-label={`${pinned ? "Unpin" : "Pin"} ${name}`}
+      onClick={() => commands.setProjectPinned(projectId, !pinned)}
+      className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+    >
+      <Icon name={pinned ? "PinOff" : "Pin"} aria-hidden className="size-3.5" />
+    </button>
+  );
+}
+
 export function ProjectScope() {
   const { scope, projects, needingYou } = useScope();
   const commands = useCommands();
+  const pinned = usePinnedIds();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(-1);
@@ -81,18 +98,20 @@ export function ProjectScope() {
           />
           <div id={listId} role="listbox" aria-label="Projects" aria-multiselectable className="max-h-64 overflow-y-auto">
             {options.map((option, index) => (
-              <div
-                key={option.id ?? "all"}
-                id={`${listId}-${index}`}
-                role="option"
-                aria-selected={isOptionSelected(scope, option)}
-                onMouseEnter={() => setHighlight(index)}
-                onClick={() => choose(option)}
-                className={cn("flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm", index === highlight && "bg-sidebar-accent")}
-              >
-                <span className="min-w-0 flex-1 truncate">{option.name}</span>
-                {option.id !== null && needingYou.includes(option.id) ? <NeedsYouMark /> : null}
-                {isOptionSelected(scope, option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
+              <div key={option.id ?? "all"} role="presentation" className="flex items-center">
+                <div
+                  id={`${listId}-${index}`}
+                  role="option"
+                  aria-selected={isOptionSelected(scope, option)}
+                  onMouseEnter={() => setHighlight(index)}
+                  onClick={() => choose(option)}
+                  className={cn("flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2 text-sm", index === highlight && "bg-sidebar-accent")}
+                >
+                  <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                  {option.id !== null && needingYou.includes(option.id) ? <NeedsYouMark /> : null}
+                  {isOptionSelected(scope, option) ? <Icon name="Check" aria-hidden className="size-3.5 shrink-0" /> : null}
+                </div>
+                {option.id !== null ? <PinButton projectId={option.id} name={option.name} pinned={pinned.includes(option.id)} /> : null}
               </div>
             ))}
             {options.length === 0 ? <p className="px-2 py-1.5 text-sm text-muted-foreground">No projects match.</p> : null}

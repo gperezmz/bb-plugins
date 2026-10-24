@@ -1,5 +1,6 @@
 // What the list keeps per device: which shelves are collapsed, the Active sort, collapsed
-// project and worktree groups and the parents whose child list is open. Pure steps over
+// project and worktree groups, the parents whose child list is open and the pinned
+// projects. Pure steps over
 // plain values; `readDeviceState` and the cache helpers bind them to storage.
 import { lifecycleRowSchema, SHELVES, type LifecycleRow, type Shelf } from "@/shared/lifecycle";
 import { readSettings, type Settings } from "@/shared/settings";
@@ -26,6 +27,8 @@ export interface DeviceState {
   collapsedWorktrees: readonly string[];
   /** Thread ids whose child list is open, least recently opened first. */
   expandedParents: readonly string[];
+  /** Project ids pinned above the list, in the order they were pinned. */
+  pinnedProjects: readonly string[];
 }
 
 /** Pinned, Active and Working start open; the rest start collapsed. */
@@ -45,6 +48,7 @@ export const INITIAL_DEVICE_STATE: DeviceState = {
   collapsedGroups: [],
   collapsedWorktrees: [],
   expandedParents: [],
+  pinnedProjects: [],
 };
 
 export function isShelfCollapsed(state: Pick<DeviceState, "collapsedShelves">, shelf: Shelf): boolean {
@@ -95,6 +99,16 @@ export function withParentExpanded(state: DeviceState, threadId: string, expande
   return { ...state, expandedParents };
 }
 
+/** Pins or unpins a project; a pin past the cap drops the oldest. */
+export function withProjectPinned(state: DeviceState, projectId: string, pinned: boolean): DeviceState {
+  const has = state.pinnedProjects.includes(projectId);
+  if (has === pinned) return state;
+  const pinnedProjects = pinned
+    ? lastDistinct([...state.pinnedProjects, projectId], CAPS.pinnedProjects)
+    : state.pinnedProjects.filter((id) => id !== projectId);
+  return { ...state, pinnedProjects };
+}
+
 function stringList(value: unknown, cap: number): string[] {
   return Array.isArray(value) ? lastDistinct(value.filter((entry): entry is string => typeof entry === "string"), cap) : [];
 }
@@ -115,6 +129,7 @@ export function readDeviceState(storage: DeviceStorage): DeviceState {
     collapsedGroups: stringList(storage.read("collapsedGroups"), CAPS.collapsedGroups),
     collapsedWorktrees: stringList(storage.read("collapsedWorktrees"), CAPS.collapsedWorktrees),
     expandedParents: stringList(storage.read("expandedParents"), CAPS.expandedParents),
+    pinnedProjects: stringList(storage.read("pinnedProjects"), CAPS.pinnedProjects),
   };
 }
 
@@ -125,6 +140,7 @@ export function saveDeviceState(storage: DeviceStorage, previous: DeviceState, s
   if (previous.collapsedGroups !== state.collapsedGroups) storage.write("collapsedGroups", state.collapsedGroups);
   if (previous.collapsedWorktrees !== state.collapsedWorktrees) storage.write("collapsedWorktrees", state.collapsedWorktrees);
   if (previous.expandedParents !== state.expandedParents) storage.write("expandedParents", state.expandedParents);
+  if (previous.pinnedProjects !== state.pinnedProjects) storage.write("pinnedProjects", state.pinnedProjects);
 }
 
 // ——— Caches of what the server sends, for the first draw ———

@@ -12,6 +12,7 @@ import {
   saveDeviceState,
   withGroupCollapsed,
   withParentExpanded,
+  withProjectPinned,
   withWorktreeCollapsed,
   writeOrderCache,
   writeRowsCache,
@@ -70,6 +71,24 @@ describe("lists are capped", () => {
     device.write("collapsedWorktrees", ["env_x", "env_y"]);
     expect(readDeviceState(device).collapsedWorktrees).toEqual(["env_x", "env_y"]);
     expect(readDeviceState(createDeviceStorage(limitedStorage(1_000_000).storage)).collapsedWorktrees).toEqual([]);
+  });
+
+  it("keeps pinned projects on the device in the order pinned, capped, and reads them back", () => {
+    let state = withProjectPinned(withProjectPinned(INITIAL_DEVICE_STATE, "proj_b", true), "proj_a", true);
+    expect(state.pinnedProjects).toEqual(["proj_b", "proj_a"]);
+    expect(withProjectPinned(state, "proj_a", true)).toBe(state);
+    expect(withProjectPinned(state, "proj_z", false)).toBe(state);
+    const { storage } = limitedStorage(1_000_000);
+    const device = createDeviceStorage(storage);
+    saveDeviceState(device, INITIAL_DEVICE_STATE, state);
+    expect(readDeviceState(device).pinnedProjects).toEqual(["proj_b", "proj_a"]);
+    state = withProjectPinned(state, "proj_b", false);
+    expect(state.pinnedProjects).toEqual(["proj_a"]);
+    for (let index = 0; index < 80; index += 1) state = withProjectPinned(state, `p${index}`, true);
+    expect(state.pinnedProjects).toHaveLength(CAPS.pinnedProjects);
+    expect(state.pinnedProjects.at(-1)).toBe("p79");
+    device.write("pinnedProjects", ["x", 3, "x", "y"]);
+    expect(readDeviceState(device).pinnedProjects).toEqual(["x", "y"]);
   });
 
   it("caches at most 500 lifecycle rows, keeping the most recently marked, and 2,000 ids of the order", () => {
