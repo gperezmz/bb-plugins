@@ -12,6 +12,7 @@ import {
   saveDeviceState,
   withGroupCollapsed,
   withParentExpanded,
+  withParentsFolded,
   withWorktreeCollapsed,
   writeOrderCache,
   writeRowsCache,
@@ -47,6 +48,13 @@ describe("lists are capped", () => {
     expect(state.expandedParents.at(-1)).toBe("t50");
     state = withParentExpanded(state, "t50", false);
     expect(state.expandedParents).not.toContain("t50");
+  });
+
+  it("folds several parents at once, and keeps the state it was given when none is open", () => {
+    let state = INITIAL_DEVICE_STATE;
+    for (const id of ["a", "b", "c"]) state = withParentExpanded(state, id, true);
+    expect(withParentsFolded(state, ["a", "c", "x"]).expandedParents).toEqual(["b"]);
+    expect(withParentsFolded(state, ["x"])).toBe(state);
   });
 
   it("caps collapsed groups, and a stored list longer than its cap is cut when read", () => {

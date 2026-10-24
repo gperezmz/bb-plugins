@@ -117,7 +117,7 @@ A row of one line: project name and title, the children chip, an unpin button an
 _Avoid_: Compact row, collapsed card
 
 **Slim row**:
-A one-line row, 32 px tall, showing project name, title and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.
+A one-line row, 32 px tall, showing project name, title, the children chip and the shelf's label, with a button to restore the thread on hover. Used on Parked, Snoozed and Settled.
 _Avoid_: Thin row, mini row
 
 **Status slot**:
@@ -125,7 +125,7 @@ The 80 px right-aligned part of a card that shows one thing, the first that appl
 _Avoid_: Trailing slot, status column
 
 **Children chip**:
-The control on a parent thread's card showing the number of its direct, non-archived children, up to three child marks, the glyph of the most urgent state in its whole subtree, and a chevron that opens and closes the child list.
+The control on a parent thread's card or slim row showing the number of its direct, non-archived children, up to three child marks, the glyph of the most urgent state in its whole subtree, and a chevron that opens and closes the child list.
 _Avoid_: Chip, Pill, children badge, child dot
 
 **Parent button**:

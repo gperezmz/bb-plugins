@@ -261,6 +261,7 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
         ·
       </span>
       <Title row={row} editing={editing} className="text-xs" />
+      {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} />}
       {right}
       <span
         data-slim-actions=""

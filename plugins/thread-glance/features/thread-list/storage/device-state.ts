@@ -95,6 +95,13 @@ export function withParentExpanded(state: DeviceState, threadId: string, expande
   return { ...state, expandedParents };
 }
 
+/** Closes the child lists of `threadIds` at once. */
+export function withParentsFolded(state: DeviceState, threadIds: readonly string[]): DeviceState {
+  const folded = new Set(threadIds);
+  if (!state.expandedParents.some((id) => folded.has(id))) return state;
+  return { ...state, expandedParents: state.expandedParents.filter((id) => !folded.has(id)) };
+}
+
 function stringList(value: unknown, cap: number): string[] {
   return Array.isArray(value) ? lastDistinct(value.filter((entry): entry is string => typeof entry === "string"), cap) : [];
 }

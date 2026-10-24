@@ -11,9 +11,11 @@ import type { RpcContract } from "@/shared/contract";
 import { pluginData, type DataChange } from "../sync";
 import type { ListModel } from "../model/list-model";
 import { resolveScope } from "../model/scope";
+import { parentsToFold } from "../model/settle-fold";
 import {
   readDeviceState,
   saveDeviceState,
+  withParentsFolded,
   type DeviceState,
 } from "../storage/device-state";
 import { createDeviceStorage, type DeviceStorage } from "../storage/device-storage";
@@ -195,6 +197,16 @@ export function createListStore(options: ListStoreOptions = {}): ListStore {
       if (!present) {
         api.setState({ ui: { ...current.ui, dragging: null } });
         commit({ ...checked, drag: null });
+        return;
+      }
+    }
+    // A settle folds the child lists of the tree it moves onto Settled, however it was made.
+    if (model !== null) {
+      const folded = parentsToFold(current.model, model, checked.device.expandedParents);
+      if (folded.length > 0) {
+        const device = withParentsFolded(checked.device, folded);
+        saveDeviceState(storage, checked.device, device);
+        commit({ ...checked, device });
         return;
       }
     }
