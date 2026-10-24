@@ -227,6 +227,12 @@ describe("rows: Woke, Unpin and the thread menu", () => {
     expect(within(card("woke")).queryByRole("button", { name: /^Snooze/ })).toBeNull();
   });
 
+  it("offers no hover actions on a card whose thread has a question of its own", async () => {
+    await mount({ threads: [makeThread({ id: "asking", ...fresh, hasPendingInteraction: true })] });
+    expect(within(card("asking")).queryByRole("button", { name: /^Settle/ })).toBeNull();
+    expect(within(card("asking")).queryByRole("button", { name: /^Snooze/ })).toBeNull();
+  });
+
   it("settles from the card's check, playing the sweep on the card first", async () => {
     const m = await mount({ threads: [makeThread({ id: "a", ...fresh })] });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });

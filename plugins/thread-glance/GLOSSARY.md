@@ -63,7 +63,7 @@ A thread on Settled, put there by you or automatically after it went quiet or it
 _Avoid_: Older thread, done thread
 
 **Waiting settle**:
-A Settle you chose for a thread tree while a thread in it was busy, kept on the server and shown on the thread's card with a cancel until the tree settles once no thread in it is busy. Your own message, spawn or pin in the tree, a question or approval, a failure or interrupt, or the card's cancel ends it unsettled; an agent's turns, spawns and messages do not.
+A Settle you chose for a thread tree while a thread in it was busy, kept on the server and shown on the thread's card with a cancel until the tree settles once no thread in it is busy. Your own message, spawn or new pin in the tree, a question or approval, a failure or interrupt, or the card's cancel ends it unsettled, leaving the tree as it was; an agent's turns, spawns and messages do not.
 _Avoid_: Pending settle, deferred settle, queued settle
 
 **Inactive thread**:

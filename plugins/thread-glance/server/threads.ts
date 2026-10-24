@@ -121,7 +121,9 @@ type TurnEventRow = Awaited<ReturnType<Sdk["threads"]["events"]["list"]>>[number
 export function toTurnRecord(row: TurnEventRow): TurnRecord | null {
   if (row.type === "client/turn/requested") {
     // A message a person typed has no sender thread; an agent's message or spawn names one, and bb's own turns are "system".
-    return { kind: "requested", at: row.createdAt, byUser: row.data.initiator === "user" && row.data.senderThreadId === null };
+    // A retry is bb's, though it carries the initiator of the message it sends again.
+    const byUser = row.data.initiator === "user" && row.data.senderThreadId === null && row.data.retryAttempt === undefined;
+    return { kind: "requested", at: row.createdAt, byUser };
   }
   if (row.type === "turn/completed") return { kind: "ended", at: row.createdAt, outcome: row.data.status };
   return null;

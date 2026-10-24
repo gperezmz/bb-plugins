@@ -24,6 +24,8 @@ import {
   treeSignals,
   wakeReason,
   waitingBelow,
+  waitingSettleRow,
+  withoutWaitingSettle,
   type ShelfOptions,
   type ShelfThread,
 } from "./lifecycle";
@@ -75,8 +77,10 @@ describe("rows", () => {
     expect(hasMark(null)).toBe(false);
   });
 
-  it("counts a manual settle and the active override as manual marks, not an automatic settle", () => {
+  it("counts a manual settle, the active override and a waiting settle as manual marks, not an automatic settle", () => {
     expect(hasManualMark(settledRow(1, "manual"))).toBe(true);
+    expect(hasManualMark(waitingSettleRow(1))).toBe(true);
+    expect(hasMark(waitingSettleRow(1))).toBe(false);
     expect(hasManualMark(activeRow())).toBe(true);
     expect(hasManualMark(settledRow(1, "auto"))).toBe(false);
     expect(hasManualMark(parkedRow(1))).toBe(false);
@@ -293,9 +297,22 @@ describe("shelfOf", () => {
   });
 
   it("asks a window to clear the row of a pinned thread", () => {
-    expect(shouldClearForPin(parkedRow(1), { isPinned: true })).toBe(true);
-    expect(shouldClearForPin(null, { isPinned: true })).toBe(false);
-    expect(shouldClearForPin(parkedRow(1), { isPinned: false })).toBe(false);
+    expect(shouldClearForPin(parkedRow(1), { isPinned: true, pinnedAt: 5 })).toBe(true);
+    expect(shouldClearForPin(null, { isPinned: true, pinnedAt: 5 })).toBe(false);
+    expect(shouldClearForPin(parkedRow(1), { isPinned: false, pinnedAt: null })).toBe(false);
+  });
+
+  it("keeps a waiting settle chosen on a pinned thread, and clears one the thread was pinned after", () => {
+    expect(shouldClearForPin(waitingSettleRow(10), { isPinned: true, pinnedAt: 5 })).toBe(false);
+    expect(shouldClearForPin(waitingSettleRow(10), { isPinned: true, pinnedAt: 10 })).toBe(false);
+    expect(shouldClearForPin(waitingSettleRow(10), { isPinned: true, pinnedAt: 11 })).toBe(true);
+  });
+
+  it("keeps the row's marks under a waiting settle and gives them back when it ends", () => {
+    const parked = waitingSettleRow(10, parkedRow(1));
+    expect(parked).toEqual({ ...parkedRow(1), waitingSettleAt: 10 });
+    expect(withoutWaitingSettle(parked)).toEqual(parkedRow(1));
+    expect(withoutWaitingSettle(waitingSettleRow(10))).toBeNull();
   });
 
   it("returns a parked thread with new attention to Active", () => {

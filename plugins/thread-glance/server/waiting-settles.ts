@@ -4,7 +4,8 @@
 // and settles the tree once no thread in it is busy, or ends the settle where
 // `waitingSettleVerdict` says. The module names no SDK: bb is reached through
 // `ThreadGateway`.
-import { isWaitingSettle, settledRow, type LifecycleRow } from "../shared/lifecycle";
+import { hasQueuedMessage } from "../shared/busy";
+import { isWaitingSettle, settledRow, withoutWaitingSettle, type LifecycleRow } from "../shared/lifecycle";
 import { treeIds } from "../shared/thread-tree";
 import { waitingSettleVerdict, type TurnRecord, type WaitingSettleVerdict } from "../shared/waiting-settle";
 import type { ChangeRecords } from "./actions";
@@ -32,11 +33,18 @@ export interface WaitingSettleEvent {
 
 export interface WaitingSettles {
   /**
+   * Notes a settle Settle just left waiting, with its tree as Settle read it:
+   * messages already queued there were the user's before they chose it, so
+   * the turns they start do not end it.
+   */
+  chosen(threadId: string, tree: readonly ServerThread[]): void;
+  /**
    * Looks at every waiting settle now: settles each tree that has been idle
-   * for `IDLE_GRACE_MS`, and ends each settle that a pin, a question, a turn
-   * of the user's or a failure ended. `event` names a thread whose recorded
-   * turns are read at once rather than only before a landing. Checks run one
-   * at a time.
+   * for `IDLE_GRACE_MS`, unpinning it first, and ends each settle that a pin,
+   * a question, a turn of the user's or a failure ended. `event` names a
+   * thread whose recorded turns are read at once rather than only before a
+   * landing. Checks run one at a time, and those asked for while one waits to
+   * start share it.
    */
   check(event?: WaitingSettleEvent): Promise<void>;
   /** `check` without waiting for it; a failure is logged. */
@@ -47,7 +55,7 @@ export interface WaitingSettles {
 
 export interface WaitingSettlesDeps {
   lifecycle: LifecycleStore;
-  threads: Pick<ThreadGateway, "snapshot" | "turnsSince">;
+  threads: Pick<ThreadGateway, "snapshot" | "turnsSince" | "unpin">;
   reclaim: Reclaimer;
   change: ChangeRecords;
   now?: () => number;
@@ -84,15 +92,25 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
   const inOrder = createSerialQueue();
   /** When each waiting settle's tree was first seen idle, since it last was busy. In memory: a restart waits the grace again. */
   const idleSince = new Map<string, number>();
+  /**
+   * The threads of each waiting settle's tree that had a message queued when
+   * it was chosen, whose turns asked for by the user do not end it. In memory:
+   * after a restart such a turn ends it.
+   */
+  const queuedAtChoice = new Map<string, ReadonlySet<string>>();
 
   /** The tree of `rootId` as `byId` has it, or null when bb no longer lists the thread. */
   const treeOf = (snapshot: readonly ServerThread[], byId: ReadonlyMap<string, ServerThread>, rootId: string) =>
     byId.has(rootId) ? treeIds(snapshot, rootId).flatMap((id) => (byId.has(id) ? [byId.get(id)!] : [])) : null;
 
-  /** The turns the threads recorded after `since`, or null when bb could not say for one of them. */
-  async function turnsOf(ids: readonly string[], since: number): Promise<TurnRecord[] | null> {
+  /** The turns the threads recorded after `since` that bear on `rootId`'s settle, or null when bb could not say for one of them. */
+  async function turnsOf(rootId: string, ids: readonly string[], since: number): Promise<TurnRecord[] | null> {
+    const queued = queuedAtChoice.get(rootId) ?? new Set<string>();
     try {
-      return (await Promise.all(ids.map((id) => threads.turnsSince(id, since)))).flat();
+      const perThread = await Promise.all(ids.map((id) => threads.turnsSince(id, since)));
+      return perThread.flatMap((turns, index) =>
+        queued.has(ids[index]!) ? turns.filter((turn) => turn.kind !== "requested" || !turn.byUser) : turns,
+      );
     } catch (error) {
       warn(`could not read the turns of a waiting settle's tree: ${errorMessage(error)}`);
       return null;
@@ -105,29 +123,42 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     since: number,
     snapshot: readonly ServerThread[],
     byId: ReadonlyMap<string, ServerThread>,
-    event: WaitingSettleEvent | undefined,
+    events: readonly WaitingSettleEvent[],
   ): Promise<WaitingSettleVerdict | "gone" | null> {
     const tree = treeOf(snapshot, byId, rootId);
     if (tree === null) return "gone";
-    const reported = event !== undefined && tree.some((thread) => thread.id === event.threadId) ? [...(event.turns ?? [])] : [];
+    const inTree = new Set(tree.map((thread) => thread.id));
+    const touched = events.filter((event) => inTree.has(event.threadId));
+    const reported = touched.flatMap((event) => event.turns ?? []);
     let verdict = waitingSettleVerdict(tree, since, reported);
-    if (verdict.kind === "wait" && reported.length === 0 && event !== undefined && tree.some((thread) => thread.id === event.threadId)) {
-      const turns = await turnsOf([event.threadId], since);
-      if (turns !== null) verdict = waitingSettleVerdict(tree, since, turns);
+    const toRead = [...new Set(touched.filter((event) => event.turns === undefined).map((event) => event.threadId))];
+    if (verdict.kind === "wait" && toRead.length > 0) {
+      const turns = await turnsOf(rootId, toRead, since);
+      if (turns !== null) verdict = waitingSettleVerdict(tree, since, [...reported, ...turns]);
     }
     if (verdict.kind !== "land") return verdict;
     // Before it lands, every turn the tree ran since: a message of the user's or a failure there ends it instead.
-    const turns = await turnsOf(
-      tree.map((thread) => thread.id),
-      since,
-    );
+    const turns = await turnsOf(rootId, [...inTree], since);
     if (turns === null) return null;
     return waitingSettleVerdict(tree, since, [...reported, ...turns]);
   }
 
-  async function checkNow(event?: WaitingSettleEvent): Promise<void> {
+  /** Unpins the tree's pinned threads for its settle; false, with a warning, when bb refused one. */
+  async function unpinAll(tree: readonly ServerThread[]): Promise<boolean> {
+    try {
+      for (const thread of tree) if (thread.isPinned) await threads.unpin(thread.id);
+      return true;
+    } catch (error) {
+      warn(`could not unpin a waiting settle's tree, so it settles later: ${errorMessage(error)}`);
+      return false;
+    }
+  }
+
+  async function checkNow(events: readonly WaitingSettleEvent[]): Promise<void> {
     const waiting = waitingRows(lifecycle);
-    for (const id of idleSince.keys()) if (!waiting.some(([threadId]) => threadId === id)) idleSince.delete(id);
+    for (const map of [idleSince, queuedAtChoice]) {
+      for (const id of map.keys()) if (!waiting.some(([threadId]) => threadId === id)) map.delete(id);
+    }
     if (waiting.length === 0) return;
     const snapshot = await threads.snapshot();
     const byId = new Map(snapshot.map((thread) => [thread.id, thread]));
@@ -135,7 +166,7 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     const ending: [string, number][] = [];
     const landing: [string, number][] = [];
     for (const [rootId, since] of waiting) {
-      const verdict = await decide(rootId, since, snapshot, byId, event);
+      const verdict = await decide(rootId, since, snapshot, byId, events);
       if (verdict === null) continue;
       if (verdict === "gone" || verdict.kind === "end") {
         idleSince.delete(rootId);
@@ -153,7 +184,9 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     const settled = await change(async (changed) => {
       // Only the settle that was decided on: one cancelled or chosen again since is left alone.
       const still = ([threadId, since]: [string, number]) => lifecycle.get(threadId)?.waitingSettleAt === since;
-      const entries: (readonly [string, LifecycleRow | null])[] = ending.filter(still).map(([threadId]) => [threadId, null] as const);
+      const entries: (readonly [string, LifecycleRow | null])[] = ending
+        .filter(still)
+        .map(([threadId]) => [threadId, withoutWaitingSettle(lifecycle.get(threadId)!)] as const);
       const lands = landing.filter(still);
       const landed: string[] = [];
       if (lands.length > 0) {
@@ -163,7 +196,7 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
         const settledAt = now();
         for (const [rootId, since] of lands) {
           const tree = treeOf(fresh, freshById, rootId);
-          if (tree === null || waitingSettleVerdict(tree, since).kind !== "land") continue;
+          if (tree === null || waitingSettleVerdict(tree, since).kind !== "land" || !(await unpinAll(tree))) continue;
           idleSince.delete(rootId);
           for (const thread of tree) {
             entries.push([thread.id, settledRow(settledAt, "manual")]);
@@ -181,9 +214,25 @@ export function createWaitingSettles(deps: WaitingSettlesDeps): WaitingSettles {
     if (targets.length > 0) await deps.reclaim(targets);
   }
 
-  const check = (event?: WaitingSettleEvent) => inOrder(() => checkNow(event));
+  /** The check that has not started yet, which a new request joins. */
+  let next: { events: WaitingSettleEvent[]; done: Promise<void> } | null = null;
+  function check(event?: WaitingSettleEvent): Promise<void> {
+    if (next === null) {
+      const batch: { events: WaitingSettleEvent[]; done: Promise<void> } = { events: [], done: Promise.resolve() };
+      batch.done = inOrder(() => {
+        if (next === batch) next = null;
+        return checkNow(batch.events);
+      });
+      next = batch;
+    }
+    if (event !== undefined) next.events.push(event);
+    return next.done;
+  }
 
   return {
+    chosen(threadId, tree) {
+      queuedAtChoice.set(threadId, new Set(tree.filter((thread) => hasQueuedMessage(thread)).map((thread) => thread.id)));
+    },
     check,
     poke(event) {
       check(event).catch((error) => warn(`waiting settle check failed: ${errorMessage(error)}`));

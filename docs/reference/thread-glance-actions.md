@@ -75,14 +75,14 @@ The toast reads "Thread settled", plus what was reclaimed, with **Undo**, for 4 
 
 ### Waiting settle
 
-A Settle of a tree with a [busy](thread-glance-list.md#busy-threads) thread in it, a lone busy thread included, unpins the tree's pinned threads and leaves a waiting settle on the thread, which the server keeps, so every window shows it and it outlasts a reload. The toast reads "Waiting to settle" and "Settles once no thread in its tree is busy", with **Undo**, which ends the wait and pins the threads again. The card shows **Settling** in its status slot, with a button to cancel, and the thread menu offers **Cancel settle**.
+A Settle of a tree with a [busy](thread-glance-list.md#busy-threads) thread in it, a lone busy thread included, leaves a waiting settle on the thread, which the server keeps, so every window shows it and it outlasts a reload. The tree keeps its pins, and the thread its park, snooze or settle, until the settle lands. The toast reads "Waiting to settle" and "Settles once no thread in its tree is busy", with **Undo**, which ends the wait. The card, or the slim row of a parked or snoozed thread, shows **Settling** with a button to cancel, and the thread menu offers **Cancel settle**.
 
-The server settles the tree, as step 3 above does, once no thread in it has been busy for 5 s; it looks on every thread event and every 5 s while a settle waits. A child's turn that ends, and an agent's message or spawn, leave it waiting. These end it, leaving the tree where it is:
+The server settles the tree, as step 3 above does, unpinning it, once no thread in it has been busy for 5 s; it looks on every thread event and every 5 s while a settle waits. A child's turn that ends, an agent's message or spawn, bb's own retry of a turn and a message you had queued before choosing Settle leave it waiting; after a plugin restart, such a queued message ends it. These end it, leaving the tree and the thread's marks where they were:
 
 - a message you send to a thread in the tree, or a child you start in it;
-- a pin of a thread in the tree;
+- a pin of a thread in the tree made after you chose Settle;
 - a question or approval on a visible thread in the tree;
-- a turn in the tree that fails or is interrupted;
+- a turn in the tree that fails or is interrupted, or a message that fails to send;
 - the card's cancel, or **Cancel settle**.
 
 A settle that lands has no toast and no Undo; Un-settle returns the thread.

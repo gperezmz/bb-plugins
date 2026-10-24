@@ -15,9 +15,11 @@ import {
   parkedRow,
   sameRow,
   settledRow,
+  shouldClearForPin,
   snoozedRow,
   waitingBelow,
   waitingSettleRow,
+  withoutWaitingSettle,
   type LifecycleRow,
 } from "../shared/lifecycle";
 import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, THREAD_GONE, TREE_CHANGED, type GatedAction } from "../shared/messages";
@@ -66,6 +68,8 @@ export interface ActionDeps {
   threads: ThreadGateway;
   reclaim: Reclaimer;
   change: ChangeRecords;
+  /** Told of each waiting settle Settle leaves, with the thread's tree as it read it then. */
+  onWaiting?: (threadId: string, tree: readonly ServerThread[]) => void;
   now?: () => number;
   newToken?: () => string;
   warn?: (message: string) => void;
@@ -268,7 +272,8 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
         const rowsBefore = new Map(ids.map((id) => [id, lifecycle.get(id)]));
         const unpinned: ServerThread[] = [];
         try {
-          for (const thread of tree) {
+          // A tree that waits keeps its pins until the settle lands, so ending the wait leaves it as it was.
+          for (const thread of waitedFor ? [] : tree) {
             if (!thread.isPinned) continue;
             await threads.unpin(thread.id);
             unpinned.push(thread);
@@ -284,7 +289,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
               return (
                 was !== undefined &&
                 thread.parentThreadId === was.parentThreadId &&
-                !thread.isPinned &&
+                (waitedFor || !thread.isPinned) &&
                 (waitedFor || !hasNewAttention(was.latestAttentionAt, thread.latestAttentionAt)) &&
                 sameRow(lifecycle.get(thread.id), rowsBefore.get(thread.id))
               );
@@ -296,11 +301,12 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
             const isUnpinned = (id: string) => unpinned.some((u) => u.id === id);
             const changes = write(
               [
-                [threadId, waitingSettleRow(now()), isUnpinned(threadId)] as const,
+                [threadId, waitingSettleRow(now(), lifecycle.get(threadId)), isUnpinned(threadId)] as const,
                 ...unpinned.filter((u) => u.id !== threadId).map((u) => [u.id, lifecycle.get(u.id), true] as const),
               ],
               changed,
             );
+            deps.onWaiting?.(threadId, current);
             return { waiting: true as const, changes, entries: [] };
           }
           const at = (lastSettleAt = Math.max(now(), lastSettleAt + 1));
@@ -337,7 +343,10 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
 
     async cancelSettle(threadId) {
       return noReclaim(
-        await change(async (changed) => (isWaitingSettle(lifecycle.get(threadId)) ? write([[threadId, null]], changed) : [])),
+        await change(async (changed) => {
+          const row = lifecycle.get(threadId);
+          return row !== null && isWaitingSettle(row) ? write([[threadId, withoutWaitingSettle(row)]], changed) : [];
+        }),
       );
     },
 
@@ -449,7 +458,8 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
         await change(async (changed) => {
           if (lifecycle.get(threadId) === null) return [];
           const byId = byIdOf(await threads.snapshot());
-          if (byId.get(threadId)?.isPinned !== true) return [];
+          const thread = byId.get(threadId);
+          if (thread === undefined || !shouldClearForPin(lifecycle.get(threadId), thread)) return [];
           return write([[threadId, null]], changed);
         }),
       );

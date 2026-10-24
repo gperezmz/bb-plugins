@@ -1,4 +1,4 @@
-import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
+import { createFakePluginHost, makeQueueEntry, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
 import { activeRow, parkedRow, settledRow, snoozedRow, waitingSettleRow } from "../shared/lifecycle";
@@ -150,6 +150,62 @@ describe("lifecycle actions over RPC", () => {
       expect(rowOf(await sync(harness), "parent")?.waitingSettleAt).not.toBeNull();
       await harness.behavior.callRpc("cancelSettle", { threadId: "parent" });
       expect(rowOf(await sync(harness), "parent")).toBeNull();
+    });
+
+    it("ends the wait on an interrupt bb only records in the turn's end, before the tree lands", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = family();
+      const turns: Record<string, { type: string; createdAt: number; data: Record<string, unknown> }[]> = {};
+      const { harness } = await load(sdkWith(() => threads, undefined, eventsOf(turns)));
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      Object.assign(threads[1]!, { runtime: { displayStatus: "idle" } });
+      turns.child = [{ type: "turn/completed", createdAt: 11_000, data: { status: "interrupted", providerThreadId: null } }];
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }), lastAssistantText: null });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
+      expect(rowOf(await sync(harness), "child")).toBeNull();
+    });
+
+    it("ends the wait on a failure bb announces in the tree", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { harness } = await load(sdkWith(family, undefined, eventsOf({})));
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      vi.setSystemTime(11_000);
+      await harness.behavior.emitThreadEvent("thread.failed", { thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }), error: null });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
+    });
+
+    it("ends the wait on a message the user queues in the tree, not on one an agent queues", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const { harness } = await load(sdkWith(family, undefined, eventsOf({})));
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      await harness.behavior.emitThreadEvent("message.queued", {
+        entry: makeQueueEntry({ threadId: "child", initiator: "agent", senderThreadId: "parent", createdAt: 11_000 }),
+      });
+      await harness.behavior.emitThreadEvent("message.queued", {
+        entry: makeQueueEntry({ threadId: "child", initiator: "user", senderThreadId: "other-thread", createdAt: 11_000 }),
+      });
+      await harness.behavior.emitThreadEvent("message.queued", {
+        entry: makeQueueEntry({ threadId: "child", initiator: "user", senderThreadId: null, createdAt: 9_000 }),
+      });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
+      await harness.behavior.emitThreadEvent("message.queued", {
+        entry: makeQueueEntry({ threadId: "child", initiator: "user", senderThreadId: null, createdAt: 11_000 }),
+      });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
+    });
+
+    it("keeps the wait when a child's turn reopens its parked parent", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = family();
+      const { harness } = await load(sdkWith(() => threads, undefined, eventsOf({})));
+      await harness.behavior.callRpc("park", { threadId: "parent" });
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }) });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
     });
 
     it("refuses while a question waits below, naming the child", async () => {

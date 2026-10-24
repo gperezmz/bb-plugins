@@ -274,17 +274,52 @@ describe("settle", () => {
       expect((await actions.settle("parent")).waiting).toBe(true);
     });
 
-    it("unpins the tree's pinned threads, and its Undo pins them again and ends the wait", async () => {
+    it("keeps the tree's pins while it waits, and its Undo ends the wait", async () => {
       const threads = busyTree();
+      threads[0] = pinned(threads[0]!);
       threads[2] = pinned(threads[2]!);
       actions = build(threads);
       const result = await actions.settle("parent");
-      expect(fake.calls).toEqual(["unpin grandchild"]);
-      expect(result.changes.find((entry) => entry.threadId === "grandchild")).toEqual({ threadId: "grandchild", before: null, after: null, unpinned: true });
-      const undone = await actions.undoLifecycle(result.changes);
-      expect(undone.skipped).toEqual([]);
+      expect(fake.calls).toEqual([]);
+      expect(result.changes).toEqual([{ threadId: "parent", before: null, after: waitingSettleRow(NOW), unpinned: false }]);
+      expect((await actions.undoLifecycle(result.changes)).skipped).toEqual([]);
       expect(lifecycle.get("parent")).toBeNull();
       expect(fake.threads.get("grandchild")?.isPinned).toBe(true);
+    });
+
+    it("waits when the tree turns busy between the two reads, giving back the pins it took", async () => {
+      const threads = tree();
+      threads[2] = pinned(threads[2]!);
+      actions = build(threads);
+      fake.beforeSnapshot = (call) => {
+        if (call === 2) fake.threads.set("child", { ...fake.threads.get("child")!, status: "active" });
+      };
+      const result = await actions.settle("parent");
+      expect(result.waiting).toBe(true);
+      expect(lifecycle.get("child")).toBeNull();
+      expect(result.changes.find((entry) => entry.threadId === "grandchild")?.unpinned).toBe(true);
+      await actions.undoLifecycle(result.changes);
+      expect(fake.threads.get("grandchild")?.isPinned).toBe(true);
+    });
+
+    it("keeps the thread's park under the wait, and Cancel gives the thread back parked", async () => {
+      actions = build(busyTree());
+      lifecycle.putMany([["parent", parkedRow(NOW - HOUR)]]);
+      await actions.settle("parent");
+      expect(lifecycle.get("parent")).toEqual(waitingSettleRow(NOW, parkedRow(NOW - HOUR)));
+      await actions.cancelSettle("parent");
+      expect(lifecycle.get("parent")).toEqual(parkedRow(NOW - HOUR));
+    });
+
+    it("keeps a waiting settle chosen on a pinned thread when the window asks to clear its row", async () => {
+      const threads = busyTree();
+      threads[0] = pinned(threads[0]!, NOW - HOUR);
+      actions = build(threads);
+      await actions.settle("parent");
+      expect((await actions.clearPinned("parent")).changes).toEqual([]);
+      fake.threads.set("parent", pinned(fake.threads.get("parent")!, NOW + 1));
+      expect((await actions.clearPinned("parent")).changes).toHaveLength(1);
+      expect(lifecycle.get("parent")).toBeNull();
     });
 
     it("is cancelled by Cancel, which leaves the tree where it is", async () => {

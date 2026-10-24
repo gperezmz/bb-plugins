@@ -147,6 +147,17 @@ describe("a Settle of a busy tree waits (#333)", () => {
     expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).toBeNull();
   });
 
+  it("shows the mark and its cancel on the slim row of a parked thread that waits to settle", async () => {
+    const m = await mount({ threads: family(), server: quiet({ rows: { p: waitingSettleRow(NOW, parkedRow(NOW - 60_000)) } }) });
+    fireEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await flush();
+    expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel settling Parent" }));
+    });
+    expect(callsOf(m, "cancelSettle")).toHaveLength(1);
+  });
+
   it("cancels from the card's mark, and the mark shows in a window that loads while it waits", async () => {
     const m = await mount({ threads: family(), server: { rows: { p: waitingSettleRow(NOW) } } });
     expect(document.querySelector('[data-thread-id="p"] [data-waiting-settle]')).not.toBeNull();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeRow, parkedRow, settledRow, snoozedRow, type LifecycleRow } from "../shared/lifecycle";
+import { activeRow, parkedRow, settledRow, snoozedRow, waitingSettleRow, type LifecycleRow } from "../shared/lifecycle";
 import { DEFAULT_SETTINGS, type Settings } from "../shared/settings";
 import type { ChangeRecords } from "./actions";
 import { createAutoSettle } from "./auto-settle";
@@ -164,6 +164,14 @@ describe("what a pass decides", () => {
     });
     expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
     expect(lifecycle.get("override")).toEqual(activeRow());
+  });
+
+  it("leaves a quiet parent with a waiting settle to it, though its child works", async () => {
+    const { autoSettle, lifecycle } = setup([idleFor("parent", 9), idleFor("child", 9, { parentThreadId: "parent", status: "active" })], {
+      rows: [["parent", waitingSettleRow(NOW - DAY)]],
+    });
+    expect(await autoSettle.run()).toEqual({ settled: [], unsettled: [] });
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(NOW - DAY));
   });
 
   it("never settles a pinned, busy, parked or snoozed thread", async () => {

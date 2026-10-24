@@ -3,7 +3,7 @@ import { parkedRow, settledRow, waitingSettleRow } from "../shared/lifecycle";
 import type { ChangeRecords } from "./actions";
 import { createLifecycleStore, type LifecycleStore } from "./lifecycle-store";
 import type { ReclaimTarget } from "./reclaim";
-import { createFakeThreads, makeServerThread, memoryDatabase, type FakeThreads } from "./testing/fakes";
+import { createFakeThreads, makeServerThread, memoryDatabase, pinned, type FakeThreads } from "./testing/fakes";
 import { createWaitingSettles, IDLE_GRACE_MS, POLL_MS, type WaitingSettles } from "./waiting-settles";
 
 const SINCE = 50_000;
@@ -108,7 +108,7 @@ describe("a waiting settle", () => {
     expect(lifecycle.get("parent")).toBeNull();
 
     build();
-    fake.threads.set("child", { ...fake.threads.get("child")!, isPinned: true });
+    fake.threads.set("child", pinned(fake.threads.get("child")!, SINCE + 10));
     await waiting.check();
     expect(lifecycle.get("parent")).toBeNull();
 
@@ -157,6 +157,71 @@ describe("a waiting settle", () => {
     await waiting.check({ threadId: "child", turns: [{ kind: "ended", at: clock, outcome: "failed" }] });
     expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE + 500));
     expect(lifecycle.get("child")).toEqual(parkedRow(SINCE - 5));
+  });
+
+  it("unpins the tree's pins from before it was chosen when it lands, and waits on when bb refuses", async () => {
+    fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
+    idle("child");
+    fake.failUnpin.add("parent");
+    await waiting.check();
+    clock += IDLE_GRACE_MS;
+    await waiting.check();
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+    expect(warnings).toEqual([expect.stringMatching(/could not unpin/)]);
+    fake.failUnpin.clear();
+    await waiting.check();
+    expect(fake.calls).toEqual(["unpin parent", "unpin parent"]);
+    expect(lifecycle.get("parent")?.settledKind).toBe("manual");
+  });
+
+  it("gives the thread back the marks it had when it ends", async () => {
+    lifecycle.putMany([["parent", waitingSettleRow(SINCE, parkedRow(SINCE - 5))]]);
+    fake.threads.set("child", { ...fake.threads.get("child")!, hasPendingInteraction: true });
+    await waiting.check();
+    expect(lifecycle.get("parent")).toEqual(parkedRow(SINCE - 5));
+  });
+
+  it("does not end on the turns of a message the user had queued before choosing it", async () => {
+    waiting.chosen("parent", [makeServerThread("parent"), makeServerThread("child", { parentThreadId: "parent", queuedWork: "waiting" })]);
+    fake.turns.set("child", [{ kind: "requested", at: SINCE + 10, byUser: true }]);
+    await waiting.check({ threadId: "child" });
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+    fake.turns.set("parent", [{ kind: "requested", at: SINCE + 20, byUser: true }]);
+    await waiting.check({ threadId: "parent" });
+    expect(lifecycle.get("parent")).toBeNull();
+  });
+
+  it("does not land a settle cancelled while the landing was being decided", async () => {
+    idle("child");
+    await waiting.check();
+    clock += IDLE_GRACE_MS;
+    // The user's Cancel reaches the server while the landing reads the tree's turns, before its change runs.
+    const turnsSince = fake.turnsSince;
+    fake.turnsSince = async (threadId, since) => {
+      lifecycle.putMany([["parent", null]]);
+      return turnsSince(threadId, since);
+    };
+    await waiting.check();
+    expect(lifecycle.get("parent")).toBeNull();
+    expect(lifecycle.get("child")).toBeNull();
+    expect(reclaimed).toEqual([]);
+  });
+
+  it("answers checks asked for before one starts with one look at bb, reading each event's thread", async () => {
+    const read: string[] = [];
+    const turnsSince = fake.turnsSince;
+    fake.turnsSince = async (threadId, since) => {
+      read.push(threadId);
+      return turnsSince(threadId, since);
+    };
+    const first = waiting.check();
+    const second = waiting.check({ threadId: "child" });
+    const third = waiting.check({ threadId: "parent" });
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    await first;
+    expect(fake.snapshots).toBe(1);
+    expect(read.sort()).toEqual(["child", "parent"]);
   });
 
   it("is looked at every few seconds while one waits, and the loop ends with its signal", async () => {

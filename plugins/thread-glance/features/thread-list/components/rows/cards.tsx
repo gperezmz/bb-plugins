@@ -160,14 +160,15 @@ function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot
   const hint = useJumpHint(row.id);
   const title = row.thread.displayTitle;
   const waitingSettle = row.woke === null && isWaitingSettle(row.lifecycle);
-  const woke = row.woke !== null || waitingSettle;
+  // The Woke marker and the Settling mark stay drawn on hover, beside the actions.
+  const keepsMarker = row.woke !== null || waitingSettle;
   const hover = hoverActionsOf(row);
   return (
     <div data-status-slot="" className={cn("pointer-events-none relative flex h-5 shrink-0 items-center justify-end", hint !== null ? "min-w-20" : "w-20")}>
       <div
         className={cn(
           "flex min-w-0 items-center justify-end gap-1 transition-opacity duration-150 motion-reduce:transition-none",
-          !woke && "[@media(hover:hover)]:group-hover/card:opacity-0 [@media(hover:hover)]:group-focus-within/card:opacity-0",
+          !keepsMarker && "[@media(hover:hover)]:group-hover/card:opacity-0 [@media(hover:hover)]:group-focus-within/card:opacity-0",
         )}
       >
         <UnpinButton row={row} className="[@media(hover:hover)]:hidden" />
@@ -175,16 +176,20 @@ function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot
           <JumpHint label={hint} />
         ) : waitingSettle ? (
           <WaitingSettleMarker row={row} />
-        ) : woke ? (
+        ) : row.woke !== null ? (
           <WokeMarker row={row} />
-        ) : compact ? <CompactStatusView status={status} /> : <StatusView status={status} />}
+        ) : compact ? (
+          <CompactStatusView status={status} />
+        ) : (
+          <StatusView status={status} />
+        )}
       </div>
       <div
         data-slot-actions=""
         className={cn(
           "absolute inset-y-0 right-0 hidden items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none",
           "[@media(hover:hover)]:flex [@media(hover:hover)]:group-hover/card:opacity-100 [@media(hover:hover)]:group-focus-within/card:opacity-100",
-          woke && "static ml-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex",
+          keepsMarker && "static ml-0.5 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover/card:flex",
         )}
       >
         <UnpinButton row={row} />
@@ -292,6 +297,7 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
   const settled = row.shelf === "settled";
   let right: ReactNode = null;
   if (hint !== null) right = <JumpHint label={hint} />;
+  else if (isWaitingSettle(row.lifecycle)) right = <WaitingSettleMarker row={row} />;
   else if (settled) right = <StatusView status={status} className="w-auto" />;
   else if (label !== null) right = <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">{label}</span>;
   return (

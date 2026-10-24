@@ -6,7 +6,7 @@ const SINCE = 10_000;
 function thread(id: string, overrides: Partial<WaitingTreeThread> = {}): WaitingTreeThread {
   return {
     id,
-    isPinned: false,
+    pinnedAt: null,
     hidden: false,
     hasPendingInteraction: false,
     queuedWork: "none",
@@ -27,8 +27,11 @@ describe("waitingSettleVerdict", () => {
     expect(waitingSettleVerdict([thread("p"), thread("c")], SINCE)).toEqual({ kind: "land" });
   });
 
-  it("ends on a pin or a question or approval in the tree, but a hidden helper's question only holds it", () => {
-    expect(waitingSettleVerdict([thread("p"), thread("c", { isPinned: true, status: "active" })], SINCE)).toEqual({ kind: "end", reason: "pinned" });
+  it("ends on a pin made since, a question or approval, or a failed send in the tree, but a hidden helper's question only holds it", () => {
+    expect(waitingSettleVerdict([thread("p"), thread("c", { pinnedAt: SINCE + 1, status: "active" })], SINCE)).toEqual({ kind: "end", reason: "pinned" });
+    expect(waitingSettleVerdict([thread("p"), thread("c", { pinnedAt: SINCE, status: "active" })], SINCE)).toEqual({ kind: "wait" });
+    expect(waitingSettleVerdict([thread("p", { pinnedAt: SINCE - 1 })], SINCE)).toEqual({ kind: "land" });
+    expect(waitingSettleVerdict([thread("p"), thread("c", { queuedWork: "failed" })], SINCE)).toEqual({ kind: "end", reason: "failed" });
     expect(waitingSettleVerdict([thread("p"), thread("c", { hasPendingInteraction: true })], SINCE)).toEqual({ kind: "end", reason: "needs-you" });
     expect(waitingSettleVerdict([thread("p"), thread("h", { hidden: true, hasPendingInteraction: true })], SINCE)).toEqual({ kind: "wait" });
   });

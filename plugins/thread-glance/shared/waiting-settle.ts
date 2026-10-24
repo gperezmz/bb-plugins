@@ -6,7 +6,8 @@ import { isBusy, type BusyInput } from "./busy";
 /** What the rule reads from a thread of the tree. */
 export interface WaitingTreeThread extends BusyInput {
   id: string;
-  isPinned: boolean;
+  /** When the thread was pinned, null when it is not. */
+  pinnedAt: number | null;
   /** Hidden threads are bb's helpers: their questions are no one's to answer, so only their work holds the settle. */
   hidden: boolean;
 }
@@ -46,18 +47,21 @@ export function endingTurn(turns: readonly TurnRecord[], since: number): Waiting
 
 /**
  * What becomes of a settle waiting since `since` on `tree`, the thread it was
- * chosen for and every thread below it: a pin or a question or approval on a
- * visible thread ends it; so do `turns`, as `endingTurn` reads them; a busy
- * thread keeps it waiting; otherwise it lands. `turns` may be left out while a
- * thread is busy, since a waiting settle reads them before it lands.
+ * chosen for and every thread below it: a pin made since, a question or
+ * approval on a visible thread, or a queued message that failed to send ends
+ * it; so do `turns`, as `endingTurn` reads them; a busy thread keeps it
+ * waiting; otherwise it lands. A pin from before the settle was chosen stays
+ * until it lands. `turns` may be left out while a thread is busy, since a
+ * waiting settle reads them before it lands.
  */
 export function waitingSettleVerdict(
   tree: readonly WaitingTreeThread[],
   since: number,
   turns: readonly TurnRecord[] = [],
 ): WaitingSettleVerdict {
-  if (tree.some((thread) => thread.isPinned)) return { kind: "end", reason: "pinned" };
+  if (tree.some((thread) => thread.pinnedAt !== null && thread.pinnedAt > since)) return { kind: "end", reason: "pinned" };
   if (tree.some((thread) => !thread.hidden && thread.hasPendingInteraction)) return { kind: "end", reason: "needs-you" };
+  if (tree.some((thread) => thread.queuedWork === "failed")) return { kind: "end", reason: "failed" };
   const ended = endingTurn(turns, since);
   if (ended !== null) return { kind: "end", reason: ended };
   return tree.some((thread) => isBusy(thread)) ? WAIT : LAND;

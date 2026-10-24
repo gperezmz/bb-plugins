@@ -66,18 +66,20 @@ export function HoverActions({
   const commands = useCommands();
   return (
     <span data-hover-actions="" className={cn("flex items-center gap-0.5", className)}>
-      {snooze ? <DropdownMenu>
-        <Tip label="Snooze thread">
-          <DropdownMenuTrigger asChild>
-            <button type="button" data-no-drag="" aria-label={`Snooze ${title}`} className={ACTION}>
-              <Icon name="Clock" aria-hidden className="size-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-        </Tip>
-        <DropdownMenuContent align="end" className="min-w-56">
-          <SnoozeItems threadId={threadId} />
-        </DropdownMenuContent>
-      </DropdownMenu> : null}
+      {snooze ? (
+        <DropdownMenu>
+          <Tip label="Snooze thread">
+            <DropdownMenuTrigger asChild>
+              <button type="button" data-no-drag="" aria-label={`Snooze ${title}`} className={ACTION}>
+                <Icon name="Clock" aria-hidden className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+          </Tip>
+          <DropdownMenuContent align="end" className="min-w-56">
+            <SnoozeItems threadId={threadId} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       <Tip label="Settle thread">
         <button
           type="button"
