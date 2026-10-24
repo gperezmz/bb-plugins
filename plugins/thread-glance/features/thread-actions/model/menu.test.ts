@@ -3,10 +3,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThread, working } from "@/testing/fixtures";
 import { createLifecycleCommands, lifecycleHostOf } from "@/features/thread-list";
-import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
+import { parkedRow, settledRow, snoozedRow, waitingSettleRow } from "@/shared/lifecycle";
 import { busyRefusal } from "@/shared/messages";
 import { DEFAULT_SNOOZE_SHORTCUTS, TIME_PASSED_REASON } from "@/shared/snooze";
 import {
+  cancelSettleAction,
   copyBranchAction,
   copyThreadIdAction,
   MACHINES_FAILED,
@@ -46,16 +47,35 @@ describe("which actions apply", () => {
     expect(unsettleAction(targetOf(idle), data)).toBeNull();
   });
 
-  it("offers none of Snooze, Park and Settle on a busy thread", () => {
+  it("offers Settle, which waits, but neither Snooze nor Park on a busy thread", () => {
     const busy = makeThread({ id: "t1", ...working });
     const { data } = menuData([busy]);
-    for (const build of [snoozeAction, parkAction, settleAction]) expect(build(targetOf(busy), data)).toBeNull();
+    for (const build of [snoozeAction, parkAction]) expect(build(targetOf(busy), data)).toBeNull();
+    expect(settleAction(targetOf(busy), data)?.label).toBe("Settle");
   });
 
-  it("offers none of them on a thread whose only sign of life is a running monitor", () => {
+  it("offers Settle but neither Snooze nor Park on a thread whose only sign of life is a running monitor", () => {
     const monitoring = makeThread({ id: "t1", runtimeStatus: "active" });
     const { data } = menuData([monitoring]);
-    for (const build of [snoozeAction, parkAction, settleAction]) expect(build(targetOf(monitoring), data)).toBeNull();
+    for (const build of [snoozeAction, parkAction]) expect(build(targetOf(monitoring), data)).toBeNull();
+    expect(settleAction(targetOf(monitoring), data)).not.toBeNull();
+  });
+
+  it("offers no Settle on a thread with a question of its own", () => {
+    const asking = makeThread({ id: "t1", hasPendingInteraction: true });
+    const { data } = menuData([asking]);
+    expect(settleAction(targetOf(asking), data)).toBeNull();
+  });
+
+  it("offers Cancel settle instead of Settle while a settle waits, which cancels it", async () => {
+    const busy = makeThread({ id: "t1", ...working });
+    const { data, commands } = menuData([busy], { rows: { t1: waitingSettleRow(1) } });
+    expect(settleAction(targetOf(busy), data)).toBeNull();
+    const cancel = cancelSettleAction(targetOf(busy), data)!;
+    expect(cancel.label).toBe("Cancel settle");
+    await cancel.run({ requestRename: () => {} } as never);
+    expect(commands.cancelSettle).toHaveBeenCalledWith("t1");
+    expect(cancelSettleAction(targetOf(idle), menuData([idle]).data)).toBeNull();
   });
 
   it("offers Wake now, Snooze again, Park thread and Settle on a snoozed thread that is not woke", () => {

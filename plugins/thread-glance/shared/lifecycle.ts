@@ -33,6 +33,13 @@ export const lifecycleRowSchema = z.object({
    * before it existed reads as null.
    */
   heldAttentionAt: z._default(z.nullable(z.number()), null),
+  /**
+   * When the user settled the thread's tree while a thread in it was busy: a
+   * waiting settle, which settles the tree once none is busy (see
+   * `waitingSettleVerdict`). Not itself a mark, and set only on a row with
+   * none; a row stored before it existed reads as null.
+   */
+  waitingSettleAt: z._default(z.nullable(z.number()), null),
 });
 export type LifecycleRow = z.infer<typeof lifecycleRowSchema>;
 
@@ -47,6 +54,7 @@ export const EMPTY_ROW: LifecycleRow = Object.freeze({
   snoozedAt: null,
   activeOverride: false,
   heldAttentionAt: null,
+  waitingSettleAt: null,
 });
 
 /** Whether the row carries no mark, so the thread follows the automatic rules. */
@@ -56,11 +64,12 @@ export function isEmptyRow(row: LifecycleRow): boolean {
     row.parkedAt === null &&
     row.snoozeUntil === null &&
     row.snoozedAt === null &&
-    !row.activeOverride
+    !row.activeOverride &&
+    row.waitingSettleAt === null
   );
 }
 
-/** Whether two rows hold the same marks and the same held attention. */
+/** Whether two rows hold the same marks, the same held attention and the same waiting settle. */
 export function sameRow(left: LifecycleRow | null | undefined, right: LifecycleRow | null | undefined): boolean {
   const a = left ?? EMPTY_ROW;
   const b = right ?? EMPTY_ROW;
@@ -71,7 +80,8 @@ export function sameRow(left: LifecycleRow | null | undefined, right: LifecycleR
     a.snoozeUntil === b.snoozeUntil &&
     a.snoozedAt === b.snoozedAt &&
     a.activeOverride === b.activeOverride &&
-    a.heldAttentionAt === b.heldAttentionAt
+    a.heldAttentionAt === b.heldAttentionAt &&
+    a.waitingSettleAt === b.waitingSettleAt
   );
 }
 
@@ -90,6 +100,16 @@ export function settledRow(now: number, kind: SettledKind): LifecycleRow {
   return { ...EMPTY_ROW, settledAt: now, settledKind: kind };
 }
 
+/** The row a Settle of a busy tree writes on the thread it was chosen for: a waiting settle from `now`. */
+export function waitingSettleRow(now: number): LifecycleRow {
+  return { ...EMPTY_ROW, waitingSettleAt: now };
+}
+
+/** Whether the row holds a waiting settle. */
+export function isWaitingSettle(row: LifecycleRow | null | undefined): boolean {
+  return row != null && row.waitingSettleAt !== null;
+}
+
 /** The row Resume and Un-settle write. */
 export function activeRow(): LifecycleRow {
   return { ...EMPTY_ROW, activeOverride: true };
@@ -101,11 +121,11 @@ export function hasMark(row: LifecycleRow | null | undefined): boolean {
 }
 
 /**
- * Whether the row is a mark the user set by hand: a manual settle or the
- * active override. Auto-settle leaves such a thread alone.
+ * Whether the row is a mark the user set by hand: a manual settle, a waiting
+ * settle or the active override. Auto-settle leaves such a thread alone.
  */
 export function hasManualMark(row: LifecycleRow | null | undefined): boolean {
-  return row != null && (row.settledKind === "manual" || row.activeOverride);
+  return row != null && (row.settledKind === "manual" || row.activeOverride || row.waitingSettleAt !== null);
 }
 
 /** Shelves, in the order the list draws them. */

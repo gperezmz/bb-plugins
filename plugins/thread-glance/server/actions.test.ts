@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { activeRow, parkedRow, settledRow, snoozedRow, type LifecycleRow } from "../shared/lifecycle";
+import { activeRow, parkedRow, settledRow, snoozedRow, waitingSettleRow, type LifecycleRow } from "../shared/lifecycle";
 import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, TREE_CHANGED } from "../shared/messages";
 import { createLifecycleActions, type ChangeRecords } from "./actions";
 import { createLifecycleStore, type LifecycleStore } from "./lifecycle-store";
@@ -50,6 +50,13 @@ beforeEach(() => {
   actions = build();
 });
 
+/** Settles a tree that is idle, so the settle lands at once. */
+async function settleNow(threadId: string, on = actions) {
+  const result = await on.settle(threadId);
+  if (result.waiting) throw new Error("the settle waited");
+  return result;
+}
+
 describe("snooze", () => {
   it("unpins, records the wake and snooze times, reclaims, and says what it did", async () => {
     actions = build([pinned(makeServerThread("t1"))]);
@@ -76,11 +83,11 @@ describe("snooze", () => {
     await expect(actions.park("t1")).rejects.toThrow(/Cannot park while/);
   });
 
-  it("accepts a never-run thread with nothing queued, and refuses one whose first message waits", async () => {
+  it("accepts a never-run thread with nothing queued, and refuses one whose first message waits, which Settle waits for", async () => {
     actions = build([makeServerThread("t1", { status: "pending" }), makeServerThread("t2", { status: "pending", queuedWork: "waiting" })]);
     await expect(actions.snooze("t1", NOW + HOUR)).resolves.toBeDefined();
     await expect(actions.park("t2")).rejects.toThrow(/Cannot park while/);
-    await expect(actions.settle("t2")).rejects.toThrow(/Cannot settle while/);
+    expect((await actions.settle("t2")).waiting).toBe(true);
   });
 
   it("refuses a time in the past or more than a year ahead", async () => {
@@ -205,7 +212,7 @@ describe("settle", () => {
 
   it("settles the whole tree under the thread, manually, and reclaims each thread", async () => {
     actions = build(tree());
-    const result = await actions.settle("parent");
+    const result = await settleNow("parent");
     expect(result.changes.map((entry) => entry.threadId).sort()).toEqual(["child", "grandchild", "parent"]);
     expect(lifecycle.get("parent")).toMatchObject({ settledKind: "manual", settledAt: NOW });
     expect(lifecycle.get("sibling")).toBeNull();
@@ -225,16 +232,71 @@ describe("settle", () => {
       now: () => NOW,
       reclaim: async () => ({ stoppedRuntime: false, closedTerminals: 0, keptTerminals: 0 }),
     });
-    expect((await quiet.settle("t1")).undoUntil).toBe(NOW + 7_000);
+    expect((await settleNow("t1", quiet)).undoUntil).toBe(NOW + 7_000);
   });
 
-  it("refuses when a thread in the tree is working, naming it, and changes nothing", async () => {
-    const threads = tree();
-    threads[1] = makeServerThread("child", { parentThreadId: "parent", title: "Child task", status: "active" });
-    actions = build(threads);
-    await expect(actions.settle("parent")).rejects.toThrow("Cannot settle while Child task is working or waiting for input");
-    expect(lifecycle.all().size).toBe(0);
-    expect(fake.calls).toEqual([]);
+  describe("of a busy tree", () => {
+    const busyTree = () => {
+      const threads = tree();
+      threads[1] = makeServerThread("child", { parentThreadId: "parent", title: "Child task", status: "active" });
+      return threads;
+    };
+
+    it("leaves a waiting settle on the thread and settles nothing yet", async () => {
+      actions = build(busyTree());
+      const result = await actions.settle("parent");
+      expect(result.waiting).toBe(true);
+      expect(lifecycle.get("parent")).toEqual(waitingSettleRow(NOW));
+      expect(lifecycle.get("child")).toBeNull();
+      expect(lifecycle.get("grandchild")).toBeNull();
+      expect(result.changes).toEqual([{ threadId: "parent", before: null, after: waitingSettleRow(NOW), unpinned: false }]);
+      expect(reclaimed).toEqual([]);
+      expect(touched).toEqual([["parent"]]);
+    });
+
+    it("waits for a lone busy thread too", async () => {
+      actions = build([makeServerThread("t1", { status: "active" })]);
+      expect((await actions.settle("t1")).waiting).toBe(true);
+      expect(lifecycle.get("t1")).toEqual(waitingSettleRow(NOW));
+    });
+
+    it("refuses while the thread itself has a question or approval waiting", async () => {
+      actions = build([makeServerThread("t1", { title: "Fix login", hasPendingInteraction: true })]);
+      await expect(actions.settle("t1")).rejects.toThrow(busyRefusal("settle", "Fix login"));
+      expect(lifecycle.all().size).toBe(0);
+    });
+
+    it("waits though attention moved between the two reads of the tree", async () => {
+      actions = build(busyTree());
+      fake.beforeSnapshot = (call) => {
+        if (call === 2) fake.threads.set("child", { ...fake.threads.get("child")!, latestAttentionAt: 9_999 });
+      };
+      expect((await actions.settle("parent")).waiting).toBe(true);
+    });
+
+    it("unpins the tree's pinned threads, and its Undo pins them again and ends the wait", async () => {
+      const threads = busyTree();
+      threads[2] = pinned(threads[2]!);
+      actions = build(threads);
+      const result = await actions.settle("parent");
+      expect(fake.calls).toEqual(["unpin grandchild"]);
+      expect(result.changes.find((entry) => entry.threadId === "grandchild")).toEqual({ threadId: "grandchild", before: null, after: null, unpinned: true });
+      const undone = await actions.undoLifecycle(result.changes);
+      expect(undone.skipped).toEqual([]);
+      expect(lifecycle.get("parent")).toBeNull();
+      expect(fake.threads.get("grandchild")?.isPinned).toBe(true);
+    });
+
+    it("is cancelled by Cancel, which leaves the tree where it is", async () => {
+      actions = build(busyTree());
+      lifecycle.putMany([["child", parkedRow(NOW - HOUR)]]);
+      await actions.settle("parent");
+      const cancelled = await actions.cancelSettle("parent");
+      expect(cancelled.changes).toEqual([{ threadId: "parent", before: waitingSettleRow(NOW), after: null, unpinned: false }]);
+      expect(lifecycle.get("parent")).toBeNull();
+      expect(lifecycle.get("child")).toEqual(parkedRow(NOW - HOUR));
+      expect((await actions.cancelSettle("parent")).changes).toEqual([]);
+    });
   });
 
   it("refuses when a question waits below, naming the asker, and changes nothing", async () => {
@@ -250,7 +312,7 @@ describe("settle", () => {
     const threads = tree();
     threads[0] = pinned(threads[0]!);
     actions = build(threads);
-    const result = await actions.settle("parent");
+    const result = await settleNow("parent");
     expect(fake.calls).toEqual(["unpin parent"]);
     expect(result.changes.find((entry) => entry.threadId === "parent")?.unpinned).toBe(true);
   });
@@ -305,7 +367,7 @@ describe("settle", () => {
       threads[0] = pinned(threads[0]!);
       actions = build(threads);
       lifecycle.putMany([["child", parkedRow(NOW - HOUR)]]);
-      const settled = await actions.settle("parent");
+      const settled = await settleNow("parent");
       clock = NOW + 3_000;
       const undone = await actions.undoSettle("parent", settled.undoToken);
       expect(undone.changes).toHaveLength(3);
@@ -317,7 +379,7 @@ describe("settle", () => {
 
     it("keeps a thread that changed since", async () => {
       actions = build(tree());
-      const settled = await actions.settle("parent");
+      const settled = await settleNow("parent");
       lifecycle.putMany([["child", activeRow()]]);
       const undone = await actions.undoSettle("parent", settled.undoToken);
       expect(undone.changes.map((entry) => entry.threadId).sort()).toEqual(["grandchild", "parent"]);
@@ -326,7 +388,7 @@ describe("settle", () => {
 
     it("says it can no longer be undone once the toast cannot be pressed, or after a restart", async () => {
       actions = build(tree());
-      const settled = await actions.settle("parent");
+      const settled = await settleNow("parent");
       clock = settled.undoUntil;
       await expect(actions.undoSettle("parent", settled.undoToken)).rejects.toThrow(SETTLE_UNDO_GONE);
       await expect(actions.undoSettle("parent", "token-never-issued")).rejects.toThrow(
@@ -336,7 +398,7 @@ describe("settle", () => {
 
     it("can be pressed once", async () => {
       actions = build(tree());
-      const settled = await actions.settle("parent");
+      const settled = await settleNow("parent");
       await actions.undoSettle("parent", settled.undoToken);
       await expect(actions.undoSettle("parent", settled.undoToken)).rejects.toThrow(SETTLE_UNDO_GONE);
     });

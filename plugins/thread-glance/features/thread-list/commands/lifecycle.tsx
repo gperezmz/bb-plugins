@@ -1,5 +1,6 @@
-// The lifecycle commands: snooze, wake now, park, resume, settle, un-settle,
-// and the two that clear a row (a dismissed Woke marker, a pinned thread).
+// The lifecycle commands: snooze, wake now, park, resume, settle (or wait to
+// settle a busy tree) and its cancel, un-settle, and the two that clear a row
+// (a dismissed Woke marker, a pinned thread).
 // Every entry point (a row's buttons, the slim row's restore button, the
 // thread menu) calls these, so the toasts, Undo and refusals are the same.
 // A settle ends by offering to close the thread's ports (./ports-prompt), and
@@ -26,8 +27,13 @@ export interface LifecycleCommands {
   park(threadId: string): Promise<void>;
   /** Returns the thread to Active; `quiet` skips the toast, as Undo of a park does. */
   resume(threadId: string, options?: { quiet?: boolean }): Promise<void>;
-  /** Plays the sweep when the thread's card is drawn, then settles the thread's whole tree. */
+  /**
+   * Settles the thread's whole tree, playing the sweep first when its card is
+   * drawn; a tree this window sees busy is left waiting to settle instead.
+   */
   settle(threadId: string): Promise<void>;
+  /** Cancels the thread's waiting settle. */
+  cancelSettle(threadId: string): Promise<void>;
   unsettle(threadId: string): Promise<void>;
   /** Clears the Woke marker of an opened or dismissed thread. */
   dismissWoke(threadId: string): Promise<void>;
@@ -56,6 +62,8 @@ export interface LifecycleHost {
   thread(threadId: string): (Parameters<typeof isBusy>[0] & { displayTitle: string }) | null;
   /** The title of a thread below this one that has a question or approval waiting, or null; absent, the server's check stands alone. */
   childWaiting?(threadId: string): string | null;
+  /** Whether a thread in the thread's tree is busy, so a Settle waits; absent, the server alone tells. */
+  treeBusy?(threadId: string): boolean;
 }
 
 /** A host for code outside the list: the window's RPC client, and the thread lookup it can offer. */
@@ -63,13 +71,18 @@ export function lifecycleHostOf(
   rpc: PluginRpcClient<RpcContract>,
   thread: LifecycleHost["thread"] = () => null,
   childWaiting?: LifecycleHost["childWaiting"],
+  treeBusy?: LifecycleHost["treeBusy"],
 ): LifecycleHost {
-  return { rpc: () => rpc, thread, childWaiting };
+  return { rpc: () => rpc, thread, childWaiting, treeBusy };
 }
 
 export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands {
   const rpc = host.rpc;
-  /** Refuses at once a gated action on a thread this window sees busy or with a child waiting on the user; the server checks again. */
+  /**
+   * Refuses at once a gated action on a thread this window sees busy or with a
+   * child waiting on the user; the server checks again. Settle refuses only a
+   * question or approval, since it waits for other work.
+   */
   const refuseGated = (action: GatedAction, threadId: string): boolean => {
     const waiting = host.childWaiting?.(threadId) ?? null;
     if (waiting !== null) {
@@ -77,7 +90,7 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
       return true;
     }
     const thread = host.thread(threadId);
-    if (thread === null || !isBusy(thread)) return false;
+    if (thread === null || !(action === "settle" ? thread.hasPendingInteraction : isBusy(thread))) return false;
     toast.error(busyRefusal(action, thread.displayTitle));
     return true;
   };
@@ -148,12 +161,20 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
       if (refuseGated("settle", threadId)) return;
       if (isSweeping(threadId)) return;
       dismissPortsPrompt(threadId);
-      if (isCardDrawn(threadId) && !prefersReducedMotion()) await playSweep(threadId);
+      // A tree that waits stays where it is, so its card does not sweep away.
+      if (host.treeBusy?.(threadId) !== true && isCardDrawn(threadId) && !prefersReducedMotion()) await playSweep(threadId);
       let result;
       try {
         result = await rpc().call("settle", { threadId });
       } catch (error) {
         fail(error);
+        return;
+      }
+      if (result.waiting) {
+        toast.success("Waiting to settle", {
+          description: "Settles once no thread in its tree is busy",
+          action: { label: "Undo", onClick: undoChanges(result.changes) },
+        });
         return;
       }
       const { undoToken } = result;
@@ -175,6 +196,10 @@ export function createLifecycleCommands(host: LifecycleHost): LifecycleCommands 
       });
       // After the toast and without waiting: the lookup never holds the settle back.
       void offerToClosePorts(rpc, threadId);
+    },
+
+    async cancelSettle(threadId) {
+      await run(() => rpc().call("cancelSettle", { threadId }));
     },
 
     async unsettle(threadId) {

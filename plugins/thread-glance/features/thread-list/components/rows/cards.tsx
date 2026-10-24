@@ -4,6 +4,7 @@
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { isWaitingSettle } from "@/shared/lifecycle";
 import type { RowView } from "../../model/list-model";
 import type { ProjectColour } from "../../model/project-colour";
 import { restoreAction, shelfLabel } from "../../model/shelf-label";
@@ -12,7 +13,7 @@ import { ProjectMark, ProjectName } from "../../project/ProjectMark";
 import { useCommands, useNow } from "../../store/hooks";
 import { ChildrenChip } from "./ChildrenChip";
 import { HarnessLogo } from "./HarnessLogo";
-import { HoverActions, offersHoverActions } from "./HoverActions";
+import { HoverActions, hoverActionsOf } from "./HoverActions";
 import { JumpHint, useJumpHint } from "./jump-hints";
 import { Location } from "./Location";
 import { PortIndicator } from "./PortIndicator";
@@ -120,17 +121,47 @@ function WokeMarker({ row }: { row: RowView }) {
   );
 }
 
+/** The mark of a waiting settle, with its cancel. */
+function WaitingSettleMarker({ row }: { row: RowView }) {
+  const commands = useCommands();
+  return (
+    <span data-waiting-settle="" className="flex shrink-0 items-center gap-0.5">
+      <Tip label="Settles once no thread in its tree is busy">
+        <span className="text-[10px] font-semibold text-muted-foreground">Settling</span>
+      </Tip>
+      <Tip label="Cancel settle">
+        <button
+          type="button"
+          data-no-drag=""
+          aria-label={`Cancel settling ${row.thread.displayTitle}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            void commands.cancelSettle(row.id);
+          }}
+          className="pointer-events-auto flex size-4 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-state-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        >
+          <Icon name="X" aria-hidden className="size-3" />
+        </button>
+      </Tip>
+    </span>
+  );
+}
+
 /**
  * The Status slot (80 px, right-aligned): one thing, or the jump hint while the
- * modifier is held, which widens the slot where bb's label is longer. On hover
- * a card that is not busy and not woke swaps it for Snooze and Settle, and
- * every card for Unpin and the thread menu. On touch there is no hover, so
- * Unpin stays beside the status.
+ * modifier is held, which widens the slot where bb's label is longer. A woke
+ * card shows its Woke marker there, and a card waiting to settle its Settling
+ * mark, both kept on hover. On hover a card that is not busy and not woke
+ * swaps the slot for Snooze and Settle, a busy one for Settle alone, and every
+ * card for Unpin and the thread menu. On touch there is no hover, so Unpin
+ * stays beside the status.
  */
 function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot; compact?: boolean }) {
   const hint = useJumpHint(row.id);
   const title = row.thread.displayTitle;
-  const woke = row.woke !== null;
+  const waitingSettle = row.woke === null && isWaitingSettle(row.lifecycle);
+  const woke = row.woke !== null || waitingSettle;
+  const hover = hoverActionsOf(row);
   return (
     <div data-status-slot="" className={cn("pointer-events-none relative flex h-5 shrink-0 items-center justify-end", hint !== null ? "min-w-20" : "w-20")}>
       <div
@@ -140,7 +171,13 @@ function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot
         )}
       >
         <UnpinButton row={row} className="[@media(hover:hover)]:hidden" />
-        {hint !== null ? <JumpHint label={hint} /> : woke ? <WokeMarker row={row} /> : compact ? <CompactStatusView status={status} /> : <StatusView status={status} />}
+        {hint !== null ? (
+          <JumpHint label={hint} />
+        ) : waitingSettle ? (
+          <WaitingSettleMarker row={row} />
+        ) : woke ? (
+          <WokeMarker row={row} />
+        ) : compact ? <CompactStatusView status={status} /> : <StatusView status={status} />}
       </div>
       <div
         data-slot-actions=""
@@ -151,7 +188,7 @@ function StatusCell({ row, status, compact }: { row: RowView; status: StatusSlot
         )}
       >
         <UnpinButton row={row} />
-        {offersHoverActions(row) ? <HoverActions threadId={row.id} title={title} /> : null}
+        {hover === null ? null : <HoverActions threadId={row.id} title={title} snooze={hover === "all"} />}
         <MoreButton thread={row.thread} />
       </div>
     </div>

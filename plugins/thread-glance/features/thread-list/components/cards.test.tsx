@@ -215,7 +215,7 @@ describe("rows: Woke, Unpin and the thread menu", () => {
     expect(m.host.sdkCalls.some((call) => call.method === "threads.unpin")).toBe(true);
   });
 
-  it("offers Snooze and Settle on hover only while the thread is not busy and not woke", async () => {
+  it("offers Snooze and Settle on hover only while the thread is not busy and not woke, and Settle alone on a busy one", async () => {
     await mount({
       threads: [makeThread({ id: "idle", ...fresh }), makeThread({ id: "busy", ...fresh, ...working, indicator: "runtime" }), makeThread({ id: "woke", ...fresh })],
       server: { rows: { woke: snoozedRow(NOW - MIN, NOW - HOUR) } },
@@ -223,7 +223,7 @@ describe("rows: Woke, Unpin and the thread menu", () => {
     expect(within(card("idle")).queryByRole("button", { name: "Snooze Thread idle" })).not.toBeNull();
     expect(within(card("idle")).queryByRole("button", { name: "Settle Thread idle" })).not.toBeNull();
     expect(within(card("busy")).queryByRole("button", { name: /^Snooze/ })).toBeNull();
-    expect(within(card("busy")).queryByRole("button", { name: /^Settle/ })).toBeNull();
+    expect(within(card("busy")).queryByRole("button", { name: /^Settle/ })).not.toBeNull();
     expect(within(card("woke")).queryByRole("button", { name: /^Snooze/ })).toBeNull();
   });
 

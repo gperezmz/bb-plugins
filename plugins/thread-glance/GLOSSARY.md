@@ -21,7 +21,7 @@ bb's latest-attention time for a thread moving later: a turn that ends, a failur
 _Avoid_: Notification
 
 **Busy thread**:
-A thread that is not at rest: it has a pending question or approval, a queued or failed queued message, a turn in flight, any activity counter (workflows, background agents or commands, plan mode, goals), or a runtime that is starting, active or provisioning. One rule decides it for every button, check and automatic action; a busy thread cannot be snoozed, parked or settled.
+A thread that is not at rest: it has a pending question or approval, a queued or failed queued message, a turn in flight, any activity counter (workflows, background agents or commands, plan mode, goals), or a runtime that is starting, active or provisioning. One rule decides it for every button, check and automatic action; a busy thread cannot be snoozed or parked, and settling a tree with one in it makes a waiting settle.
 _Avoid_: In-use thread
 
 **Never-run thread**:
@@ -33,7 +33,7 @@ One of the sections of Thread Glance's list that a thread sits on by its lifecyc
 _Avoid_: Bucket, lane
 
 **Lifecycle row**:
-What Thread Glance's server keeps for a thread that is not simply Active: when it was settled and whether by you or automatically, when it was parked, when it was snoozed and until when, an active override, and the attention a hold set aside. A thread without one is Active.
+What Thread Glance's server keeps for a thread that is not simply Active: when it was settled and whether by you or automatically, when it was parked, when it was snoozed and until when, an active override, a waiting settle, and the attention a hold set aside. A thread without one is Active.
 _Avoid_: Thread state, status record
 
 The active override is set by Resume and Un-settle and lasts until the thread next starts a turn; it also stops automatic settling from touching the thread.
@@ -61,6 +61,10 @@ _Avoid_: Shelved thread, held thread
 **Settled thread**:
 A thread on Settled, put there by you or automatically after it went quiet or its pull request closed. Settling covers a whole thread tree, and attention or Un-settle returns the thread to Active.
 _Avoid_: Older thread, done thread
+
+**Waiting settle**:
+A Settle you chose for a thread tree while a thread in it was busy, kept on the server and shown on the thread's card with a cancel until the tree settles once no thread in it is busy. Your own message, spawn or pin in the tree, a question or approval, a failure or interrupt, or the card's cancel ends it unsettled; an agent's turns, spawns and messages do not.
+_Avoid_: Pending settle, deferred settle, queued settle
 
 **Inactive thread**:
 A thread left on Active that is not busy, does not need you, is not woke or lifted, and has had no activity for the hours before inactive. It sits on Inactive.

@@ -3,7 +3,9 @@
 // commands under the same object. Components and menus call these and nothing
 // else; each runs against the store's edge when it is called.
 import { toast } from "sonner";
+import { isBusy } from "@/shared/busy";
 import type { Shelf } from "@/shared/lifecycle";
+import { treeIds } from "@/shared/thread-tree";
 import { waitingChildTitle } from "../model/forest";
 import { SETTLED_PAGE } from "../model/list-model";
 import type { Scope } from "../model/scope";
@@ -152,6 +154,14 @@ export function createCommands(store: ListStore): Commands {
     childWaiting: (threadId) => {
       const rows = store.getState().model?.rows;
       return rows === undefined ? null : waitingChildTitle([...rows.values()].map((row) => row.thread), threadId);
+    },
+    treeBusy: (threadId) => {
+      const rows = store.getState().model?.rows;
+      if (rows === undefined) return false;
+      return treeIds([...rows.values()].map((row) => row.thread), threadId).some((id) => {
+        const thread = rows.get(id)?.thread;
+        return thread !== undefined && isBusy(thread);
+      });
     },
   });
   return { ...own, ...lifecycle, ...createReorderCommands(store), ...createPortCommands(() => store.edge.rpc) };

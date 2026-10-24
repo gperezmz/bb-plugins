@@ -5,7 +5,7 @@
 import { SNOOZE_ENDED } from "@/shared/messages";
 import { EMPTY_PORTS, type PortsSnapshot } from "@/shared/ports";
 import { EMPTY_RECLAIM } from "@/shared/reclaim-note";
-import { activeRow, parkedRow, settledRow, snoozedRow, sameRow, type LifecycleRow } from "@/shared/lifecycle";
+import { activeRow, parkedRow, settledRow, snoozedRow, sameRow, waitingSettleRow, type LifecycleRow } from "@/shared/lifecycle";
 import { DEFAULT_SETTINGS, type Settings } from "@/shared/settings";
 import { CHANNELS, type Appearance, type Versioned } from "@/shared/signals";
 import { attachedListStores } from "../store/list-store";
@@ -24,6 +24,8 @@ export interface FakeServerOptions {
   order?: string[];
   /** Methods that refuse, with the text they refuse with. */
   refuse?: Record<string, string>;
+  /** Threads whose Settle waits, as the server answers for a busy tree. */
+  settleWaits?: readonly string[];
   /** The reclaim note the lifecycle calls answer with. */
   note?: string | null;
   /** Project colour overrides and icon uploads held at the start. */
@@ -151,9 +153,14 @@ export function createFakeServer(options: FakeServerOptions = {}) {
       resume: ({ threadId }: { threadId: string }) => action("resume", threadId, activeRow()),
       unsettle: ({ threadId }: { threadId: string }) => action("unsettle", threadId, activeRow()),
       async settle({ threadId }: { threadId: string }) {
+        if (options.settleWaits?.includes(threadId)) {
+          const answer = await action("settle", threadId, waitingSettleRow(Date.now()));
+          return { ...answer, note: null, waiting: true };
+        }
         const answer = await action("settle", threadId, settledRow(Date.now(), "manual"));
-        return { ...answer, undoToken: `undo-${threadId}`, undoUntil: Date.now() + 10_000 };
+        return { ...answer, waiting: false, undoToken: `undo-${threadId}`, undoUntil: Date.now() + 10_000 };
       },
+      cancelSettle: ({ threadId }: { threadId: string }) => action("cancelSettle", threadId, null),
       async undoSettle({ threadId, undoToken }: { threadId: string; undoToken: string }) {
         server.calls.push({ method: "undoSettle", input: { threadId, undoToken } });
         refusing("undoSettle");

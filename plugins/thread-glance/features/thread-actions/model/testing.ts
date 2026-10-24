@@ -30,6 +30,7 @@ export function fakeCommands(): { [K in keyof LifecycleCommands]: ReturnType<typ
     park: vi.fn(async () => {}),
     resume: vi.fn(async () => {}),
     settle: vi.fn(async () => {}),
+    cancelSettle: vi.fn(async () => {}),
     unsettle: vi.fn(async () => {}),
     dismissWoke: vi.fn(async () => {}),
     clearPinned: vi.fn(async () => {}),

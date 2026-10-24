@@ -6,6 +6,7 @@ import { MIGRATIONS } from "../database";
 import type { PullRequests, PullRequestStatus } from "../pull-requests";
 import type { RuntimeTerminal, ThreadRuntime } from "../runtime";
 import type { ServerThread, ThreadGateway } from "../threads";
+import type { TurnRecord } from "../../shared/waiting-settle";
 
 /** An idle, visible, unpinned thread; override what a test cares about. */
 export function makeServerThread(id: string, overrides: Partial<ServerThread> = {}): ServerThread {
@@ -55,6 +56,10 @@ export interface FakeThreads extends ThreadGateway {
   snapshots: number;
   /** Makes `unpin` fail for these ids. */
   failUnpin: Set<string>;
+  /** The turns each thread recorded, any order; `turnsSince` answers from them. */
+  turns: Map<string, TurnRecord[]>;
+  /** Threads whose `turnsSince` rejects, as bb failing to answer. */
+  failTurns: Set<string>;
 }
 
 export function createFakeThreads(initial: readonly ServerThread[] = []): FakeThreads {
@@ -65,6 +70,8 @@ export function createFakeThreads(initial: readonly ServerThread[] = []): FakeTh
     beforeSnapshot: null,
     snapshots: 0,
     failUnpin: new Set(),
+    turns: new Map(),
+    failTurns: new Set(),
     async snapshot() {
       fake.snapshots += 1;
       fake.beforeSnapshot?.(fake.snapshots);
@@ -94,6 +101,10 @@ export function createFakeThreads(initial: readonly ServerThread[] = []): FakeTh
     async parentOf(threadId) {
       const thread = fake.threads.get(threadId);
       return thread === undefined ? undefined : thread.parentThreadId;
+    },
+    async turnsSince(threadId, since) {
+      if (fake.failTurns.has(threadId)) throw new Error("bb did not answer");
+      return (fake.turns.get(threadId) ?? []).filter((turn) => turn.at > since).sort((a, b) => b.at - a.at);
     },
   };
   return fake;

@@ -1,6 +1,7 @@
 // The lifecycle actions: snooze, wake, park, resume, settle, un-settle, their
-// undo and the clean-ups the list asks for. Each re-checks bb's thread data
-// before it writes (busy, a time in the past), writes the lifecycle rows, and
+// undo, the cancel of a waiting settle and the clean-ups the list asks for.
+// Each re-checks bb's thread data before it writes (busy, a time in the past;
+// Settle waits for a busy tree instead), writes the lifecycle rows, and
 // reports each row it changed with the row before, so the app can offer Undo.
 // The module names no SDK: bb is reached through `ThreadGateway`.
 import { randomUUID } from "node:crypto";
@@ -9,12 +10,14 @@ import {
   activeRow,
   hasMark,
   hasNewAttention,
+  isWaitingSettle,
   isWoke,
   parkedRow,
   sameRow,
   settledRow,
   snoozedRow,
   waitingBelow,
+  waitingSettleRow,
   type LifecycleRow,
 } from "../shared/lifecycle";
 import { busyRefusal, childNeedsYouRefusal, SETTLE_UNDO_GONE, SNOOZE_ENDED, THREAD_GONE, TREE_CHANGED, type GatedAction } from "../shared/messages";
@@ -48,10 +51,12 @@ export interface ActionResult {
   note: string | null;
 }
 
-export interface SettleResult extends ActionResult {
-  undoToken: string;
-  undoUntil: number;
-}
+/**
+ * What Settle did: settled the tree, with the token its Undo takes, or, for a
+ * tree with a busy thread, left a waiting settle on the thread, which Undo of
+ * its changes takes back.
+ */
+export type SettleResult = (ActionResult & { waiting: false; undoToken: string; undoUntil: number }) | (ActionResult & { waiting: true });
 
 /** Runs `write` in order with the other changes and publishes the records of the threads it passed to `changed`. */
 export type ChangeRecords = <T>(write: (changed: (threadIds: Iterable<string>) => void) => Promise<T>) => Promise<T>;
@@ -85,6 +90,8 @@ export interface LifecycleActions {
   settle(threadId: string): Promise<SettleResult>;
   undoSettle(threadId: string, undoToken: string): Promise<ActionResult>;
   unsettle(threadId: string): Promise<ActionResult>;
+  /** Ends the thread's waiting settle, leaving the tree where it is; nothing when it has none. */
+  cancelSettle(threadId: string): Promise<ActionResult>;
   undoLifecycle(changes: readonly Change[]): Promise<{ changes: Change[]; skipped: { threadId: string; reason: string }[] }>;
   dismissWoke(threadId: string): Promise<ActionResult>;
   clearPinned(threadId: string): Promise<ActionResult>;
@@ -107,6 +114,11 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
     const thread = byIdOf(snapshot).get(threadId);
     if (thread === undefined) throw new Error(THREAD_GONE);
     return { thread, snapshot };
+  }
+
+  /** Refuses the action when the thread itself has a question or approval waiting. */
+  function refuseNeedsYou(action: GatedAction, thread: ServerThread): void {
+    if (thread.hasPendingInteraction) throw new Error(busyRefusal(action, thread.title));
   }
 
   /** Refuses the action when a thread is busy. */
@@ -250,7 +262,9 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
         const ids = treeIds(first, threadId);
         const tree = ids.map((id) => firstById.get(id)!);
         refuseChildWaiting("settle", first, threadId);
-        refuseBusy("settle", tree);
+        refuseNeedsYou("settle", firstById.get(threadId)!);
+        // A busy tree is settled once it is idle: its attention moves meanwhile, which is no change to the tree.
+        const waitedFor = tree.some((thread) => isBusy(thread));
         const rowsBefore = new Map(ids.map((id) => [id, lifecycle.get(id)]));
         const unpinned: ServerThread[] = [];
         try {
@@ -271,13 +285,24 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
                 was !== undefined &&
                 thread.parentThreadId === was.parentThreadId &&
                 !thread.isPinned &&
-                !hasNewAttention(was.latestAttentionAt, thread.latestAttentionAt) &&
+                (waitedFor || !hasNewAttention(was.latestAttentionAt, thread.latestAttentionAt)) &&
                 sameRow(lifecycle.get(thread.id), rowsBefore.get(thread.id))
               );
             });
           if (!same) throw new Error(TREE_CHANGED);
           refuseChildWaiting("settle", second, threadId);
-          refuseBusy("settle", current);
+          refuseNeedsYou("settle", secondById.get(threadId)!);
+          if (waitedFor || current.some((thread) => isBusy(thread))) {
+            const isUnpinned = (id: string) => unpinned.some((u) => u.id === id);
+            const changes = write(
+              [
+                [threadId, waitingSettleRow(now()), isUnpinned(threadId)] as const,
+                ...unpinned.filter((u) => u.id !== threadId).map((u) => [u.id, lifecycle.get(u.id), true] as const),
+              ],
+              changed,
+            );
+            return { waiting: true as const, changes, entries: [] };
+          }
           const at = (lastSettleAt = Math.max(now(), lastSettleAt + 1));
           const order = pinnedInOrder(first);
           const changes = write(
@@ -292,7 +317,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
               pinNeighbors: { previous: order[index - 1]?.id ?? null, next: order[index + 1]?.id ?? null },
             };
           });
-          return { changes, entries };
+          return { waiting: false as const, changes, entries };
         } catch (error) {
           const failed = await restorePins(unpinned, first, rowsBefore);
           if (failed.length > 0) {
@@ -302,11 +327,18 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
           throw error;
         }
       });
+      if (settled.waiting) return { ...noReclaim(settled.changes), waiting: true };
       const done = await reclaimAfter(settled.changes);
       const undoToken = newToken();
       const undoUntil = now() + (done.note === null ? SETTLE_TOAST_MS : SETTLE_TOAST_WITH_NOTE_MS) + UNDO_SLACK_MS;
       rememberSettle(undoToken, { threadId, expiresAt: undoUntil, entries: settled.entries });
-      return { ...done, undoToken, undoUntil };
+      return { ...done, waiting: false, undoToken, undoUntil };
+    },
+
+    async cancelSettle(threadId) {
+      return noReclaim(
+        await change(async (changed) => (isWaitingSettle(lifecycle.get(threadId)) ? write([[threadId, null]], changed) : [])),
+      );
     },
 
     async undoSettle(threadId, undoToken) {

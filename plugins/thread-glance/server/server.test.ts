@@ -1,7 +1,7 @@
 import { createFakePluginHost, makeThreadResponse } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../server";
-import { activeRow, parkedRow, settledRow, snoozedRow } from "../shared/lifecycle";
+import { activeRow, parkedRow, settledRow, snoozedRow, waitingSettleRow } from "../shared/lifecycle";
 import { DEFAULT_SETTINGS } from "../shared/settings";
 import { CHANNELS, type RecordsSignal, type ThreadRecord, type Versioned } from "../shared/signals";
 import { createLifecycleStore } from "./lifecycle-store";
@@ -97,16 +97,67 @@ describe("lifecycle actions over RPC", () => {
     expect(recordSignals(harness)).toEqual([]);
   });
 
-  it("refuses to settle a parent with a working child, naming the child", async () => {
-    const { harness } = await load(
-      sdkWith(() => [
-        listedThread("parent"),
-        listedThread("child", { parentThreadId: "parent", title: "Run the migration", runtime: { displayStatus: "active" } }),
-      ]),
-    );
-    await expect(harness.behavior.callRpc("settle", { threadId: "parent" })).rejects.toThrow(
-      "Cannot settle while Run the migration is working or waiting for input",
-    );
+  describe("a Settle of a parent with a working child", () => {
+    const family = () => [
+      listedThread("parent"),
+      listedThread("child", { parentThreadId: "parent", title: "Run the migration", runtime: { displayStatus: "active" } }),
+    ];
+    /** bb's turn events for each thread, newest first, as `threads.events.list` answers with `order: "desc"`. */
+    const eventsOf = (turns: Record<string, { type: string; createdAt: number; data: Record<string, unknown> }[]>) => ({
+      threads: {
+        events: {
+          async list({ threadId, beforeSeq }: { threadId: string; beforeSeq?: string }) {
+            if (beforeSeq !== undefined) return [];
+            return (turns[threadId] ?? []).map((row, index) => ({ id: `${threadId}-${index}`, seq: 100 - index, threadId, scope: { kind: "thread" }, ...row }));
+          },
+        },
+      },
+    });
+
+    it("waits, keeps the waiting settle in sync, and settles the tree once it has been idle a while", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const threads = family();
+      const { harness } = await load(sdkWith(() => threads, undefined, eventsOf({})));
+      const result = (await harness.behavior.callRpc("settle", { threadId: "parent" })) as { waiting: boolean };
+      expect(result.waiting).toBe(true);
+      expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000));
+      // The child's turn ends; the tree is idle, and stays so past the grace.
+      Object.assign(threads[1]!, { runtime: { displayStatus: "idle" } });
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "child", parentThreadId: "parent" }), lastAssistantText: null });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
+      vi.setSystemTime(16_000);
+      await harness.behavior.emitThreadEvent("thread.idle", { thread: makeThreadResponse({ id: "parent" }), lastAssistantText: null });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toMatchObject({ settledKind: "manual", waitingSettleAt: null }));
+      const answer = await sync(harness);
+      expect(rowOf(answer, "child")).toEqual(rowOf(answer, "parent"));
+    });
+
+    it("ends the wait on a message the user sent into the tree, and on Cancel", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(10_000);
+      const turns: Record<string, { type: string; createdAt: number; data: Record<string, unknown> }[]> = {};
+      const { harness } = await load(sdkWith(family, undefined, eventsOf(turns)));
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      // An agent's message to the parent leaves it waiting.
+      turns.parent = [{ type: "client/turn/requested", createdAt: 11_000, data: { initiator: "agent", senderThreadId: "child" } }];
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "parent" }) });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toEqual(waitingSettleRow(10_000)));
+      turns.parent.unshift({ type: "client/turn/requested", createdAt: 12_000, data: { initiator: "user", senderThreadId: null } });
+      await harness.behavior.emitThreadEvent("thread.active", { thread: makeThreadResponse({ id: "parent" }) });
+      await vi.waitFor(async () => expect(rowOf(await sync(harness), "parent")).toBeNull());
+      await harness.behavior.callRpc("settle", { threadId: "parent" });
+      expect(rowOf(await sync(harness), "parent")?.waitingSettleAt).not.toBeNull();
+      await harness.behavior.callRpc("cancelSettle", { threadId: "parent" });
+      expect(rowOf(await sync(harness), "parent")).toBeNull();
+    });
+
+    it("refuses while a question waits below, naming the child", async () => {
+      const { harness } = await load(
+        sdkWith(() => [listedThread("parent"), listedThread("child", { parentThreadId: "parent", title: "Ask", hasPendingInteraction: true })]),
+      );
+      await expect(harness.behavior.callRpc("settle", { threadId: "parent" })).rejects.toThrow("Cannot settle while a child thread needs you: Ask");
+    });
   });
 
   it("settles a tree, undoes it from the snapshot, and says so when the snapshot is gone", async () => {

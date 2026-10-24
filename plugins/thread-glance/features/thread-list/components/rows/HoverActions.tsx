@@ -1,19 +1,26 @@
-// The actions a card shows on hover in its Status slot while the thread is
-// not busy and not woke: Snooze (a clock menu with the presets, "Pick date &
-// time…" and Park) and Settle.
+// The actions a card shows on hover in its Status slot: Snooze (a clock menu
+// with the presets, "Pick date & time…" and Park) and Settle while the thread
+// is not busy and not woke, and Settle alone, which waits, while it is busy.
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { isBusy } from "@/shared/busy";
+import { isWaitingSettle } from "@/shared/lifecycle";
 import { formatWakeTime, readSnoozePresets, snoozeChoices } from "@/shared/snooze";
 import { requestSnoozePicker } from "../../commands/snooze-picker-request";
 import type { RowView } from "../../model/list-model";
 import { useCommands, useSettings } from "../../store/hooks";
 import { Tip } from "./Tip";
 
-/** Whether a card offers Snooze and Settle on hover: not busy and not woke. */
-export function offersHoverActions(row: RowView): boolean {
-  return row.woke === null && !isBusy(row.thread);
+/**
+ * What a card offers on hover: Snooze and Settle ("all") when it is not busy
+ * and not woke; Settle alone when it is busy, which then waits for its tree;
+ * nothing when it is woke, already waiting to settle, or has a question or
+ * approval of its own.
+ */
+export function hoverActionsOf(row: RowView): "all" | "settle" | null {
+  if (row.woke !== null || isWaitingSettle(row.lifecycle) || row.thread.hasPendingInteraction) return null;
+  return isBusy(row.thread) ? "settle" : "all";
 }
 
 const ACTION =
@@ -44,11 +51,22 @@ function SnoozeItems({ threadId }: { threadId: string }) {
   );
 }
 
-export function HoverActions({ threadId, title, className }: { threadId: string; title: string; className?: string }) {
+export function HoverActions({
+  threadId,
+  title,
+  snooze = true,
+  className,
+}: {
+  threadId: string;
+  title: string;
+  /** Whether the clock menu is offered beside Settle. */
+  snooze?: boolean;
+  className?: string;
+}) {
   const commands = useCommands();
   return (
     <span data-hover-actions="" className={cn("flex items-center gap-0.5", className)}>
-      <DropdownMenu>
+      {snooze ? <DropdownMenu>
         <Tip label="Snooze thread">
           <DropdownMenuTrigger asChild>
             <button type="button" data-no-drag="" aria-label={`Snooze ${title}`} className={ACTION}>
@@ -59,7 +77,7 @@ export function HoverActions({ threadId, title, className }: { threadId: string;
         <DropdownMenuContent align="end" className="min-w-56">
           <SnoozeItems threadId={threadId} />
         </DropdownMenuContent>
-      </DropdownMenu>
+      </DropdownMenu> : null}
       <Tip label="Settle thread">
         <button
           type="button"

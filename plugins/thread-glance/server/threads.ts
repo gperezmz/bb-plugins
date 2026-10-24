@@ -3,11 +3,14 @@
 // SDK adapter is the only code here that names `bb.sdk`.
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { ShelfThread } from "../shared/lifecycle";
+import type { TurnRecord } from "../shared/waiting-settle";
 
 type Sdk = BbPluginApi["sdk"];
 type ListedThread = Awaited<ReturnType<Sdk["threads"]["list"]>>[number];
 
 const PAGE_SIZE = 500;
+/** Turn events read per page; a waiting settle reads back only to the time it was chosen. */
+const TURN_PAGE_SIZE = 100;
 
 /** A thread as the server reads it: the shelf rules' input plus what the actions need. */
 export interface ServerThread extends ShelfThread {
@@ -46,6 +49,11 @@ export interface ThreadGateway {
    * answer, which says nothing about the thread.
    */
   find(threadId: string): Promise<ThreadPresence | undefined>;
+  /**
+   * The turns the thread asked for and ended after `since` (epoch ms), newest
+   * first. Rejects when bb could not answer.
+   */
+  turnsSince(threadId: string, since: number): Promise<TurnRecord[]>;
 }
 
 /** The pinned threads in the order bb lists them: by pin key, then newest pin first. */
@@ -107,6 +115,18 @@ function isNotFound(error: unknown): boolean {
   return code === "thread_not_found" || status === 404 || (typeof message === "string" && /not found/i.test(message));
 }
 
+type TurnEventRow = Awaited<ReturnType<Sdk["threads"]["events"]["list"]>>[number];
+
+/** A turn event row as the waiting-settle rule reads it, or null for any other row. */
+export function toTurnRecord(row: TurnEventRow): TurnRecord | null {
+  if (row.type === "client/turn/requested") {
+    // A message a person typed has no sender thread; an agent's message or spawn names one, and bb's own turns are "system".
+    return { kind: "requested", at: row.createdAt, byUser: row.data.initiator === "user" && row.data.senderThreadId === null };
+  }
+  if (row.type === "turn/completed") return { kind: "ended", at: row.createdAt, outcome: row.data.status };
+  return null;
+}
+
 export function createSdkThreads(bb: Pick<BbPluginApi, "sdk">): ThreadGateway {
   return {
     async snapshot() {
@@ -139,6 +159,26 @@ export function createSdkThreads(bb: Pick<BbPluginApi, "sdk">): ThreadGateway {
       } catch (error) {
         if (isNotFound(error)) return undefined;
         throw error;
+      }
+    },
+    async turnsSince(threadId, since) {
+      const found: TurnRecord[] = [];
+      for (let beforeSeq: string | undefined; ; ) {
+        const page = await bb.sdk.threads.events.list({
+          threadId,
+          types: ["client/turn/requested", "turn/completed"],
+          order: "desc",
+          limit: String(TURN_PAGE_SIZE),
+          ...(beforeSeq === undefined ? {} : { beforeSeq }),
+        });
+        // bb may cap a page below the limit asked for, so only an empty page ends the listing.
+        if (page.length === 0) return found;
+        for (const row of page) {
+          if (row.createdAt <= since) return found;
+          const record = toTurnRecord(row);
+          if (record !== null) found.push(record);
+        }
+        beforeSeq = String(page[page.length - 1]!.seq);
       }
     },
     async parentOf(threadId) {

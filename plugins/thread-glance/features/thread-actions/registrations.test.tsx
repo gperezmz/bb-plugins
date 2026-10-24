@@ -66,6 +66,7 @@ describe("registrations", () => {
       "resume",
       "settle",
       "unsettle",
+      "cancel-settle",
       "notify-parent",
     ]);
   });
@@ -77,7 +78,7 @@ describe("where the actions sit in bb's menu (AC20)", () => {
     const now = Date.now();
     return {
       now,
-      facts: new Map([["t1", { busy: false, woke: false, mark: "active" as const, branch: "feat/x", notifiable: false }]]),
+      facts: new Map([["t1", { busy: false, needsYou: false, waitingSettle: false, woke: false, mark: "active" as const, branch: "feat/x", notifiable: false }]]),
       projects: new Map([["proj_a", { name: "Alpha", isPersonal: false, settingsHref: "/p" }]]),
       presets: [],
       machines: { count: 1 },
@@ -140,7 +141,15 @@ describe("the window's data", () => {
       sdk: { hosts: { list: async () => [{ id: "h1", name: "Laptop" }] } } as never,
     });
     await waitFor(() => expect(data?.machines).toEqual({ count: 1 }));
-    expect(data!.facts.get("t1")).toEqual({ busy: false, woke: false, mark: "active", branch: "main", notifiable: false });
+    expect(data!.facts.get("t1")).toEqual({
+      busy: false,
+      needsYou: false,
+      waitingSettle: false,
+      woke: false,
+      mark: "active",
+      branch: "main",
+      notifiable: false,
+    });
     expect(data!.presets.map((preset) => preset.label)).toContain("1 hour");
 
     const action = park.item({ thread: targetOf(thread), data, sdk: {} as never, navigate: {} as never })!;
