@@ -44,7 +44,7 @@ export function Cards(props: CardProps) {
 // ——— Shared parts ———
 
 /** The title: bold when unread or woke, muted for a read idle thread; the editor while it is renamed. */
-function Title({ row, editing, className }: { row: RowView; editing: boolean; className?: string }) {
+function Title({ row, editing, className, editorClassName }: { row: RowView; editing: boolean; className?: string; editorClassName?: string }) {
   const commands = useCommands();
   const { thread } = row;
   if (editing) {
@@ -54,7 +54,7 @@ function Title({ row, editing, className }: { row: RowView; editing: boolean; cl
         label={`Rename ${thread.displayTitle}`}
         onSave={(title) => void commands.rename(thread.id, title)}
         onDone={commands.endRename}
-        className="pointer-events-auto relative min-w-0 flex-1 rounded-md bg-background px-1 text-sm outline-none ring-1 ring-sidebar-ring"
+        className={cn("pointer-events-auto relative min-w-0 flex-1 rounded-md bg-background px-1 text-sm outline-none ring-1 ring-sidebar-ring", editorClassName)}
       />
     );
   }
@@ -251,24 +251,29 @@ function SlimRow({ row, editing, projectName, colour }: CardProps) {
   const restore = restoreAction(row.shelf);
   const settled = row.shelf === "settled";
   let right: ReactNode = null;
-  if (hint !== null) right = <JumpHint label={hint} />;
+  if (hint !== null) right = <JumpHint label={hint} className="[@media(hover:hover)]:group-focus-within/card:hidden" />;
   else if (settled) right = <StatusView status={status} className="w-auto" />;
   else if (label !== null) right = <span className="min-w-0 truncate text-[10px] text-muted-foreground tabular-nums">{label}</span>;
-  // The jump hint keeps its width, so its key is never cut: while it shows, the title has no floor and the hover buttons give way, unless one holds focus.
+  // The jump hint keeps its width, so its key is never cut: while it shows, the title has no floor and the hover buttons give way, unless one holds focus, and then the hint gives way to them.
   const squeezable = hint === null && right !== null;
   return (
     <div className="@container pointer-events-none relative flex h-full items-center gap-1.5 text-xs">
       <ProjectMark projectId={thread.projectId} name={projectName} colour={colour} className="size-3" />
-      {/* From 200 px of row, the project name gives way first, then the label or status, then the title down to `min-w-12`, so the chip and the buttons stay whole at bb's default sidebar width. Below that nothing keeps its width: the chip and the title shrink so the row never overflows. */}
-      <span className="max-w-[40%] min-w-0 shrink-[100] truncate">
+      {/* From 200 px of row, the project name gives way first, then the label or status, then the title down to `min-w-12`, so the chip and the buttons stay whole at bb's default sidebar width. The shrink factors are far apart so a later part loses nothing while an earlier one has width to give. Below 200 px nothing keeps its width: the chip and the title shrink, so the row never overflows. */}
+      <span className="max-w-[40%] min-w-0 shrink-[10000] truncate">
         <ProjectName name={projectName} colour={colour} />
         <span aria-hidden className="text-muted-foreground/60">
           {" ·"}
         </span>
       </span>
-      <Title row={row} editing={editing} className={cn("min-w-0 text-xs", hint === null && "@min-[200px]:min-w-12")} />
-      {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} className="@min-[200px]:shrink-0" />}
-      {squeezable ? <span className="flex min-w-0 shrink-[50] justify-end overflow-hidden whitespace-nowrap">{right}</span> : right}
+      <Title
+        row={row}
+        editing={editing}
+        className={cn("min-w-0 shrink-[3] basis-12 text-xs", hint === null && "@min-[200px]:min-w-12")}
+        editorClassName={cn("shrink-[3] basis-12", hint === null && "@min-[200px]:min-w-12")}
+      />
+      {row.children === null ? null : <ChildrenChip parentId={row.id} info={row.children} expanded={row.expanded} className="shrink-[5] @min-[200px]:shrink-0" />}
+      {squeezable ? <span className="flex min-w-0 shrink justify-end overflow-hidden whitespace-nowrap">{right}</span> : right}
       <span
         data-slim-actions=""
         className={cn(

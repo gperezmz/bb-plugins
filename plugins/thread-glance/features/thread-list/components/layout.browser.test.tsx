@@ -7,11 +7,11 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarProject, PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
-import { makeThread, PROJECTS } from "@/testing/fixtures";
+import { makeProject, makeThread, PROJECTS } from "@/testing/fixtures";
 
 type App = Awaited<ReturnType<typeof loadPluginApp>>;
 let app: App;
@@ -41,11 +41,12 @@ async function render(
   height = 600,
   width = 360,
   sidebarShortcuts: Record<string, PluginSidebarThreadShortcut> = {},
+  projects: PluginSidebarProject[] = PROJECTS,
 ) {
   await page.viewport(width, height);
   const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
     rpc: createFakeServer(server).handlers as never,
-    sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
+    sidebarThreads: { status: "ready", threads, projects, sections: [] },
     sdk: {} as never,
     realtimeConnectionState: "connected",
     sidebarShortcuts,
@@ -239,6 +240,33 @@ describe("the cards' lines", () => {
       expect(boss.scrollWidth).toBeLessThanOrEqual(boss.clientWidth);
     });
 
+    it("keeps a Snoozed row's two-digit label whole at rest at the default width, a long project name giving way", async () => {
+      const long = makeProject("proj_long", "platform-infrastructure-monorepo");
+      const threads = family("boss").map((thread) => ({ ...thread, projectId: long.id }));
+      await render(threads, { rows: { boss: snoozedRow(NOW + 40 * 86_400_000, NOW - 1000) }, settings: { inactiveShelf: false } }, {}, 600, 249, {}, [long]);
+      screen.getByRole("button", { name: "Snoozed (1)" }).click();
+      await waitFor(() => expect(document.querySelector('[data-card="slim"]')).not.toBeNull());
+      await frames();
+      // An earlier test may have left the pointer over this row.
+      await userEvent.hover(document.body);
+      await frames();
+      const label = [...card("boss").querySelectorAll<HTMLElement>("span")].find((el) => el.children.length === 0 && /^\d+d$/.test(el.textContent ?? ""))!;
+      expect(label.textContent).toBe("40d");
+      expect(whole(label)).toBe(true);
+    });
+
+    it.each([249, 169])("leaves a parent row's title room at rest at %s px, and its rename editor at least 48 px at the default width", async (width) => {
+      const boss = await hovered(width, "Parked");
+      await userEvent.unhover(boss);
+      await frames();
+      expect(boss.querySelector<HTMLElement>("[data-title]")!.getBoundingClientRect().width).toBeGreaterThanOrEqual(width === 249 ? 48 : 20);
+      if (width !== 249) return;
+      boss.querySelector<HTMLElement>("a")!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+      await frames();
+      const editor = boss.querySelector<HTMLElement>("input")!;
+      expect(editor.getBoundingClientRect().width).toBeGreaterThanOrEqual(48);
+    });
+
     it("cuts a hovered Parked row's label from its end, never from its start", async () => {
       for (const width of [249, 256, 262, 280]) {
         const boss = await hovered(width, "Parked");
@@ -327,6 +355,26 @@ describe("the jump hints on a hovered slim row with a Children chip", () => {
     const hint = row.querySelector<HTMLElement>("[data-jump-hint]")!;
     expect(hint.scrollWidth).toBeLessThanOrEqual(hint.clientWidth);
     expect(hint.getBoundingClientRect().right).toBeLessThanOrEqual(row.getBoundingClientRect().right);
+    expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
+  });
+});
+
+describe("the jump hints over a keyboard-focused slim row", () => {
+  it.each([249, 169])("keeps the row within its width at %s px", async (width) => {
+    const threads = [
+      makeThread({ id: "pk", title: "A parked thread with a long title", ...old }),
+      makeThread({ id: "k1", title: "kid one", parentThreadId: "pk", ...old }),
+      makeThread({ id: "k2", title: "kid two", parentThreadId: "pk", ...old }),
+    ];
+    await render(threads, { rows: { pk: parkedRow(NOW - 86_400_000) }, settings: { inactiveShelf: false } }, {}, 600, width, { pk: { label: "Ctrl + Shift + 5", ariaKeyshortcuts: "Control+Shift+5" } });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    const row = document.querySelector<HTMLElement>('[data-card][data-thread-id="pk"]')!;
+    row.querySelector<HTMLElement>("a")!.focus();
+    await frames();
+    row.querySelector<HTMLElement>("[data-slim-actions] button")!.focus();
+    await userEvent.hover(row);
+    await frames();
     expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
   });
 });
