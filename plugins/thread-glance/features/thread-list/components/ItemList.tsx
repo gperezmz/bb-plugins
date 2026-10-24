@@ -11,7 +11,7 @@ import { REDUCED_MOTION_QUERY } from "../model/motion";
 import { keptIndexes, mountedIndexes, rangeKey, windowedNavValue, type NavTarget } from "../model/windowing";
 import { useHeights, useListStore, useRows, useSelect } from "../store/hooks";
 import { rowOffsets, slideRows } from "./reorder/slide";
-import { GroupHeader, LoadMore, ShelfHeader } from "./ShelfParts";
+import { GroupHeader, LoadMore, ShelfHeader, WorktreeHeader } from "./ShelfParts";
 import { ThreadRow } from "./rows/ThreadRow";
 import { ViewTracker } from "./view-tracker";
 
@@ -97,6 +97,9 @@ export const ItemList = memo(function ItemList({ items, jumps }: { items: readon
         break;
       case "group":
         content.push(<GroupHeader key={item.key} item={item} size={laid.size} />);
+        break;
+      case "worktree":
+        content.push(<WorktreeHeader key={item.key} item={item} size={laid.size} />);
         break;
       case "more":
         content.push(<LoadMore key={item.key} item={item} size={laid.size} />);

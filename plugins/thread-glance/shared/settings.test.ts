@@ -19,6 +19,7 @@ describe("settings defaults", () => {
       hoursBeforeInactive: 6,
       dockShelves: false,
       projectColours: false,
+      groupByWorktree: false,
       stripesIn: "full-and-collapsed",
       snoozeShortcuts: DEFAULT_SNOOZE_SHORTCUTS,
       settleQuietThreads: true,

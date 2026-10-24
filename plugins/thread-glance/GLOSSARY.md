@@ -92,6 +92,10 @@ _Avoid_: Project filter
 The colour a project has while project colours are on: soft and automatic from the project's id, or an override picked in settings. It colours the project's name, its stripe and its monogram.
 _Avoid_: Project theme
 
+**Group by worktree**:
+The setting that, under the Active sort Project, gathers the root threads of a project that share a bb worktree under its branch, in a group that collapses and moves as one inside the project's group.
+_Avoid_: Group by environment, worktree grouping
+
 **Stripe**:
 The 2 px bar at the left edge of a row, in the project colour, shown where the setting for where stripes show allows.
 _Avoid_: Accent bar, colour bar

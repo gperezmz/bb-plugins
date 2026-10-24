@@ -50,8 +50,8 @@ the user is told where to do it instead:
   (Snooze, Park, Settle), by dragging a row on Active, or with Alt+Arrow.
   Report that the user does it there; the command has no way to.
 - What each device keeps for itself, such as collapsed shelves, collapsed
-  project groups, Active's sort, expanded parents and the port link machine:
-  from the list itself, or Settings → This device. The server cannot reach a
+  project and worktree groups, Active's sort, expanded parents and the port
+  link machine: from the list itself, or Settings → This device. The server cannot reach a
   device's storage, so `prefs set` does not change them.
 
 ## bb's own list is in use

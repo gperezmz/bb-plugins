@@ -196,6 +196,13 @@ export function createFakeServer(options: FakeServerOptions = {}) {
         server.calls.push({ method: "runAutoSettle", input: {} });
         return { settled: [] as string[], unsettled: [] as string[] };
       },
+      async writeSettings({ patch }: { patch: Partial<Settings> }) {
+        server.calls.push({ method: "writeSettings", input: { patch } });
+        refusing("writeSettings");
+        settings = { epoch, version: settings.version + 1, value: { ...settings.value, ...patch } };
+        await publish(CHANNELS.settings, settings);
+        return settings;
+      },
       async reorder({ threadIds }: { threadIds: string[] }) {
         server.calls.push({ method: "reorder", input: { threadIds } });
         if (holdingReorder) await new Promise<void>((resolve) => heldReorders.push(resolve));

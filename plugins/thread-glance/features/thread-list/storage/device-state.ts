@@ -1,5 +1,5 @@
 // What the list keeps per device: which shelves are collapsed, the Active sort, collapsed
-// project groups and the parents whose child list is open. Pure steps over
+// project and worktree groups and the parents whose child list is open. Pure steps over
 // plain values; `readDeviceState` and the cache helpers bind them to storage.
 import { lifecycleRowSchema, SHELVES, type LifecycleRow, type Shelf } from "@/shared/lifecycle";
 import { readSettings, type Settings } from "@/shared/settings";
@@ -22,6 +22,8 @@ export interface DeviceState {
   activeSort: ActiveSort;
   /** Project ids whose Project-mode group is collapsed. */
   collapsedGroups: readonly string[];
+  /** Worktree environment ids whose group inside a Project-mode group is collapsed. */
+  collapsedWorktrees: readonly string[];
   /** Thread ids whose child list is open, least recently opened first. */
   expandedParents: readonly string[];
 }
@@ -41,6 +43,7 @@ export const INITIAL_DEVICE_STATE: DeviceState = {
   collapsedShelves: {},
   activeSort: "manual",
   collapsedGroups: [],
+  collapsedWorktrees: [],
   expandedParents: [],
 };
 
@@ -72,6 +75,15 @@ export function withGroupCollapsed(state: DeviceState, projectId: string, collap
   return { ...state, collapsedGroups };
 }
 
+export function withWorktreeCollapsed(state: DeviceState, environmentId: string, collapsed: boolean): DeviceState {
+  const has = state.collapsedWorktrees.includes(environmentId);
+  if (has === collapsed) return state;
+  const collapsedWorktrees = collapsed
+    ? lastDistinct([...state.collapsedWorktrees, environmentId], CAPS.collapsedWorktrees)
+    : state.collapsedWorktrees.filter((id) => id !== environmentId);
+  return { ...state, collapsedWorktrees };
+}
+
 /** Opens or closes a parent's child list; opening makes it the most recent, and only the last 100 stay open. */
 export function withParentExpanded(state: DeviceState, threadId: string, expanded: boolean): DeviceState {
   const has = state.expandedParents.includes(threadId);
@@ -101,6 +113,7 @@ export function readDeviceState(storage: DeviceStorage): DeviceState {
     collapsedShelves,
     activeSort: ACTIVE_SORTS.find((candidate) => candidate === sort) ?? "manual",
     collapsedGroups: stringList(storage.read("collapsedGroups"), CAPS.collapsedGroups),
+    collapsedWorktrees: stringList(storage.read("collapsedWorktrees"), CAPS.collapsedWorktrees),
     expandedParents: stringList(storage.read("expandedParents"), CAPS.expandedParents),
   };
 }
@@ -110,6 +123,7 @@ export function saveDeviceState(storage: DeviceStorage, previous: DeviceState, s
   if (previous.collapsedShelves !== state.collapsedShelves) storage.write("collapsedShelves", state.collapsedShelves);
   if (previous.activeSort !== state.activeSort) storage.write("activeSort", state.activeSort);
   if (previous.collapsedGroups !== state.collapsedGroups) storage.write("collapsedGroups", state.collapsedGroups);
+  if (previous.collapsedWorktrees !== state.collapsedWorktrees) storage.write("collapsedWorktrees", state.collapsedWorktrees);
   if (previous.expandedParents !== state.expandedParents) storage.write("expandedParents", state.expandedParents);
 }
 

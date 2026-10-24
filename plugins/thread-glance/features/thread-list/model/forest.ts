@@ -42,6 +42,22 @@ export function urgencyOf(counts: SubtreeCounts): Urgency | null {
   return null;
 }
 
+/**
+ * The most urgent thing in `roots` and the threads below them, as a children
+ * chip would show it were they one parent's children.
+ */
+export function urgencyOfRoots(roots: readonly PluginSidebarThread[], children: ReadonlyMap<string, ChildrenInfo>): Urgency | null {
+  const counts = { failed: 0, needsYou: 0, done: 0, working: 0 };
+  for (const root of roots) {
+    const below = children.get(root.id)?.counts ?? NO_COUNTS;
+    counts.failed += below.failed + (isFailed(root) ? 1 : 0);
+    counts.needsYou += below.needsYou + (root.hasPendingInteraction ? 1 : 0);
+    counts.done += below.done + (isDone(root) ? 1 : 0);
+    counts.working += below.working + (treeSignals([root]).working ? 1 : 0);
+  }
+  return urgencyOf(counts);
+}
+
 /** What a parent's card knows about the threads under it. */
 export interface ChildrenInfo {
   /** The direct children, sorted by the Child threads settings; pinned children are rows of their own and left out. */
