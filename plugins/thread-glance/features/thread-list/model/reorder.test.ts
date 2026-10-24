@@ -185,6 +185,13 @@ describe("isToggleOnly", () => {
     expect(isToggleOnly(flat, reordered)).toBe(false);
   });
 
+  it("is false when a group breaks up as its last row moves to the next shelf, the rows keeping their order", () => {
+    const working = (id: string): ListItem => ({ kind: "row", key: `row:${id}`, threadId: id, shelf: "working", headers: ["shelf:working"] });
+    const before = [shelf("active", false), group("x", false), row("x1", ACTIVE, "group:x"), row("x2", ACTIVE, "group:x"), shelf("working", false), working("w1")];
+    const after = [shelf("active", false), row("x1", ACTIVE), shelf("working", false), working("x2"), working("w1")];
+    expect(isToggleOnly(before, after)).toBe(false);
+  });
+
   it("is false when a row leaves or moves with no shelf or group opening or closing", () => {
     const active = [shelf("active", false), row("a", ACTIVE), row("x", ACTIVE), row("b", ACTIVE), shelf("settled", true)];
     expect(isToggleOnly(active, [shelf("active", false), row("a", ACTIVE), row("b", ACTIVE), shelf("settled", true)])).toBe(false);

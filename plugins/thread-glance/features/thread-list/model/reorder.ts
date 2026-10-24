@@ -37,7 +37,7 @@ export function rowPlaces(items: Iterable<DrawnItem>): Map<string, RowPlace> {
 /**
  * Whether going from `before` to `after` only opened or closed shelves or
  * groups, or only drew or dropped group headers around rows that kept their
- * order (Group by worktree turned on or off). The first holds when every row,
+ * order and their shelves (Group by worktree turned on or off). The first holds when every row,
  * group or worktree group that came or went sits under a shelf or group whose
  * open state changed, and anything else that came or went is Settled's Load
  * more. Then nothing slides; any other change, such as a move or a row leaving
@@ -53,7 +53,7 @@ export function isToggleOnly(before: readonly ListItem[], after: readonly ListIt
   const hasKeys = keysOf(after);
   const changed = [...before.filter((item) => !hasKeys.has(item.key)), ...after.filter((item) => !hadKeys.has(item.key))];
   if (changed.length > 0 && changed.every((item) => item.kind === "group" || item.kind === "worktree")) {
-    const rowKeys = (items: readonly ListItem[]) => items.flatMap((item) => (item.kind === "row" ? [item.key] : [])).join(" ");
+    const rowKeys = (items: readonly ListItem[]) => items.flatMap((item) => (item.kind === "row" ? [`${item.key}@${item.shelf}`] : [])).join(" ");
     if (rowKeys(before) === rowKeys(after)) return true;
   }
   if (toggled.size === 0) return false;
