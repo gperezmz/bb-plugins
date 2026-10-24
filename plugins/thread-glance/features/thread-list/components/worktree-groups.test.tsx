@@ -3,10 +3,13 @@
 // branch inside their project's group under the Project sort, fold per
 // device, and move by drag or Alt+Arrow, which reorders the manual order.
 import { act, fireEvent, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeThread, titleOf } from "@/testing/fixtures";
 import { installRowBoxes, rowY } from "../testing/dom-layout";
 import { flush, mount, useListHarness } from "../testing/harness";
+
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { success: toasts.success, error: toasts.error } }));
 
 useListHarness();
 
@@ -80,6 +83,24 @@ describe("AC1: Group by worktree groups root threads that share a worktree under
     await flush();
     expect(worktreeGroups()).toEqual([]);
     expect(rowTitles()).toEqual(["A1", "A2", "A3", "A4", "A5", "B1"]);
+  });
+
+  it("flips the value the list holds, not the one two quick clicks both read, and says when the save fails", async () => {
+    toasts.error.mockClear();
+    const m = await projectSort({ threads: threads(), server: { order } });
+    await act(async () => {
+      fireEvent.click(groupButton()!);
+      fireEvent.click(groupButton()!);
+    });
+    await flush();
+    expect(m.server.calls.filter((call) => call.method === "writeSettings")).toHaveLength(1);
+    m.server.failOnce("writeSettings", "no");
+    await act(async () => {
+      fireEvent.click(groupButton()!);
+    });
+    await flush();
+    expect(toasts.error).toHaveBeenCalledWith("Could not change Group by worktree");
+    expect(groupButton()?.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("follows the setting from another window, such as the settings page or bb thread-glance prefs", async () => {

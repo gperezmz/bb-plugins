@@ -56,7 +56,7 @@ function GroupByWorktreeButton() {
         data-no-drag=""
         aria-label="Group by worktree"
         aria-pressed={groupByWorktree}
-        onClick={() => void commands.setGroupByWorktree(!groupByWorktree)}
+        onClick={() => void commands.toggleGroupByWorktree()}
         className={cn(
           "flex size-6 shrink-0 items-center justify-center rounded-md outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring",
           groupByWorktree ? "bg-sidebar-accent text-foreground" : "text-muted-foreground",

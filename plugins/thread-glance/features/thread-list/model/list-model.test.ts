@@ -200,15 +200,6 @@ describe("Group by worktree", () => {
     expect(shape(buildModel(inputs({ threads, order, settings: on })).upper)).toEqual(["shelf", "a1", "a2", "a3", "a4", "a5", "a6"]);
   });
 
-  it("does not gather threads of two projects that carry the same environment id", () => {
-    const apart = [
-      makeThread({ id: "a1", projectId: "proj_a", ...worktree("env_x", "feat/x"), ...at(60) }),
-      makeThread({ id: "b1", projectId: "proj_b", ...worktree("env_x", "feat/x"), ...at(50) }),
-    ];
-    const model = buildModel(inputs({ threads: apart, order: ["a1", "b1"], device: project, settings: on }));
-    expect(model.upper.some((item) => item.kind === "worktree")).toBe(false);
-  });
-
   it("collapses a group, keeping the open thread, and the header carries the most urgent state of its threads", () => {
     const device = withWorktreeCollapsed(project, "env_x", true);
     const quiet = buildModel(inputs({ threads, order, device, settings: on }));
@@ -230,6 +221,27 @@ describe("Group by worktree", () => {
     expect(buildModel(inputs({ threads: mostUrgent, order, device, settings: on })).upper.find((item) => item.kind === "worktree")).toMatchObject({ urgency: "needs-you" });
     const expanded = buildModel(inputs({ threads: mostUrgent, order, device: project, settings: on }));
     expect(expanded.upper.find((item) => item.kind === "worktree")).toMatchObject({ collapsed: false, urgency: null });
+  });
+
+  it("shows working, then unread-finished work, when nothing is more urgent", () => {
+    const device = withWorktreeCollapsed(project, "env_x", true);
+    const urgencyWith = (patch: Record<string, unknown>) =>
+      buildModel(inputs({ threads: threads.map((thread) => (thread.id === "a3" ? { ...thread, ...patch } : thread)), order, device, settings: on })).upper.find(
+        (item) => item.kind === "worktree",
+      );
+    expect(urgencyWith({ ...working })).toMatchObject({ urgency: "working" });
+    expect(urgencyWith({ indicator: "unread-success" })).toMatchObject({ urgency: "done" });
+  });
+
+  it("names a group by its environment's name, then its id, where it has no branch", () => {
+    const unnamed = [
+      makeThread({ id: "a1", projectId: "proj_a", environment: { id: "env_x", name: "scratch", branchName: null, isWorktree: true }, ...at(60) }),
+      makeThread({ id: "a2", projectId: "proj_a", environment: { id: "env_x", name: "scratch", branchName: null, isWorktree: true }, ...at(50) }),
+      makeThread({ id: "b1", projectId: "proj_b", environment: { id: "env_z", name: null, branchName: null, isWorktree: true }, ...at(40) }),
+      makeThread({ id: "b2", projectId: "proj_b", environment: { id: "env_z", name: null, branchName: null, isWorktree: true }, ...at(30) }),
+    ];
+    const model = buildModel(inputs({ threads: unnamed, order: ["a1", "a2", "b1", "b2"], device: project, settings: on }));
+    expect(model.upper.flatMap((item) => (item.kind === "worktree" ? [item.branch] : []))).toEqual(["scratch", "env_z"]);
   });
 
   it("counts a failed child below a thread of the group", () => {

@@ -32,8 +32,8 @@ export interface ListCommands {
   setGroupCollapsed(projectId: string, collapsed: boolean): void;
   /** Collapses or opens a worktree group inside a Project-mode group. */
   setWorktreeCollapsed(environmentId: string, collapsed: boolean): void;
-  /** Turns the Group by worktree setting on or off, for every window. */
-  setGroupByWorktree(on: boolean): Promise<void>;
+  /** Flips the Group by worktree setting for every window; a click while the last flip is still being saved is ignored. */
+  toggleGroupByWorktree(): Promise<void>;
   /** Opens or closes a parent's child list on this device. */
   setExpanded(parentId: string, expanded: boolean): void;
   /** Picks the project scope (null for All projects) for this mount of the list. */
@@ -54,6 +54,7 @@ export interface ListCommands {
 export type Commands = ListCommands & LifecycleCommands & ReorderCommands & PortCommands;
 
 export function createCommands(store: ListStore): Commands {
+  let savingGroupByWorktree = false;
   const own: ListCommands = {
     open(threadId, options) {
       dismissPortsPrompt(threadId);
@@ -77,11 +78,16 @@ export function createCommands(store: ListStore): Commands {
       store.updateDevice((device) => withWorktreeCollapsed(device, environmentId, collapsed));
     },
 
-    async setGroupByWorktree(on) {
+    async toggleGroupByWorktree() {
+      if (savingGroupByWorktree) return;
+      savingGroupByWorktree = true;
       try {
+        const on = !store.getState().inputs.settings.groupByWorktree;
         pluginData.settingsSignal(await store.edge.rpc.call("writeSettings", { patch: { groupByWorktree: on } }));
       } catch {
         toast.error(GROUP_BY_WORKTREE_FAILED);
+      } finally {
+        savingGroupByWorktree = false;
       }
     },
 
