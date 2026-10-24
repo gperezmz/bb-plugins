@@ -121,8 +121,9 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
 - Thread menu (`menu "Thread actions for <title>"`, from the `…` button or a
   right-click): `Open in split`, `Parent…`, `Project`, `Copy thread link`,
   `Copy branch`, `Copy thread ID`, `Mark unread`, `Pin`, `Snooze` (submenu of
-  the presets and `Pick date & time…`), `Park thread`, `Settle`, `Rename`,
-  `Notifications`, `Archive`, `Delete`; `Resume` on a parked thread, `Wake now`
+  the presets and `Pick date & time…`), `Park thread`, `Settle`, `Notify parent` (on a child that is not a fork:
+  submenu `All outcomes`, `Only when stuck`, `Off`, the current one marked and
+  named under the label), `Rename`, `Notifications`, `Archive`, `Delete`; `Resume` on a parked thread, `Wake now`
   on a snoozed one, `Un-settle` on a settled one, `Unpin` on a pinned one. A
   busy thread's menu has no `Snooze`, `Park thread` or `Settle`, and a woke
   one no `Snooze`; a thread of the Personal project has no `Project`. A child in an

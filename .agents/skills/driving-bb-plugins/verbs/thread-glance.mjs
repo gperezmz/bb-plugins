@@ -400,6 +400,21 @@ async function openRowMenu(page, title) {
   await page.getByRole("menu").waitFor();
 }
 
+/**
+ * Opens a thread's menu: from its row's "…" button, else, for a child that has no row of its own, by a right-click
+ * on it in its parent's child list. `tag` names the verb in the bb CLI's run log.
+ */
+async function openThreadMenu(page, cli, tag, title, id) {
+  if ((await row(page, title).count()) > 0) return openRowMenu(page, title);
+  const { thread } = JSON.parse(cli(`${tag}/show`, "thread", "show", id, "--json"));
+  const above = threads(cli, `${tag}/threads`).find((t) => t.id === thread.parentThreadId);
+  if (above === undefined) throw new Error(`no row "${title}" is drawn and it has no parent; pass --shelf <name>`);
+  const chip = cardOf(page, above.title).locator("[data-children-chip]");
+  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
+  await page.locator(`li[data-child-id="${id}"] a`).first().click({ button: "right" });
+  await page.getByRole("menu").waitFor();
+}
+
 const toggleTarget = (arg, current) => (arg === undefined ? !current : ["expand", "on", "open"].includes(arg));
 
 /** The shelves' names as the list labels them, lower-cased to the id it keys them by. */
@@ -906,7 +921,7 @@ export const verbs = {
   },
 
   menu: {
-    usage: "<title> [--context|--keyboard] [--sub <Snooze|Project>]: open a row's thread menu (the \"…\" button, a right-click, or the button by Enter), read its items (and a submenu's with --sub), and report where focus went on Escape",
+    usage: "<title> [--context|--keyboard] [--sub <Snooze|Project|Notify parent>]: open a row's thread menu (the \"…\" button, a right-click, or the button by Enter), read its items (and a submenu's with --sub), and report where focus went on Escape",
     valued: ["sub"],
     async run({ page, url, capture, args, flags }) {
       const title = args[0];
@@ -1221,17 +1236,7 @@ export const verbs = {
       await ready(page, url);
       const id = threadId(cli, "thread-glance.parent/threads", title);
       const want = parent === "None" ? null : threadId(cli, "thread-glance.parent/threads", parent);
-      if ((await row(page, title).count()) > 0) await openRowMenu(page, title);
-      else {
-        // A child has no row of its own: open its parent's child list and right-click it there.
-        const { thread } = JSON.parse(cli("thread-glance.parent/show", "thread", "show", id, "--json"));
-        const above = threads(cli, "thread-glance.parent/threads").find((t) => t.id === thread.parentThreadId);
-        if (above === undefined) throw new Error(`no row "${title}" is drawn and it has no parent; pass --shelf <name>`);
-        const chip = cardOf(page, above.title).locator("[data-children-chip]");
-        if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-        await page.locator(`li[data-child-id="${id}"] a`).first().click({ button: "right" });
-        await page.getByRole("menu").waitFor();
-      }
+      await openThreadMenu(page, cli, "thread-glance.parent", title, id);
       await page.getByRole("menuitem", { name: "Parent…" }).click();
       const dialog = page.getByRole("dialog", { name: "Parent" });
       await dialog.waitFor();
@@ -1284,6 +1289,48 @@ export const verbs = {
       result.projects = JSON.parse(cli("thread-glance.project/projects", "project", "list", "--json"));
       result.after = await readList(page);
       return result;
+    },
+  },
+
+  notify: {
+    usage: "<title> [<All outcomes|Only when stuck|Off>]: open the Notify parent ▸ submenu of a child's thread menu (a child with no row, by right-clicking it in its parent's child list); its items with the one marked chosen, and, given an item, pick it; the parentNotifications bb holds before and after, and the submenu reopened",
+    async run({ page, url, capture, cli, args }) {
+      const [title, item] = args;
+      await ready(page, url);
+      const id = threadId(cli, "thread-glance.notify/threads", title);
+      const stored = (tag) => JSON.parse(cli(`thread-glance.notify/${tag}`, "thread", "show", id, "--json")).thread.parentNotifications;
+      const openSubmenu = async (label) => {
+        await openThreadMenu(page, cli, "thread-glance.notify", title, id);
+        const trigger = page.getByRole("menuitem", { name: "Notify parent" });
+        await trigger.hover();
+        await trigger.press("ArrowRight");
+        const menu = page.getByRole("menu", { name: "Notify parent" });
+        await menu.waitFor();
+        await capture(label, "the Notify parent submenu");
+        return menu;
+      };
+      const read = async (menu) => ({ items: await menu.ariaSnapshot(), detail: await page.getByRole("menuitem", { name: "Notify parent" }).textContent() });
+      const before = stored("before");
+      let menu = await openSubmenu("before");
+      const shown = await read(menu);
+      if (item === undefined) {
+        await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
+        return { stored: before, shown };
+      }
+      await menu.getByRole("menuitem", { name: item, exact: true }).click();
+      let after;
+      for (let i = 0; i < 20; i++) {
+        after = stored("after");
+        if (after !== before) break;
+        await sleep(250);
+      }
+      const toastsShown = await toasts(page);
+      menu = await openSubmenu("after");
+      const reopened = await read(menu);
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      return { before: { stored: before, shown }, after: { stored: after, shown: reopened }, toasts: toastsShown };
     },
   },
 
