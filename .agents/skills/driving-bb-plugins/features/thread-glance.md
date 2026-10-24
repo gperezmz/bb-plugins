@@ -171,10 +171,10 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   `Project colors` on, each card's project name takes the project's colour,
   the monogram's tile its tint, and a stripe its fill, where
   `Show stripes in` allows.
-- Jump hints: holding Control alone for 700 ms puts `Ctrl + 1` … `Ctrl + 9` in
-  the status slots of the list's first nine rows, from the upper list on and
-  into the lower one where the upper holds fewer; any other key, Shift
-  included, hides them.
+- Jump hints: while Control is held alone, bb's own labels, `Ctrl + Shift + 1`
+  … `Ctrl + Shift + 9`, stand in the status slots of the list's first nine
+  rows, from the upper list on and into the lower one where the upper holds
+  fewer; Shift held too shows none.
 - Thread header (an open thread): `button "Back to parent: <title>"` on a
   child, and on a parent a button reading `1 child`, `N children` or
   `Needs you` that opens `region "Child threads"`, one button per child.
@@ -418,7 +418,7 @@ the pointer, so those verbs run on the desktop viewport.
   remount inside one window.
 - **Keys** (`keys`): `thread-glance enter <title>` focuses the row's link and
   presses Enter (`current` is the title). `thread-glance hints` holds Control
-  900 ms: `held` lists `Ctrl + 1` … per row, `released` 0;
+  900 ms: `held` lists `Ctrl + Shift + 1` … per row, `released` 0;
   `--with Shift` shows none.
   `thread-glance shortcut <n> [--scroll <px>]` presses bb's jump key,
   Control+Shift+n, and `shortcut next|previous --from <title>` Control+Shift+]
@@ -497,9 +497,6 @@ says.
   `invalid_preference_value` and stores nothing); run it with
   `drive-bb-plugins bb … thread-glance prefs …` and read `settings` or an open
   sidebar back.
-- The jump hints read `Ctrl + n`, but on the web bb jumps on
-  Control+Shift+n, and plain Control+n does nothing
-  (`shortcut 2 --keys Control+Digit2` opens nothing): the hints name the wrong chord.
 - A pointer is needed for hover cards, Stop, the clock menu and the `…`
   button: with `--mobile` only `resume`, `wake`, `unsettle` and `unpin` reach
   their buttons, and a phone's menu is `long-press`.

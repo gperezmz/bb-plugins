@@ -7,7 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
-import type { PluginSidebarThread, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
+import type { PluginSidebarThread, PluginSidebarThreadShortcut, PluginThreadListProps } from "@get-bb/plugin-sdk/app";
 import { parkedRow, settledRow, snoozedRow } from "@/shared/lifecycle";
 import { heightsFor } from "../model/heights";
 import { createFakeServer, type FakeServerOptions } from "../testing/fake-server";
@@ -34,13 +34,21 @@ const frames = () => new Promise((resolve) => requestAnimationFrame(() => reques
 const NOW = Date.now();
 const props: PluginThreadListProps = { activeThreadId: null, activeProjectId: null, isCompactViewport: false, onNavigate() {}, searchQuery: "" };
 
-async function render(threads: PluginSidebarThread[], server: FakeServerOptions = {}, listProps: Partial<PluginThreadListProps> = {}, height = 600, width = 360) {
+async function render(
+  threads: PluginSidebarThread[],
+  server: FakeServerOptions = {},
+  listProps: Partial<PluginThreadListProps> = {},
+  height = 600,
+  width = 360,
+  sidebarShortcuts: Record<string, PluginSidebarThreadShortcut> = {},
+) {
   await page.viewport(width, height);
   const slot = renderSlot(app.threadLists[0]!, { ...props, ...listProps }, {
     rpc: createFakeServer(server).handlers as never,
     sidebarThreads: { status: "ready", threads, projects: PROJECTS, sections: [] },
     sdk: {} as never,
     realtimeConnectionState: "connected",
+    sidebarShortcuts,
   } as never);
   await waitFor(() => expect(document.querySelector("[data-list-ready]")).not.toBeNull());
   await frames();
@@ -188,6 +196,42 @@ describe("the cards' lines", () => {
     const cardBox = card("full").getBoundingClientRect();
     expect(Math.round(cardBox.right - box.right)).toBe(10);
     expect(box.top - cardBox.top).toBeLessThan(heights.fullCard / 2);
+  });
+});
+
+describe("the jump hints", () => {
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card][data-thread-id="${id}"]`)!;
+  // bb joins a binding's keys with " + ", so a binding with Alt added is the longest label a row meets.
+  const long = { label: "Ctrl + Alt + Shift + 1", ariaKeyshortcuts: "Control+Alt+Shift+1" };
+
+  it("widens the Status slot for a label longer than 80 px, leaving the line's other parts beside it", async () => {
+    const threads = [
+      makeThread({ id: "full", title: "Full card", ...at(5) }),
+      makeThread({ id: "work", title: "A folded card with a long title", ...at(6), status: "active", runtimeStatus: "active", indicator: "runtime" }),
+    ];
+    await render(threads, { settings: { compactWorkingThreads: true, inactiveShelf: false } }, {}, 600, 255, { full: long, work: long });
+    for (const id of ["full", "work"]) {
+      const slot = card(id).querySelector<HTMLElement>("[data-status-slot]")!;
+      const hint = slot.querySelector<HTMLElement>("[data-jump-hint]")!;
+      expect(hint.getBoundingClientRect().left).toBeGreaterThanOrEqual(slot.getBoundingClientRect().left);
+      expect(slot.getBoundingClientRect().width).toBeGreaterThan(80);
+      expect(card(id).scrollWidth).toBeLessThanOrEqual(card(id).clientWidth);
+    }
+    expect(card("work").dataset.card).toBe("folded");
+    const title = card("work").querySelector<HTMLElement>("[data-title]")!;
+    expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(card("work").querySelector("[data-status-slot]")!.getBoundingClientRect().left);
+  });
+
+  it("keeps a Slim row within its width with the longest label", async () => {
+    const threads = [makeThread({ id: "pk", title: "A parked thread with a long title", ...old })];
+    await render(threads, { rows: { pk: parkedRow(NOW - 1000) }, settings: { inactiveShelf: false } }, {}, 600, 255, { pk: long });
+    await userEvent.click(screen.getByRole("button", { name: "Parked (1)" }));
+    await frames();
+    expect(card("pk").dataset.card).toBe("slim");
+    const hint = card("pk").querySelector<HTMLElement>("[data-jump-hint]")!;
+    expect(hint.getBoundingClientRect().right).toBeLessThanOrEqual(card("pk").getBoundingClientRect().right);
+    expect(hint.scrollWidth).toBeLessThanOrEqual(hint.clientWidth);
+    expect(card("pk").scrollWidth).toBeLessThanOrEqual(card("pk").clientWidth);
   });
 });
 
