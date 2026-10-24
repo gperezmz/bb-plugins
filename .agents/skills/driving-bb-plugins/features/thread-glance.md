@@ -24,7 +24,7 @@ shelf, sort and chip state, and the port link machine, stay in the browser.
   and buttons.
 - `children`: the chip that opens a parent's child list.
 - `shelf`: opening and collapsing a shelf; Active's sort; Settled's Load more.
-- `scope`: limiting every shelf to one project.
+- `scope`: limiting every shelf to the projects ticked in the picker.
 - `hover`: the hover card on a row.
 - `actions`: Snooze (presets or a picked time), Park, Resume, Wake, Settle,
   Un-settle, Pin and Unpin, from hover buttons, slim-row buttons and the

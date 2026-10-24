@@ -92,6 +92,15 @@ describe("the projects a scope leaves out that need you", () => {
     expect(projectsNeedingYou(["proj_personal"], unlisted)).toEqual([]);
   });
 
+  it("lists none for a waiting thread already on the list under a parent in the scope, unless it is pinned", () => {
+    const parent = makeThread({ id: "p", projectId: "proj_a" });
+    const child = makeThread({ id: "c", projectId: "proj_b", parentThreadId: "p", hasPendingInteraction: true });
+    expect(projectsNeedingYou(["proj_a"], [parent, child])).toEqual([]);
+    expect(projectsNeedingYou(["proj_a"], [parent, { ...child, isPinned: true }])).toEqual(["proj_b"]);
+    expect(projectsNeedingYou(["proj_a"], [{ ...parent, isHidden: true }, child])).toEqual(["proj_b"]);
+    expect(projectsNeedingYou(["proj_personal"], [parent, child])).toEqual(["proj_b"]);
+  });
+
   it("lists none for a project in the scope, a project without a waiting thread, or All projects", () => {
     expect(projectsNeedingYou(["proj_a", "proj_b"], threads)).toEqual([]);
     expect(projectsNeedingYou([], threads)).toEqual([]);

@@ -1,3 +1,4 @@
+// Which threads make it onto the list at all. Pure.
 import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 
 /** Threads that make it onto the list: not archived and not hidden. */

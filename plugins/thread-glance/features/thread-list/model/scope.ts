@@ -87,12 +87,21 @@ export function scopeLabel(scope: Scope, projects: readonly PluginSidebarProject
 /**
  * The projects `scope` leaves out that have a listed thread waiting on the
  * person (a question or an approval), by id: widening the scope shows the
- * thread. Nothing is left out of All projects.
+ * thread. A waiting thread already on the list under a parent in the scope
+ * (the rule of `buildForest`) is no reason to widen it. Nothing is left out
+ * of All projects.
  */
 export function projectsNeedingYou(scope: Scope, threads: readonly PluginSidebarThread[]): readonly string[] {
   if (scope.length === 0) return NONE;
+  const waiting = threads.filter((thread) => thread.hasPendingInteraction && isListed(thread) && !scope.includes(thread.projectId));
+  if (waiting.length === 0) return NONE;
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
   const ids = new Set<string>();
-  for (const thread of threads) if (thread.hasPendingInteraction && isListed(thread) && !scope.includes(thread.projectId)) ids.add(thread.projectId);
+  for (const thread of waiting) {
+    const parent = thread.isPinned || thread.parentThreadId === null ? undefined : byId.get(thread.parentThreadId);
+    const underScope = parent !== undefined && isListed(parent) && scope.includes(parent.projectId);
+    if (!underScope) ids.add(thread.projectId);
+  }
   return ids.size === 0 ? NONE : [...ids].sort();
 }
 
