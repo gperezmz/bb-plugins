@@ -41,9 +41,14 @@ describe("useLifecycleCommands", () => {
     rpc.call.mockResolvedValue({ changes: [], note: null, reclaim: {} });
     const asking = family({ hasPendingInteraction: true });
     const { result, rerender } = renderHook(({ threads }) => useLifecycleCommands(threads), { initialProps: { threads: asking } });
-    rerender({ threads: family({ hasPendingInteraction: true, isHidden: true }) });
-    await result.current.park("root");
+    for (const quiet of [{ isHidden: true }, { isArchived: true, archivedAt: Date.now() }]) {
+      rerender({ threads: family({ hasPendingInteraction: true, ...quiet }) });
+      await result.current.park("root");
+    }
     expect(toasts.error).not.toHaveBeenCalled();
-    expect(rpc.call).toHaveBeenCalledWith("park", { threadId: "root" });
+    expect(rpc.call.mock.calls).toEqual([
+      ["park", { threadId: "root" }],
+      ["park", { threadId: "root" }],
+    ]);
   });
 });
