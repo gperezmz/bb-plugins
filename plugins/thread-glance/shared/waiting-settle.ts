@@ -15,8 +15,7 @@ export interface WaitingTreeThread extends BusyInput {
 
 /**
  * A turn event of a thread in the tree, as bb recorded it: a turn asked for,
- * by the user (no sender thread, a user's message) or not, or a turn that
- * ended, and how.
+ * by a message the user sent or not, or a turn that ended, and how.
  */
 export type TurnRecord =
   | { kind: "requested"; at: number; byUser: boolean }
@@ -33,9 +32,9 @@ const LAND: WaitingSettleVerdict = { kind: "land" };
 
 /**
  * Why the turns since `since` end the settle, or null: a turn the user asked
- * for (a message they sent, a child they started) or a turn that failed or
- * was interrupted. An agent's messages and spawns, and bb's own turns such
- * as a parent notification, leave it waiting.
+ * for (a message they sent) or a turn that failed or was interrupted. An
+ * agent's messages, a spawn by anyone, and bb's own turns such as a parent
+ * notification, leave it waiting.
  */
 export function endingTurn(turns: readonly TurnRecord[], since: number): WaitingSettleEnd | null {
   for (const turn of turns) {

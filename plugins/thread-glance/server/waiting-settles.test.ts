@@ -174,20 +174,27 @@ describe("a waiting settle", () => {
     expect(lifecycle.get("parent")?.settledKind).toBe("manual");
   });
 
-  it("puts back the pins it took when bb refuses one partway through the tree", async () => {
+  it("settles at the next check when bb refuses an unpin partway through the tree, without pinning again", async () => {
     fake.threads.set("parent", pinned(fake.threads.get("parent")!, SINCE - 10));
     fake.threads.set("child", pinned({ ...fake.threads.get("child")!, status: "idle" }, SINCE - 10));
     fake.failUnpin.add("child");
     await waiting.check();
     clock += IDLE_GRACE_MS;
     await waiting.check();
-    expect(fake.calls).toEqual(["unpin parent", "unpin child", "pin parent"]);
-    expect(fake.threads.get("parent")?.isPinned).toBe(true);
+    expect(fake.calls).toEqual(["unpin parent", "unpin child"]);
     expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+    fake.failUnpin.clear();
+    await waiting.check();
+    expect(fake.calls).toEqual(["unpin parent", "unpin child", "unpin child"]);
+    expect(lifecycle.get("child")?.settledKind).toBe("manual");
   });
 
-  it("does not end on the first message of a thread being spawned, which bb records as the user's", async () => {
+  it("does not end on the first message of a thread being spawned, which bb records as the user's, though it already runs", async () => {
     fake.threads.set("spawned", makeServerThread("spawned", { parentThreadId: "parent", status: "pending", queuedWork: "waiting" }));
+    await waiting.check({ threadId: "spawned", turns: [{ kind: "requested", at: SINCE + 10, byUser: true }] });
+    expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
+    // bb has started the child by the time the check reads it: it was created after the settle was chosen.
+    fake.threads.set("spawned", makeServerThread("spawned", { parentThreadId: "parent", status: "active", createdAt: SINCE + 5 }));
     await waiting.check({ threadId: "spawned", turns: [{ kind: "requested", at: SINCE + 10, byUser: true }] });
     expect(lifecycle.get("parent")).toEqual(waitingSettleRow(SINCE));
   });

@@ -103,7 +103,7 @@ export function createThreadEvents(deps: ThreadEventDeps): ThreadEvents {
     return lifecycle.putMany(
       ancestors.flatMap((id): [string, LifecycleRow | null][] => {
         const row = lifecycle.get(id);
-        if (row === null || !hasMark(row) || held.has(id)) return [];
+        if (!hasMark(row) || held.has(id)) return [];
         return [[id, isWaitingSettle(row) ? waitingSettleRow(row.waitingSettleAt) : null]];
       }),
     );

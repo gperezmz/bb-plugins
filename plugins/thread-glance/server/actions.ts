@@ -341,7 +341,7 @@ export function createLifecycleActions(deps: ActionDeps): LifecycleActions {
       return noReclaim(
         await change(async (changed) => {
           const row = lifecycle.get(threadId);
-          return row !== null && isWaitingSettle(row) ? write([[threadId, withoutWaitingSettle(row)]], changed) : [];
+          return isWaitingSettle(row) ? write([[threadId, withoutWaitingSettle(row)]], changed) : [];
         }),
       );
     },
